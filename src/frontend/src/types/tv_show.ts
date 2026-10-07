@@ -57,6 +57,7 @@ export interface TVShow {
   ageRating: string | null;
   tmdbScore: number | null;
   source: string | null;
+  providerIds?: Record<string, string>;
   externalId: string | null;
   posterUrl: string | null;
   backdropUrl: string | null;

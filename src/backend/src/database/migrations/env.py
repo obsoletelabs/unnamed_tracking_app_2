@@ -34,6 +34,7 @@ from src.database.models import (
     notification_provider_setting,  # noqa: F401
     oidc_provider,  # noqa: F401
     oidc_settings,  # noqa: F401
+    plugin_metadata_provider,  # noqa: F401
     plugin_notification_provider,  # noqa: F401
     plugin_permission_audit,  # noqa: F401
     plugin_permissions,  # noqa: F401

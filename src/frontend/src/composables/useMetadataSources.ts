@@ -22,14 +22,30 @@ import {
   errorTask,
   addFeedItem,
 } from "../state/taskProgress";
+interface CardVisual {
+  bg: string;
+  fg: string;
+  mark: string;
+}
+// Reuse the original colored monogram badges in account and provider tiles.
+export const SOURCE_VISUALS: Record<string, CardVisual> = {
+  Steam: { bg: "#12202e", fg: "#66c0f4", mark: "S" },
+  SteamGridDB: { bg: "#0e3b3b", fg: "#2dd4bf", mark: "Gr" },
+  IGDB: { bg: "#2b1c4a", fg: "#a78bfa", mark: "IG" },
+  TMDB: { bg: "#01283d", fg: "#5dd9c1", mark: "TM" },
+  OMDb: { bg: "#2a2205", fg: "#f5c518", mark: "OM" },
+  TVDB: { bg: "#1a2a3d", fg: "#7ba7d9", mark: "TV" },
+  GiantBomb: { bg: "#3d2f00", fg: "#fbbf24", mark: "GB" },
+  RetroAchievements: { bg: "#3b0a0a", fg: "#f87171", mark: "RA" },
+  ScreenScraper: { bg: "#1a3d0a", fg: "#86efac", mark: "SS" },
+  Xbox: { bg: "#0a2e0a", fg: "#4ade80", mark: "Xb" },
+  GOG: { bg: "#2a1a3d", fg: "#c084fc", mark: "GOG" },
+  LaunchBox: { bg: "#1a1a1a", fg: "#999999", mark: "LB" },
+  PlayStation: { bg: "#0a1a3d", fg: "#60a5fa", mark: "PS" },
+  HowLongToBeat: { bg: "#1f1f1f", fg: "#d1d5db", mark: "HL" },
+};
+
 export function useMetadataSources() {
-  // small colored monogram badge per provider, no real logos bundled, so a
-  // distinct brand-ish color + short mark stands in, RomM-style icon tile
-  interface CardVisual {
-    bg: string;
-    fg: string;
-    mark: string;
-  }
   // short one-liner shown on every tile so the grid stays scannable without
   // hovering, the fuller description still lives in the `title` tooltip
   const SHORT_DESC: Record<string, string> = {
@@ -49,22 +65,7 @@ export function useMetadataSources() {
     HowLongToBeat: "Time-to-beat data",
   };
 
-  const VISUALS: Record<string, CardVisual> = {
-    Steam: { bg: "#12202e", fg: "#66c0f4", mark: "S" },
-    SteamGridDB: { bg: "#0e3b3b", fg: "#2dd4bf", mark: "Gr" },
-    IGDB: { bg: "#2b1c4a", fg: "#a78bfa", mark: "IG" },
-    TMDB: { bg: "#01283d", fg: "#5dd9c1", mark: "TM" },
-    OMDb: { bg: "#2a2205", fg: "#f5c518", mark: "OM" },
-    TVDB: { bg: "#1a2a3d", fg: "#7ba7d9", mark: "TV" },
-    GiantBomb: { bg: "#3d2f00", fg: "#fbbf24", mark: "GB" },
-    RetroAchievements: { bg: "#3b0a0a", fg: "#f87171", mark: "RA" },
-    ScreenScraper: { bg: "#1a3d0a", fg: "#86efac", mark: "SS" },
-    Xbox: { bg: "#0a2e0a", fg: "#4ade80", mark: "Xb" },
-    GOG: { bg: "#2a1a3d", fg: "#c084fc", mark: "GOG" },
-    LaunchBox: { bg: "#1a1a1a", fg: "#999999", mark: "LB" },
-    PlayStation: { bg: "#0a1a3d", fg: "#60a5fa", mark: "PS" },
-    HowLongToBeat: { bg: "#1f1f1f", fg: "#d1d5db", mark: "HL" },
-  };
+  const VISUALS = SOURCE_VISUALS;
 
   // which cards are expanded to show their configure form, collapsed by
   // default so the grid stays a dense, scannable wall of tiles

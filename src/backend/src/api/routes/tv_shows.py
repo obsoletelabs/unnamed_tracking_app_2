@@ -14,12 +14,9 @@ from src.api.routes.media_common import (
     owned_row,
     purge_row,
     related_row,
-    request_metadata,
     restore_row,
-    search_external_metadata,
     soft_delete,
     title_search,
-    tmdb_recommendations,
     trash_listing,
     update_tracking,
 )
@@ -36,9 +33,7 @@ from src.api.schemas.tv_show import (
     TVShowRead,
     TVShowUpdate,
 )
-from src.core.app_integrations import get_or_create_app_integration_settings
 from src.core.auth import AuthenticatedActor, get_current_actor, get_current_user
-from src.core.integrations import resolve_integrations
 from src.core.titles import derive_sort_title as _derive_sort_title
 from src.database.models.tv_show import TVEpisode, TVSeason, TVShow, TVShowStatus
 from src.database.models.user import User
@@ -49,10 +44,15 @@ from src.features.episode_progress import (
     update_season_progress,
 )
 from src.features.metadata.refresh import merge_episodes, quick_check_tv_season
+from src.features.metadata.service import (
+    library_candidate,
+    related_metadata,
+    relation_result,
+    search_media,
+)
 from src.features.metadata.tv.episode_sync import fetch_season_episodes
-from src.features.metadata.tv.search import search_tv_metadata
-from src.features.metadata.tv.tvdb import TVDBClient
 from src.features.tv_seasons import check_in_background, is_due
+from src.plugin_api.metadata_contracts import MediaType
 
 _QUERY_DEFAULT = Query(..., min_length=2, max_length=100, alias="query")
 _LIMIT_DEFAULT = Query(default=8, ge=1, le=20, alias="limit")
@@ -63,7 +63,7 @@ _CURRENT_USER_DEFAULT = Depends(get_current_user)
 router = APIRouter(prefix="/api/tv", tags=["tv"], dependencies=[Depends(get_current_user)])
 logger = logging.getLogger(__name__)
 
-# fields the metadata search's "Apply" button can fill in — the only ones
+# fields the metadata search's "Apply" button can fill in â€” the only ones
 # worth locking, since nothing else is ever set by that flow
 # Provider-owned fields differ by media kind and intentionally overlap.
 # pylint: disable=duplicate-code
@@ -125,8 +125,7 @@ async def search_metadata(
 ) -> dict:
     """Search TMDB and OMDb for data that can prefill a new show,
     including its full season list where TMDB has it."""
-    del current_user
-    return await search_external_metadata(db, search_tv_metadata, query, limit)
+    return await search_media(db, current_user.id, query.strip(), MediaType.TV_SHOW, limit)
 
 
 @router.post("/create", response_model=TVShowRead, status_code=status.HTTP_201_CREATED)
@@ -155,7 +154,7 @@ async def create_show(
 
     # Otherwise a freshly-added airing show shows no next-episode date
     # anywhere (countdown, calendar) until the next periodic airing-check
-    # pass, up to one airing-check interval later — worth the one
+    # pass, up to one airing-check interval later â€” worth the one
     # extra TVmaze call at creation time so it's there immediately.
     # Best-effort: a slow/unreachable TVmaze never blocks creation.
     if show.external_id and first_season is not None:
@@ -266,7 +265,7 @@ async def list_show_trash(
     current_user: User = _CURRENT_USER_DEFAULT,
 ) -> list[dict]:
     """Deleted shows, most recently deleted first. No purge job runs
-    against these — unlike Game's on-disk folders, a show is just a row
+    against these â€” unlike Game's on-disk folders, a show is just a row
     (plus its seasons/episodes), so there's nothing to clean up and it
     stays here until an admin either restores it or purges it for good."""
     return await trash_listing(db, TVShow, current_user.id)
@@ -290,7 +289,7 @@ async def purge_show(
     current_user: User = _CURRENT_USER_DEFAULT,
 ) -> None:
     """Permanently removes an already-deleted show and its seasons/
-    episodes. Only reachable from trash — a show still active must be
+    episodes. Only reachable from trash â€” a show still active must be
     soft-deleted first."""
     show = await _get_show_or_404(show_id, db, current_user.id, include_deleted=True)
     await purge_row(db, show, "Show")
@@ -370,14 +369,16 @@ async def list_episodes(
 ) -> TVShow:
     """Return the season's episodes, syncing them in from TVmaze on the
     very first request (nothing to sync from if the show has no
-    `external_id` — it wasn't found via TVmaze, e.g. added by hand).
+    `external_id` â€” it wasn't found via TVmaze, e.g. added by hand).
     Every later call reads straight from the table instead of
     re-fetching."""
     show = await _get_show_or_404(show_id, db, current_user.id)
     season = await _get_season_or_404(season_id, show_id, db)
 
     if not season.episodes and show.external_id:
-        all_episodes, errors = await fetch_season_episodes(show.external_id, season.season_number)
+        all_episodes, errors = await fetch_season_episodes(
+            show.external_id, season.season_number, user_id=show.user_id, title=show.title
+        )
         if not all_episodes and errors:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
@@ -400,7 +401,7 @@ async def bulk_set_episodes_watched(
     db: AsyncSession = _DB_DEFAULT,
     current_user: User = _CURRENT_USER_DEFAULT,
 ) -> TVShow:
-    """Sets `watched` on a whole batch of episodes in one request — see
+    """Sets `watched` on a whole batch of episodes in one request â€” see
     the anime version of this route for why. Registered ahead of the
     single-episode PATCH below so the literal path segment
     "bulk-watched" is matched here rather than attempted as an
@@ -448,19 +449,21 @@ async def get_show_relations(
     db: AsyncSession = _DB_DEFAULT,
     current_user: User = _CURRENT_USER_DEFAULT,
 ) -> dict:
-    """TheTVDB is the only real franchise/relations source for TV shows —
+    """TheTVDB is the only real franchise/relations source for TV shows â€”
     TMDB has no collection concept outside of movies. Requires its own
     API key (Settings > Metadata Sources); returns an empty, clearly
     unconfigured result rather than an error when it's not set up yet."""
     show = await _get_show_or_404(show_id, db, current_user.id)
-    app_integrations = resolve_integrations(await get_or_create_app_integration_settings(db))
-    if not app_integrations.tvdb_api_key:
-        return {"listName": None, "related": [], "configured": False}
-    tvdb_api_key = app_integrations.tvdb_api_key
-    result = await request_metadata(
-        lambda: TVDBClient(tvdb_api_key).relations(show.title), "TheTVDB"
+    result = await related_metadata(
+        db,
+        current_user.id,
+        library_candidate(show.title, MediaType.TV_SHOW, show.provider_ids or {}),
     )
-    return {**result, "configured": True}
+    return {
+        "listName": result["relation_group"],
+        "related": [relation_result(entry) for entry in result["relations"]],
+        "configured": result["configured"],
+    }
 
 
 @router.get("/{show_id}/recommended")
@@ -470,4 +473,13 @@ async def get_show_recommended(
     current_user: User = _CURRENT_USER_DEFAULT,
 ) -> dict:
     show = await _get_show_or_404(show_id, db, current_user.id)
-    return await tmdb_recommendations(db, show.title, "tv")
+    result = await related_metadata(
+        db,
+        current_user.id,
+        library_candidate(show.title, MediaType.TV_SHOW, show.provider_ids or {}),
+        "recommendations",
+    )
+    return {
+        "recommended": [relation_result(entry) for entry in result["relations"]],
+        "configured": result["configured"],
+    }

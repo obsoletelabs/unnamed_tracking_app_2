@@ -14,7 +14,7 @@ or working Bubblewrap isolation was verified.
 | Repository / target | Clean initial remote revision | Final code/package revision |
 | --- | --- | --- |
 | `Rosefall-a/unnamed_tracking_app` / `plugin-manager` | `45424fe6846587e2c25cbdafa882c621d2dbcd04` | `31e97fcd0b9217a9398d052bf99613e69cba9174` |
-| `Rosefall-a/unnamed_tracking_app_plugins` / `main` | `bb09d1b6d83a6e9ce5b612307c87a420446f1de8` | `54649b50ecd422123cf244fe846bb59bc83a7ec0` |
+| `obsoletelabs/unnamed_tracking_app_plugins` / `main` | `bb09d1b6d83a6e9ce5b612307c87a420446f1de8` | `54649b50ecd422123cf244fe846bb59bc83a7ec0` |
 | `Rosefall-a/UnnamedTrackingPlaynite` / `main` | `154f6d45e504c9b04f20e08b865278a2b6ebdc8c` | Same; no extension defect required a code change |
 
 The dated report is a subsequent documentation-only change. Its PR targets

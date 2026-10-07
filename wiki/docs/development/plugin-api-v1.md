@@ -320,3 +320,11 @@ Native contributions remount when the authenticated resource context changes, pr
 Native activation context includes the installed `version` and the existing safe
 Vue helpers plus `onBeforeUnmount`, allowing component polling to stop on navigation
 as well as plugin-level `onCleanup`. Privileged native frontend consent still applies.
+
+## Metadata provider extension (1.1.1)
+
+Search and refresh use the hardcoded core providers and optional installed provider plugins
+through one shared metadata handler. Core search does not require the plugin runtime.
+Provider configuration and health appear in the host's metadata settings.
+See [the progressive metadata contract](../development/metadata-providers.md) for
+phase separation, scoped credential migration, deadlines and persistence behavior.

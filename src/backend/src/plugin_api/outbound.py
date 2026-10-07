@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+import math
 import ssl
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
@@ -53,7 +56,18 @@ def _valid_header(key: object, value: object) -> bool:
         and len(value) <= 2048
         and "\n" not in key + value
         and "\r" not in key + value
-        and key.lower() in {"accept", "authorization", "x-emby-token"}
+        and key.lower()
+        in {
+            "accept",
+            "authorization",
+            "x-emby-token",
+            "client-id",
+            "content-type",
+            "user-agent",
+            "referer",
+            "origin",
+            "cookie",
+        }
     )
 
 
@@ -84,6 +98,12 @@ def _outbound_request(payload: dict[str, Any]) -> Request:
             raise ValueError("Invalid outbound JSON body.") from exc
         if len(body_data) > 64 * 1024:
             raise ValueError("Outbound request exceeded the 64 KiB limit.")
+    if "text_body" in payload:
+        if "body" in payload or method != "POST" or not isinstance(payload["text_body"], str):
+            raise ValueError("Only POST supports an exclusive text body.")
+        body_data = payload["text_body"].encode("utf-8")
+        if len(body_data) > 64 * 1024:
+            raise ValueError("Outbound request exceeded the 64 KiB limit.")
     return Request(
         url,
         data=body_data,
@@ -91,13 +111,16 @@ def _outbound_request(payload: dict[str, Any]) -> Request:
         headers={
             "Accept": "application/json",
             **headers,
-            **({"Content-Type": "application/json"} if body_data else {}),
+            **({"Content-Type": "application/json"} if "body" in payload else {}),
         },
     )
 
 
 def outbound_json(payload: dict[str, Any]) -> dict[str, Any]:
-    """Bounded JSON GET/POST; never return remote error bodies or credentials."""
+    """Bounded JSON/text GET/POST; never return remote error bodies or credentials."""
+    response_format = payload.get("response_format", "json")
+    if response_format not in {"json", "text"}:
+        raise ValueError("Unsupported outbound response format.")
     request = _outbound_request(payload)
     try:
         with build_opener(NoRedirects()).open(request, timeout=8) as response:
@@ -110,6 +133,12 @@ def outbound_json(payload: dict[str, Any]) -> dict[str, Any]:
         result = {"status": code, "error": "Remote server rejected the request."}
         if retry.isdecimal():
             result["retry_after_seconds"] = min(int(retry), 3600)
+        elif retry:
+            try:
+                delay = (parsedate_to_datetime(retry) - datetime.now(timezone.utc)).total_seconds()
+                result["retry_after_seconds"] = min(3600, max(0, math.ceil(delay)))
+            except (ValueError, TypeError, OverflowError):
+                pass
         return result
     except (URLError, OSError, TimeoutError) as exc:
         reason = getattr(exc, "reason", exc)
@@ -126,6 +155,11 @@ def outbound_json(payload: dict[str, Any]) -> dict[str, Any]:
         }
     if len(body) > MAX_BYTES:
         raise ValueError("Outbound response exceeded the 4 MiB limit.")
+    if response_format == "text":
+        try:
+            return {"status": status, "text": body.decode("utf-8")}
+        except UnicodeDecodeError as exc:
+            raise ValueError("Remote server returned invalid text.") from exc
     try:
         data = json.loads(body)
     except (ValueError, UnicodeDecodeError) as exc:

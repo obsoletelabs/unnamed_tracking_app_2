@@ -33,7 +33,6 @@ def test_related_duology_is_reparented_without_failing_the_graph(monkeypatch):
         status_code=200, json=lambda: {"data": {"Media": nodes[kwargs["json"]["variables"]["id"]]}}
     )
     monkeypatch.setattr(rate_limit, "throttle", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(anilist.time, "sleep", lambda _seconds: None)
     result = anilist.AniListClient(session=session).relations_chain_and_branches("Series", "1")
     assert [entry["id"] for entry in result["chain"]] == [1]
     assert [entry["id"] for entry in result["branches"]] == [2, 3]

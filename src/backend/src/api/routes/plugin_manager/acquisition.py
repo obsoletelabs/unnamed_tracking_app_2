@@ -64,6 +64,7 @@ logger = logging.getLogger(__name__)
 
 
 _MAX_PLUGIN_PACKAGE_BYTES = 64 * 1024 * 1024
+_MAX_PLUGIN_CATALOGUE_BYTES = 4 * 1024 * 1024
 
 
 _REMOTE_FETCH_TIMEOUT = httpx.Timeout(20.0, connect=5.0)
@@ -172,7 +173,9 @@ async def download_remote_file(
                             status_code=502,
                             detail=(f"Plugin download returned HTTP {response.status_code}."),
                         )
-                    max_bytes = 1 * 1024 * 1024 if json_document else _MAX_PLUGIN_PACKAGE_BYTES
+                    max_bytes = (
+                        _MAX_PLUGIN_CATALOGUE_BYTES if json_document else _MAX_PLUGIN_PACKAGE_BYTES
+                    )
                     suffix = ".json" if json_document else ".utp"
                     filename = Path(urlparse(url).path).name or f"plugin-download{suffix}"
                     if not json_document and Path(filename).suffix.lower() not in {

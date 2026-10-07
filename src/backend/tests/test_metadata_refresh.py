@@ -1,9 +1,14 @@
 """Refresh workers keep requests responsive and report failures to their callers."""
 
-import threading
+import asyncio
+import uuid
+from datetime import date
 from unittest.mock import AsyncMock, Mock
 
+from src.api.routes import library_sync
 from src.database.models.anime import Anime, AnimeSeason
+from src.database.models.game import Game
+from src.database.models.user import User
 from src.features.metadata import refresh, refresh_job
 from src.main import app  # noqa: F401 -- register the complete application model graph
 
@@ -11,24 +16,29 @@ from src.main import app  # noqa: F401 -- register the complete application mode
 async def test_metadata_healing_does_not_block_the_event_loop_or_overwrite_existing_fields(
     monkeypatch,
 ):
-    main_thread = threading.get_ident()
+    owner = uuid.uuid4()
+    yielded = []
 
-    class Client:
-        def get_by_id(self, identifier):
-            assert identifier == 42
-            assert threading.get_ident() != main_thread
-            return {
-                "id": 42,
-                "id_mal": 19,
+    async def resolve(db, user_id, candidate, *, include_media):
+        assert user_id == owner and candidate.provider_ids == {"anilist": "42"}
+        assert include_media
+        await asyncio.sleep(0)
+        yielded.append(True)
+        return {
+            "title": "Example",
+            "provider_ids": {"anilist": "42", "mal": "19"},
+            "metadata": {
                 "format": "TV",
-                "poster_url": "provider-poster",
-                "overview": "provider-description",
+                "description": "provider-description",
                 "episode_count": 12,
-                "score": 80,
-            }
+                "scores": {"anilist": 80},
+            },
+            "assets": [{"kind": "poster", "url": "provider-poster"}],
+        }, []
 
     show = Anime(
         title="Example",
+        user_id=owner,
         anilist_id="42",
         description="User description",
         seasons=[AnimeSeason(season_number=1)],
@@ -39,14 +49,15 @@ async def test_metadata_healing_does_not_block_the_event_loop_or_overwrite_exist
     db.__aenter__.return_value = db
     db.execute.return_value = result
     monkeypatch.setattr(refresh, "SessionLocal", lambda: db)
-    monkeypatch.setattr(refresh, "AniListClient", Client)
+    monkeypatch.setattr(refresh, "resolve_library_record", resolve)
 
     assert await refresh.heal_all_anime_metadata() == 1
     assert show.description == "User description"
     assert show.poster_url == "provider-poster"
     assert show.external_id == "19"
     assert show.format == "TV"
-    assert show.anilist_score == 80
+    assert show.anilist_score == 8
+    assert yielded == [True]
     assert show.seasons[0].episode_count == 12
     db.commit.assert_awaited_once()
 
@@ -80,3 +91,44 @@ async def test_refresh_failure_finishes_progress_and_does_not_skip_other_finish_
     await refresh_job.run("needed")
     assert results[-1]["mode"] == "needed"
     assert len(results) == 2
+
+
+async def test_staged_steam_enrichment_uses_exact_identity_and_preserves_locks(monkeypatch):
+    owner = uuid.uuid4()
+    game = Game(
+        title="Steam app 620",
+        user_id=owner,
+        provider_ids={},
+        developer="Manual developer",
+        release_date=date(2010, 1, 1),
+        locked_fields=["developer", "release_date"],
+        collections=[],
+        tags=[],
+    )
+    user = User(id=owner)
+
+    async def resolve(_db, user_id, candidate, *, include_media, preferences):
+        assert user_id == owner and candidate.provider_ids == {"steam": "620"}
+        assert include_media and preferences == {"steam_user_tags": False}
+        return {
+            "title": "Steam app 620",
+            "provider_ids": {"steam": "620"},
+            "metadata": {
+                "title": "Portal 2",
+                "developer": "Provider developer",
+                "description": "Provider description",
+                "release_date": "2011-04-18",
+            },
+            "assets": [],
+        }, []
+
+    db = AsyncMock()
+    db.__aenter__.return_value = db
+    monkeypatch.setattr(library_sync, "SessionLocal", lambda: db)
+    monkeypatch.setattr(library_sync, "resolve_library_record", resolve)
+    await library_sync._enrich_steam_game_by_appid(game, 620, user, False)
+    assert game.title == "Portal 2" and game.sort_title == "portal 2"
+    assert game.developer == "Manual developer"
+    assert game.release_date == date(2010, 1, 1)
+    assert game.description == "Provider description"
+    assert game.provider_ids == {"steam": "620"}

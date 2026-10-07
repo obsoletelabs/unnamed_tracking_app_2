@@ -260,7 +260,11 @@ def fill_blanks(item: Any, kind: str, meta: dict[str, Any]) -> bool:
     changed = False
     for attr, key in _MOVIE_FILL if kind == "movie" else _TV_FILL:
         value = meta.get(key)
-        if value in (None, "", []) or getattr(item, attr, None) not in (None, "", []):
+        if (
+            attr in (getattr(item, "locked_fields", None) or [])
+            or value in (None, "", [])
+            or getattr(item, attr, None) not in (None, "", [])
+        ):
             continue
         if attr in ("release_date", "first_air_date"):
             value = _to_date(value)

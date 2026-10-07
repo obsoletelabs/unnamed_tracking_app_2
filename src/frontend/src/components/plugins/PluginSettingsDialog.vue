@@ -5,6 +5,7 @@ import PermissionRiskSummary from "./PermissionRiskSummary.vue";
 import PluginPermissionAccess from "./PluginPermissionAccess.vue";
 import PluginVersionInfo from "./PluginVersionInfo.vue";
 import PluginReadme from "./PluginReadme.vue";
+import MetadataProviderSettings from "./MetadataProviderSettings.vue";
 import PluginPackageDropZone from "./PluginPackageDropZone.vue";
 import type {
   PluginPermissionGrant,
@@ -300,6 +301,10 @@ watch(
         </section>
 
         <section v-else-if="tab === 'settings'" class="panel">
+          <MetadataProviderSettings
+            v-if="plugin.permissions.includes('metadata_providers.register')"
+            :plugin-id="plugin.plugin_id"
+          />
           <h3>Plugin Manager settings</h3>
           <p v-if="plugin.version_pin" class="version-pin" role="status">
             Pinned to v{{ plugin.version_pin }}. Installing an older release or

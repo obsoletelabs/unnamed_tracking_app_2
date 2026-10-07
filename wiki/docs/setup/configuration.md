@@ -96,3 +96,11 @@ Do not add normal configuration fields directly to `Setup.vue`. The registry is 
 - Do not put real credentials in `example.env`.
 - Keep first-administrator creation separate from ordinary configuration.
 - Keep application-owned secrets encrypted at rest.
+
+## Metadata provider extension (1.1.1)
+
+Search and refresh use the hardcoded core providers and optional installed provider plugins
+through one shared metadata handler. Core search does not require the plugin runtime.
+Provider configuration and health appear in the host's metadata settings.
+See [the progressive metadata contract](../development/metadata-providers.md) for
+phase separation, scoped credential migration, deadlines and persistence behavior.

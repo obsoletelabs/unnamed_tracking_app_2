@@ -122,10 +122,19 @@ async def installed_plugins() -> list[dict[str, Any]]:
     ]
 
 
-async def live_plugin(plugin_id: str, *, require_enabled: bool = True) -> dict[str, Any]:
+async def live_plugin(
+    plugin_id: str,
+    *,
+    require_enabled: bool = True,
+    single_installation: bool = False,
+) -> dict[str, Any]:
     """Resolve a live installation before any capability can execute."""
     with runtime_errors():
-        installed = await client.plugins()
+        installed = (
+            [await client.plugin_state(plugin_id)]
+            if single_installation
+            else await client.plugins()
+        )
     matches = [item for item in installed if item.get("plugin_id") == plugin_id]
     if len(matches) != 1 or not matches[0].get("installation_id"):
         raise HTTPException(status_code=404, detail="Plugin installation not found.")

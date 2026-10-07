@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import time
-from typing import Annotated, Any
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -17,7 +17,6 @@ from src.api.routes.media_common import (
     owned_row,
     purge_row,
     related_row,
-    request_metadata,
     restore_row,
     soft_delete,
     title_search,
@@ -37,9 +36,7 @@ from src.api.schemas.anime import (
 )
 from src.api.schemas.metadata import MetadataSearchResponse
 from src.api.schemas.pagination import LibraryQuery, PaginatedResponse
-from src.core.app_integrations import get_or_create_app_integration_settings
 from src.core.auth import AuthenticatedActor, get_current_actor, get_current_user
-from src.core.integrations import resolve_integrations
 from src.core.titles import apply_alt_titles
 from src.core.titles import derive_sort_title as _derive_sort_title
 from src.database.models.anime import Anime, AnimeEpisode, AnimeSeason, AnimeStatus
@@ -52,23 +49,28 @@ from src.features.episode_progress import (
 )
 from src.features.imports.anilist import import_anilist_library as apply_anilist_import
 from src.features.metadata.anime.alt_titles import fill_missing_titles
-from src.features.metadata.anime.anilist import RELATIONS_CACHE_VERSION, AniListClient, AniListError
+from src.features.metadata.anime.anilist import AniListError
 from src.features.metadata.anime.episode_sync import (
-    backfill_from_tmdb,
+    backfill_from_metadata,
     fetch_episodes_with_fallback,
     needs_tmdb_backfill,
     pad_to_known_total,
-)
-from src.features.metadata.anime.search import (
-    get_anime_metadata_by_anilist_id,
-    search_anime_metadata,
 )
 from src.features.metadata.refresh import (
     merge_episodes,
     quick_check_anime_season,
     refresh_anime_season_now,
 )
+from src.features.metadata.service import (
+    collect_record,
+    library_candidate,
+    media_result,
+    related_metadata,
+    relation_result,
+    search_media,
+)
 from src.features.notifications import record_sequel_announcements
+from src.plugin_api.metadata_contracts import MediaType
 
 _DB_DEFAULT = Depends(get_db)
 _CURRENT_USER_DEFAULT = Depends(get_current_user)
@@ -167,16 +169,13 @@ async def import_anilist_library(
 async def search_metadata(
     query: str = _QUERY_DEFAULT,
     limit: int = _LIMIT_DEFAULT,
+    db: AsyncSession = _DB_DEFAULT,
     current_user: User = _CURRENT_USER_DEFAULT,
 ) -> dict:
     """Search AniList and Jikan (MyAnimeList) for data that can prefill a
     new entry. Both are public/keyless — no app-wide credentials needed,
     unlike Movies/TV's TMDB and OMDb."""
-    del current_user
-    result = await request_metadata(
-        search_anime_metadata, "Metadata providers", query.strip(), limit
-    )
-    return result
+    return await search_media(db, current_user.id, query.strip(), MediaType.ANIME, limit)
 
 
 @router.post("/fill-titles")
@@ -194,6 +193,7 @@ async def fill_alternate_titles(
 @router.get("/metadata/by-id/{anilist_id}", response_model=dict | None)
 async def get_metadata_by_id(
     anilist_id: int,
+    db: AsyncSession = _DB_DEFAULT,
     current_user: User = _CURRENT_USER_DEFAULT,
 ) -> dict | None:
     """Looks up one exact AniList entry by id, in the same shape
@@ -202,9 +202,14 @@ async def get_metadata_by_id(
     id and shouldn't need a fresh title search to find the same entry
     again (fragile for an unusual title, and wasted requests against an
     API with a real rate limit)."""
-    del current_user
-    result = await request_metadata(get_anime_metadata_by_anilist_id, "AniList", anilist_id)
-    return result
+    record, _ = await collect_record(
+        db,
+        current_user.id,
+        library_candidate(f"Anime {anilist_id}", MediaType.ANIME, {"anilist": str(anilist_id)}),
+        policy="interactive",
+        include_media=True,
+    )
+    return media_result(record, MediaType.ANIME) if record.get("metadata") else None
 
 
 @router.post("/create", response_model=AnimeRead, status_code=status.HTTP_201_CREATED)
@@ -233,9 +238,14 @@ async def create_anime(
         and not (show.title_english or show.title_romaji or show.title_native)
     ):
         try:
-            found, _ = await asyncio.to_thread(AniListClient().get_by_ids, [int(show.anilist_id)])
-            if meta := found.get(int(show.anilist_id)):
-                apply_alt_titles(show, meta)
+            record, _ = await collect_record(
+                db,
+                show.user_id,
+                library_candidate(show.title, MediaType.ANIME, {"anilist": show.anilist_id}),
+                policy="interactive",
+            )
+            titles = record.get("metadata", {}).get("titles", {})
+            apply_alt_titles(show, {"title_" + key: value for key, value in titles.items()})
         # Optional provider enrichment must not abort creation of the user's title.
         except Exception:  # pylint: disable=broad-exception-caught
             logger.exception("Alternate titles lookup failed for new anime %r", show.title)
@@ -438,15 +448,6 @@ async def delete_season(
     return await _get_show_or_404(show_id, db, current_user.id)
 
 
-async def _backfill_from_tmdb_if_configured(
-    all_episodes: list[dict[str, Any]], show_title: str, db: AsyncSession
-) -> None:
-    app_integrations = resolve_integrations(await get_or_create_app_integration_settings(db))
-    if app_integrations.tmdb_api_key:
-        tmdb_api_key = app_integrations.tmdb_api_key
-        await backfill_from_tmdb(all_episodes, show_title, tmdb_api_key)
-
-
 async def _get_episode_or_404(episode_id: UUID, season_id: UUID, db: AsyncSession) -> AnimeEpisode:
     return await related_row(
         db,
@@ -476,7 +477,9 @@ async def list_episodes(
     season = await _get_season_or_404(season_id, show_id, db)
 
     if not season.episodes and (show.external_id or show.anilist_id or show.kitsu_id):
-        fetch = await fetch_episodes_with_fallback(show.external_id, show.anilist_id, show.kitsu_id)
+        fetch = await fetch_episodes_with_fallback(
+            show.external_id, show.anilist_id, show.kitsu_id, user_id=show.user_id, title=show.title
+        )
         all_episodes, errors = fetch.episodes, fetch.errors
         if fetch.kitsu_id and show.kitsu_id != fetch.kitsu_id:
             show.kitsu_id = fetch.kitsu_id
@@ -495,7 +498,7 @@ async def list_episodes(
         )
         season.episode_count = pad_to_known_total(all_episodes, fresh_total)
         if needs_tmdb_backfill(all_episodes):
-            await _backfill_from_tmdb_if_configured(all_episodes, show.title, db)
+            await backfill_from_metadata(all_episodes, show.title, user_id=show.user_id)
         # Initial listings preserve their existing date-only payload; timed refreshes also save air_at.
         merge_episodes(db, season, all_episodes, AnimeEpisode, include_air_at=False)
         await db.commit()
@@ -553,6 +556,7 @@ async def update_episode(
 # changes rarely (only a genuine new-sequel announcement, or AniList
 # recomputing its own recommendation scores), so most visits should cost
 # zero AniList requests rather than a dozen+.
+RELATIONS_CACHE_VERSION = 2
 _RELATIONS_CACHE_TTL_SECONDS = 3 * 24 * 60 * 60
 
 
@@ -564,9 +568,28 @@ async def _fetch_and_store_relations(show: Anime, db: AsyncSession) -> dict:
     result on the row, and notes any newly listed season for a title the
     user has completed."""
     old_chain = show.relations_cache.get("chain") if show.relations_cache else None
-    result = await asyncio.to_thread(
-        AniListClient().relations_chain_and_branches, show.title, show.anilist_id
+    ids = {
+        **(show.provider_ids or {}),
+        **({"anilist": show.anilist_id} if show.anilist_id else {}),
+        **({"mal": show.external_id} if show.external_id else {}),
+    }
+    data = await related_metadata(
+        db, show.user_id, library_candidate(show.title, MediaType.ANIME, ids)
     )
+    result = {
+        "chain": [],
+        "branches": [],
+        "recommendations": [],
+        "version": RELATIONS_CACHE_VERSION,
+        "configured": data["configured"],
+    }
+    for relation in data["relations"]:
+        group = {"chain": "chain", "branch": "branches", "recommendation": "recommendations"}.get(
+            relation.get("group"), "branches"
+        )
+        result[group].append(relation_result(relation))
+    if not data["configured"]:
+        return result
     show.relations_cache = result
     show.relations_cached_at = int(time.time())
     await db.commit()
@@ -632,16 +655,11 @@ async def get_anime_relations(
     since a title search can match a different entry with a similar
     name. Keyless, so unlike TV/Movie there's no "not configured" state."""
     show = await _get_show_or_404(show_id, db, current_user.id)
-    try:
-        result = await _get_or_refresh_anime_relations(show, db)
-    except AniListError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY, detail=f"AniList could not be reached: {exc}"
-        ) from exc
+    result = await _get_or_refresh_anime_relations(show, db)
     return {
         "chain": result["chain"],
         "branches": result["branches"],
-        "configured": True,
+        "configured": result.get("configured", True),
     }
 
 
@@ -655,10 +673,8 @@ async def get_anime_recommended(
     returns both a title's relations and its recommendations in one
     request, so there's no reason for this tab to cost a second one."""
     show = await _get_show_or_404(show_id, db, current_user.id)
-    try:
-        result = await _get_or_refresh_anime_relations(show, db)
-    except AniListError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY, detail=f"AniList could not be reached: {exc}"
-        ) from exc
-    return {"recommended": result.get("recommendations", []), "configured": True}
+    result = await _get_or_refresh_anime_relations(show, db)
+    return {
+        "recommended": result.get("recommendations", []),
+        "configured": result.get("configured", True),
+    }

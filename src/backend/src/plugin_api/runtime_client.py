@@ -117,6 +117,10 @@ class PluginRuntimeClient:
         """Read the package's declared UI document."""
         return await self._request("GET", f"/plugins/{plugin_id}/ui")
 
+    async def plugin_state(self, plugin_id: str) -> dict[str, Any]:
+        """Revalidate one installation's current lifecycle and payload integrity."""
+        return await self._request("GET", f"/plugins/{quote(plugin_id, safe='')}/state")
+
     async def logs(self, plugin_id: str) -> dict[str, Any]:
         """Read the bounded structured event buffer for one plugin."""
         return await self._request("GET", f"/plugins/{plugin_id}/logs")

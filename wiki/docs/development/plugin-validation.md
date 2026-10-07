@@ -20,7 +20,7 @@ The application tests:
 
 ## Plugin repository coverage
 
-`Rosefall-a/unnamed_tracking_app_plugins` tests every maintained manifest, permission rationale, source import boundary, frontend entry, package digest, and package validation rule. The maintained reference plugins exercise their exact public capabilities and host lifecycle contracts; retired packages remain covered by immutable release-history validation rather than current reference-plugin acceptance.
+`obsoletelabs/unnamed_tracking_app_plugins` tests every maintained manifest, permission rationale, source import boundary, frontend entry, package digest, and package validation rule. The maintained reference plugins exercise their exact public capabilities and host lifecycle contracts; retired packages remain covered by immutable release-history validation rather than current reference-plugin acceptance.
 
 Normal development builds are unsigned and intentionally exercise the untrusted-package warning. Release builds require the private reviewed signing key and fail closed when the signer is unavailable or out of scope.
 

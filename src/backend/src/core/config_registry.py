@@ -126,6 +126,16 @@ CONFIG_SECTIONS: tuple[ConfigSectionSpec, ...] = (
 # through resolution, validation, persistence, and the generated UI.
 CONFIG_REGISTRY: tuple[ConfigSpec, ...] = (
     ConfigSpec(
+        "METADATA_HEALTH_INTERVAL_SECONDS",
+        "general",
+        ConfigSource.ENV,
+        label="Metadata provider validation interval",
+        input_type="integer",
+        default=1800,
+        visible=False,
+        description="Seconds between nonblocking provider health checks; minimum 60.",
+    ),
+    ConfigSpec(
         "POSTGRES_USER",
         "database",
         ConfigSource.ENV,

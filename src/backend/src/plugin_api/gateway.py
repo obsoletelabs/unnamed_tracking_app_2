@@ -20,10 +20,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.routes.settings import (
-    get_or_create_app_integration_settings,
     get_or_create_scan_settings,
 )
-from src.core.integrations import resolve_integrations
 from src.database.models.game import Game
 from src.database.models.game_file_item import GameFileItem
 from src.database.models.media_item import MediaItem
@@ -32,7 +30,12 @@ from src.database.models.notification import Notification
 from src.database.models.plugin_notification_provider import (
     PluginNotificationProviderRegistration,
 )
-from src.features.metadata.games.search import search_game_metadata
+from src.features.metadata.providers import (
+    provider_configuration,
+    register_provider,
+    unregister_provider,
+)
+from src.features.metadata.service import search_games
 from src.features.notification_providers.delivery import ensure_deliveries
 from src.plugin_api.capabilities import capability_implies
 from src.plugin_api.contracts import (
@@ -84,6 +87,9 @@ _METHOD_CAPABILITIES = {
     "notifications.send": "notifications.send",
     "notification_providers.register": "notification_providers.register",
     "notification_providers.unregister": "notification_providers.register",
+    "metadata_providers.register": "metadata_providers.register",
+    "metadata_providers.unregister": "metadata_providers.register",
+    "metadata_providers.configuration": "metadata_providers.configuration",
 }
 
 
@@ -146,6 +152,15 @@ async def dispatch_gateway_request(
     ):
         raise PermissionError(f"permission {capability} has not been granted")
     handlers: dict[str, Callable[[], Awaitable[dict[str, Any]]]] = {
+        "metadata_providers.register": partial(
+            register_provider, db, plugin_id, installation_id, payload
+        ),
+        "metadata_providers.unregister": partial(
+            unregister_provider, db, plugin_id, installation_id, payload
+        ),
+        "metadata_providers.configuration": partial(
+            provider_configuration, db, plugin_id, installation_id, user_id, payload
+        ),
         "capabilities.check": _authorized,
         "library.legacy.export": partial(
             export_legacy_records, db, user_id=user_id, payload=payload
@@ -295,17 +310,7 @@ async def _search_metadata(
         "save_logo": scan.save_logo,
         "save_icon": scan.save_icon,
     }
-    integrations = resolve_integrations(await get_or_create_app_integration_settings(db))
-    metadata_result = await asyncio.to_thread(
-        search_game_metadata,
-        query,
-        limit,
-        steamgriddb_api_key=None,
-        preferences=preferences,
-        user=None,
-        igdb_client_id=integrations.igdb_client_id,
-        igdb_client_secret=integrations.igdb_client_secret,
-    )
+    metadata_result = await search_games(db, user_id, query, limit, preferences=preferences)
     return {"results": metadata_result.get("results", [])}
 
 

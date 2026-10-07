@@ -292,7 +292,7 @@ App installation now lives in **Settings → App installation**, with browser
 prompt, installed status, recovery, and iOS guidance. Persistent installation
 controls no longer cover the top bar. The neutral offline page follows the
 current Light, Dark or System mode and personal palette without caching account
-data. See [PWA integration](https://github.com/Rosefall-a/unnamed_tracking_app/blob/feat/ui-ux-redevelopment/docs/official-pwa.md).
+data. See [PWA integration](https://github.com/obsoletelabs/unnamed_tracking_app_2/blob/main/docs/official-pwa.md).
 
 The [signed PWA report](../assets/ui-redevelopment/pwa-conformance.json) covers
 installation, consent, invalid signatures, branding changes, permission

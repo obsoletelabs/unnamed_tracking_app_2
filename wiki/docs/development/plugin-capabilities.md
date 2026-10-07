@@ -62,3 +62,11 @@ Denied grants return 403 at the host boundary. Invalid, missing, or out-of-scope
 One-shot action handlers use the same mediated request/response protocol as long-running plugins. They do not receive host credentials or a direct network connection.
 
 `media.sync`, `network.request`, and opt-in background task delegation use the existing `media.write`, `network.outbound`, and `tasks.background` grants. See [Plugin API v1](plugin-api-v1.md#provider-media-synchronization-background-subscriptions-and-outbound-json) for payloads, target-user consent and conflict handling.
+
+## Metadata provider extension (1.1.1)
+
+Search and refresh use the hardcoded core providers and optional installed provider plugins
+through one shared metadata handler. Core search does not require the plugin runtime.
+Provider configuration and health appear in the host's metadata settings.
+See [the progressive metadata contract](../development/metadata-providers.md) for
+phase separation, scoped credential migration, deadlines and persistence behavior.

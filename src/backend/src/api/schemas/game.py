@@ -2,7 +2,7 @@
 
 from datetime import date
 from decimal import Decimal
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -28,6 +28,12 @@ class GameLinkSchema(BaseModel):
     url: str = Field(min_length=1, max_length=2_048)
 
 
+ProviderIds = dict[
+    Annotated[str, Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")],
+    Annotated[str, Field(min_length=1, max_length=512)],
+]
+
+
 class GameBase(BaseModel):
     """Fields shared by create and update payloads."""
 
@@ -42,6 +48,7 @@ class GameBase(BaseModel):
     collections: list[str] = Field(default_factory=list)
     links: list[GameLinkSchema] = Field(default_factory=list)
     source: str | None = Field(default=None, max_length=50)
+    provider_ids: ProviderIds = Field(default_factory=dict, max_length=32)
     platform: str | None = Field(default=None, max_length=50)
     region: str | None = Field(default=None, max_length=50)
     language: str | None = Field(default=None, max_length=50)
@@ -148,6 +155,7 @@ class GameUpdate(TitleProtectionUpdate):
     collections: list[str] | None = None
     links: list[GameLinkSchema] | None = None
     source: str | None = Field(default=None, max_length=50)
+    provider_ids: ProviderIds | None = Field(default=None, max_length=32)
     platform: str | None = Field(default=None, max_length=50)
     region: str | None = Field(default=None, max_length=50)
     language: str | None = Field(default=None, max_length=50)

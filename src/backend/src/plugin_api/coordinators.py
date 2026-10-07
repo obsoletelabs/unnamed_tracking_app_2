@@ -13,6 +13,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from .contracts import API_VERSION
+from .metadata_contracts import MetadataCandidate, MetadataProviderRequest
 
 
 class CoordinatorModel(BaseModel):
@@ -49,23 +50,6 @@ class NotificationProvider(Protocol):
 
     async def send(self, request: NotificationRequest) -> NotificationResult:
         """Deliver a core-owned notification without owning orchestration."""
-
-
-class MetadataProviderRequest(CoordinatorModel):
-    """Normalized metadata lookup requested by the core coordinator."""
-
-    request_id: UUID
-    user_id: UUID
-    query: str = Field(min_length=1, max_length=512)
-
-
-class MetadataCandidate(CoordinatorModel):
-    """Provider-neutral metadata search result."""
-
-    external_id: str = Field(min_length=1, max_length=512)
-    title: str = Field(min_length=1, max_length=512)
-    year: int | None = Field(default=None, ge=1800, le=3000)
-    provider: str = Field(min_length=1, max_length=128)
 
 
 class MetadataProvider(Protocol):

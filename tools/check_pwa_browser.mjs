@@ -35,7 +35,7 @@ const context = await browser.newContext({ viewport: { width: 1280, height: 900 
 // The disposable HTTPS catalogue points at a fixture branch which is never
 // published. Map its public icon acquisition to the same real source bytes;
 // host/plugin routes and browser service-worker infrastructure remain real.
-await context.route("https://raw.githubusercontent.com/Rosefall-a/unnamed_tracking_app_plugins/integration-fixture/official/pwa/pwa/pwa-icon.svg", async route => {
+await context.route("https://raw.githubusercontent.com/obsoletelabs/unnamed_tracking_app_plugins/integration-fixture/official/pwa/pwa/pwa-icon.svg", async route => {
   await route.fulfill({ contentType: "image/svg+xml", body: await readFile(path.join(process.env.PWA_ACCEPTANCE_ROOT, "official/pwa/pwa/pwa-icon.svg")) });
 });
 const page = await context.newPage();
@@ -53,8 +53,8 @@ async function api(method, route, expected = 200, options = {}) {
   assert.equal(response.status(), expected, `${route}: ${await response.text()}`);
   return response.status() === 204 ? null : await response.json();
 }
-const source = version => ({ url: `https://raw.githubusercontent.com/Rosefall-a/unnamed_tracking_app_plugins/integration-fixture/dist/official.pwa-${version}.utp`, source_type: "catalogue",
-  catalogue_url: "https://raw.githubusercontent.com/Rosefall-a/unnamed_tracking_app_plugins/integration-fixture/list.json" });
+const source = version => ({ url: `https://raw.githubusercontent.com/obsoletelabs/unnamed_tracking_app_plugins/integration-fixture/dist/official.pwa-${version}.utp`, source_type: "catalogue",
+  catalogue_url: "https://raw.githubusercontent.com/obsoletelabs/unnamed_tracking_app_plugins/integration-fixture/list.json" });
 const pluginPath = "/api/plugins/official.pwa";
 const current = async () => (await api("GET", "/api/plugins")).find(item => item.plugin_id === "official.pwa");
 const upload = async name => ({ file: { name: name + ".utp", mimeType: "application/octet-stream",

@@ -21,9 +21,7 @@ from src.api.routes.library_sync import (
     _enrich_steam_game_by_appid,
     _get_or_create_game,
 )
-from src.api.routes.settings import get_or_create_app_integration_settings
 from src.core.auth import get_current_user
-from src.core.integrations import resolve_integrations
 from src.core.preferences import load_preferences
 from src.database.models.game import Game, GameStatus
 from src.database.models.user import User
@@ -103,7 +101,6 @@ async def enrich_games(
             )
         )
     ).all()
-    integrations = resolve_integrations(await get_or_create_app_integration_settings(db))
     use_tags = (await load_preferences(db, current_user.id))["steam_user_tags"]
     enriched = failed = 0
     for game_id in game_ids:
@@ -126,8 +123,6 @@ async def enrich_games(
                     game,
                     app_id,
                     current_user,
-                    integrations.igdb_client_id,
-                    integrations.igdb_client_secret,
                     use_tags,
                 )
             enriched += 1

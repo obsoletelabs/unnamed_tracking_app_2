@@ -62,6 +62,7 @@ export interface Anime {
   anilistScore: number | null;
   malScore: number | null;
   source: string | null;
+  providerIds?: Record<string, string>;
   externalId: string | null;
   anilistId: string | null;
   posterUrl: string | null;

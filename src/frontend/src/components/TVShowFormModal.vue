@@ -4,7 +4,6 @@ import {
   createTVShow,
   updateTVShow,
   deleteTVShow,
-  searchTVShowMetadata,
   tvShowToInput,
 } from "../services/tvShows";
 import type { TVShowMetadataResult, SeasonInput } from "../services/tvShows";
@@ -18,6 +17,8 @@ import MediaFormShell from "./MediaFormShell.vue";
 import MediaMetadataSearch from "./MediaMetadataSearch.vue";
 import { useMetadataSearch } from "../utils/useMetadataSearch";
 import { splitList } from "../utils/formLists";
+import { tvMetadataResult } from "../utils/metadataCandidate";
+import { metadataPrefill } from "../utils/metadataPrefill";
 
 import { useTitleProtection } from "../utils/titleProtection";
 
@@ -34,6 +35,7 @@ const emit = defineEmits<{
 function blankFields() {
   return {
     title: "",
+    providerIds: {} as Record<string, string>,
     description: "",
     firstAirDate: "",
     episodeRuntimeMinutes: null as number | null,
@@ -72,9 +74,9 @@ const deleting = ref(false);
 const error = ref<string | null>(null);
 
 const search = useMetadataSearch<TVShowMetadataResult>({
-  search: searchTVShowMetadata,
+  mediaType: "tv_show",
+  convert: tvMetadataResult,
   noun: "show",
-  keyHint: "TMDB or OMDb",
 });
 
 function loadFromShow(show: TVShow | null | undefined) {
@@ -85,6 +87,7 @@ function loadFromShow(show: TVShow | null | undefined) {
   }
   fields.value = {
     title: show.title,
+    providerIds: show.providerIds ?? {},
     description: show.description ?? "",
     firstAirDate: show.firstAirDate ?? "",
     episodeRuntimeMinutes: show.episodeRuntimeMinutes,
@@ -104,45 +107,42 @@ function loadFromShow(show: TVShow | null | undefined) {
 
 watch(() => props.show, loadFromShow, { immediate: true });
 
+const prefillMetadata = metadataPrefill<ReturnType<typeof blankFields>>();
+
 function applyMetadata(result: TVShowMetadataResult) {
   const locked = new Set(props.show?.lockedFields ?? []);
-  if (!titleProtected.value) fields.value.title = result.title;
+  const incoming: Partial<ReturnType<typeof blankFields>> = {};
+  if (!titleProtected.value) incoming.title = result.title ?? undefined;
   if (!locked.has("description"))
-    fields.value.description = result.description ?? "";
-  if (!locked.has("first_air_date"))
-    fields.value.firstAirDate = result.firstAirDate ?? "";
-  if (
-    !locked.has("episode_runtime_minutes") &&
-    result.episodeRuntimeMinutes !== null
-  )
-    fields.value.episodeRuntimeMinutes = result.episodeRuntimeMinutes;
-  if (!locked.has("creators") && result.creators.length)
-    fields.value.creatorsInput = result.creators.join(", ");
-  if (!locked.has("genres") && result.genres.length)
-    fields.value.genresInput = result.genres.join(", ");
-  if (!locked.has("poster_url")) fields.value.posterUrl = result.posterUrl;
+    incoming.description = result.description ?? undefined;
+  if (!locked.has("poster_url"))
+    incoming.posterUrl = result.posterUrl ?? undefined;
   if (!locked.has("backdrop_url"))
-    fields.value.backdropUrl = result.backdropUrl;
-  if (!locked.has("tmdb_score") && result.tmdbScore !== null)
-    fields.value.tmdbScore = result.tmdbScore;
-  // Not gated by locked_fields — this isn't a user-editable display
-  // field, just the link episode sync/the airing check need. Picking a
-  // search result is exactly how a show with a missing/wrong link (e.g.
-  // added by hand, or one that lost it to the merge-ownership bug) gets
-  // fixed, so always take the freshly-picked match's TVmaze id.
-  fields.value.externalId = result.tvmazeId;
-  stagedSeasons.value = result.seasons.map((s) => ({
-    seasonNumber: s.seasonNumber,
-    name: s.name,
-    episodeCount: s.episodeCount,
-    airDate: s.airDate,
-    posterUrl: s.posterUrl,
-  }));
-  const seasonNote = result.seasons.length
-    ? ` including ${result.seasons.length} season${result.seasons.length === 1 ? "" : "s"}`
-    : "";
-  search.applied(result, [...locked], seasonNote);
+    incoming.backdropUrl = result.backdropUrl ?? undefined;
+  if (!locked.has("genres"))
+    incoming.genresInput = result.genres.join(", ") ?? undefined;
+  if (!locked.has("first_air_date"))
+    incoming.firstAirDate = result.firstAirDate ?? undefined;
+  if (!locked.has("episode_runtime_minutes"))
+    incoming.episodeRuntimeMinutes = result.episodeRuntimeMinutes ?? undefined;
+  if (!locked.has("creators"))
+    incoming.creatorsInput = result.creators.join(", ") ?? undefined;
+  if (!locked.has("tmdb_score"))
+    incoming.tmdbScore = result.tmdbScore ?? undefined;
+  prefillMetadata(fields.value, incoming, result.candidateId);
+  if (result.providerIds)
+    fields.value.providerIds = {
+      ...fields.value.providerIds,
+      ...result.providerIds,
+    };
+  if (result.tvmazeId) fields.value.externalId = result.tvmazeId;
+  if (result.seasons.length) stagedSeasons.value = result.seasons;
+  search.applied(result, [...locked]);
 }
+
+watch(search.selected, (result) => {
+  if (result) applyMetadata(result);
+});
 
 // what the search box lists for each match
 const searchResults = computed(() =>
@@ -150,7 +150,7 @@ const searchResults = computed(() =>
     key: `${result.provider}-${result.providerId}`,
     title: result.title,
     provider: result.provider,
-    detail: result.firstAirDate?.slice(0, 4),
+    detail: result.releaseYear?.toString() ?? result.firstAirDate?.slice(0, 4),
   })),
 );
 
@@ -158,7 +158,7 @@ function pickResult(key: string) {
   const result = search.results.value.find(
     (r) => `${r.provider}-${r.providerId}` === key,
   );
-  if (result) applyMetadata(result);
+  if (result) void search.select(result).catch(() => {});
 }
 
 async function submit() {
@@ -171,6 +171,7 @@ async function submit() {
   try {
     const input = {
       title: fields.value.title.trim(),
+      providerIds: fields.value.providerIds,
       titleLock: props.show ? titleLockOverride.value : undefined,
       description: fields.value.description.trim() || null,
       firstAirDate: fields.value.firstAirDate || null,
@@ -231,10 +232,11 @@ async function remove() {
   >
     <MediaMetadataSearch
       v-model:query="search.query.value"
-      label="Search TMDB / OMDb"
+      label="Search metadata providers"
       noun="show"
       :results="searchResults"
       :searching="search.searching.value"
+      :enriching-media="search.enrichingMedia.value"
       :message="search.message.value"
       :warnings="search.warnings.value"
       @search="search.run"

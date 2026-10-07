@@ -122,6 +122,10 @@ class Game(Base):
         nullable=True,
     )
 
+    provider_ids: Mapped[dict[str, str]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'")
+    )
+
     # Metadata fields a user has deliberately changed in the game editor.
     # Provider refreshes skip these values rather than silently replacing a manual override.
     locked_fields: Mapped[list[str]] = mapped_column(

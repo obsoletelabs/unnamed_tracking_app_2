@@ -1,0 +1,214 @@
+{
+  "$defs": {
+    "MediaType": {
+      "description": "Canonical library domains supported by provider capabilities.",
+      "enum": [
+        "game",
+        "movie",
+        "tv_show",
+        "anime"
+      ],
+      "title": "MediaType",
+      "type": "string"
+    },
+    "ProviderConfigurationField": {
+      "additionalProperties": false,
+      "description": "Author-declared credential ownership rendered by the host configuration UI.",
+      "properties": {
+        "key": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9._-]*$",
+          "title": "Key",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "scope": {
+          "default": "both",
+          "enum": [
+            "system",
+            "user",
+            "both"
+          ],
+          "title": "Scope",
+          "type": "string"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "secret": {
+          "default": true,
+          "title": "Secret",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "key",
+        "label"
+      ],
+      "title": "ProviderConfigurationField",
+      "type": "object"
+    },
+    "ProviderOperations": {
+      "additionalProperties": false,
+      "description": "Independent optional capabilities, implemented by existing runtime actions.",
+      "properties": {
+        "search": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[a-z0-9][a-z0-9._-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Search"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[a-z0-9][a-z0-9._-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Metadata"
+        },
+        "media": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[a-z0-9][a-z0-9._-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Media"
+        },
+        "health": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9._-]*$",
+          "title": "Health",
+          "type": "string"
+        }
+      },
+      "required": [
+        "health"
+      ],
+      "title": "ProviderOperations",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Namespaced registration bound by the host to an authenticated installation.",
+  "properties": {
+    "provider_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9._-]*$",
+      "title": "Provider Id",
+      "type": "string"
+    },
+    "name": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "media_types": {
+      "items": {
+        "$ref": "#/$defs/MediaType"
+      },
+      "maxItems": 4,
+      "minItems": 1,
+      "title": "Media Types",
+      "type": "array"
+    },
+    "identifier_namespace": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9._-]*$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Identifier Namespace"
+    },
+    "metadata_resources": {
+      "default": [
+        "entity"
+      ],
+      "items": {
+        "enum": [
+          "entity",
+          "episodes",
+          "airing",
+          "relations",
+          "recommendations"
+        ],
+        "type": "string"
+      },
+      "maxItems": 5,
+      "minItems": 1,
+      "title": "Metadata Resources",
+      "type": "array"
+    },
+    "episode_source": {
+      "default": "fallback",
+      "enum": [
+        "primary",
+        "fallback"
+      ],
+      "title": "Episode Source",
+      "type": "string"
+    },
+    "operations": {
+      "$ref": "#/$defs/ProviderOperations"
+    },
+    "configuration": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ProviderConfigurationField"
+      },
+      "maxItems": 32,
+      "title": "Configuration",
+      "type": "array"
+    }
+  },
+  "required": [
+    "provider_id",
+    "name",
+    "media_types",
+    "operations"
+  ],
+  "title": "MetadataProviderRegistration",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "x-api-contract-version": "1.1.1"
+}

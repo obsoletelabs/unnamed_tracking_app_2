@@ -1,0 +1,1097 @@
+{
+  "$defs": {
+    "MediaAsset": {
+      "additionalProperties": false,
+      "description": "An asset reference; providers never write the host filesystem.",
+      "properties": {
+        "kind": {
+          "enum": [
+            "key_art",
+            "banner",
+            "logo",
+            "icon",
+            "screenshot",
+            "hero",
+            "poster"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "url": {
+          "format": "uri",
+          "minLength": 1,
+          "title": "Url",
+          "type": "string"
+        },
+        "priority": {
+          "default": 100,
+          "maximum": 10000,
+          "minimum": 0,
+          "title": "Priority",
+          "type": "integer"
+        },
+        "width": {
+          "anyOf": [
+            {
+              "maximum": 50000,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Width"
+        },
+        "height": {
+          "anyOf": [
+            {
+              "maximum": 50000,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Height"
+        }
+      },
+      "required": [
+        "kind",
+        "url"
+      ],
+      "title": "MediaAsset",
+      "type": "object"
+    },
+    "MediaType": {
+      "description": "Canonical library domains supported by provider capabilities.",
+      "enum": [
+        "game",
+        "movie",
+        "tv_show",
+        "anime"
+      ],
+      "title": "MediaType",
+      "type": "string"
+    },
+    "MetadataAiring": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "default": "unknown",
+          "enum": [
+            "ongoing",
+            "completed",
+            "paused",
+            "cancelled",
+            "unknown"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "is_airing": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Is Airing"
+        },
+        "aired_episodes": {
+          "anyOf": [
+            {
+              "maximum": 100000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Aired Episodes"
+        },
+        "total_episodes": {
+          "anyOf": [
+            {
+              "maximum": 100000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Episodes"
+        },
+        "next_episode_number": {
+          "anyOf": [
+            {
+              "maximum": 100000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next Episode Number"
+        },
+        "next_episode_at": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next Episode At"
+        }
+      },
+      "title": "MetadataAiring",
+      "type": "object"
+    },
+    "MetadataCandidate": {
+      "additionalProperties": false,
+      "description": "Lightweight identity; metadata and artwork are separate operations.",
+      "properties": {
+        "external_id": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "External Id",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "year": {
+          "anyOf": [
+            {
+              "maximum": 3000,
+              "minimum": 1800,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Year"
+        },
+        "provider": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Provider",
+          "type": "string"
+        },
+        "media_type": {
+          "$ref": "#/$defs/MediaType",
+          "default": "game"
+        },
+        "alternate_titles": {
+          "default": [],
+          "items": {
+            "maxLength": 512,
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Alternate Titles",
+          "type": "array"
+        },
+        "provider_ids": {
+          "maxProperties": 32,
+          "patternProperties": {
+            "^[a-z0-9][a-z0-9._-]*$": {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "propertyNames": {
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "title": "Provider Ids",
+          "type": "object"
+        },
+        "platforms": {
+          "default": [],
+          "items": {
+            "maxLength": 128,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Platforms",
+          "type": "array"
+        }
+      },
+      "required": [
+        "external_id",
+        "title",
+        "provider"
+      ],
+      "title": "MetadataCandidate",
+      "type": "object"
+    },
+    "MetadataEpisode": {
+      "additionalProperties": false,
+      "description": "Provider-neutral episode data; watched state remains entirely host-owned.",
+      "properties": {
+        "episode_number": {
+          "maximum": 100000,
+          "minimum": 0,
+          "title": "Episode Number",
+          "type": "integer"
+        },
+        "season_number": {
+          "anyOf": [
+            {
+              "maximum": 10000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Season Number"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 100000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "air_date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Air Date"
+        },
+        "air_at": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Air At"
+        },
+        "runtime_minutes": {
+          "anyOf": [
+            {
+              "maximum": 100000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Runtime Minutes"
+        },
+        "still_url": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Still Url"
+        }
+      },
+      "required": [
+        "episode_number"
+      ],
+      "title": "MetadataEpisode",
+      "type": "object"
+    },
+    "MetadataLink": {
+      "additionalProperties": false,
+      "description": "A provider reference rendered by the existing application links UI.",
+      "properties": {
+        "label": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "url": {
+          "format": "uri",
+          "minLength": 1,
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "url"
+      ],
+      "title": "MetadataLink",
+      "type": "object"
+    },
+    "MetadataPatch": {
+      "additionalProperties": false,
+      "description": "Partial canonical fields; missing values never erase existing information.",
+      "properties": {
+        "title": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        },
+        "year": {
+          "anyOf": [
+            {
+              "maximum": 3000,
+              "minimum": 1800,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Year"
+        },
+        "release_date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Release Date"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 100000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "developer": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Developer"
+        },
+        "publisher": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Publisher"
+        },
+        "series": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Series"
+        },
+        "age_rating": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Age Rating"
+        },
+        "tags": {
+          "default": [],
+          "items": {
+            "maxLength": 128,
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Tags",
+          "type": "array"
+        },
+        "features": {
+          "default": [],
+          "items": {
+            "maxLength": 128,
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Features",
+          "type": "array"
+        },
+        "genres": {
+          "default": [],
+          "items": {
+            "maxLength": 128,
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Genres",
+          "type": "array"
+        },
+        "platforms": {
+          "default": [],
+          "items": {
+            "maxLength": 128,
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Platforms",
+          "type": "array"
+        },
+        "time_to_beat_hours": {
+          "anyOf": [
+            {
+              "maximum": 100000,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Time To Beat Hours"
+        },
+        "runtime_minutes": {
+          "anyOf": [
+            {
+              "maximum": 100000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Runtime Minutes"
+        },
+        "director": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Director"
+        },
+        "writer": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Writer"
+        },
+        "creators": {
+          "default": [],
+          "items": {
+            "maxLength": 512,
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Creators",
+          "type": "array"
+        },
+        "studios": {
+          "default": [],
+          "items": {
+            "maxLength": 256,
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Studios",
+          "type": "array"
+        },
+        "countries": {
+          "default": [],
+          "items": {
+            "maxLength": 128,
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Countries",
+          "type": "array"
+        },
+        "languages": {
+          "default": [],
+          "items": {
+            "maxLength": 128,
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Languages",
+          "type": "array"
+        },
+        "provider_ids": {
+          "maxProperties": 32,
+          "patternProperties": {
+            "^[a-z0-9][a-z0-9._-]*$": {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "propertyNames": {
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "title": "Provider Ids",
+          "type": "object"
+        },
+        "alternate_titles": {
+          "default": [],
+          "items": {
+            "maxLength": 512,
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Alternate Titles",
+          "type": "array"
+        },
+        "links": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/MetadataLink"
+          },
+          "maxItems": 32,
+          "title": "Links",
+          "type": "array"
+        },
+        "episode_runtime_minutes": {
+          "anyOf": [
+            {
+              "maximum": 100000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Episode Runtime Minutes"
+        },
+        "episode_count": {
+          "anyOf": [
+            {
+              "maximum": 100000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Episode Count"
+        },
+        "format": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Format"
+        },
+        "scores": {
+          "maxProperties": 32,
+          "patternProperties": {
+            "^[a-z0-9][a-z0-9._-]*$": {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "number"
+            }
+          },
+          "propertyNames": {
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "title": "Scores",
+          "type": "object"
+        },
+        "titles": {
+          "maxProperties": 20,
+          "patternProperties": {
+            "^[a-z0-9][a-z0-9._-]*$": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          "propertyNames": {
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "title": "Titles",
+          "type": "object"
+        },
+        "episodes": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/MetadataEpisode"
+          },
+          "maxItems": 10000,
+          "title": "Episodes",
+          "type": "array"
+        },
+        "seasons": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/MetadataSeason"
+          },
+          "maxItems": 100,
+          "title": "Seasons",
+          "type": "array"
+        },
+        "airing": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MetadataAiring"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "relations": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/MetadataRelation"
+          },
+          "maxItems": 500,
+          "title": "Relations",
+          "type": "array"
+        },
+        "relation_group": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Relation Group"
+        }
+      },
+      "title": "MetadataPatch",
+      "type": "object"
+    },
+    "MetadataRelation": {
+      "additionalProperties": false,
+      "description": "An identity and its relation, with no application database references.",
+      "properties": {
+        "candidate": {
+          "$ref": "#/$defs/MetadataCandidate"
+        },
+        "relation": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Relation",
+          "type": "string"
+        },
+        "group": {
+          "default": "related",
+          "enum": [
+            "related",
+            "chain",
+            "branch",
+            "recommendation"
+          ],
+          "title": "Group",
+          "type": "string"
+        },
+        "parent_external_id": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent External Id"
+        },
+        "parent_group": {
+          "anyOf": [
+            {
+              "enum": [
+                "chain",
+                "branch"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent Group"
+        },
+        "is_current": {
+          "default": false,
+          "title": "Is Current",
+          "type": "boolean"
+        },
+        "format": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Format"
+        },
+        "episode_count": {
+          "anyOf": [
+            {
+              "maximum": 100000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Episode Count"
+        },
+        "poster_url": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Poster Url"
+        }
+      },
+      "required": [
+        "candidate",
+        "relation"
+      ],
+      "title": "MetadataRelation",
+      "type": "object"
+    },
+    "MetadataSeason": {
+      "additionalProperties": false,
+      "properties": {
+        "season_number": {
+          "maximum": 10000,
+          "minimum": 0,
+          "title": "Season Number",
+          "type": "integer"
+        },
+        "external_id": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "External Id"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        },
+        "episode_count": {
+          "anyOf": [
+            {
+              "maximum": 100000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Episode Count"
+        },
+        "air_date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Air Date"
+        }
+      },
+      "required": [
+        "season_number"
+      ],
+      "title": "MetadataSeason",
+      "type": "object"
+    },
+    "ProviderFailure": {
+      "additionalProperties": false,
+      "description": "Safe failure data without remote response bodies or credential values.",
+      "properties": {
+        "code": {
+          "enum": [
+            "not_configured",
+            "invalid_configuration",
+            "unavailable",
+            "rate_limited",
+            "timeout",
+            "plugin_unavailable",
+            "invalid_response"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "retry_after_seconds": {
+          "anyOf": [
+            {
+              "maximum": 86400,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Retry After Seconds"
+        }
+      },
+      "required": [
+        "code"
+      ],
+      "title": "ProviderFailure",
+      "type": "object"
+    },
+    "ProviderHealth": {
+      "description": "Availability, distinguished from plugin process health.",
+      "enum": [
+        "disabled",
+        "not_configured",
+        "unvalidated",
+        "healthy",
+        "temporarily_unavailable",
+        "rate_limited",
+        "plugin_unavailable",
+        "invalid_configuration"
+      ],
+      "title": "ProviderHealth",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "The same response envelope for every provider operation.",
+  "properties": {
+    "candidates": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/MetadataCandidate"
+      },
+      "maxItems": 50,
+      "title": "Candidates",
+      "type": "array"
+    },
+    "metadata": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/MetadataPatch"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "assets": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/MediaAsset"
+      },
+      "maxItems": 200,
+      "title": "Assets",
+      "type": "array"
+    },
+    "health": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ProviderHealth"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "failure": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ProviderFailure"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "next_cursor": {
+      "anyOf": [
+        {
+          "maxLength": 512,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Next Cursor"
+    }
+  },
+  "title": "ProviderResponse",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "x-api-contract-version": "1.1.1"
+}
