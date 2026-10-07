@@ -94,10 +94,11 @@ async function save() {
       managed there and cannot be replaced from this page.
     </p>
     <p class="hint">
-      These are the server-wide defaults, used for everyone who hasn't saved
-      their own key under Settings &rsaquo; Metadata/API. A user's own key
-      always takes precedence for that user, which is why the same provider
-      appears in both places.
+      Metadata search and artwork now use installed provider plugins. Set their
+      system defaults or your account overrides under
+      <router-link to="/settings?section=sources">Metadata/API</router-link>.
+      The legacy fields below remain available for existing integrations; they
+      are not automatically copied into provider plugins.
     </p>
     <div v-if="loading">Loading…</div>
     <template v-else>
