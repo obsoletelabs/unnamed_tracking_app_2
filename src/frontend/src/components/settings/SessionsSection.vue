@@ -53,6 +53,9 @@ const visibleSessions = computed(() => {
 const canRevoke = computed(() =>
   sessions.value.some((row) => row.revoked_at === null),
 );
+const visibleUserCount = computed(
+  () => new Set(visibleSessions.value.map((row) => row.user_id)).size,
+);
 
 function when(value: number | null) {
   return value == null
@@ -165,29 +168,34 @@ onBeforeUnmount(() => {
       </button>
     </div>
     <form class="session-filters" @submit.prevent>
-      <label
-        >Search<input
+      <div class="session-field">
+        <label for="session-search">Search</label>
+        <input
+          id="session-search"
           v-model="query"
           type="search"
           maxlength="200"
           placeholder="IP address, browser or user"
-      /></label>
-      <label
-        >State<select v-model="state">
+        />
+      </div>
+      <div class="session-field">
+        <label for="session-state">State</label>
+        <select id="session-state" v-model="state">
           <option value="">All states</option>
           <option value="active">Active</option>
           <option value="expired">Expired</option>
           <option value="revoked">Revoked</option>
-        </select></label
-      >
-      <label v-if="admin"
-        >User<select v-model="userId">
+        </select>
+      </div>
+      <div v-if="admin" class="session-field">
+        <label for="session-user">User</label>
+        <select id="session-user" v-model="userId">
           <option value="">All users</option>
           <option v-for="user in users" :key="user.id" :value="user.id">
             {{ user.name }}
           </option>
-        </select></label
-      >
+        </select>
+      </div>
     </form>
     <div class="session-actions">
       <button
@@ -214,6 +222,80 @@ onBeforeUnmount(() => {
     <p v-else-if="!error && !visibleSessions.length" class="muted">
       No sessions match your filters.
     </p>
+    <div
+      v-else-if="admin"
+      class="session-table"
+      role="region"
+      aria-label="Browser sessions"
+      tabindex="0"
+      :aria-busy="loading || busy"
+    >
+      <table>
+        <caption>
+          Sessions:
+          {{
+            visibleSessions.length
+          }}
+          · Users:
+          {{
+            visibleUserCount
+          }}
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">User</th>
+            <th scope="col">Browser</th>
+            <th scope="col">IP address</th>
+            <th scope="col">State</th>
+            <th scope="col">Created</th>
+            <th scope="col">Last active</th>
+            <th scope="col">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="row in visibleSessions" :key="row.id">
+            <th scope="row" class="session-user">
+              {{ row.username ?? row.user_id }}
+            </th>
+            <td>
+              {{ sessionDevice(row.user_agent) }}
+              <details class="session-details">
+                <summary>Details</summary>
+                <p>Expires: {{ when(row.expires_at) }}</p>
+                <p v-if="row.revoked_at !== null">
+                  Revoked: {{ when(row.revoked_at) }}
+                </p>
+                <p v-if="row.user_agent" class="user-agent">
+                  {{ row.user_agent }}
+                </p>
+              </details>
+            </td>
+            <td class="session-ip">{{ row.ip_address || "Unavailable" }}</td>
+            <td>
+              <span class="session-state" :data-state="row.state">{{
+                row.state
+              }}</span>
+              <span v-if="row.is_current" class="current-session">Current</span>
+            </td>
+            <td class="session-time">{{ when(row.created_at) }}</td>
+            <td class="session-time">{{ when(row.last_seen_at) }}</td>
+            <td>
+              <button
+                v-if="row.state === 'active' && !row.is_current"
+                type="button"
+                class="danger"
+                :aria-label="`Revoke session for ${row.username ?? row.user_id}`"
+                :disabled="loading || busy"
+                @click="revoke(row)"
+              >
+                Revoke
+              </button>
+              <span v-else class="muted">—</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
     <div v-else class="session-list" :aria-busy="loading || busy">
       <article
         v-for="row in visibleSessions"
@@ -223,7 +305,6 @@ onBeforeUnmount(() => {
         <div class="session-heading">
           <div>
             <h3>{{ sessionDevice(row.user_agent) }}</h3>
-            <p v-if="admin">{{ row.username ?? row.user_id }}</p>
             <span class="session-state" :data-state="row.state">{{
               row.state
             }}</span>
@@ -307,7 +388,7 @@ p {
   gap: 12px;
   margin: 20px 0;
 }
-label {
+.session-field {
   display: grid;
   gap: 6px;
   flex: 1 1 160px;
@@ -355,6 +436,58 @@ dt {
 .session-list {
   display: grid;
   gap: 12px;
+}
+.session-table {
+  overflow-x: auto;
+  max-width: 100%;
+  border: 1px solid var(--ui-border-soft);
+  border-radius: var(--ui-radius-card);
+}
+table {
+  width: 100%;
+  min-width: 800px;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  text-align: left;
+}
+caption {
+  padding: 10px 12px;
+  text-align: left;
+  color: var(--ui-dim);
+}
+th,
+td {
+  padding: 10px 12px;
+  vertical-align: top;
+  border-top: 1px solid var(--ui-border-soft);
+}
+thead th {
+  background: var(--ui-surface);
+  color: var(--ui-dim);
+  white-space: nowrap;
+}
+.session-user,
+.session-ip {
+  white-space: nowrap;
+}
+.session-time {
+  min-width: 115px;
+}
+.session-table .current-session {
+  display: block;
+  margin: 4px 0 0;
+  white-space: nowrap;
+}
+.session-table button {
+  min-height: 32px;
+  padding: 4px 10px;
+}
+.session-details {
+  margin-top: 5px;
+  max-width: 240px;
+}
+.session-details p {
+  margin: 8px 0;
 }
 .session-card {
   padding: 18px;

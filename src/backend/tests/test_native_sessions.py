@@ -122,7 +122,9 @@ async def test_basic_lists_skip_geoip_and_keep_owner_and_admin_scopes(native_ses
 
 
 @pytest.mark.asyncio
-async def test_native_revocation_denies_foreign_sessions_and_ends_current_cookie(native_sessions):
+async def test_native_revocation_denies_foreign_sessions_and_ends_current_cookie(
+    native_sessions,
+):
     async with client_for(native_sessions) as client:
         foreign = native_sessions.rows[1]
         assert (await client.delete(f"/api/sessions/me/{foreign.id}")).status_code == 404
@@ -136,7 +138,9 @@ async def test_native_revocation_denies_foreign_sessions_and_ends_current_cookie
 
 
 @pytest.mark.asyncio
-async def test_admin_user_revocation_is_scoped_and_preserves_audit_rows(native_sessions):
+async def test_admin_user_revocation_is_scoped_and_preserves_audit_rows(
+    native_sessions,
+):
     async with client_for(native_sessions, 1) as client:
         user_id = native_sessions.users[0].id
         assert (await client.delete(f"/api/sessions/admin/user/{user_id}")).json()["revoked"] == 2
