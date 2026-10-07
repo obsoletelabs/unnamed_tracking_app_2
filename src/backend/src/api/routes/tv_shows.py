@@ -37,7 +37,7 @@ from src.api.schemas.tv_show import (
     TVShowUpdate,
 )
 from src.core.app_integrations import get_or_create_app_integration_settings
-from src.core.auth import get_current_user
+from src.core.auth import AuthenticatedActor, get_current_actor, get_current_user
 from src.core.integrations import resolve_integrations
 from src.core.titles import derive_sort_title as _derive_sort_title
 from src.database.models.tv_show import TVEpisode, TVSeason, TVShow, TVShowStatus
@@ -91,7 +91,12 @@ class TVMetadataSearchResponse(MetadataSearchResponse):
 
 
 async def _get_show_or_404(
-    show_id: UUID, db: AsyncSession, user_id: UUID, include_deleted: bool = False
+    show_id: UUID,
+    db: AsyncSession,
+    user_id: UUID,
+    include_deleted: bool = False,
+    *,
+    for_update: bool = False,
 ) -> TVShow:
     return await owned_row(
         db,
@@ -101,6 +106,7 @@ async def _get_show_or_404(
         "Show",
         include_deleted=include_deleted,
         populate_existing=True,
+        for_update=for_update,
     )
 
 
@@ -231,10 +237,13 @@ async def update_show(
     payload: TVShowUpdate,
     db: AsyncSession = _DB_DEFAULT,
     current_user: User = _CURRENT_USER_DEFAULT,
+    actor: AuthenticatedActor = Depends(get_current_actor),
 ) -> TVShow:
     """Update a show and keep its derived sort title synchronized."""
-    show = await _get_show_or_404(show_id, db, current_user.id)
-    await update_tracking(db, show, payload.model_dump(exclude_unset=True), _LOCKABLE_FIELDS, "tv")
+    show = await _get_show_or_404(show_id, db, current_user.id, for_update=True)
+    await update_tracking(
+        db, show, payload.model_dump(exclude_unset=True), _LOCKABLE_FIELDS, "tv", actor=actor
+    )
 
     await db.commit()
     return await _get_show_or_404(show_id, db, current_user.id)

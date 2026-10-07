@@ -9,6 +9,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from src.api.schemas.provider_identity import ProviderIDs
+from src.api.schemas.title_protection import TitleProtectionUpdate
 from src.database.models.movies import MovieStatus
 
 
@@ -66,7 +67,7 @@ class MovieCreate(MovieBase):
 
 # Preserve this media contract's field defaults and compatibility model names.
 # pylint: disable=duplicate-code
-class MovieUpdate(BaseModel):
+class MovieUpdate(TitleProtectionUpdate):
     """Payload for partial updates — every field optional."""
 
     provider_ids: ProviderIDs = Field(default_factory=dict)

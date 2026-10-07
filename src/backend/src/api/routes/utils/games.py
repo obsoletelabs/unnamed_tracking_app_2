@@ -216,11 +216,18 @@ def _game_note_path(game: Game, note_name: str) -> Path:
 
 
 async def _get_game_or_404(
-    game_id: UUID, db: AsyncSession, user_id: UUID, include_deleted: bool = False
+    game_id: UUID,
+    db: AsyncSession,
+    user_id: UUID,
+    include_deleted: bool = False,
+    *,
+    for_update: bool = False,
 ) -> Game:
     stmt = select(Game).where(Game.id == game_id, Game.user_id == user_id)
     if not include_deleted:
         stmt = stmt.where(Game.deleted_at.is_(None))
+    if for_update:
+        stmt = stmt.with_for_update().execution_options(populate_existing=True)
     game = await db.scalar(stmt)
     if game is None:
         raise HTTPException(

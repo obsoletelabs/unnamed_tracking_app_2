@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.anime import Anime, AnimeSeason
 from src.features.metadata.anime.anilist_import import AniListImportClient
+from src.features.metadata.locked_fields import apply_metadata_updates
 
 
 def _derive_sort_title(title: str) -> str:
@@ -52,11 +53,14 @@ async def _apply_entry(
     db: AsyncSession, user_id: UUID, entry: dict[str, Any], update_existing: bool
 ) -> str:
     show = await db.scalar(
-        select(Anime).where(
+        select(Anime)
+        .where(
             Anime.user_id == user_id,
             Anime.anilist_id == entry["anilist_id"],
             Anime.deleted_at.is_(None),
         )
+        .with_for_update()
+        .execution_options(populate_existing=True)
     )
     if show is not None and not update_existing:
         return "skipped"
@@ -77,8 +81,7 @@ async def _apply_entry(
         season = AnimeSeason(show_id=show.id, season_number=1)
         db.add(season)
     else:
-        for field, value in fields.items():
-            setattr(show, field, value)
+        apply_metadata_updates(show, fields)
         season = show.seasons[0] if show.seasons else None
         if season is None:
             season = AnimeSeason(show_id=show.id, season_number=1)

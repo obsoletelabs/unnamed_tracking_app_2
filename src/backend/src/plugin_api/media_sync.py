@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import Annotated, Any, Literal
 from uuid import NAMESPACE_URL, UUID, uuid5
 
+from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +21,7 @@ from sqlalchemy.orm import selectinload
 from src.database.models.anime import Anime, AnimeEpisode, AnimeSeason, AnimeStatus
 from src.database.models.movies import Movie, MovieStatus
 from src.database.models.tv_show import TVEpisode, TVSeason, TVShow, TVShowStatus
+from src.features.metadata.locked_fields import apply_metadata_updates, authorize_title_update
 
 
 class EpisodeInput(BaseModel):
@@ -126,7 +128,9 @@ async def _load_sync_media(
         statement = statement.options(
             selectinload(model.seasons).selectinload(season_model.episodes)
         )
-    media: Any = await db.scalar(statement.with_for_update())
+    media: Any = await db.scalar(
+        statement.with_for_update().execution_options(populate_existing=True)
+    )
     created = media is None
     if created:
         media = model(
@@ -153,7 +157,7 @@ def _sync_metadata(media: Any, item: MediaSyncInput, options: ResolvedSync) -> N
         if field_name not in (media.locked_fields or []) and (not options.enrich or value):
             if options.enrich and field_name == "genres":
                 value = list(dict.fromkeys([*(media.genres or []), *item.genres]))
-            setattr(media, field_name, value)
+            apply_metadata_updates(media, {field_name: value})
 
 
 def _sync_movie(media: Any, item: MediaSyncInput, status_type: Any, options: ResolvedSync) -> None:
@@ -306,6 +310,11 @@ async def dispatch_media_sync(
     )
     if not created and media.deleted_at is not None:
         return {"id": str(identity), "conflict": "locally_deleted"}
+    if not created and not options.enrich:
+        try:
+            authorize_title_update(media, {"title": item.title})
+        except HTTPException as exc:
+            raise PermissionError(str(exc.detail)) from exc
     if (
         not created
         and options.update_watch
@@ -330,12 +339,11 @@ async def dispatch_media_sync(
             options=options,
         )
     await db.flush()
-    result = {
+    if options.commit:
+        await db.commit()
+    return {
         "id": str(identity),
         "created": created,
         "revision": watch_revision(media, item.media_type),
         "status": media.status.value,
     }
-    if options.commit:
-        await db.commit()
-    return result

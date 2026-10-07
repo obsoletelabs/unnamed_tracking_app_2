@@ -2,6 +2,21 @@
 
 Unnamed Tracking App uses the existing game metadata-provider registry for both adding games and refreshing metadata on an existing game. Provider order and field-saving preferences are configured per user under **Settings → Metadata → Scan Settings / Metadata/API**.
 
+## Protect a title
+
+Edit a game, movie, TV show, or anime and use **Protect title from metadata
+updates** beside its title. A checked box means the title is protected. Changing
+a title automatically protects it; clear the checkbox to explicitly remove
+protection, then save. You can also protect a title without editing its text.
+
+Protection applies on the backend to providers, library sync, imports, and
+background refreshes. Only an authenticated application sign-in session may
+change a protected title or its protection setting. API keys and ordinary plugin
+permissions cannot unlock it. For anime, a protected custom title takes precedence
+over the provider's alternate-language spellings.
+
+![A protected custom title in the game editor](../assets/title-protection/game-editor.png)
+
 ## Repull metadata from the game editor
 
 Open **Edit Game → Media → Repull Metadata**. The editor first performs a provider lookup and shows a confirmation describing the fields that would change and any locked fields that will be preserved.
@@ -41,6 +56,7 @@ Metadata changes are recorded in the existing game metadata history, so provider
 ## Developer notes
 
 The editor uses `/api/game/{game_id}/metadata/refresh`, which calls `features.metadata.games.search.search_game_metadata` with the requesting user's existing provider preferences and credentials. The endpoint owns authorization, exact-match validation, manual-field protection, history updates, artwork handling, and stale-preview checks; clients do not send arbitrary provider data to the game update API.
+After provider lookup, applying a refresh reloads the owned game under a database row lock before checking title protection or the preview timestamp. A protection change made during lookup is respected, and a stale preview returns HTTP 409 without applying metadata.
 Games are searched on Steam, GOG, IGDB, GiantBomb, RetroAchievements and
 HowLongToBeat; SteamGridDB and ScreenScraper add artwork. Movies and TV use
 TMDB, OMDb and TVmaze, anime uses AniList. Cover and banner artwork can also be

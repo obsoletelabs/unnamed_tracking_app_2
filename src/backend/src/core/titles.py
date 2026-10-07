@@ -25,6 +25,8 @@ def derive_sort_title(title: str) -> str:
 
 
 def display_title(item: Any, language: str) -> str:
+    if "title" in (getattr(item, "locked_fields", None) or []):
+        return str(item.title)
     for field in _ORDER.get(language, _ORDER["english"]):
         value = getattr(item, field, None)
         if value:

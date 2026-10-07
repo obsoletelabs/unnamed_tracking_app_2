@@ -13,7 +13,6 @@ from fastapi import (
     status,
 )
 from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.routes.settings import (
@@ -30,10 +29,10 @@ from src.core.auth import get_current_user
 from src.core.integrations import resolve_integrations
 from src.core.preferences import load_preferences
 from src.core.titles import normalize_metadata_title as _normalize_metadata_title
-from src.database.models.game import Game
 from src.database.models.user import User
 from src.database.session import get_db
 from src.features.metadata.games.search import search_game_metadata
+from src.features.metadata.locked_fields import apply_metadata_updates
 from src.helpers.save_game_asset import (
     ASSET_FILENAMES,
     save_game_asset,
@@ -223,6 +222,19 @@ async def refresh_game_metadata(
             "game_updated_at": game.updated_at,
         }
 
+    if not payload.dry_run:
+        # Provider lookup can overlap an editor or sync. Check the latest owned row
+        # and its protection under the same lock used to apply the refresh.
+        game = await _get_game_or_404(game_id, db, current_user.id, for_update=True)
+        if (
+            payload.expected_updated_at is not None
+            and game.updated_at != payload.expected_updated_at
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Game changed after the metadata preview. Refresh the editor and try again.",
+            )
+
     field_values: dict[str, object] = {
         "title": match.get("title"),
         "description": match.get("description"),
@@ -297,52 +309,9 @@ async def refresh_game_metadata(
             "game_updated_at": game.updated_at,
         }
 
-    if payload.expected_updated_at is not None:
-        # The preview may have been open while another tab or sync changed the game.
-        # Re-read under a row lock before applying so two concurrent refreshes cannot
-        # both pass the same stale timestamp.
-        await db.rollback()
-        locked_game = await db.scalar(
-            select(Game)
-            .where(Game.id == game_id, Game.user_id == current_user.id, Game.deleted_at.is_(None))
-            .with_for_update()
-        )
-        if locked_game is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail=f"Game {game_id} not found"
-            )
-        if locked_game.updated_at != payload.expected_updated_at:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Game changed after the metadata preview. Refresh the editor and try again.",
-            )
-        game = locked_game
-        # Recompute from the freshly locked row. Locks and configured save_* flags
-        # may have changed while the preview was open, so do not trust preview data.
-        updates = {}
-        skipped_locked = []
-        for field, fresh in field_values.items():
-            if (
-                field != "title"
-                and gated_flags.get(field)
-                and not preferences.get(gated_flags[field], True)
-            ):
-                continue
-            if not _metadata_value_is_present(fresh):
-                continue
-            if field in game.locked_fields:
-                skipped_locked.append(field)
-                continue
-            if getattr(game, field) != fresh:
-                updates[field] = fresh
-        changed_fields = sorted(updates)
-        key_art_exists = (game_dir / ASSET_FILENAMES["key_art"]).is_file()
-        banner_exists = (game_dir / ASSET_FILENAMES["banner"]).is_file()
-
     if payload.update_text:
         _record_field_changes(game, updates, db)
-        for field, value in updates.items():
-            setattr(game, field, value)
+        apply_metadata_updates(game, updates)
 
     if payload.fill_missing_art:
 

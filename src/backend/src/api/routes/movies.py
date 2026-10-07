@@ -25,7 +25,7 @@ from src.api.schemas.metadata import MetadataSearchResponse
 from src.api.schemas.movie import MovieCreate, MovieRead, MovieUpdate
 from src.api.schemas.pagination import LibraryQuery, PaginatedResponse
 from src.core.app_integrations import get_or_create_app_integration_settings
-from src.core.auth import get_current_user
+from src.core.auth import AuthenticatedActor, get_current_actor, get_current_user
 from src.core.integrations import resolve_integrations
 from src.core.titles import derive_sort_title as _derive_sort_title
 from src.database.models.media_extras import ActivityEventType
@@ -70,7 +70,12 @@ class MovieMetadataSearchResponse(MetadataSearchResponse):
 
 
 async def _get_movie_or_404(
-    movie_id: UUID, db: AsyncSession, user_id: UUID, include_deleted: bool = False
+    movie_id: UUID,
+    db: AsyncSession,
+    user_id: UUID,
+    include_deleted: bool = False,
+    *,
+    for_update: bool = False,
 ) -> Movie:
     return await owned_row(
         db,
@@ -79,6 +84,7 @@ async def _get_movie_or_404(
         user_id,
         "Movie",
         include_deleted=include_deleted,
+        for_update=for_update,
         populate_existing=False,
     )
 
@@ -180,14 +186,15 @@ async def update_movie(
     payload: MovieUpdate,
     db: AsyncSession = _DB_DEFAULT,
     current_user: User = _CURRENT_USER_DEFAULT,
+    actor: AuthenticatedActor = Depends(get_current_actor),
 ) -> Movie:
     """Update a movie and keep its derived sort title synchronized."""
-    movie = await _get_movie_or_404(movie_id, db, current_user.id)
+    movie = await _get_movie_or_404(movie_id, db, current_user.id, for_update=True)
     previous_status = movie.status
 
     updates = payload.model_dump(exclude_unset=True)
 
-    apply_updates_with_locking(movie, updates, _LOCKABLE_FIELDS)
+    apply_updates_with_locking(movie, updates, _LOCKABLE_FIELDS, actor=actor)
     _sync_watch_progress(movie, updates)
 
     if "title" in updates and "sort_title" not in updates:

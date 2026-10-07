@@ -50,6 +50,7 @@ from src.features.metadata.games.retroachievements import (
 from src.features.metadata.games.search import search_game_metadata
 from src.features.metadata.games.steam import cdn_art_urls as _steam_cdn_art_urls
 from src.features.metadata.games.steam_grid_db import SteamGridDBClient
+from src.features.metadata.locked_fields import apply_metadata_updates
 from src.helpers.save_game_asset import AssetKind, create_game_folder, save_game_asset
 from src.helpers.steam_achievement_rows import (  # noqa: F401
     needs_community_descriptions as _needs_community_descriptions,
@@ -378,29 +379,20 @@ async def _get_or_create_game(
     display name for the same appid between calls, e.g. briefly appending
     "- GOTY Edition"), which was creating duplicate rows for one real game.
     Falls back to matching by (user, source, title) when no id is given."""
-    existing: Game | None = None
-    if external_id:
-        existing = await db.scalar(
-            select(Game).where(
-                Game.user_id == user_id,
-                Game.source == source,
-                Game.external_id == external_id,
-                Game.deleted_at.is_(None),
-            )
-        )
+    statement = (
+        select(Game)
+        .where(Game.user_id == user_id, Game.source == source, Game.deleted_at.is_(None))
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    existing = (
+        await db.scalar(statement.where(Game.external_id == external_id)) if external_id else None
+    )
     if existing is None:
-        existing = await db.scalar(
-            select(Game).where(
-                Game.user_id == user_id,
-                Game.source == source,
-                Game.title == title,
-                Game.deleted_at.is_(None),
-            )
-        )
+        existing = await db.scalar(statement.where(Game.title == title))
     if existing:
         if existing.title != title:
-            existing.title = title
-            existing.sort_title = title.lower()
+            apply_metadata_updates(existing, {"title": title, "sort_title": title.lower()})
         if external_id and not existing.external_id:
             existing.external_id = external_id
         # this sync just saw it again — clear any earlier "missing from your

@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from src.api.schemas.episode import EpisodeReadBase, EpisodesBulkWatchedBase, EpisodeUpdateBase
 from src.api.schemas.provider_identity import ProviderIDs
+from src.api.schemas.title_protection import TitleProtectionUpdate
 from src.database.models.tv_show import TVShowStatus
 
 
@@ -90,7 +91,7 @@ class TVShowCreate(TVShowBase):
 
 # Preserve this media contract's field defaults and compatibility model names.
 # pylint: disable=duplicate-code
-class TVShowUpdate(BaseModel):
+class TVShowUpdate(TitleProtectionUpdate):
     """Payload for partial updates — every field optional. Seasons are
     never touched here; they have their own nested CRUD endpoints."""
 

@@ -38,7 +38,7 @@ from src.api.schemas.anime import (
 from src.api.schemas.metadata import MetadataSearchResponse
 from src.api.schemas.pagination import LibraryQuery, PaginatedResponse
 from src.core.app_integrations import get_or_create_app_integration_settings
-from src.core.auth import get_current_user
+from src.core.auth import AuthenticatedActor, get_current_actor, get_current_user
 from src.core.integrations import resolve_integrations
 from src.core.titles import apply_alt_titles
 from src.core.titles import derive_sort_title as _derive_sort_title
@@ -104,7 +104,12 @@ class AnimeMetadataSearchResponse(MetadataSearchResponse):
 
 
 async def _get_show_or_404(
-    show_id: UUID, db: AsyncSession, user_id: UUID, include_deleted: bool = False
+    show_id: UUID,
+    db: AsyncSession,
+    user_id: UUID,
+    include_deleted: bool = False,
+    *,
+    for_update: bool = False,
 ) -> Anime:
     return await owned_row(
         db,
@@ -114,6 +119,7 @@ async def _get_show_or_404(
         "Anime",
         include_deleted=include_deleted,
         populate_existing=True,
+        for_update=for_update,
     )
 
 
@@ -329,11 +335,12 @@ async def update_anime(
     payload: AnimeUpdate,
     db: AsyncSession = _DB_DEFAULT,
     current_user: User = _CURRENT_USER_DEFAULT,
+    actor: AuthenticatedActor = Depends(get_current_actor),
 ) -> Anime:
     """Update an anime entry and keep its derived sort title synchronized."""
-    show = await _get_show_or_404(show_id, db, current_user.id)
+    show = await _get_show_or_404(show_id, db, current_user.id, for_update=True)
     await update_tracking(
-        db, show, payload.model_dump(exclude_unset=True), _LOCKABLE_FIELDS, "anime"
+        db, show, payload.model_dump(exclude_unset=True), _LOCKABLE_FIELDS, "anime", actor=actor
     )
 
     await db.commit()

@@ -18,6 +18,7 @@ from sqlalchemy.sql.functions import count as sql_count
 from src.api.routes.media_extras import log_status_change
 from src.api.schemas.pagination import LibraryQuery, PaginatedResponse, score_ranks
 from src.core.app_integrations import get_or_create_app_integration_settings
+from src.core.auth import AuthenticatedActor
 from src.core.integrations import resolve_integrations
 from src.core.titles import derive_sort_title
 from src.features.metadata.locked_fields import apply_updates_with_locking
@@ -48,6 +49,7 @@ async def owned_row(
     *,
     include_deleted: bool = False,
     populate_existing: bool = False,
+    for_update: bool = False,
 ) -> Any:
     """Resolve an owned media row; only trash operations include deleted rows."""
     stmt = select(model).where(model.id == row_id, model.user_id == user_id)
@@ -55,6 +57,8 @@ async def owned_row(
         stmt = stmt.execution_options(populate_existing=True)
     if not include_deleted:
         stmt = stmt.where(model.deleted_at.is_(None))
+    if for_update:
+        stmt = stmt.with_for_update().execution_options(populate_existing=True)
     row = await db.scalar(stmt)
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"{label} {row_id} not found")
@@ -104,10 +108,12 @@ async def update_tracking(
     updates: dict[str, Any],
     lockable_fields: frozenset[str],
     media_type: str,
+    *,
+    actor: AuthenticatedActor | None = None,
 ) -> None:
     """Apply media edits, keep title ordering, and record a meaningful status transition."""
     previous_status = row.status
-    apply_updates_with_locking(row, updates, lockable_fields)
+    apply_updates_with_locking(row, updates, lockable_fields, actor=actor)
     if "title" in updates and "sort_title" not in updates:
         row.sort_title = derive_sort_title(row.title)
     if "status" in updates:
