@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from "vue";
 import PasswordInput from "../PasswordInput.vue";
-import { currentUser, checkAuth } from "../../state/auth";
+import { currentUser, checkAuth, avatarVersion } from "../../state/auth";
 import PasswordRequirements from "./PasswordRequirements.vue";
 import {
   fetchPasswordPolicy,
@@ -16,10 +16,9 @@ import {
 
 const isMock = computed(() => currentUser.value?.id === "mock");
 
-const cacheBust = ref(Date.now());
 const avatarUrl = computed(() =>
   currentUser.value
-    ? `${profilePictureUrl(currentUser.value.id)}?t=${cacheBust.value}`
+    ? `${profilePictureUrl(currentUser.value.id)}?t=${avatarVersion.value}`
     : "",
 );
 const avatarFailed = ref(false);
@@ -121,7 +120,7 @@ async function onAvatarFileChange(e: Event) {
   try {
     await uploadProfilePicture(currentUser.value.id, file);
     avatarFailed.value = false;
-    cacheBust.value = Date.now();
+    avatarVersion.value = Date.now();
   } catch (err) {
     uploadError.value =
       err instanceof Error ? err.message : "Failed to upload picture";
