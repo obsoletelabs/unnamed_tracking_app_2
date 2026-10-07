@@ -27,7 +27,8 @@ from src.core.titles import apply_alt_titles
 from src.database.models.anime import Anime, AnimeSeason
 from src.features.episode_progress import apply_counter
 from src.features.imports.mal import MalEntry
-from src.features.metadata.anime.anilist import AniListClient
+from src.features.metadata.service import library_candidate, media_result, resolve_owned_record
+from src.plugin_api.metadata_contracts import MediaType
 
 
 @dataclass
@@ -134,7 +135,7 @@ _BLANK_ONLY = (
 def fill_blanks(show: Anime, meta: dict[str, Any]) -> bool:
     changed = False
     for attr, key in _BLANK_ONLY:
-        if not getattr(show, attr) and meta.get(key):
+        if attr not in (show.locked_fields or []) and not getattr(show, attr) and meta.get(key):
             setattr(show, attr, meta[key])
             changed = True
     if apply_alt_titles(show, meta):
@@ -151,20 +152,29 @@ def fill_blanks(show: Anime, meta: dict[str, Any]) -> bool:
     return changed
 
 
-async def fill_details(shows: list[Anime], client: AniListClient | None = None) -> dict[str, int]:
-    """Looks the titles up on AniList by MAL id, in batches, and fills the
-    blank fields. Runs the blocking HTTP calls off the event loop."""
-    ids = [int(s.external_id) for s in shows if s.external_id and s.external_id.isdigit()]
-    if not ids:
-        return {"filled": 0, "not_found": 0, "lookup_failed": 0}
-    found, failed = await asyncio.to_thread((client or AniListClient()).get_by_mal_ids, ids)
-    filled = 0
-    for show in shows:
-        meta = (
-            found.get(int(show.external_id))
-            if show.external_id and show.external_id.isdigit()
-            else None
-        )
-        if meta and fill_blanks(show, meta):
-            filled += 1
-    return {"filled": filled, "not_found": len(ids) - len(found) - failed, "lookup_failed": failed}
+async def fill_details(shows: list[Anime]) -> dict[str, int]:
+    """Fill blank import fields through the same owner-scoped provider contract."""
+    slots = asyncio.Semaphore(6)
+
+    async def one(show: Anime) -> tuple[bool, bool, bool]:
+        async with slots:
+            ids = dict(show.provider_ids or {})
+            if show.external_id:
+                ids.setdefault("mal", show.external_id)
+            if show.anilist_id:
+                ids.setdefault("anilist", show.anilist_id)
+            record, errors = await resolve_owned_record(show.user_id, library_candidate(
+                show.title, MediaType.ANIME, ids,
+                show.first_air_date.year if show.first_air_date else None,
+            ), include_media=True)
+            if not record.get("metadata") and not record.get("assets"):
+                return False, not bool(errors), bool(errors)
+            meta = media_result(record, MediaType.ANIME)
+            meta.update({"overview": meta.get("description"), "release_date": meta.get("first_air_date"),
+                         "score": meta.get("anilist_score"), "id": meta.get("anilist_id")})
+            show.provider_ids = {**ids, **record.get("provider_ids", {})}
+            return fill_blanks(show, meta), False, False
+
+    results = await asyncio.gather(*(one(show) for show in shows))
+    return dict(zip(("filled", "not_found", "lookup_failed"),
+                    (sum(row[index] for row in results) for index in range(3)), strict=True))

@@ -22,25 +22,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.functions import count as sql_count
 
 from src.api.routes.anime import _derive_sort_title
-from src.core.app_integrations import get_or_create_app_integration_settings
 from src.core.auth import get_current_user
-from src.core.integrations import resolve_integrations
 from src.database.models.anime import Anime, AnimeSeason
 from src.database.models.movies import Movie
 from src.database.models.tv_show import TVSeason, TVShow
 from src.database.models.user import User
 from src.database.session import get_db
-from src.features.imports.list_apply import OmdbLookup, match_titles, new_title
 from src.features.imports.list_apply import apply_tracking as list_apply_tracking
 from src.features.imports.list_apply import differences as list_differences
 from src.features.imports.list_apply import fill_details as list_fill_details
+from src.features.imports.list_apply import match_titles, new_title
 from src.features.imports.lists import ImportedTitle, ListImportError, parse_imdb, parse_letterboxd
 from src.features.imports.mal import MAX_BYTES, MalEntry, MalImportError, parse_mal_export
 from src.features.imports.mal_apply import apply_tracking, differences, fill_details, match_entries
 from src.features.imports.restore import restore_media
 from src.features.imports.yamtrack import build_yamtrack_item, parse_yamtrack
-from src.features.metadata.movies.omdb import OMDBClient
-from src.features.metadata.movies.tmdb import TMDBClient
+from src.features.metadata.providers import discover_providers
+from src.plugin_api.metadata_contracts import MediaType, ProviderHealth
 
 LIST_MAX_BYTES = 30 * 1024 * 1024
 router = APIRouter(prefix="/api", tags=["import"], dependencies=[Depends(get_current_user)])
@@ -269,15 +267,16 @@ async def import_list(
     unavailable = False
     details_source: str | None = None
     if fetch_details and touched:
-        keys = resolve_integrations(await get_or_create_app_integration_settings(db))
-        if keys.tmdb_api_key:
-            details_source = "TMDB"
-            details = await list_fill_details(TMDBClient(keys.tmdb_api_key), touched)
-        elif keys.omdb_api_key:
-            details_source = "OMDb"
-            details = await list_fill_details(OmdbLookup(OMDBClient(keys.omdb_api_key)), touched)
-        else:
-            unavailable = True
+        providers = [provider for provider in await discover_providers(db, current_user.id)
+                     if provider.declaration.operations.metadata and
+                     any((MediaType.MOVIE if item.kind == "movie" else MediaType.TV_SHOW)
+                         in provider.declaration.media_types for item, _, _ in touched) and
+                     provider.state not in {ProviderHealth.DISABLED, ProviderHealth.NOT_CONFIGURED,
+                                            ProviderHealth.PLUGIN_UNAVAILABLE}]
+        unavailable = not bool(providers)
+        if providers:
+            details_source = ", ".join(provider.name for provider in providers)
+            details = await list_fill_details(touched)
     await db.commit()
     return ListImportResult(
         created=created,

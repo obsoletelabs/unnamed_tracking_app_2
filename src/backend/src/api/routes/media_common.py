@@ -2,13 +2,11 @@
 with its status counts and ranks, and the soft-delete / trash / restore /
 purge life cycle. Each route module passes in its own model and wording."""
 
-import asyncio
 import time
-from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
 from enum import Enum
-from typing import Any, Literal, ParamSpec, TypeVar
+from typing import Any
 
 from fastapi import HTTPException, status
 from sqlalchemy import ColumnElement, Select, func, or_, select
@@ -17,27 +15,9 @@ from sqlalchemy.sql.functions import count as sql_count
 
 from src.api.routes.media_extras import log_status_change
 from src.api.schemas.pagination import LibraryQuery, PaginatedResponse, score_ranks
-from src.core.app_integrations import get_or_create_app_integration_settings
 from src.core.auth import AuthenticatedActor
-from src.core.integrations import resolve_integrations
 from src.core.titles import derive_sort_title
 from src.features.metadata.locked_fields import apply_updates_with_locking
-from src.features.metadata.movies.tmdb import TMDBClient
-
-P = ParamSpec("P")
-ResultT = TypeVar("ResultT")
-
-
-async def request_metadata(
-    provider: Callable[P, ResultT], error_label: str, *args: P.args, **kwargs: P.kwargs
-) -> ResultT:
-    """Call blocking providers off the event loop and preserve the API's 502 response."""
-    try:
-        return await asyncio.to_thread(provider, *args, **kwargs)
-    except Exception as exc:
-        raise HTTPException(
-            status.HTTP_502_BAD_GATEWAY, f"{error_label} could not be reached: {exc}"
-        ) from exc
 
 
 async def owned_row(
@@ -73,33 +53,6 @@ async def related_row(
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"{label} {row_id} not found")
     return row
-
-
-async def search_external_metadata(
-    db: AsyncSession, provider: Callable[..., dict], query: str, limit: int
-) -> dict:
-    """Use the app's TMDB and OMDb credentials for either native film or TV search."""
-    integrations = resolve_integrations(await get_or_create_app_integration_settings(db))
-    return await request_metadata(
-        provider,
-        "Metadata providers",
-        query.strip(),
-        limit,
-        integrations.tmdb_api_key,
-        integrations.omdb_api_key,
-    )
-
-
-async def tmdb_recommendations(
-    db: AsyncSession, title: str, media_type: Literal["movie", "tv"]
-) -> dict:
-    integrations = resolve_integrations(await get_or_create_app_integration_settings(db))
-    if not integrations.tmdb_api_key:
-        return {"recommended": [], "configured": False}
-    client = TMDBClient(integrations.tmdb_api_key)
-    provider = client.movie_recommendations if media_type == "movie" else client.tv_recommendations
-    recommended = await request_metadata(provider, "TMDB", title)
-    return {"recommended": recommended, "configured": True}
 
 
 async def update_tracking(

@@ -151,11 +151,8 @@ async def test_game_refresh_endpoint_respects_protection_for_api_actor(
     monkeypatch.setattr(game_metadata, "_DATA_ROOT", tmp_path)
     monkeypatch.setattr(
         game_metadata,
-        "search_game_metadata",
-        lambda *_, **_kwargs: {
-            "providers": ["Steam"],
-            "results": [{"provider": "Steam", "title": "Original™", "developer": "New developer"}],
-        },
+        "resolve_library_record",
+        AsyncMock(return_value=({"title": "Original™", "metadata": {"developer": "New developer"}}, {})),
     )
     async with SessionLocal() as db:
         game = Game(
@@ -199,14 +196,12 @@ async def test_game_refresh_reloads_protection_changed_during_provider_lookup(ow
     lookup_started = threading.Event()
     lookup_released = threading.Event()
 
-    def provider(*_args, **_kwargs):
+    async def provider(*_args, **_kwargs):
         lookup_started.set()
-        assert lookup_released.wait(timeout=10)
-        return {
-            "results": [{"provider": "Steam", "title": "Original™", "developer": "New developer"}]
-        }
+        assert await asyncio.to_thread(lookup_released.wait, 10)
+        return {"title": "Original™", "metadata": {"developer": "New developer"}}, {}
 
-    monkeypatch.setattr(game_metadata, "search_game_metadata", provider)
+    monkeypatch.setattr(game_metadata, "resolve_library_record", provider)
     async with SessionLocal() as db:
         game = Game(
             user_id=owner,
@@ -259,9 +254,9 @@ async def test_plugin_gateway_rejects_protected_title_even_with_broad_grant(
     monkeypatch.setenv("PLUGIN_RUNTIME_TOKEN", "runtime-test-secret")
     monkeypatch.setattr(
         runtime.client,
-        "plugins",
+        "plugin_state",
         AsyncMock(
-            return_value=[
+            return_value=
                 {
                     "api_contract_version": "1.1.0",
                     "plugin_id": "test.title",
@@ -271,7 +266,6 @@ async def test_plugin_gateway_rejects_protected_title_even_with_broad_grant(
                     "status": "running",
                     "health": "healthy",
                 }
-            ]
         ),
     )
     async with SessionLocal() as db:

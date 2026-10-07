@@ -3,7 +3,7 @@
 Same rules as the MyAnimeList import: a title already on the site (same kind,
 same title, same year when both have one) is kept exactly as it is unless the
 user picks it, and taking the file's data changes only what the file states.
-Metadata from TMDB only fills blank fields."""
+Metadata from registered providers only fills blank, unlocked fields."""
 
 from __future__ import annotations
 
@@ -18,7 +18,9 @@ from sqlalchemy.orm import selectinload
 
 from src.database.models.movies import Movie, MovieStatus
 from src.database.models.tv_show import TVSeason, TVShow, TVShowStatus
-from src.features.imports.lists import ImportedTitle, fill_blanks, lookup_tmdb
+from src.features.imports.lists import ImportedTitle, fill_blanks
+from src.features.metadata.service import library_candidate, media_result, resolve_owned_record
+from src.plugin_api.metadata_contracts import MediaType
 
 
 @dataclass
@@ -200,20 +202,30 @@ def _day(value: Any) -> dt.date | None:
         return None
 
 
-async def fill_details(
-    client: Any, touched: list[tuple[ImportedTitle, Any, bool]]
-) -> dict[str, int]:
+async def fill_details(touched: list[tuple[ImportedTitle, Any, bool]]) -> dict[str, int]:
     """TMDB lookups by title and year, a few at a time, filling blank fields.
     A TV series with no seasons yet gets them from TMDB, but only when the
     import is what is adding or changing it (the flag), never for a title the
     user chose to keep as it is."""
-    jobs = list({(i.kind, i.title, i.year) for i, _, _ in touched})
-    if not jobs:
-        return {"filled": 0, "not_found": 0, "seasons_assumed_watched": 0}
-    found = await asyncio.to_thread(lookup_tmdb, client, jobs)
+    slots = asyncio.Semaphore(6)
+
+    async def one(item: ImportedTitle, row: Any) -> dict[str, Any]:
+        async with slots:
+            kind = MediaType.MOVIE if item.kind == "movie" else MediaType.TV_SHOW
+            record, _ = await resolve_owned_record(row.user_id, library_candidate(
+                item.title, kind, row.provider_ids or {}, item.year,
+            ), include_media=True)
+            if not record.get("metadata") and not record.get("assets"):
+                return {}
+            row.provider_ids = {**(row.provider_ids or {}), **record.get("provider_ids", {})}
+            result = media_result(record, kind)
+            result.update({"overview": result.get("description"),
+                           "vote_average": result.get("tmdb_score")})
+            return result
+
+    found = await asyncio.gather(*(one(item, row) for item, row, _ in touched))
     filled = not_found = assumed = 0
-    for item, row, may_add_seasons in touched:
-        meta = found.get((item.kind, item.title, item.year))
+    for (item, row, may_add_seasons), meta in zip(touched, found, strict=True):
         if not meta:
             not_found += 1
             continue

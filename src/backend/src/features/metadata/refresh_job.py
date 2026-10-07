@@ -7,10 +7,10 @@ the button showed nothing until the end. Now:
 - it only touches what needs it (`mode="needed"`): a show still airing, one
   with no episodes or with untitled ones, or one whose stored total disagrees
   with what AniList says it has. `mode="all"` checks everything;
-- AniList is asked once per 50 shows for each one's status and final total,
-  and that total is what repairs a season a wrong provider match had inflated;
+- registered airing providers supply each entry's status and final total;
+  that total repairs a season a wrong provider match had inflated;
 - several shows are worked on at once (each provider is still paced by the
-  shared throttle, so this only overlaps the waiting);
+  plugin-owned request policy, so this only overlaps the waiting);
 - progress is kept while it runs, so the screen can show it.
 
 A run is started by someone asking for it (the Settings button) or by the
@@ -31,8 +31,7 @@ from src.database.models.anime import Anime, AnimeEpisode, AnimeSeason
 from src.database.models.tv_show import TVSeason, TVShow
 from src.database.session import SessionLocal
 from src.features.metadata.anime.alt_titles import fill_missing_titles
-from src.features.metadata.anime.anilist import AniListClient
-from src.features.metadata.anime.episode_sync import episode_limit
+from src.features.metadata.anime.episode_sync import episode_limit, fetch_episode_totals
 from src.features.metadata.refresh import (
     heal_all_anime_metadata,
     refresh_anime_season_now,
@@ -120,6 +119,11 @@ async def _refresh_one_anime(
                 _progress.done += 1
                 return
             _progress.current = show.title
+            if not total_known:
+                info, _ = await fetch_episode_totals(
+                    show.user_id, show.title, show.external_id, show.anilist_id
+                )
+                total_known = info is not None
             if info and info.get("status") is not None:
                 show.is_airing = info["status"] == "RELEASING"
             if _progress.mode == "needed" and not _anime_needs(show, season, info):
@@ -240,20 +244,11 @@ async def _execute() -> dict[str, Any]:
             ).all()
         _progress.total = len(anime_rows) + len(tv_rows)
 
-        _progress.phase = "Asking AniList which titles have finished airing"
-        ids = sorted({int(a) for _, _, a in anime_rows if a and str(a).isdigit()})
-        totals: dict[int, dict[str, Any]] = {}
-        if ids:
-            totals = await asyncio.to_thread(AniListClient().final_totals, ids)
-
         _progress.phase = "Checking episodes"
         sem = asyncio.Semaphore(CONCURRENCY)
         jobs = []
-        for season_id, show_id, anilist_id in anime_rows:
-            info = totals.get(int(anilist_id)) if anilist_id and str(anilist_id).isdigit() else None
-            # a show AniList did not answer for is left to look the total up itself
-            total_known = info is not None
-            jobs.append(_refresh_one_anime(season_id, show_id, info, total_known, sem))
+        for season_id, show_id, _ in anime_rows:
+            jobs.append(_refresh_one_anime(season_id, show_id, None, False, sem))
         for season_id, show_id in tv_rows:
             jobs.append(_refresh_one_tv(season_id, show_id, sem))
         await asyncio.gather(*jobs)

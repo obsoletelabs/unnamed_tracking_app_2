@@ -12,29 +12,29 @@ from src.api.routes.media_common import (
     library_page,
     owned_row,
     purge_row,
-    request_metadata,
     restore_row,
-    search_external_metadata,
     soft_delete,
     title_search,
-    tmdb_recommendations,
     trash_listing,
 )
 from src.api.routes.media_extras import log_activity, status_change_detail
 from src.api.schemas.metadata import MetadataSearchResponse
 from src.api.schemas.movie import MovieCreate, MovieRead, MovieUpdate
 from src.api.schemas.pagination import LibraryQuery, PaginatedResponse
-from src.core.app_integrations import get_or_create_app_integration_settings
 from src.core.auth import AuthenticatedActor, get_current_actor, get_current_user
-from src.core.integrations import resolve_integrations
 from src.core.titles import derive_sort_title as _derive_sort_title
 from src.database.models.media_extras import ActivityEventType
 from src.database.models.movies import Movie, MovieStatus
 from src.database.models.user import User
 from src.database.session import get_db
 from src.features.metadata.locked_fields import apply_updates_with_locking
-from src.features.metadata.movies.search import search_movie_metadata
-from src.features.metadata.movies.tmdb import TMDBClient
+from src.features.metadata.service import (
+    library_candidate,
+    related_metadata,
+    relation_result,
+    search_media,
+)
+from src.plugin_api.metadata_contracts import MediaType
 
 _QUERY_DEFAULT = Query(..., min_length=2, max_length=100, alias="query")
 _LIMIT_DEFAULT = Query(default=8, ge=1, le=20, alias="limit")
@@ -99,8 +99,7 @@ async def search_metadata(
     """Search TMDB and OMDb for data that can prefill a new movie. Two
     sources on purpose — redundancy, so a missing/rate-limited source
     doesn't leave the search empty."""
-    del current_user
-    return await search_external_metadata(db, search_movie_metadata, query, limit)
+    return await search_media(db, current_user.id, query.strip(), MediaType.MOVIE, limit)
 
 
 @router.post(
@@ -276,14 +275,13 @@ async def get_movie_relations(
     title belongs to (e.g. every Mad Max film). Most movies aren't in
     one — that's a normal empty result, not an error."""
     movie = await _get_movie_or_404(movie_id, db, current_user.id)
-    app_integrations = resolve_integrations(await get_or_create_app_integration_settings(db))
-    if not app_integrations.tmdb_api_key:
-        return {"collection_name": None, "related": [], "configured": False}
-    tmdb_api_key = app_integrations.tmdb_api_key
-    result = await request_metadata(
-        lambda: TMDBClient(tmdb_api_key).movie_relations(movie.title), "TMDB"
+    result = await related_metadata(
+        db, current_user.id,
+        library_candidate(movie.title, MediaType.MOVIE, movie.provider_ids or {}),
     )
-    return {**result, "configured": True}
+    return {"collection_name": result["relation_group"],
+            "related": [relation_result(entry) for entry in result["relations"]],
+            "configured": result["configured"]}
 
 
 @router.get("/{movie_id}/recommended")
@@ -293,4 +291,10 @@ async def get_movie_recommended(
     current_user: User = _CURRENT_USER_DEFAULT,
 ) -> dict:
     movie = await _get_movie_or_404(movie_id, db, current_user.id)
-    return await tmdb_recommendations(db, movie.title, "movie")
+    result = await related_metadata(
+        db, current_user.id,
+        library_candidate(movie.title, MediaType.MOVIE, movie.provider_ids or {}),
+        "recommendations",
+    )
+    return {"recommended": [relation_result(entry) for entry in result["relations"]],
+            "configured": result["configured"]}

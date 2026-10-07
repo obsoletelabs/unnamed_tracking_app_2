@@ -16,7 +16,6 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.routes.settings import (
-    get_or_create_app_integration_settings,
     get_or_create_scan_settings,
 )
 from src.api.routes.utils.games import (
@@ -26,17 +25,22 @@ from src.api.routes.utils.games import (
     _scan_settings_to_preferences,
 )
 from src.core.auth import get_current_user
-from src.core.integrations import resolve_integrations
 from src.core.preferences import load_preferences
 from src.core.titles import normalize_metadata_title as _normalize_metadata_title
 from src.database.models.user import User
 from src.database.session import get_db
-from src.features.metadata.games.search import search_game_metadata
 from src.features.metadata.locked_fields import apply_metadata_updates
+from src.features.metadata.service import (
+    game_result,
+    library_candidate,
+    resolve_library_record,
+    search_games,
+)
 from src.helpers.save_game_asset import (
     ASSET_FILENAMES,
     save_game_asset,
 )
+from src.plugin_api.metadata_contracts import MediaType
 
 _QUERY_DEFAULT = Query(..., min_length=2, max_length=100)
 
@@ -96,24 +100,9 @@ async def search_metadata(
     preferences["steam_user_tags"] = (await load_preferences(db, current_user.id))[
         "steam_user_tags"
     ]
-    app_integrations = resolve_integrations(await get_or_create_app_integration_settings(db))
-    try:
-        result = await asyncio.to_thread(
-            search_game_metadata,
-            query.strip(),
-            limit,
-            steamgriddb_api_key=current_user.steamgriddb_api_key,
-            preferences=preferences,
-            user=current_user,
-            igdb_client_id=app_integrations.igdb_client_id,
-            igdb_client_secret=app_integrations.igdb_client_secret,
-            include_image_providers=include_images,
-        )
-    except Exception as exc:  # pylint: disable=broad-exception-caught
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Metadata providers could not be reached: {exc}",
-        ) from exc
+    # Compatibility clients share search, but cannot trigger media without selection.
+    del include_images
+    result = await search_games(db, current_user.id, query.strip(), limit, preferences=preferences)
 
     if result.get("providers"):
         now = int(time.time())
@@ -171,24 +160,15 @@ async def refresh_game_metadata(
     game = await _get_game_or_404(game_id, db, current_user.id)
     scan_settings = await get_or_create_scan_settings(current_user.id, db)
     preferences = _scan_settings_to_preferences(scan_settings)
-    app_integrations = resolve_integrations(await get_or_create_app_integration_settings(db))
-
-    try:
-        result = await asyncio.to_thread(
-            search_game_metadata,
-            game.title,
-            8,
-            steamgriddb_api_key=current_user.steamgriddb_api_key,
-            preferences=preferences,
-            user=current_user,
-            igdb_client_id=app_integrations.igdb_client_id,
-            igdb_client_secret=app_integrations.igdb_client_secret,
-        )
-    except Exception as exc:  # pylint: disable=broad-exception-caught
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Metadata providers could not be reached: {exc}",
-        ) from exc
+    record, failures = await resolve_library_record(
+        db, current_user.id,
+        library_candidate(game.title, MediaType.GAME, game.provider_ids or {},
+                          game.release_date.year if game.release_date else None),
+        include_media=payload.fill_missing_art or payload.overwrite_existing_art,
+        preferences=preferences,
+    )
+    result = {"providers": record.get("providers", []), "provider_errors": failures,
+              "results": [game_result(record)] if record else []}
 
     providers = result.get("providers", [])
     provider_errors = result.get("provider_errors", [])
@@ -309,6 +289,7 @@ async def refresh_game_metadata(
             "game_updated_at": game.updated_at,
         }
 
+    game.provider_ids = {**(game.provider_ids or {}), **match.get("provider_ids", {})}
     if payload.update_text:
         _record_field_changes(game, updates, db)
         apply_metadata_updates(game, updates)

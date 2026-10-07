@@ -1,6 +1,7 @@
 """Refresh workers keep requests responsive and report failures to their callers."""
 
-import threading
+import asyncio
+import uuid
 from unittest.mock import AsyncMock, Mock
 
 from src.database.models.anime import Anime, AnimeSeason
@@ -11,24 +12,21 @@ from src.main import app  # noqa: F401 -- register the complete application mode
 async def test_metadata_healing_does_not_block_the_event_loop_or_overwrite_existing_fields(
     monkeypatch,
 ):
-    main_thread = threading.get_ident()
+    owner = uuid.uuid4()
+    yielded = []
 
-    class Client:
-        def get_by_id(self, identifier):
-            assert identifier == 42
-            assert threading.get_ident() != main_thread
-            return {
-                "id": 42,
-                "id_mal": 19,
-                "format": "TV",
-                "poster_url": "provider-poster",
-                "overview": "provider-description",
-                "episode_count": 12,
-                "score": 80,
-            }
+    async def resolve(db, user_id, candidate, *, include_media):
+        assert user_id == owner and candidate.provider_ids == {"anilist": "42"}
+        assert include_media
+        await asyncio.sleep(0)
+        yielded.append(True)
+        return {"title": "Example", "provider_ids": {"anilist": "42", "mal": "19"},
+                "metadata": {"format": "TV", "description": "provider-description",
+                             "episode_count": 12, "scores": {"anilist": 80}},
+                "assets": [{"kind": "poster", "url": "provider-poster"}]}, []
 
     show = Anime(
-        title="Example",
+        title="Example", user_id=owner,
         anilist_id="42",
         description="User description",
         seasons=[AnimeSeason(season_number=1)],
@@ -39,14 +37,15 @@ async def test_metadata_healing_does_not_block_the_event_loop_or_overwrite_exist
     db.__aenter__.return_value = db
     db.execute.return_value = result
     monkeypatch.setattr(refresh, "SessionLocal", lambda: db)
-    monkeypatch.setattr(refresh, "AniListClient", Client)
+    monkeypatch.setattr(refresh, "resolve_library_record", resolve)
 
     assert await refresh.heal_all_anime_metadata() == 1
     assert show.description == "User description"
     assert show.poster_url == "provider-poster"
     assert show.external_id == "19"
     assert show.format == "TV"
-    assert show.anilist_score == 80
+    assert show.anilist_score == 8
+    assert yielded == [True]
     assert show.seasons[0].episode_count == 12
     db.commit.assert_awaited_once()
 
