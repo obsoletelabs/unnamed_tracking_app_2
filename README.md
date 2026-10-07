@@ -1,4 +1,4 @@
-# Wiki page https://rosefall-a.github.io/unnamed_tracking_app/
+# Wiki page https://obsoletelabs.github.io/unnamed_tracking_app/
 
 Still a WIP, but new features are decently uptodate
 
