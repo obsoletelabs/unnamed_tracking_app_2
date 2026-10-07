@@ -19,29 +19,26 @@ from src.database.session import get_db
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
 
+def _current_session_hash(request: Request) -> str | None:
+    token = request.cookies.get(session_cookie_name(request.headers.get("host", "")))
+    return hash_token(token) if token else None
+
+
 def view(
-    session: UserSession, current_hash: str | None = None, username: str | None = None
+    session: UserSession,
+    current_hash: str | None = None,
+    username: str | None = None,
+    *,
+    enriched: bool = True,
 ) -> dict:
     """Serialize a session without including either raw or hashed credentials."""
     state = session_state(session)
-    coordinates_available = geoip.availability()["city"]
-    return {
+    data: dict = {
         "id": str(session.id),
         "user_id": str(session.user_id),
         "username": username,
         "ip_address": session.ip_address,
         "user_agent": session.user_agent,
-        "location": {
-            "country": session.geo_country,
-            "region": session.geo_region,
-            "city": session.geo_city,
-            "latitude": session.geo_latitude if coordinates_available else None,
-            "longitude": session.geo_longitude if coordinates_available else None,
-            "network_type": session.geo_network_type,
-            "network_label": session.geo_network_label,
-            "network_number": session.geo_network_number,
-            "network_organization": session.geo_network_organization,
-        },
         "created_at": session.created_at,
         "last_seen_at": session.last_seen_at,
         "expires_at": session.expires_at,
@@ -50,11 +47,30 @@ def view(
         "is_current": bool(
             current_hash and session.token_hash == current_hash and state == "active"
         ),
-        "anomaly": {
-            "reason": session.anomaly_reason,
-            "previous_location": session.anomaly_previous_location,
-        },
     }
+    if not enriched:
+        return data
+    coordinates_available = geoip.availability()["city"]
+    data.update(
+        {
+            "location": {
+                "country": session.geo_country,
+                "region": session.geo_region,
+                "city": session.geo_city,
+                "latitude": session.geo_latitude if coordinates_available else None,
+                "longitude": session.geo_longitude if coordinates_available else None,
+                "network_type": session.geo_network_type,
+                "network_label": session.geo_network_label,
+                "network_number": session.geo_network_number,
+                "network_organization": session.geo_network_organization,
+            },
+            "anomaly": {
+                "reason": session.anomaly_reason,
+                "previous_location": session.anomaly_previous_location,
+            },
+        }
+    )
+    return data
 
 
 async def revoke_session(db: AsyncSession, session_id: UUID, user_id: UUID | None = None) -> bool:
@@ -74,6 +90,7 @@ async def list_my_sessions(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
+    enriched: bool = Query(default=True),
 ) -> list[dict]:
     """Return only the authenticated user's browser sessions."""
     rows = (
@@ -83,9 +100,8 @@ async def list_my_sessions(
             .order_by(UserSession.last_seen_at.desc())
         )
     ).all()
-    session_token = request.cookies.get(session_cookie_name(request.headers.get("host", "")))
-    current_hash = hash_token(session_token) if session_token else None
-    return [view(row, current_hash) for row in rows]
+    current_hash = _current_session_hash(request)
+    return [view(row, current_hash, enriched=enriched) for row in rows]
 
 
 @router.delete("/me/all")
@@ -117,6 +133,7 @@ async def revoke_my_session(
 
 @router.get("/admin")
 async def list_all_sessions(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(get_current_admin),
     *,
@@ -125,9 +142,11 @@ async def list_all_sessions(
     state: str | None = Query(default=None, pattern="^(active|expired|revoked)$"),
     country: str | None = Query(default=None, max_length=128),
     anomaly: bool | None = Query(default=None),
+    enriched: bool = Query(default=True),
 ) -> list[dict]:
     """Return session metadata for administrators with optional filtering."""
     del admin
+    current_hash = _current_session_hash(request)
     statement = (
         select(UserSession, User.username)
         .join(User, User.id == UserSession.user_id)
@@ -144,16 +163,18 @@ async def list_all_sessions(
     for session, username in (await db.execute(statement)).all():
         if state is not None and session_state(session) != state:
             continue
-        searchable = (
-            username,
-            session.ip_address,
-            session.user_agent,
-            session.geo_country,
-            session.geo_region,
-        )
-        if needle and not any(needle in (value or "").lower() for value in searchable):
+        if needle and not any(
+            needle in (value or "").lower()
+            for value in (
+                username,
+                session.ip_address,
+                session.user_agent,
+                session.geo_country,
+                session.geo_region,
+            )
+        ):
             continue
-        result.append(view(session, username=username))
+        result.append(view(session, current_hash, username, enriched=enriched))
     return result
 
 

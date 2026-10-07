@@ -5,10 +5,11 @@ from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import FileResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.api.image_responses import original_image_response
 from src.core.auth import get_current_user
 from src.database.models.anime import Anime
 from src.database.models.movies import Movie
@@ -64,11 +65,7 @@ async def get_media_image(
         try:
             await asyncio.to_thread(fetch_and_store, url, target, WIDTHS[which])
         except RemoteImageError:
-            return RedirectResponse(
-                url,
-                status_code=status.HTTP_307_TEMPORARY_REDIRECT,
-                headers={"Cache-Control": "no-store"},
-            )
+            return original_image_response(url)
     return FileResponse(
         target,
         media_type="image/jpeg",

@@ -60,3 +60,27 @@ async def test_icon_cache_and_foreign_user_access(flow, monkeypatch):
     async with SessionLocal() as db:
         await db.delete(await db.get(User, stranger_id))
         await db.commit()
+
+
+async def test_failed_icon_download_preserves_uncached_redirect(flow, monkeypatch):
+    monkeypatch.setattr(achievement_icons, "_ICON_ROOT", flow.tmp)
+
+    def failed_download(_url):
+        raise remote_images.RemoteImageError("unavailable")
+
+    monkeypatch.setattr(remote_images, "download_image", failed_download)
+    async with SessionLocal() as db:
+        icon = Achievement(
+            game_id=flow.game_id,
+            provider="steam",
+            external_id="redirect-test",
+            name="Unavailable icon",
+            icon_url="https://example.test/broken.png",
+        )
+        db.add(icon)
+        await db.commit()
+        icon_id = icon.id
+    response = await flow.client.get(f"/api/achievement-icon/{icon_id}", follow_redirects=False)
+    assert response.status_code == 307
+    assert response.headers["location"] == "https://example.test/broken.png"
+    assert response.headers["cache-control"] == "no-store"

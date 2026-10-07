@@ -90,6 +90,7 @@ async def test_a_failed_download_sends_the_browser_to_the_original(flow, downloa
     )
     assert response.status_code == 307
     assert response.headers["location"] == "https://img.example.test/broken.jpg"
+    assert response.headers["cache-control"] == "no-store"
 
 
 async def test_missing_image_and_unknown_title_are_404(flow, downloads) -> None:
