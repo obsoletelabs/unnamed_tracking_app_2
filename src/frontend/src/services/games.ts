@@ -18,6 +18,7 @@ import type {
 // field-for-field. This is deliberately a separate type from `Game`:
 // nothing outside this file should ever see raw backend data directly.
 export interface BackendGame {
+  provider_ids?: Record<string, string>;
   locked_fields?: string[];
   id: string;
   title: string;
@@ -149,6 +150,7 @@ export function mapBackendGame(raw: BackendGame): Game {
     folderLocation: raw.folder_location,
     releaseDate: raw.release_date,
     source: raw.source,
+    providerIds: raw.provider_ids ?? {},
     platform: raw.platform,
     priority: raw.priority,
     // only a sorting name someone chose, not the one derived from the title
@@ -442,6 +444,9 @@ export async function fetchGameVariants(id: string): Promise<Game[]> {
 }
 
 export interface MetadataSearchResult {
+  release_year?: number | null;
+  candidate_id?: string;
+  provider_ids?: Record<string, string>;
   provider: string;
   provider_id: string;
   title: string;
@@ -659,6 +664,7 @@ export async function previewGameMetadataRefresh(
 }
 
 export interface NewGameInput {
+  providerIds?: Record<string, string>;
   title: string;
   titleLock?: boolean;
   // undefined leaves the saved sorting name alone, null resets it to the title
@@ -735,6 +741,7 @@ export async function createGame(input: NewGameInput): Promise<Game> {
       folderLocation: input.folderLocation || null,
       releaseDate: input.releaseDate,
       source: input.source,
+      providerIds: input.providerIds,
       ageRating: input.ageRating,
       timeToBeatHours: input.timeToBeatHours,
       region: input.region,
@@ -770,6 +777,7 @@ export async function createGame(input: NewGameInput): Promise<Game> {
       relationship_type: input.relationshipType,
       release_date: input.releaseDate,
       source: input.source,
+      provider_ids: input.providerIds,
       platform: input.platform ?? null,
       priority: input.priority ?? null,
       region: input.region,
@@ -869,6 +877,7 @@ export async function updateGame(
     relationship_type: input.relationshipType,
     release_date: input.releaseDate,
     source: input.source,
+    provider_ids: input.providerIds,
     region: input.region,
     language: input.language,
     age_rating: input.ageRating,

@@ -59,6 +59,7 @@ export interface BackendTVShow {
   age_rating: string | null;
   tmdb_score: number | string | null;
   source: string | null;
+  provider_ids?: Record<string, string>;
   external_id: string | null;
   poster_url: string | null;
   backdrop_url: string | null;
@@ -162,6 +163,7 @@ export function mapBackendTVShowRaw(raw: BackendTVShow): TVShow {
     ageRating: raw.age_rating,
     tmdbScore: toNumberOrNull(raw.tmdb_score),
     source: raw.source,
+    providerIds: raw.provider_ids ?? {},
     externalId: raw.external_id,
     posterUrl: raw.poster_url,
     backdropUrl: raw.backdrop_url,
@@ -240,6 +242,7 @@ export interface TVShowInput {
   ageRating?: string | null;
   tmdbScore?: number | null;
   source?: string | null;
+  providerIds?: Record<string, string>;
   externalId?: string | null;
   posterUrl?: string | null;
   backdropUrl?: string | null;
@@ -260,7 +263,7 @@ export interface TVShowInput {
   seasons?: SeasonInput[];
 }
 
-// Round-trips a loaded TVShow back into TVShowInput shape — used when a
+// Round-trips a loaded TVShow back into TVShowInput shape â€” used when a
 // caller needs to change one field (e.g. toggling favorite from the
 // detail page) without reopening the full edit form, since updateTVShow
 // always sends every field rather than a true partial patch.
@@ -280,6 +283,7 @@ export function tvShowToInput(show: TVShow): TVShowInput {
     ageRating: show.ageRating,
     tmdbScore: show.tmdbScore,
     source: show.source,
+    providerIds: show.providerIds,
     externalId: show.externalId,
     posterUrl: show.posterUrl,
     backdropUrl: show.backdropUrl,
@@ -316,6 +320,7 @@ function inputToBody(input: TVShowInput): Record<string, unknown> {
     age_rating: input.ageRating ?? null,
     tmdb_score: input.tmdbScore ?? null,
     source: input.source ?? null,
+    provider_ids: input.providerIds ?? {},
     external_id: input.externalId ?? null,
     poster_url: input.posterUrl ?? null,
     backdrop_url: input.backdropUrl ?? null,
@@ -387,7 +392,7 @@ export async function updateSeason(
 }
 
 // First call syncs the season's episodes in from TVmaze if none exist yet
-// (needs the show's externalId — set at creation from a TVmaze search
+// (needs the show's externalId â€” set at creation from a TVmaze search
 // result); every later call just reads what's already stored.
 export async function fetchEpisodes(
   showId: string,
@@ -433,7 +438,7 @@ export async function updateEpisode(
   return mapBackendTVShow(raw);
 }
 
-// Sets `watched` on many episodes in one request — a shift-click range
+// Sets `watched` on many episodes in one request â€” a shift-click range
 // select or "mark watched up to here" would otherwise cost one PATCH per
 // episode.
 export async function bulkSetEpisodesWatched(
@@ -468,7 +473,7 @@ export async function deleteSeason(
 }
 
 // A raw metadata search result, straight from whichever provider (TMDB or
-// OMDb) found it — already snake_case-to-camelCase mapped here since these
+// OMDb) found it â€” already snake_case-to-camelCase mapped here since these
 // never round-trip back to the backend the way BackendTVShow does.
 export interface TVShowMetadataSeason {
   seasonNumber: number;
@@ -479,6 +484,9 @@ export interface TVShowMetadataSeason {
 }
 
 export interface TVShowMetadataResult {
+  candidateId?: string;
+  releaseYear?: number | null;
+  providerIds?: Record<string, string>;
   provider: string;
   providerId: string;
   title: string;
@@ -587,7 +595,7 @@ export async function searchTVShowMetadata(
   };
 }
 
-// Related/Recommended titles — a plain item, not a full TVShow: these
+// Related/Recommended titles â€” a plain item, not a full TVShow: these
 // exist only to render a graph node or a poster tile and link back to
 // their source provider, never round-tripped into this app's own data.
 export interface RelatedShow {
@@ -620,7 +628,7 @@ function mapRelatedShow(r: BackendRelatedShow): RelatedShow {
   return { id: r.id, title: r.title, year: r.year, posterUrl: r.poster_url };
 }
 
-// TheTVDB is the only real franchise source for TV — `configured: false`
+// TheTVDB is the only real franchise source for TV â€” `configured: false`
 // means no TVDB key is set yet, distinct from a real empty result (the
 // show simply isn't part of a franchise).
 export async function fetchTVShowRelations(

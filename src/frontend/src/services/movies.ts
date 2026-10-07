@@ -29,6 +29,7 @@ export interface BackendMovie {
   age_rating: string | null;
   tmdb_score: number | string | null;
   source: string | null;
+  provider_ids?: Record<string, string>;
   poster_url: string | null;
   backdrop_url: string | null;
   status: string;
@@ -90,6 +91,7 @@ export function mapBackendMovieRaw(raw: BackendMovie): Movie {
     ageRating: raw.age_rating,
     tmdbScore: toNumberOrNull(raw.tmdb_score),
     source: raw.source,
+    providerIds: raw.provider_ids ?? {},
     posterUrl: raw.poster_url,
     backdropUrl: raw.backdrop_url,
     status: normalizeStatus(raw.status),
@@ -129,7 +131,7 @@ export type TrashedMovie = TrashedMedia;
 export const fetchMovieTrash = api.fetchTrash;
 export const restoreMovie = api.restore;
 export const purgeMovie = api.purge;
-// Round-trips a loaded Movie back into MovieInput shape — used when a
+// Round-trips a loaded Movie back into MovieInput shape â€” used when a
 // caller needs to change one field (e.g. toggling favorite from the
 // detail page) without reopening the full edit form, since updateMovie
 // always sends every field rather than a true partial patch.
@@ -150,6 +152,7 @@ export function movieToInput(movie: Movie): MovieInput {
     ageRating: movie.ageRating,
     tmdbScore: movie.tmdbScore,
     source: movie.source,
+    providerIds: movie.providerIds,
     posterUrl: movie.posterUrl,
     backdropUrl: movie.backdropUrl,
     status: movie.status,
@@ -184,6 +187,7 @@ export interface MovieInput {
   ageRating?: string | null;
   tmdbScore?: number | null;
   source?: string | null;
+  providerIds?: Record<string, string>;
   posterUrl?: string | null;
   backdropUrl?: string | null;
   status?: MovieStatus;
@@ -220,6 +224,7 @@ function inputToBody(input: MovieInput): Record<string, unknown> {
     age_rating: input.ageRating ?? null,
     tmdb_score: input.tmdbScore ?? null,
     source: input.source ?? null,
+    provider_ids: input.providerIds ?? {},
     poster_url: input.posterUrl ?? null,
     backdrop_url: input.backdropUrl ?? null,
     priority: input.priority ?? null,
@@ -241,9 +246,12 @@ function inputToBody(input: MovieInput): Record<string, unknown> {
 }
 
 // A raw metadata search result, straight from whichever provider (TMDB or
-// OMDb) found it — already snake_case-to-camelCase mapped here since these
+// OMDb) found it â€” already snake_case-to-camelCase mapped here since these
 // never round-trip back to the backend the way BackendMovie does.
 export interface MovieMetadataResult {
+  candidateId?: string;
+  releaseYear?: number | null;
+  providerIds?: Record<string, string>;
   provider: string;
   providerId: string;
   title: string;
@@ -332,7 +340,7 @@ export async function searchMovieMetadata(
   };
 }
 
-// Related/Recommended titles — a plain item, not a full Movie: these
+// Related/Recommended titles â€” a plain item, not a full Movie: these
 // exist only to render a graph node or a poster tile and link back to
 // TMDB, never round-tripped into this app's own data.
 export interface RelatedMovie {

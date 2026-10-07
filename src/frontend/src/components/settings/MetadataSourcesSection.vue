@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import PasswordInput from "../PasswordInput.vue";
+import MetadataProviderSettings from "../plugins/MetadataProviderSettings.vue";
 import { useMetadataSources } from "../../composables/useMetadataSources";
 const {
   SHORT_DESC,
@@ -72,6 +73,7 @@ const {
 <template>
   <section class="settings-section">
     <h2>Metadata/API</h2>
+    <MetadataProviderSettings />
     <p class="section-hint">
       Providers used to search for and fill in game metadata and art, plus
       achievement/account connections. Click a tile's key icon to configure it:

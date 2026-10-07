@@ -70,7 +70,7 @@ defineExpose({ review, close });
       {{ runtime.last_error }}
     </p>
     <a
-      href="https://github.com/Rosefall-a/unnamed_tracking_app/blob/plugin-manager/wiki/docs/development/plugin-runtime.md"
+      href="https://github.com/obsoletelabs/unnamed_tracking_app_2/blob/main/wiki/docs/development/plugin-runtime.md"
       target="_blank"
       rel="noopener noreferrer"
       >Runtime setup and Bubblewrap help</a

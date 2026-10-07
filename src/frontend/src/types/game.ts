@@ -62,6 +62,7 @@ export interface GamePlatform {
 
 export interface Game {
   lockedFields?: string[];
+  providerIds?: Record<string, string>;
   id: string;
   title: string;
   coverColor: string;
