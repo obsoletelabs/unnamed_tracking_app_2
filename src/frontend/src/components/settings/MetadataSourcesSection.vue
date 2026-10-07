@@ -37,8 +37,9 @@ const {
   <section class="settings-section">
     <h2>Metadata/API</h2>
     <p class="section-hint">
-      Search metadata and artwork through installed providers. Expand a tile to
-      configure your account credentials or view its validation status.
+      Search metadata and artwork through built-in and optional providers.
+      Expand a tile to configure your account credentials or view its validation
+      status.
     </p>
     <MetadataProviderSettings />
 

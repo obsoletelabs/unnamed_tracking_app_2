@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from "vue";
 import PasswordInput from "../PasswordInput.vue";
+import MetadataProviderSettings from "../plugins/MetadataProviderSettings.vue";
 import {
   fetchDeploymentSettings,
   updateDeploymentSettings,
@@ -8,15 +9,7 @@ import {
 import TrustedProxyControls from "./TrustedProxyControls.vue";
 
 const fields = [
-  ["steamgriddb_api_key", "SteamGridDB API key"],
   ["retroachievements_api_key", "RetroAchievements API key"],
-  ["giantbomb_api_key", "Giant Bomb API key"],
-  ["igdb_client_id", "IGDB client ID"],
-  ["igdb_client_secret", "IGDB client secret"],
-  ["screenscraper_ssid", "ScreenScraper app username"],
-  ["screenscraper_sspassword", "ScreenScraper app password"],
-  ["screenscraper_devid", "ScreenScraper developer ID"],
-  ["screenscraper_devpassword", "ScreenScraper developer password"],
   ["xbox_client_id", "Xbox client ID"],
   ["xbox_client_secret", "Xbox client secret"],
 ] as const;
@@ -88,20 +81,25 @@ async function save() {
   <section class="section">
     <h2>Server integrations</h2>
     <p class="hint">
-      Admin-only deployment credentials for metadata and external services.
-      Secrets are encrypted in the database and are never returned to the
-      browser after saving. Values supplied by the deployment environment are
-      managed there and cannot be replaced from this page.
+      Admin-only deployment credentials for account integrations. Secrets are
+      encrypted in the database and are never returned to the browser after
+      saving. Values supplied by the deployment environment are managed there
+      and cannot be replaced from this page.
     </p>
     <p class="hint">
-      Metadata search and artwork now use installed provider plugins. Set their
-      system defaults or your account overrides under
+      Metadata credentials are managed in the provider tiles below. The core
+      providers are included with the app; additional providers are optional.
+      Your personal overrides are available under
       <router-link to="/settings?section=sources">Metadata/API</router-link>.
-      The legacy fields below remain available for existing integrations; they
-      are not automatically copied into provider plugins.
+      Existing core metadata keys are carried into these encrypted settings.
     </p>
     <div v-if="loading">Loading…</div>
     <template v-else>
+      <MetadataProviderSettings initial-scope="system" />
+      <h3>Account integrations</h3>
+      <p class="hint">
+        RetroAchievements library/achievement sync and Xbox account access.
+      </p>
       <div class="grid">
         <label v-for="[key, label] in fields" :key="key"
           ><span>{{ label }}</span

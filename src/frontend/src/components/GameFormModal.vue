@@ -710,7 +710,7 @@ async function submit() {
                 v-if="metadataProvidersLoaded && !hasMediaProvider"
                 class="steamgriddb-hint"
               >
-                Install and configure an artwork provider in
+                Configure the built-in artwork providers in
                 <router-link
                   to="/settings?section=sources"
                   @click="emit('close')"

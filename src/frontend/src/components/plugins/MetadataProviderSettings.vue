@@ -9,9 +9,12 @@ import {
 } from "../../services/metadata";
 import type { MetadataProviderStatus } from "../../services/metadata";
 
-const props = defineProps<{ pluginId?: string }>();
+const props = defineProps<{
+  pluginId?: string;
+  initialScope?: "user" | "system";
+}>();
 const providers = ref<MetadataProviderStatus[]>([]);
-const scope = ref<"user" | "system">("user");
+const scope = ref<"user" | "system">(props.initialScope ?? "user");
 const values = ref<Record<string, Record<string, string>>>({});
 const busy = ref<string | null>(null);
 const error = ref<string | null>(null);
@@ -130,7 +133,7 @@ onMounted(() => void refresh());
     <div class="provider-toolbar">
       <h3 class="group-heading">Metadata</h3>
       <router-link v-if="!pluginId" to="/settings?section=plugins"
-        >Manage providers</router-link
+        >Optional plugins</router-link
       >
       <button
         type="button"
@@ -149,12 +152,14 @@ onMounted(() => void refresh());
       </select>
     </label>
     <p class="section-hint">
-      Your account credentials take precedence over system defaults. Saved
-      secrets stay hidden.
+      Core providers are included with the app. Steam game search, TVmaze and
+      anime search work without keys; additional providers are optional. Your
+      account credentials take precedence over system defaults. Saved secrets
+      stay hidden.
     </p>
     <p v-if="loading" class="section-hint" role="status">Loading providers…</p>
     <p v-else-if="!shown.length" class="section-hint">
-      Install and enable a metadata provider in Plugin Manager to get started.
+      Core providers are unavailable. Refresh status or check the server logs.
     </p>
     <div class="source-grid">
       <article
@@ -184,6 +189,7 @@ onMounted(() => void refresh());
         </div>
         <p class="tile-desc" :title="description(provider)">
           {{ description(provider) }}
+          <span v-if="provider.included" class="tile-hint"> · Built in</span>
         </p>
         <div class="tile-actions">
           <button

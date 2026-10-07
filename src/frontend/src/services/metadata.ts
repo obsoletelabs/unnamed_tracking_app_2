@@ -5,6 +5,7 @@ export type MetadataMediaType = "game" | "movie" | "tv_show" | "anime";
 export interface MetadataProviderStatus {
   provider_id: string;
   plugin_id: string;
+  included?: boolean;
   name: string;
   media_types: MetadataMediaType[];
   state: string;
