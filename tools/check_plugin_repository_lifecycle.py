@@ -62,7 +62,7 @@ def configure_downloads(work):
     sys.path.insert(0, str(HOST / "src/backend"))
     from src.api.routes.plugin_manager import acquisition
 
-    original = acquisition._download_remote_file
+    original = acquisition.download_remote_file
 
     async def download(url, *, json_document=False):
         if not url.startswith(FIXTURE_BASE + "/"):
@@ -76,7 +76,7 @@ def configure_downloads(work):
             path = Path(stream.name)
         return path, source.name, len(data)
 
-    acquisition._download_remote_file = download
+    acquisition.download_remote_file = download
 
 
 def serve_host(work, port):
