@@ -64,8 +64,14 @@ const GENRE_ALIASES: Record<string, string[]> = {
   survivalhorror: ["Survival", "Horror"],
 };
 
+function genreLabel(genre: string): string {
+  return genre.replace(/^\s*genre\s*:\s*/i, "").trim();
+}
+
 function genreKey(genre: string): string {
-  return genre.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return genreLabel(genre)
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
 }
 
 const GENRE_BY_KEY = new Map(GENRE_OPTIONS.map((g) => [genreKey(g), g]));
@@ -78,7 +84,7 @@ export function gameGenres(tags: string[]): string[] {
   const add = (genre: string) => {
     const key = genreKey(genre);
     if (key && !byKey.has(key))
-      byKey.set(key, GENRE_BY_KEY.get(key) ?? genre.trim());
+      byKey.set(key, GENRE_BY_KEY.get(key) ?? genreLabel(genre));
   };
   for (const tag of tags) {
     add(tag);
