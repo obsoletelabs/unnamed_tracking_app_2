@@ -19,6 +19,12 @@ Password and editable secret fields are masked by default. The eye control in th
 
 The application supplies its own visibility control and suppresses Edge's native password-reveal control so that password fields do not show two reveal buttons.
 
+## Profile pictures
+
+Upload a picture in Settings > Profile. JPEG, PNG and HEIC/HEIF images are accepted,
+up to 10 MB, and stored as PNG. The sidebar and profile menu refresh after a
+successful upload. Invalid or oversized uploads leave the existing picture intact.
+
 ## API keys
 
 Users can create API keys for integrations that need to authenticate without a browser session.

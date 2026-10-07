@@ -176,9 +176,12 @@ export async function uploadProfilePicture(
   });
 
   if (!response.ok) {
-    const message = await response.text();
+    // Show the validation message returned by the upload endpoint.
+    const body = await response.json().catch(() => null);
     throw new Error(
-      `Failed to upload profile picture: ${response.status} ${response.statusText} ${message}`,
+      typeof body?.detail === "string"
+        ? body.detail
+        : `Failed to upload profile picture (${response.status}).`,
     );
   }
 }

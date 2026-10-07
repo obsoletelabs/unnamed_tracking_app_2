@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 
 from src.api.routes import (
+    achievement_icons,
     anime,
     api_keys,
     app_integrations,
@@ -41,6 +42,7 @@ from src.api.routes import (
     session_manager,
     settings,
     stats,
+    steam_import_steps,
     steam_tags_refresh,
     tv_shows,
     users,
@@ -64,6 +66,7 @@ from src.features.backup.scheduler import run_backup_loop
 from src.features.jobs import run_jobs_loop
 from src.features.metadata.health import monitor as provider_health_monitor
 from src.features.trash.sweep import run_sweep_loop
+from src.helpers import image_prefetch
 from src.plugin_api.backend_routes import reserve_host_routes
 from src.plugin_api.pwa import router as pwa_router
 from src.plugin_api.recovery import recover_transactions
@@ -133,6 +136,8 @@ app.include_router(media_io.router)
 app.include_router(media_extras.router)
 app.include_router(media_provider.router)
 app.include_router(media_images.router)
+app.include_router(achievement_icons.router)
+app.include_router(steam_import_steps.router)
 app.include_router(steam_tags_refresh.router)
 app.include_router(media_lists.router)
 app.include_router(notifications.router)
@@ -167,6 +172,16 @@ async def bootstrap_primary_user() -> None:
                 }
             )
         apply_deployment_provider_credentials(app_integrations_row)
+
+
+@app.on_event("startup")
+async def start_image_prefetch() -> None:
+    image_prefetch.enable()
+
+
+@app.on_event("shutdown")
+async def stop_image_prefetch() -> None:
+    await image_prefetch.disable()
 
 
 @app.on_event("startup")

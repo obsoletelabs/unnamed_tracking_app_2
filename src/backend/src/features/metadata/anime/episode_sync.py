@@ -120,7 +120,6 @@ async def fetch_episodes_with_fallback(
     primary, errors = await collect_owned_record(
         user_id, candidate, resource="episodes", episode_phase="primary"
     )
-    mapped_ids = primary.get("metadata", {}).get("provider_ids", {})
     if not total_known:
         info, total_errors = await fetch_episode_totals(user_id, title, external_id, anilist_id)
         errors.extend(total_errors)
@@ -134,7 +133,8 @@ async def fetch_episodes_with_fallback(
         episodes = [entry for entry in episodes
                     if entry["episode_number"] <= (limit or final_total or 0)]
     return EpisodeFetch(episodes, list(dict.fromkeys(errors)), final_total,
-                        limit or final_total, mapped_ids.get("kitsu"))
+                        limit or final_total,
+                        primary.get("metadata", {}).get("provider_ids", {}).get("kitsu"))
 
 
 async def _complete_episode_sources(

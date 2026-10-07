@@ -3,6 +3,11 @@ import { describe, expect, it } from "vitest";
 import { gameGenres, genreOptionsFor, hasGenre } from "../utils/genres";
 
 describe("gameGenres", () => {
+  it("treats provider-prefixed genres as the same picker choice", () => {
+    expect(gameGenres(["Genre: Indie", "Indie"])).toEqual(["Indie"]);
+    expect(hasGenre(["Genre: Indie"], "Indie")).toBe(true);
+    expect(hasGenre(["Indie"], "Genre: Indie")).toBe(true);
+  });
   it("keeps the provider's genre and adds the shared ones it stands for", () => {
     expect(gameGenres(["Hack and slash/Beat 'em up", "Adventure"])).toEqual([
       "Hack and slash/Beat 'em up",
