@@ -79,7 +79,10 @@ def _is_junk_title(title: str) -> bool:
 
 
 async def _enrich_steam_game_by_appid(
-    game: Game, app_id: int, user: User, use_user_tags: bool = True,
+    game: Game,
+    app_id: int,
+    user: User,
+    use_user_tags: bool = True,
 ) -> None:
     """Owned-game IDs anchor enrichment without another title match."""
     game.provider_ids = {**(game.provider_ids or {}), "steam": str(app_id)}
@@ -166,18 +169,25 @@ async def _enrich_new_game(game: Game, user: User, preferences: dict) -> None:
     """Fill newly imported rows through the same scoped metadata and media operations."""
     async with SessionLocal() as metadata_db:
         record, _ = await resolve_library_record(
-            metadata_db, user.id,
-            library_candidate(game.title, MediaType.GAME, game.provider_ids or {},
-                              game.release_date.year if game.release_date else None),
-            include_media=True, preferences=preferences,
+            metadata_db,
+            user.id,
+            library_candidate(
+                game.title,
+                MediaType.GAME,
+                game.provider_ids or {},
+                game.release_date.year if game.release_date else None,
+            ),
+            include_media=True,
+            preferences=preferences,
         )
     if not record:
         return
     match = game_result(record)
     game.provider_ids = {**(game.provider_ids or {}), **record.get("provider_ids", {})}
     if game.title.startswith("Steam app ") and match.get("title"):
-        apply_metadata_updates(game, {"title": match["title"],
-                                      "sort_title": match["title"].lower()})
+        apply_metadata_updates(
+            game, {"title": match["title"], "sort_title": match["title"].lower()}
+        )
     for field in (
         "description",
         "developer",
@@ -196,7 +206,7 @@ async def _enrich_new_game(game: Game, user: User, preferences: dict) -> None:
     release_date = match.get("release_date")
     if release_date:
         try:
-            game.release_date = date.fromisoformat(release_date)
+            apply_metadata_updates(game, {"release_date": date.fromisoformat(release_date)})
         except ValueError:
             pass
     asset_fields: list[tuple[AssetKind, str]] = [
@@ -717,9 +727,7 @@ async def sync_retroachievements_library(
 
     async def _enrich(game: Game) -> None:
         async with semaphore:
-            await _enrich_new_game(
-                game, current_user, preferences
-            )
+            await _enrich_new_game(game, current_user, preferences)
 
     await asyncio.gather(*(_enrich(g) for g in newly_created))
 
@@ -818,9 +826,7 @@ async def sync_psn_library(
 
     async def _enrich(game: Game) -> None:
         async with semaphore:
-            await _enrich_new_game(
-                game, current_user, preferences
-            )
+            await _enrich_new_game(game, current_user, preferences)
 
     await asyncio.gather(*(_enrich(g) for g in newly_created))
 

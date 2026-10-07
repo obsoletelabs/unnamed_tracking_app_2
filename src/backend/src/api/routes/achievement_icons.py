@@ -51,9 +51,5 @@ async def get_achievement_icon(
         try:
             await asyncio.to_thread(fetch_and_store, url, target, WIDTHS["icon"])
         except RemoteImageError:
-            return RedirectResponse(
-                url,
-                status_code=status.HTTP_307_TEMPORARY_REDIRECT,
-                headers={"Cache-Control": "no-store"},
-            )
+            return RedirectResponse(url, headers={"Cache-Control": "no-store"})
     return response
