@@ -185,8 +185,12 @@ def test_session_replacements_require_the_exact_page_grant(page):
     data = document_data()
     data["page_replacements"] = [{"id": "enhanced-sessions", "page": page, "page_id": "dashboard"}]
     document = PluginUiDocument.model_validate(data)
-    for unrelated in ("frontend.settings", "frontend.page.replace.settings",
-                      "frontend.page.replace.home", "frontend.page.extend"):
+    for unrelated in (
+        "frontend.settings",
+        "frontend.page.replace.settings",
+        "frontend.page.replace.home",
+        "frontend.page.extend",
+    ):
         assert _filter_ui_document(document, frozenset({unrelated})).page_replacements == ()
     granted = _filter_ui_document(document, frozenset({f"frontend.page.replace.{page}"}))
     assert granted.page_replacements[0].page.value == page

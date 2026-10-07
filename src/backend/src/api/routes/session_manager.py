@@ -51,23 +51,25 @@ def view(
     if not enriched:
         return data
     coordinates_available = geoip.availability()["city"]
-    data.update({
-        "location": {
-            "country": session.geo_country,
-            "region": session.geo_region,
-            "city": session.geo_city,
-            "latitude": session.geo_latitude if coordinates_available else None,
-            "longitude": session.geo_longitude if coordinates_available else None,
-            "network_type": session.geo_network_type,
-            "network_label": session.geo_network_label,
-            "network_number": session.geo_network_number,
-            "network_organization": session.geo_network_organization,
-        },
-        "anomaly": {
-            "reason": session.anomaly_reason,
-            "previous_location": session.anomaly_previous_location,
-        },
-    })
+    data.update(
+        {
+            "location": {
+                "country": session.geo_country,
+                "region": session.geo_region,
+                "city": session.geo_city,
+                "latitude": session.geo_latitude if coordinates_available else None,
+                "longitude": session.geo_longitude if coordinates_available else None,
+                "network_type": session.geo_network_type,
+                "network_label": session.geo_network_label,
+                "network_number": session.geo_network_number,
+                "network_organization": session.geo_network_organization,
+            },
+            "anomaly": {
+                "reason": session.anomaly_reason,
+                "previous_location": session.anomaly_previous_location,
+            },
+        }
+    )
     return data
 
 
@@ -163,8 +165,13 @@ async def list_all_sessions(
             continue
         if needle and not any(
             needle in (value or "").lower()
-            for value in (username, session.ip_address, session.user_agent,
-                          session.geo_country, session.geo_region)
+            for value in (
+                username,
+                session.ip_address,
+                session.user_agent,
+                session.geo_country,
+                session.geo_region,
+            )
         ):
             continue
         result.append(view(session, current_hash, username, enriched=enriched))

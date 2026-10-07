@@ -43,33 +43,53 @@ def native_sessions():
     UserSession.__table__.create(engine)
     with Session(engine, expire_on_commit=False) as db:
         users = [
-            User(id=uuid4(), username=name, email=f"{name}@example.test",
-                 password_hash="unused", is_admin=name == "admin")
+            User(
+                id=uuid4(),
+                username=name,
+                email=f"{name}@example.test",
+                password_hash="unused",
+                is_admin=name == "admin",
+            )
             for name in ("member", "admin")
         ]
         tokens = ["member-cookie", "admin-cookie"]
         now = int(time.time())
         rows = [
-            UserSession(id=uuid4(), user_id=user.id, token_hash=hash_token(token),
-                        expires_at=now + 3600, created_at=now - 100,
-                        last_seen_at=now, ip_address="203.0.113.5", user_agent="Test browser")
+            UserSession(
+                id=uuid4(),
+                user_id=user.id,
+                token_hash=hash_token(token),
+                expires_at=now + 3600,
+                created_at=now - 100,
+                last_seen_at=now,
+                ip_address="203.0.113.5",
+                user_agent="Test browser",
+            )
             for user, token in zip(users, tokens, strict=True)
         ]
-        expired = UserSession(id=uuid4(), user_id=users[0].id, token_hash="expired-hash",
-                              expires_at=now - 1, created_at=now - 200, last_seen_at=now - 100)
+        expired = UserSession(
+            id=uuid4(),
+            user_id=users[0].id,
+            token_hash="expired-hash",
+            expires_at=now - 1,
+            created_at=now - 200,
+            last_seen_at=now - 100,
+        )
         db.add_all([*users, *rows, expired])
         db.commit()
         app = FastAPI()
         app.include_router(router)
         app.dependency_overrides[get_db] = lambda: SessionDb(db)
-        yield SimpleNamespace(app=app, db=db, users=users, rows=rows,
-                              expired=expired, tokens=tokens)
+        yield SimpleNamespace(
+            app=app, db=db, users=users, rows=rows, expired=expired, tokens=tokens
+        )
     engine.dispose()
 
 
 def client_for(boundary, user=0):
     return httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=boundary.app), base_url="http://test",
+        transport=httpx.ASGITransport(app=boundary.app),
+        base_url="http://test",
         cookies={session_cookie_name("test"): boundary.tokens[user]},
     )
 
@@ -89,8 +109,9 @@ async def test_basic_lists_skip_geoip_and_keep_owner_and_admin_scopes(native_ses
         assert sum(row["is_current"] for row in rows) == 1
         assert rows[0]["ip_address"] == "203.0.113.5"
         assert rows[0]["created_at"] == native_sessions.rows[0].created_at
-        assert not any(key in row for row in rows for key in
-                       ("location", "anomaly", "token", "token_hash"))
+        assert not any(
+            key in row for row in rows for key in ("location", "anomaly", "token", "token_hash")
+        )
         assert (await client.get("/api/sessions/admin?enriched=false")).status_code == 403
     async with client_for(native_sessions, 1) as client:
         response = await client.get("/api/sessions/admin?enriched=false")
@@ -127,7 +148,9 @@ async def test_admin_user_revocation_is_scoped_and_preserves_audit_rows(native_s
 
 @pytest.mark.asyncio
 async def test_legacy_enriched_response_is_preserved(native_sessions, monkeypatch):
-    monkeypatch.setattr("src.api.routes.session_manager.geoip.availability", lambda: {"city": False})
+    monkeypatch.setattr(
+        "src.api.routes.session_manager.geoip.availability", lambda: {"city": False}
+    )
     async with client_for(native_sessions) as client:
         rows = (await client.get("/api/sessions/me")).json()
         assert "location" in rows[0] and "anomaly" in rows[0]
