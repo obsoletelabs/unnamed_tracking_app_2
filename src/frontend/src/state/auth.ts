@@ -10,6 +10,8 @@ let checkGeneration = 0;
 export async function ensureAuthChecked() {
   if (!authChecked.value || authCheckFailed.value) await checkAuth();
 }
+// bumped after a new profile picture is uploaded so every avatar refetches it
+export const avatarVersion = ref(Date.now());
 
 export async function checkAuth() {
   const generation = ++checkGeneration;

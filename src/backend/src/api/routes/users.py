@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 from PIL import Image, UnidentifiedImageError
+from pillow_heif import register_heif_opener
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import get_current_user
@@ -22,6 +23,8 @@ router = APIRouter(
 _USER_DATA_ROOT = Path("/data/user")
 _PROFILE_FILENAME = "profile.png"
 _MAX_PROFILE_SIZE = 10 * 1024 * 1024
+
+register_heif_opener()
 
 
 async def _get_user_or_404(user_id: UUID, db: AsyncSession) -> User:

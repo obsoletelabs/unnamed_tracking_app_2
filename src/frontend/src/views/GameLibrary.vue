@@ -48,7 +48,6 @@ const {
   searchQuery,
   statusFilter,
   platformFilter,
-  genreFilter,
   sortBy,
   showAdvancedFilters,
   franchiseFilter,
@@ -62,8 +61,8 @@ const {
   achievementsFilter,
   retroAchievementsOnly,
   missingFilter,
-  tagsFilter,
   toggleTagFilter,
+  isTagSelected,
   recentSearches,
   showRecentSearches,
   commitSearchToRecent,
@@ -160,7 +159,8 @@ const compactPreview = computed(
         <div>
           <h1>Games</h1>
           <div class="sub">
-            {{ games.length }} {{ games.length === 1 ? "game" : "games" }}
+            {{ filteredGames.length }}
+            {{ filteredGames.length === 1 ? "game" : "games" }}
           </div>
         </div>
         <button
@@ -403,12 +403,6 @@ const compactPreview = computed(
             placeholder="Platform"
             all-label="All platforms"
           />
-          <FilterCombobox
-            v-model="genreFilter"
-            :options="genreOptions"
-            placeholder="Genre"
-            all-label="All genres"
-          />
         </div>
         <div class="advanced-field">
           <label>Franchise</label>
@@ -500,14 +494,15 @@ const compactPreview = computed(
           </select>
         </div>
         <div class="advanced-field advanced-field-wide">
-          <label>Tags (any of)</label>
+          <label>Tags &amp; genres (any of)</label>
           <div class="tags-multiselect">
             <button
               v-for="tag in genreOptions"
               :key="tag"
               type="button"
               class="tag-chip"
-              :class="{ active: tagsFilter.includes(tag) }"
+              :class="{ active: isTagSelected(tag) }"
+              :aria-pressed="isTagSelected(tag)"
               @click="toggleTagFilter(tag)"
             >
               {{ tag }}
