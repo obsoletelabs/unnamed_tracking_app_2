@@ -1,6 +1,6 @@
 # Metadata providers
 
-Unnamed Tracking App discovers metadata capabilities from installed provider plugins for games, movies, TV and anime. Search results arrive progressively; metadata enriches the current top three from five characters, and artwork starts after selection. Install and configure providers through the existing plugin manager and **Settings → Metadata/API**. Provider order and field-saving preferences remain per user.
+Unnamed Tracking App includes hardcoded Steam, IGDB, SteamGridDB, TVmaze, AniList, AniZip and OMDb providers. Steam game search, TV and anime search work without installing plugins. Optional provider plugins can extend the suite. Search results arrive progressively; from five query characters, up to four metadata fetches run concurrently from the top down. Each completed fetch starts the next while the query stays unchanged. Artwork starts after selection. Configure the built-in providers through **Settings → Metadata/API**. Install optional providers through Plugin Manager. Provider order and field-saving preferences remain per user.
 
 ## Protect a title
 
@@ -45,7 +45,7 @@ If a provider does not return a value, the existing value is not cleared.
 
 The refresh uses the same generic metadata handler as search. Providers run concurrently. The user's provider order determines field authority, while artwork is a separate selected-entity operation. Provider failures are reported without discarding successful results from other providers.
 
-Provider credentials are declared by each plugin and configured in the host provider panel. Field-save toggles remain in metadata preferences. The game editor uses that same configuration.
+Provider credentials are declared by each built-in or optional provider and configured in the host provider panel. Field-save toggles remain in metadata preferences. The game editor uses that same configuration.
 
 ## Provider failures and stale previews
 
@@ -63,19 +63,20 @@ row under a lock, so a protection change during lookup is respected.
 
 See [Progressive metadata and Plugin API 1.1.1](../development/metadata-providers.md)
 for the public contract, session endpoints and migration details. Provider
-implementations are maintained in [obsoletelabs/unnamed_tracking_app_plugins](https://github.com/obsoletelabs/unnamed_tracking_app_plugins).
+optional implementations are maintained in [obsoletelabs/unnamed_tracking_app_plugins](https://github.com/obsoletelabs/unnamed_tracking_app_plugins).
 
 ## Where keys go
 
-Open **Settings → Metadata → Sources & API keys**, or the provider's
-plugin settings dialog. Fields declare system, user or both scopes. Administrators
+Open **Settings → Metadata → Sources & API keys**. Administrators can also use
+the same provider tiles in **Server integrations**, with System default selected. Fields declare system, user or both scopes. Administrators
 may save system values; users may save their own values. A user override wins over
 a system fallback when both scopes are supported. Reads show configuration presence
 and health, never stored values. Clearing a user override restores the system fallback.
 Configuration queues immediate validation; periodic validation defaults to 30 minutes.
 
-Move metadata keys from legacy integration fields to the matching provider plugin
-fields. They are not silently copied across permission boundaries. Existing Steam,
+Existing IGDB, SteamGridDB and OMDb core keys are carried into missing encrypted
+provider scopes. Existing new settings and explicit clears are preserved. Optional
+plugins do not receive legacy host keys automatically. Existing Steam,
 RetroAchievements and console account-sync credentials remain in account integrations.
 IGDB declares system Twitch credentials; other providers declare their own scopes.
 TMDB is optional and may be left unconfigured. TVmaze and public anime providers
@@ -84,14 +85,14 @@ operate without signup. Movie sources require a configured movie provider such a
 ## Familiar interface, progressive results
 
 The source panel retains the original compact tiles, colored monograms, key
-buttons and expandable credential forms. Installed plugins determine the available
-tiles. Each shows its current health; expand a tile for the last validation time
+buttons and expandable credential forms. The seven built-in tiles are always
+available; installed optional plugins add their own tiles. Each shows its current health; expand a tile for the last validation time
 and saved-value presence. Administrators choose **System default** for shared
 credentials or **My account** for a personal override. Changing scope clears
 unsaved input so it cannot be saved accidentally to the other scope. The original
 account-import connections remain below the metadata tiles.
 
-![Installed metadata providers in the original tile layout](../assets/plugin-metadata/provider-tiles.jpg)
+![Built-in core providers in the original tile layout](../assets/plugin-metadata/provider-tiles.jpg)
 
 ![SteamGridDB system configuration with the stored secret hidden](../assets/plugin-metadata/provider-configuration.jpg)
 
@@ -100,21 +101,21 @@ Ownership and Page tabs. Identity results appear before artwork; failed optional
 providers produce a short warning while successful results stay selectable.
 Selecting a result populates the existing fields and starts artwork lookup.
 
-![Portal 2 search with usable Steam results despite a provider outage](../assets/plugin-metadata/game-search.jpg)
+![Portal 2 search with built-in Steam results](../assets/plugin-metadata/game-search.jpg)
 
 ![Selected Portal 2 details populated in the existing game editor](../assets/plugin-metadata/game-details.jpg)
 
 ![SteamGridDB cover and banner choices after selection](../assets/plugin-metadata/game-artwork.jpg)
 
-These screenshots were captured on 2026-10-07 using installed development packages
-and a disposable empty library. They demonstrate Steam and SteamGridDB live data;
+These screenshots were captured on 2026-10-07 using the built-in core providers
+and a disposable development library with no installed plugins. They demonstrate Steam and SteamGridDB live data;
 they do not imply that every authenticated provider has been configured or validated.
 
 ## Safe operation
 
 - Keep secrets out of screenshots, logs, browser storage and repositories.
-- Metadata credentials use the application's existing encrypted storage and scoped gateway.
-- Only a granted provider action can obtain its effective credential fields.
+- Metadata credentials use the application's existing encrypted storage and user/system scopes.
+- Native core adapters receive only their resolved credentials; optional plugin actions require their declared grants.
 - Disabled and unconfigured optional providers do not produce search warnings.
 - Temporary outages and rate limits do not discard successful results.
 - Search and selection are previews; review fields before saving.
@@ -152,3 +153,22 @@ The setting is under Settings, Metadata, Scan & providers. It applies:
 The tags are read from each game's public Steam store page, the only place Steam
 shows them. If a page cannot be read, the game keeps the tags it has. With the
 setting off, Steam games get Steam's official genres as before.
+
+## Core-only installation
+
+The core suite works directly in the app; Plugin Manager may be empty. Steam does
+not require a Steam Web API key for metadata. Its account/library credentials
+are separate. Movie search needs an OMDb key or an optional movie provider; TMDB
+is not required. Core metadata also works while the optional plugin runtime is
+unavailable.
+
+![Core metadata with no installed plugins](../assets/plugin-metadata/core-providers.jpg)
+
+![Unified administrator provider controls](../assets/plugin-metadata/admin-core-providers.jpg)
+
+The following verification view deliberately stopped the optional plugin runtime.
+The inventory is empty; the core search/details/artwork screenshots above were
+captured without relying on that runtime. Optional runtime/catalogue failures
+remain visible in Plugin Manager.
+
+![Empty plugin inventory during the independent core test](../assets/plugin-metadata/core-empty-plugins.jpg)

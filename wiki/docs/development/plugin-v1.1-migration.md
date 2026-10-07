@@ -104,7 +104,8 @@ Jellyfin acceptance runner.
 
 ## Metadata provider extension (1.1.1)
 
-Search and refresh use installed provider capabilities through the existing runtime.
-Provider configuration and health appear in the host's metadata/plugin settings.
+Search and refresh use the hardcoded core providers and optional installed provider plugins
+through one shared metadata handler. Core search does not require the plugin runtime.
+Provider configuration and health appear in the host's metadata settings.
 See [the progressive metadata contract](../development/metadata-providers.md) for
 phase separation, scoped credential migration, deadlines and persistence behavior.

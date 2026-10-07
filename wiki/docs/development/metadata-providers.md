@@ -1,9 +1,34 @@
 # Progressive metadata and Plugin API 1.1.1
 
-The host owns one metadata handler for games, movies, TV and anime. Provider
-implementations live in [the companion plugin repository](https://github.com/obsoletelabs/unnamed_tracking_app_plugins).
-They use the existing package, permission, runtime action and gateway boundaries.
-Provider installation does not require adding a provider name to host code.
+The host owns one metadata handler for games, movies, TV and anime. Its core
+providers are **hardcoded inside the host application** and invoke their APIs
+directly through cancellable asynchronous HTTP. They are not installed plugins,
+packages, runtime workers or catalogue downloads. No plugin runtime or manual
+provider installation is needed for default game, TV or anime search.
+
+| Built-in provider | Default capability | Credentials |
+| --- | --- | --- |
+| Steam | Game search, metadata, selected CDN artwork | None for metadata |
+| IGDB | Game search, metadata, artwork | System Twitch client ID/secret |
+| SteamGridDB | Selected game artwork | System or personal API key |
+| TVmaze | TV search, seasons, episodes, airing, artwork | None |
+| AniList | Anime search, episodes, airing, franchise/recommendations, artwork | None |
+| AniZip | Primary anime episode details and cross-provider IDs | None |
+| OMDb | Movie/TV search, metadata and poster | System or personal API key |
+
+Optional GOG, GiantBomb, RetroAchievements, ScreenScraper, HowLongToBeat, Kitsu,
+Jikan, TMDB and TVDB implementations live in
+[the companion repository](https://github.com/obsoletelabs/unnamed_tracking_app_plugins).
+They use the existing verified package, permission, runtime action and gateway
+boundaries. Adding an optional provider does not require a host code change.
+Both kinds use the same canonical response models, ranking, rolling metadata preloading,
+selection, hard deadlines, scoped credentials, health and library persistence.
+
+The native modules are under `features/metadata/builtin`, with `core.py` selecting
+the fixed suite and `core_http.py` implementing cancellable pacing and retries.
+The older synchronous provider clients remain for account integration/compatibility;
+metadata discovery uses the native adapters. AniList's franchise traversal is shared
+between the legacy synchronous client and the native asynchronous transport.
 
 ## Public contract
 
@@ -52,8 +77,13 @@ increasing IDs; snapshots and `Last-Event-ID` support reconnection. Another user
 cannot read, select or cancel the session.
 
 Search providers run concurrently and return lightweight identities. Metadata
-starts at five query characters for the current top three. Ranking changes
-cancel unfinished work on demoted candidates and retain completed patches.
+starts at five query characters with up to four concurrent fetches, ordered from
+the top of the current ranking. Each finished fetch frees a slot for the next
+result; slow requests do not hold up a batch. Empty responses and failures also
+free slots. Ranking changes cancel unfinished work outside the preload window
+and retain completed patches. Changing the query or closing the search cancels
+obsolete work; unchanged queries continue down the results without duplicate
+requests for already completed operations.
 Selection through `POST /api/metadata/sessions/{id}/selection` focuses metadata
 and starts artwork. `POST /api/metadata/focus` does the same for an existing
 library identity. `DELETE /api/metadata/sessions/{id}` cancels work.
@@ -100,8 +130,8 @@ Provider-declared configuration supports system, user or both scopes. Admins
 can write system values; users can write only their own values. Values are
 encrypted with the existing application encryption helper, never returned by
 configuration UI reads. Presence flags and safe health classifications are
-visible. Provider actions obtain only the authenticated actor's effective
-values through the configuration gateway; a user override wins over a system
+visible. Native operations receive only the authenticated actor's resolved values; optional
+plugin actions obtain those values through the configuration gateway; a user override wins over a system
 fallback. The handler does not interpret provider-specific secrets.
 
 Configuration queues immediate validation. A nonblocking monitor discovers new
@@ -124,32 +154,44 @@ registrations, encrypted scoped configuration and game provider IDs; existing
 movie/TV/anime identity columns are reused. Keep the application encryption key
 stable so stored credentials remain readable.
 
-Install the desired signed official packages through the plugin manager, review
-permissions, enable them and configure credentials in the provider panel. Move
-metadata keys from legacy integration settings to the matching plugin fields;
-keys are not silently copied across permission boundaries. Existing account
-sync credentials remain in account integrations. TMDB is optional; installations
-can use TVmaze for TV and the public anime providers without signing up for it.
+The seven core providers are ready without installation. Steam supplies keyless
+game search; TVmaze and AniList supply keyless TV/anime search. Configure IGDB,
+SteamGridDB or OMDb only when those capabilities are wanted. TMDB remains an
+optional plugin and may be skipped entirely.
+
+Core credentials have one UI: the familiar provider tiles under Metadata/API,
+also shown with **System default** selected in Administration → Server integrations.
+Legacy IGDB, SteamGridDB and OMDb system/database/environment keys and personal
+SteamGridDB keys are carried forward into missing encrypted scopes. Existing new
+configuration rows, including cleared rows, always win. This is a one-time import
+per configured scope; rotate imported keys through the new provider controls.
+Optional plugins do not receive legacy host keys automatically. Account sync
+credentials remain separate, including RetroAchievements achievement/library
+credentials and Xbox application credentials. Obsolete admin metadata key forms
+have been removed.
 
 ## Validation
 
 Regression suites cover concurrency, hard deadlines, deterministic ranking,
-partial patches, identity conflicts, top-three changes, selected artwork,
+partial patches, identity conflicts, rolling-window changes, selected artwork,
 credential scopes, encryption, lifecycle revocation, health and stale UI events.
-The companion `tools/check_metadata_live.py` exercises installed packages against
-real APIs on a disposable development host and prints counts/classifications only.
+The companion `tools/check_metadata_live.py` exercises native Steam/SteamGridDB
+against real APIs on a disposable development host and prints counts/classifications only.
 Unsigned development previews require explicit plugin-manager approval and are
 not production distribution artifacts. See its wiki for the live validation
 record and providers that remain untested without credentials.
 
-Development validation on 2026-10-07 passed the complete backend suite (1,527
-tests, two skips), followed by five focused tests including the new achievement
-redirect regression. The frontend passed 294 tests, lint, formatting, type
-checking and a production build. Runtime tests passed 145 cases. Backend mypy
-checked 257 files and Pylint scored 10/10. A fresh disposable database upgraded
-through the parent and new migration, downgraded to the parent and re-upgraded
-successfully. Both wiki trees build in strict mode. The companion's validation
-record distinguishes live API success from fixture coverage and missing credentials.
+Core regression coverage verifies a seven-provider fresh registry with no runtime
+calls, encrypted legacy-key migration, cleared-key preservation, stale credential
+rejection, HTTP scope authorization, true request cancellation, identity-only
+Steam search, primary episode details and shared franchise traversal. Existing
+handler, plugin security, library, migration and frontend suites remain required.
+Live checks distinguish native core success from optional-plugin success and
+missing credentials; the PR records the exact commands and results.
+Real API checks also observed intermittent TVmaze and SteamGridDB timeouts.
+Successful results and Steam CDN artwork remained available; response time is
+service-dependent. IGDB and OMDb still lack live development credentials, and
+TMDB signup was skipped at the user's request.
 
 See [the user workflow and screenshots](../integrations/metadata.md) for the
 original source-tile styling, progressive results and selected artwork.
