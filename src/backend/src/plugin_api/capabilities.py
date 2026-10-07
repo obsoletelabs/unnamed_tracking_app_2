@@ -137,6 +137,8 @@ _HIGH = frozenset(
         Capability.FRONTEND_DIALOG,
         Capability.FRONTEND_PAGE_REPLACE_HOME,
         Capability.FRONTEND_PAGE_REPLACE_SETTINGS,
+        Capability.FRONTEND_PAGE_REPLACE_SESSIONS,
+        Capability.FRONTEND_PAGE_REPLACE_ADMIN_SESSIONS,
         Capability.BACKEND_ROUTES,
         Capability.NETWORK_OUTBOUND,
     }

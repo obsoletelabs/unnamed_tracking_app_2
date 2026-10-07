@@ -4,10 +4,11 @@ import asyncio
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import FileResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.api.image_responses import original_image_response
 from src.core.auth import get_current_user
 from src.database.models.achievement import Achievement
 from src.database.models.game import Game
@@ -51,5 +52,5 @@ async def get_achievement_icon(
         try:
             await asyncio.to_thread(fetch_and_store, url, target, WIDTHS["icon"])
         except RemoteImageError:
-            return RedirectResponse(url, headers={"Cache-Control": "no-store"})
+            return original_image_response(url)
     return response

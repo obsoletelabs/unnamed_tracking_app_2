@@ -236,6 +236,8 @@ class HostPage(StrEnum):
 
     HOME = "home"
     SETTINGS = "settings"
+    SESSIONS = "sessions"
+    ADMIN_SESSIONS = "admin-sessions"
 
 
 class UiVisibility(ContractModel):

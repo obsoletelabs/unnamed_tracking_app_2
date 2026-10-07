@@ -139,9 +139,10 @@ export interface UiPluginRoute {
   path: string;
   page_id: string;
 }
+export type HostPage = "home" | "settings" | "sessions" | "admin-sessions";
 export interface UiPageReplacement {
   id: string;
-  page: "home" | "settings";
+  page: HostPage;
   page_id: string;
   order: number;
 }
