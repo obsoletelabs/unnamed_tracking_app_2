@@ -161,14 +161,22 @@ async def refresh_game_metadata(
     scan_settings = await get_or_create_scan_settings(current_user.id, db)
     preferences = _scan_settings_to_preferences(scan_settings)
     record, failures = await resolve_library_record(
-        db, current_user.id,
-        library_candidate(game.title, MediaType.GAME, game.provider_ids or {},
-                          game.release_date.year if game.release_date else None),
+        db,
+        current_user.id,
+        library_candidate(
+            game.title,
+            MediaType.GAME,
+            game.provider_ids or {},
+            game.release_date.year if game.release_date else None,
+        ),
         include_media=payload.fill_missing_art or payload.overwrite_existing_art,
         preferences=preferences,
     )
-    result = {"providers": record.get("providers", []), "provider_errors": failures,
-              "results": [game_result(record)] if record else []}
+    result = {
+        "providers": record.get("providers", []),
+        "provider_errors": failures,
+        "results": [game_result(record)] if record else [],
+    }
 
     providers = result.get("providers", [])
     provider_errors = result.get("provider_errors", [])

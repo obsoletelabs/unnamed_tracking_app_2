@@ -39,22 +39,33 @@ def same_entity(first: MetadataCandidate, second: MetadataCandidate) -> bool:
 
 def candidate_id(candidate: MetadataCandidate) -> str:
     """Stable identity within a provider, independent of response timing."""
-    return str(uuid5(NAMESPACE_URL,
-                     f"metadata/{candidate.media_type}/{candidate.provider}/{candidate.external_id}"))
+    return str(
+        uuid5(
+            NAMESPACE_URL,
+            f"metadata/{candidate.media_type}/{candidate.provider}/{candidate.external_id}",
+        )
+    )
 
 
-def rank_key(
-    query: str, candidate: MetadataCandidate, priority: int, position: int
-) -> tuple:
+def rank_key(query: str, candidate: MetadataCandidate, priority: int, position: int) -> tuple:
     """Exact/alternate matches, similarity, provider priority and stable identity break ties."""
     query_title = normalized_title(query)
     titles = (candidate.title, *candidate.alternate_titles)
     exact = any(normalized_title(title) == query_title for title in titles)
-    similarity = max(SequenceMatcher(None, query_title, normalized_title(title)).ratio()
-                     for title in titles)
+    similarity = max(
+        SequenceMatcher(None, query_title, normalized_title(title)).ratio() for title in titles
+    )
     query_tokens = set(query.casefold().split())
     title_tokens = set(candidate.title.casefold().split())
     overlap = len(query_tokens & title_tokens) / max(1, len(query_tokens | title_tokens))
-    return (-int(exact), -similarity, -overlap, priority, position,
-            normalized_title(candidate.title), candidate.year or 0,
-            candidate.provider, candidate.external_id)
+    return (
+        -int(exact),
+        -similarity,
+        -overlap,
+        priority,
+        position,
+        normalized_title(candidate.title),
+        candidate.year or 0,
+        candidate.provider,
+        candidate.external_id,
+    )

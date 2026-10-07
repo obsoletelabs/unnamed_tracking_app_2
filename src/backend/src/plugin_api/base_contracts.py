@@ -768,9 +768,9 @@ class PluginManifest(ContractModel):
     @model_validator(mode="after")
     def validate_metadata_capabilities(self) -> "PluginManifest":
         """Metadata operations require the explicit additive v1.1.1 contract."""
-        if (any(capability.name.startswith("metadata_providers.")
-                for capability in self.capabilities)
-                and parse_semver(self.api_contract_version) < (1, 1, 1)):
+        if any(
+            capability.name.startswith("metadata_providers.") for capability in self.capabilities
+        ) and parse_semver(self.api_contract_version) < (1, 1, 1):
             raise ValueError("metadata provider capabilities require Plugin API v1.1.1")
         return self
 

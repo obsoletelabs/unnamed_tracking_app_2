@@ -46,7 +46,9 @@ class Provider(Protocol):
     def declaration(self) -> MetadataProviderRegistration: ...
 
     async def invoke(
-        self, operation: Operation, request: MetadataProviderRequest,
+        self,
+        operation: Operation,
+        request: MetadataProviderRequest,
         candidate: MetadataCandidate | None = None,
     ) -> ProviderResponse: ...
 
@@ -93,18 +95,23 @@ class SearchSession:
     def emit(self, event: str, **data: Any) -> None:
         """Monotonic event IDs support reconnect and prevent stale frontend updates."""
         self.updated_at = time.time()
-        self.events.append(deepcopy({
-            "id": len(self.events) + 1, "event": event, "session_id": self.id, **data
-        }))
+        self.events.append(
+            deepcopy({"id": len(self.events) + 1, "event": event, "session_id": self.id, **data})
+        )
         self.changed.set()
 
     def snapshot(self) -> dict[str, Any]:
         return {
-            "id": self.id, "query": self.request.query,
-            "media_type": self.request.media_type, "state": self.state,
-            "providers": self.provider_states, "results": list(self.candidates.values()),
-            "selected": self.selected, "started_at": self.started_at,
-            "updated_at": self.updated_at, "last_event_id": len(self.events),
+            "id": self.id,
+            "query": self.request.query,
+            "media_type": self.request.media_type,
+            "state": self.state,
+            "providers": self.provider_states,
+            "results": list(self.candidates.values()),
+            "selected": self.selected,
+            "started_at": self.started_at,
+            "updated_at": self.updated_at,
+            "last_event_id": len(self.events),
         }
 
 
@@ -117,7 +124,9 @@ class MetadataHandler:
         self.sessions: dict[str, SearchSession] = {}
         self.cache: OrderedDict[tuple, tuple[float, ProviderResponse]] = OrderedDict()
 
-    def start(self, request: MetadataProviderRequest, providers: Sequence[Provider]) -> SearchSession:
+    def start(
+        self, request: MetadataProviderRequest, providers: Sequence[Provider]
+    ) -> SearchSession:
         """Schedule providers without making session creation wait for external calls."""
         self.expire()
         session = SearchSession(request, tuple(providers))
@@ -127,12 +136,18 @@ class MetadataHandler:
         return session
 
     def focus(
-        self, request: MetadataProviderRequest, providers: Sequence[Provider],
-        candidate: MetadataCandidate, *, include_media: bool = True,
+        self,
+        request: MetadataProviderRequest,
+        providers: Sequence[Provider],
+        candidate: MetadataCandidate,
+        *,
+        include_media: bool = True,
     ) -> SearchSession:
         """An explicitly selected library identity starts media without another search."""
         self.expire()
-        session = SearchSession(request, tuple(providers), state="selected", media_requested=include_media)
+        session = SearchSession(
+            request, tuple(providers), state="selected", media_requested=include_media
+        )
         self.sessions[session.id] = session
         key = candidate_id(candidate)
         session.sources[key] = Source(candidate, 0, 0)
@@ -185,22 +200,33 @@ class MetadataHandler:
                 yield {"event": "heartbeat", "session_id": session.id}
 
     async def _call(
-        self, session: SearchSession, provider: Provider, operation: Operation,
+        self,
+        session: SearchSession,
+        provider: Provider,
+        operation: Operation,
         candidate: MetadataCandidate | None = None,
-        *, request: MetadataProviderRequest | None = None, timeout: float | None = None,
+        *,
+        request: MetadataProviderRequest | None = None,
+        timeout: float | None = None,
     ) -> ProviderResponse:
         started = time.monotonic()
         try:
-            result = await bounded(provider.invoke(operation, request or session.request, candidate),
-                                   timeout if timeout is not None else self._timeout(session))
+            result = await bounded(
+                provider.invoke(operation, request or session.request, candidate),
+                timeout if timeout is not None else self._timeout(session),
+            )
         except TimeoutError:
             result = ProviderResponse(failure=ProviderFailure(code="timeout"))
         except Exception:  # pylint: disable=broad-exception-caught
             # Exception text and remote bodies can contain credentials. Do not log them.
             result = ProviderResponse(failure=ProviderFailure(code="unavailable"))
-        logger.debug("metadata_operation provider=%s operation=%s elapsed=%.3f outcome=%s",
-                     provider.id, operation, time.monotonic() - started,
-                     result.failure.code if result.failure else "success")
+        logger.debug(
+            "metadata_operation provider=%s operation=%s elapsed=%.3f outcome=%s",
+            provider.id,
+            operation,
+            time.monotonic() - started,
+            result.failure.code if result.failure else "success",
+        )
         return result
 
     async def _search(self, session: SearchSession) -> None:
@@ -226,8 +252,7 @@ class MetadataHandler:
     def _timeout(self, session: SearchSession) -> float:
         return 25 if session.request.policy == "background" else self.operation_timeout
 
-    async def _cached_search(self, provider: Provider,
-                             cache_key: tuple) -> ProviderResponse | None:
+    async def _cached_search(self, provider: Provider, cache_key: tuple) -> ProviderResponse | None:
         cached = self.cache.get(cache_key)
         response = cached[1] if cached and cached[0] > time.monotonic() else None
         # Cached data never bypasses current grants or lifecycle validation.
@@ -239,7 +264,9 @@ class MetadataHandler:
                 response = ProviderResponse(failure=ProviderFailure(code="plugin_unavailable"))
         return response
 
-    async def _search_pages(self, session: SearchSession, provider: Provider) -> AsyncIterator[ProviderResponse]:
+    async def _search_pages(
+        self, session: SearchSession, provider: Provider
+    ) -> AsyncIterator[ProviderResponse]:
         deadline = time.monotonic() + self._timeout(session)
         request = session.request
         seen: set[str] = set()
@@ -248,7 +275,9 @@ class MetadataHandler:
             if remaining <= 0:
                 yield ProviderResponse(failure=ProviderFailure(code="timeout"))
                 return
-            response = await self._call(session, provider, "search", request=request, timeout=remaining)
+            response = await self._call(
+                session, provider, "search", request=request, timeout=remaining
+            )
             yield response
             if response.failure or not response.next_cursor:
                 return
@@ -259,22 +288,37 @@ class MetadataHandler:
             request = request.model_copy(update={"cursor": response.next_cursor})
         yield ProviderResponse(failure=ProviderFailure(code="invalid_response"))
 
-    def _accept_candidates(self, session: SearchSession, provider: Provider,
-                           candidates: Sequence[MetadataCandidate], position: int) -> None:
+    def _accept_candidates(
+        self,
+        session: SearchSession,
+        provider: Provider,
+        candidates: Sequence[MetadataCandidate],
+        position: int,
+    ) -> None:
         for index, candidate in enumerate(candidates):
             if candidate.media_type != session.request.media_type:
                 continue
             candidate = candidate.model_copy(update={"provider": provider.id})
             key = candidate_id(candidate)
             existing = session.sources.get(key)
-            session.sources[key] = Source(candidate, provider.priority, position + index,
-                                          existing.metadata if existing else {})
+            session.sources[key] = Source(
+                candidate,
+                provider.priority,
+                position + index,
+                existing.metadata if existing else {},
+            )
             self._rank(session)
 
     async def _search_provider(self, session: SearchSession, provider: Provider) -> None:
-        cache_key = (session.request.user_id, session.request.media_type,
-                     session.request.query.strip().casefold(), session.request.limit,
-                     tuple(sorted(session.request.options.items())), provider.id, provider.revision)
+        cache_key = (
+            session.request.user_id,
+            session.request.media_type,
+            session.request.query.strip().casefold(),
+            session.request.limit,
+            tuple(sorted(session.request.options.items())),
+            provider.id,
+            provider.revision,
+        )
         cached = await self._cached_search(provider, cache_key)
         candidates: list[MetadataCandidate] = []
 
@@ -291,12 +335,15 @@ class MetadataHandler:
             if response.failure:
                 self._failure(session, provider, response.failure)
                 return
-            incoming = response.candidates[:max(0, session.request.limit - len(candidates))]
+            incoming = response.candidates[: max(0, session.request.limit - len(candidates))]
             self._accept_candidates(session, provider, incoming, len(candidates))
             candidates.extend(incoming)
             if len(candidates) >= session.request.limit:
                 break
-        self.cache[cache_key] = (time.monotonic() + 30, ProviderResponse(candidates=tuple(candidates)))
+        self.cache[cache_key] = (
+            time.monotonic() + 30,
+            ProviderResponse(candidates=tuple(candidates)),
+        )
         while len(self.cache) > 256:
             self.cache.popitem(last=False)
         session.provider_states[provider.id] = "finished"
@@ -306,15 +353,23 @@ class MetadataHandler:
     def _failure(session: SearchSession, provider: Provider, failure: ProviderFailure) -> None:
         session.failed = True
         session.provider_states[provider.id] = failure.code
-        session.emit("provider_failed", provider_id=provider.id, name=provider.name,
-                     status=failure.code, message=f"{provider.name} is unavailable")
+        session.emit(
+            "provider_failed",
+            provider_id=provider.id,
+            name=provider.name,
+            status=failure.code,
+            message=f"{provider.name} is unavailable",
+        )
 
     @staticmethod
     def _metadata(session: SearchSession, members: Sequence[Source]) -> dict[str, Any]:
         priorities = {provider.id: provider.priority for provider in session.providers}
         patches = sorted(
-            ((priorities.get(provider_id, source.priority), provider_id, patch)
-             for source in members for provider_id, patch in source.metadata.items()),
+            (
+                (priorities.get(provider_id, source.priority), provider_id, patch)
+                for source in members
+                for provider_id, patch in source.metadata.items()
+            ),
             key=lambda item: (item[0], item[1]),
         )
         metadata: dict[str, Any] = {}
@@ -330,8 +385,10 @@ class MetadataHandler:
                 else:
                     metadata.setdefault(name, value)
         if "episodes" in metadata:
-            metadata["episodes"] = sorted(metadata["episodes"].values(), key=lambda episode: (
-                episode.get("season_number") or 0, episode["episode_number"]))
+            metadata["episodes"] = sorted(
+                metadata["episodes"].values(),
+                key=lambda episode: (episode.get("season_number") or 0, episode["episode_number"]),
+            )
         return metadata
 
     @staticmethod
@@ -345,52 +402,99 @@ class MetadataHandler:
 
     def _identity(self, session: SearchSession, source: Source) -> MetadataCandidate:
         metadata = self._metadata(session, [source])
-        fields = {name: metadata[name] for name in
-                  ("title", "year", "alternate_titles", "platforms") if name in metadata}
-        fields["provider_ids"] = {**source.candidate.provider_ids,
-                                  **metadata.get("provider_ids", {})}
-        return MetadataCandidate.model_validate({
-            **source.candidate.model_dump(mode="json"), **fields,
-        })
+        fields = {
+            name: metadata[name]
+            for name in ("title", "year", "alternate_titles", "platforms")
+            if name in metadata
+        }
+        fields["provider_ids"] = {
+            **source.candidate.provider_ids,
+            **metadata.get("provider_ids", {}),
+        }
+        return MetadataCandidate.model_validate(
+            {
+                **source.candidate.model_dump(mode="json"),
+                **fields,
+            }
+        )
 
     def _ranked_groups(self, session: SearchSession) -> list[list[str]]:
-        identities_by_key = {key: self._identity(session, source)
-                             for key, source in session.sources.items()}
+        identities_by_key = {
+            key: self._identity(session, source) for key, source in session.sources.items()
+        }
         grouped: list[list[str]] = []
-        sources = sorted(session.sources, key=lambda key: (
-            session.sources[key].priority, identities_by_key[key].provider,
-            identities_by_key[key].external_id,
-        ))
+        sources = sorted(
+            session.sources,
+            key=lambda key: (
+                session.sources[key].priority,
+                identities_by_key[key].provider,
+                identities_by_key[key].external_id,
+            ),
+        )
         for key in sources:
-            match = next((group for group in grouped
-                          if all(same_entity(identities_by_key[key], identities_by_key[member])
-                                 for member in group)), None)
+            match = next(
+                (
+                    group
+                    for group in grouped
+                    if all(
+                        same_entity(identities_by_key[key], identities_by_key[member])
+                        for member in group
+                    )
+                ),
+                None,
+            )
             if match is None:
                 grouped.append([key])
             else:
                 match.append(key)
-        return sorted(grouped, key=lambda group: min(
-            rank_key(session.request.query, identities_by_key[key],
-                     session.sources[key].priority, session.sources[key].position) for key in group
-        ))
+        return sorted(
+            grouped,
+            key=lambda group: min(
+                rank_key(
+                    session.request.query,
+                    identities_by_key[key],
+                    session.sources[key].priority,
+                    session.sources[key].position,
+                )
+                for key in group
+            ),
+        )
 
     def _record(self, session: SearchSession, group: list[str], rank: int) -> dict[str, Any]:
         representative = self._identity(session, session.sources[group[0]])
         metadata = self._metadata(session, [session.sources[key] for key in group])
         provider_ids: dict[str, str] = {}
         for key in group:
-            for namespace, external_id in identities(self._identity(session, session.sources[key])).items():
+            for namespace, external_id in identities(
+                self._identity(session, session.sources[key])
+            ).items():
                 provider_ids.setdefault(namespace, external_id)
-        return {**representative.model_dump(mode="json"), "id": min(group),
-                "provider_name": next((provider.name for provider in session.providers
-                                       if provider.id == representative.provider), "Library"),
-                "rank": rank, "provider_ids": provider_ids, "metadata": metadata,
-                "providers": sorted({session.sources[key].candidate.provider for key in group}),
-                "assets": []}
+        return {
+            **representative.model_dump(mode="json"),
+            "id": min(group),
+            "provider_name": next(
+                (
+                    provider.name
+                    for provider in session.providers
+                    if provider.id == representative.provider
+                ),
+                "Library",
+            ),
+            "rank": rank,
+            "provider_ids": provider_ids,
+            "metadata": metadata,
+            "providers": sorted({session.sources[key].candidate.provider for key in group}),
+            "assets": [],
+        }
 
     @staticmethod
-    def _retain_group(session: SearchSession, item: dict[str, Any], group: list[str],
-                      previous: dict[str, dict], previous_groups: dict[str, tuple]) -> None:
+    def _retain_group(
+        session: SearchSession,
+        item: dict[str, Any],
+        group: list[str],
+        previous: dict[str, dict],
+        previous_groups: dict[str, tuple],
+    ) -> None:
         assets = []
         for old_id, old_group in previous_groups.items():
             if not set(old_group) & set(group):
@@ -415,19 +519,26 @@ class MetadataHandler:
             session.groups[group_id] = tuple(group)
             session.candidates[group_id] = item
             if item != previous.get(group_id):
-                session.emit("result_updated" if group_id in previous else "result_added",
-                             result=item)
+                session.emit(
+                    "result_updated" if group_id in previous else "result_added", result=item
+                )
         for old_id in previous.keys() - session.candidates.keys():
-            session.emit("result_removed", candidate_id=old_id,
-                         replacement_id=session.redirects.get(old_id))
+            session.emit(
+                "result_removed", candidate_id=old_id, replacement_id=session.redirects.get(old_id)
+            )
         session.emit("ranking_updated", candidate_ids=list(session.candidates))
         self._enrich(session)
 
     def _enrich(self, session: SearchSession) -> None:
         if session.cancelled:
             return
-        target_ids = ([session.selected] if session.selected else
-                      list(session.candidates)[:3] if len(session.request.query) >= 5 else [])
+        target_ids = (
+            [session.selected]
+            if session.selected
+            else list(session.candidates)[:3]
+            if len(session.request.query) >= 5
+            else []
+        )
         targets = {key for group_id in target_ids for key in session.groups.get(group_id, ())}
         for work_key, task in list(session.work.items()):
             if work_key[1] not in targets:
@@ -438,33 +549,54 @@ class MetadataHandler:
                 if provider.state in {ProviderHealth.DISABLED, ProviderHealth.NOT_CONFIGURED}:
                     continue
                 group = session.groups[group_id]
-                key = next((key for key in group if session.sources[key].candidate.provider == provider.id), group[0])
+                key = next(
+                    (
+                        key
+                        for key in group
+                        if session.sources[key].candidate.provider == provider.id
+                    ),
+                    group[0],
+                )
                 candidate = self._operation_candidate(session, key)
-                known_identity = (provider.id == candidate.provider or provider.id in candidate.provider_ids
-                                  or provider.declaration.identifier_namespace in candidate.provider_ids)
+                known_identity = (
+                    provider.id == candidate.provider
+                    or provider.id in candidate.provider_ids
+                    or provider.declaration.identifier_namespace in candidate.provider_ids
+                )
                 # Episode lists need a resolved provider identity. ID mapping capabilities
                 # without their own namespace can still contribute authoritative cross-IDs.
-                if (session.request.resource == "episodes" and not known_identity
-                        and provider.declaration.identifier_namespace):
+                if (
+                    session.request.resource == "episodes"
+                    and not known_identity
+                    and provider.declaration.identifier_namespace
+                ):
                     continue
                 operations: tuple[Operation, ...] = (
-                    ("metadata", "media") if session.selected and session.media_requested
+                    ("metadata", "media")
+                    if session.selected and session.media_requested
                     else ("metadata",)
                 )
                 for operation in operations:
                     if operation == "metadata" and (
                         session.request.resource not in provider.declaration.metadata_resources
-                        or (not session.selected and not known_identity
-                            and provider.declaration.operations.search)
+                        or (
+                            not session.selected
+                            and not known_identity
+                            and provider.declaration.operations.search
+                        )
                     ):
                         continue
                     work_key = (provider.id, key, operation)
-                    if (work_key in session.unresolved
-                            and session.unresolved[work_key] != tuple(sorted(candidate.provider_ids.items()))):
+                    if work_key in session.unresolved and session.unresolved[work_key] != tuple(
+                        sorted(candidate.provider_ids.items())
+                    ):
                         session.completed.discard(work_key)
                         session.unresolved.pop(work_key)
-                    if (not getattr(provider.declaration.operations, operation)
-                            or work_key in session.work or work_key in session.completed):
+                    if (
+                        not getattr(provider.declaration.operations, operation)
+                        or work_key in session.work
+                        or work_key in session.completed
+                    ):
                         continue
                     session.enrichment_finished = False
                     session.work[work_key] = asyncio.create_task(
@@ -474,19 +606,29 @@ class MetadataHandler:
 
     def _operation_candidate(self, session: SearchSession, key: str) -> MetadataCandidate:
         identity = self._identity(session, session.sources[key])
-        group_id = next((group_id for group_id, group in session.groups.items() if key in group), None)
+        group_id = next(
+            (group_id for group_id, group in session.groups.items() if key in group), None
+        )
         if group_id is None:
             return identity
-        return identity.model_copy(update={"provider_ids": session.candidates[group_id]["provider_ids"]})
+        return identity.model_copy(
+            update={"provider_ids": session.candidates[group_id]["provider_ids"]}
+        )
 
     @staticmethod
     def _finish_enrichment(session: SearchSession) -> None:
-        if session.selected and not session.work and not session.cancelled and not session.enrichment_finished:
+        if (
+            session.selected
+            and not session.work
+            and not session.cancelled
+            and not session.enrichment_finished
+        ):
             session.enrichment_finished = True
             session.emit("selection_enrichment_completed", candidate_id=session.selected)
 
-    async def _enrichment_pages(self, session: SearchSession, provider: Provider, key: str,
-                                operation: Operation) -> AsyncIterator[ProviderResponse]:
+    async def _enrichment_pages(
+        self, session: SearchSession, provider: Provider, key: str, operation: Operation
+    ) -> AsyncIterator[ProviderResponse]:
         request = session.request
         deadline = time.monotonic() + self._timeout(session)
         cursors: set[str] = set()
@@ -494,8 +636,14 @@ class MetadataHandler:
             if deadline <= time.monotonic():
                 yield ProviderResponse(failure=ProviderFailure(code="timeout"))
                 return
-            response = await self._call(session, provider, operation, self._operation_candidate(session, key),
-                                        request=request, timeout=deadline - time.monotonic())
+            response = await self._call(
+                session,
+                provider,
+                operation,
+                self._operation_candidate(session, key),
+                request=request,
+                timeout=deadline - time.monotonic(),
+            )
             yield response
             if response.failure or not response.next_cursor:
                 return
@@ -524,10 +672,15 @@ class MetadataHandler:
             elif name == "provider_ids":
                 values[name] = {**values.get(name, {}), **value}
             elif name == "relations":
-                entries = {(
-                    entry["candidate"]["provider"], entry["candidate"]["external_id"],
-                    entry.get("group"), entry.get("parent_external_id"),
-                ): entry for entry in values.get(name, []) + value}
+                entries = {
+                    (
+                        entry["candidate"]["provider"],
+                        entry["candidate"]["external_id"],
+                        entry.get("group"),
+                        entry.get("parent_external_id"),
+                    ): entry
+                    for entry in values.get(name, []) + value
+                }
                 values[name] = list(entries.values())
             else:
                 values[name] = value
@@ -568,7 +721,9 @@ class MetadataHandler:
 
     @staticmethod
     def _append_assets(session: SearchSession, key: str, response: ProviderResponse) -> None:
-        group_id = next((group_id for group_id, group in session.groups.items() if key in group), None)
+        group_id = next(
+            (group_id for group_id, group in session.groups.items() if key in group), None
+        )
         if group_id is None:
             return
         item = session.candidates[group_id]
@@ -579,8 +734,14 @@ class MetadataHandler:
         )
         session.emit("result_updated", result=item)
 
-    async def enrich(self, request: MetadataProviderRequest, providers: Sequence[Provider],
-                     candidate: MetadataCandidate, *, include_media: bool = False) -> tuple[dict, list[str]]:
+    async def enrich(
+        self,
+        request: MetadataProviderRequest,
+        providers: Sequence[Provider],
+        candidate: MetadataCandidate,
+        *,
+        include_media: bool = False,
+    ) -> tuple[dict, list[str]]:
         """Background and compatibility callers use the same focused lifecycle and deadlines."""
         session = self.focus(request, providers, candidate, include_media=include_media)
         try:
@@ -591,8 +752,11 @@ class MetadataHandler:
         except TimeoutError:
             session.emit("provider_failed", message="Metadata providers are unavailable")
         record = session.candidates.get(session.selected or "", {})
-        failures = list(dict.fromkeys(event["message"] for event in session.events
-                                     if event["event"] == "provider_failed"))
+        failures = list(
+            dict.fromkeys(
+                event["message"] for event in session.events if event["event"] == "provider_failed"
+            )
+        )
         self.cancel(session)
         self.sessions.pop(session.id, None)
         return record, failures

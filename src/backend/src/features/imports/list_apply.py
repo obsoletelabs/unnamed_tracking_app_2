@@ -212,15 +212,23 @@ async def fill_details(touched: list[tuple[ImportedTitle, Any, bool]]) -> dict[s
     async def one(item: ImportedTitle, row: Any) -> dict[str, Any]:
         async with slots:
             kind = MediaType.MOVIE if item.kind == "movie" else MediaType.TV_SHOW
-            record, _ = await resolve_owned_record(row.user_id, library_candidate(
-                item.title, kind, row.provider_ids or {}, item.year,
-            ), include_media=True)
+            record, _ = await resolve_owned_record(
+                row.user_id,
+                library_candidate(
+                    item.title,
+                    kind,
+                    row.provider_ids or {},
+                    item.year,
+                ),
+                include_media=True,
+            )
             if not record.get("metadata") and not record.get("assets"):
                 return {}
             row.provider_ids = {**(row.provider_ids or {}), **record.get("provider_ids", {})}
             result = media_result(record, kind)
-            result.update({"overview": result.get("description"),
-                           "vote_average": result.get("tmdb_score")})
+            result.update(
+                {"overview": result.get("description"), "vote_average": result.get("tmdb_score")}
+            )
             return result
 
     found = await asyncio.gather(*(one(item, row) for item, row, _ in touched))

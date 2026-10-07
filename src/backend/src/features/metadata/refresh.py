@@ -193,7 +193,8 @@ async def refresh_anime_season_now(
         final_total=final_total,
         limit=limit,
         total_known=total_known,
-        user_id=show.user_id, title=show.title,
+        user_id=show.user_id,
+        title=show.title,
     )
     all_episodes, errors = fetch.episodes, fetch.errors
     if fetch.kitsu_id and show.kitsu_id != fetch.kitsu_id:
@@ -294,8 +295,10 @@ async def _fill_recent_episodes(show: Anime, season: AnimeSeason) -> None:
     if not any(e.title is None or e.still_url is None or e.air_at is None for e in recent):
         return
     record, errors = await collect_owned_record(
-        show.user_id, anime_candidate(show.title, show.external_id, show.anilist_id),
-        resource="episodes", episode_phase="primary",
+        show.user_id,
+        anime_candidate(show.title, show.external_id, show.anilist_id),
+        resource="episodes",
+        episode_phase="primary",
     )
     if errors:
         logger.warning("Episode providers unavailable while filling recent episodes")
@@ -316,7 +319,9 @@ async def quick_check_tv_season(show: TVShow, season: TVSeason, db) -> int:
     being re-fetched every cycle forever."""
     if not show.external_id:
         return 0
-    is_airing, errors = await fetch_is_airing(show.external_id, user_id=show.user_id, title=show.title)
+    is_airing, errors = await fetch_is_airing(
+        show.external_id, user_id=show.user_id, title=show.title
+    )
     if errors:
         logger.warning(
             "Airing check couldn't reach TVmaze for %r: %s", show.title, "; ".join(errors)
@@ -346,8 +351,8 @@ async def refresh_tv_season_now(show: TVShow, season: TVSeason, db) -> tuple[int
     if not show.external_id:
         return 0, 0
     all_episodes, errors = await fetch_season_episodes(
-            show.external_id, season.season_number, user_id=show.user_id, title=show.title
-        )
+        show.external_id, season.season_number, user_id=show.user_id, title=show.title
+    )
     if errors:
         logger.warning("TV refresh couldn't reach TVmaze for %r: %s", show.title, "; ".join(errors))
     return merge_episodes(db, season, all_episodes, TVEpisode)

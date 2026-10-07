@@ -267,12 +267,22 @@ async def import_list(
     unavailable = False
     details_source: str | None = None
     if fetch_details and touched:
-        providers = [provider for provider in await discover_providers(db, current_user.id)
-                     if provider.declaration.operations.metadata and
-                     any((MediaType.MOVIE if item.kind == "movie" else MediaType.TV_SHOW)
-                         in provider.declaration.media_types for item, _, _ in touched) and
-                     provider.state not in {ProviderHealth.DISABLED, ProviderHealth.NOT_CONFIGURED,
-                                            ProviderHealth.PLUGIN_UNAVAILABLE}]
+        providers = [
+            provider
+            for provider in await discover_providers(db, current_user.id)
+            if provider.declaration.operations.metadata
+            and any(
+                (MediaType.MOVIE if item.kind == "movie" else MediaType.TV_SHOW)
+                in provider.declaration.media_types
+                for item, _, _ in touched
+            )
+            and provider.state
+            not in {
+                ProviderHealth.DISABLED,
+                ProviderHealth.NOT_CONFIGURED,
+                ProviderHealth.PLUGIN_UNAVAILABLE,
+            }
+        ]
         unavailable = not bool(providers)
         if providers:
             details_source = ", ".join(provider.name for provider in providers)

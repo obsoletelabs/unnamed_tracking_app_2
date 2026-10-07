@@ -455,12 +455,15 @@ async def get_show_relations(
     unconfigured result rather than an error when it's not set up yet."""
     show = await _get_show_or_404(show_id, db, current_user.id)
     result = await related_metadata(
-        db, current_user.id,
+        db,
+        current_user.id,
         library_candidate(show.title, MediaType.TV_SHOW, show.provider_ids or {}),
     )
-    return {"listName": result["relation_group"],
-            "related": [relation_result(entry) for entry in result["relations"]],
-            "configured": result["configured"]}
+    return {
+        "listName": result["relation_group"],
+        "related": [relation_result(entry) for entry in result["relations"]],
+        "configured": result["configured"],
+    }
 
 
 @router.get("/{show_id}/recommended")
@@ -471,9 +474,12 @@ async def get_show_recommended(
 ) -> dict:
     show = await _get_show_or_404(show_id, db, current_user.id)
     result = await related_metadata(
-        db, current_user.id,
+        db,
+        current_user.id,
         library_candidate(show.title, MediaType.TV_SHOW, show.provider_ids or {}),
         "recommendations",
     )
-    return {"recommended": [relation_result(entry) for entry in result["relations"]],
-            "configured": result["configured"]}
+    return {
+        "recommended": [relation_result(entry) for entry in result["relations"]],
+        "configured": result["configured"],
+    }

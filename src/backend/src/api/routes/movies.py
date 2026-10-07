@@ -276,12 +276,15 @@ async def get_movie_relations(
     one — that's a normal empty result, not an error."""
     movie = await _get_movie_or_404(movie_id, db, current_user.id)
     result = await related_metadata(
-        db, current_user.id,
+        db,
+        current_user.id,
         library_candidate(movie.title, MediaType.MOVIE, movie.provider_ids or {}),
     )
-    return {"collection_name": result["relation_group"],
-            "related": [relation_result(entry) for entry in result["relations"]],
-            "configured": result["configured"]}
+    return {
+        "collection_name": result["relation_group"],
+        "related": [relation_result(entry) for entry in result["relations"]],
+        "configured": result["configured"],
+    }
 
 
 @router.get("/{movie_id}/recommended")
@@ -292,9 +295,12 @@ async def get_movie_recommended(
 ) -> dict:
     movie = await _get_movie_or_404(movie_id, db, current_user.id)
     result = await related_metadata(
-        db, current_user.id,
+        db,
+        current_user.id,
         library_candidate(movie.title, MediaType.MOVIE, movie.provider_ids or {}),
         "recommendations",
     )
-    return {"recommended": [relation_result(entry) for entry in result["relations"]],
-            "configured": result["configured"]}
+    return {
+        "recommended": [relation_result(entry) for entry in result["relations"]],
+        "configured": result["configured"],
+    }

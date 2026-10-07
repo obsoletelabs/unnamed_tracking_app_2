@@ -163,18 +163,35 @@ async def fill_details(shows: list[Anime]) -> dict[str, int]:
                 ids.setdefault("mal", show.external_id)
             if show.anilist_id:
                 ids.setdefault("anilist", show.anilist_id)
-            record, errors = await resolve_owned_record(show.user_id, library_candidate(
-                show.title, MediaType.ANIME, ids,
-                show.first_air_date.year if show.first_air_date else None,
-            ), include_media=True)
+            record, errors = await resolve_owned_record(
+                show.user_id,
+                library_candidate(
+                    show.title,
+                    MediaType.ANIME,
+                    ids,
+                    show.first_air_date.year if show.first_air_date else None,
+                ),
+                include_media=True,
+            )
             if not record.get("metadata") and not record.get("assets"):
                 return False, not bool(errors), bool(errors)
             meta = media_result(record, MediaType.ANIME)
-            meta.update({"overview": meta.get("description"), "release_date": meta.get("first_air_date"),
-                         "score": meta.get("anilist_score"), "id": meta.get("anilist_id")})
+            meta.update(
+                {
+                    "overview": meta.get("description"),
+                    "release_date": meta.get("first_air_date"),
+                    "score": meta.get("anilist_score"),
+                    "id": meta.get("anilist_id"),
+                }
+            )
             show.provider_ids = {**ids, **record.get("provider_ids", {})}
             return fill_blanks(show, meta), False, False
 
     results = await asyncio.gather(*(one(show) for show in shows))
-    return dict(zip(("filled", "not_found", "lookup_failed"),
-                    (sum(row[index] for row in results) for index in range(3)), strict=True))
+    return dict(
+        zip(
+            ("filled", "not_found", "lookup_failed"),
+            (sum(row[index] for row in results) for index in range(3)),
+            strict=True,
+        )
+    )

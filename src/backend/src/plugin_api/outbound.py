@@ -56,8 +56,18 @@ def _valid_header(key: object, value: object) -> bool:
         and len(value) <= 2048
         and "\n" not in key + value
         and "\r" not in key + value
-        and key.lower() in {"accept", "authorization", "x-emby-token", "client-id",
-                            "content-type", "user-agent", "referer", "origin", "cookie"}
+        and key.lower()
+        in {
+            "accept",
+            "authorization",
+            "x-emby-token",
+            "client-id",
+            "content-type",
+            "user-agent",
+            "referer",
+            "origin",
+            "cookie",
+        }
     )
 
 

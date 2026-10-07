@@ -152,7 +152,9 @@ async def test_game_refresh_endpoint_respects_protection_for_api_actor(
     monkeypatch.setattr(
         game_metadata,
         "resolve_library_record",
-        AsyncMock(return_value=({"title": "Original™", "metadata": {"developer": "New developer"}}, {})),
+        AsyncMock(
+            return_value=({"title": "Original™", "metadata": {"developer": "New developer"}}, {})
+        ),
     )
     async with SessionLocal() as db:
         game = Game(
@@ -256,16 +258,15 @@ async def test_plugin_gateway_rejects_protected_title_even_with_broad_grant(
         runtime.client,
         "plugin_state",
         AsyncMock(
-            return_value=
-                {
-                    "api_contract_version": "1.1.0",
-                    "plugin_id": "test.title",
-                    "installation_id": str(installation),
-                    "enabled": True,
-                    "compatible": True,
-                    "status": "running",
-                    "health": "healthy",
-                }
+            return_value={
+                "api_contract_version": "1.1.0",
+                "plugin_id": "test.title",
+                "installation_id": str(installation),
+                "enabled": True,
+                "compatible": True,
+                "status": "running",
+                "health": "healthy",
+            }
         ),
     )
     async with SessionLocal() as db:

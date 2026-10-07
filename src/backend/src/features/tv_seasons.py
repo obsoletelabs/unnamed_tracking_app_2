@@ -58,10 +58,16 @@ async def check_new_seasons(db: AsyncSession, show: TVShow) -> int:
     ids = dict(show.provider_ids or {})
     if show.external_id:
         ids.setdefault("tvmaze", show.external_id)
-    record, errors = await collect_record(db, show.user_id, library_candidate(
-        show.title, MediaType.TV_SHOW, ids,
-        show.first_air_date.year if show.first_air_date else None,
-    ))
+    record, errors = await collect_record(
+        db,
+        show.user_id,
+        library_candidate(
+            show.title,
+            MediaType.TV_SHOW,
+            ids,
+            show.first_air_date.year if show.first_air_date else None,
+        ),
+    )
     seasons = record.get("metadata", {}).get("seasons")
     if seasons is None or errors and not seasons:
         return 0

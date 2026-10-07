@@ -711,8 +711,12 @@ async def test_new_tv_season_is_added_and_announced_once_but_not_on_the_first_ch
                 {"season_number": 2, "name": None, "episode_count": 10, "air_date": "2027-03-01"},
             ]
             from src.features import tv_seasons
+
             async def canonical_seasons(*args, **kwargs):
-                return {"metadata": {"seasons": [{**entry, "title": entry["name"]} for entry in listed]}}, []
+                return {
+                    "metadata": {"seasons": [{**entry, "title": entry["name"]} for entry in listed]}
+                }, []
+
             monkeypatch.setattr(tv_seasons, "collect_record", canonical_seasons)
             show = (await db.execute(select(TVShow).where(TVShow.id == show_id))).scalar_one()
             # first check: the season is added, but nothing is announced
@@ -734,9 +738,7 @@ async def test_new_tv_season_is_added_and_announced_once_but_not_on_the_first_ch
             )
             show = (await db.execute(select(TVShow).where(TVShow.id == show_id))).scalar_one()
             assert await check_new_seasons(db, show) == 1  # type: ignore[arg-type]
-            assert (
-                await check_new_seasons(db, show) == 0
-            )  # nothing new the third time
+            assert await check_new_seasons(db, show) == 0  # nothing new the third time
             notes = (
                 (
                     await db.execute(
@@ -1071,16 +1073,28 @@ async def test_details_fill_only_blank_fields_and_report_what_was_not_found(monk
                 seasons=[AnimeSeason(season_number=1)],
             )
             from src.features.imports import mal_apply
+
             async def canonical_anime(user_id, candidate, **kwargs):
                 assert user_id == user.scratch_id
                 if candidate.provider_ids["mal"] == "2":
                     return {}, ["MyAnimeList is unavailable"]
-                return {"title": "A", "provider_ids": {"anilist": "1", "mal": "1"},
-                        "metadata": {"genres": ["Sci-Fi"], "studios": ["Sunrise"],
-                                     "description": "text", "episode_count": 26,
-                                     "release_date": "1998-04-03", "scores": {"anilist": 86},
-                                     "format": "TV", "episode_runtime_minutes": 24, "countries": ["JP"]},
-                        "assets": [{"kind": "poster", "url": "http://p/1.jpg"}]}, []
+                return {
+                    "title": "A",
+                    "provider_ids": {"anilist": "1", "mal": "1"},
+                    "metadata": {
+                        "genres": ["Sci-Fi"],
+                        "studios": ["Sunrise"],
+                        "description": "text",
+                        "episode_count": 26,
+                        "release_date": "1998-04-03",
+                        "scores": {"anilist": 86},
+                        "format": "TV",
+                        "episode_runtime_minutes": 24,
+                        "countries": ["JP"],
+                    },
+                    "assets": [{"kind": "poster", "url": "http://p/1.jpg"}],
+                }, []
+
             monkeypatch.setattr(mal_apply, "resolve_owned_record", canonical_anime)
             result = await fill_details([have, other])
             assert result == {"filled": 1, "not_found": 0, "lookup_failed": 1}
@@ -1577,19 +1591,48 @@ async def test_list_import_keeps_existing_titles_fills_blanks_and_builds_seasons
             matches = await match_titles(db, user.scratch_id, items)
             rows = [(m.imported, m.existing, True) for m in matches if m.existing is not None]
             from src.features.imports import list_apply
+
             async def canonical_media(user_id, candidate, **kwargs):
                 assert user_id == user.scratch_id
                 if candidate.media_type.value == "movie":
-                    return {"title": candidate.title, "metadata": {
-                        "description": "text", "release_date": "1979-05-25", "runtime_minutes": 117,
-                        "studios": ["Fox"], "genres": ["Sci-Fi"], "scores": {"tmdb": 81}},
-                        "assets": [{"kind": "poster", "url": "http://p/alien.jpg"}]}, []
-                return {"title": candidate.title, "metadata": {
-                    "description": "tv text", "release_date": "2008-01-20", "creators": ["Vince"],
-                    "genres": ["Crime"], "scores": {"tmdb": 90}, "seasons": [
-                        {"season_number": 1, "title": "S1", "episode_count": 7, "air_date": "2008-01-20"},
-                        {"season_number": 2, "title": "S2", "episode_count": 13, "air_date": "2009-03-08"}]},
-                        "assets": [{"kind": "poster", "url": "http://p/bb.jpg"}]}, []
+                    return {
+                        "title": candidate.title,
+                        "metadata": {
+                            "description": "text",
+                            "release_date": "1979-05-25",
+                            "runtime_minutes": 117,
+                            "studios": ["Fox"],
+                            "genres": ["Sci-Fi"],
+                            "scores": {"tmdb": 81},
+                        },
+                        "assets": [{"kind": "poster", "url": "http://p/alien.jpg"}],
+                    }, []
+                return {
+                    "title": candidate.title,
+                    "metadata": {
+                        "description": "tv text",
+                        "release_date": "2008-01-20",
+                        "creators": ["Vince"],
+                        "genres": ["Crime"],
+                        "scores": {"tmdb": 90},
+                        "seasons": [
+                            {
+                                "season_number": 1,
+                                "title": "S1",
+                                "episode_count": 7,
+                                "air_date": "2008-01-20",
+                            },
+                            {
+                                "season_number": 2,
+                                "title": "S2",
+                                "episode_count": 13,
+                                "air_date": "2009-03-08",
+                            },
+                        ],
+                    },
+                    "assets": [{"kind": "poster", "url": "http://p/bb.jpg"}],
+                }, []
+
             monkeypatch.setattr(list_apply, "resolve_owned_record", canonical_media)
             result = await fill(rows)
             assert result["not_found"] == 0 and result["seasons_assumed_watched"] == 1

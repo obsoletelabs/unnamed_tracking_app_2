@@ -203,9 +203,11 @@ async def get_metadata_by_id(
     again (fragile for an unusual title, and wasted requests against an
     API with a real rate limit)."""
     record, _ = await collect_record(
-        db, current_user.id,
+        db,
+        current_user.id,
         library_candidate(f"Anime {anilist_id}", MediaType.ANIME, {"anilist": str(anilist_id)}),
-        policy="interactive", include_media=True,
+        policy="interactive",
+        include_media=True,
     )
     return media_result(record, MediaType.ANIME) if record.get("metadata") else None
 
@@ -237,7 +239,8 @@ async def create_anime(
     ):
         try:
             record, _ = await collect_record(
-                db, show.user_id,
+                db,
+                show.user_id,
                 library_candidate(show.title, MediaType.ANIME, {"anilist": show.anilist_id}),
                 policy="interactive",
             )
@@ -565,15 +568,25 @@ async def _fetch_and_store_relations(show: Anime, db: AsyncSession) -> dict:
     result on the row, and notes any newly listed season for a title the
     user has completed."""
     old_chain = show.relations_cache.get("chain") if show.relations_cache else None
-    ids = {**(show.provider_ids or {}), **({"anilist": show.anilist_id} if show.anilist_id else {}),
-           **({"mal": show.external_id} if show.external_id else {})}
-    data = await related_metadata(db, show.user_id,
-                                  library_candidate(show.title, MediaType.ANIME, ids))
-    result = {"chain": [], "branches": [], "recommendations": [],
-              "version": RELATIONS_CACHE_VERSION, "configured": data["configured"]}
+    ids = {
+        **(show.provider_ids or {}),
+        **({"anilist": show.anilist_id} if show.anilist_id else {}),
+        **({"mal": show.external_id} if show.external_id else {}),
+    }
+    data = await related_metadata(
+        db, show.user_id, library_candidate(show.title, MediaType.ANIME, ids)
+    )
+    result = {
+        "chain": [],
+        "branches": [],
+        "recommendations": [],
+        "version": RELATIONS_CACHE_VERSION,
+        "configured": data["configured"],
+    }
     for relation in data["relations"]:
-        group = {"chain": "chain", "branch": "branches",
-                 "recommendation": "recommendations"}.get(relation.get("group"), "branches")
+        group = {"chain": "chain", "branch": "branches", "recommendation": "recommendations"}.get(
+            relation.get("group"), "branches"
+        )
         result[group].append(relation_result(relation))
     if not data["configured"]:
         return result
@@ -661,5 +674,7 @@ async def get_anime_recommended(
     request, so there's no reason for this tab to cost a second one."""
     show = await _get_show_or_404(show_id, db, current_user.id)
     result = await _get_or_refresh_anime_relations(show, db)
-    return {"recommended": result.get("recommendations", []),
-            "configured": result.get("configured", True)}
+    return {
+        "recommended": result.get("recommendations", []),
+        "configured": result.get("configured", True),
+    }

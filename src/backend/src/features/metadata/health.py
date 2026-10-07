@@ -44,19 +44,26 @@ class ProviderHealthMonitor:
         return (provider.id, provider.installation_id, provider.revision, provider.user_id)
 
     def schedule(self, provider: PluginMetadataProvider, *, force: bool = False) -> None:
-        if provider.state in {ProviderHealth.DISABLED, ProviderHealth.NOT_CONFIGURED,
-                              ProviderHealth.PLUGIN_UNAVAILABLE}:
+        if provider.state in {
+            ProviderHealth.DISABLED,
+            ProviderHealth.NOT_CONFIGURED,
+            ProviderHealth.PLUGIN_UNAVAILABLE,
+        }:
             return
         key = self.key(provider)
         previous = self.statuses.get(key)
-        if key in self.tasks or (not force and previous
-                                 and time.time() - previous.checked_at < self.interval):
+        if key in self.tasks or (
+            not force and previous and time.time() - previous.checked_at < self.interval
+        ):
             return
         self.tasks[key] = asyncio.create_task(self._validate(provider))
 
     def status(self, provider: PluginMetadataProvider) -> HealthStatus:
-        if provider.state in {ProviderHealth.DISABLED, ProviderHealth.NOT_CONFIGURED,
-                              ProviderHealth.PLUGIN_UNAVAILABLE}:
+        if provider.state in {
+            ProviderHealth.DISABLED,
+            ProviderHealth.NOT_CONFIGURED,
+            ProviderHealth.PLUGIN_UNAVAILABLE,
+        }:
             return HealthStatus(provider.state, 0)
         return self.statuses.get(self.key(provider), HealthStatus(provider.state, 0))
 
@@ -73,10 +80,19 @@ class ProviderHealthMonitor:
     async def _validate_now(self, provider: PluginMetadataProvider) -> None:
         failure = None
         try:
-            response = await bounded(provider.invoke("health", MetadataProviderRequest(
-                request_id=uuid4(), user_id=provider.user_id, query="health",
-                media_type=provider.declaration.media_types[0], policy="background",
-            )), 8)
+            response = await bounded(
+                provider.invoke(
+                    "health",
+                    MetadataProviderRequest(
+                        request_id=uuid4(),
+                        user_id=provider.user_id,
+                        query="health",
+                        media_type=provider.declaration.media_types[0],
+                        policy="background",
+                    ),
+                ),
+                8,
+            )
             state = response.health or ProviderHealth.HEALTHY
             if response.failure:
                 failure = response.failure.code

@@ -40,9 +40,12 @@ class ContractProvider:
     @property
     def declaration(self):
         return MetadataProviderRegistration(
-            provider_id=self.id, name=self.id, media_types=("game",),
-            operations=ProviderOperations(search="search", metadata="metadata", media="media",
-                                          health="health"),
+            provider_id=self.id,
+            name=self.id,
+            media_types=("game",),
+            operations=ProviderOperations(
+                search="search", metadata="metadata", media="media", health="health"
+            ),
         )
 
     async def invoke(self, operation, request, candidate=None):
@@ -61,8 +64,9 @@ class ContractProvider:
         if operation == "metadata":
             return ProviderResponse(metadata=MetadataPatch(description="Useful partial metadata"))
         if operation == "media":
-            return ProviderResponse(assets=(MediaAsset(kind="key_art",
-                                                       url="https://example.test/cover.png"),))
+            return ProviderResponse(
+                assets=(MediaAsset(kind="key_art", url="https://example.test/cover.png"),)
+            )
         return ProviderResponse(health=ProviderHealth.HEALTHY)
 
 
@@ -71,8 +75,9 @@ def request(query="Portal"):
 
 
 def candidate(title="Portal", external_id="1", provider="test.provider", year=None, **fields):
-    return MetadataCandidate(title=title, external_id=external_id, provider=provider,
-                             year=year, **fields)
+    return MetadataCandidate(
+        title=title, external_id=external_id, provider=provider, year=year, **fields
+    )
 
 
 async def eventually(condition):
@@ -129,8 +134,10 @@ async def test_hard_deadline_survives_a_provider_suppressing_cancellation():
             return ProviderResponse(candidates=(globals()["candidate"]("Late"),))
 
     handler = MetadataHandler(operation_timeout=0.02)
-    session = handler.start(request("por"), [UncooperativeProvider("test.hanging"),
-                                             ContractProvider("test.fast", (candidate(),))])
+    session = handler.start(
+        request("por"),
+        [UncooperativeProvider("test.hanging"), ContractProvider("test.fast", (candidate(),))],
+    )
     await started.wait()
     await asyncio.wait_for(session.search_task, 0.2)
     assert session.provider_states["test.hanging"] == "timeout"
@@ -145,12 +152,14 @@ async def test_hard_deadline_survives_a_provider_suppressing_cancellation():
 async def test_new_session_cannot_receive_old_results_and_is_owner_scoped():
     gate = asyncio.Event()
     handler = MetadataHandler()
-    first = handler.start(request("car"), [ContractProvider("test.old", (candidate("Car"),),
-                                                           gates={"search": gate})])
+    first = handler.start(
+        request("car"), [ContractProvider("test.old", (candidate("Car"),), gates={"search": gate})]
+    )
     await eventually(lambda: bool(first.provider_states))
     handler.cancel(first)
-    second = handler.start(request("caram"), [ContractProvider("test.new",
-                                                              (candidate("Caramel"),))])
+    second = handler.start(
+        request("caram"), [ContractProvider("test.new", (candidate("Caramel"),))]
+    )
     gate.set()
     await second.search_task
     assert not first.candidates
@@ -178,24 +187,30 @@ async def test_better_late_match_changes_rank_and_provider_arrival_does_not():
     handler.cancel(opposite)
 
 
-@pytest.mark.parametrize("other", [
-    candidate("Portal", provider="other", year=None),
-    candidate("Portal", provider="other", year=2012),
-    candidate("Portal", provider="other", year=2011, media_type="movie"),
-    candidate("Portal 2", provider="other", year=2011),
-])
+@pytest.mark.parametrize(
+    "other",
+    [
+        candidate("Portal", provider="other", year=None),
+        candidate("Portal", provider="other", year=2012),
+        candidate("Portal", provider="other", year=2011, media_type="movie"),
+        candidate("Portal 2", provider="other", year=2011),
+    ],
+)
 def test_similar_titles_without_identity_corroboration_do_not_merge(other):
     assert not same_entity(candidate("Portal", year=2011), other)
 
 
 def test_shared_provider_ids_merge_but_conflicting_ids_do_not():
     first = candidate("Portal", provider_ids={"steam": "620"})
-    assert same_entity(first, candidate("Alternate title", provider="other",
-                                       provider_ids={"steam": "620"}))
-    assert not same_entity(first, candidate("Portal", provider="other",
-                                           provider_ids={"steam": "621"}))
-    assert same_entity(candidate("Portal-2", year=2011),
-                       candidate("Portal 2", provider="other", year=2011))
+    assert same_entity(
+        first, candidate("Alternate title", provider="other", provider_ids={"steam": "620"})
+    )
+    assert not same_entity(
+        first, candidate("Portal", provider="other", provider_ids={"steam": "621"})
+    )
+    assert same_entity(
+        candidate("Portal-2", year=2011), candidate("Portal 2", provider="other", year=2011)
+    )
 
 
 @pytest.mark.asyncio
@@ -213,11 +228,17 @@ async def test_no_metadata_below_five_characters_and_no_unselected_media():
 async def test_top_three_change_cancels_demotion_and_preserves_completed_metadata():
     search_gate = asyncio.Event()
     metadata_gate = asyncio.Event()
-    initial = ContractProvider("test.initial", tuple(candidate(title, str(index))
-        for index, title in enumerate(("Portal A", "Portal B", "Portal C", "Portal D"))),
-        gates={"metadata": metadata_gate})
-    better = ContractProvider("test.better", (candidate("Portal", "best"),),
-                              gates={"search": search_gate})
+    initial = ContractProvider(
+        "test.initial",
+        tuple(
+            candidate(title, str(index))
+            for index, title in enumerate(("Portal A", "Portal B", "Portal C", "Portal D"))
+        ),
+        gates={"metadata": metadata_gate},
+    )
+    better = ContractProvider(
+        "test.better", (candidate("Portal", "best"),), gates={"search": search_gate}
+    )
     handler = MetadataHandler()
     session = handler.start(request(), [initial, better])
     await eventually(lambda: len([call for call in initial.calls if call[0] == "metadata"]) == 3)
@@ -228,8 +249,9 @@ async def test_top_three_change_cancels_demotion_and_preserves_completed_metadat
     metadata_gate.set()
     await eventually(lambda: not session.work)
     assert len(session.candidates) == 5
-    assert all(item["metadata"].get("description") for item in
-               list(session.candidates.values())[:3])
+    assert all(
+        item["metadata"].get("description") for item in list(session.candidates.values())[:3]
+    )
     assert not any(call[0] == "media" for call in initial.calls + better.calls)
     calls_before = list(initial.calls)
     handler._rank(session)

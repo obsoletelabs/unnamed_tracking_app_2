@@ -183,8 +183,13 @@ class ProviderFailure(MetadataModel):
     """Safe failure data without remote response bodies or credential values."""
 
     code: Literal[
-        "not_configured", "invalid_configuration", "unavailable", "rate_limited",
-        "timeout", "plugin_unavailable", "invalid_response",
+        "not_configured",
+        "invalid_configuration",
+        "unavailable",
+        "rate_limited",
+        "timeout",
+        "plugin_unavailable",
+        "invalid_response",
     ]
     retry_after_seconds: int | None = Field(default=None, ge=0, le=86_400)
 

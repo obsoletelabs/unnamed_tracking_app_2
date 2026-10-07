@@ -70,13 +70,21 @@ async def start_search(payload: SearchInput, db: Database, user: CurrentUser) ->
     if len(query) < 2:
         raise HTTPException(422, "Enter at least two characters to search.")
     preferences = _scan_settings_to_preferences(await get_or_create_scan_settings(user.id, db))
-    providers = [monitor.available(provider) for provider in await discover_providers(
-        db, user.id, payload.media_type, preferences
-    )]
-    session = handler.start(MetadataProviderRequest(
-        request_id=uuid4(), user_id=user.id, query=query, media_type=payload.media_type,
-        limit=payload.limit, options={"steam_user_tags": (await load_preferences(db, user.id))["steam_user_tags"]},
-    ), providers)
+    providers = [
+        monitor.available(provider)
+        for provider in await discover_providers(db, user.id, payload.media_type, preferences)
+    ]
+    session = handler.start(
+        MetadataProviderRequest(
+            request_id=uuid4(),
+            user_id=user.id,
+            query=query,
+            media_type=payload.media_type,
+            limit=payload.limit,
+            options={"steam_user_tags": (await load_preferences(db, user.id))["steam_user_tags"]},
+        ),
+        providers,
+    )
     return session.snapshot()
 
 
@@ -88,19 +96,28 @@ async def search_snapshot(session_id: str, user: CurrentUser) -> dict:
 @router.post("/selection", status_code=201)
 async def focus_entity(payload: FocusInput, db: Database, user: CurrentUser) -> dict:
     candidate = payload.candidate
-    providers = [monitor.available(provider) for provider in await discover_providers(
-        db, user.id, candidate.media_type
-    )]
-    session = handler.focus(MetadataProviderRequest(
-        request_id=uuid4(), user_id=user.id, query=candidate.title,
-        media_type=candidate.media_type,
-    ), providers, candidate)
+    providers = [
+        monitor.available(provider)
+        for provider in await discover_providers(db, user.id, candidate.media_type)
+    ]
+    session = handler.focus(
+        MetadataProviderRequest(
+            request_id=uuid4(),
+            user_id=user.id,
+            query=candidate.title,
+            media_type=candidate.media_type,
+        ),
+        providers,
+        candidate,
+    )
     return session.snapshot()
 
 
 @router.get("/sessions/{session_id}/events")
 async def search_events(
-    session_id: str, request: Request, user: CurrentUser,
+    session_id: str,
+    request: Request,
+    user: CurrentUser,
     after: int = Query(default=0, ge=0),
 ) -> StreamingResponse:
     session = _owned(session_id, user)
@@ -115,12 +132,16 @@ async def search_events(
             if event["event"] == "heartbeat":
                 yield ": heartbeat\n\n"
             else:
-                yield (f"id: {event['id']}\nevent: {event['event']}\n"
-                       f"data: {json.dumps(event)}\n\n")
+                yield (f"id: {event['id']}\nevent: {event['event']}\ndata: {json.dumps(event)}\n\n")
 
-    return StreamingResponse(events(), media_type="text/event-stream", headers={
-        "Cache-Control": "no-store", "X-Accel-Buffering": "no",
-    })
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-store",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.delete("/sessions/{session_id}", status_code=204)
@@ -129,9 +150,7 @@ async def cancel_search(session_id: str, user: CurrentUser) -> None:
 
 
 @router.post("/sessions/{session_id}/selection")
-async def select_candidate(
-    session_id: str, payload: SelectionInput, user: CurrentUser
-) -> dict:
+async def select_candidate(session_id: str, payload: SelectionInput, user: CurrentUser) -> dict:
     try:
         return handler.select(_owned(session_id, user), str(payload.candidate_id))
     except LookupError as exc:
@@ -145,12 +164,16 @@ async def providers_status(db: Database, user: CurrentUser) -> dict:
     for provider in providers:
         monitor.schedule(provider)
         status = monitor.status(provider)
-        results.append({
-            **provider.declaration.model_dump(mode="json"), "plugin_id": provider.plugin_id,
-            "state": status.state, "checked_at": status.checked_at or None,
-            "failure": status.failure,
-            "configured_fields": await configuration_presence(db, provider),
-        })
+        results.append(
+            {
+                **provider.declaration.model_dump(mode="json"),
+                "plugin_id": provider.plugin_id,
+                "state": status.state,
+                "checked_at": status.checked_at or None,
+                "failure": status.failure,
+                "configured_fields": await configuration_presence(db, provider),
+            }
+        )
     return {"providers": results}
 
 
@@ -164,14 +187,17 @@ async def update_configuration(
     if payload.scope == "system" and not user.is_admin:
         raise HTTPException(403, "Administrator access is required.")
     if not await has_capability_grant(
-        db, plugin_id=row.plugin_id, installation_id=row.installation_id,
-        capability="metadata_providers.configuration", user_id=user.id,
+        db,
+        plugin_id=row.plugin_id,
+        installation_id=row.installation_id,
+        capability="metadata_providers.configuration",
+        user_id=user.id,
     ):
         raise HTTPException(403, "Provider configuration permission has not been granted.")
     try:
-        await save_configuration(db, row,
-                                 "system" if payload.scope == "system" else str(user.id),
-                                 payload.values)
+        await save_configuration(
+            db, row, "system" if payload.scope == "system" else str(user.id), payload.values
+        )
     except ValueError as exc:
         raise HTTPException(422, "Provider configuration is invalid.") from exc
     for provider in await discover_providers(db, user.id):
