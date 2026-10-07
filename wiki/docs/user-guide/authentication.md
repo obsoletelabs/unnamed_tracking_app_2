@@ -51,7 +51,7 @@ Open **Settings → Account → Sessions** to review browser sessions without in
 
 Revoke an active session on another browser or confirm **Revoke all my sessions** to sign out everywhere, including the current browser. Revoked records remain visible for the server's retention period. Browser-session revocation does not revoke API keys.
 
-The built-in page does not require MaxMind databases or show location, network, anomalies or a map. The optional official Session Manager plugin adds those details to this same settings entry when its session-page replacement permission is granted. Disabling the plugin or declining that permission keeps the built-in page. **Show built-in sessions** also opens the basic page while the plugin is enabled.
+The built-in page does not require MaxMind databases or show location, network, anomalies or a map. The optional official Session Manager plugin adds those details to this same settings entry when its session-page replacement permission is granted. Disabling the plugin or declining that permission keeps the built-in page. When the plugin is available, the **Advanced sessions** switch at the top changes between the basic and advanced views.
 
 Sessions are stored server-side and have an expiry. Authenticated requests can use a bearer API key or the normal session cookie.
 
