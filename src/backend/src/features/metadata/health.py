@@ -15,8 +15,11 @@ from src.database.models.user import User
 from src.database.session import SessionLocal
 from src.plugin_api.metadata_contracts import MetadataProviderRequest, ProviderHealth
 
+from .core import CoreMetadataProvider
 from .deadlines import bounded
 from .providers import PluginMetadataProvider, discover_providers
+
+ProviderAdapter = PluginMetadataProvider | CoreMetadataProvider
 
 logger = logging.getLogger(__name__)
 
@@ -40,10 +43,10 @@ class ProviderHealthMonitor:
         self.validation_slots = asyncio.Semaphore(2)
 
     @staticmethod
-    def key(provider: PluginMetadataProvider) -> tuple:
+    def key(provider: ProviderAdapter) -> tuple:
         return (provider.id, provider.installation_id, provider.revision, provider.user_id)
 
-    def schedule(self, provider: PluginMetadataProvider, *, force: bool = False) -> None:
+    def schedule(self, provider: ProviderAdapter, *, force: bool = False) -> None:
         if provider.state in {
             ProviderHealth.DISABLED,
             ProviderHealth.NOT_CONFIGURED,
@@ -58,7 +61,7 @@ class ProviderHealthMonitor:
             return
         self.tasks[key] = asyncio.create_task(self._validate(provider))
 
-    def status(self, provider: PluginMetadataProvider) -> HealthStatus:
+    def status(self, provider: ProviderAdapter) -> HealthStatus:
         if provider.state in {
             ProviderHealth.DISABLED,
             ProviderHealth.NOT_CONFIGURED,
@@ -67,17 +70,17 @@ class ProviderHealthMonitor:
             return HealthStatus(provider.state, 0)
         return self.statuses.get(self.key(provider), HealthStatus(provider.state, 0))
 
-    def available(self, provider: PluginMetadataProvider) -> PluginMetadataProvider:
+    def available(self, provider: ProviderAdapter) -> ProviderAdapter:
         self.schedule(provider)
         return replace(provider, state=self.status(provider).state)
 
-    async def _validate(self, provider: PluginMetadataProvider) -> None:
+    async def _validate(self, provider: ProviderAdapter) -> None:
         # Background validation cannot spawn a worker for every provider at once.
         # Queue outside the operation deadline; searches never wait for this queue.
         async with self.validation_slots:
             await self._validate_now(provider)
 
-    async def _validate_now(self, provider: PluginMetadataProvider) -> None:
+    async def _validate_now(self, provider: ProviderAdapter) -> None:
         failure = None
         try:
             response = await bounded(

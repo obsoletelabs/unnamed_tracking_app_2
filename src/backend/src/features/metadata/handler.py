@@ -22,11 +22,13 @@ from src.plugin_api.metadata_contracts import (
     ProviderResponse,
 )
 
+from .core import CoreMetadataProvider
 from .deadlines import bounded
 from .identity import candidate_id, identities, rank_key, same_entity
 from .providers import Operation, PluginMetadataProvider
 
 logger = logging.getLogger(__name__)
+PRELOAD_CONCURRENCY = 4
 
 
 class Provider(Protocol):
@@ -85,6 +87,7 @@ class SearchSession:
     changed: asyncio.Event = field(default_factory=asyncio.Event)
     work: dict[tuple[str, str, str], asyncio.Task] = field(default_factory=dict)
     completed: set[tuple[str, str, str]] = field(default_factory=set)
+    preloaded: set[str] = field(default_factory=set)
     unresolved: dict[tuple[str, str, str], tuple] = field(default_factory=dict)
     media_requested: bool = True
     enrichment_finished: bool = False
@@ -116,7 +119,7 @@ class SearchSession:
 
 
 class MetadataHandler:
-    """Generic orchestration; external API policy lives entirely in provider plugins."""
+    """Generic orchestration; external API policy lives in native or optional providers."""
 
     def __init__(self, operation_timeout: float = 8, session_ttl: float = 300) -> None:
         self.operation_timeout = operation_timeout
@@ -256,7 +259,9 @@ class MetadataHandler:
         cached = self.cache.get(cache_key)
         response = cached[1] if cached and cached[0] > time.monotonic() else None
         # Cached data never bypasses current grants or lifecycle validation.
-        if response is not None and isinstance(provider, PluginMetadataProvider):
+        if response is not None and isinstance(
+            provider, (PluginMetadataProvider, CoreMetadataProvider)
+        ):
             try:
                 if not await bounded(provider.authorized("search"), self.operation_timeout):
                     response = ProviderResponse(failure=ProviderFailure(code="plugin_unavailable"))
@@ -532,13 +537,33 @@ class MetadataHandler:
     def _enrich(self, session: SearchSession) -> None:
         if session.cancelled:
             return
-        target_ids = (
-            [session.selected]
-            if session.selected
-            else list(session.candidates)[:3]
-            if len(session.request.query) >= 5
-            else []
-        )
+        while True:
+            target_ids = (
+                [session.selected]
+                if session.selected
+                else [
+                    group_id
+                    for group_id, group in session.groups.items()
+                    if not all(key in session.preloaded for key in group)
+                ][:PRELOAD_CONCURRENCY]
+                if len(session.request.query) >= 5
+                else []
+            )
+            pending = self._enrich_targets(session, target_ids)
+            finished = [
+                group_id for group_id in target_ids if not set(session.groups[group_id]) & pending
+            ]
+            if session.selected or not finished:
+                self._finish_enrichment(session)
+                return
+            # Every completed result frees a slot; slow results do not block the
+            # next entry. Empty/failed operations finish too, without retry loops.
+            session.preloaded.update(
+                key for group_id in finished for key in session.groups[group_id]
+            )
+
+    def _enrich_targets(self, session: SearchSession, target_ids: list[str]) -> set[str]:
+        pending: set[str] = set()
         targets = {key for group_id in target_ids for key in session.groups.get(group_id, ())}
         for work_key, task in list(session.work.items()):
             if work_key[1] not in targets:
@@ -594,15 +619,19 @@ class MetadataHandler:
                         session.unresolved.pop(work_key)
                     if (
                         not getattr(provider.declaration.operations, operation)
-                        or work_key in session.work
                         or work_key in session.completed
+                    ):
+                        continue
+                    pending.add(key)
+                    if work_key in session.work or (
+                        not session.selected and len(session.work) >= PRELOAD_CONCURRENCY
                     ):
                         continue
                     session.enrichment_finished = False
                     session.work[work_key] = asyncio.create_task(
                         self._enrich_one(session, provider, key, operation)
                     )
-        self._finish_enrichment(session)
+        return pending
 
     def _operation_candidate(self, session: SearchSession, key: str) -> MetadataCandidate:
         identity = self._identity(session, session.sources[key])
@@ -717,7 +746,7 @@ class MetadataHandler:
         finally:
             if session.work.get(work_key) is asyncio.current_task():
                 session.work.pop(work_key, None)
-                self._finish_enrichment(session)
+                self._enrich(session)
 
     @staticmethod
     def _append_assets(session: SearchSession, key: str, response: ProviderResponse) -> None:

@@ -64,6 +64,7 @@ from src.core.session_manager import purge_old_sessions
 from src.database.session import SessionLocal
 from src.features.backup.scheduler import run_backup_loop
 from src.features.jobs import run_jobs_loop
+from src.features.metadata.core import CORE_PROVIDERS, core_registration
 from src.features.metadata.health import monitor as provider_health_monitor
 from src.features.trash.sweep import run_sweep_loop
 from src.helpers import image_prefetch
@@ -172,6 +173,8 @@ async def bootstrap_primary_user() -> None:
                 }
             )
         apply_deployment_provider_credentials(app_integrations_row)
+        for provider_id in CORE_PROVIDERS:
+            await core_registration(db, provider_id)
 
 
 @app.on_event("startup")

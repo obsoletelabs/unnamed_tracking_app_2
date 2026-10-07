@@ -32,6 +32,7 @@ def provider_boundary(boundary, monkeypatch):  # noqa: F811 - imported pytest fi
         async def get(self, model, key):
             return self.session.get(model, key)
 
+    monkeypatch.setattr(providers, "discover_core_providers", AsyncMock(return_value=[]))
     db = Database(boundary.session)
 
     async def dependency():

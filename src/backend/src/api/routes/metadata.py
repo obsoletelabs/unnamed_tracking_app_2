@@ -18,6 +18,7 @@ from src.core.preferences import load_preferences
 from src.database.models.plugin_metadata_provider import PluginMetadataProviderRegistration
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features.metadata.core import CORE_PROVIDERS, core_registration
 from src.features.metadata.handler import handler
 from src.features.metadata.health import monitor
 from src.features.metadata.providers import (
@@ -168,6 +169,7 @@ async def providers_status(db: Database, user: CurrentUser) -> dict:
             {
                 **provider.declaration.model_dump(mode="json"),
                 "plugin_id": provider.plugin_id,
+                "included": provider.id in CORE_PROVIDERS,
                 "state": status.state,
                 "checked_at": status.checked_at or None,
                 "failure": status.failure,
@@ -181,12 +183,16 @@ async def providers_status(db: Database, user: CurrentUser) -> dict:
 async def update_configuration(
     provider_id: str, payload: ConfigurationInput, db: Database, user: CurrentUser
 ) -> dict:
-    row = await db.get(PluginMetadataProviderRegistration, provider_id)
+    row = (
+        await core_registration(db, provider_id)
+        if provider_id in CORE_PROVIDERS
+        else await db.get(PluginMetadataProviderRegistration, provider_id)
+    )
     if row is None or row.revoked_at is not None:
         raise HTTPException(404, "Metadata provider not found.")
     if payload.scope == "system" and not user.is_admin:
         raise HTTPException(403, "Administrator access is required.")
-    if not await has_capability_grant(
+    if provider_id not in CORE_PROVIDERS and not await has_capability_grant(
         db,
         plugin_id=row.plugin_id,
         installation_id=row.installation_id,

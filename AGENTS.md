@@ -9,6 +9,7 @@ It contains the application backend, frontend, database/migration layer, deploym
 Agents must preserve the application's existing architectural boundaries. In particular:
 
 * The host application owns plugin infrastructure.
+* Core metadata providers (Steam, IGDB, SteamGridDB, TVmaze, AniList, AniZip and OMDb) are hardcoded host features, not plugins. Optional metadata providers use the public plugin boundary.
 * Third-party/official plugin implementations belong in `obsoletelabs/unnamed_tracking_app_plugins`.
 * Plugins must communicate through the supported public Plugin API/gateway.
 * Do not copy plugin implementations, test-only plugin fixtures, or plugin-repository concerns into the host merely to make a test pass.

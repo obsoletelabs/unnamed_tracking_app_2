@@ -1,9 +1,7 @@
-"""Production provider registry using the existing plugin gateway and runtime."""
+"""Discover native core providers and permission-checked optional plugins."""
 
 from __future__ import annotations
 
-import hashlib
-import json
 import logging
 import time
 from dataclasses import dataclass
@@ -14,10 +12,8 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.crypto import decrypt_secret, encrypt_secret
 from src.database.models.plugin_metadata_provider import (
     PluginMetadataProviderRegistration,
-    PluginProviderConfiguration,
 )
 from src.database.session import SessionLocal
 from src.plugin_api.grants import has_capability_grant, installation_is_executable
@@ -36,6 +32,8 @@ from src.plugin_api.runtime_client import (
     PluginRuntimeUnavailable,
 )
 
+from .configuration import configuration_presence, configuration_values, save_configuration
+from .core import CORE_PROVIDERS, CoreMetadataProvider, discover_core_providers
 from .deadlines import bounded
 
 logger = logging.getLogger(__name__)
@@ -86,123 +84,6 @@ async def unregister_provider(
     row.revoked_at = int(time.time())
     await db.commit()
     return {"unregistered": True, "provider_id": row.provider_id}
-
-
-async def configuration_values(
-    db: AsyncSession, registration: PluginMetadataProviderRegistration, user_id: UUID
-) -> tuple[dict[str, str], str]:
-    """Resolve declared scope precedence without exposing values to public UI responses."""
-    declaration = MetadataProviderRegistration.model_validate(registration.declaration)
-    rows = list(
-        await db.scalars(
-            select(PluginProviderConfiguration).where(
-                PluginProviderConfiguration.provider_id == registration.provider_id,
-                PluginProviderConfiguration.plugin_id == registration.plugin_id,
-                PluginProviderConfiguration.scope.in_(["system", str(user_id)]),
-            )
-        )
-    )
-    scoped = {row.scope: json.loads(decrypt_secret(row.encrypted_values)) for row in rows}
-    result: dict[str, str] = {}
-    for field in declaration.configuration:
-        scopes = (
-            [str(user_id), "system"]
-            if field.scope == "both"
-            else ["system" if field.scope == "system" else str(user_id)]
-        )
-        value = next(
-            (
-                scoped[scope].get(field.key)
-                for scope in scopes
-                if scoped.get(scope, {}).get(field.key)
-            ),
-            None,
-        )
-        if value is not None:
-            result[field.key] = value
-    revision = hashlib.sha256(
-        (
-            str(registration.installation_id)
-            + "|"
-            + "|".join(sorted(row.scope + row.encrypted_values for row in rows))
-        ).encode()
-    ).hexdigest()
-    return result, revision
-
-
-async def save_configuration(
-    db: AsyncSession,
-    registration: PluginMetadataProviderRegistration,
-    scope: str,
-    values: dict[str, str | None],
-) -> None:
-    """Encrypt a scoped patch; omitted fields survive, explicit null removes a field."""
-    # Serialize first writes as well as patches; a missing scoped row cannot be row-locked.
-    current = await db.scalar(
-        select(PluginMetadataProviderRegistration)
-        .where(
-            PluginMetadataProviderRegistration.provider_id == registration.provider_id,
-            PluginMetadataProviderRegistration.installation_id == registration.installation_id,
-            PluginMetadataProviderRegistration.revoked_at.is_(None),
-        )
-        .with_for_update()
-    )
-    if current is None:
-        raise ValueError("provider installation changed")
-    declaration = MetadataProviderRegistration.model_validate(registration.declaration)
-    field_scope = "system" if scope == "system" else "user"
-    allowed = {
-        field.key for field in declaration.configuration if field.scope in {field_scope, "both"}
-    }
-    if not set(values).issubset(allowed):
-        raise ValueError("configuration field does not belong to the selected scope")
-    row = await db.scalar(
-        select(PluginProviderConfiguration)
-        .where(
-            PluginProviderConfiguration.provider_id == registration.provider_id,
-            PluginProviderConfiguration.scope == scope,
-        )
-        .with_for_update()
-    )
-    existing = json.loads(decrypt_secret(row.encrypted_values)) if row else {}
-    for key, value in values.items():
-        if value is None or value == "":
-            existing.pop(key, None)
-        elif len(value) > 4096:
-            raise ValueError("configuration value exceeds its limit")
-        else:
-            existing[key] = value
-    if row is None:
-        row = PluginProviderConfiguration(
-            provider_id=registration.provider_id, plugin_id=registration.plugin_id, scope=scope
-        )
-        db.add(row)
-    row.encrypted_values = encrypt_secret(json.dumps(existing))
-    row.updated_at = int(time.time())
-    await db.commit()
-
-
-async def configuration_presence(
-    db: AsyncSession, provider: "PluginMetadataProvider"
-) -> dict[str, dict[str, bool]]:
-    """Expose presence per declared scope, never credential values or lengths."""
-    rows = await db.scalars(
-        select(PluginProviderConfiguration).where(
-            PluginProviderConfiguration.provider_id == provider.id,
-            PluginProviderConfiguration.plugin_id == provider.plugin_id,
-            PluginProviderConfiguration.scope.in_(["system", str(provider.user_id)]),
-        )
-    )
-    scopes = {row.scope: json.loads(decrypt_secret(row.encrypted_values)) for row in rows}
-    return {
-        field.key: {
-            "system": field.scope in {"system", "both"}
-            and bool(scopes.get("system", {}).get(field.key)),
-            "user": field.scope in {"user", "both"}
-            and bool(scopes.get(str(provider.user_id), {}).get(field.key)),
-        }
-        for field in provider.declaration.configuration
-    }
 
 
 async def provider_configuration(
@@ -327,30 +208,39 @@ async def discover_providers(
     user_id: UUID,
     media_type: MediaType | None = None,
     preferences: dict[str, Any] | None = None,
-) -> list[PluginMetadataProvider]:
+) -> list[PluginMetadataProvider | CoreMetadataProvider]:
     """Derive discovery from durable registrations, current lifecycle and scoped grants."""
-    try:
-        plugins = await bounded(PluginRuntimeClient().plugins(), 2)
-    except (PluginRuntimeUnavailable, PluginRuntimeRequestError, TimeoutError):
-        plugins = []
-    live = {plugin["plugin_id"]: plugin for plugin in plugins}
-    registrations = await db.scalars(
-        select(PluginMetadataProviderRegistration)
-        .where(PluginMetadataProviderRegistration.revoked_at.is_(None))
-        .order_by(PluginMetadataProviderRegistration.provider_id)
+    providers: list[PluginMetadataProvider | CoreMetadataProvider] = list(
+        await discover_core_providers(db, user_id, media_type, preferences)
     )
-    providers = []
-    for row in registrations:
-        declaration = MetadataProviderRegistration.model_validate(row.declaration)
-        if media_type is not None and media_type not in declaration.media_types:
-            continue
-        if not await has_capability_grant(
+    registrations = list(
+        await db.scalars(
+            select(PluginMetadataProviderRegistration)
+            .where(PluginMetadataProviderRegistration.revoked_at.is_(None))
+            .order_by(PluginMetadataProviderRegistration.provider_id)
+        )
+    )
+    registrations = [row for row in registrations if row.provider_id not in CORE_PROVIDERS]
+    for row in list(registrations):
+        if await has_capability_grant(
             db,
             plugin_id=row.plugin_id,
             installation_id=row.installation_id,
             capability="metadata_providers.register",
             user_id=user_id,
         ):
+            continue
+        registrations.remove(row)
+    if not registrations:
+        return providers
+    try:
+        plugins = await bounded(PluginRuntimeClient().plugins(), 2)
+    except (PluginRuntimeUnavailable, PluginRuntimeRequestError, TimeoutError):
+        plugins = []
+    live = {plugin["plugin_id"]: plugin for plugin in plugins}
+    for row in registrations:
+        declaration = MetadataProviderRegistration.model_validate(row.declaration)
+        if media_type is not None and media_type not in declaration.media_types:
             continue
         values, revision = await configuration_values(db, row, user_id)
         state = _provider_state(
@@ -364,3 +254,15 @@ async def discover_providers(
             )
         )
     return providers
+
+
+__all__ = [
+    "configuration_values",
+    "configuration_presence",
+    "save_configuration",
+    "discover_providers",
+    "register_provider",
+    "unregister_provider",
+    "provider_configuration",
+    "PluginMetadataProvider",
+]
