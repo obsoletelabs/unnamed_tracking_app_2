@@ -141,3 +141,15 @@ real APIs on a disposable development host and prints counts/classifications onl
 Unsigned development previews require explicit plugin-manager approval and are
 not production distribution artifacts. See its wiki for the live validation
 record and providers that remain untested without credentials.
+
+Development validation on 2026-10-07 passed the complete backend suite (1,527
+tests, two skips), followed by five focused tests including the new achievement
+redirect regression. The frontend passed 294 tests, lint, formatting, type
+checking and a production build. Runtime tests passed 145 cases. Backend mypy
+checked 257 files and Pylint scored 10/10. A fresh disposable database upgraded
+through the parent and new migration, downgraded to the parent and re-upgraded
+successfully. Both wiki trees build in strict mode. The companion's validation
+record distinguishes live API success from fixture coverage and missing credentials.
+
+See [the user workflow and screenshots](../integrations/metadata.md) for the
+original source-tile styling, progressive results and selected artwork.

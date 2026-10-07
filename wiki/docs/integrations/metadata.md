@@ -67,7 +67,7 @@ implementations are maintained in [obsoletelabs/unnamed_tracking_app_plugins](ht
 
 ## Where keys go
 
-Open **Settings → Metadata/API → Installed metadata providers**, or the provider's
+Open **Settings → Metadata → Sources & API keys**, or the provider's
 plugin settings dialog. Fields declare system, user or both scopes. Administrators
 may save system values; users may save their own values. A user override wins over
 a system fallback when both scopes are supported. Reads show configuration presence
@@ -80,6 +80,35 @@ RetroAchievements and console account-sync credentials remain in account integra
 IGDB declares system Twitch credentials; other providers declare their own scopes.
 TMDB is optional and may be left unconfigured. TVmaze and public anime providers
 operate without signup. Movie sources require a configured movie provider such as OMDb.
+
+## Familiar interface, progressive results
+
+The source panel retains the original compact tiles, colored monograms, key
+buttons and expandable credential forms. Installed plugins determine the available
+tiles. Each shows its current health; expand a tile for the last validation time
+and saved-value presence. Administrators choose **System default** for shared
+credentials or **My account** for a personal override. Changing scope clears
+unsaved input so it cannot be saved accidentally to the other scope. The original
+account-import connections remain below the metadata tiles.
+
+![Installed metadata providers in the original tile layout](../assets/plugin-metadata/provider-tiles.jpg)
+
+![SteamGridDB system configuration with the stored secret hidden](../assets/plugin-metadata/provider-configuration.jpg)
+
+The Add Game editor retains its Find, General, Ratings & Tags, Media, Links,
+Ownership and Page tabs. Identity results appear before artwork; failed optional
+providers produce a short warning while successful results stay selectable.
+Selecting a result populates the existing fields and starts artwork lookup.
+
+![Portal 2 search with usable Steam results despite a provider outage](../assets/plugin-metadata/game-search.jpg)
+
+![Selected Portal 2 details populated in the existing game editor](../assets/plugin-metadata/game-details.jpg)
+
+![SteamGridDB cover and banner choices after selection](../assets/plugin-metadata/game-artwork.jpg)
+
+These screenshots were captured on 2026-10-07 using installed development packages
+and a disposable empty library. They demonstrate Steam and SteamGridDB live data;
+they do not imply that every authenticated provider has been configured or validated.
 
 ## Safe operation
 
