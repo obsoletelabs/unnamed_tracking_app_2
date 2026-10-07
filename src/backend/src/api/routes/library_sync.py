@@ -167,16 +167,17 @@ async def _download_asset(url: str, game_id: UUID, asset_kind: AssetKind) -> boo
 
 async def _enrich_new_game(game: Game, user: User, preferences: dict) -> None:
     """Fill newly imported rows through the same scoped metadata and media operations."""
+    candidate = library_candidate(
+        game.title,
+        MediaType.GAME,
+        game.provider_ids or {},
+        game.release_date.year if game.release_date else None,
+    )
     async with SessionLocal() as metadata_db:
         record, _ = await resolve_library_record(
             metadata_db,
             user.id,
-            library_candidate(
-                game.title,
-                MediaType.GAME,
-                game.provider_ids or {},
-                game.release_date.year if game.release_date else None,
-            ),
+            candidate,
             include_media=True,
             preferences=preferences,
         )
