@@ -131,6 +131,8 @@ async def check_in_background(show_id: UUID) -> None:
             show = await db.scalar(select(TVShow).where(TVShow.id == show_id))
             if show is not None:
                 await check_new_seasons(db, show)
+    # A failed background lookup must release its in-flight slot and leave page requests usable.
+    # pylint: disable-next=broad-exception-caught
     except Exception:
         logger.exception("Background season check failed for %s", show_id)
     finally:

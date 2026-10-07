@@ -9,6 +9,7 @@ from typing import Any
 from urllib.parse import quote
 
 import httpx
+
 from src.plugin_api.manager_state import manager_state
 
 _ACTION_REQUEST_TIMEOUT = 35.0  # Allow the isolated runner's 30-second wall limit to report.
@@ -30,6 +31,9 @@ class PluginRuntimeRequestError(RuntimeError):
 
 class PluginRuntimeClient:
     """Authenticated client for the isolated plugin runtime and broker."""
+
+    # Public methods mirror the distinct operations of the versioned runtime contract.
+    # pylint: disable=too-many-public-methods
 
     def __init__(self, base_url: str | None = None, token: str | None = None) -> None:
         resolved_url = base_url or os.getenv("PLUGIN_RUNTIME_URL") or "http://plugin-runtime:8000"

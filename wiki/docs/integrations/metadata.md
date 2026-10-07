@@ -56,6 +56,7 @@ Metadata changes are recorded in the existing game metadata history, so provider
 ## Developer notes
 
 The editor uses `/api/game/{game_id}/metadata/refresh`, which calls `features.metadata.games.search.search_game_metadata` with the requesting user's existing provider preferences and credentials. The endpoint owns authorization, exact-match validation, manual-field protection, history updates, artwork handling, and stale-preview checks; clients do not send arbitrary provider data to the game update API.
+After provider lookup, applying a refresh reloads the owned game under a database row lock before checking title protection or the preview timestamp. A protection change made during lookup is respected, and a stale preview returns HTTP 409 without applying metadata.
 Games are searched on Steam, GOG, IGDB, GiantBomb, RetroAchievements and
 HowLongToBeat; SteamGridDB and ScreenScraper add artwork. Movies and TV use
 TMDB, OMDb and TVmaze, anime uses AniList. Cover and banner artwork can also be

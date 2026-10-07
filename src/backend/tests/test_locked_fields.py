@@ -5,7 +5,6 @@ import pytest
 from fastapi import HTTPException
 
 from src.core.auth import AuthenticatedActor
-
 from src.features.metadata.locked_fields import apply_updates_with_locking
 
 

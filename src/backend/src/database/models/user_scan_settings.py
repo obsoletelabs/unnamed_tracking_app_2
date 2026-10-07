@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import time
 from uuid import UUID, uuid4
 
 from sqlalchemy import JSON, BigInteger, Boolean, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from src.database.base import Base
+from src.database.base import Base, unix_timestamp
 
 # default ordering is "best of category first" — IGDB and GiantBomb are the
 # broadest, most consistently populated general databases; GOG's public
@@ -21,6 +20,8 @@ DEFAULT_IMAGE_PROVIDER_ORDER = ["SteamGridDB", "ScreenScraper"]
 
 
 class UserScanSettings(Base):
+    # Repeated declarations preserve independent database table/enum contracts.
+    # pylint: disable=duplicate-code
     """Per-user metadata search preferences — provider priority and which
     fields a search result is allowed to save. One row per user."""
 
@@ -64,10 +65,10 @@ class UserScanSettings(Base):
     # updates this after each call), so Scan Settings can show "last used"
     # instead of a bare on/off toggle with no history
     provider_last_used: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
-    created_at: Mapped[int] = mapped_column(BigInteger, nullable=False, default=time.time)
+    created_at: Mapped[int] = mapped_column(BigInteger, nullable=False, default=unix_timestamp)
     updated_at: Mapped[int] = mapped_column(
         BigInteger,
         nullable=False,
-        default=time.time,
-        onupdate=time.time,
+        default=unix_timestamp,
+        onupdate=unix_timestamp,
     )

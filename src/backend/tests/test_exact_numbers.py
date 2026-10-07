@@ -22,8 +22,8 @@ from src.database.models.movies import Movie, MovieStatus
 from src.database.models.notification import Notification
 from src.database.models.user import User
 from src.database.session import SessionLocal
-from src.features.metadata.anime.anizip import AniZipClient
 from src.features.episode_progress import apply_counter, counter_from_flags, materialize_progress
+from src.features.metadata.anime.anizip import AniZipClient
 from src.features.metadata.tv.search import _looks_like_anime
 from src.features.notifications import _episode_row, generate_for_user
 from src.features.tv_seasons import check_new_seasons, new_seasons
@@ -105,24 +105,24 @@ class _Show:
 
 def test_first_episode_is_a_season_start_and_later_ones_are_episodes():
     prefs = dict(DEFAULTS)
-    first = _episode_row("anime", _Show(), 1, 1, 1_700_000_000, prefs)
-    later = _episode_row("anime", _Show(), 1, 5, 1_700_000_000, prefs)
+    first = _episode_row("anime", _Show(), 1, 1, 1_700_000_000, prefs=prefs)
+    later = _episode_row("anime", _Show(), 1, 5, 1_700_000_000, prefs=prefs)
     assert first and first["kind"] == "season_started"
     assert later and later["kind"] == "episode_aired" and later["body"] == "Episode 5 aired"
     assert later["event_at"] == 1_700_000_000  # the exact time, untouched
 
 
 def test_tv_later_seasons_name_the_season():
-    row = _episode_row("tv", _Show(), 3, 4, 1_700_000_000, dict(DEFAULTS))
+    row = _episode_row("tv", _Show(), 3, 4, 1_700_000_000, prefs=dict(DEFAULTS))
     assert row and row["body"] == "Season 3 episode 4 aired"
 
 
 def test_notification_toggles_switch_each_kind_off():
     prefs = {**DEFAULTS, "notify_episode_aired": False}
-    assert _episode_row("anime", _Show(), 1, 5, 1, prefs) is None
-    assert _episode_row("anime", _Show(), 1, 1, 1, prefs) is not None
+    assert _episode_row("anime", _Show(), 1, 5, 1, prefs=prefs) is None
+    assert _episode_row("anime", _Show(), 1, 1, 1, prefs=prefs) is not None
     prefs = {**DEFAULTS, "notify_season_started": False}
-    assert _episode_row("anime", _Show(), 1, 1, 1, prefs) is None
+    assert _episode_row("anime", _Show(), 1, 1, 1, prefs=prefs) is None
 
 
 class _FakeResponse:
@@ -588,7 +588,9 @@ async def test_route_level_flow_flags_moves_the_counter_and_the_library_number()
             assert sorted(e.episode_number for e in rows if e.watched) == [1, 2, 3, 4]
 
             # checking episode 8 on the title page moves the library number to 5
-            await update_episode(show_id, season_id, ids[7], EpisodeUpdate(watched=True), db, user)
+            await update_episode(
+                show_id, season_id, ids[7], EpisodeUpdate(watched=True), db=db, current_user=user
+            )
             s = (
                 await db.execute(select(AnimeSeason).where(AnimeSeason.id == season_id))
             ).scalar_one()
@@ -641,7 +643,7 @@ async def test_unchecking_episodes_works_including_ones_the_counter_covered():
 
             # episode 2 was only counted by the counter; unchecking it must stick
             result = await update_episode(
-                show_id, season_id, ids[1], EpisodeUpdate(watched=False), db, user
+                show_id, season_id, ids[1], EpisodeUpdate(watched=False), db=db, current_user=user
             )
             episodes = {e.episode_number: e.watched for e in result.seasons[0].episodes}
             assert episodes == {1: True, 2: False, 3: True, 4: True, 5: False, 6: False}
@@ -649,7 +651,7 @@ async def test_unchecking_episodes_works_including_ones_the_counter_covered():
 
             # and a flagged one
             result = await update_episode(
-                show_id, season_id, ids[3], EpisodeUpdate(watched=False), db, user
+                show_id, season_id, ids[3], EpisodeUpdate(watched=False), db=db, current_user=user
             )
             assert result.seasons[0].episodes_watched == 2
             assert {e.episode_number for e in result.seasons[0].episodes if e.watched} == {1, 3}
@@ -1081,6 +1083,55 @@ async def test_details_fill_only_blank_fields_and_report_what_was_not_found():
 
 # ----------------------------------------------------- restoring an own export
 @pytest.mark.asyncio
+async def test_scheduled_backups_match_manual_exports_and_keep_seven_snapshots(
+    monkeypatch, tmp_path
+):
+    import json
+    import time
+
+    from src.api.routes.export_import import export_library
+    from src.features.backup import scheduler
+
+    monkeypatch.setattr(scheduler, "_BACKUP_ROOT", tmp_path)
+    async with SessionLocal() as db:
+        user = None
+        try:
+            user = await _user(db)
+            db.add(
+                Movie(
+                    user_id=user.scratch_id,
+                    title="Backed up film",
+                    sort_title="backed up film",
+                    status=MovieStatus.WATCHED,
+                )
+            )
+            db.add(
+                Movie(
+                    user_id=user.scratch_id,
+                    title="Trashed film",
+                    sort_title="trashed film",
+                    deleted_at=1,
+                )
+            )
+            await db.commit()
+            paths = []
+            for index in range(9):
+                monkeypatch.setattr(time, "time", lambda value=1_800_000_000 + index: value)
+                path = await scheduler.run_backup_for_user(user.scratch_id)
+                assert path is not None
+                paths.append(path)
+            assert not paths[0].exists() and not paths[1].exists()
+            assert all(path.is_file() for path in paths[2:])
+            payload = json.loads(paths[-1].read_text())
+            manual = (await export_library(db, user)).model_dump(mode="json")
+            assert payload == manual
+            assert [movie["title"] for movie in payload["movies"]] == ["Backed up film"]
+        finally:
+            if user is not None:
+                await _cleanup(db, user)
+
+
+@pytest.mark.asyncio
 async def test_a_library_export_restores_movies_shows_and_anime_with_progress_and_is_safe_twice():
     import json
 
@@ -1107,8 +1158,8 @@ async def test_a_library_export_restores_movies_shows_and_anime_with_progress_an
                     genres=["Drama"],
                     tags=[],
                     features=[],
-                    director=[],
-                    writer=[],
+                    director=None,
+                    writer=None,
                     locked_fields=[],
                     rewatches=1,
                 )
@@ -1569,7 +1620,7 @@ async def test_manual_calendar_entries_are_private_validated_and_in_the_feed():
             assert await list_events(None, None, db, other) == []  # nobody else sees them
 
             # a bad time is refused at the edge, a half-linked title is refused by the route
-            with pytest.raises(Exception):
+            with pytest.raises((TypeError, ValueError)):
                 EventCreate(title="x", event_date=date(2026, 1, 1), event_time="25:99")
             with pytest.raises(HTTPException) as bad:
                 await create_event(
@@ -2114,9 +2165,10 @@ def test_calendar_projects_no_episode_past_the_season_total():
         )
 
     window = now + 365 * 86400
-    numbers = lambda s: [
-        e["next_episode_number"] for e in _calendar_entries_for_show(s, "anime", window)
-    ]
+
+    def numbers(s):
+        return [e["next_episode_number"] for e in _calendar_entries_for_show(s, "anime", window)]
+
     assert numbers(show(24, 24)) == [24]  # the next episode is the last one
     assert numbers(show(11, 13)) == [11, 12, 13]
     # a count below the next episode is a lagging snapshot, not a ceiling

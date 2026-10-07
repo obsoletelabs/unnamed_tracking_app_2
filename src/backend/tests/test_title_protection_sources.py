@@ -1,5 +1,7 @@
 """Exercise the production import, refresh, and plugin gateway mutation paths."""
 
+import asyncio
+import threading
 import time
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -8,7 +10,7 @@ import httpx
 import pytest
 from sqlalchemy import delete, select
 
-from src.api.routes import games, library_sync
+from src.api.routes import game_metadata, library_sync
 from src.api.routes.plugin_manager import runtime
 from src.core.auth import hash_password
 from src.core.titles import display_title
@@ -142,14 +144,15 @@ async def test_anilist_manual_and_background_imports_respect_existing_locks(
         assert set(show.locked_fields) == {"title", "description"}
 
 
+@pytest.mark.parametrize("preview_state", ["omitted", "current", "stale"])
 async def test_game_refresh_endpoint_respects_protection_for_api_actor(
-    owner, monkeypatch, tmp_path
+    owner, monkeypatch, tmp_path, preview_state
 ):
-    monkeypatch.setattr(games, "_DATA_ROOT", tmp_path)
+    monkeypatch.setattr(game_metadata, "_DATA_ROOT", tmp_path)
     monkeypatch.setattr(
-        games,
+        game_metadata,
         "search_game_metadata",
-        lambda *_: {
+        lambda *_, **_kwargs: {
             "providers": ["Steam"],
             "results": [{"provider": "Steam", "title": "Original™", "developer": "New developer"}],
         },
@@ -165,6 +168,7 @@ async def test_game_refresh_endpoint_respects_protection_for_api_actor(
         db.add(game)
         await db.commit()
         identity = game.id
+        updated_at = game.updated_at
         username = (await db.get(User, owner)).username
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://testserver"
@@ -173,17 +177,77 @@ async def test_game_refresh_endpoint_respects_protection_for_api_actor(
             "/api/auth/login", json={"username_or_email": username, "password": "Test-password!9"}
         )
         key = (await client.post("/api/auth/api-keys", json={"name": "Refresh"})).json()["api_key"]
+        body = {"fill_missing_art": False}
+        if preview_state != "omitted":
+            body["expected_updated_at"] = updated_at - (preview_state == "stale")
         response = await client.post(
             f"/api/game/{identity}/metadata/refresh",
-            json={"fill_missing_art": False},
+            json=body,
             headers={"Authorization": f"Bearer {key}"},
         )
+        assert response.status_code == (409 if preview_state == "stale" else 200), response.text
+        if preview_state != "stale":
+            assert "title" in response.json()["skipped_locked_fields"]
+    async with SessionLocal() as db:
+        game = await db.get(Game, identity)
+        assert game.title == "Original"
+        assert game.developer == (None if preview_state == "stale" else "New developer")
+        assert game.locked_fields == ["title"]
+
+
+async def test_game_refresh_reloads_protection_changed_during_provider_lookup(owner, monkeypatch):
+    lookup_started = threading.Event()
+    lookup_released = threading.Event()
+
+    def provider(*_args, **_kwargs):
+        lookup_started.set()
+        assert lookup_released.wait(timeout=10)
+        return {
+            "results": [{"provider": "Steam", "title": "Original™", "developer": "New developer"}]
+        }
+
+    monkeypatch.setattr(game_metadata, "search_game_metadata", provider)
+    async with SessionLocal() as db:
+        game = Game(
+            user_id=owner,
+            title="Original",
+            sort_title="original",
+            folder_location=uuid4().hex,
+            locked_fields=[],
+        )
+        db.add(game)
+        await db.commit()
+        identity = game.id
+        username = (await db.get(User, owner)).username
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        login = await client.post(
+            "/api/auth/login", json={"username_or_email": username, "password": "Test-password!9"}
+        )
+        assert login.status_code == 200, login.text
+        pending = asyncio.create_task(
+            client.post(f"/api/game/{identity}/metadata/refresh", json={"fill_missing_art": False})
+        )
+        try:
+            assert await asyncio.to_thread(lookup_started.wait, 5)
+            async with SessionLocal() as db:
+                game = await db.scalar(select(Game).where(Game.id == identity).with_for_update())
+                game.locked_fields = ["title"]
+                await db.commit()
+        finally:
+            lookup_released.set()
+        response = await asyncio.wait_for(pending, timeout=5)
         assert response.status_code == 200, response.text
         assert "title" in response.json()["skipped_locked_fields"]
     async with SessionLocal() as db:
         game = await db.get(Game, identity)
-        assert game.title == "Original" and game.developer == "New developer"
-        assert game.locked_fields == ["title"]
+        assert (game.title, game.sort_title, game.locked_fields) == (
+            "Original",
+            "original",
+            ["title"],
+        )
+        assert game.developer == "New developer"
 
 
 @pytest.mark.parametrize("kind,model", [("movie", Movie), ("tv_show", TVShow), ("anime", Anime)])
@@ -194,18 +258,20 @@ async def test_plugin_gateway_rejects_protected_title_even_with_broad_grant(
     installation = uuid4()
     monkeypatch.setenv("PLUGIN_RUNTIME_TOKEN", "runtime-test-secret")
     monkeypatch.setattr(
-        runtime,
-        "_live_plugin",
+        runtime.client,
+        "plugins",
         AsyncMock(
-            return_value={
-                "api_contract_version": "1.1.0",
-                "plugin_id": "test.title",
-                "installation_id": str(installation),
-                "enabled": True,
-                "compatible": True,
-                "status": "running",
-                "health": "healthy",
-            }
+            return_value=[
+                {
+                    "api_contract_version": "1.1.0",
+                    "plugin_id": "test.title",
+                    "installation_id": str(installation),
+                    "enabled": True,
+                    "compatible": True,
+                    "status": "running",
+                    "health": "healthy",
+                }
+            ]
         ),
     )
     async with SessionLocal() as db:

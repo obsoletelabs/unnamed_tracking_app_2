@@ -10,7 +10,9 @@ from sqlalchemy.orm import Mapped, mapped_column
 from src.database.base import Base
 
 
+# Repeated column declarations preserve this table's explicit schema contract.
 class OidcProvider(Base):
+    # pylint: disable=duplicate-code
     """A named OIDC identity provider available on the login page."""
 
     __tablename__ = "oidc_providers"

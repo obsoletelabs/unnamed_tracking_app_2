@@ -20,6 +20,9 @@ class XboxClient:
     Microsoft, and does NOT pull any game/achievement data. See the
     Settings plan's "Xbox gets no real validation this pass" decision."""
 
+    # This provider adapter exposes only its supported search/credential operation.
+    # pylint: disable=too-few-public-methods
+
     def __init__(self, client_id: str, client_secret: str) -> None:
         self.client_id = client_id
         self.client_secret = client_secret

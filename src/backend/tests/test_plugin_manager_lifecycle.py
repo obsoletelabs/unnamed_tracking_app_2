@@ -12,9 +12,9 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from test_plugin_install_sources import (  # noqa: F401
     acquire,
-    gate,
     grants,
     package_bytes,
+    plugin_gate,
     seed_update,
 )
 
@@ -238,11 +238,11 @@ async def test_denied_staged_release_remains_denied_during_scheduled_checks(gate
             "source": source,
         }
 
-    monkeypatch.setattr(plugin_catalogues, "_check_plugin_update", check)
-    monkeypatch.setattr(plugin_acquisition, "_download_remote_file", download)
+    monkeypatch.setattr(plugin_catalogues, "check_plugin_update", check)
+    monkeypatch.setattr(plugin_acquisition, "download_remote_file", download)
     monkeypatch.setattr(
         plugin_catalogues,
-        "_catalogue_store",
+        "catalogue_store",
         lambda: SimpleNamespace(list=lambda: [{"url": source["catalogue_url"], "enabled": True}]),
     )
     result = await plugins.run_automatic_plugin_updates(gate.db, gate.admin)
@@ -330,11 +330,11 @@ async def test_automatic_update_policy_downloads_without_unauthorized_activation
             "source": source,
         }
 
-    monkeypatch.setattr(plugin_catalogues, "_check_plugin_update", check)
-    monkeypatch.setattr(plugin_acquisition, "_download_remote_file", download)
+    monkeypatch.setattr(plugin_catalogues, "check_plugin_update", check)
+    monkeypatch.setattr(plugin_acquisition, "download_remote_file", download)
     monkeypatch.setattr(
         plugin_catalogues,
-        "_catalogue_store",
+        "catalogue_store",
         lambda: SimpleNamespace(list=lambda: [{"url": source["catalogue_url"], "enabled": True}]),
     )
     admin = gate.admin

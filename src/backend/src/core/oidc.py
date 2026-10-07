@@ -7,15 +7,19 @@ from urllib.parse import urljoin, urlsplit, urlunsplit
 
 from authlib.integrations.starlette_client import OAuth
 from fastapi import HTTPException, Request
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import RedirectResponse
 
 from src.core.config import settings
+from src.database.models.oidc_settings import OidcSettings
 
 oauth = OAuth()
 
 
 @dataclass(frozen=True)
-class OidcConfig:
+# Provider configuration mirrors the persisted OIDC settings, including branding.
+class OidcConfig:  # pylint: disable=too-many-instance-attributes
     issuer_url: str
     client_id: str
     client_secret: str
@@ -43,6 +47,16 @@ class OidcConfig:
 _registered_configs: dict[str, OidcConfig] = {}
 
 
+async def get_or_create_oidc_settings(db: AsyncSession) -> OidcSettings:
+    """Load the deployment singleton without committing the caller's transaction."""
+    row = await db.scalar(select(OidcSettings).limit(1))
+    if row is None:
+        row = OidcSettings()
+        db.add(row)
+        await db.flush()
+    return row
+
+
 def env_oidc_config() -> OidcConfig | None:
     if not (settings.OIDC_ISSUER_URL and settings.OIDC_CLIENT_ID and settings.OIDC_CLIENT_SECRET):
         return None
@@ -66,7 +80,8 @@ def register_oidc_provider(config: OidcConfig, client_name: str = "oidc") -> Non
     # administrator changes the issuer, credentials or scopes so sign-in uses
     # the saved configuration without requiring a server restart.
     if _registered_configs.get(client_name) != config:
-        oauth._clients.pop(client_name, None)
+        # Authlib provides no public cache invalidation method for registered clients.
+        oauth._clients.pop(client_name, None)  # pylint: disable=protected-access
     oauth.register(
         name=client_name,
         client_id=config.client_id,

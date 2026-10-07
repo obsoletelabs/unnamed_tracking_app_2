@@ -15,6 +15,9 @@ from src.core.env_handler import EnvConfigHandler
 class Settings(BaseSettings):
     """Runtime settings; source and default policy live in EnvConfigHandler."""
 
+    # Field names deliberately match the public environment configuration contract.
+    # pylint: disable=invalid-name
+
     DATABASE_URL: str = ""
     POSTGRES_USER: str | None = None
     POSTGRES_PASSWORD: str | None = None
@@ -124,4 +127,5 @@ _settings_values = {
 }
 settings = Settings(**_settings_values)  # type: ignore[call-arg]
 if not settings.SECRET_KEY:
-    settings.SECRET_KEY = _handler.resolved()["SECRET_KEY"]
+    # Preserve the environment-named field when supplying its persistent default.
+    settings.SECRET_KEY = _handler.resolved()["SECRET_KEY"]  # pylint: disable=invalid-name

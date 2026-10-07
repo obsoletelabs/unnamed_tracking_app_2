@@ -1,3 +1,7 @@
+"""Pydantic schemas for movie metadata."""
+
+# Domain schemas intentionally mirror the corresponding database/provider models.
+
 from datetime import date
 from decimal import Decimal
 from uuid import UUID
@@ -9,6 +13,8 @@ from src.api.schemas.title_protection import TitleProtectionUpdate
 from src.database.models.movies import MovieStatus
 
 
+# Preserve this media contract's field defaults and compatibility model names.
+# pylint: disable=duplicate-code
 class MovieBase(BaseModel):
     """Fields shared by create and update payloads."""
 
@@ -50,12 +56,17 @@ class MovieBase(BaseModel):
     personal_rank: int | None = None
 
 
+# pylint: enable=duplicate-code
+
+
 class MovieCreate(MovieBase):
     """Payload for creating a movie. sort_title is derived if not given."""
 
     sort_title: str | None = Field(default=None, max_length=500)
 
 
+# Preserve this media contract's field defaults and compatibility model names.
+# pylint: disable=duplicate-code
 class MovieUpdate(TitleProtectionUpdate):
     """Payload for partial updates — every field optional."""
 
@@ -99,6 +110,11 @@ class MovieUpdate(TitleProtectionUpdate):
     personal_rank: int | None = None
 
 
+# pylint: enable=duplicate-code
+
+
+# Preserve this media contract's field defaults and compatibility model names.
+# pylint: disable=duplicate-code
 class MovieRead(MovieBase):
     """Full representation returned to clients."""
 
@@ -112,3 +128,6 @@ class MovieRead(MovieBase):
     updated_at: int = Field(
         description="Unix timestamp in seconds when the movie was last updated."
     )
+
+
+# pylint: enable=duplicate-code

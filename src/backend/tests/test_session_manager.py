@@ -2,9 +2,9 @@ import asyncio
 from types import SimpleNamespace
 from uuid import uuid4
 
+from src.api.routes.session_manager import view
 from src.core.geoip import GeoIpProvider, GeoLocation
 from src.core.session_manager import create_session, session_state
-from src.api.routes.session_manager import view
 from src.database.models.auth import UserSession
 
 
