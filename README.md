@@ -1,4 +1,4 @@
-# Wiki page https://obsoletelabs.github.io/unnamed_tracking_app/
+# Wiki page https://obsoletelabs.github.io/unnamed_tracking_app_2/
 
 Still a WIP, but new features are decently uptodate
 
