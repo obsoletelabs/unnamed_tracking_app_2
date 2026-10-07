@@ -132,7 +132,7 @@ async def search_events(
             if event["event"] == "heartbeat":
                 yield ": heartbeat\n\n"
             else:
-                yield (f"id: {event['id']}\nevent: {event['event']}\ndata: {json.dumps(event)}\n\n")
+                yield f"id: {event['id']}\nevent: {event['event']}\ndata: {json.dumps(event)}\n\n"
 
     return StreamingResponse(
         events(),
