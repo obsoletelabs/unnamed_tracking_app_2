@@ -152,3 +152,10 @@ screen fetch their picture, and the list layouts skip drawing rows that are far
 off screen. A library of hundreds of games opens quickly and loads more as you
 scroll. See [Artwork](../development/architecture.md#artwork-and-local-image-copies)
 for how the copies are made.
+
+## Metadata provider extension (1.1.1)
+
+Search and refresh use installed provider capabilities through the existing runtime.
+Provider configuration and health appear in the host's metadata/plugin settings.
+See [the progressive metadata contract](../development/metadata-providers.md) for
+phase separation, scoped credential migration, deadlines and persistence behavior.

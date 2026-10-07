@@ -101,3 +101,10 @@ NONBUBBLE_ENV=true python tools/check_plugin_contract_upgrade.py \
 The work directory must not already exist. The check creates no browser or media
 captures. Strict sandbox execution is verified separately by the official
 Jellyfin acceptance runner.
+
+## Metadata provider extension (1.1.1)
+
+Search and refresh use installed provider capabilities through the existing runtime.
+Provider configuration and health appear in the host's metadata/plugin settings.
+See [the progressive metadata contract](../development/metadata-providers.md) for
+phase separation, scoped credential migration, deadlines and persistence behavior.

@@ -85,5 +85,5 @@ background administrator identity and live action grants, never the identity of
 who presses Run now. Disabled plugins, revoked access and runtime outages pause
 the controls. Existing scheduling persistence survives updates within the same
 installation identity. See [Tasks](../administration/tasks.md) for host controls
-and the [companion recipe](https://rosefall-a.github.io/unnamed_tracking_app_plugins/development/background-tasks/)
+and the [companion recipe](https://obsoletelabs.github.io/unnamed_tracking_app_plugins/development/background-tasks/)
 for a bounded action example.

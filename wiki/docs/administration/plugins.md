@@ -68,3 +68,10 @@ These screenshots come from the real built frontend in
 deliberately stopped runtime and delayed catalogue transport.
 
 Production deployments must use bubblewrap isolation and a unique `PLUGIN_RUNTIME_TOKEN`. `NONBUBBLE_ENV=true` is development-only and must not be used for untrusted plugins.
+
+## Metadata provider extension (1.1.1)
+
+Search and refresh use installed provider capabilities through the existing runtime.
+Provider configuration and health appear in the host's metadata/plugin settings.
+See [the progressive metadata contract](../development/metadata-providers.md) for
+phase separation, scoped credential migration, deadlines and persistence behavior.

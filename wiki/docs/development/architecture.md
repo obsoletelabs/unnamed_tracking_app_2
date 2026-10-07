@@ -122,3 +122,10 @@ The production Nginx configuration may optionally add an HTTPS listener. TLS con
 Nginx workers run as `www-data`. The master retains the privileges required for port binding and lifecycle control. Runtime status and diagnostics are ephemeral under `/run/unnamed-tracking`; persistent application state is mounted separately under `/data`.
 
 For runtime integration behavior, including PostgreSQL, migrations, frontend/API handoff, and shutdown, see production issue #206.
+
+## Metadata provider extension (1.1.1)
+
+Search and refresh use installed provider capabilities through the existing runtime.
+Provider configuration and health appear in the host's metadata/plugin settings.
+See [the progressive metadata contract](../development/metadata-providers.md) for
+phase separation, scoped credential migration, deadlines and persistence behavior.

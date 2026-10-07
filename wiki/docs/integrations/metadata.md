@@ -1,6 +1,6 @@
 # Metadata providers
 
-Unnamed Tracking App uses the existing game metadata-provider registry for both adding games and refreshing metadata on an existing game. Provider order and field-saving preferences are configured per user under **Settings → Metadata → Scan Settings / Metadata/API**.
+Unnamed Tracking App discovers metadata capabilities from installed provider plugins for games, movies, TV and anime. Search results arrive progressively; metadata enriches the current top three from five characters, and artwork starts after selection. Install and configure providers through the existing plugin manager and **Settings → Metadata/API**. Provider order and field-saving preferences remain per user.
 
 ## Protect a title
 
@@ -43,9 +43,9 @@ If a provider does not return a value, the existing value is not cleared.
 
 ## Provider selection and priority
 
-The refresh calls the same configured provider registry used by metadata search. The user's provider order determines which data provider is consulted first; image providers remain separate from data providers. Provider failures are reported without discarding successful results from other providers.
+The refresh uses the same generic metadata handler as search. Providers run concurrently. The user's provider order determines field authority, while artwork is a separate selected-entity operation. Provider failures are reported without discarding successful results from other providers.
 
-Provider credentials and field-save toggles continue to be managed in the existing metadata settings. No second provider configuration is introduced for the game editor.
+Provider credentials are declared by each plugin and configured in the host provider panel. Field-save toggles remain in metadata preferences. The game editor uses that same configuration.
 
 ## Provider failures and stale previews
 
@@ -55,39 +55,41 @@ Metadata changes are recorded in the existing game metadata history, so provider
 
 ## Developer notes
 
-The editor uses `/api/game/{game_id}/metadata/refresh`, which calls `features.metadata.games.search.search_game_metadata` with the requesting user's existing provider preferences and credentials. The endpoint owns authorization, exact-match validation, manual-field protection, history updates, artwork handling, and stale-preview checks; clients do not send arbitrary provider data to the game update API.
-After provider lookup, applying a refresh reloads the owned game under a database row lock before checking title protection or the preview timestamp. A protection change made during lookup is respected, and a stale preview returns HTTP 409 without applying metadata.
-Games are searched on Steam, GOG, IGDB, GiantBomb, RetroAchievements and
-HowLongToBeat; SteamGridDB and ScreenScraper add artwork. Movies and TV use
-TMDB, OMDb and TVmaze, anime uses AniList. Cover and banner artwork can also be
-uploaded by hand.
+The editor uses `/api/game/{game_id}/metadata/refresh`, which resolves an existing
+library identity through `features.metadata.service` and the shared handler.
+The endpoint retains authorization, exact-match validation, field protection,
+history, artwork and stale-preview checks. Applying a refresh reloads the owned
+row under a lock, so a protection change during lookup is respected.
+
+See [Progressive metadata and Plugin API 1.1.1](../development/metadata-providers.md)
+for the public contract, session endpoints and migration details. Provider
+implementations are maintained in [obsoletelabs/unnamed_tracking_app_plugins](https://github.com/obsoletelabs/unnamed_tracking_app_plugins).
 
 ## Where keys go
 
-Keys can be set in two places:
+Open **Settings → Metadata/API → Installed metadata providers**, or the provider's
+plugin settings dialog. Fields declare system, user or both scopes. Administrators
+may save system values; users may save their own values. A user override wins over
+a system fallback when both scopes are supported. Reads show configuration presence
+and health, never stored values. Clearing a user override restores the system fallback.
+Configuration queues immediate validation; periodic validation defaults to 30 minutes.
 
-| Place | Who | Used for |
-| --- | --- | --- |
-| Settings › Metadata/API | Every user, for themselves | That user's searches and library syncs. |
-| Settings › Server Integrations | Administrators | Everyone who hasn't saved their own key. |
+Move metadata keys from legacy integration fields to the matching provider plugin
+fields. They are not silently copied across permission boundaries. Existing Steam,
+RetroAchievements and console account-sync credentials remain in account integrations.
+IGDB declares system Twitch credentials; other providers declare their own scopes.
+TMDB is optional and may be left unconfigured. TVmaze and public anime providers
+operate without signup. Movie sources require a configured movie provider such as OMDb.
 
-A user's own key always wins for that user. The server-wide key is the
-fallback; a Server Integrations field that is set in `.env` is locked to the
-`.env` value. On Settings › Metadata/API, a provider that
-works through the server's key shows **Using server key** rather than **Not
-configured**, so the same provider appearing in both places isn't a sign
-that they're out of sync.
-
-IGDB, TMDB, OMDb and TVDB are server-wide only.
 ## Safe operation
 
-- Keep provider client secrets and API keys out of browser storage, screenshots, logs, and the wiki.
-- Environment-managed server credentials should be rotated through deployment tooling.
-- Search results are previews; users review data before creating a record.
-- Refresh operations respect supported locked fields and user ownership.
-- Provider failures are contained and reported rather than granting a fallback access path.
-
-Plugins do not receive provider credentials. A plugin can use only the normalized methods granted through Plugin API v1.
+- Keep secrets out of screenshots, logs, browser storage and repositories.
+- Metadata credentials use the application's existing encrypted storage and scoped gateway.
+- Only a granted provider action can obtain its effective credential fields.
+- Disabled and unconfigured optional providers do not produce search warnings.
+- Temporary outages and rate limits do not discard successful results.
+- Search and selection are previews; review fields before saving.
+- Title locks, ownership, personal state and missing-field preservation remain enforced.
 
 
 ## Steam tags as genres

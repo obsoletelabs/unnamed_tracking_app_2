@@ -45,3 +45,10 @@ Movies, TV shows and anime use the same Add and Edit dialog layout. The search
 box at the top fills in the form from a metadata provider, and fields you have
 changed yourself are kept rather than overwritten (the dialog tells you which
 it skipped).
+
+## Metadata provider extension (1.1.1)
+
+Search and refresh use installed provider capabilities through the existing runtime.
+Provider configuration and health appear in the host's metadata/plugin settings.
+See [the progressive metadata contract](../development/metadata-providers.md) for
+phase separation, scoped credential migration, deadlines and persistence behavior.
