@@ -34,6 +34,7 @@ import KeyboardShortcutsSection from "../components/settings/KeyboardShortcutsSe
 import ConnectionsSection from "../components/settings/ConnectionsSection.vue";
 import AniListImportSection from "../components/settings/AniListImportSection.vue";
 import ApiKeysSection from "../components/settings/ApiKeysSection.vue";
+import SessionsSection from "../components/settings/SessionsSection.vue";
 import PluginManagerSection from "../components/settings/PluginManagerSection.vue";
 import ThemesSection from "../components/settings/ThemesSection.vue";
 import PwaSettingsSection from "../components/settings/PwaSettingsSection.vue";
@@ -77,6 +78,8 @@ const coreSectionIds = new Set([
   "app-installation",
   "branding",
   "api-keys",
+  "sessions",
+  "admin-sessions",
   "calendar-notifications",
   "upload",
   "library",
@@ -121,6 +124,13 @@ const settingsReplacementConflicts = computed(() =>
 const showHostSettings = computed(
   () => currentUser.value?.is_admin && route.query.host === "1",
 );
+const sessionReplacement = computed(() => {
+  if (route.query.basic === "1") return undefined;
+  if (activeSection.value === "sessions") return pageReplacement("sessions");
+  if (activeSection.value === "admin-sessions" && currentUser.value?.is_admin)
+    return pageReplacement("admin-sessions");
+  return undefined;
+});
 
 const activePluginSettings = computed(() =>
   visiblePluginSettings.value.find(
@@ -161,6 +171,7 @@ const groups = computed<SettingsGroup[]>(() => {
         { id: "profile", label: "Profile" },
         { id: "connections", label: "Connections" },
         { id: "api-keys", label: "API Keys" },
+        { id: "sessions", label: "Sessions" },
       ],
     },
     {
@@ -191,6 +202,7 @@ const groups = computed<SettingsGroup[]>(() => {
       area: "administration",
       sections: [
         { id: "users", label: "Users" },
+        { id: "admin-sessions", label: "Session Manager" },
         { id: "oidc", label: "Single sign-on" },
         { id: "password-policy", label: "Password policy" },
         { id: "server-integrations", label: "Server integrations" },
@@ -493,6 +505,29 @@ function backToArea() {
             @navigate="openSection"
           />
           <ApiKeysSection v-else-if="activeSection === 'api-keys'" />
+          <template v-else-if="sessionReplacement">
+            <p class="replacement-notice">
+              Enhanced sessions provided by
+              {{ sessionReplacement.document.title }}.
+              <RouterLink :to="{ query: { ...route.query, basic: '1' } }"
+                >Show built-in sessions</RouterLink
+              >
+            </p>
+            <PluginContributionHost
+              :plugin-id="sessionReplacement.pluginId"
+              :document="sessionReplacement.document"
+              :page-id="sessionReplacement.page.id"
+              :context="{ host_page: activeSection }"
+              embedded
+            />
+          </template>
+          <SessionsSection v-else-if="activeSection === 'sessions'" />
+          <SessionsSection
+            v-else-if="
+              activeSection === 'admin-sessions' && currentUser?.is_admin
+            "
+            admin
+          />
           <LibrarySettings
             v-else-if="activeSection === 'library'"
             :key="'library' + initialTab"

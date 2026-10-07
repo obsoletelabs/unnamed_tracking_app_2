@@ -80,6 +80,8 @@ class Capability(StrEnum):
     FRONTEND_SHORTCUTS = "frontend.shortcuts"
     FRONTEND_PAGE_REPLACE_HOME = "frontend.page.replace.home"
     FRONTEND_PAGE_REPLACE_SETTINGS = "frontend.page.replace.settings"
+    FRONTEND_PAGE_REPLACE_SESSIONS = "frontend.page.replace.sessions"
+    FRONTEND_PAGE_REPLACE_ADMIN_SESSIONS = "frontend.page.replace.admin-sessions"
     FRONTEND_ROUTES = "frontend.routes"
     FRONTEND_NATIVE = "frontend.native"
     FRONTEND_PWA = "frontend.pwa"
