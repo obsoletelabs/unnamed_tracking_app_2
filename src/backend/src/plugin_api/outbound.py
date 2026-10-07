@@ -122,11 +122,11 @@ def outbound_json(payload: dict[str, Any]) -> dict[str, Any]:
         exc.close()
         result = {"status": code, "error": "Remote server rejected the request."}
         if retry.isdecimal():
-            result["retry_after_seconds"] = min(int(retry), 86400)
+            result["retry_after_seconds"] = min(int(retry), 3600)
         elif retry:
             try:
                 delay = (parsedate_to_datetime(retry) - datetime.now(timezone.utc)).total_seconds()
-                result["retry_after_seconds"] = min(86400, max(0, math.ceil(delay)))
+                result["retry_after_seconds"] = min(3600, max(0, math.ceil(delay)))
             except (ValueError, TypeError, OverflowError):
                 pass
         return result
