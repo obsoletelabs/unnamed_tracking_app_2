@@ -158,6 +158,7 @@ def boundary(monkeypatch):
         }
         runtime = SimpleNamespace(
             plugins=AsyncMock(return_value=[plugin]),
+            plugin_state=AsyncMock(return_value=plugin),
             plugin_ui=AsyncMock(return_value=document),
             action=AsyncMock(return_value={"completed": True}),
             route=AsyncMock(return_value={"body": {"ok": True}}),

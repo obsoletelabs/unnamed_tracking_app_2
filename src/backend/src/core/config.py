@@ -34,6 +34,7 @@ class Settings(BaseSettings):
 
     AUTH_COOKIE_SECURE: bool = False
     DEBUG: bool = False
+    METADATA_HEALTH_INTERVAL_SECONDS: int = 1800
     SECRET_KEY: str = ""
     STARTUP_MODE: str = ""
     MAX_UPLOAD_SIZE_MB: int = 15

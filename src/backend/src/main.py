@@ -33,6 +33,7 @@ from src.api.routes import (
     media_lists,
     media_provider,
     media_stats,
+    metadata,
     movies,
     notification_providers,
     notifications,
@@ -61,6 +62,7 @@ from src.core.session_manager import purge_old_sessions
 from src.database.session import SessionLocal
 from src.features.backup.scheduler import run_backup_loop
 from src.features.jobs import run_jobs_loop
+from src.features.metadata.health import monitor as provider_health_monitor
 from src.features.trash.sweep import run_sweep_loop
 from src.plugin_api.backend_routes import reserve_host_routes
 from src.plugin_api.pwa import router as pwa_router
@@ -101,6 +103,7 @@ async def validation_error_without_submitted_values(
 
 app.include_router(default_game_assets.router)
 app.include_router(games.router)
+app.include_router(metadata.router)
 app.include_router(movies.router)
 app.include_router(tv_shows.router)
 app.include_router(anime.router)
@@ -169,6 +172,23 @@ async def bootstrap_primary_user() -> None:
 @app.on_event("startup")
 async def start_trash_sweep() -> None:
     asyncio.create_task(run_sweep_loop())
+
+
+@app.on_event("startup")
+async def start_provider_health_loop() -> None:
+    app.state.provider_health_task = asyncio.create_task(provider_health_monitor.run())
+
+
+@app.on_event("shutdown")
+async def stop_provider_health_loop() -> None:
+    await provider_health_monitor.close()
+    task = getattr(app.state, "provider_health_task", None)
+    if task is not None:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
 
 @app.on_event("startup")

@@ -201,6 +201,22 @@ def _package_bytes(
     return output.getvalue()
 
 
+@pytest.mark.parametrize("contract", ["1.1.0", "1.1.1"])
+def test_runtime_accepts_supported_additive_contract_versions(tmp_path, contract):
+    from runtime import PluginRegistry, PluginSupervisor
+
+    registry = PluginRegistry(
+        tmp_path / "plugins",
+        PluginSupervisor(tmp_path / "workers", tmp_path / "storage"),
+    )
+    installed = registry.install_package(
+        _package_bytes(api_contract_version=contract, ui_contract_version=contract),
+        "supported.utp", installation_id=str(uuid.uuid4()),
+    )
+    assert registry.plugin_state(installed["plugin_id"])["api_contract_version"] == contract
+    assert registry.ui(installed["plugin_id"])["api_contract_version"] == contract
+
+
 @pytest.mark.parametrize(
     "contract", [None, "1.0.0", "1.0.9", "1.2.0", "1.01.0", "invalid"]
 )

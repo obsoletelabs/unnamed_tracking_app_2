@@ -44,7 +44,7 @@ except ImportError:  # pragma: no cover - Windows development/test fallback
     resource = None  # type: ignore[assignment]
 
 _PLUGIN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
-PLUGIN_API_CONTRACT_VERSION = "1.1.0"
+PLUGIN_API_CONTRACT_VERSION = "1.1.1"
 _ENTRYPOINT = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*(?::[A-Za-z_][A-Za-z0-9_]*)?$")
 # Linux parent-death signals follow the spawning thread. HTTP request threads
 # end after their response, while supervised workers must live until shutdown.
@@ -119,8 +119,8 @@ def plugin_contract_compatibility_reason(
             f"Plugin API contract {declared} is v1.0-only. Limited compatibility is available "
             "for shipped examples and already-installed plugins; new plugins must target v1.1."
         )
-    if version != (1, 1, 0):
-        return f"Plugin API contract {declared} is not supported by this host (1.1.0)."
+    if not (1, 1, 0) <= version <= tuple(map(int, PLUGIN_API_CONTRACT_VERSION.split("."))):
+        return f"Plugin API contract {declared} is not supported by this host ({PLUGIN_API_CONTRACT_VERSION})."
     return None
 
 
@@ -1458,6 +1458,10 @@ class PluginRegistry:
         return sorted(
             p for p in self.root.iterdir() if p.is_dir() and not p.name.startswith(".")
         )
+
+    def plugin_state(self, plugin_id: str) -> dict[str, Any]:
+        """Revalidate one installation's integrity and current execution policy."""
+        return self._item(self.package(plugin_id)[0])
 
     def package(self, plugin_id: str) -> tuple[Path, dict[str, Any]]:
         if not _PLUGIN_ID.fullmatch(plugin_id):
@@ -3065,6 +3069,9 @@ class RuntimeHandler(BaseHTTPRequestHandler):
                 )
             elif parts == ["plugins"]:
                 self._json(200, self.server.registry.list())  # type: ignore[attr-defined]
+            elif len(parts) == 3 and parts[0] == "plugins" and parts[2] == "state":
+                # Revalidate this installation without hashing every unrelated package.
+                self._json(200, self.server.registry.plugin_state(parts[1]))
             elif len(parts) == 3 and parts[0] == "plugins" and parts[2] == "archive":
                 self._json(200, self.server.registry.package_archive(parts[1]))
             elif len(parts) == 4 and parts[0] == "plugins" and parts[2] == "archive":

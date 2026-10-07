@@ -11,7 +11,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 API_VERSION = "v1"
-PLUGIN_API_CONTRACT_VERSION = "1.1.0"
+PLUGIN_API_CONTRACT_VERSION = "1.1.1"
 Timestamp = datetime
 
 
@@ -51,6 +51,12 @@ class Capability(StrEnum):
     NOTIFICATION_PROVIDERS = "notification_providers"
     NOTIFICATION_PROVIDERS_REGISTER = "notification_providers.register"
     NOTIFICATION_PROVIDERS_DELIVER = "notification_providers.deliver"
+    METADATA_PROVIDERS_REGISTER = "metadata_providers.register"
+    METADATA_PROVIDERS_SEARCH = "metadata_providers.search"
+    METADATA_PROVIDERS_METADATA = "metadata_providers.metadata"
+    METADATA_PROVIDERS_MEDIA = "metadata_providers.media"
+    METADATA_PROVIDERS_HEALTH = "metadata_providers.health"
+    METADATA_PROVIDERS_CONFIGURATION = "metadata_providers.configuration"
     EVENTS_SUBSCRIBE = "events.subscribe"
     TASKS_BACKGROUND = "tasks.background"
     SESSIONS_ADMIN_READ = "sessions.admin.read"
@@ -758,6 +764,15 @@ class PluginManifest(ContractModel):
     @classmethod
     def validate_compatibility_range(cls, value: str) -> str:
         return validate_version_range(value)
+
+    @model_validator(mode="after")
+    def validate_metadata_capabilities(self) -> "PluginManifest":
+        """Metadata operations require the explicit additive v1.1.1 contract."""
+        if (any(capability.name.startswith("metadata_providers.")
+                for capability in self.capabilities)
+                and parse_semver(self.api_contract_version) < (1, 1, 1)):
+            raise ValueError("metadata provider capabilities require Plugin API v1.1.1")
+        return self
 
     @model_validator(mode="after")
     def validate_scheduled_tasks(self) -> "PluginManifest":

@@ -118,6 +118,8 @@ _CRITICAL = frozenset(
 )
 _HIGH = frozenset(
     {
+        Capability.METADATA_PROVIDERS_REGISTER,
+        Capability.METADATA_PROVIDERS_CONFIGURATION,
         Capability.GAMES_WRITE,
         Capability.MEDIA_WRITE,
         Capability.MEDIA_IMPORT,

@@ -526,7 +526,9 @@ async def _gateway_user_context(
     failure: Callable[[int, ErrorCode, str], JSONResponse],
 ) -> User | JSONResponse:
     try:
-        plugin = await runtime.live_plugin(payload.plugin_id, require_enabled=False)
+        plugin = await runtime.live_plugin(
+            payload.plugin_id, require_enabled=False, single_installation=True
+        )
     except HTTPException as exc:
         code = ErrorCode.NOT_FOUND if exc.status_code == 404 else ErrorCode.UNAVAILABLE
         return failure(exc.status_code, code, str(exc.detail))
