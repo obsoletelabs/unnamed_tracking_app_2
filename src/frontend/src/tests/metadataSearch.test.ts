@@ -156,3 +156,34 @@ it("uses backend ranking and ignores duplicate or out-of-order events", async ()
   expect(search.results.value.map((item) => item.id)).toEqual(["b", "a"]);
   expect(search.results.value[0]?.title).toBe("Car B");
 });
+
+it("keeps receiving text-only year patches after identity search finishes", async () => {
+  const { search } = setup();
+  await search.search();
+  const stream = Stream.instances[0]!;
+  const results = Array.from({ length: 7 }, (_, index) => ({
+    ...candidate(`Car ${index}`),
+    rank: index,
+  }));
+  results.forEach((result, index) => add(stream, result, index + 1));
+  stream.emit({ id: 8, session_id: "car", event: "search_completed" });
+  expect(search.searching.value).toBe(false);
+  for (const [offset, index] of [4, 5, 0, 6, 1, 2, 3].entries()) {
+    stream.emit({
+      id: 9 + offset,
+      session_id: "car",
+      event: "result_updated",
+      result: {
+        ...results[index]!,
+        year: 2000 + index,
+        metadata: { year: 2000 + index, description: "Preloaded text" },
+      },
+    });
+  }
+  expect(search.results.value.map((result) => result.year)).toEqual([
+    2000, 2001, 2002, 2003, 2004, 2005, 2006,
+  ]);
+  expect(
+    search.results.value.every((result) => result.assets.length === 0),
+  ).toBe(true);
+});

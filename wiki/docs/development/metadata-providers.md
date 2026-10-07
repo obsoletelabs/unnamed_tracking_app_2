@@ -77,7 +77,7 @@ increasing IDs; snapshots and `Last-Event-ID` support reconnection. Another user
 cannot read, select or cancel the session.
 
 Search providers run concurrently and return lightweight identities. Metadata
-starts at five query characters with up to four concurrent fetches, ordered from
+starts at five query characters with up to five concurrent fetches, ordered from
 the top of the current ranking. Each finished fetch frees a slot for the next
 result; slow requests do not hold up a batch. Empty responses and failures also
 free slots. Ranking changes cancel unfinished work outside the preload window

@@ -1,6 +1,16 @@
 # Metadata providers
 
-Unnamed Tracking App includes hardcoded Steam, IGDB, SteamGridDB, TVmaze, AniList, AniZip and OMDb providers. Steam game search, TV and anime search work without installing plugins. Optional provider plugins can extend the suite. Search results arrive progressively; from five query characters, up to four metadata fetches run concurrently from the top down. Each completed fetch starts the next while the query stays unchanged. Artwork starts after selection. Configure the built-in providers through **Settings → Metadata/API**. Install optional providers through Plugin Manager. Provider order and field-saving preferences remain per user.
+Unnamed Tracking App includes hardcoded Steam, IGDB, SteamGridDB, TVmaze, AniList, AniZip and OMDb providers. Steam game search, TV and anime search work without installing plugins. Optional provider plugins can extend the suite. Search results arrive progressively; from five query characters, up to five metadata fetches run concurrently from the top down. Each completed fetch starts the next while the query stays unchanged. Text patches update the result's year as they arrive. Artwork starts after selection. Configure the built-in providers through **Settings → Metadata/API**. Install optional providers through Plugin Manager. Provider order and field-saving preferences remain per user.
+
+The final text-only verification searched `toaster`, `Portal 2` and `Half-Life`
+without selecting results. All 29 results with a supplied release year displayed
+it, including entries beyond the initial five; all 30 results had zero artwork
+assets. `Toast & Toaster` supplied "Coming soon" without a year, so its year
+remained blank. The reported intermittent missing-year symptom could not be
+reproduced with available years and is tracked in
+[issue #6](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/6).
+
+![Text-only rolling preloading updates years throughout the result list](../assets/plugin-metadata/rolling-five-text.jpg)
 
 ## Protect a title
 

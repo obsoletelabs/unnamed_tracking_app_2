@@ -28,7 +28,7 @@ from .identity import candidate_id, identities, rank_key, same_entity
 from .providers import Operation, PluginMetadataProvider
 
 logger = logging.getLogger(__name__)
-PRELOAD_CONCURRENCY = 4
+PRELOAD_CONCURRENCY = 5
 
 
 class Provider(Protocol):

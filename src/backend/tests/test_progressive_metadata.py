@@ -232,7 +232,9 @@ async def test_preload_window_change_cancels_demotion_and_preserves_completed_me
         "test.initial",
         tuple(
             candidate(title, str(index))
-            for index, title in enumerate(("Portal A", "Portal B", "Portal C", "Portal D"))
+            for index, title in enumerate(
+                ("Portal A", "Portal B", "Portal C", "Portal D", "Portal E")
+            )
         ),
         gates={"metadata": metadata_gate},
     )
@@ -241,14 +243,20 @@ async def test_preload_window_change_cancels_demotion_and_preserves_completed_me
     )
     handler = MetadataHandler()
     session = handler.start(request(), [initial, better])
-    await eventually(lambda: len([call for call in initial.calls if call[0] == "metadata"]) == 4)
-    assert set(call[1] for call in initial.calls if call[0] == "metadata") == {"0", "1", "2", "3"}
+    await eventually(lambda: len([call for call in initial.calls if call[0] == "metadata"]) == 5)
+    assert set(call[1] for call in initial.calls if call[0] == "metadata") == {
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+    }
     search_gate.set()
     await session.search_task
-    await eventually(lambda: ("metadata", "3") in initial.cancelled)
+    await eventually(lambda: ("metadata", "4") in initial.cancelled)
     metadata_gate.set()
     await eventually(lambda: not session.work)
-    assert len(session.candidates) == 5
+    assert len(session.candidates) == 6
     assert all(
         item["metadata"].get("description") for item in list(session.candidates.values())[:3]
     )
@@ -261,7 +269,7 @@ async def test_preload_window_change_cancels_demotion_and_preserves_completed_me
 
 
 @pytest.mark.asyncio
-async def test_preloading_refills_four_slots_without_waiting_for_slow_results_or_fetching_media():
+async def test_preloading_refills_five_slots_and_updates_years_without_fetching_media():
     gates = {str(index): asyncio.Event() for index in range(7)}
 
     class RollingProvider(ContractProvider):
@@ -270,7 +278,11 @@ async def test_preloading_refills_four_slots_without_waiting_for_slow_results_or
                 return await super().invoke(operation, request, candidate)
             self.calls.append((operation, candidate.external_id))
             await gates[candidate.external_id].wait()
-            return ProviderResponse(metadata=MetadataPatch(description=candidate.title))
+            return ProviderResponse(
+                metadata=MetadataPatch(
+                    description=candidate.title, year=2000 + int(candidate.external_id)
+                )
+            )
 
     provider = RollingProvider(
         "test.rolling", tuple(candidate(f"Toaster {index}", str(index)) for index in range(7))
@@ -282,25 +294,33 @@ async def test_preloading_refills_four_slots_without_waiting_for_slow_results_or
     def preloading_calls():
         return [identity for operation, identity in provider.calls if operation == "metadata"]
 
-    await eventually(lambda: len(preloading_calls()) == 4)
-    assert preloading_calls() == ["0", "1", "2", "3"]
-    assert len(session.work) == 4
-    gates["0"].set()
     await eventually(lambda: len(preloading_calls()) == 5)
     assert preloading_calls() == ["0", "1", "2", "3", "4"]
-    assert len(session.work) == 4
+    assert len(session.work) == 5
     gates["4"].set()
     await eventually(lambda: len(preloading_calls()) == 6)
     assert preloading_calls() == ["0", "1", "2", "3", "4", "5"]
-    assert len(session.work) == 4
-    gates["1"].set()
-    gates["2"].set()
+    assert len(session.work) == 5
+    updated = next(item for item in session.candidates.values() if item["external_id"] == "4")
+    assert updated["year"] == updated["metadata"]["year"] == 2004
+    assert any(
+        event["event"] == "result_updated"
+        and event["result"]["external_id"] == "4"
+        and event["result"]["year"] == 2004
+        for event in session.events
+    )
+    gates["5"].set()
     await eventually(lambda: len(preloading_calls()) == 7)
-    for index in ("3", "5"):
-        gates[index].set()
-    gates["6"].set()
+    assert preloading_calls() == ["0", "1", "2", "3", "4", "5", "6"]
+    assert len(session.work) == 5
+    for gate in gates.values():
+        gate.set()
     await eventually(lambda: not session.work)
     assert all(item["metadata"].get("description") for item in session.candidates.values())
+    assert all(
+        item["year"] == item["metadata"]["year"] == 2000 + int(item["external_id"])
+        for item in session.candidates.values()
+    )
     assert all(not item["assets"] for item in session.candidates.values())
     assert not any(operation == "media" for operation, _ in provider.calls)
     handler._rank(session)
@@ -354,7 +374,7 @@ async def test_cancelled_preload_does_not_refill_slots():
     handler = MetadataHandler()
     session = handler.start(request("toaster"), [provider])
     await session.search_task
-    await eventually(lambda: len(provider.calls) == 5)
+    await eventually(lambda: len(provider.calls) == 6)
     handler.cancel(session)
     gate.set()
     await asyncio.sleep(0.01)
@@ -363,6 +383,7 @@ async def test_cancelled_preload_does_not_refill_slots():
         "1",
         "2",
         "3",
+        "4",
     ]
     assert not any(item["metadata"] for item in session.candidates.values())
 
