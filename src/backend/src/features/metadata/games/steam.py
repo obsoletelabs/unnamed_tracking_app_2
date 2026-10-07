@@ -19,6 +19,8 @@ import time
 
 import requests
 
+from src.helpers.save_game_asset import AssetKind
+
 # a Steam Web API key is always exactly 32 hex characters — distinct enough
 # from a profile URL/vanity name/SteamID64 to tell the two apart
 # automatically, so the two credential fields don't need to be entered in
@@ -157,11 +159,15 @@ def _xml_text(tag: str, block: str) -> str | None:
 _COMMUNITY_LOCK = threading.Lock()
 _COMMUNITY_MIN_GAP = 0.6  # seconds between requests
 _COMMUNITY_RETRIES = 4
+# Mutable monotonic clock state, protected by _COMMUNITY_LOCK; this is not a constant.
+# pylint: disable-next=invalid-name
 _community_last_request = 0.0
 
 
 def _community_get(url: str, params: dict[str, str]) -> requests.Response:
-    global _community_last_request  # pylint: disable=global-statement
+    # All community requests share one clock to preserve rate limiting across refreshes.
+    # pylint: disable-next=global-statement
+    global _community_last_request
     resp = None
     for attempt in range(_COMMUNITY_RETRIES):
         with _COMMUNITY_LOCK:
@@ -277,6 +283,8 @@ def get_app_details(app_id: int, country: str = "us", currency: str = "USD") -> 
     Fetch full details for a single app (game/DLC/etc) by its Steam AppID.
     Returns the 'data' dict on success, or None if the app has no store page.
     """
+    # Steam selects currency from country; retain the legacy currency keyword for callers.
+    del currency
     params: dict[str, str | int] = {"appids": app_id, "cc": country, "l": "en"}
     resp = SESSION.get(f"{BASE_URL}/appdetails", params=params, timeout=10)
     resp.raise_for_status()
@@ -309,3 +317,17 @@ def search_store(term: str, country: str = "us") -> list[dict]:
     resp = SESSION.get(f"{BASE_URL}/storesearch", params=params, timeout=10)
     resp.raise_for_status()
     return resp.json().get("items", [])
+
+
+# Steam's CDN asset naming convention is stable and public (used by Playnite,
+# LaunchBox, etc.) — since a Steam library sync already knows the exact
+# appid, art can come straight from here instead of a text search that might
+# match the wrong game. _download_asset silently no-ops on a 404, so trying
+# a URL that doesn't exist for an older game is harmless.
+def cdn_art_urls(app_id: int) -> dict[AssetKind, str]:
+    base = f"https://cdn.akamai.steamstatic.com/steam/apps/{app_id}"
+    return {
+        "key_art": f"{base}/library_600x900.jpg",
+        "banner": f"{base}/library_hero.jpg",
+        "logo": f"{base}/logo.png",
+    }

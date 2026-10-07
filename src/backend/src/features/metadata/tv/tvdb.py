@@ -20,6 +20,9 @@ class TVDBClient:
     first request and once more on a 401, rather than persisting the
     token anywhere."""
 
+    # The provider supports one public franchise lookup operation.
+    # pylint: disable=too-few-public-methods
+
     def __init__(self, api_key: str | None, *, session: requests.Session | None = None) -> None:
         if not api_key:
             raise TVDBError("TVDB_API_KEY is not configured on the server.")
@@ -80,14 +83,13 @@ class TVDBClient:
         candidates = search.get("data") or []
         if not candidates:
             return {"listName": None, "related": []}
-        best = candidates[0]
-        series_id = best.get("tvdb_id")
+        series_id = candidates[0].get("tvdb_id")
         if not series_id:
             return {"listName": None, "related": []}
 
         extended = self._get(f"/series/{series_id}/extended").get("data") or {}
         lists = extended.get("lists") or []
-        franchise_list = next((l for l in lists if l.get("isOfficial")), None) or (
+        franchise_list = next((entry for entry in lists if entry.get("isOfficial")), None) or (
             lists[0] if lists else None
         )
         if not franchise_list:

@@ -3,8 +3,8 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-from pathlib import Path
 import zipfile
+from pathlib import Path
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -85,6 +85,23 @@ def test_registry_enforces_publisher_status_and_plugin_scope(tmp_path: Path) -> 
 
     write_registry(registry, registry_entry(private_key, status="revoked"))
     assert not load_trusted_publishers(registry)["official-test"].allows_plugin("example.plugin")
+
+
+@pytest.mark.parametrize("root", [None, [], "publishers", 1])
+def test_registry_rejects_non_object_schema(tmp_path: Path, root: object) -> None:
+    registry = tmp_path / "publishers.json"
+    registry.write_text(json.dumps(root), encoding="utf-8")
+    with pytest.raises(PublisherTrustError, match="unsupported schema"):
+        load_trusted_publishers(registry)
+
+
+@pytest.mark.parametrize("field", ["status", "channel"])
+@pytest.mark.parametrize("value", [None, [], {}, 1])
+def test_registry_rejects_invalid_policy_types(tmp_path: Path, field: str, value: object) -> None:
+    registry = tmp_path / "publishers.json"
+    write_registry(registry, registry_entry(Ed25519PrivateKey.generate(), **{field: value}))
+    with pytest.raises(PublisherTrustError):
+        load_trusted_publishers(registry)
 
 
 def test_verifier_rejects_revoked_or_out_of_scope_signers(tmp_path: Path) -> None:

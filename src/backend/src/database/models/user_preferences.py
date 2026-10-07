@@ -7,13 +7,16 @@ whatever the Settings page grows next. One row per user, created lazily;
 from uuid import UUID, uuid4
 
 from sqlalchemy import ForeignKey
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.database.base import Base
 
 
 class UserPreferences(Base):
+    # Repeated declarations preserve independent database table/enum contracts.
+    # pylint: disable=duplicate-code
     __tablename__ = "user_preferences"
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)

@@ -48,7 +48,9 @@ class GameStatus(str, Enum):
     MASTERED = "MASTERED"
 
 
+# Repeated column declarations preserve this table's explicit schema contract.
 class Game(Base):
+    # pylint: disable=duplicate-code
     __tablename__ = "games"
     __table_args__ = (
         # folder names only need to be unique within a user's storage

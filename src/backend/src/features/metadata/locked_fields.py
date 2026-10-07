@@ -6,7 +6,8 @@ skip re-filling them later instead of silently overwriting a manual fix."""
 from typing import Any, Protocol
 
 
-class _LockableEntity(Protocol):
+# This structural contract describes a data field, not an object with operations.
+class _LockableEntity(Protocol):  # pylint: disable=too-few-public-methods
     locked_fields: list[str]
 
 

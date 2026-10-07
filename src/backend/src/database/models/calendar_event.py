@@ -10,6 +10,8 @@ from src.database.base import Base
 
 
 class CalendarEvent(Base):
+    # Repeated declarations preserve independent database table/enum contracts.
+    # pylint: disable=duplicate-code
     """An entry the user put on the calendar by hand: a premiere the
     providers do not list, a reminder, a watch party. It may point at a title
     in the library (`media_type` and `media_id`) so it opens that title, but it

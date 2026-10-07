@@ -8,6 +8,8 @@ from src.database.base import Base
 
 
 class JobSetting(Base):
+    # Repeated declarations preserve independent database table/enum contracts.
+    # pylint: disable=duplicate-code
     """How one cleanup job is scheduled: whether it runs by itself, how
     often, and when it last ran. A job with no row has never been set up, which
     means the job's own default. Deployment-wide (jobs work on everyone's library), so it is

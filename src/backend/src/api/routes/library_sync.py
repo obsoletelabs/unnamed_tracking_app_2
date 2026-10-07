@@ -25,20 +25,17 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.helpers.steam_achievement_rows import (  # noqa: F401
-    needs_community_descriptions as _needs_community_descriptions,
-    steam_achievement_rows as _steam_achievement_rows,
-)
-from src.api.routes.games import _scan_settings_to_preferences
-from src.core.preferences import load_preferences
 from src.api.routes.settings import (
     get_or_create_app_integration_settings,
     get_or_create_scan_settings,
 )
+from src.api.routes.utils.games import _scan_settings_to_preferences
 from src.core.auth import get_current_user
 from src.core.config import settings as app_settings
 from src.core.crypto import decrypt_secret
 from src.core.integrations import resolve_integrations
+from src.core.preferences import load_preferences
+from src.core.titles import normalize_metadata_title as _normalize_title
 from src.database.models.achievement import Achievement
 from src.database.models.game import Game, GameStatus
 from src.database.models.user import User
@@ -51,27 +48,21 @@ from src.features.metadata.games.retroachievements import (
     RetroAchievementsError,
 )
 from src.features.metadata.games.search import search_game_metadata
+from src.features.metadata.games.steam import cdn_art_urls as _steam_cdn_art_urls
 from src.features.metadata.games.steam_grid_db import SteamGridDBClient
 from src.helpers.save_game_asset import AssetKind, create_game_folder, save_game_asset
+from src.helpers.steam_achievement_rows import (  # noqa: F401
+    needs_community_descriptions as _needs_community_descriptions,
+)
+from src.helpers.steam_achievement_rows import (
+    steam_achievement_rows as _steam_achievement_rows,
+)
 
 router = APIRouter(
     prefix="/api/library-sync", tags=["library-sync"], dependencies=[Depends(get_current_user)]
 )
 
 _SLUG_INVALID = re.compile(r"[^A-Za-z0-9_-]+")
-_TITLE_NOISE = re.compile(r"[™®©]")
-
-
-def _normalize_title(title: str) -> str:
-    """A library-sync title (from Steam's owned-games list, etc.) and a
-    metadata search result's title (from Steam's storefront search, which
-    routinely includes ™/® in the marketing name, e.g. "Apex Legends™")
-    refer to the same game but rarely compare equal as raw strings — that
-    was silently failing the exact-match gate below for a large fraction of
-    perfectly normal titles. Strip trademark/copyright marks and collapse
-    whitespace/case before comparing; the original, unmodified title is
-    still what gets applied to the game."""
-    return _TITLE_NOISE.sub("", title).strip().lower()
 
 
 _SYNC_CONCURRENCY = 5
@@ -92,20 +83,6 @@ def _is_junk_title(title: str) -> bool:
     return bool(_JUNK_TITLE_PATTERN.search(title))
 
 
-# Steam's CDN asset naming convention is stable and public (used by Playnite,
-# LaunchBox, etc.) — since a Steam library sync already knows the exact
-# appid, art can come straight from here instead of a text search that might
-# match the wrong game. _download_asset silently no-ops on a 404, so trying
-# a URL that doesn't exist for an older game is harmless.
-def _steam_cdn_art_urls(app_id: int) -> dict[AssetKind, str]:
-    base = f"https://cdn.akamai.steamstatic.com/steam/apps/{app_id}"
-    return {
-        "key_art": f"{base}/library_600x900.jpg",
-        "banner": f"{base}/library_hero.jpg",
-        "logo": f"{base}/logo.png",
-    }
-
-
 async def _fetch_key_art_from_steamgriddb(app_id: int, api_key: str | None) -> str | None:
     """SteamGridDB's "grids" are the portrait (~2:3) shape key_art actually
     needs — Steam's storefront API has no portrait art at all (header/
@@ -122,13 +99,19 @@ async def _fetch_key_art_from_steamgriddb(app_id: int, api_key: str | None) -> s
         if not sgdb_game or not sgdb_game.get("id"):
             return None
         images = await asyncio.to_thread(client.get_game_images, sgdb_game["id"], "grids")
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         return None
     return images[0].url if images else None
 
 
+# Keep the established workflow and public parameters together.
+# pylint: disable=too-many-branches,too-many-locals,too-many-positional-arguments
 async def _enrich_steam_game_by_appid(
-    game: Game, app_id: int, user: User, igdb_client_id: str | None, igdb_client_secret: str | None,
+    game: Game,
+    app_id: int,
+    user: User,
+    igdb_client_id: str | None,
+    igdb_client_secret: str | None,
     use_user_tags: bool = True,
 ) -> None:
     """Steam-sourced games already carry an authoritative Steam appid from
@@ -139,7 +122,7 @@ async def _enrich_steam_game_by_appid(
     by that exact id. Best-effort, like `_enrich_new_game`."""
     try:
         details = await asyncio.to_thread(steam.get_app_details, app_id)
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         details = None
     if details:
         if details.get("developers"):
@@ -202,6 +185,9 @@ async def _enrich_steam_game_by_appid(
         await _download_asset(header_image, game.id, "banner")
 
 
+# pylint: enable=too-many-branches,too-many-locals,too-many-positional-arguments
+
+
 def _infer_status(
     *, playtime_seconds: int = 0, total_achievements: int = 0, unlocked_achievements: int = 0
 ) -> GameStatus:
@@ -216,7 +202,7 @@ def _infer_status(
     has_progress = playtime_seconds > 0 or unlocked_achievements > 0
     if not has_progress:
         return GameStatus.BACKLOG
-    if total_achievements > 0 and unlocked_achievements >= total_achievements:
+    if unlocked_achievements >= total_achievements > 0:
         return GameStatus.MASTERED
     return GameStatus.PLAYED
 
@@ -293,7 +279,7 @@ async def _fetch_series_from_igdb(
     try:
         client = IGDBClient(client_id=igdb_client_id, client_secret=igdb_client_secret)
         results = await asyncio.to_thread(client.search, title, 3)
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         return None
     target = _normalize_title(title)
     match = next((r for r in results if _normalize_title(r.get("name") or "") == target), None)
@@ -318,13 +304,13 @@ async def _enrich_new_game(
             search_game_metadata,
             game.title,
             1,
-            user.steamgriddb_api_key,
-            preferences,
-            user,
-            igdb_client_id,
-            igdb_client_secret,
+            steamgriddb_api_key=user.steamgriddb_api_key,
+            preferences=preferences,
+            user=user,
+            igdb_client_id=igdb_client_id,
+            igdb_client_secret=igdb_client_secret,
         )
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         return
     results = response.get("results") or []
     # only ever apply an exact title match — same rule the manual "Refresh
@@ -680,6 +666,8 @@ async def _fetch_psn_rows(user: User, external_id: str, platform: str | None) ->
     return []
 
 
+# Keep the established workflow and public parameters together.
+# pylint: disable=duplicate-code,too-many-locals,too-many-statements
 @router.post("/steam")
 async def sync_steam_library(
     db: AsyncSession = Depends(get_db),
@@ -692,7 +680,9 @@ async def sync_steam_library(
 
     scan_settings = await get_or_create_scan_settings(current_user.id, db)
     preferences = _scan_settings_to_preferences(scan_settings)
-    preferences["steam_user_tags"] = (await load_preferences(db, current_user.id))["steam_user_tags"]
+    preferences["steam_user_tags"] = (await load_preferences(db, current_user.id))[
+        "steam_user_tags"
+    ]
     app_integrations = resolve_integrations(await get_or_create_app_integration_settings(db))
     igdb_client_id = app_integrations.igdb_client_id
     igdb_client_secret = app_integrations.igdb_client_secret
@@ -787,7 +777,12 @@ async def sync_steam_library(
             # different game's data/art the way the generic search-based
             # _enrich_new_game occasionally did
             await _enrich_steam_game_by_appid(
-                game, app_id, current_user, igdb_client_id, igdb_client_secret, preferences["steam_user_tags"]
+                game,
+                app_id,
+                current_user,
+                igdb_client_id,
+                igdb_client_secret,
+                preferences["steam_user_tags"],
             )
 
     await asyncio.gather(*(_enrich(g, app_id) for g, app_id in newly_created))
@@ -804,6 +799,11 @@ async def sync_steam_library(
     }
 
 
+# pylint: enable=duplicate-code,too-many-locals,too-many-statements
+
+
+# Keep the established workflow and public parameters together.
+# pylint: disable=too-many-locals
 @router.post("/retroachievements")
 async def sync_retroachievements_library(
     db: AsyncSession = Depends(get_db),
@@ -844,7 +844,7 @@ async def sync_retroachievements_library(
     newly_created: list[Game] = []
     synced_titles: list[str] = []
     touched_ids: set[UUID] = set()
-    for entry, progress in zip(owned_games, progress_results):
+    for entry, progress in zip(owned_games, progress_results, strict=False):
         title = entry.get("Title")
         if not title:
             continue
@@ -895,6 +895,11 @@ async def sync_retroachievements_library(
     }
 
 
+# pylint: enable=too-many-locals
+
+
+# Keep the established workflow and public parameters together.
+# pylint: disable=too-many-locals
 @router.post("/psn")
 async def sync_psn_library(
     db: AsyncSession = Depends(get_db),
@@ -990,3 +995,6 @@ async def sync_psn_library(
         "games_flagged_stale": games_flagged_stale,
         "games": synced_titles,
     }
+
+
+# pylint: enable=too-many-locals

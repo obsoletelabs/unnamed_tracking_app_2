@@ -1,3 +1,5 @@
+"""API routes for user API keys."""
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
@@ -19,6 +21,7 @@ async def list_user_api_keys(
     user: User = _CURRENT_USER_DEPENDENCY,
     db: AsyncSession = _DB_DEPENDENCY,
 ) -> list[dict[str, str | int | list[str] | None]]:
+    """Return the caller's API keys, including revoked keys."""
     keys = await db.scalars(
         select(UserApiKey)
         .where(

@@ -15,7 +15,6 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     Date,
-    Enum as SAEnum,
     ForeignKey,
     Index,
     Integer,
@@ -23,7 +22,11 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
+from sqlalchemy import (
+    Enum as SAEnum,
+)
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.database.base import Base
@@ -36,6 +39,8 @@ class MediaType(str, Enum):
 
 
 class RewatchLog(Base):
+    # Repeated declarations preserve independent database table/enum contracts.
+    # pylint: disable=duplicate-code
     """One completed rewatch of a title, dated to the day (not a precise
     timestamp) it was finished — "history on the day, not the hour" per
     how this is meant to be read back: a rewatch log, not an activity
@@ -64,6 +69,8 @@ class RewatchLog(Base):
 
 
 class MediaList(Base):
+    # Repeated declarations preserve independent database table/enum contracts.
+    # pylint: disable=duplicate-code
     """A user-named, user-ordered grouping that can hold any mix of
     movies/TV shows/anime — "comfort watches", "watch with Sam", etc.
     Distinct from the existing per-game `Collections` feature (a
@@ -149,6 +156,8 @@ class ActivityEventType(str, Enum):
 
 
 class ActivityLog(Base):
+    # Repeated declarations preserve independent database table/enum contracts.
+    # pylint: disable=duplicate-code
     """A day-granular history feed, not a per-action audit trail —
     checking off ten episodes in one sitting is one row (`count=10`) for
     that day, not ten. Written by upserting on

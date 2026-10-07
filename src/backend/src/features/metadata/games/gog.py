@@ -64,6 +64,9 @@ class GOGClient:
     Games Launcher) rely on to confirm a GOG account token still works —
     it does not pull library/game data yet (deferred, see Settings plan)."""
 
+    # This provider adapter exposes only its supported search/credential operation.
+    # pylint: disable=too-few-public-methods
+
     TOKEN_URL = "https://auth.gog.com/token"
     # Public GOG Galaxy client id — not a secret, the same constant every
     # unofficial GOG client uses (community-documented).
