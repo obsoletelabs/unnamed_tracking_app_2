@@ -125,6 +125,9 @@ def test_production_identities_keep_official_demo_and_generic_trust_separate() -
     official = publishers["unnamed-tracking-official-2026-10-v1"]
     examples = publishers["unnamed-tracking-examples-2026-10-v1"]
     generic = publishers["unnamed-tracking-generic-2026-10-v1"]
+    official_v2 = publishers["unnamed-tracking-official-2026-10-07-v2"]
+    examples_v2 = publishers["unnamed-tracking-examples-2026-10-07-v2"]
+    generic_v2 = publishers["unnamed-tracking-generic-2026-10-07-v2"]
     assert len({official.public_key, examples.public_key, generic.public_key}) == 3
     assert official.channel == "official" and official.allows_plugin("official.pwa")
     assert not official.allows_plugin("example.lifecycle")
@@ -134,3 +137,10 @@ def test_production_identities_keep_official_demo_and_generic_trust_separate() -
     assert not examples.allows_plugin("official.pwa")
     assert not generic.allows_plugin("official.pwa")
     assert publishers["official-example-2026"].channel == "demo"
+    assert len({official_v2.public_key, examples_v2.public_key, generic_v2.public_key}) == 3
+    assert official_v2.channel == "official" and official_v2.allows_plugin("official.pwa")
+    assert not official_v2.allows_plugin("example.lifecycle")
+    assert examples_v2.channel == "demo" and examples_v2.allows_plugin("example.lifecycle")
+    assert generic_v2.channel == "community" and generic_v2.allows_plugin("plugin.lifecycle")
+    assert not examples_v2.allows_plugin("official.pwa")
+    assert not generic_v2.allows_plugin("official.pwa")
