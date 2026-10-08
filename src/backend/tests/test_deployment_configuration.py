@@ -96,6 +96,49 @@ async def test_provider_updates_encrypt_secrets_and_preserve_blank_values(config
     assert "secret" not in response.json()["providers"].values()
 
 
+async def test_smtp_configuration_uses_existing_encryption_and_env_locks(configuration):
+    response = await configuration.http.put(
+        "/api/settings/deployment",
+        json={
+            "smtp_host": "smtp.example.test",
+            "smtp_port": 465,
+            "smtp_tls_mode": "ssl",
+            "smtp_from_address": "sender@example.test",
+            "smtp_password": "smtp-secret",
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["providers"]["smtp_port"] == 465
+    assert response.json()["providers"]["smtp_password_configured"]
+    assert decrypt_secret(configuration.integration.smtp_password) == "smtp-secret"
+    assert "smtp-secret" not in response.text
+    response = await configuration.http.put("/api/settings/deployment", json={"smtp_password": ""})
+    assert response.status_code == 200 and configuration.integration.smtp_password
+    response = await configuration.http.put(
+        "/api/settings/deployment", json={"smtp_password": None}
+    )
+    assert response.status_code == 200 and configuration.integration.smtp_password is None
+    configuration.env["SMTP_HOST"] = "environment.example.test"
+    response = await configuration.http.put(
+        "/api/settings/deployment", json={"smtp_host": "replacement"}
+    )
+    assert response.status_code == 409
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("smtp_port", 0),
+        ("smtp_tls_mode", "invalid"),
+        ("smtp_from_address", "a\r\nBcc:bad@test"),
+        ("smtp_host", "bad host"),
+    ],
+)
+async def test_smtp_invalid_configuration_is_rejected(configuration, field, value):
+    response = await configuration.http.put("/api/settings/deployment", json={field: value})
+    assert response.status_code in {400, 422}
+
+
 @pytest.mark.parametrize(
     ("field", "env_name"),
     [

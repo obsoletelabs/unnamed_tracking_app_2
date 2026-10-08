@@ -74,6 +74,12 @@ def select_projection(
         return None
     if preferences.get("notification_destinations", {}).get(str(destination.id)) is False:
         return None
+    # Possession challenges must not be copied to the already authenticated inbox.
+    if notification.purpose == "verification" and (
+        notification.media_type != "notification_destination"
+        or notification.media_id != destination.id
+    ):
+        return None
     if not route_choice(notification.event_type, str(destination.id), preferences)["enabled"]:
         return None
     if destination.provider_id in {

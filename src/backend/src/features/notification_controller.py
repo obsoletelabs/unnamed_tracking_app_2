@@ -1,8 +1,9 @@
 """Single transactional boundary from facts/legacy producers to routed notifications."""
 
+import time
 from dataclasses import dataclass
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -10,9 +11,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.preferences import load_preferences
 from src.database.models.notification import Notification
+from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_receipt import NotificationReceipt
 from src.database.models.user import User
-from src.features.notification_policy import MEDIA_KINDS, Trust, preference_enabled
+from src.features.notification_policy import (
+    MEDIA_KINDS,
+    Trust,
+    preference_enabled,
+    select_projection,
+)
 from src.features.notification_providers.delivery import ensure_deliveries
 
 EVENT_TYPES = {
@@ -27,6 +34,49 @@ EVENT_TYPES = {
     "game_sale": "game.sale.started",
     "game_price_hit": "game.price.threshold_hit",
 }
+
+
+async def emit_verification_request(
+    db: AsyncSession, destination: NotificationDestination, challenge_id: UUID, expires_at: int
+) -> UUID | None:
+    """Reserved host interpretation; the code lives encrypted in the proof record only."""
+    user = await db.get(User, destination.user_id)
+    if user is None or not user.is_active:
+        return None
+    now = int(time.time())
+    notice = Notification(
+        id=uuid4(),
+        user_id=destination.user_id,
+        kind="destination_verification",
+        event_type="destination.verification",
+        source="host.verification",
+        media_type="notification_destination",
+        media_id=destination.id,
+        title="Verify your email destination",
+        body="An expiring verification code was requested.",
+        event_at=now,
+        dedupe_key=f"verification:{challenge_id}",
+        required_trust=int(Trust.PRIVATE),
+        purpose="verification",
+        inbox_visible=False,
+        expires_at=expires_at,
+    )
+    prefs = await load_preferences(db, destination.user_id)
+    if not select_projection(notice, destination, prefs):
+        return None
+    db.add(notice)
+    db.add(
+        NotificationReceipt(
+            user_id=destination.user_id,
+            dedupe_key=notice.dedupe_key,
+            event_type=notice.event_type,
+            source=notice.source,
+            occurred_at=now,
+        )
+    )
+    await db.flush()
+    await ensure_deliveries(db, [notice.id], preferences=prefs)
+    return notice.id
 
 
 @dataclass(frozen=True)

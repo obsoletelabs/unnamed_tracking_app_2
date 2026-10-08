@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.app_integrations import get_or_create_app_integration_settings
@@ -24,6 +24,7 @@ from src.database.models.app_integration_settings import AppIntegrationSettings
 from src.database.models.oidc_settings import OidcSettings
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features.smtp_configuration import SMTP_FIELDS, smtp_configuration, validate_smtp_value
 
 _DB_DEFAULT = Depends(get_db)
 _ADMIN_DEFAULT = Depends(get_current_admin)
@@ -34,6 +35,12 @@ router = APIRouter(
 
 
 class DeploymentSettingsRequest(BaseModel):
+    smtp_host: str | None = Field(default=None, max_length=253)
+    smtp_port: int | None = Field(default=None, ge=1, le=65535)
+    smtp_username: str | None = Field(default=None, max_length=254)
+    smtp_password: str | None = Field(default=None, max_length=4096)
+    smtp_from_address: str | None = Field(default=None, max_length=254)
+    smtp_tls_mode: Literal["starttls", "ssl", "none"] | None = None
     steamgriddb_api_key: str | None = None
     retroachievements_api_key: str | None = None
     giantbomb_api_key: str | None = None
@@ -65,6 +72,7 @@ class DeploymentSettingsRequest(BaseModel):
 # Independent settings endpoints expose the same provider secret-field contract.
 # pylint: disable=duplicate-code
 _SECRET_FIELDS = {
+    "smtp_password",
     "steamgriddb_api_key",
     "retroachievements_api_key",
     "giantbomb_api_key",
@@ -75,6 +83,7 @@ _SECRET_FIELDS = {
 }
 # pylint: enable=duplicate-code
 _SAFE_PROVIDER_FIELDS = {
+    *(set(SMTP_FIELDS.values()) - {"smtp_password"}),
     "igdb_client_id",
     "screenscraper_ssid",
     "screenscraper_devid",
@@ -82,6 +91,7 @@ _SAFE_PROVIDER_FIELDS = {
 }
 
 _PROVIDER_ENV_NAMES = {
+    **{attribute: name for name, attribute in SMTP_FIELDS.items()},
     "steamgriddb_api_key": "STEAMGRIDDB_API_KEY",
     "retroachievements_api_key": "RETROACHIEVEMENTS_API_KEY",
     "giantbomb_api_key": "GIANTBOMB_API_KEY",
@@ -156,7 +166,13 @@ async def get_deployment_settings(db: AsyncSession, admin: User) -> dict:
         app.nginx_realip_header,
         app.nginx_realip_trusted_proxies,
     )
+    smtp = await smtp_configuration(db)
     return {
+        "smtp": {
+            "configured": smtp.configured,
+            "tls_mode": smtp.tls_mode,
+            "secure_transport": smtp.allows_sensitive,
+        },
         "providers": providers,
         "provider_locks": provider_locks,
         "real_ip": {
@@ -350,12 +366,19 @@ async def update_deployment_settings(
             raise HTTPException(
                 409, f"{field} is managed by the deployment environment and cannot be changed here."
             )
+        if field in SMTP_FIELDS.values():
+            try:
+                value = validate_smtp_value(field, value)
+            except ValueError as exc:
+                raise HTTPException(400, f"Invalid {field} configuration") from exc
         if field == "oidc_providers_json":
             oidc.providers_json = _normalize_oidc_providers(value, oidc, effective_oidc_enabled)
         elif field.startswith("oidc_"):
             _update_oidc_field(oidc, field, value)
         elif field in _SECRET_FIELDS:
-            if value:
+            if field == "smtp_password" and value is None:
+                app.smtp_password = None
+            elif value:
                 setattr(app, field, encrypt_secret(value))
         elif field in _SAFE_PROVIDER_FIELDS:
             setattr(app, field, value or None)

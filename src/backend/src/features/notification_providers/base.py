@@ -23,12 +23,16 @@ class NotificationMessage:  # pylint: disable=too-many-instance-attributes
     media_id: UUID
     event_at: int
     attempt_id: UUID | None = None
+    urgency: str = "normal"
 
 
 @dataclass(frozen=True)
 class ProviderDestination:
     user_id: UUID
     display: str
+    allows_sensitive: bool = True
+    endpoint_id: UUID | None = None
+    endpoint_revision: int | None = None
 
 
 @dataclass(frozen=True)
@@ -58,7 +62,11 @@ class NotificationProvider(Protocol):
 
 
 def notification_message(
-    notification: Notification, *, projection: str = "canonical", attempt_id: UUID | None = None
+    notification: Notification,
+    *,
+    projection: str = "canonical",
+    attempt_id: UUID | None = None,
+    urgency: str = "normal",
 ) -> NotificationMessage:
     public = projection in {"public_release", "media_shared"}
     return NotificationMessage(
@@ -83,4 +91,5 @@ def notification_message(
         else notification.media_id,
         event_at=notification.event_at,
         attempt_id=attempt_id,
+        urgency=urgency,
     )
