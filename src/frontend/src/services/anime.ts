@@ -68,6 +68,7 @@ export interface BackendAnime {
   anilist_score: number | string | null;
   mal_score: number | string | null;
   source: string | null;
+  provider_ids?: Record<string, string>;
   external_id: string | null;
   anilist_id: string | null;
   poster_url: string | null;
@@ -177,6 +178,7 @@ export function mapBackendAnimeRaw(raw: BackendAnime): Anime {
     anilistScore: toNumberOrNull(raw.anilist_score),
     malScore: toNumberOrNull(raw.mal_score),
     source: raw.source,
+    providerIds: raw.provider_ids ?? {},
     externalId: raw.external_id,
     anilistId: raw.anilist_id,
     posterUrl: raw.poster_url,
@@ -245,6 +247,7 @@ function seasonInputToBody(input: SeasonInput): Record<string, unknown> {
 
 export interface AnimeInput {
   title: string;
+  titleLock?: boolean;
   description?: string | null;
   firstAirDate?: string | null;
   episodeRuntimeMinutes?: number | null;
@@ -259,6 +262,7 @@ export interface AnimeInput {
   anilistScore?: number | null;
   malScore?: number | null;
   source?: string | null;
+  providerIds?: Record<string, string>;
   externalId?: string | null;
   anilistId?: string | null;
   posterUrl?: string | null;
@@ -280,11 +284,11 @@ export interface AnimeInput {
   linkedTvShowId?: string | null;
   linkedMovieId?: string | null;
   // omitted entirely (not just an empty array) means "auto-create a
-  // default Season 1" — see create_anime on the backend
+  // default Season 1" â€” see create_anime on the backend
   seasons?: SeasonInput[];
 }
 
-// Round-trips a loaded Anime back into AnimeInput shape — used when a
+// Round-trips a loaded Anime back into AnimeInput shape â€” used when a
 // caller needs to change one field (e.g. toggling favorite from the
 // detail page) without reopening the full edit form, since updateAnime
 // always sends every field rather than a true partial patch.
@@ -305,6 +309,7 @@ export function animeToInput(show: Anime): AnimeInput {
     anilistScore: show.anilistScore,
     malScore: show.malScore,
     source: show.source,
+    providerIds: show.providerIds,
     externalId: show.externalId,
     anilistId: show.anilistId,
     posterUrl: show.posterUrl,
@@ -330,6 +335,7 @@ export function animeToInput(show: Anime): AnimeInput {
 function inputToBody(input: AnimeInput): Record<string, unknown> {
   const body: Record<string, unknown> = {
     title: input.title,
+    title_lock: input.titleLock,
     description: input.description ?? null,
     first_air_date: input.firstAirDate ?? null,
     episode_runtime_minutes: input.episodeRuntimeMinutes ?? null,
@@ -344,6 +350,7 @@ function inputToBody(input: AnimeInput): Record<string, unknown> {
     anilist_score: input.anilistScore ?? null,
     mal_score: input.malScore ?? null,
     source: input.source ?? null,
+    provider_ids: input.providerIds ?? {},
     external_id: input.externalId ?? null,
     anilist_id: input.anilistId ?? null,
     poster_url: input.posterUrl ?? null,
@@ -418,7 +425,7 @@ export async function updateSeason(
 }
 
 // First call syncs the season's episodes in from Jikan if none exist yet
-// (needs the show's externalId — set at creation from a Jikan search
+// (needs the show's externalId â€” set at creation from a Jikan search
 // result); every later call just reads what's already stored.
 export async function fetchEpisodes(
   showId: string,
@@ -464,7 +471,7 @@ export async function updateEpisode(
   return mapBackendAnime(raw);
 }
 
-// Sets `watched` on many episodes in one request — a shift-click range
+// Sets `watched` on many episodes in one request â€” a shift-click range
 // select or "mark watched up to here" would otherwise cost one PATCH per
 // episode.
 export async function bulkSetEpisodesWatched(
@@ -499,12 +506,15 @@ export async function deleteSeason(
 }
 
 // A raw metadata search result, straight from whichever provider
-// (AniList or MyAnimeList) found it — already snake_case-to-camelCase
+// (AniList or MyAnimeList) found it â€” already snake_case-to-camelCase
 // mapped here since these never round-trip back to the backend the way
 // BackendAnime does. No `seasons` field: unlike TMDB for TV, neither
 // AniList nor Jikan returns a season breakdown, so a new anime always
 // gets the backend's auto-created default season instead.
 export interface AnimeMetadataResult {
+  candidateId?: string;
+  releaseYear?: number | null;
+  providerIds?: Record<string, string>;
   provider: string;
   providerId: string;
   title: string;
@@ -521,7 +531,7 @@ export interface AnimeMetadataResult {
   anilistScore: number | null;
   malScore: number | null;
   // Jikan's own id, kept separate from providerId (which is whichever
-  // provider matched first, usually AniList) — episode sync specifically
+  // provider matched first, usually AniList) â€” episode sync specifically
   // needs this one to call back into Jikan.
   malId: string | null;
   url: string | null;
@@ -605,7 +615,7 @@ export async function searchAnimeMetadata(
   };
 }
 
-// Looks up one exact AniList entry by id — used when adding a title from
+// Looks up one exact AniList entry by id â€” used when adding a title from
 // the Related/Recommended graph, which already carries a real AniList id
 // (unlike a fresh text search, this can't miss or mismatch on an unusual
 // title). Returns null if AniList has nothing for that id.
@@ -622,7 +632,7 @@ export async function fetchAnimeMetadataByAnilistId(
   return raw ? mapBackendAnimeMetadataResult(raw) : null;
 }
 
-// Related/Recommended titles — a plain item, not a full Anime: these
+// Related/Recommended titles â€” a plain item, not a full Anime: these
 // exist only to render a graph node or a poster tile and link back to
 // AniList, never round-tripped into this app's own data.
 export interface RelatedAnime {
@@ -636,7 +646,7 @@ export interface RelatedAnime {
 }
 
 // A season/entry in the full prequel-sequel chain this anime belongs
-// to (not just its own direct neighbor) — `isCurrent` marks which one
+// to (not just its own direct neighbor) â€” `isCurrent` marks which one
 // is the entry actually in the library.
 export interface AnimeChainNode extends RelatedAnime {
   isCurrent: boolean;
@@ -649,10 +659,10 @@ export interface AnimeRelationBranch extends RelatedAnime {
   relationLabel: string;
   anchorId: number;
   // "show" (the default) anchors to a chain entry; "branch" anchors to
-  // another branch's id instead — e.g. two compilation movies that are
+  // another branch's id instead â€” e.g. two compilation movies that are
   // themselves a sequel pair, not directly chained to the show.
   anchorKind: "show" | "branch";
-  // the entry whose page is open — a movie/OVA opened from the library
+  // the entry whose page is open â€” a movie/OVA opened from the library
   // is a branch of its franchise's root series, not a chain link
   isCurrent: boolean;
 }

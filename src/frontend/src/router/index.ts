@@ -212,6 +212,8 @@ const router = createRouter({
       component: () => import("../views/Setup.vue"),
     },
     { path: "/profile", redirect: "/settings" },
+    { path: "/sessions", redirect: "/settings?section=sessions" },
+    { path: "/admin/sessions", redirect: "/settings?section=admin-sessions" },
     {
       path: "/plugins/:pluginId",
       name: "plugin-host",

@@ -4,6 +4,8 @@ option is a one-line change to DEFAULTS, not a migration."""
 
 import math
 import re
+from collections.abc import Callable
+from functools import partial
 from typing import Any
 from uuid import UUID
 
@@ -60,6 +62,8 @@ DEFAULTS: dict[str, Any] = {
     # genres from the tags Steam players vote on (Souls-like, Open World ...)
     # instead of only Steam's broad official genres
     "steam_user_tags": True,
+    # also add the Steam wishlist, as Wishlist games, when importing from Steam
+    "steam_import_wishlist": False,
     # what every game page shows (tabs, buttons); a game can override it
     "game_page": DEFAULT_PAGE_SETTINGS,
 }
@@ -115,58 +119,55 @@ def _validate_home_widgets(value: Any) -> list[str]:
     return list(value)
 
 
+def _validate_anilist_username(value: Any) -> str:
+    if not isinstance(value, str) or len(value.strip()) > 100:
+        raise ValueError("anilist_import_username must be a string of at most 100 characters")
+    return value.strip()
+
+
+def _validate_anilist_interval(value: Any) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or not 60 <= value <= 30 * 24 * 60:
+        raise ValueError("anilist_import_interval_minutes must be between 60 and 43200")
+    return value
+
+
+def _validate_anilist_last_run(value: Any) -> int | None:
+    if value is not None and (not isinstance(value, int) or isinstance(value, bool) or value < 0):
+        raise ValueError("anilist_import_last_run_at must be a Unix timestamp or null")
+    return value
+
+
+def _validate_theme_package(value: Any) -> str:
+    if not isinstance(value, str) or not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,127}", value):
+        raise ValueError("ui_theme_package must be a bounded theme identifier")
+    return value
+
+
 def validate_preference(key: str, value: Any) -> Any:
+    """Validate and normalize one preference value."""
     if key not in DEFAULTS:
         raise ValueError(f"Unknown preference {key!r}")
-    default = DEFAULTS[key]
-    if key in {"notification_types", "notification_destinations"}:
-        if not isinstance(value, dict) or len(value) > 256 or any(
-            not isinstance(name, str) or not re.fullmatch(r"[a-zA-Z0-9._:-]{1,200}", name)
-            or not isinstance(enabled, bool) for name, enabled in value.items()
-        ):
-            raise ValueError(f"{key} must be a bounded mapping of identifiers to booleans")
-        return dict(value)
-    if key == "ui_theme_package":
-        if not isinstance(value, str) or not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,127}", value):
-            raise ValueError("ui_theme_package must be a bounded theme identifier")
-        return value
-    if key == "home_widgets":
-        return _validate_home_widgets(value)
-    if key == "home_widget_config":
-        return _validate_widget_config(value)
-    if key == "ui_custom_palette":
-        return _validate_custom_palette(value)
-    if key == "keyboard_shortcut_overrides":
-        return validate_shortcut_overrides(value)
-    if key == "game_page":
-        return validate_page_settings(value, partial=False)
     if key in _SET_CHOICES:
         allowed = _SET_CHOICES[key]
-        if not isinstance(value, list) or any(v not in allowed for v in value):
+        if not isinstance(value, list) or any(item not in allowed for item in value):
             raise ValueError(f"{key} must be a list drawn from {list(allowed)}")
-        return [v for v in allowed if v in value]
+        return [item for item in allowed if item in value]
+
     if key in _CHOICES:
-        if value not in _CHOICES[key]:
-            raise ValueError(f"{key} must be one of {list(_CHOICES[key])}")
+        choices = _CHOICES[key]
+        if value not in choices:
+            raise ValueError(f"{key} must be one of {list(choices)}")
         return value
-    if key == "anilist_import_username":
-        if not isinstance(value, str) or len(value.strip()) > 100:
-            raise ValueError("anilist_import_username must be a string of at most 100 characters")
-        return value.strip()
-    if key == "anilist_import_interval_minutes":
-        if not isinstance(value, int) or isinstance(value, bool) or not 60 <= value <= 30 * 24 * 60:
-            raise ValueError("anilist_import_interval_minutes must be between 60 and 43200")
-        return value
-    if key == "anilist_import_last_run_at":
-        if value is not None and (
-            not isinstance(value, int) or isinstance(value, bool) or value < 0
-        ):
-            raise ValueError("anilist_import_last_run_at must be a Unix timestamp or null")
-        return value
-    if isinstance(default, bool):
+
+    validator = _VALUE_VALIDATORS.get(key)
+    if validator is not None:
+        return validator(value)
+
+    if isinstance(DEFAULTS[key], bool):
         if not isinstance(value, bool):
             raise ValueError(f"{key} must be true or false")
         return value
+
     return value
 
 
@@ -235,6 +236,36 @@ def _validate_widget_config(value: Any) -> dict[str, dict[str, Any]]:
                 "widget options must be bounded strings, finite numbers or string lists"
             )
     return {identifier: dict(options) for identifier, options in value.items()}
+
+
+def _validate_notification_mapping(value: Any) -> dict[str, bool]:
+    if (
+        not isinstance(value, dict)
+        or len(value) > 256
+        or any(
+            not isinstance(name, str)
+            or not re.fullmatch(r"[a-zA-Z0-9._:-]{1,200}", name)
+            or not isinstance(enabled, bool)
+            for name, enabled in value.items()
+        )
+    ):
+        raise ValueError("Notification preferences must map bounded identifiers to booleans")
+    return dict(value)
+
+
+_VALUE_VALIDATORS: dict[str, Callable[[Any], Any]] = {
+    "notification_types": _validate_notification_mapping,
+    "notification_destinations": _validate_notification_mapping,
+    "ui_theme_package": _validate_theme_package,
+    "home_widgets": _validate_home_widgets,
+    "home_widget_config": _validate_widget_config,
+    "ui_custom_palette": _validate_custom_palette,
+    "keyboard_shortcut_overrides": validate_shortcut_overrides,
+    "game_page": partial(validate_page_settings, partial=False),
+    "anilist_import_username": _validate_anilist_username,
+    "anilist_import_interval_minutes": _validate_anilist_interval,
+    "anilist_import_last_run_at": _validate_anilist_last_run,
+}
 
 
 async def load_preferences(db: AsyncSession, user_id: UUID) -> dict[str, Any]:

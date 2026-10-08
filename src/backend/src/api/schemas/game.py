@@ -1,10 +1,13 @@
+"""Pydantic schemas for games and game metadata."""
+
 from datetime import date
 from decimal import Decimal
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from src.api.schemas.title_protection import TitleProtectionUpdate
 from src.core.page_settings import validate_page_settings
 from src.database.models.game import (
     FOLDER_NAME_MAX_LENGTH,
@@ -25,6 +28,12 @@ class GameLinkSchema(BaseModel):
     url: str = Field(min_length=1, max_length=2_048)
 
 
+ProviderIds = dict[
+    Annotated[str, Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")],
+    Annotated[str, Field(min_length=1, max_length=512)],
+]
+
+
 class GameBase(BaseModel):
     """Fields shared by create and update payloads."""
 
@@ -39,6 +48,7 @@ class GameBase(BaseModel):
     collections: list[str] = Field(default_factory=list)
     links: list[GameLinkSchema] = Field(default_factory=list)
     source: str | None = Field(default=None, max_length=50)
+    provider_ids: ProviderIds = Field(default_factory=dict, max_length=32)
     platform: str | None = Field(default=None, max_length=50)
     region: str | None = Field(default=None, max_length=50)
     language: str | None = Field(default=None, max_length=50)
@@ -129,7 +139,7 @@ class GameCreate(GameBase):
     created_at: int | None = Field(default=None, ge=0, description=_CREATED_AT_DESCRIPTION)
 
 
-class GameUpdate(BaseModel):
+class GameUpdate(TitleProtectionUpdate):
     """Payload for partial updates — every field optional."""
 
     title: str | None = Field(default=None, min_length=1, max_length=500)
@@ -145,6 +155,7 @@ class GameUpdate(BaseModel):
     collections: list[str] | None = None
     links: list[GameLinkSchema] | None = None
     source: str | None = Field(default=None, max_length=50)
+    provider_ids: ProviderIds | None = Field(default=None, max_length=32)
     platform: str | None = Field(default=None, max_length=50)
     region: str | None = Field(default=None, max_length=50)
     language: str | None = Field(default=None, max_length=50)
@@ -252,7 +263,11 @@ class GameRead(GameBase):
     )
     stale_since: int | None = Field(
         default=None,
-        description="Unix timestamp in seconds since a library sync last noticed this game missing from the account's owned-games list. NULL means currently present (or never synced). Never causes deletion by itself, set for the user to review.",
+        description=(
+            "Unix timestamp in seconds since a library sync last noticed this game missing "
+            "from the account's owned-games list. NULL means currently present (or never "
+            "synced). Never causes deletion by itself, set for the user to review."
+        ),
     )
 
 

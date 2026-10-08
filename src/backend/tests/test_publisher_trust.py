@@ -3,8 +3,8 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-from pathlib import Path
 import zipfile
+from pathlib import Path
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -87,6 +87,23 @@ def test_registry_enforces_publisher_status_and_plugin_scope(tmp_path: Path) -> 
     assert not load_trusted_publishers(registry)["official-test"].allows_plugin("example.plugin")
 
 
+@pytest.mark.parametrize("root", [None, [], "publishers", 1])
+def test_registry_rejects_non_object_schema(tmp_path: Path, root: object) -> None:
+    registry = tmp_path / "publishers.json"
+    registry.write_text(json.dumps(root), encoding="utf-8")
+    with pytest.raises(PublisherTrustError, match="unsupported schema"):
+        load_trusted_publishers(registry)
+
+
+@pytest.mark.parametrize("field", ["status", "channel"])
+@pytest.mark.parametrize("value", [None, [], {}, 1])
+def test_registry_rejects_invalid_policy_types(tmp_path: Path, field: str, value: object) -> None:
+    registry = tmp_path / "publishers.json"
+    write_registry(registry, registry_entry(Ed25519PrivateKey.generate(), **{field: value}))
+    with pytest.raises(PublisherTrustError):
+        load_trusted_publishers(registry)
+
+
 def test_verifier_rejects_revoked_or_out_of_scope_signers(tmp_path: Path) -> None:
     private_key = Ed25519PrivateKey.generate()
     registry = tmp_path / "publishers.json"
@@ -108,6 +125,9 @@ def test_production_identities_keep_official_demo_and_generic_trust_separate() -
     official = publishers["unnamed-tracking-official-2026-10-v1"]
     examples = publishers["unnamed-tracking-examples-2026-10-v1"]
     generic = publishers["unnamed-tracking-generic-2026-10-v1"]
+    official_v2 = publishers["unnamed-tracking-official-2026-10-07-v2"]
+    examples_v2 = publishers["unnamed-tracking-examples-2026-10-07-v2"]
+    generic_v2 = publishers["unnamed-tracking-generic-2026-10-07-v2"]
     assert len({official.public_key, examples.public_key, generic.public_key}) == 3
     assert official.channel == "official" and official.allows_plugin("official.pwa")
     assert not official.allows_plugin("example.lifecycle")
@@ -117,3 +137,10 @@ def test_production_identities_keep_official_demo_and_generic_trust_separate() -
     assert not examples.allows_plugin("official.pwa")
     assert not generic.allows_plugin("official.pwa")
     assert publishers["official-example-2026"].channel == "demo"
+    assert len({official_v2.public_key, examples_v2.public_key, generic_v2.public_key}) == 3
+    assert official_v2.channel == "official" and official_v2.allows_plugin("official.pwa")
+    assert not official_v2.allows_plugin("example.lifecycle")
+    assert examples_v2.channel == "demo" and examples_v2.allows_plugin("example.lifecycle")
+    assert generic_v2.channel == "community" and generic_v2.allows_plugin("plugin.lifecycle")
+    assert not examples_v2.allows_plugin("official.pwa")
+    assert not generic_v2.allows_plugin("official.pwa")

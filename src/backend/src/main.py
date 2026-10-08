@@ -1,5 +1,7 @@
-# app/main.py
+"""Compose the host HTTP routes and start its existing background services."""
+
 import asyncio
+import logging
 
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
@@ -9,6 +11,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 
 from src.api.routes import (
+    achievement_icons,
     anime,
     api_keys,
     app_integrations,
@@ -31,6 +34,7 @@ from src.api.routes import (
     media_lists,
     media_provider,
     media_stats,
+    metadata,
     movies,
     notification_providers,
     notifications,
@@ -38,6 +42,7 @@ from src.api.routes import (
     session_manager,
     settings,
     stats,
+    steam_import_steps,
     steam_tags_refresh,
     tv_shows,
     users,
@@ -59,9 +64,14 @@ from src.core.session_manager import purge_old_sessions
 from src.database.session import SessionLocal
 from src.features.backup.scheduler import run_backup_loop
 from src.features.jobs import run_jobs_loop
+from src.features.metadata.core import CORE_PROVIDERS, core_registration
+from src.features.metadata.health import monitor as provider_health_monitor
 from src.features.trash.sweep import run_sweep_loop
+from src.helpers import image_prefetch
 from src.plugin_api.backend_routes import reserve_host_routes
 from src.plugin_api.pwa import router as pwa_router
+from src.plugin_api.recovery import recover_transactions
+from src.plugin_api.runtime_client import PluginRuntimeClient, PluginRuntimeUnavailable
 
 app = FastAPI(
     title="My API", docs_url="/api/docs", redoc_url="/api/redoc", openapi_url="/api/openapi.json"
@@ -97,6 +107,7 @@ async def validation_error_without_submitted_values(
 
 app.include_router(default_game_assets.router)
 app.include_router(games.router)
+app.include_router(metadata.router)
 app.include_router(movies.router)
 app.include_router(tv_shows.router)
 app.include_router(anime.router)
@@ -126,6 +137,8 @@ app.include_router(media_io.router)
 app.include_router(media_extras.router)
 app.include_router(media_provider.router)
 app.include_router(media_images.router)
+app.include_router(achievement_icons.router)
+app.include_router(steam_import_steps.router)
 app.include_router(steam_tags_refresh.router)
 app.include_router(media_lists.router)
 app.include_router(notifications.router)
@@ -160,11 +173,40 @@ async def bootstrap_primary_user() -> None:
                 }
             )
         apply_deployment_provider_credentials(app_integrations_row)
+        for provider_id in CORE_PROVIDERS:
+            await core_registration(db, provider_id)
+
+
+@app.on_event("startup")
+async def start_image_prefetch() -> None:
+    image_prefetch.enable()
+
+
+@app.on_event("shutdown")
+async def stop_image_prefetch() -> None:
+    await image_prefetch.disable()
 
 
 @app.on_event("startup")
 async def start_trash_sweep() -> None:
     asyncio.create_task(run_sweep_loop())
+
+
+@app.on_event("startup")
+async def start_provider_health_loop() -> None:
+    app.state.provider_health_task = asyncio.create_task(provider_health_monitor.run())
+
+
+@app.on_event("shutdown")
+async def stop_provider_health_loop() -> None:
+    await provider_health_monitor.close()
+    task = getattr(app.state, "provider_health_task", None)
+    if task is not None:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
 
 @app.on_event("startup")
@@ -180,9 +222,8 @@ async def start_session_retention_loop() -> None:
             try:
                 async with SessionLocal() as db:
                     await purge_old_sessions(db)
-            except Exception:
-                import logging
-
+            # A cleanup failure is reported without stopping future retention passes.
+            except Exception:  # pylint: disable=broad-exception-caught
                 logging.getLogger(__name__).exception("Session retention cleanup failed")
 
     asyncio.create_task(loop())
@@ -191,10 +232,6 @@ async def start_session_retention_loop() -> None:
 @app.on_event("startup")
 async def start_jobs_loop() -> None:
     # scheduled jobs (see features/jobs.py), including the airing check
-    import logging
-
-    from src.plugin_api.recovery import recover_transactions
-    from src.plugin_api.runtime_client import PluginRuntimeClient, PluginRuntimeUnavailable
 
     # Runtime starts alongside the host. No package can auto-start while pending;
     # retry this reconciliation when the runtime becomes reachable.
@@ -206,7 +243,8 @@ async def start_jobs_loop() -> None:
                 break
             except PluginRuntimeUnavailable:
                 await asyncio.sleep(5)
-            except Exception:
+            # Recovery reports each failed attempt before retrying the runtime connection.
+            except Exception:  # pylint: disable=broad-exception-caught
                 logging.getLogger(__name__).exception("Plugin transaction recovery failed")
                 await asyncio.sleep(5)
         await run_jobs_loop()

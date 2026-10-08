@@ -1,4 +1,3 @@
-import time
 from datetime import date
 from decimal import Decimal
 from enum import Enum
@@ -9,22 +8,25 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     Date,
-    Enum as SAEnum,
     ForeignKey,
     Numeric,
     String,
     Text,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID as PG_UUID
+from sqlalchemy import Enum as SAEnum
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from src.database.base import Base
+from src.database.base import Base, unix_timestamp
 
 if TYPE_CHECKING:
     from src.database.models.user import User
 
 
 class MovieStatus(str, Enum):
+    # Repeated declarations preserve independent database table/enum contracts.
+    # pylint: disable=duplicate-code
     """Movie status aligned with a media library workflow."""
 
     DROPPED = "DROPPED"
@@ -37,7 +39,9 @@ class MovieStatus(str, Enum):
     REWATCH = "REWATCH"
 
 
+# Repeated column declarations preserve this table's explicit schema contract.
 class Movie(Base):
+    # pylint: disable=duplicate-code
     __tablename__ = "movies"
 
     # ------------------------------------------------------------------
@@ -266,12 +270,12 @@ class Movie(Base):
     created_at: Mapped[int] = mapped_column(
         BigInteger,
         nullable=False,
-        default=time.time,
+        default=unix_timestamp,
     )
 
     updated_at: Mapped[int] = mapped_column(
         BigInteger,
         nullable=False,
-        default=time.time,
-        onupdate=time.time,
+        default=unix_timestamp,
+        onupdate=unix_timestamp,
     )

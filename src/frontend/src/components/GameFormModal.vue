@@ -6,8 +6,6 @@ import {
   createGame,
   fetchGames,
   fetchGame,
-  rankMetadataResults,
-  searchGameMetadata,
   previewGameMetadataRefresh,
   applyGameMetadataRefresh,
   updateGame,
@@ -25,7 +23,6 @@ import type {
   GameRelationshipType,
 } from "../types/game";
 import type { GameLink, GameOwnership } from "../types/game";
-import { currentUser } from "../state/auth";
 import { useConfirm } from "../state/dialog";
 import { lockedFieldLabels } from "../utils/lockedFields";
 
@@ -34,10 +31,15 @@ import PageSettingsEditor from "./PageSettingsEditor.vue";
 import { preferences } from "../state/preferences";
 import { resolvePage } from "../utils/gamePage";
 import type { PageOverrides, PageSettings } from "../utils/gamePage";
-import { fetchProviderCredentials } from "../services/settings";
+import { fetchMetadataProviders } from "../services/metadata";
+import type { MetadataProviderStatus } from "../services/metadata";
 import { localDateInputToUnixSeconds, toLocalDateInput } from "../utils/dates";
 import { PRIORITY_OPTIONS, isFinished } from "../utils/priority";
 import { RETRO_PLATFORM_OPTIONS } from "../utils/platforms";
+
+import { useMetadataSearch } from "../composables/useMetadataSearch";
+import { gameMetadataResult } from "../utils/metadataCandidate";
+import { useTitleProtection } from "../utils/titleProtection";
 
 const props = defineProps<{
   game?: Game | null;
@@ -59,12 +61,15 @@ onMounted(async () => {
     // parent picker just stays empty, not worth failing the whole form
   }
   if (import.meta.env.VITE_USE_MOCK_DATA === "true") return;
-  fetchProviderCredentials()
-    .then((status) => {
-      serverHasSteamgriddbKey.value = !!status.SteamGridDB?.server_configured;
+  fetchMetadataProviders()
+    .then((providers) => {
+      metadataProviders.value = providers;
     })
     .catch(() => {
       // the hint just stays visible
+    })
+    .finally(() => {
+      metadataProvidersLoaded.value = true;
     });
   try {
     const response = await fetch("/api/currency-codes", {
@@ -185,6 +190,11 @@ function onFormSubmit() {
 }
 
 const title = ref(props.game?.title ?? "");
+const { titleProtected, titleLockOverride } = useTitleProtection(
+  () => props.game,
+  () => title.value,
+);
+
 // the saved custom sorting name, blank when the library sorts by the title
 const sortTitle = ref(props.game?.sortTitle ?? "");
 const platform = ref(props.game?.platform ?? "");
@@ -272,11 +282,17 @@ const condition = ref(props.game?.ownership.condition ?? "");
 const saving = ref(false);
 const error = ref<string | null>(null);
 const metadataQuery = ref("");
-const metadataResults = ref<MetadataSearchResult[]>([]);
-const searchingMetadata = ref(false);
+const progressiveSearch = useMetadataSearch(metadataQuery, "game");
+const metadataResults = computed(() =>
+  progressiveSearch.selected.value
+    ? []
+    : progressiveSearch.results.value.map(gameMetadataResult),
+);
+const searchingMetadata = progressiveSearch.searching;
 const metadataMessage = ref<string | null>(null);
-const steamgriddbConfigured = ref(false);
-const providerWarnings = ref<string[]>([]);
+const metadataProviders = ref<MetadataProviderStatus[]>([]);
+const metadataProvidersLoaded = ref(false);
+const providerWarnings = progressiveSearch.warnings;
 
 // picked from the selected metadata result, attached to the game as real
 // assets once it's actually saved (see submit())
@@ -289,9 +305,7 @@ const refreshingMetadata = ref(false);
 const refreshMetadataError = ref<string | null>(null);
 const refreshMetadataIncludeArt = ref(true);
 const mediaSearchResults = ref<MetadataSearchResult[]>([]);
-const searchingMedia = ref(false);
-let metadataSearchTimer: ReturnType<typeof setTimeout> | null = null;
-let metadataSearchRequest = 0;
+const searchingMedia = progressiveSearch.enrichingMedia;
 
 const metadataFormDirty = computed(() => {
   if (!isEditing.value || !props.game) return false;
@@ -315,13 +329,15 @@ const metadataFormDirty = computed(() => {
   );
 });
 
-// a personal key, or a server-wide one that searches fall back to (#234)
-const serverHasSteamgriddbKey = ref(false);
-const hasSteamgriddbKey = computed(
-  () =>
-    !!currentUser.value?.steamgriddb_api_key ||
-    serverHasSteamgriddbKey.value ||
-    steamgriddbConfigured.value,
+const hasMediaProvider = computed(() =>
+  metadataProviders.value.some(
+    (provider) =>
+      provider.media_types.includes("game") &&
+      provider.operations.media &&
+      !["disabled", "not_configured", "plugin_unavailable"].includes(
+        provider.state,
+      ),
+  ),
 );
 
 async function refreshMetadataFromEditor() {
@@ -394,7 +410,6 @@ async function refreshMetadataFromEditor() {
       tagsInput.value = updated.tags.join(", ");
       featuresInput.value = updated.features.join(", ");
       links.value = [...updated.links];
-      metadataQuery.value = updated.title;
       metadataRefreshPreview.value = null;
       metadataMessage.value = `Updated from ${outcome.provider ?? "metadata provider"}.${outcome.skippedLockedFields.length ? ` Preserved locked fields: ${lockedFieldLabels(outcome.skippedLockedFields).join(", ")}.` : ""}`;
       if (outcome.keyArtAdded) pickedKeyArtUrl.value = null;
@@ -409,125 +424,117 @@ async function refreshMetadataFromEditor() {
 }
 
 async function searchMetadata() {
-  const query = metadataQuery.value.trim();
-  if (query.length < 2) {
-    metadataResults.value = [];
-    metadataMessage.value = query
-      ? "Enter at least two characters to search."
-      : null;
-    searchingMetadata.value = false;
-    return;
-  }
-  const requestId = ++metadataSearchRequest;
-  searchingMetadata.value = true;
-  metadataMessage.value = null;
-  providerWarnings.value = [];
-  try {
-    const response = await searchGameMetadata(query, { includeImages: false });
-    if (requestId !== metadataSearchRequest) return;
-    metadataResults.value = rankMetadataResults(
-      response.results.filter((result) => result.provider !== "SteamGridDB"),
-      query,
-    );
-    steamgriddbConfigured.value = response.steamgriddb_configured;
-    providerWarnings.value = response.provider_errors ?? [];
-    if (!metadataResults.value.length)
-      metadataMessage.value = "No games found.";
-  } catch (err) {
-    if (requestId !== metadataSearchRequest) return;
-    metadataMessage.value =
-      err instanceof Error ? err.message : "Metadata search failed.";
-  } finally {
-    if (requestId === metadataSearchRequest) searchingMetadata.value = false;
-  }
+  metadataApplied.value = false;
+  await progressiveSearch.search();
 }
 
 async function searchMedia() {
-  const query = title.value.trim() || metadataQuery.value.trim();
+  const query = title.value.trim();
   if (query.length < 2) {
     metadataMessage.value = "Enter a game title before searching for artwork.";
     return;
   }
-  searchingMedia.value = true;
   try {
-    const response = await searchGameMetadata(query, { includeImages: true });
-    mediaSearchResults.value = response.results.filter(
-      (result) =>
-        result.key_art_urls.length ||
-        result.banner_urls.length ||
-        result.key_art_url ||
-        result.banner_url,
-    );
-    const keyArt = [
-      ...mediaSearchResults.value.flatMap((result) => result.key_art_urls),
-      ...mediaSearchResults.value.map((result) => result.key_art_url),
-    ].filter((url): url is string => !!url);
-    const banners = [
-      ...mediaSearchResults.value.flatMap((result) => result.banner_urls),
-      ...mediaSearchResults.value.map((result) => result.banner_url),
-    ].filter((url): url is string => !!url);
-    keyArtCandidates.value = [...new Set(keyArt)];
-    bannerCandidates.value = [...new Set(banners)];
-    if (keyArtCandidates.value.length && !pickedKeyArtUrl.value) {
-      pickedKeyArtUrl.value = keyArtCandidates.value[0];
-    }
-    if (bannerCandidates.value.length && !pickedBannerUrl.value) {
-      pickedBannerUrl.value = bannerCandidates.value[0];
-    }
-    if (!mediaSearchResults.value.length) {
-      metadataMessage.value =
-        "No artwork was found from the configured media sources.";
-    } else {
-      metadataMessage.value = `Found artwork from ${mediaSearchResults.value.map((result) => result.provider).join(", ")}.`;
-    }
-  } catch (err) {
+    await progressiveSearch.focus(query, props.game?.providerIds ?? {});
+  } catch (failure) {
     metadataMessage.value =
-      err instanceof Error ? err.message : "Media search failed.";
-  } finally {
-    searchingMedia.value = false;
+      failure instanceof Error ? failure.message : "Media search failed.";
   }
 }
 
-watch(metadataQuery, () => {
-  if (metadataApplied.value) {
-    metadataApplied.value = false;
-    return;
-  }
-  if (activeTab.value !== "Find") return;
-  if (metadataSearchTimer) clearTimeout(metadataSearchTimer);
-  metadataSearchTimer = setTimeout(() => void searchMetadata(), 250);
+watch([progressiveSearch.error, searchingMetadata, metadataResults], () => {
+  if (progressiveSearch.error.value)
+    metadataMessage.value = progressiveSearch.error.value;
+  else if (!metadataApplied.value)
+    metadataMessage.value = searchingMetadata.value
+      ? null
+      : metadataQuery.value.trim().length >= 2 && !metadataResults.value.length
+        ? "No games found."
+        : null;
 });
 
+const appliedProviderFields = new Map<string, string>();
+function applyAvailableMetadata(result: MetadataSearchResult, initial = false) {
+  const fields = {
+    title,
+    description,
+    developer,
+    publisher,
+    series,
+    age_rating: ageRating,
+    release_date: releaseDate,
+    tags: tagsInput,
+    features: featuresInput,
+    time_to_beat_hours: timeToBeatHours,
+  };
+  const values = {
+    ...result,
+    tags: result.tags.join(", "),
+    features: result.features.join(", "),
+    time_to_beat_hours:
+      result.time_to_beat_hours == null
+        ? null
+        : String(result.time_to_beat_hours),
+  };
+  for (const [name, input] of Object.entries(fields)) {
+    const value = values[name as keyof typeof values];
+    if (
+      typeof value !== "string" ||
+      !value ||
+      props.game?.lockedFields?.includes(name) ||
+      (name === "title" && titleProtected.value)
+    )
+      continue;
+    if (
+      initial ||
+      !input.value ||
+      String(input.value) === appliedProviderFields.get(name)
+    ) {
+      input.value = value;
+      appliedProviderFields.set(name, value);
+    }
+  }
+  if (
+    result.links.length &&
+    !props.game?.lockedFields?.includes("links") &&
+    (initial ||
+      !links.value.length ||
+      JSON.stringify(links.value) === appliedProviderFields.get("links"))
+  ) {
+    links.value = result.links.map((link) => ({ ...link }));
+    appliedProviderFields.set("links", JSON.stringify(links.value));
+  }
+}
+watch(progressiveSearch.selected, (candidate) => {
+  if (!candidate) return;
+  const result = gameMetadataResult(candidate);
+  applyAvailableMetadata(result);
+  if (result.key_art_urls.length) keyArtCandidates.value = result.key_art_urls;
+  if (result.banner_urls.length) bannerCandidates.value = result.banner_urls;
+  if (!pickedKeyArtUrl.value) pickedKeyArtUrl.value = result.key_art_url;
+  if (!pickedBannerUrl.value) pickedBannerUrl.value = result.banner_url;
+});
 function applyMetadata(result: MetadataSearchResult) {
-  title.value = result.title;
+  appliedProviderFields.clear();
+  applyAvailableMetadata(result, true);
   sortTitle.value = "";
   folderLocation.value = result.title
     .trim()
     .replace(/[^A-Za-z0-9_-]+/g, "-")
     .replace(/^-+|-+$/g, "");
   folderTouched.value = false;
-  description.value = result.description ?? "";
-  developer.value = result.developer ?? "";
-  publisher.value = result.publisher ?? "";
-  ageRating.value = result.age_rating ?? "";
-  timeToBeatHours.value =
-    result.time_to_beat_hours != null
-      ? String(result.time_to_beat_hours)
-      : timeToBeatHours.value;
-  releaseDate.value = result.release_date ?? "";
   source.value = result.provider;
-  tagsInput.value = result.tags.join(", ");
-  featuresInput.value = result.features.join(", ");
-  links.value = result.links.map((link) => ({ ...link }));
   pickedKeyArtUrl.value = result.key_art_url;
   pickedBannerUrl.value = result.banner_url;
   keyArtCandidates.value = result.key_art_urls;
   bannerCandidates.value = result.banner_urls;
-  metadataResults.value = [];
   mediaSearchResults.value = [];
-  metadataQuery.value = result.title;
   metadataMessage.value = `Prefilled from ${result.provider}. Review the fields before saving.`;
   metadataApplied.value = true;
+  const candidate = progressiveSearch.results.value.find(
+    (item) => item.id === result.candidate_id,
+  );
+  if (candidate) void progressiveSearch.select(candidate).catch(() => {});
   if (!isEditing.value) activeTab.value = "General";
 }
 
@@ -565,6 +572,7 @@ async function submit() {
 
   const input = {
     title: title.value.trim(),
+    titleLock: isEditing.value ? titleLockOverride.value : undefined,
     sortTitle: sortTitle.value.trim() || null,
     folderLocation: folderLocation.value.trim(),
     status: status.value,
@@ -584,6 +592,8 @@ async function submit() {
         : null,
     completionDate: completionDate.value || null,
     source: source.value.trim() || null,
+    providerIds:
+      progressiveSearch.selected.value?.provider_ids ?? props.game?.providerIds,
     platform: platform.value.trim() || null,
     priority: priority.value || null,
     ageRating: ageRating.value.trim() || null,
@@ -696,15 +706,17 @@ async function submit() {
                   form.</span
                 >
               </div>
-              <p v-if="!hasSteamgriddbKey" class="steamgriddb-hint">
-                Add your own SteamGridDB API key in
+              <p
+                v-if="metadataProvidersLoaded && !hasMediaProvider"
+                class="steamgriddb-hint"
+              >
+                Configure the built-in artwork providers in
                 <router-link
                   to="/settings?section=sources"
                   @click="emit('close')"
                   >Settings &rsaquo; Metadata/API</router-link
                 >
-                to also pull real cover and hero art automatically: without it,
-                only Steam's own (often lower-quality) images are used.
+                to receive cover and hero artwork after choosing a game.
               </p>
               <div class="search-row">
                 <input
@@ -772,6 +784,11 @@ async function submit() {
                   />
                 </label>
               </div>
+
+              <label v-if="isEditing" class="checkbox-field">
+                <input v-model="titleProtected" type="checkbox" />
+                <span>Protect title from metadata updates</span>
+              </label>
 
               <div class="field-row">
                 <label class="field">

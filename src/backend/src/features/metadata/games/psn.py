@@ -194,7 +194,8 @@ class PSNClient:
         access_token = self._authenticate()
         try:
             response = self.session.get(
-                f"https://m.np.playstation.com/api/trophy/v1/users/me/npCommunicationIds/{np_communication_id}/trophyGroups/all/trophies",
+                "https://m.np.playstation.com/api/trophy/v1/users/me/npCommunicationIds/"
+                f"{np_communication_id}/trophyGroups/all/trophies",
                 headers={"Authorization": f"Bearer {access_token}"},
                 params={"npServiceName": np_service_name},
                 timeout=20,

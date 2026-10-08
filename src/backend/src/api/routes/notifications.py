@@ -1,6 +1,4 @@
-"""In-app notifications. The bell polls `/unread-count`, which also
-generates anything newly due (see features/notifications.py), so there is
-generation also runs in the existing jobs loop."""
+"""In-app inbox APIs, with shared discovery from polling and the existing jobs loop."""
 
 import time
 from collections.abc import Sequence
@@ -9,8 +7,9 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import func, select, update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.functions import count as sql_count
 
 from src.core.auth import get_current_admin, get_current_user
 from src.core.preferences import load_preferences
@@ -40,7 +39,9 @@ def _read(n: Notification) -> dict:
         "media_id": n.media_id,
         "title": n.title,
         "body": n.body,
-        "poster_url": n.poster_url,
+        "poster_url": f"/api/media-image/{n.media_type}/{n.media_id}/poster"
+        if n.poster_url
+        else None,
         "event_at": n.event_at,
         "read": n.read_at is not None,
     }
@@ -73,7 +74,7 @@ async def unread_count(
 ) -> dict:
     await generate_for_user(db, current_user.id)
     count = await db.scalar(
-        select(func.count())
+        select(sql_count())
         .select_from(Notification)
         .where(visible_inbox(current_user.id), Notification.read_at.is_(None))
     )
@@ -98,7 +99,7 @@ async def list_notifications(
         .all()
     )
     unread = await db.scalar(
-        select(func.count())
+        select(sql_count())
         .select_from(Notification)
         .where(visible_inbox(current_user.id), Notification.read_at.is_(None))
     )

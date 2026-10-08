@@ -18,6 +18,8 @@ import type {
 // field-for-field. This is deliberately a separate type from `Game`:
 // nothing outside this file should ever see raw backend data directly.
 export interface BackendGame {
+  provider_ids?: Record<string, string>;
+  locked_fields?: string[];
   id: string;
   title: string;
   sort_title: string;
@@ -107,6 +109,7 @@ function denormalizeStatus(status: GameStatus): string {
 
 export function mapBackendGame(raw: BackendGame): Game {
   return {
+    lockedFields: raw.locked_fields ?? [],
     id: raw.id,
     title: raw.title,
     // placeholders, the backend has no artwork yet
@@ -147,6 +150,7 @@ export function mapBackendGame(raw: BackendGame): Game {
     folderLocation: raw.folder_location,
     releaseDate: raw.release_date,
     source: raw.source,
+    providerIds: raw.provider_ids ?? {},
     platform: raw.platform,
     priority: raw.priority,
     // only a sorting name someone chose, not the one derived from the title
@@ -440,6 +444,9 @@ export async function fetchGameVariants(id: string): Promise<Game[]> {
 }
 
 export interface MetadataSearchResult {
+  release_year?: number | null;
+  candidate_id?: string;
+  provider_ids?: Record<string, string>;
   provider: string;
   provider_id: string;
   title: string;
@@ -657,7 +664,9 @@ export async function previewGameMetadataRefresh(
 }
 
 export interface NewGameInput {
+  providerIds?: Record<string, string>;
   title: string;
+  titleLock?: boolean;
   // undefined leaves the saved sorting name alone, null resets it to the title
   sortTitle?: string | null;
   // undefined leaves the saved value alone on update
@@ -732,6 +741,7 @@ export async function createGame(input: NewGameInput): Promise<Game> {
       folderLocation: input.folderLocation || null,
       releaseDate: input.releaseDate,
       source: input.source,
+      providerIds: input.providerIds,
       ageRating: input.ageRating,
       timeToBeatHours: input.timeToBeatHours,
       region: input.region,
@@ -767,6 +777,7 @@ export async function createGame(input: NewGameInput): Promise<Game> {
       relationship_type: input.relationshipType,
       release_date: input.releaseDate,
       source: input.source,
+      provider_ids: input.providerIds,
       platform: input.platform ?? null,
       priority: input.priority ?? null,
       region: input.region,
@@ -850,6 +861,7 @@ export async function updateGame(
   // that impossible). Fields the caller leaves undefined are left alone.
   const body: Record<string, unknown> = {
     title: input.title,
+    title_lock: input.titleLock,
     status: denormalizeStatus(input.status),
     favorite: input.favorite,
     profiles_enabled: input.profilesEnabled,
@@ -865,6 +877,7 @@ export async function updateGame(
     relationship_type: input.relationshipType,
     release_date: input.releaseDate,
     source: input.source,
+    provider_ids: input.providerIds,
     region: input.region,
     language: input.language,
     age_rating: input.ageRating,

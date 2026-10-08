@@ -34,6 +34,8 @@ import KeyboardShortcutsSection from "../components/settings/KeyboardShortcutsSe
 import ConnectionsSection from "../components/settings/ConnectionsSection.vue";
 import AniListImportSection from "../components/settings/AniListImportSection.vue";
 import ApiKeysSection from "../components/settings/ApiKeysSection.vue";
+import SessionsSection from "../components/settings/SessionsSection.vue";
+import ToggleButton from "../components/settings/ToggleButton.vue";
 import PluginManagerSection from "../components/settings/PluginManagerSection.vue";
 import ThemesSection from "../components/settings/ThemesSection.vue";
 import PwaSettingsSection from "../components/settings/PwaSettingsSection.vue";
@@ -77,6 +79,8 @@ const coreSectionIds = new Set([
   "app-installation",
   "branding",
   "api-keys",
+  "sessions",
+  "admin-sessions",
   "calendar-notifications",
   "upload",
   "library",
@@ -121,6 +125,20 @@ const settingsReplacementConflicts = computed(() =>
 const showHostSettings = computed(
   () => currentUser.value?.is_admin && route.query.host === "1",
 );
+const availableSessionReplacement = computed(() => {
+  if (activeSection.value === "sessions") return pageReplacement("sessions");
+  if (activeSection.value === "admin-sessions" && currentUser.value?.is_admin)
+    return pageReplacement("admin-sessions");
+  return undefined;
+});
+const sessionReplacement = computed(() =>
+  route.query.basic === "1" ? undefined : availableSessionReplacement.value,
+);
+function setAdvancedSessions(enabled: boolean) {
+  void router.replace({
+    query: { ...route.query, basic: enabled ? undefined : "1" },
+  });
+}
 
 const activePluginSettings = computed(() =>
   visiblePluginSettings.value.find(
@@ -161,6 +179,7 @@ const groups = computed<SettingsGroup[]>(() => {
         { id: "profile", label: "Profile" },
         { id: "connections", label: "Connections" },
         { id: "api-keys", label: "API Keys" },
+        { id: "sessions", label: "Sessions" },
       ],
     },
     {
@@ -191,6 +210,7 @@ const groups = computed<SettingsGroup[]>(() => {
       area: "administration",
       sections: [
         { id: "users", label: "Users" },
+        { id: "admin-sessions", label: "Session Manager" },
         { id: "oidc", label: "Single sign-on" },
         { id: "password-policy", label: "Password policy" },
         { id: "server-integrations", label: "Server integrations" },
@@ -493,6 +513,38 @@ function backToArea() {
             @navigate="openSection"
           />
           <ApiKeysSection v-else-if="activeSection === 'api-keys'" />
+          <template
+            v-else-if="
+              activeSection === 'sessions' ||
+              (activeSection === 'admin-sessions' && currentUser?.is_admin)
+            "
+          >
+            <div v-if="availableSessionReplacement" class="session-view-switch">
+              <ToggleButton
+                :model-value="!!sessionReplacement"
+                label="Advanced sessions"
+                @update:model-value="setAdvancedSessions"
+              />
+              <span>{{ sessionReplacement ? "Advanced" : "Basic" }}</span>
+            </div>
+            <template v-if="sessionReplacement">
+              <p class="replacement-notice">
+                Advanced sessions provided by
+                {{ sessionReplacement.document.title }}.
+              </p>
+              <PluginContributionHost
+                :plugin-id="sessionReplacement.pluginId"
+                :document="sessionReplacement.document"
+                :page-id="sessionReplacement.page.id"
+                :context="{ host_page: activeSection }"
+                embedded
+              />
+            </template>
+            <SessionsSection
+              v-else
+              :admin="activeSection === 'admin-sessions'"
+            />
+          </template>
           <LibrarySettings
             v-else-if="activeSection === 'library'"
             :key="'library' + initialTab"
@@ -561,6 +613,18 @@ function backToArea() {
 </template>
 
 <style scoped>
+.session-view-switch {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--ui-border-soft);
+}
+.session-view-switch > span {
+  color: var(--ui-dim);
+  font-size: 0.85rem;
+}
 .settings-page {
   position: relative;
   min-height: 100vh;

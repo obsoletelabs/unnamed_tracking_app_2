@@ -118,6 +118,8 @@ _CRITICAL = frozenset(
 )
 _HIGH = frozenset(
     {
+        Capability.METADATA_PROVIDERS_REGISTER,
+        Capability.METADATA_PROVIDERS_CONFIGURATION,
         Capability.GAMES_WRITE,
         Capability.MEDIA_WRITE,
         Capability.MEDIA_IMPORT,
@@ -135,6 +137,8 @@ _HIGH = frozenset(
         Capability.FRONTEND_DIALOG,
         Capability.FRONTEND_PAGE_REPLACE_HOME,
         Capability.FRONTEND_PAGE_REPLACE_SETTINGS,
+        Capability.FRONTEND_PAGE_REPLACE_SESSIONS,
+        Capability.FRONTEND_PAGE_REPLACE_ADMIN_SESSIONS,
         Capability.BACKEND_ROUTES,
         Capability.NETWORK_OUTBOUND,
     }
@@ -308,6 +312,11 @@ def package_identity_can_retain_grants(
     )
 
 
+def permission_key(capability: CapabilityRef) -> str:
+    """Stable consent key shared by install planning and persisted grants."""
+    return f"{capability.name.value}:v{capability.version}"
+
+
 __all__ = [
     "CapabilityDefinition",
     "CapabilityRisk",
@@ -320,4 +329,5 @@ __all__ = [
     "capability_implies",
     "expand_capabilities",
     "package_identity_can_retain_grants",
+    "permission_key",
 ]

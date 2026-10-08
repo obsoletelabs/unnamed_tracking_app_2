@@ -48,7 +48,9 @@ class GameStatus(str, Enum):
     MASTERED = "MASTERED"
 
 
+# Repeated column declarations preserve this table's explicit schema contract.
 class Game(Base):
+    # pylint: disable=duplicate-code
     __tablename__ = "games"
     __table_args__ = (
         # folder names only need to be unique within a user's storage
@@ -118,6 +120,10 @@ class Game(Base):
     description: Mapped[str | None] = mapped_column(
         Text,
         nullable=True,
+    )
+
+    provider_ids: Mapped[dict[str, str]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'")
     )
 
     # Metadata fields a user has deliberately changed in the game editor.

@@ -4,7 +4,6 @@ import {
   createMovie,
   updateMovie,
   deleteMovie,
-  searchMovieMetadata,
   movieToInput,
 } from "../services/movies";
 import type { MovieMetadataResult } from "../services/movies";
@@ -22,6 +21,10 @@ import MediaFormShell from "./MediaFormShell.vue";
 import MediaMetadataSearch from "./MediaMetadataSearch.vue";
 import { useMetadataSearch } from "../utils/useMetadataSearch";
 import { splitList } from "../utils/formLists";
+import { movieMetadataResult } from "../utils/metadataCandidate";
+import { metadataPrefill } from "../utils/metadataPrefill";
+
+import { useTitleProtection } from "../utils/titleProtection";
 
 const props = defineProps<{
   movie?: Movie | null;
@@ -36,6 +39,7 @@ const emit = defineEmits<{
 function blankFields() {
   return {
     title: "",
+    providerIds: {} as Record<string, string>,
     description: "",
     releaseDate: "",
     runtimeMinutes: null as number | null,
@@ -62,14 +66,19 @@ const statusBucketModel = computed({
     fields.value.status = bucketToReal(bucket) as MovieStatus;
   },
 });
+const { titleProtected, titleLockOverride } = useTitleProtection(
+  () => props.movie,
+  () => fields.value.title,
+);
+
 const saving = ref(false);
 const deleting = ref(false);
 const error = ref<string | null>(null);
 
 const search = useMetadataSearch<MovieMetadataResult>({
-  search: searchMovieMetadata,
+  mediaType: "movie",
+  convert: movieMetadataResult,
   noun: "movie",
-  keyHint: "TMDB or OMDb",
 });
 
 function loadFromMovie(movie: Movie | null | undefined) {
@@ -79,6 +88,7 @@ function loadFromMovie(movie: Movie | null | undefined) {
   }
   fields.value = {
     title: movie.title,
+    providerIds: movie.providerIds ?? {},
     description: movie.description ?? "",
     releaseDate: movie.releaseDate ?? "",
     runtimeMinutes: movie.runtimeMinutes,
@@ -103,28 +113,42 @@ function loadFromMovie(movie: Movie | null | undefined) {
 
 watch(() => props.movie, loadFromMovie, { immediate: true });
 
+const prefillMetadata = metadataPrefill<ReturnType<typeof blankFields>>();
+
 function applyMetadata(result: MovieMetadataResult) {
   const locked = new Set(props.movie?.lockedFields ?? []);
-  if (!locked.has("title")) fields.value.title = result.title;
+  const incoming: Partial<ReturnType<typeof blankFields>> = {};
+  if (!titleProtected.value) incoming.title = result.title ?? undefined;
   if (!locked.has("description"))
-    fields.value.description = result.description ?? "";
-  if (!locked.has("release_date"))
-    fields.value.releaseDate = result.releaseDate ?? "";
-  if (!locked.has("runtime_minutes") && result.runtimeMinutes !== null)
-    fields.value.runtimeMinutes = result.runtimeMinutes;
-  if (!locked.has("director")) fields.value.director = result.director ?? "";
-  if (!locked.has("writer")) fields.value.writer = result.writer ?? "";
-  if (!locked.has("studios") && result.studios.length)
-    fields.value.studiosInput = result.studios.join(", ");
-  if (!locked.has("genres") && result.genres.length)
-    fields.value.genresInput = result.genres.join(", ");
-  if (!locked.has("poster_url")) fields.value.posterUrl = result.posterUrl;
+    incoming.description = result.description ?? undefined;
+  if (!locked.has("poster_url"))
+    incoming.posterUrl = result.posterUrl ?? undefined;
   if (!locked.has("backdrop_url"))
-    fields.value.backdropUrl = result.backdropUrl;
-  if (!locked.has("tmdb_score") && result.tmdbScore !== null)
-    fields.value.tmdbScore = result.tmdbScore;
+    incoming.backdropUrl = result.backdropUrl ?? undefined;
+  if (!locked.has("genres"))
+    incoming.genresInput = result.genres.join(", ") ?? undefined;
+  if (!locked.has("release_date"))
+    incoming.releaseDate = result.releaseDate ?? undefined;
+  if (!locked.has("runtime_minutes"))
+    incoming.runtimeMinutes = result.runtimeMinutes ?? undefined;
+  if (!locked.has("director")) incoming.director = result.director ?? undefined;
+  if (!locked.has("writer")) incoming.writer = result.writer ?? undefined;
+  if (!locked.has("studios"))
+    incoming.studiosInput = result.studios.join(", ") ?? undefined;
+  if (!locked.has("tmdb_score"))
+    incoming.tmdbScore = result.tmdbScore ?? undefined;
+  prefillMetadata(fields.value, incoming, result.candidateId);
+  if (result.providerIds)
+    fields.value.providerIds = {
+      ...fields.value.providerIds,
+      ...result.providerIds,
+    };
   search.applied(result, [...locked]);
 }
+
+watch(search.selected, (result) => {
+  if (result) applyMetadata(result);
+});
 
 // what the search box lists for each match
 const searchResults = computed(() =>
@@ -132,7 +156,7 @@ const searchResults = computed(() =>
     key: `${result.provider}-${result.providerId}`,
     title: result.title,
     provider: result.provider,
-    detail: result.releaseDate?.slice(0, 4),
+    detail: result.releaseYear?.toString() ?? result.releaseDate?.slice(0, 4),
   })),
 );
 
@@ -140,7 +164,7 @@ function pickResult(key: string) {
   const result = search.results.value.find(
     (r) => `${r.provider}-${r.providerId}` === key,
   );
-  if (result) applyMetadata(result);
+  if (result) void search.select(result).catch(() => {});
 }
 
 async function submit() {
@@ -163,6 +187,8 @@ async function submit() {
     const input = {
       progressMinutes: progressMinutes || null,
       title: fields.value.title.trim(),
+      providerIds: fields.value.providerIds,
+      titleLock: props.movie ? titleLockOverride.value : undefined,
       description: fields.value.description.trim() || null,
       releaseDate: fields.value.releaseDate || null,
       runtimeMinutes: fields.value.runtimeMinutes,
@@ -222,10 +248,11 @@ async function remove() {
   >
     <MediaMetadataSearch
       v-model:query="search.query.value"
-      label="Search TMDB / OMDb"
+      label="Search metadata providers"
       noun="movie"
       :results="searchResults"
       :searching="search.searching.value"
+      :enriching-media="search.enrichingMedia.value"
       :message="search.message.value"
       :warnings="search.warnings.value"
       @search="search.run"
@@ -247,6 +274,11 @@ async function remove() {
         class="text-input"
         placeholder="The Matrix"
       />
+    </label>
+
+    <label v-if="props.movie" class="field checkbox-field">
+      <input v-model="titleProtected" type="checkbox" />
+      <span>Protect title from metadata updates</span>
     </label>
 
     <label class="field">

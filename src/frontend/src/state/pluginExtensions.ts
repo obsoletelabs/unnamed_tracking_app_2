@@ -7,6 +7,7 @@ import {
 import {
   fetchPluginUi,
   type HostExtensionSlot,
+  type HostPage,
   type PluginUiDocument,
   type UiAction,
   type UiDialog,
@@ -109,7 +110,7 @@ export interface PluginRouteContribution {
 export interface PluginPageReplacementContribution {
   pluginId: string;
   contributionId: string;
-  hostPage: "home" | "settings";
+  hostPage: HostPage;
   page: UiPage;
   order: number;
   document: PluginUiDocument;
@@ -416,6 +417,8 @@ export function derivePluginContributions(
       })
     : [];
   const replacements = (document.page_replacements ?? []).flatMap((item) => {
+    if (item.page === "admin-sessions" && !currentUser.value?.is_admin)
+      return [];
     const capability = `frontend.page.replace.${item.page}`;
     const page = document.pages.find(
       (candidate) => candidate.id === item.page_id,
@@ -808,13 +811,13 @@ export function closePluginDialog(): void {
 }
 
 export function pageReplacement(
-  hostPage: "home" | "settings",
+  hostPage: HostPage,
 ): PluginPageReplacementContribution | undefined {
   return replacementState.value.find((item) => item.hostPage === hostPage);
 }
 
 export function pageReplacementConflicts(
-  hostPage: "home" | "settings",
+  hostPage: HostPage,
 ): PluginPageReplacementContribution[] {
   return replacementState.value.filter((item) => item.hostPage === hostPage);
 }

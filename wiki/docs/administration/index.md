@@ -16,7 +16,7 @@ The nullable migration preserves existing provider credentials, branding and the
 
 1. Configure HTTPS, secure cookies, a unique Fernet `SECRET_KEY`, database credentials, and a unique plugin-runtime token.
 2. Create only the users and API keys that are needed.
-3. Configure metadata/OIDC credentials through deployment settings or environment variables; environment-managed values remain authoritative.
+3. Configure metadata provider credentials under **Metadata → Sources & API keys**, choosing **System default** for shared values. Configure OIDC separately under **Single sign-on**; its environment-managed values remain authoritative.
 4. Review scheduled-job intervals and backup status.
 5. Install plugins only from a reviewed package, inspect every requested permission, and keep untrusted-package confirmation enabled.
 6. Monitor application logs and per-plugin structured diagnostics without copying secrets into support reports.

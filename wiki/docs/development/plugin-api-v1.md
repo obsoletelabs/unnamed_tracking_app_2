@@ -1,9 +1,15 @@
 # Plugin API v1
 
-The redesigned host uses the explicit **v1.1.0 UI/API contract** while retaining
-the `v1` wire major. See [v1.1 migration](plugin-v1.1-migration.md) before updating
-an existing plugin or authoring a new one. A missing contract declaration remains
-v1.0.0 and cannot execute on this host.
+The host advertises **v1.1.2** while retaining the `v1` wire major. Declared
+v1.1.0 and v1.1.1 contracts remain supported. See
+[v1.1 migration](plugin-v1.1-migration.md) for the restricted legacy v1.0
+compatibility boundary; omission is treated as v1.0.0.
+
+v1.1.2 protects notification transport behind core-issued delivery work. Generic
+plugin/UI actions cannot authorize Discord delivery. Notification provider
+registration and live capability grants remain required; providers receive the
+representation approved for the actual destination. See
+[notification providers](notification-providers.md) for compatibility restrictions.
 
 Plugin API v1 is the transport-neutral contract foundation for the Plugin Hub.
 
@@ -320,3 +326,11 @@ Native contributions remount when the authenticated resource context changes, pr
 Native activation context includes the installed `version` and the existing safe
 Vue helpers plus `onBeforeUnmount`, allowing component polling to stop on navigation
 as well as plugin-level `onCleanup`. Privileged native frontend consent still applies.
+
+## Metadata provider extension (1.1.1)
+
+Search and refresh use the hardcoded core providers and optional installed provider plugins
+through one shared metadata handler. Core search does not require the plugin runtime.
+Provider configuration and health appear in the host's metadata settings.
+See [the progressive metadata contract](../development/metadata-providers.md) for
+phase separation, scoped credential migration, deadlines and persistence behavior.

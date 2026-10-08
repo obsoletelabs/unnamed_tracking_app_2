@@ -23,6 +23,7 @@ import {
 import { nativePluginComponent } from "../state/pluginNative";
 import type { PluginUiDocument } from "../services/pluginUi";
 import type { PluginSummary } from "../services/plugins";
+import { currentUser } from "../state/auth";
 
 const native = vi.hoisted(() => ({ cleanup: vi.fn(), activate: vi.fn() }));
 vi.mock("../state/pluginNative", async (importOriginal) => {
@@ -47,6 +48,7 @@ afterEach(() => {
   clearPluginExtensions();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
+  currentUser.value = null;
 });
 
 const plugin: PluginSummary = {
@@ -718,6 +720,53 @@ describe("plugin extension registry", () => {
         settingsReplacement,
       ).replacements[0],
     ).toMatchObject({ hostPage: "settings", page: { id: "dashboard" } });
+  });
+
+  it("requires separate session replacement grants and an admin for admin sessions", () => {
+    const sessionDocument: PluginUiDocument = {
+      ...document,
+      page_replacements: [
+        { id: "owner", page: "sessions", page_id: "dashboard", order: 0 },
+        { id: "admin", page: "admin-sessions", page_id: "dashboard", order: 0 },
+      ],
+    };
+    expect(
+      derivePluginContributions(plugin, sessionDocument).replacements,
+    ).toEqual([]);
+    const enabled = {
+      ...plugin,
+      effective_capabilities: [
+        "frontend.page.replace.sessions",
+        "frontend.page.replace.admin-sessions",
+      ],
+    };
+    expect(
+      derivePluginContributions(enabled, sessionDocument).replacements.map(
+        (item) => item.hostPage,
+      ),
+    ).toEqual(["sessions"]);
+    currentUser.value = {
+      id: "admin",
+      username: "Admin",
+      email: "admin@example.test",
+      is_admin: true,
+      steamgriddb_api_key: null,
+    };
+    expect(
+      derivePluginContributions(enabled, sessionDocument).replacements.map(
+        (item) => item.hostPage,
+      ),
+    ).toEqual(["sessions", "admin-sessions"]);
+    expect(
+      derivePluginContributions({ ...enabled, enabled: false }, sessionDocument)
+        .replacements,
+    ).toEqual([]);
+    expect(
+      derivePluginContributions(
+        { ...enabled, health: "unhealthy" },
+        sessionDocument,
+      ).replacements,
+    ).toEqual([]);
   });
 
   it("resolves replacement conflicts by order, plugin ID, then contribution ID", () => {

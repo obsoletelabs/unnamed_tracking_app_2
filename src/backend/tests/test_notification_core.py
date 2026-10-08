@@ -17,10 +17,12 @@ from src.database.models.notification_delivery import NotificationDelivery
 from src.database.models.notification_delivery_attempt import NotificationDeliveryAttempt
 from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_receipt import NotificationReceipt
+from src.database.models.plugin_notification_provider import PluginNotificationProviderRegistration
 from src.database.models.user import User
 from src.database.session import SessionLocal
 from src.features.game_notifications import GamePriceObservation
 from src.features.notification_controller import NotificationEvent, emit, emit_legacy_rows
+from src.features.notification_destinations import invalidate_legacy_configuration
 from src.features.notification_lifecycle import delete_notice, dismiss, visible_inbox
 from src.features.notification_policy import (
     INBOX_PROVIDER,
@@ -230,6 +232,56 @@ async def test_user_opt_out_and_destination_routing_preferences(account):
         assert not (await db.get(Notification, second)).inbox_visible
 
 
+async def test_shared_configuration_change_invalidates_revision_proof_consent_and_work(account):
+    installation_id = uuid4()
+    target = endpoint(
+        account,
+        Trust.PUBLIC,
+        kind="legacy_webhook",
+        endpoint_key="legacy",
+        installation_id=installation_id,
+        media_consent_revision=1,
+        media_consent_at=1,
+        verified_revision=1,
+        verification_method="stale",
+    )
+    other = endpoint(
+        account, Trust.PUBLIC, kind="legacy_webhook", endpoint_key="other", installation_id=uuid4()
+    )
+    async with SessionLocal() as db:
+        db.add(
+            PluginNotificationProviderRegistration(
+                plugin_id="test.plugin",
+                provider_id=target.provider_id,
+                installation_id=installation_id,
+                name="Test",
+                action_id="deliver",
+            )
+        )
+        db.add_all([target, other])
+        identity = await accept(db, account)
+        work = NotificationDelivery(
+            notification_id=identity,
+            provider_id=target.provider_id,
+            destination_id=target.id,
+            destination_revision=1,
+            status="processing",
+            claim_token=uuid4(),
+            lease_until=100,
+        )
+        db.add(work)
+        await db.flush()
+        await invalidate_legacy_configuration(db, installation_id)
+        await db.refresh(target)
+        await db.refresh(other)
+        await db.refresh(work)
+        assert target.revision == 2 and not target.enabled
+        assert target.verified_revision is None and target.verification_method is None
+        assert target.media_consent_revision is None and target.media_consent_at is None
+        assert work.status == "suppressed" and work.claim_token is None
+        assert other.revision == 1 and other.enabled
+
+
 async def test_dedupe_survives_dismiss_delete_and_content_purge(account):
     row = legacy_row()
     async with SessionLocal() as db:
@@ -436,6 +488,8 @@ async def owned_game(db, account):
 async def test_game_release_sale_and_price_hit_have_owned_enrichment_and_stable_dedupe(account):
     async with SessionLocal() as db:
         game = await owned_game(db, account)
+        game.title = "Narnia chronicles"
+        game.locked_fields = ["title"]
         assert await generate_for_user(db, account) == 1
         assert await generate_for_user(db, account) == 0
         quote = dict(
@@ -455,6 +509,7 @@ async def test_game_release_sale_and_price_hit_have_owned_enrichment_and_stable_
         with pytest.raises(ValueError, match="conflicting"):
             await emit(db, replace(event, data={**quote, "amount": "18.99"}))
         assert (await db.get(Notification, sale)).title == game.title
+        assert (await db.get(Notification, sale)).public_title == game.title
         hit = replace(
             event,
             type="game.price.threshold_hit",

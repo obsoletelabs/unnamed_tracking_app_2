@@ -4,7 +4,6 @@ import {
   createAnime,
   updateAnime,
   deleteAnime,
-  searchAnimeMetadata,
   animeToInput,
 } from "../services/anime";
 import type { AnimeMetadataResult } from "../services/anime";
@@ -18,6 +17,10 @@ import MediaFormShell from "./MediaFormShell.vue";
 import MediaMetadataSearch from "./MediaMetadataSearch.vue";
 import { useMetadataSearch } from "../utils/useMetadataSearch";
 import { splitList } from "../utils/formLists";
+import { animeMetadataResult } from "../utils/metadataCandidate";
+import { metadataPrefill } from "../utils/metadataPrefill";
+
+import { useTitleProtection } from "../utils/titleProtection";
 
 const props = defineProps<{
   show?: Anime | null;
@@ -32,6 +35,7 @@ const emit = defineEmits<{
 function blankFields() {
   return {
     title: "",
+    providerIds: {} as Record<string, string>,
     description: "",
     firstAirDate: "",
     episodeRuntimeMinutes: null as number | null,
@@ -58,12 +62,18 @@ const statusBucketModel = computed({
     fields.value.status = bucketToReal(bucket) as AnimeStatus;
   },
 });
+const { titleProtected, titleLockOverride } = useTitleProtection(
+  () => props.show,
+  () => fields.value.title,
+);
+
 const saving = ref(false);
 const deleting = ref(false);
 const error = ref<string | null>(null);
 
 const search = useMetadataSearch<AnimeMetadataResult>({
-  search: searchAnimeMetadata,
+  mediaType: "anime",
+  convert: animeMetadataResult,
   noun: "anime",
 });
 
@@ -74,6 +84,7 @@ function loadFromShow(show: Anime | null | undefined) {
   }
   fields.value = {
     title: show.title,
+    providerIds: show.providerIds ?? {},
     description: show.description ?? "",
     firstAirDate: show.firstAirDate ?? "",
     episodeRuntimeMinutes: show.episodeRuntimeMinutes,
@@ -95,39 +106,45 @@ function loadFromShow(show: Anime | null | undefined) {
 
 watch(() => props.show, loadFromShow, { immediate: true });
 
+const prefillMetadata = metadataPrefill<ReturnType<typeof blankFields>>();
+
 function applyMetadata(result: AnimeMetadataResult) {
   const locked = new Set(props.show?.lockedFields ?? []);
-  if (!locked.has("title")) fields.value.title = result.title;
+  const incoming: Partial<ReturnType<typeof blankFields>> = {};
+  if (!titleProtected.value) incoming.title = result.title ?? undefined;
   if (!locked.has("description"))
-    fields.value.description = result.description ?? "";
-  if (!locked.has("first_air_date"))
-    fields.value.firstAirDate = result.firstAirDate ?? "";
-  if (
-    !locked.has("episode_runtime_minutes") &&
-    result.episodeRuntimeMinutes !== null
-  )
-    fields.value.episodeRuntimeMinutes = result.episodeRuntimeMinutes;
-  if (!locked.has("studios") && result.studios.length)
-    fields.value.studiosInput = result.studios.join(", ");
-  if (!locked.has("genres") && result.genres.length)
-    fields.value.genresInput = result.genres.join(", ");
-  if (!locked.has("poster_url")) fields.value.posterUrl = result.posterUrl;
+    incoming.description = result.description ?? undefined;
+  if (!locked.has("poster_url"))
+    incoming.posterUrl = result.posterUrl ?? undefined;
   if (!locked.has("backdrop_url"))
-    fields.value.backdropUrl = result.backdropUrl;
-  if (!locked.has("anilist_score") && result.anilistScore !== null)
-    fields.value.anilistScore = result.anilistScore;
-  if (!locked.has("mal_score") && result.malScore !== null)
-    fields.value.malScore = result.malScore;
-  // Not gated by locked_fields — these aren't a user-editable display
-  // field, just the link episode sync/airing checks need. Picking a
-  // search result is exactly how a show with a missing/wrong link (e.g.
-  // added by hand, or from before this app tracked these ids) gets
-  // fixed, so always take the freshly-picked match's ids.
-  fields.value.externalId = result.malId;
-  fields.value.anilistId =
-    result.provider === "AniList" ? result.providerId : null;
+    incoming.backdropUrl = result.backdropUrl ?? undefined;
+  if (!locked.has("genres"))
+    incoming.genresInput = result.genres.join(", ") ?? undefined;
+  if (!locked.has("first_air_date"))
+    incoming.firstAirDate = result.firstAirDate ?? undefined;
+  if (!locked.has("episode_runtime_minutes"))
+    incoming.episodeRuntimeMinutes = result.episodeRuntimeMinutes ?? undefined;
+  if (!locked.has("studios"))
+    incoming.studiosInput = result.studios.join(", ") ?? undefined;
+  if (!locked.has("anilist_score"))
+    incoming.anilistScore = result.anilistScore ?? undefined;
+  if (!locked.has("mal_score"))
+    incoming.malScore = result.malScore ?? undefined;
+  prefillMetadata(fields.value, incoming, result.candidateId);
+  if (result.providerIds)
+    fields.value.providerIds = {
+      ...fields.value.providerIds,
+      ...result.providerIds,
+    };
+  if (result.malId) fields.value.externalId = result.malId;
+  if (result.providerIds?.anilist)
+    fields.value.anilistId = result.providerIds.anilist;
   search.applied(result, [...locked]);
 }
+
+watch(search.selected, (result) => {
+  if (result) applyMetadata(result);
+});
 
 // what the search box lists for each match
 const searchResults = computed(() =>
@@ -136,7 +153,7 @@ const searchResults = computed(() =>
     title: result.title,
     provider: result.provider,
     detail: [
-      result.firstAirDate?.slice(0, 4),
+      result.releaseYear?.toString() ?? result.firstAirDate?.slice(0, 4),
       result.episodeCount ? `${result.episodeCount} ep` : null,
     ]
       .filter(Boolean)
@@ -148,7 +165,7 @@ function pickResult(key: string) {
   const result = search.results.value.find(
     (r) => `${r.provider}-${r.providerId}` === key,
   );
-  if (result) applyMetadata(result);
+  if (result) void search.select(result).catch(() => {});
 }
 
 async function submit() {
@@ -161,6 +178,8 @@ async function submit() {
   try {
     const input = {
       title: fields.value.title.trim(),
+      providerIds: fields.value.providerIds,
+      titleLock: props.show ? titleLockOverride.value : undefined,
       description: fields.value.description.trim() || null,
       firstAirDate: fields.value.firstAirDate || null,
       episodeRuntimeMinutes: fields.value.episodeRuntimeMinutes,
@@ -225,6 +244,7 @@ async function remove() {
       noun="anime"
       :results="searchResults"
       :searching="search.searching.value"
+      :enriching-media="search.enrichingMedia.value"
       :message="search.message.value"
       :warnings="search.warnings.value"
       @search="search.run"
@@ -246,6 +266,11 @@ async function remove() {
         class="text-input"
         placeholder="Fullmetal Alchemist: Brotherhood"
       />
+    </label>
+
+    <label v-if="props.show" class="field checkbox-field">
+      <input v-model="titleProtected" type="checkbox" />
+      <span>Protect title from metadata updates</span>
     </label>
 
     <label class="field">

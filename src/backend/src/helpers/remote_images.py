@@ -41,13 +41,15 @@ def is_public_host(host: str) -> bool:
         return False
     for info in infos:
         address = ipaddress.ip_address(info[4][0])
-        if (
-            address.is_private
-            or address.is_loopback
-            or address.is_link_local
-            or address.is_multicast
-            or address.is_reserved
-            or address.is_unspecified
+        if any(
+            (
+                address.is_private,
+                address.is_loopback,
+                address.is_link_local,
+                address.is_multicast,
+                address.is_reserved,
+                address.is_unspecified,
+            )
         ):
             return False
     return True
@@ -126,3 +128,10 @@ def fetch_and_store(url: str, target: Path, width: int) -> None:
     for old in target.parent.glob(f"{prefix}*.jpg"):
         if old != target:
             old.unlink(missing_ok=True)
+
+
+def icon_cache_path(cache_root: Path, url: str) -> Path:
+    """Where the local copy of an achievement icon lives. Icons are the same for
+    every player, so they are kept once, named by their address."""
+    digest = hashlib.sha1(url.encode("utf-8"), usedforsecurity=False).hexdigest()
+    return cache_root / "achievement-icons" / f"{digest}.jpg"

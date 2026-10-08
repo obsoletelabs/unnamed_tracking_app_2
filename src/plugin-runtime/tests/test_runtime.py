@@ -202,6 +202,22 @@ def _package_bytes(
     return output.getvalue()
 
 
+@pytest.mark.parametrize("contract", ["1.1.0", "1.1.1"])
+def test_runtime_accepts_supported_additive_contract_versions(tmp_path, contract):
+    from runtime import PluginRegistry, PluginSupervisor
+
+    registry = PluginRegistry(
+        tmp_path / "plugins",
+        PluginSupervisor(tmp_path / "workers", tmp_path / "storage"),
+    )
+    installed = registry.install_package(
+        _package_bytes(api_contract_version=contract, ui_contract_version=contract),
+        "supported.utp", installation_id=str(uuid.uuid4()),
+    )
+    assert registry.plugin_state(installed["plugin_id"])["api_contract_version"] == contract
+    assert registry.ui(installed["plugin_id"])["api_contract_version"] == contract
+
+
 @pytest.mark.parametrize(
     "contract", [None, "1.0.0", "1.0.9", "1.2.0", "1.01.0", "invalid"]
 )
@@ -706,6 +722,39 @@ def test_runtime_http_preparation_and_completion_are_authenticated(
         ) as response:
             assert response.status == 200
         assert registry._state()["example.upload"]["enabled"] is True
+        delivery_calls = []
+        monkeypatch.setattr(
+            registry,
+            "notification_delivery",
+            lambda *args, **kwargs: delivery_calls.append((args, kwargs)) or {"success": True},
+        )
+        body = "🎮" * 10000
+        work = json.dumps(
+            {
+                "values": {"delivery": {"body": body}},
+                "user_id": str(uuid.uuid4()),
+                "installation_id": headers["X-Plugin-Installation-ID"],
+                "attempt_id": str(uuid.uuid4()),
+            },
+            ensure_ascii=False,
+        ).encode()
+        delivery_url = base_url + "/plugins/example.upload/notification-deliveries/deliver"
+        with pytest.raises(HTTPError) as unauthorized_delivery:
+            urlopen(Request(delivery_url, data=work, method="POST"), timeout=5)
+        assert unauthorized_delivery.value.code == 401
+        assert not delivery_calls
+        with urlopen(
+            Request(delivery_url, data=work, method="POST", headers=headers), timeout=5
+        ) as response:
+            assert json.load(response) == {"success": True}
+        assert delivery_calls[0][0][2]["delivery"]["body"] == body
+        with pytest.raises(HTTPError) as oversized_delivery:
+            urlopen(
+                Request(delivery_url, data=b" " * 65537, method="POST", headers=headers),
+                timeout=5,
+            )
+        assert oversized_delivery.value.code == 422
+        assert len(delivery_calls) == 1
     finally:
         server.shutdown()
         worker.join(timeout=5)

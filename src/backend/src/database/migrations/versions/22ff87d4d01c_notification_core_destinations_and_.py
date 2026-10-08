@@ -1,19 +1,19 @@
 """notification core destinations and delivery lifecycle
 
 Revision ID: 22ff87d4d01c
-Revises: b57b38daf5b5
+Revises: d8338e79fbbd
 Create Date: 2026-10-08 11:34:40.121947
 
 """
 
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "22ff87d4d01c"
-down_revision: Union[str, None] = "b57b38daf5b5"
+down_revision: Union[str, None] = "d8338e79fbbd"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -23,13 +23,28 @@ def upgrade() -> None:
     # reruns later revisions. Never backfill or suppress its newer deliveries.
     inspector = sa.inspect(op.get_bind())
     tables = set(inspector.get_table_names())
-    additions = {"notification_destinations", "notification_receipts", "notification_delivery_attempts"}
+    additions = {
+        "notification_destinations",
+        "notification_receipts",
+        "notification_delivery_attempts",
+    }
     if additions & tables:
         notice_columns = {column["name"] for column in inspector.get_columns("notifications")}
-        delivery_columns = {column["name"] for column in inspector.get_columns("notification_deliveries")}
-        if additions <= tables and {"event_type", "deleted_at", "public_body"} <= notice_columns and {
-            "destination_id", "destination_revision", "projection", "claim_token", "lease_until"
-        } <= delivery_columns:
+        delivery_columns = {
+            column["name"] for column in inspector.get_columns("notification_deliveries")
+        }
+        if (
+            additions <= tables
+            and {"event_type", "deleted_at", "public_body"} <= notice_columns
+            and {
+                "destination_id",
+                "destination_revision",
+                "projection",
+                "claim_token",
+                "lease_until",
+            }
+            <= delivery_columns
+        ):
             return
         raise RuntimeError("Notification schema is incomplete; restore or repair before adoption")
     op.create_table(

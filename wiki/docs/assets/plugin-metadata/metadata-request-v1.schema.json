@@ -1,0 +1,129 @@
+{
+  "$defs": {
+    "MediaType": {
+      "description": "Canonical library domains supported by provider capabilities.",
+      "enum": [
+        "game",
+        "movie",
+        "tv_show",
+        "anime"
+      ],
+      "title": "MediaType",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Authenticated work issued by the host, including its execution policy.",
+  "properties": {
+    "request_id": {
+      "format": "uuid",
+      "title": "Request Id",
+      "type": "string"
+    },
+    "user_id": {
+      "format": "uuid",
+      "title": "User Id",
+      "type": "string"
+    },
+    "query": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Query",
+      "type": "string"
+    },
+    "media_type": {
+      "$ref": "#/$defs/MediaType",
+      "default": "game"
+    },
+    "policy": {
+      "default": "interactive",
+      "enum": [
+        "interactive",
+        "background"
+      ],
+      "title": "Policy",
+      "type": "string"
+    },
+    "limit": {
+      "default": 20,
+      "maximum": 50,
+      "minimum": 1,
+      "title": "Limit",
+      "type": "integer"
+    },
+    "cursor": {
+      "anyOf": [
+        {
+          "maxLength": 512,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Cursor"
+    },
+    "resource": {
+      "default": "entity",
+      "enum": [
+        "entity",
+        "episodes",
+        "airing",
+        "relations",
+        "recommendations"
+      ],
+      "title": "Resource",
+      "type": "string"
+    },
+    "season_number": {
+      "anyOf": [
+        {
+          "maximum": 10000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Season Number"
+    },
+    "options": {
+      "maxProperties": 32,
+      "patternProperties": {
+        "^[a-z0-9][a-z0-9._-]*$": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "type": "string"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "integer"
+            }
+          ]
+        }
+      },
+      "propertyNames": {
+        "maxLength": 128,
+        "minLength": 1
+      },
+      "title": "Options",
+      "type": "object"
+    }
+  },
+  "required": [
+    "request_id",
+    "user_id",
+    "query"
+  ],
+  "title": "MetadataProviderRequest",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "x-api-contract-version": "1.1.1"
+}

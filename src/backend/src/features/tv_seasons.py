@@ -13,7 +13,6 @@ silently, so a show added long ago does not produce a burst of old news."""
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import time
 from datetime import date
@@ -24,10 +23,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.preferences import load_preferences
-from src.features.notification_controller import emit_legacy_rows
 from src.database.models.tv_show import TVSeason, TVShow, TVShowStatus
 from src.database.session import SessionLocal
-from src.features.metadata.tv.tvmaze import TVMazeClient, TVMazeError
+from src.features.metadata.service import collect_record, library_candidate
+from src.features.notification_controller import emit_legacy_rows
+from src.plugin_api.metadata_contracts import MediaType
 
 logger = logging.getLogger(__name__)
 
@@ -51,18 +51,26 @@ def new_seasons(known_numbers: set[int], listed: list[dict[str, Any]]) -> list[d
     return [s for s in listed if s["season_number"] > highest]
 
 
-async def check_new_seasons(
-    db: AsyncSession, show: TVShow, client: TVMazeClient | None = None
-) -> int:
+async def check_new_seasons(db: AsyncSession, show: TVShow) -> int:
     """Adds any new seasons and notifies. Returns how many were added."""
-    if not show.external_id:
-        return 0
     first_check = show.seasons_checked_at is None
-    try:
-        listed = await asyncio.to_thread((client or TVMazeClient()).seasons, show.external_id)
-    except TVMazeError as exc:
-        logger.warning("Season check couldn't reach TVmaze for %r: %s", show.title, exc)
+    ids = dict(show.provider_ids or {})
+    if show.external_id:
+        ids.setdefault("tvmaze", show.external_id)
+    record, errors = await collect_record(
+        db,
+        show.user_id,
+        library_candidate(
+            show.title,
+            MediaType.TV_SHOW,
+            ids,
+            show.first_air_date.year if show.first_air_date else None,
+        ),
+    )
+    seasons = record.get("metadata", {}).get("seasons")
+    if seasons is None or errors and not seasons:
         return 0
+    listed = [{**entry, "name": entry.get("title")} for entry in seasons]
 
     # read from the database, not the (possibly stale) loaded collection
     known = set(
@@ -126,6 +134,8 @@ async def check_in_background(show_id: UUID) -> None:
             show = await db.scalar(select(TVShow).where(TVShow.id == show_id))
             if show is not None:
                 await check_new_seasons(db, show)
+    # A failed background lookup must release its in-flight slot and leave page requests usable.
+    # pylint: disable-next=broad-exception-caught
     except Exception:
         logger.exception("Background season check failed for %s", show_id)
     finally:

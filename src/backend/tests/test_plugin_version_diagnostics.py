@@ -4,14 +4,14 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from test_plugin_install_sources import gate as _gate_fixture
-from test_plugin_install_sources import package_bytes
+from test_plugin_install_sources import (
+    package_bytes,
+    plugin_gate,  # noqa: F401 - registers "gate"
+)
 
 from src.api.routes import plugins
 from src.api.routes.plugin_manager import runtime as plugin_runtime
 from src.plugin_api.runtime_client import PluginRuntimeUnavailable
-
-gate = _gate_fixture
 
 
 @pytest.mark.asyncio
@@ -98,7 +98,7 @@ async def test_platform_reports_actual_versions_and_health(monkeypatch, state):
         return_value=reported,
         side_effect=PluginRuntimeUnavailable("Disconnected") if state == "offline" else None,
     )
-    monkeypatch.setattr(plugin_runtime, "_client", SimpleNamespace(health=health))
+    monkeypatch.setattr(plugin_runtime, "client", SimpleNamespace(health=health))
     result = await plugins.runtime_health(SimpleNamespace())
     assert result["host_api_contract_version"] == "1.1.2"
     assert result["host_sdk_version"] == "1.1.0"
@@ -120,7 +120,7 @@ async def test_invalid_historical_version_metadata_does_not_break_inventory(monk
     monkeypatch.setenv("PLUGIN_MANAGER_STATE_PATH", str(tmp_path / "manager.json"))
     monkeypatch.setattr(
         plugin_runtime,
-        "_client",
+        "client",
         SimpleNamespace(
             plugins=AsyncMock(
                 return_value=[
@@ -135,7 +135,7 @@ async def test_invalid_historical_version_metadata_does_not_break_inventory(monk
             )
         ),
     )
-    inventory = await plugin_runtime._installed_plugins()
+    inventory = await plugin_runtime.installed_plugins()
     assert len(inventory) == 1
     assert inventory[0]["compatible"] is False
     assert "version metadata is invalid" in inventory[0]["compatibility_reason"]

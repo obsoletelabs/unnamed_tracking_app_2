@@ -241,7 +241,8 @@
   font-size: 0.72rem;
   color: var(--ui-text);
 }
-.field input {
+.field input,
+.field select {
   background: var(--ui-surface);
   border: 1px solid var(--ui-border-strong);
   border-radius: 6px;
@@ -250,7 +251,8 @@
   font: inherit;
   font-size: 0.78rem;
 }
-.field input:focus {
+.field input:focus,
+.field select:focus {
   outline: none;
   border-color: var(--ui-accent);
 }

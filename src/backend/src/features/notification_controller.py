@@ -13,6 +13,7 @@ from src.database.models.notification import Notification
 from src.database.models.notification_receipt import NotificationReceipt
 from src.database.models.user import User
 from src.features.notification_policy import MEDIA_KINDS, Trust, preference_enabled
+from src.features.notification_providers.delivery import ensure_deliveries
 
 EVENT_TYPES = {
     "episode_aired": "media.episode.aired",
@@ -29,7 +30,7 @@ EVENT_TYPES = {
 
 
 @dataclass(frozen=True)
-class NotificationDraft:
+class NotificationDraft:  # pylint: disable=too-many-instance-attributes
     """Host-enriched interpretation, distinct from the producer's event facts."""
 
     kind: str
@@ -63,6 +64,8 @@ class NotificationEvent:
 
 async def emit(db: AsyncSession, event: NotificationEvent) -> UUID | None:
     """Resolve a registered host handler. Public plugin sources arrive in Phase 4A."""
+    # The interpreter returns this module's draft/event types; import after initialization.
+    # pylint: disable-next=import-outside-toplevel
     from src.features.game_notifications import interpret_game_event
 
     if event.type not in {"game.released", "game.sale.started", "game.price.threshold_hit"}:
@@ -73,20 +76,18 @@ async def emit(db: AsyncSession, event: NotificationEvent) -> UUID | None:
 
 async def _accept(db: AsyncSession, event: NotificationDraft) -> UUID | None:
     """Flush atomically; the caller owns commit and no provider is contacted here."""
-    from src.features.notification_providers.delivery import ensure_deliveries
-
     if event.kind not in EVENT_TYPES:
         raise ValueError("Unknown host notification type")
     if (
-        not event.dedupe_key
-        or len(event.dedupe_key) > 200
+        len(event.dedupe_key) > 200
         or len(event.source) > 128
         or len(event.title) > 500
         or len(event.body) > 10000
         or len(event.entity_type) > 32
-        or event.occurred_at < 0
     ):
         raise ValueError("Notification event exceeds its bounds")
+    if not event.dedupe_key or event.occurred_at < 0:
+        raise ValueError("Notification event requires an identity and a Unix timestamp")
     user_exists = await db.scalar(
         select(User.id).where(User.id == event.user_id, User.is_active.is_(True))
     )

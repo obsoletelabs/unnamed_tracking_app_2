@@ -14,7 +14,7 @@ from src.database.models.user import User
 
 
 @dataclass(frozen=True)
-class NotificationMessage:
+class NotificationMessage:  # pylint: disable=too-many-instance-attributes
     id: UUID
     kind: str
     title: str

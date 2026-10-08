@@ -46,7 +46,7 @@ jobs:
           ref="$REQUESTED_REF"
           if [ -z "$ref" ]; then
             ref=main
-            if git ls-remote --exit-code --heads https://github.com/Rosefall-a/unnamed_tracking_app_plugins.git "refs/heads/$COMPANION_BRANCH" >/dev/null; then
+            if git ls-remote --exit-code --heads https://github.com/obsoletelabs/unnamed_tracking_app_plugins.git "refs/heads/$COMPANION_BRANCH" >/dev/null; then
               ref="$COMPANION_BRANCH"
             fi
           fi
@@ -54,7 +54,7 @@ jobs:
           echo "Testing companion repository ref: $ref"
       - uses: actions/checkout@v4
         with:
-          repository: Rosefall-a/unnamed_tracking_app_plugins
+          repository: obsoletelabs/unnamed_tracking_app_plugins
           ref: ${{ steps.companion.outputs.ref }}
           fetch-depth: 0
           path: .integration-plugins

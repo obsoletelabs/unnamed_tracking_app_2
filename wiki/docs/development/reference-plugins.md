@@ -1,6 +1,6 @@
 # Reference plugins
 
-The independent [`unnamed_tracking_app_plugins`](https://github.com/Rosefall-a/unnamed_tracking_app_plugins) repository contains packages that consume the public boundary without importing application source.
+The independent [`unnamed_tracking_app_plugins`](https://github.com/obsoletelabs/unnamed_tracking_app_plugins) repository contains packages that consume the public boundary without importing application source.
 
 ## Scoped Document Viewer
 

@@ -39,7 +39,7 @@ def test_populated_notification_upgrade_preserves_inbox_and_suppresses_unsafe_wo
     with psycopg.connect(connection_url, autocommit=True) as connection:
         connection.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
         try:
-            migrate("upgrade", "b57b38daf5b5")
+            migrate("upgrade", "d8338e79fbbd")
             connection.execute(sql.SQL("SET search_path TO {}").format(sql.Identifier(schema)))
             connection.execute(
                 """INSERT INTO users
@@ -95,7 +95,7 @@ def test_populated_notification_upgrade_preserves_inbox_and_suppresses_unsafe_wo
                 0,
                 installation_id,
             )
-            migrate("downgrade", "b57b38daf5b5")
+            migrate("downgrade", "d8338e79fbbd")
             assert connection.execute("SELECT id, read_at FROM notifications").fetchone() == (
                 notification_id,
                 2,

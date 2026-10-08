@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// The "Search TMDB / OMDb" box at the top of the Movie, TV and Anime forms:
+// The progressive metadata search box at the top of the Movie, TV and Anime forms:
 // a query, the matches, and the messages around them. Picking a match tells
 // the form, which fills in its own fields.
 defineProps<{
@@ -8,6 +8,7 @@ defineProps<{
   noun: string;
   results: { key: string; title: string; provider: string; detail?: string }[];
   searching: boolean;
+  enrichingMedia?: boolean;
   message: string | null;
   warnings: string[];
 }>();
@@ -56,6 +57,9 @@ const emit = defineEmits<{
         >
       </button>
     </div>
+    <p v-if="enrichingMedia" class="hint" role="status">
+      Gathering metadata and artwork…
+    </p>
     <p v-if="message" class="hint">{{ message }}</p>
     <ul v-if="warnings.length" class="provider-warnings">
       <li v-for="warning in warnings" :key="warning">{{ warning }}</li>

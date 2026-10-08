@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 from enum import StrEnum
-from typing import Any, Generic, TypeVar, cast
+from typing import Any, Generic, TypeVar
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -51,6 +51,12 @@ class Capability(StrEnum):
     NOTIFICATION_PROVIDERS = "notification_providers"
     NOTIFICATION_PROVIDERS_REGISTER = "notification_providers.register"
     NOTIFICATION_PROVIDERS_DELIVER = "notification_providers.deliver"
+    METADATA_PROVIDERS_REGISTER = "metadata_providers.register"
+    METADATA_PROVIDERS_SEARCH = "metadata_providers.search"
+    METADATA_PROVIDERS_METADATA = "metadata_providers.metadata"
+    METADATA_PROVIDERS_MEDIA = "metadata_providers.media"
+    METADATA_PROVIDERS_HEALTH = "metadata_providers.health"
+    METADATA_PROVIDERS_CONFIGURATION = "metadata_providers.configuration"
     EVENTS_SUBSCRIBE = "events.subscribe"
     TASKS_BACKGROUND = "tasks.background"
     SESSIONS_ADMIN_READ = "sessions.admin.read"
@@ -80,6 +86,8 @@ class Capability(StrEnum):
     FRONTEND_SHORTCUTS = "frontend.shortcuts"
     FRONTEND_PAGE_REPLACE_HOME = "frontend.page.replace.home"
     FRONTEND_PAGE_REPLACE_SETTINGS = "frontend.page.replace.settings"
+    FRONTEND_PAGE_REPLACE_SESSIONS = "frontend.page.replace.sessions"
+    FRONTEND_PAGE_REPLACE_ADMIN_SESSIONS = "frontend.page.replace.admin-sessions"
     FRONTEND_ROUTES = "frontend.routes"
     FRONTEND_NATIVE = "frontend.native"
     FRONTEND_PWA = "frontend.pwa"
@@ -555,6 +563,41 @@ class BackendRouteMethod(StrEnum):
     DELETE = "DELETE"
 
 
+def _validate_route_scope(scope: BackendRouteScope, path: str) -> None:
+    """Check host namespace ownership using validated values, independent of Pydantic fields."""
+    if scope is BackendRouteScope.PLUGIN and path.startswith("/"):
+        raise ValueError("namespaced backend route paths must be relative")
+    reserved_plugin_roots = {
+        "actions",
+        "changelog",
+        "capabilities",
+        "disable",
+        "enable",
+        "frontend",
+        "logs",
+        "native-frontend",
+        "permissions",
+        "retry",
+        "reinstall",
+        "rollback",
+        "history",
+        "start",
+        "stop",
+        "auto-update",
+        "detail",
+        "secrets",
+        "settings",
+        "ui",
+        "update",
+    }
+    if scope is BackendRouteScope.PLUGIN and path.split("/", 1)[0] in reserved_plugin_roots:
+        raise ValueError("namespaced backend route conflicts with a host-owned plugin path")
+    if scope is BackendRouteScope.HOST and not path.startswith("/api/"):
+        raise ValueError("host backend route paths must start with /api/")
+    if scope is BackendRouteScope.HOST and path.startswith("/api/plugins/"):
+        raise ValueError("host backend routes cannot claim the plugin management namespace")
+
+
 class PluginBackendRoute(ContractModel):
     """A statically declared backend handler mounted and mediated by the host."""
 
@@ -601,43 +644,7 @@ class PluginBackendRoute(ContractModel):
     @model_validator(mode="after")
     def validate_scope_path(self) -> "PluginBackendRoute":
         """Apply namespace-specific ownership rules to the declared path."""
-
-        scope = cast(BackendRouteScope, self.scope)
-        path = cast(str, self.path)
-        # Pydantic fields are runtime values; pylint otherwise treats ``path`` as FieldInfo.
-        # pylint: disable=no-member
-        if scope is BackendRouteScope.PLUGIN and path.startswith("/"):
-            raise ValueError("namespaced backend route paths must be relative")
-        reserved_plugin_roots = {
-            "actions",
-            "changelog",
-            "capabilities",
-            "disable",
-            "enable",
-            "frontend",
-            "logs",
-            "native-frontend",
-            "permissions",
-            "retry",
-            "reinstall",
-            "rollback",
-            "history",
-            "start",
-            "stop",
-            "auto-update",
-            "detail",
-            "secrets",
-            "settings",
-            "ui",
-            "update",
-        }
-        if scope is BackendRouteScope.PLUGIN and path.split("/", 1)[0] in reserved_plugin_roots:
-            raise ValueError("namespaced backend route conflicts with a host-owned plugin path")
-        if scope is BackendRouteScope.HOST and not path.startswith("/api/"):
-            raise ValueError("host backend route paths must start with /api/")
-        if scope is BackendRouteScope.HOST and path.startswith("/api/plugins/"):
-            raise ValueError("host backend routes cannot claim the plugin management namespace")
-        # pylint: enable=no-member
+        _validate_route_scope(self.scope, self.path)
         return self
 
 
@@ -684,6 +691,39 @@ class PluginScheduledTask(ContractModel):
         return self
 
 
+def _validate_backend_route_declarations(
+    routes: tuple[PluginBackendRoute, ...], capability_names: list[Capability]
+) -> None:
+    """Reject duplicate routes, ungranted route scopes and ambiguous path ownership."""
+    route_ids = [route.id for route in routes]
+    if len(route_ids) != len(set(route_ids)):
+        raise ValueError("manifest contains duplicate backend route declarations")
+    route_owners: list[tuple[BackendRouteScope, str, BackendRouteMethod]] = []
+    for route in routes:
+        required = (
+            Capability.BACKEND_ROUTES_PLUGIN
+            if route.scope is BackendRouteScope.PLUGIN
+            else Capability.BACKEND_ROUTES_HOST
+        )
+        if not {
+            required,
+            Capability.BACKEND_ROUTES,
+            Capability.FULL_API,
+        }.intersection(capability_names):
+            raise ValueError(f"backend route {route.id} requires {required.value}")
+        for method in route.methods:
+            route_parts = route.path.split("/")
+            for owner_scope, owner_path, owner_method in route_owners:
+                owner_parts = owner_path.split("/")
+                overlaps = len(route_parts) == len(owner_parts) and all(
+                    left == right or left.startswith("{") or right.startswith("{")
+                    for left, right in zip(route_parts, owner_parts, strict=True)
+                )
+                if route.scope is owner_scope and method is owner_method and overlaps:
+                    raise ValueError("manifest contains conflicting backend routes")
+            route_owners.append((route.scope, route.path, method))
+
+
 class PluginManifest(ContractModel):
     """Static plugin manifest validated without importing or executing the plugin."""
 
@@ -726,6 +766,15 @@ class PluginManifest(ContractModel):
     @classmethod
     def validate_compatibility_range(cls, value: str) -> str:
         return validate_version_range(value)
+
+    @model_validator(mode="after")
+    def validate_metadata_capabilities(self) -> "PluginManifest":
+        """Metadata operations require the explicit additive v1.1.1 contract."""
+        if any(
+            capability.name.startswith("metadata_providers.") for capability in self.capabilities
+        ) and parse_semver(self.api_contract_version) < (1, 1, 1):
+            raise ValueError("metadata provider capabilities require Plugin API v1.1.1")
+        return self
 
     @model_validator(mode="after")
     def validate_scheduled_tasks(self) -> "PluginManifest":
@@ -772,31 +821,5 @@ class PluginManifest(ContractModel):
             for permission in self.permissions
         ):
             raise ValueError("pwa requires an explicit frontend.pwa v1 permission")
-        route_ids = [route.id for route in self.backend_routes]
-        if len(route_ids) != len(set(route_ids)):
-            raise ValueError("manifest contains duplicate backend route declarations")
-        route_owners: list[tuple[BackendRouteScope, str, BackendRouteMethod]] = []
-        for route in self.backend_routes:
-            required = (
-                Capability.BACKEND_ROUTES_PLUGIN
-                if route.scope is BackendRouteScope.PLUGIN
-                else Capability.BACKEND_ROUTES_HOST
-            )
-            if not {
-                required,
-                Capability.BACKEND_ROUTES,
-                Capability.FULL_API,
-            }.intersection(capability_names):
-                raise ValueError(f"backend route {route.id} requires {required.value}")
-            for method in route.methods:
-                route_parts = route.path.split("/")
-                for owner_scope, owner_path, owner_method in route_owners:
-                    owner_parts = owner_path.split("/")
-                    overlaps = len(route_parts) == len(owner_parts) and all(
-                        left == right or left.startswith("{") or right.startswith("{")
-                        for left, right in zip(route_parts, owner_parts, strict=True)
-                    )
-                    if route.scope is owner_scope and method is owner_method and overlaps:
-                        raise ValueError("manifest contains conflicting backend routes")
-                route_owners.append((route.scope, route.path, method))
+        _validate_backend_route_declarations(self.backend_routes, capability_names)
         return self

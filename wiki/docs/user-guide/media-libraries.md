@@ -1,5 +1,13 @@
 # Movie, TV and Anime Libraries
 
+Status tabs survive a page refresh. Loading the next page keeps the existing cards
+on screen and preserves their scroll position. Posters, backdrops and achievement
+icons are downloaded into the server's cache when saved, with the original URL used
+as a fallback if the download fails. Existing images are cached when first viewed.
+
+Yamtrack CSV imports continue to skip anime entries while their mapping and duplicate
+matching remain unresolved. Movies and TV shows can still be imported.
+
 These three libraries share one layout, so what is described here applies to
 all of them. Their own pages cover what is specific to each.
 
@@ -45,3 +53,11 @@ Movies, TV shows and anime use the same Add and Edit dialog layout. The search
 box at the top fills in the form from a metadata provider, and fields you have
 changed yourself are kept rather than overwritten (the dialog tells you which
 it skipped).
+
+## Metadata provider extension (1.1.1)
+
+Search and refresh use the hardcoded core providers and optional installed provider plugins
+through one shared metadata handler. Core search does not require the plugin runtime.
+Provider configuration and health appear in the host's metadata settings.
+See [the progressive metadata contract](../development/metadata-providers.md) for
+phase separation, scoped credential migration, deadlines and persistence behavior.

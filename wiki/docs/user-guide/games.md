@@ -10,6 +10,19 @@ Create a game from the library, optionally search configured metadata providers,
 
 Bulk edit changes selected records only. Locked fields are not overwritten by refresh operations.
 
+## Steam imports
+
+Steam library sync saves games and achievements before fetching store details and
+artwork in small batches. A failed details batch does not discard the imported
+library; the sync result reports games whose details could not be fetched.
+
+Settings > Metadata > Scan & providers includes **Import my Steam wishlist**, off
+by default. When enabled, new wishlist entries are added with Wishlist status and
+receive store titles and artwork during enrichment. A later owned-library sync
+updates a purchased wishlist game's status. Turning the setting off leaves existing
+entries in the library. An optional wishlist failure does not prevent owned-game
+enrichment.
+
 ## Detail-page data
 
 A game can have:
@@ -57,6 +70,23 @@ existing game shows the same tabs as one form with **Save Changes**.
 
 Clearing a field and saving clears it. A blank sorting name sorts by the
 title.
+
+## Filtering and sharing
+
+The Filters panel has one **Tags & genres (any of)** picker. Selected tags are
+highlighted there and shown as removable pills above the results. Metadata labels
+such as `Genre: Indie` and `Indie` match the same choice. Selecting multiple tags
+shows games matching any selected tag; the other filters narrow that selection.
+
+The game total reflects the visible results. All and each status tab count games
+matching the current search and other filters, so switching status remains useful.
+Tabs with no matches show zero.
+
+Copy the browser URL to share the selection, search, status and sort. Multiple tags
+use repeated parameters, for example `/games?filters=1&tag=Indie&tag=RPG&status=backlog`.
+Opening a shared link replaces saved filters in that browser. Removing a pill or
+clearing filters updates the URL too. Existing `?tag=`, `?genre=`, collection and
+statistics links remain supported; saved genre selections migrate into the picker.
 
 ## Sorting the library
 
@@ -152,3 +182,11 @@ screen fetch their picture, and the list layouts skip drawing rows that are far
 off screen. A library of hundreds of games opens quickly and loads more as you
 scroll. See [Artwork](../development/architecture.md#artwork-and-local-image-copies)
 for how the copies are made.
+
+## Metadata provider extension (1.1.1)
+
+Search and refresh use the hardcoded core providers and optional installed provider plugins
+through one shared metadata handler. Core search does not require the plugin runtime.
+Provider configuration and health appear in the host's metadata settings.
+See [the progressive metadata contract](../development/metadata-providers.md) for
+phase separation, scoped credential migration, deadlines and persistence behavior.

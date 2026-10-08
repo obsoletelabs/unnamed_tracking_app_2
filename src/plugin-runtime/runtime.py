@@ -119,8 +119,8 @@ def plugin_contract_compatibility_reason(
             f"Plugin API contract {declared} is v1.0-only. Limited compatibility is available "
             "for shipped examples and already-installed plugins; new plugins must target v1.1."
         )
-    if version[:2] != (1, 1) or version > (1, 1, 2):
-        return f"Plugin API contract {declared} is not supported by this host (1.1.2)."
+    if not (1, 1, 0) <= version <= tuple(map(int, PLUGIN_API_CONTRACT_VERSION.split("."))):
+        return f"Plugin API contract {declared} is not supported by this host ({PLUGIN_API_CONTRACT_VERSION})."
     return None
 
 
@@ -1458,6 +1458,10 @@ class PluginRegistry:
         return sorted(
             p for p in self.root.iterdir() if p.is_dir() and not p.name.startswith(".")
         )
+
+    def plugin_state(self, plugin_id: str) -> dict[str, Any]:
+        """Revalidate one installation's integrity and current execution policy."""
+        return self._item(self.package(plugin_id)[0])
 
     def package(self, plugin_id: str) -> tuple[Path, dict[str, Any]]:
         if not _PLUGIN_ID.fullmatch(plugin_id):
@@ -3094,6 +3098,9 @@ class RuntimeHandler(BaseHTTPRequestHandler):
                 )
             elif parts == ["plugins"]:
                 self._json(200, self.server.registry.list())  # type: ignore[attr-defined]
+            elif len(parts) == 3 and parts[0] == "plugins" and parts[2] == "state":
+                # Revalidate this installation without hashing every unrelated package.
+                self._json(200, self.server.registry.plugin_state(parts[1]))
             elif len(parts) == 3 and parts[0] == "plugins" and parts[2] == "archive":
                 self._json(200, self.server.registry.package_archive(parts[1]))
             elif len(parts) == 4 and parts[0] == "plugins" and parts[2] == "archive":
@@ -3173,7 +3180,8 @@ class RuntimeHandler(BaseHTTPRequestHandler):
                 return
             if len(parts) == 4 and parts[0] == "plugins" and parts[2] == "notification-deliveries":
                 length = int(self.headers.get("Content-Length", "0"))
-                if not 1 <= length <= 16384:
+                # Up to 10,000 Unicode body characters plus bounded delivery metadata.
+                if not 1 <= length <= 65536:
                     raise RuntimePolicyError("Notification work exceeds its bounds")
                 payload = json.loads(self.rfile.read(length))
                 result = self.server.registry.notification_delivery(

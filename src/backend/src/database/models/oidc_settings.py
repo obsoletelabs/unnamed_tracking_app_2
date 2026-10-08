@@ -11,6 +11,8 @@ from src.database.base import Base
 
 
 class OidcSettings(Base):
+    # Repeated declarations preserve independent database table/enum contracts.
+    # pylint: disable=duplicate-code
     """Deployment OIDC defaults and backward-compatible single-provider settings."""
 
     __tablename__ = "oidc_settings"

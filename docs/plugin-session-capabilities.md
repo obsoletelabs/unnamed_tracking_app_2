@@ -1,6 +1,8 @@
 # Scoped session capabilities
 
-These generic APIs expose the session domain from [PR #248](https://github.com/Rosefall-a/unnamed_tracking_app/pull/248), inspected at `5bf43f22bd4991999cd278c5b201817aae439e85`. The official plugin implementation lives in the separate plugins repository. Host code never selects that plugin's ID, page IDs, or Settings section IDs.
+These generic APIs expose the session domain from [PR #248](https://github.com/Rosefall-a/unnamed_tracking_app/pull/248), inspected at `5bf43f22bd4991999cd278c5b201817aae439e85`. The official plugin implementation lives in the separate plugins repository. The host owns the basic `sessions` and `admin-sessions` Settings sections; plugins can replace them using separately granted page-scoped contributions. Host code never selects a particular plugin's identity or implementation.
+
+The built-in frontend reads the existing `/api/sessions/me` and `/api/sessions/admin` endpoints with `enriched=false`. This additive option returns state, IP, user agent, timestamps and current-session identity without consulting GeoIP databases or returning location/network/anomaly fields. The default HTTP responses and Plugin API representations retain their enriched contract. No database migration is required.
 
 | Method | Capability | Scope |
 | --- | --- | --- |

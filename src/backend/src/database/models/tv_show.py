@@ -9,7 +9,6 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     Date,
-    Enum as SAEnum,
     ForeignKey,
     Index,
     Integer,
@@ -19,7 +18,9 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID as PG_UUID
+from sqlalchemy import Enum as SAEnum
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.database.base import Base
@@ -44,7 +45,9 @@ class TVShowStatus(str, Enum):
     REWATCH = "REWATCH"
 
 
+# Repeated column declarations preserve this table's explicit schema contract.
 class TVShow(Base):
+    # pylint: disable=duplicate-code
     __tablename__ = "tv_shows"
 
     # ------------------------------------------------------------------
@@ -187,6 +190,8 @@ class TVShow(Base):
 
 
 class TVSeason(Base):
+    # Repeated declarations preserve independent database table/enum contracts.
+    # pylint: disable=duplicate-code
     """One season of a TVShow — a real child row, so progress and status
     can be tracked per season independently of the show overall.
     `episodes_watched`/`episode_count` stay as the flat progress numbers
@@ -239,6 +244,8 @@ class TVSeason(Base):
 
 
 class TVEpisode(Base):
+    # Repeated declarations preserve independent database table/enum contracts.
+    # pylint: disable=duplicate-code
     """One episode of a TVSeason. Rows are synced in from the source
     provider (TVmaze) the first time a season's episode list is
     requested, then persisted here — later requests read straight from

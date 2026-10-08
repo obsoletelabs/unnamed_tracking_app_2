@@ -80,9 +80,18 @@ An extension references a page in the same UI document. The host renders that pa
 
 The contribution document also defines Settings sections, overlays, dialogs,
 contextual actions, plugin routes, and page replacements. A Settings contribution
-uses its contribution ID directly, so `id: sessions` renders at
-`/settings?section=sessions`. This is separate from manager configuration in
-Plugin Manager and separate from `/plugins/<plugin-id>/sessions`.
+uses its contribution ID directly, so `id: reader-settings` renders at
+`/settings?section=reader-settings`. This is separate from manager configuration
+in Plugin Manager and separate from `/plugins/<plugin-id>/<page-id>`.
+
+`sessions` and `admin-sessions` are reserved built-in section IDs. Enhance these
+pages using `page_replacements` with `page: sessions` or `page: admin-sessions`
+and a declared plugin `page_id`, rather than duplicate settings sections. Each
+target needs its own high-risk `frontend.page.replace.<page>` grant. Settings
+replacement/placement permissions do not imply either session-page permission.
+The administrator section is only mounted for administrators; session-domain
+authorization still applies to every operation. Disabled, unhealthy or ungranted
+replacements leave the basic manager available. `basic=1` explicitly opens it.
 
 Replacements are page-specific and capability-specific: replacing Home requires
 `frontend.page.replace.home`, while replacing Settings requires

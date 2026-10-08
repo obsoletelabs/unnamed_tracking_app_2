@@ -45,6 +45,8 @@ def preference_enabled(notification: Notification, preferences: dict[str, Any]) 
     return preferences.get("notification_types", {}).get(notification.event_type, True)
 
 
+# Separate early denials keep trust, preferences and disclosure decisions explicit.
+# pylint: disable-next=too-many-return-statements
 def select_projection(
     notification: Notification,
     destination: NotificationDestination,
@@ -77,19 +79,22 @@ def select_projection(
         return None
     # Phase 1 legacy renderers cannot receive sensitive content. A separate
     # high-risk grant and protected provider contract will be added in Phase 4A.
-    if destination.installation_id is not None and notification.required_trust == Trust.SECURE:
+    if destination.installation_id is not None and required_trust == Trust.SECURE:
         return None
     if trust >= required_trust:
         return "canonical"
-    if (
-        trust == Trust.PUBLIC
-        and notification.kind in MEDIA_KINDS
-        and notification.purpose == "standard"
-        and notification.required_trust == Trust.PRIVATE
-        and settings.NOTIFICATION_MINIMUM_TRUST == Trust.PUBLIC
-        and notification.public_title is not None
-        and notification.public_body is not None
-    ):
+    public_release = all(
+        (
+            trust == Trust.PUBLIC,
+            notification.kind in MEDIA_KINDS,
+            notification.purpose == "standard",
+            notification.required_trust == Trust.PRIVATE,
+            settings.NOTIFICATION_MINIMUM_TRUST == Trust.PUBLIC,
+            notification.public_title is not None,
+            notification.public_body is not None,
+        )
+    )
+    if public_release:
         # Shared legacy endpoints have no host-owned endpoint revision; never
         # interpret their configuration as per-webhook richer disclosure consent.
         if (

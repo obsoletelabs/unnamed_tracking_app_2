@@ -1,5 +1,11 @@
+from unittest.mock import MagicMock
+
+import pytest
 from alembic.config import Config
 from alembic.script import ScriptDirectory
+from sqlalchemy.exc import OperationalError
+
+from src.database import migrate
 from src.database.migrate import decide
 
 
@@ -13,11 +19,41 @@ def test_history_is_a_single_line():
     assert len(script.get_bases()) == 1
 
 
+def test_database_startup_retries_transient_connection_failure(monkeypatch):
+    engine = MagicMock()
+    engine.connect.side_effect = [OperationalError("connect", {}, OSError("offline")), MagicMock()]
+    delays = []
+    monkeypatch.setattr(migrate.time, "sleep", delays.append)
+    migrate._wait_for_database(engine)
+    assert engine.connect.call_count == 2
+    assert delays == [2]
+
+
+def test_database_startup_reports_timeout(monkeypatch):
+    engine = MagicMock()
+    engine.connect.side_effect = OperationalError("connect", {}, OSError("offline"))
+    times = iter([0, 61])
+    monkeypatch.setattr(migrate.time, "time", lambda: next(times))
+    with pytest.raises(SystemExit, match="Database is not reachable after 60s"):
+        migrate._wait_for_database(engine)
+
+
+def test_database_startup_does_not_retry_programming_errors(monkeypatch):
+    engine = MagicMock()
+    engine.connect.side_effect = TypeError("invalid engine configuration")
+    delays = []
+    monkeypatch.setattr(migrate.time, "sleep", delays.append)
+    with pytest.raises(TypeError, match="invalid engine configuration"):
+        migrate._wait_for_database(engine)
+    assert delays == []
+
+
 def test_migration_environment_accepts_url_encoded_database_credentials(monkeypatch):
     """Load the actual Alembic environment without connecting to a database."""
     from io import StringIO
 
     from alembic import command
+
     from src.core.config import settings
 
     url = "postgresql+psycopg://review%40host:pa%25ss%40word%2F%2B%3D@localhost/review"
@@ -71,6 +107,7 @@ def test_every_migration_after_the_baseline_is_safe_to_rerun():
     change nothing, or an existing install would fail to start."""
     from alembic import command
     from sqlalchemy import create_engine, text
+
     from src.core.config import settings
 
     cfg = Config("alembic.ini")

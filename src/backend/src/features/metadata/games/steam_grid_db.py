@@ -148,8 +148,7 @@ class SteamGridDBClient:
         images: list[SteamGridDBImage] = []
         for item in data:
             returned_type = str(item.get("type") or "").rstrip("s")
-            requested_type = image_type.rstrip("s")
-            if requested_type and returned_type and returned_type != requested_type:
+            if normalized_type and returned_type and returned_type != normalized_type:
                 continue
             images.append(SteamGridDBImage.from_api_payload(item))
 

@@ -200,8 +200,8 @@ async def test_verified_update_migrates_limited_legacy_installation_and_preserve
     assert [row.id for row in await grants(gate)] == grants_before
 
 
-@pytest.fixture
-async def gate(monkeypatch, tmp_path):
+@pytest.fixture(name="gate")
+async def plugin_gate(monkeypatch, tmp_path):
     monkeypatch.setenv("PLUGIN_MANAGER_STATE_PATH", str(tmp_path / "manager.json"))
     monkeypatch.syspath_prepend(str(Path(__file__).parents[2] / "plugin-runtime"))
     runtime_module = importlib.import_module("runtime")
@@ -347,12 +347,12 @@ async def gate(monkeypatch, tmp_path):
         ),
     )
     runtime = Runtime()
-    monkeypatch.setattr(plugin_runtime, "_client", runtime)
+    monkeypatch.setattr(plugin_runtime, "client", runtime)
     verifier = PluginPackageVerifier(
         {"known": TrustedPublisher("known", key.public_key().public_bytes_raw(), "Gate publisher")},
         require_signature=False,
     )
-    monkeypatch.setattr(plugin_acquisition, "_plugin_package_verifier", lambda: verifier)
+    monkeypatch.setattr(plugin_acquisition, "plugin_package_verifier", lambda: verifier)
     app = FastAPI()
     app.include_router(plugins.router)
     async with Session(engine, expire_on_commit=False) as db:

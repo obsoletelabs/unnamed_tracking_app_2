@@ -18,7 +18,8 @@ import {
 } from "vue";
 import { useKeptAlive } from "../utils/useKeptAlive";
 import { takeLibraryScroll } from "../state/libraryScroll";
-import { useRoute, useRouter } from "vue-router";
+import { useRoute, useRouter, stringifyQuery } from "vue-router";
+import type { LocationQueryRaw } from "vue-router";
 import { useWindowVirtualizer } from "@tanstack/vue-virtual";
 
 import { activePriority, priorityLabel } from "../utils/priority";
@@ -43,24 +44,20 @@ import {
   RETRO_PLATFORM_OPTIONS,
 } from "../utils/platforms";
 import { genreOptionsFor, hasGenre } from "../utils/genres";
+import {
+  GAME_STATUS_OPTIONS,
+  hasGameLibraryQuery,
+  normalizeGameTags,
+  readGameLibraryQuery,
+  writeGameLibraryQuery,
+  type GameLibraryFilters,
+} from "../utils/gameLibraryQuery";
 import type { Game, GameStatus } from "../types/game";
 import { usePrompt } from "../state/dialog";
 export function useGameLibrary() {
   const prompt = usePrompt();
 
-  const SORT_KEYS = [
-    "name",
-    "name_desc",
-    "recent",
-    "rating",
-    "playtime",
-    "last_played",
-    "neglected",
-    "priority",
-    "release",
-    "length",
-  ] as const;
-  type SortBy = (typeof SORT_KEYS)[number];
+  type SortBy = GameLibraryFilters["sortBy"];
   type AchievementsFilter = "all" | "has" | "none";
   type MissingFilter = "none" | "playtime" | "rating" | "tags" | "description";
 
@@ -195,25 +192,9 @@ export function useGameLibrary() {
   // filters persist across visits (localStorage) so they don't silently reset
   // every time you navigate away and back
   const FILTERS_KEY = "gameLibraryFilters";
-  interface PersistedFilters {
-    searchQuery: string;
-    statusFilter: GameStatus | "all";
-    platformFilter: string;
-    genreFilter: string;
-    sortBy: SortBy;
+  interface PersistedFilters extends GameLibraryFilters {
     showAdvancedFilters: boolean;
-    franchiseFilter: string;
-    collectionFilter: string;
-    companyFilter: string;
-    ageRatingFilter: string;
-    regionFilter: string;
-    languageFilter: string;
-    metadataProviderFilter: string;
-    favoritesOnly: boolean;
-    achievementsFilter: AchievementsFilter;
-    retroAchievementsOnly: boolean;
-    missingFilter: MissingFilter;
-    tagsFilter: string[];
+    genreFilter?: string;
   }
   function loadPersistedFilters(): Partial<PersistedFilters> {
     try {
@@ -223,12 +204,13 @@ export function useGameLibrary() {
       return {};
     }
   }
-  const persisted = loadPersistedFilters();
+  const persisted = hasGameLibraryQuery(route.query)
+    ? { ...readGameLibraryQuery(route.query), showAdvancedFilters: true }
+    : loadPersistedFilters();
 
   const searchQuery = ref(persisted.searchQuery ?? "");
   const statusFilter = ref<GameStatus | "all">(persisted.statusFilter ?? "all");
   const platformFilter = ref<string>(persisted.platformFilter ?? "all");
-  const genreFilter = ref<string>(persisted.genreFilter ?? "all");
   const sortBy = ref<SortBy>(
     persisted.sortBy ??
       (localStorage.getItem("gameLibraryDefaultSort") as SortBy) ??
@@ -251,14 +233,21 @@ export function useGameLibrary() {
   );
   const retroAchievementsOnly = ref(persisted.retroAchievementsOnly ?? false);
   const missingFilter = ref<MissingFilter>(persisted.missingFilter ?? "none");
-  // multi-select, OR'd together, layered on top of the single-pick Genre
-  // combobox above rather than replacing it, so the common "just one genre"
-  // case stays a quick single click
-  const tagsFilter = ref<string[]>(persisted.tagsFilter ?? []);
+  // One selection drives the picker, pills, filtering and shared links.
+  const tagsFilter = ref<string[]>(
+    normalizeGameTags(persisted.tagsFilter ?? [], persisted.genreFilter),
+  );
   function toggleTagFilter(tag: string) {
-    tagsFilter.value = tagsFilter.value.includes(tag)
-      ? tagsFilter.value.filter((t) => t !== tag)
-      : [...tagsFilter.value, tag];
+    const normalized = normalizeGameTags([tag])[0];
+    if (!normalized) return;
+    tagsFilter.value = isTagSelected(normalized)
+      ? tagsFilter.value.filter(
+          (t) => t.toLowerCase() !== normalized.toLowerCase(),
+        )
+      : [...tagsFilter.value, normalized];
+  }
+  function isTagSelected(tag: string) {
+    return tagsFilter.value.some((t) => t.toLowerCase() === tag.toLowerCase());
   }
 
   watch(
@@ -266,7 +255,6 @@ export function useGameLibrary() {
       searchQuery,
       statusFilter,
       platformFilter,
-      genreFilter,
       sortBy,
       showAdvancedFilters,
       franchiseFilter,
@@ -287,7 +275,6 @@ export function useGameLibrary() {
         searchQuery: searchQuery.value,
         statusFilter: statusFilter.value,
         platformFilter: platformFilter.value,
-        genreFilter: genreFilter.value,
         sortBy: sortBy.value,
         showAdvancedFilters: showAdvancedFilters.value,
         franchiseFilter: franchiseFilter.value,
@@ -372,12 +359,9 @@ export function useGameLibrary() {
   });
 
   // every filter that narrows the list except the status tabs, which have
-  // their own row; platform and genre live in the Filters panel too
+  // their own row; platform lives in the Filters panel too
   const filterCount = computed(
-    () =>
-      advancedFilterCount.value +
-      (platformFilter.value !== "all" ? 1 : 0) +
-      (genreFilter.value !== "all" ? 1 : 0),
+    () => advancedFilterCount.value + (platformFilter.value !== "all" ? 1 : 0),
   );
 
   function clearAdvancedFilters() {
@@ -399,7 +383,6 @@ export function useGameLibrary() {
     searchQuery.value = "";
     statusFilter.value = "all";
     platformFilter.value = "all";
-    genreFilter.value = "all";
     clearAdvancedFilters();
   }
 
@@ -426,7 +409,6 @@ export function useGameLibrary() {
     return {
       statusFilter: statusFilter.value,
       platformFilter: platformFilter.value,
-      genreFilter: genreFilter.value,
       sortBy: sortBy.value,
       franchiseFilter: franchiseFilter.value,
       collectionFilter: collectionFilter.value,
@@ -465,7 +447,6 @@ export function useGameLibrary() {
   function applyPreset(preset: FilterPreset) {
     statusFilter.value = preset.filters.statusFilter;
     platformFilter.value = preset.filters.platformFilter;
-    genreFilter.value = preset.filters.genreFilter;
     sortBy.value = preset.filters.sortBy;
     franchiseFilter.value = preset.filters.franchiseFilter;
     collectionFilter.value = preset.filters.collectionFilter;
@@ -478,7 +459,10 @@ export function useGameLibrary() {
     achievementsFilter.value = preset.filters.achievementsFilter;
     retroAchievementsOnly.value = preset.filters.retroAchievementsOnly;
     missingFilter.value = preset.filters.missingFilter;
-    tagsFilter.value = [...(preset.filters.tagsFilter ?? [])];
+    tagsFilter.value = normalizeGameTags(
+      preset.filters.tagsFilter ?? [],
+      preset.filters.genreFilter,
+    );
     showAdvancedFilters.value = true;
     showPresetsMenu.value = false;
   }
@@ -492,25 +476,7 @@ export function useGameLibrary() {
     }
   }
 
-  // arriving from a Collections-page card click (?collection=Name),
-  // pre-apply that filter and surface the panel so it's clear why it's active
-  const queryCollection = route.query.collection;
-  if (typeof queryCollection === "string" && queryCollection) {
-    collectionFilter.value = queryCollection;
-    showAdvancedFilters.value = true;
-  }
-
-  const statusOptions: (GameStatus | "all")[] = [
-    "all",
-    "playing",
-    "beaten",
-    "mastered",
-    "played",
-    "on hold",
-    "dropped",
-    "backlog",
-    "wishlist",
-  ];
+  const statusOptions = GAME_STATUS_OPTIONS;
 
   const VIEW_OPTIONS: SegmentOption[] = [
     {
@@ -532,48 +498,83 @@ export function useGameLibrary() {
   ];
 
   const statusCounts = computed(() => {
-    const counts: Record<string, number> = { all: games.value.length };
-    for (const g of games.value) counts[g.status] = (counts[g.status] ?? 0) + 1;
+    const counts: Record<string, number> = Object.fromEntries(
+      statusOptions.map((status) => [status, 0]),
+    );
+    counts.all = gamesMatchingFilters.value.length;
+    for (const game of gamesMatchingFilters.value)
+      counts[game.status] = (counts[game.status] ?? 0) + 1;
     return counts;
   });
 
-  // arriving from a Home Hub row link (?status=playing, ?sort=recent)
-  const queryStatus = route.query.status;
-  if (
-    typeof queryStatus === "string" &&
-    statusOptions.includes(queryStatus as GameStatus | "all")
-  ) {
-    statusFilter.value = queryStatus as GameStatus | "all";
-  }
-  const querySort = route.query.sort;
-  if (
-    typeof querySort === "string" &&
-    (SORT_KEYS as readonly string[]).includes(querySort)
-  ) {
-    sortBy.value = querySort as SortBy;
-  }
-  // arriving from Server Stats' tag chart (?tag=Name)
-  function applyLinkedFilter() {
+  const filterRefs = {
+    searchQuery,
+    statusFilter,
+    platformFilter,
+    sortBy,
+    franchiseFilter,
+    collectionFilter,
+    companyFilter,
+    ageRatingFilter,
+    regionFilter,
+    languageFilter,
+    metadataProviderFilter,
+    favoritesOnly,
+    achievementsFilter,
+    retroAchievementsOnly,
+    missingFilter,
+    tagsFilter,
+  };
+  const queryKey = (query: LocationQueryRaw) =>
+    stringifyQuery(
+      Object.fromEntries(
+        Object.entries(query).sort(([a], [b]) => a.localeCompare(b)),
+      ),
+    );
+  const pendingQueries = new Set<string>();
+  function applyQueryFilters() {
     if (route.path !== "/games") return;
-    const pick = (key: string) => {
-      const v = route.query[key];
-      return typeof v === "string" && v ? v : null;
-    };
-    const tag = pick("tag");
-    const company = pick("company");
-    const platform = pick("platform");
-    const series = pick("series");
-    if (!tag && !company && !platform && !series) return;
-    clearAllFilters();
-    if (tag) genreFilter.value = tag;
-    if (company) companyFilter.value = company;
-    if (platform) platformFilter.value = platform;
-    if (series) franchiseFilter.value = series;
-    showAdvancedFilters.value = true;
+    if (pendingQueries.has(queryKey(route.query))) return;
+    const filters = readGameLibraryQuery(route.query);
+    for (const key of Object.keys(filterRefs) as (keyof GameLibraryFilters)[]) {
+      // Each field is paired with its own ref; avoid losing that relationship
+      // to the heterogeneous union produced by dynamic indexed assignment.
+      Object.assign(filterRefs[key], { value: filters[key] });
+    }
+    if (filterCount.value) showAdvancedFilters.value = true;
   }
-  applyLinkedFilter();
-  // the library is kept alive, so a link can arrive while it already exists
-  watch(() => route.fullPath, applyLinkedFilter);
+  // Kept-alive libraries must also restore links and browser history on re-entry.
+  watch(
+    () => route.fullPath,
+    (_next, previous) => {
+      // A fresh visit without filter parameters keeps this browser's selection.
+      // Removing parameters while already here, or following a shared link, restores the URL.
+      if (
+        !hasGameLibraryQuery(route.query) &&
+        previous.split("?")[0] !== "/games"
+      )
+        return;
+      applyQueryFilters();
+    },
+    { flush: "sync" },
+  );
+  watch(
+    () => [route.path, searchQuery.value, currentFilterValues()],
+    () => {
+      if (route.path !== "/games") return;
+      const query = writeGameLibraryQuery(
+        { ...currentFilterValues(), searchQuery: searchQuery.value },
+        route.query,
+      );
+      const key = queryKey(query);
+      if (key === queryKey(route.query)) return;
+      pendingQueries.add(key);
+      void router
+        .replace({ path: route.path, query, hash: route.hash })
+        .finally(() => pendingQueries.delete(key));
+    },
+    { deep: true, immediate: true, flush: "post" },
+  );
 
   const platformOptions = computed(() => {
     const set = new Set<string>(PLATFORM_OPTIONS);
@@ -943,21 +944,14 @@ export function useGameLibrary() {
     router.push(`/games/${game.id}`);
   }
 
-  const filteredGames = computed(() => {
+  const gamesMatchingFilters = computed(() => {
     let result = games.value;
-
-    if (statusFilter.value !== "all") {
-      result = result.filter((g) => g.status === statusFilter.value);
-    }
     if (platformFilter.value !== "all") {
       result = result.filter((g) =>
         g.platforms.some(
           (p) => normalizePlatformFamily(p.platform) === platformFilter.value,
         ),
       );
-    }
-    if (genreFilter.value !== "all") {
-      result = result.filter((g) => hasGenre(g.tags, genreFilter.value));
     }
     if (franchiseFilter.value !== "all") {
       result = result.filter((g) => g.series === franchiseFilter.value);
@@ -1018,6 +1012,14 @@ export function useGameLibrary() {
     if (q) {
       result = result.filter((g) => fuzzyTitleMatch(g.title, q));
     }
+
+    return result;
+  });
+
+  const filteredGames = computed(() => {
+    let result = gamesMatchingFilters.value;
+    if (statusFilter.value !== "all")
+      result = result.filter((game) => game.status === statusFilter.value);
 
     // missing values always sort last, whichever way the sort runs
     const lastIfNull = <T>(
@@ -1151,12 +1153,6 @@ export function useGameLibrary() {
         key: "platform",
         label: platformFilter.value,
         clear: () => (platformFilter.value = "all"),
-      });
-    if (genreFilter.value !== "all")
-      pills.push({
-        key: "genre",
-        label: genreFilter.value,
-        clear: () => (genreFilter.value = "all"),
       });
     if (franchiseFilter.value !== "all")
       pills.push({
@@ -1389,7 +1385,6 @@ export function useGameLibrary() {
     searchQuery,
     statusFilter,
     platformFilter,
-    genreFilter,
     sortBy,
     showAdvancedFilters,
     franchiseFilter,
@@ -1405,6 +1400,7 @@ export function useGameLibrary() {
     missingFilter,
     tagsFilter,
     toggleTagFilter,
+    isTagSelected,
     recentSearches,
     showRecentSearches,
     commitSearchToRecent,

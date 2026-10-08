@@ -27,6 +27,7 @@ export interface Movie {
   ageRating: string | null;
   tmdbScore: number | null;
   source: string | null;
+  providerIds?: Record<string, string>;
   posterUrl: string | null;
   backdropUrl: string | null;
   status: MovieStatus;

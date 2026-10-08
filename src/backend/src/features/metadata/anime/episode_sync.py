@@ -1,18 +1,47 @@
 """Fetching a show's episode list from whichever provider has it, shared
-between the on-demand route (api/routes/anime.py) and the weekly
-background refresh (features/metadata/refresh.py) — one place for the
-Jikan + AniList + Kitsu + TMDB merge instead of duplicating it."""
+between on-demand routes and background refresh through registered
+metadata provider capabilities."""
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any, NamedTuple
+from uuid import UUID
 
-from src.features.metadata.anime.anilist import AniListClient, AniListError
-from src.features.metadata.anime.anizip import AniZipClient, AniZipError
-from src.features.metadata.anime.jikan import JikanClient, JikanError
-from src.features.metadata.anime.kitsu import KitsuClient, KitsuError
-from src.features.metadata.movies.tmdb import TMDBClient, TMDBError
+from src.database.session import SessionLocal
+from src.features.metadata.identity import normalized_title
+from src.features.metadata.service import collect_owned_record, library_candidate, search_records
+from src.plugin_api.metadata_contracts import MediaType, MetadataCandidate
+
+
+def anime_candidate(
+    title: str, external_id: str | None, anilist_id: str | None, kitsu_id: str | None = None
+):
+    """Preserve known identities; a title-search Kitsu guess is not trusted for seasons."""
+    ids = {
+        key: value
+        for key, value in (("mal", external_id), ("anilist", anilist_id), ("kitsu", kitsu_id))
+        if value
+    }
+    return library_candidate(title, MediaType.ANIME, ids)
+
+
+async def fetch_episode_totals(
+    user_id: UUID, title: str, external_id: str | None, anilist_id: str | None
+) -> tuple[dict[str, Any] | None, list[str]]:
+    """Translate canonical airing facts into the existing season reconciliation rules."""
+    record, errors = await collect_owned_record(
+        user_id, anime_candidate(title, external_id, anilist_id), resource="airing"
+    )
+    airing = record.get("metadata", {}).get("airing")
+    if not airing:
+        return None, errors
+    status = airing.get("status")
+    return {
+        "status": {"ongoing": "RELEASING", "completed": "FINISHED"}.get(status, status),
+        "total": airing.get("total_episodes") if status == "completed" else None,
+        "planned": airing.get("total_episodes"),
+        "next": airing.get("next_episode_number"),
+    }, errors
 
 
 def _merge_episode_sources(*sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -79,93 +108,94 @@ async def fetch_episodes_with_fallback(
     anilist_id: str | None,
     kitsu_id: str | None = None,
     *,
+    user_id: UUID,
+    title: str,
     final_total: int | None = None,
     limit: int | None = None,
     total_known: bool = False,
 ) -> EpisodeFetch:
-    """The episode list of one anime entry.
+    """Fetch primary episodes first, then fill gaps through registered fallbacks.
 
-    ani.zip is asked first: it has titles, screenshots, synopses and air times
-    for the exact AniList entry in one request, and usually needs nothing
-    else. Jikan, AniList and Kitsu are only asked when it left gaps, because
-    they are slower and Jikan is often down.
-
-    Two rules keep a wrong provider match from inflating a season: a Kitsu
-    list is used only when ani.zip vouches for that exact Kitsu id (a stored
-    id found by title search is not trusted), and once AniList says the entry
-    has finished airing with N episodes, nothing numbered above N is kept.
-    Pass `final_total` and `limit` with `total_known=True` when the caller
-    already has them (the bulk refresh looks them up for every show in a few
-    requests).
-
-    Returns errors instead of raising, so a caller with no HTTP request behind
-    it (the background refresh) can log them."""
-    errors: list[str] = []
-    anizip: dict[str, Any] = {"episodes": [], "kitsu_id": None}
-    if anilist_id:
-        try:
-            anizip = await asyncio.to_thread(AniZipClient().lookup, anilist_id)
-        except AniZipError as exc:
-            errors.append(f"ani.zip: {exc}")
-        if not total_known:
-            try:
-                totals = await asyncio.to_thread(AniListClient().final_totals, [int(anilist_id)])
-                info = totals.get(int(anilist_id))
-                final_total = (info or {}).get("total")
-                limit = episode_limit(info)
-            except (AniListError, ValueError) as exc:
-                errors.append(f"AniList: {exc}")
-    anizip_episodes: list[dict[str, Any]] = anizip["episodes"]
-    mapped_kitsu: str | None = anizip.get("kitsu_id")
-
-    jikan_episodes: list[dict[str, Any]] = []
-    anilist_episodes: list[dict[str, Any]] = []
-    kitsu_episodes: list[dict[str, Any]] = []
-    if not _is_complete(anizip_episodes, final_total):
-        if external_id:
-            try:
-                jikan_episodes = await asyncio.to_thread(JikanClient().episodes, external_id)
-            except JikanError as exc:
-                errors.append(f"Jikan: {exc}")
-        if anilist_id:
-            try:
-                anilist_episodes = await asyncio.to_thread(AniListClient().episodes, anilist_id)
-            except AniListError as exc:
-                errors.append(f"AniList: {exc}")
-        trusted_kitsu = mapped_kitsu or (kitsu_id if not anilist_id else None)
-        if trusted_kitsu:
-            try:
-                kitsu_episodes = await asyncio.to_thread(KitsuClient().episodes, trusted_kitsu)
-            except KitsuError as exc:
-                errors.append(f"Kitsu: {exc}")
-    merged = _merge_episode_sources(
-        anizip_episodes, jikan_episodes, anilist_episodes, kitsu_episodes
+    Cross-provider IDs returned by the primary are authoritative. A stored Kitsu
+    title-search guess is never used for an entry already identified by AniList.
+    Completed and ongoing entries keep their own episode ceilings. Provider
+    transport, retries and parsing remain in the plugin repository.
+    """
+    candidate = anime_candidate(
+        title, external_id, anilist_id, kitsu_id if not anilist_id else None
     )
-    cap = limit or final_total
-    if cap:
-        merged = [e for e in merged if e["episode_number"] <= cap]
-    return EpisodeFetch(merged, errors, final_total, cap, mapped_kitsu)
+    primary, errors = await collect_owned_record(
+        user_id, candidate, resource="episodes", episode_phase="primary"
+    )
+    if not total_known:
+        info, total_errors = await fetch_episode_totals(user_id, title, external_id, anilist_id)
+        errors.extend(total_errors)
+        final_total = (info or {}).get("total")
+        limit = episode_limit(info)
+    episodes, fallback_errors = await _complete_episode_sources(
+        user_id, candidate, primary, final_total
+    )
+    errors.extend(fallback_errors)
+    if limit or final_total:
+        episodes = [
+            entry for entry in episodes if entry["episode_number"] <= (limit or final_total or 0)
+        ]
+    return EpisodeFetch(
+        episodes,
+        list(dict.fromkeys(errors)),
+        final_total,
+        limit or final_total,
+        primary.get("metadata", {}).get("provider_ids", {}).get("kitsu"),
+    )
+
+
+async def _complete_episode_sources(
+    user_id: UUID,
+    candidate: MetadataCandidate,
+    primary: dict[str, Any],
+    final_total: int | None,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    episodes = primary.get("metadata", {}).get("episodes", [])
+    if _is_complete(episodes, final_total):
+        return _merge_episode_sources(episodes), []
+    candidate = candidate.model_copy(
+        update={
+            "provider_ids": {
+                **candidate.provider_ids,
+                **primary.get("metadata", {}).get("provider_ids", {}),
+            },
+        }
+    )
+    fallback, errors = await collect_owned_record(
+        user_id, candidate, resource="episodes", episode_phase="fallback"
+    )
+    return _merge_episode_sources(
+        episodes, fallback.get("metadata", {}).get("episodes", [])
+    ), errors
 
 
 async def fetch_airing_status(
     anilist_id: str | None,
+    *,
+    user_id: UUID,
+    title: str,
 ) -> tuple[int | None, bool, int | None, int | None, list[str]]:
-    """`(aired_count, is_airing, next_episode_air_at, next_episode_number,
-    errors)` — the cheap AniList query, no episode list at all. Used by
-    the frequent airing-check loop; MyAnimeList/Jikan has no equivalent
-    lightweight endpoint, so this only covers the AniList side (fine —
-    it's specifically the ongoing-show case this exists for, and AniList
-    tracks nextAiringEpisode where Jikan doesn't expose anything
-    comparable)."""
+    """A cheap airing resource never requests an episode inventory or artwork."""
     if not anilist_id:
         return None, False, None, None, []
-    try:
-        count, is_airing, air_at, next_number = await asyncio.to_thread(
-            AniListClient().airing_status, anilist_id
-        )
-        return count, is_airing, air_at, next_number, []
-    except AniListError as exc:
-        return None, False, None, None, [f"AniList: {exc}"]
+    record, errors = await collect_owned_record(
+        user_id, anime_candidate(title, None, anilist_id), resource="airing"
+    )
+    airing = record.get("metadata", {}).get("airing")
+    if not airing:
+        return None, False, None, None, errors or ["Metadata providers are unavailable"]
+    return (
+        airing.get("aired_episodes"),
+        bool(airing.get("is_airing")),
+        airing.get("next_episode_at"),
+        airing.get("next_episode_number"),
+        errors,
+    )
 
 
 def pad_to_known_total(all_episodes: list[dict[str, Any]], episode_count: int | None) -> int | None:
@@ -205,30 +235,34 @@ def needs_tmdb_backfill(all_episodes: list[dict[str, Any]]) -> bool:
     )
 
 
-async def backfill_from_tmdb(
-    all_episodes: list[dict[str, Any]], show_title: str, tmdb_api_key: str
+async def backfill_from_metadata(
+    all_episodes: list[dict[str, Any]],
+    show_title: str,
+    *,
+    user_id: UUID,
 ) -> None:
-    """Fills in whichever of title/description/air_date/runtime/still_url
-    is still blank on each entry — most long-running anime is also
-    indexed as an ordinary TV show on TMDB, often with a still image even
-    when Jikan+AniList together don't have one. Checked per field, not
-    "does this entry have a title yet" — an entry can already have a real
-    title (from Jikan, which never returns episode images at all) and
-    still be missing everything else TMDB could fill in; the old
-    title-only gate skipped those entirely, so an episode that resolved
-    via Jikan could never get a thumbnail even once a TMDB key was
-    configured. Never overwrites a field that already has a value.
-    Silently gives up on any TMDB failure; the fields it can't fill just
-    stay as they are, no worse off than before this ran."""
-    try:
-        client = TMDBClient(tmdb_api_key)
-        tv_id = await asyncio.to_thread(client.find_tv_id, show_title)
-        if tv_id is None:
-            return
-        tmdb_episodes = await asyncio.to_thread(client.tv_all_episodes, tv_id)
-    except TMDBError:
+    """Fill remaining episode fields from an unambiguous TV identity.
+
+    This optional TV fallback uses scoped plugin configuration and the same
+    canonical episode resource. Existing titles, dates and images remain intact.
+    """
+    async with SessionLocal() as db:
+        response = await search_records(db, user_id, show_title, MediaType.TV_SHOW)
+    matches = [
+        record
+        for record in response["results"]
+        if normalized_title(record["title"]) == normalized_title(show_title)
+    ]
+    if len(matches) != 1:
         return
-    by_number = {e["episode_number"]: e for e in tmdb_episodes}
+    record, _ = await collect_owned_record(
+        user_id,
+        library_candidate(show_title, MediaType.TV_SHOW, matches[0]["provider_ids"]),
+        resource="episodes",
+        season_number=1,
+    )
+    entries = record.get("metadata", {}).get("episodes", [])
+    by_number = {entry["episode_number"]: entry for entry in entries}
     for entry in all_episodes:
         match = by_number.get(entry["episode_number"])
         if not match:

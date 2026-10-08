@@ -55,6 +55,9 @@ class MalImportError(ValueError):
 
 @dataclass
 class MalEntry:
+    # This record preserves the thirteen independent fields in a MAL list entry.
+    # pylint: disable=too-many-instance-attributes
+
     mal_id: str
     title: str
     format: str | None

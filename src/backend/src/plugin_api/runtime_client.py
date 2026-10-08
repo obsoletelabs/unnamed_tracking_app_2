@@ -32,6 +32,9 @@ class PluginRuntimeRequestError(RuntimeError):
 class PluginRuntimeClient:
     """Authenticated client for the isolated plugin runtime and broker."""
 
+    # Public methods mirror the distinct operations of the versioned runtime contract.
+    # pylint: disable=too-many-public-methods
+
     def __init__(self, base_url: str | None = None, token: str | None = None) -> None:
         resolved_url = base_url or os.getenv("PLUGIN_RUNTIME_URL") or "http://plugin-runtime:8000"
         resolved_token = token or os.getenv("PLUGIN_RUNTIME_TOKEN") or ""
@@ -113,6 +116,10 @@ class PluginRuntimeClient:
     async def plugin_ui(self, plugin_id: str) -> dict[str, Any]:
         """Read the package's declared UI document."""
         return await self._request("GET", f"/plugins/{plugin_id}/ui")
+
+    async def plugin_state(self, plugin_id: str) -> dict[str, Any]:
+        """Revalidate one installation's current lifecycle and payload integrity."""
+        return await self._request("GET", f"/plugins/{quote(plugin_id, safe='')}/state")
 
     async def logs(self, plugin_id: str) -> dict[str, Any]:
         """Read the bounded structured event buffer for one plugin."""
@@ -268,14 +275,24 @@ class PluginRuntimeClient:
         return result
 
     async def notification_delivery(
-        self, plugin_id: str, action_id: str, values: dict[str, Any], *,
-        user_id: str, installation_id: str, attempt_id: str,
+        self,
+        plugin_id: str,
+        action_id: str,
+        values: dict[str, Any],
+        *,
+        user_id: str,
+        installation_id: str,
+        attempt_id: str,
     ) -> dict[str, Any]:
         """Private host transport; authority is outside plugin/UI action values."""
         return await self._request(
             "POST",
             f"/plugins/{quote(plugin_id, safe='')}/notification-deliveries/{quote(action_id, safe='')}",
-            json={"values": values, "user_id": user_id, "installation_id": installation_id,
-                  "attempt_id": attempt_id},
+            json={
+                "values": values,
+                "user_id": user_id,
+                "installation_id": installation_id,
+                "attempt_id": attempt_id,
+            },
             timeout=_ACTION_REQUEST_TIMEOUT,
         )

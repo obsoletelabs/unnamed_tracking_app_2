@@ -70,6 +70,7 @@ nav:
       - API: development/api.md
       - API Examples: development/api-examples.md
       - Plugin API v1: development/plugin-api-v1.md
+      - Progressive Metadata Providers: development/metadata-providers.md
       - Plugin v1.1 Migration: development/plugin-v1.1-migration.md
       - Plugin Platform Architecture: development/plugin-platform.md
       - Third-party Plugin Development: development/plugin-development.md
@@ -91,6 +92,7 @@ nav:
       - Plugin Home Widgets: development/plugin-home-widgets.md
       - Custom Plugin Frontend Sandbox: development/plugin-ui-sandbox.md
       - Plugin Notification Providers: development/notification-providers.md
+      - Notification Core: development/notification-core.md
       - Reference Plugins: development/reference-plugins.md
       - Plugin Integration Validation: development/plugin-validation.md
       - Installed-plugin Conformance: development/plugin-conformance.md
@@ -98,5 +100,6 @@ nav:
       - Post-merge Acceptance (2026-10-03): development/post-merge-acceptance-2026-10-03.md
       - Documentation Review Checklist: development/documentation-review.md
       - Contributing: development/contributing.md
+      - Backend Quality Rework: development/backend-quality.md
       - Calendar / ICS: development/calendar-ics.md
       - Production Runtime Smoke Development: development/production-runtime-smoke.md

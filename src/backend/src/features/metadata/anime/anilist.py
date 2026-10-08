@@ -1,9 +1,16 @@
 from __future__ import annotations
+
 import re
-import time
 from typing import Any
+
 import requests
-from src.features.metadata.rate_limit import throttle
+
+from src.features.metadata.anime.anilist_relations import (
+    format_label,
+)
+from src.features.metadata.anime.franchise import FranchiseTraversal, run_sync
+from src.features.metadata.rate_limit import RateLimitError, request_with_backoff
+
 _URL = "https://graphql.anilist.co"
 _TAG_RE = re.compile(r"<[^>]+>")
 # AniList's public API rate limit is low and shared across every client
@@ -13,9 +20,6 @@ _TAG_RE = re.compile(r"<[^>]+>")
 # under normal use, not a rare edge case. Retried with backoff (honoring
 # `Retry-After` when AniList sends one) instead of surfacing a 502 to the
 # user for something that just needed a short wait.
-_MAX_RETRIES = 3
-_BASE_BACKOFF_SECONDS = 2.0
-_MAX_BACKOFF_SECONDS = 10.0
 # A small pause between successive requests in a multi-request sequence
 # (chain walk, branch-group reordering) so a long chain doesn't burn
 # through the rate limit in one burst before any 429 has a chance to
@@ -89,13 +93,16 @@ query ($idMal: Int) {{
 }}
 """
 
+
 class AniListError(RuntimeError):
     """Raised when AniList responds unsuccessfully."""
+
 
 def _clean_description(value: str | None) -> str | None:
     if not value:
         return None
     return _TAG_RE.sub("", value).strip() or None
+
 
 def _format_date(start_date: dict[str, Any] | None) -> str | None:
     if not start_date or not start_date.get("year"):
@@ -105,22 +112,6 @@ def _format_date(start_date: dict[str, Any] | None) -> str | None:
     day = start_date.get("day") or 1
     return f"{year:04d}-{month:02d}-{day:02d}"
 
-# AniList's MediaFormat enum -> the friendly label Jikan already returns
-# directly, so both providers normalize to the same vocabulary.
-_FORMAT_LABELS = {
-    "TV": "TV",
-    "TV_SHORT": "TV Short",
-    "MOVIE": "Movie",
-    "SPECIAL": "Special",
-    "OVA": "OVA",
-    "ONA": "ONA",
-    "MUSIC": "Music",
-}
-
-def _format_label(raw: str | None) -> str | None:
-    if not raw:
-        return None
-    return _FORMAT_LABELS.get(raw, raw.title())
 
 # Up to 50 entries by MyAnimeList id in one request, so filling in a whole
 # imported list takes a handful of calls instead of one per title.
@@ -159,6 +150,7 @@ query ($ids: [Int], $perPage: Int) {
 """
 _BATCH_SIZE = 50
 
+
 def _map_media_entry(entry: dict[str, Any]) -> dict[str, Any]:
     """Normalizes one `_MEDIA_FIELDS`-shaped node into the search-result
     dict shape — shared by `search()` (a page of these) and `get_by_id()`
@@ -184,40 +176,11 @@ def _map_media_entry(entry: dict[str, Any]) -> dict[str, Any]:
         "poster_url": cover.get("extraLarge") or cover.get("large"),
         "backdrop_url": entry.get("bannerImage"),
         "score": (score / 10) if score is not None else None,
-        "format": _format_label(entry.get("format")),
+        "format": format_label(entry.get("format")),
         "url": entry.get("siteUrl"),
     }
 
-def _node_to_dict(node: dict[str, Any]) -> dict[str, Any]:
-    node_title = node.get("title") or {}
-    cover = node.get("coverImage") or {}
-    return {
-        "id": node.get("id"),
-        "title": node_title.get("english") or node_title.get("romaji"),
-        "format": _format_label(node.get("format")),
-        "poster_url": cover.get("extraLarge") or cover.get("large"),
-        "episode_count": node.get("episodes"),
-        "year": (node.get("startDate") or {}).get("year"),
-    }
 
-# AniList's own RelationType enum -> a short human label for the graph
-# edge (e.g. "Sequel", "Side story") rather than the raw SCREAMING_SNAKE
-# value.
-_RELATION_LABELS = {
-    "ADAPTATION": "Adaptation",
-    "PREQUEL": "Prequel",
-    "SEQUEL": "Sequel",
-    "PARENT": "Parent story",
-    "SIDE_STORY": "Side story",
-    "CHARACTER": "Shared character",
-    "SUMMARY": "Summary",
-    "ALTERNATIVE": "Alternative",
-    "SPIN_OFF": "Spin-off",
-    "OTHER": "Related",
-    "SOURCE": "Source",
-    "COMPILATION": "Compilation",
-    "CONTAINS": "Contains",
-}
 _EPISODES_QUERY = """
 query ($id: Int) {
   Media(id: $id, type: ANIME) {
@@ -251,6 +214,7 @@ query ($id: Int) {
 # what Jikan would have given us, instead of keeping the number baked in.
 _EPISODE_TITLE_RE = re.compile(r"^Episode\s+\d+\s*-\s*(.+)$", re.IGNORECASE)
 
+
 def _blank_episode(
     episode_number: int, still_url: str | None = None, title: str | None = None
 ) -> dict[str, Any]:
@@ -262,6 +226,7 @@ def _blank_episode(
         "runtime_minutes": None,
         "still_url": still_url,
     }
+
 
 def _parse_streaming_episodes(streaming: list[dict[str, Any]]) -> list[dict[str, Any]]:
     results = []
@@ -280,6 +245,7 @@ def _parse_streaming_episodes(streaming: list[dict[str, Any]]) -> list[dict[str,
         results.append(_blank_episode(i, still_url=entry.get("thumbnail"), title=title))
     return results
 
+
 def _aired_total(media: dict[str, Any]) -> int | None:
     """How many episodes have actually aired so far. A season can have a
     confirmed total episode count (e.g. 14) while still airing weekly
@@ -294,6 +260,7 @@ def _aired_total(media: dict[str, Any]) -> int | None:
         return media["episodes"]
     return None
 
+
 def _pad_to_aired_total(results: list[dict[str, Any]], aired_total: int | None) -> None:
     """Fill in plain numbered placeholders for every episode number up to
     `aired_total` that streamingEpisodes didn't cover, in place."""
@@ -304,6 +271,7 @@ def _pad_to_aired_total(results: list[dict[str, Any]], aired_total: int | None) 
         if n not in known:
             results.append(_blank_episode(n))
     results.sort(key=lambda r: r["episode_number"])
+
 
 _RELATIONS_QUERY = """
 query ($search: String) {
@@ -432,108 +400,6 @@ query ($id: Int) {
 }
 """
 
-# How far the chain walk follows PREQUEL/SEQUEL edges in each direction,
-# and how many off-chain relations (adaptation, side story, source
-# manga/novel, etc.) get surfaced as branches — generous enough for a
-# real franchise's full run without risking a runaway request chain.
-_MAX_CHAIN_HOPS = 8
-_MAX_BRANCHES = 40
-_CHAIN_RELATION_TYPES = {"PREQUEL", "SEQUEL"}
-
-# _expand_branch_chains checks at most this many top-level branches for a
-# hidden prequel/sequel of their own — each check is a real extra AniList
-# request, so this bounds an uncached relations fetch to a handful of
-# extra round trips instead of one per branch on a franchise with a lot
-# of them.
-_MAX_BRANCH_CHAIN_EXPANSIONS = 4
-
-# Relation types that read as clutter rather than a genuinely related
-# title — a shared-character cameo, or a clip-show/recap compilation —
-# so they're left out of the graph entirely rather than competing for
-# space with the source manga/novel, side stories, and spin-offs that
-# actually matter. "Other" is deliberately NOT filtered: AniList uses it
-# for real named specials/shorts too (e.g. a movie recap special isn't
-# always tagged more specifically), not just noise.
-_LOW_VALUE_BRANCH_TYPES = {"CHARACTER"}
-
-# A movie/OVA/special is reached from the franchise root, not the other
-# way round: opening the page of "Gurren Lagann The Movie" used to build
-# the graph around that one movie, so it only ever showed its own parent
-# and sequel instead of the whole franchise. Entries of these formats
-# hop up to their parent TV series first, and the graph is built from
-# there with the entry you opened marked as current.
-_SHORT_FORMATS = {"MOVIE", "OVA", "ONA", "SPECIAL", "MUSIC"}
-_ROOT_FORMATS = {"TV", "TV_SHORT"}
-_ROOT_RELATION_TYPES = ("PARENT", "ALTERNATIVE", "SIDE_STORY", "SPIN_OFF")
-
-# Bumped whenever the shape/coverage of the cached payload changes, so
-# results cached by an older layout are refetched instead of served stale.
-RELATIONS_CACHE_VERSION = 2
-
-
-def _topological_order(ids: set[int], prequel_of: dict[int, int]) -> list[int] | None:
-    """Orders `ids` earliest-prequel-first using each id's prequel
-    pointer (only ones pointing within `ids` matter). Returns None if
-    the pointers don't fully resolve every id — a partial/cyclic result
-    isn't trustworthy enough to reorder anything."""
-    if not prequel_of:
-        return None
-    order: list[int] = []
-    remaining = set(ids)
-    guard = 0
-    while remaining and guard <= len(ids):
-        guard += 1
-        ready = sorted(i for i in remaining if prequel_of.get(i) not in remaining)
-        if not ready:
-            break
-        order.extend(ready)
-        remaining.difference_update(ready)
-    return None if remaining else order
-
-
-def _collect_branches(
-    nodes: dict[int, dict[str, Any]], anchor_id: int, chain_ids: list[int]
-) -> list[dict[str, Any]]:
-    """Every relation attached to the anchor entry itself — not every
-    entry in the chain — that isn't itself another chain link:
-    adaptation, side story, source manga/novel, etc., up to
-    `_MAX_BRANCHES` total. Scoped to just the anchor rather than the
-    whole chain on purpose: a real prequel/sequel chain can run deep
-    (a long-running show easily has 5+ entries), and giving every one
-    of them its own branch subtree leaves nowhere collision-free to put
-    them — they'd all have to share the same horizontal band the chain
-    row itself occupies, and a wide subtree hanging off an early entry
-    can reach into a later entry's own position. Low-value relation
-    types (shared character, compilation, ...) are skipped so they
-    don't clutter the graph with rarely-useful nodes."""
-    branches: list[dict[str, Any]] = []
-    seen = set(chain_ids)
-    edges = (nodes[anchor_id].get("relations") or {}).get("edges") or []
-    for edge in edges:
-        if len(branches) >= _MAX_BRANCHES:
-            break
-        node = edge.get("node")
-        if not node:
-            continue
-        rtype = edge.get("relationType")
-        target_id = node["id"]
-        if rtype in _CHAIN_RELATION_TYPES and target_id in nodes:
-            continue  # already represented as a chain link
-        if rtype in _LOW_VALUE_BRANCH_TYPES:
-            continue
-        if target_id in seen:
-            continue
-        seen.add(target_id)
-        branches.append(
-            {
-                "anchor_id": anchor_id,
-                "anchor_kind": "show",
-                "relation_label": _RELATION_LABELS.get(rtype, "Related"),
-                **_node_to_dict(node),
-            }
-        )
-    return branches
-
 
 class AniListClient:
     """Minimal client for AniList's public GraphQL API. No authentication
@@ -546,7 +412,7 @@ class AniListClient:
     def _post_graphql(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
         """Every AniList call funnels through here so the 429 retry/backoff
         (and error normalization) only has to be written once. Retries up
-        to `_MAX_RETRIES` times, sleeping `Retry-After` when AniList sends
+        to three times, sleeping `Retry-After` when AniList sends
         one, otherwise an increasing backoff — after that, raises a
         friendly rate-limit message instead of AniList's raw 429 body.
         Throttled process-wide (not just within this client instance) so
@@ -554,40 +420,32 @@ class AniListClient:
         (episode refresh, airing check, metadata heal) don't independently
         burst AniList at the same moment and all collide on the same 429s
         — see rate_limit.py."""
-        for attempt in range(_MAX_RETRIES + 1):
-            throttle("anilist", _PACING_SECONDS)
-            try:
-                response = self.session.post(
+        try:
+            response = request_with_backoff(
+                lambda: self.session.post(
                     _URL, json={"query": query, "variables": variables}, timeout=15
-                )
-            except requests.RequestException as exc:
-                raise AniListError(f"Could not reach AniList: {exc}") from exc
-            if response.status_code == 429:
-                if attempt >= _MAX_RETRIES:
-                    break
-                retry_after = response.headers.get("Retry-After")
-                delay = (
-                    float(retry_after)
-                    if retry_after and retry_after.replace(".", "", 1).isdigit()
-                    else _BASE_BACKOFF_SECONDS * (2**attempt)
-                )
-                time.sleep(min(delay, _MAX_BACKOFF_SECONDS))
-                continue
-            if response.status_code >= 400:
-                raise AniListError(
-                    f"AniList request failed ({response.status_code}): {response.text[:200]}"
-                )
-            try:
-                payload = response.json()
-            except ValueError as exc:
-                raise AniListError("AniList returned invalid JSON.") from exc
-            if "errors" in payload:
-                messages = "; ".join(e.get("message", "unknown error") for e in payload["errors"])
-                raise AniListError(f"AniList returned an error: {messages}")
-            return payload
-        raise AniListError(
-            "AniList is rate-limiting requests right now — wait a bit and try again."
-        )
+                ),
+                provider="anilist",
+                pacing_seconds=_PACING_SECONDS,
+            )
+        except requests.RequestException as exc:
+            raise AniListError(f"Could not reach AniList: {exc}") from exc
+        except RateLimitError as exc:
+            raise AniListError(
+                "AniList is rate-limiting requests right now — wait a bit and try again."
+            ) from exc
+        if response.status_code >= 400:
+            raise AniListError(
+                f"AniList request failed ({response.status_code}): {response.text[:200]}"
+            )
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise AniListError("AniList returned invalid JSON.") from exc
+        if "errors" in payload:
+            messages = "; ".join(e.get("message", "unknown error") for e in payload["errors"])
+            raise AniListError(f"AniList returned an error: {messages}")
+        return payload
 
     def search(self, query: str, limit: int = 8) -> list[dict[str, Any]]:
         if not query.strip():
@@ -750,243 +608,11 @@ class AniListClient:
         payload = self._post_graphql(query, variables)
         return (payload.get("data") or {}).get("Media")
 
-    def _walk_chain(
-        self, nodes: dict[int, dict[str, Any]], chain_ids: list[int], anchor_id: int
-    ) -> None:
-        """Extends `chain_ids`/`nodes` in place, following PREQUEL edges
-        backward and SEQUEL edges forward from the anchor, up to
-        `_MAX_CHAIN_HOPS` each way, guarded against cycles."""
-
-        def _walk_one_direction(relation_type: str, prepend: bool) -> None:
-            current_id = anchor_id
-            for _ in range(_MAX_CHAIN_HOPS):
-                edges = (nodes[current_id].get("relations") or {}).get("edges") or []
-                edge = next((e for e in edges if e.get("relationType") == relation_type), None)
-                if not edge or not edge.get("node"):
-                    break
-                next_id = edge["node"]["id"]
-                if next_id in nodes:
-                    break  # cycle guard — a franchise's edges can loop back
-                time.sleep(_PACING_SECONDS)
-                try:
-                    next_node = self._fetch_relations_node(media_id=next_id)
-                except AniListError:
-                    break  # a flaky/missing hop ends the walk, not the whole tab
-                if not next_node:
-                    break
-                nodes[next_id] = next_node
-                if prepend:
-                    chain_ids.insert(0, next_id)
-                else:
-                    chain_ids.append(next_id)
-                current_id = next_id
-
-        _walk_one_direction("PREQUEL", prepend=True)
-        _walk_one_direction("SEQUEL", prepend=False)
-
     def relations_chain_and_branches(
         self, title: str, anilist_id: str | None = None
     ) -> dict[str, Any]:
-        """The full prequel/sequel chain this entry belongs to — walked
-        via PREQUEL/SEQUEL edges in both directions, not just the anchor's
-        own direct relations — plus every other relation type (adaptation,
-        side story, source manga/novel, etc.)
-        attached to whichever chain entry it's actually connected to.
-        A season otherwise only ever lists its immediate neighbor, which
-        reads as missing entries for any franchise 3+ seasons deep."""
-        opened = self._fetch_relations_node(
-            media_id=int(anilist_id) if anilist_id else None,
-            search=None if anilist_id else title,
+        """Use the common franchise workflow with the legacy synchronous transport."""
+        return run_sync(
+            FranchiseTraversal(AniListError).relations_chain_and_branches(title, anilist_id),
+            self._fetch_relations_node,
         )
-        if not opened:
-            return {
-                "chain": [],
-                "branches": [],
-                "recommendations": [],
-                "version": RELATIONS_CACHE_VERSION,
-            }
-        current_id = opened["id"]
-        anchor = self._find_franchise_root(opened) or opened
-
-        nodes: dict[int, dict[str, Any]] = {anchor["id"]: anchor}
-        chain_ids: list[int] = [anchor["id"]]
-        self._walk_chain(nodes, chain_ids, anchor["id"])
-
-        chain = []
-        for node_id in chain_ids:
-            entry = _node_to_dict(nodes[node_id])
-            entry["is_current"] = node_id == current_id
-            chain.append(entry)
-
-        recommendations = []
-        for rec in (anchor.get("recommendations") or {}).get("nodes") or []:
-            node = rec.get("mediaRecommendation")
-            if not node:
-                continue
-            recommendations.append(_node_to_dict(node))
-
-        branches = self._order_related_branches(_collect_branches(nodes, anchor["id"], chain_ids))
-        seen_ids = set(chain_ids) | {b["id"] for b in branches}
-        branches.extend(self._expand_branch_chains(branches, seen_ids))
-        for b in branches:
-            b["is_current"] = b["id"] == current_id
-        if current_id not in seen_ids and opened["id"] != anchor["id"]:
-            # reached the root but the entry itself sits deeper than the
-            # graph looks (a sequel of a sequel of a movie): still show it
-            branches.append(
-                {
-                    "anchor_id": anchor["id"],
-                    "anchor_kind": "show",
-                    "relation_label": "Related",
-                    "is_current": True,
-                    **_node_to_dict(opened),
-                }
-            )
-
-        return {
-            "chain": chain,
-            "branches": branches,
-            "recommendations": recommendations,
-            "version": RELATIONS_CACHE_VERSION,
-        }
-
-    def _find_franchise_root(self, opened: dict[str, Any]) -> dict[str, Any] | None:
-        """For a movie/OVA/special, the parent TV series it hangs off (one
-        hop, which is all AniList's PARENT/ALTERNATIVE links need), fetched
-        with its own relations. None when the entry is already a series,
-        has no such link, or the parent can't be fetched."""
-        if (opened.get("format") or "").upper() not in _SHORT_FORMATS:
-            return None
-        edges = (opened.get("relations") or {}).get("edges") or []
-        for wanted in _ROOT_RELATION_TYPES:
-            for edge in edges:
-                node = edge.get("node")
-                if edge.get("relationType") != wanted or not node:
-                    continue
-                if (node.get("format") or "").upper() not in _ROOT_FORMATS:
-                    continue
-                time.sleep(_PACING_SECONDS)
-                try:
-                    return self._fetch_relations_node(media_id=node["id"])
-                except AniListError:
-                    return None
-        return None
-
-    def _expand_branch_chains(
-        self, branches: list[dict[str, Any]], seen_ids: set[int]
-    ) -> list[dict[str, Any]]:
-        """A top-level branch can have its own prequel/sequel that's
-        invisible from the anchor's own relations — e.g. Bleach's "BURN
-        THE WITCH" ONA has its own prequel special ("BURN THE WITCH #0.8") that's only a relation of the ONA itself,
-        one hop past what `_collect_branches` ever looks at (the anchor's direct
-        relations only). One extra fetch per still-top-level branch, pulling in any PREQUEL/SEQUEL neighbor not already known and
-        nesting it under that branch (`anchor_kind: "branch"`) — the same nested-branch shape `_order_related_branches` already
-        produces for a duology it detects. Single hop only (not a full walk), restricted to short-form formats that actually tend to
-        have their own mini-chain (OVA/ONA/Special/One Shot — a movie or source manga essentially never does), and capped to a handful of
-        extra fetches total — this is a real AniList request per branch checked, and a franchise with a dozen+ branches would otherwise
-        turn one relations fetch into a dozen+ more, which is a bad trade for a detail few branches actually have."""
-        candidates = [
-            b
-            for b in branches
-            if b["anchor_kind"] == "show"
-            and (b.get("format") or "").lower() in {"ova", "ona", "special", "one shot"}
-        ]
-        extra: list[dict[str, Any]] = []
-        checked = 0
-        for branch in candidates:
-            if checked >= _MAX_BRANCH_CHAIN_EXPANSIONS:
-                break
-            checked += 1
-            time.sleep(_PACING_SECONDS)
-            try:
-                node = self._fetch_relations_node(media_id=branch["id"])
-            except AniListError:
-                continue
-            if not node:
-                continue
-            for edge in (node.get("relations") or {}).get("edges") or []:
-                rtype = edge.get("relationType")
-                target = edge.get("node")
-                if rtype not in _CHAIN_RELATION_TYPES or not target:
-                    continue
-                target_id = target["id"]
-                if target_id in seen_ids:
-                    continue
-                seen_ids.add(target_id)
-                extra.append(
-                    {
-                        "anchor_id": branch["id"],
-                        "anchor_kind": "branch",
-                        "relation_label": _RELATION_LABELS.get(rtype, "Related"),
-                        **_node_to_dict(target),
-                    }
-                )
-        return extra
-
-    def _fetch_group_prequel_pointers(
-        self, group: list[dict[str, Any]], ids: set[int]
-    ) -> dict[int, int]:
-        """Fetches each group member's own relations and returns
-        {member_id: its_prequel_id} restricted to prequels that are
-        themselves in the group (an outside prequel isn't useful for
-        ordering the group)."""
-        prequel_of: dict[int, int] = {}
-        for b in group:
-            time.sleep(_PACING_SECONDS)
-            try:
-                node = self._fetch_relations_node(media_id=b["id"])
-            except AniListError:
-                continue  # one flaky/missing member shouldn't sink the whole tab
-            if not node:
-                continue
-            for edge in (node.get("relations") or {}).get("edges") or []:
-                if edge.get("relationType") != "PREQUEL":
-                    continue
-                target = (edge.get("node") or {}).get("id")
-                if isinstance(target, int) and target in ids:
-                    prequel_of[b["id"]] = target
-        return prequel_of
-
-    def _order_related_branches(self, branches: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """A branch group sharing the same anchor and relation label —
-        e.g. a two-part movie duology, both tagged ALTERNATIVE to the
-        parent show rather than SEQUEL/PREQUEL to it — can still be
-        chronologically ordered via their own mutual PREQUEL edges.
-        Fetches each 2+-member group once to find that order; every
-        member after the first is then reparented onto its immediate
-        predecessor (anchor_kind "branch") instead of the show, and
-        labeled "Sequel" — a real edge between the siblings themselves,
-        matching how the source actually relates them, rather than two
-        independent spokes off the show that just happen to sit in the
-        right order."""
-        groups: dict[tuple[int, str], list[int]] = {}
-        for i, b in enumerate(branches):
-            groups.setdefault((b["anchor_id"], b["relation_label"]), []).append(i)
-
-        for positions in groups.values():
-            # A real duology/trilogy is 2-4 members; a large group sharing
-            # a label (e.g. two dozen movies/specials all loosely tagged
-            # "Sequel" to the main show, which AniList uses as a catch-all
-            # far more often than a genuine narrative chain) is a shared
-            # bucket, not a chain — reparenting all of them nose-to-tail
-            # would turn 24 independent branches into one 24-deep nested
-            # chain the graph has no legible way to draw, and the ids
-            # inside it were never meant to represent "watch this right
-            # after that" the way a real duology's mutual PREQUEL edges do.
-            if not 2 <= len(positions) <= 4:
-                continue
-            group = [branches[i] for i in positions]
-            ids = {b["id"] for b in group}
-            prequel_of = self._fetch_group_prequel_pointers(group, ids)
-            order = _topological_order(ids, prequel_of)
-            if order is None:
-                continue  # couldn't fully resolve — leave original order
-            by_id = {b["id"]: b for b in group}
-            for slot, branch_id in zip(sorted(positions), order):
-                branches[slot] = by_id[branch_id]
-            for prev_id, branch_id in zip(order, order[1:]):
-                child = by_id[branch_id]
-                child["anchor_id"] = prev_id
-                child["anchor_kind"] = "branch"
-                child["relation_label"] = "Sequel"
-        return branches

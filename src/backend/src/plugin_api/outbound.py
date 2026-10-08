@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+import math
 import ssl
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
@@ -15,13 +18,14 @@ MAX_BYTES = 4 * 1024 * 1024
 class NoRedirects(HTTPRedirectHandler):
     """Do not forward plugin credentials to a redirect destination."""
 
+    # urllib calls this override with its fixed positional callback signature.
+    # pylint: disable-next=too-many-positional-arguments
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         raise ValueError("Redirect refused; configure the final server URL.")
 
 
-def outbound_json(payload: dict[str, Any]) -> dict[str, Any]:
-    """Bounded JSON GET/POST; never return remote error bodies or credentials."""
-    url = payload.get("url")
+def _validated_url(url: object) -> str:
+    """Allow HTTP(S) endpoints without URL credentials, fragments or ambiguous separators."""
     if not isinstance(url, str) or len(url) > 8192:
         raise ValueError("Invalid outbound URL.")
     try:
@@ -29,32 +33,58 @@ def outbound_json(payload: dict[str, Any]) -> dict[str, Any]:
         _ = parts.port
     except ValueError as exc:
         raise ValueError("Invalid outbound URL.") from exc
-    if (
-        parts.scheme not in {"https", "http"}
-        or not parts.hostname
-        or parts.username
-        or parts.password
-        or parts.fragment
-        or any(c.isspace() for c in url)
-        or "\\" in url
+    if any(
+        (
+            parts.scheme not in {"https", "http"},
+            not parts.hostname,
+            parts.username,
+            parts.password,
+            parts.fragment,
+            any(c.isspace() for c in url),
+            "\\" in url,
+        )
     ):
         raise ValueError("Use an HTTP(S) URL without credentials or fragment.")
-    headers = payload.get("headers", {})
+    return url
+
+
+def _valid_header(key: object, value: object) -> bool:
+    if not isinstance(key, str) or not isinstance(value, str):
+        return False
+    return (
+        len(key) <= 128
+        and len(value) <= 2048
+        and "\n" not in key + value
+        and "\r" not in key + value
+        and key.lower()
+        in {
+            "accept",
+            "authorization",
+            "x-emby-token",
+            "client-id",
+            "content-type",
+            "user-agent",
+            "referer",
+            "origin",
+            "cookie",
+        }
+    )
+
+
+def _validated_headers(headers: object) -> dict[str, str]:
     if (
         not isinstance(headers, dict)
         or len(headers) > 16
-        or any(
-            not isinstance(k, str)
-            or not isinstance(v, str)
-            or len(k) > 128
-            or len(v) > 2048
-            or "\n" in k + v
-            or "\r" in k + v
-            or k.lower() not in {"accept", "authorization", "x-emby-token"}
-            for k, v in headers.items()
-        )
+        or any(not _valid_header(key, value) for key, value in headers.items())
     ):
         raise ValueError("Invalid outbound headers.")
+    return headers
+
+
+def _outbound_request(payload: dict[str, Any]) -> Request:
+    """Validate the request before the isolated worker performs any network operation."""
+    url = _validated_url(payload.get("url"))
+    headers = _validated_headers(payload.get("headers", {}))
     method = payload.get("method", "GET")
     if method not in {"GET", "POST"}:
         raise ValueError("Outbound method must be GET or POST.")
@@ -68,16 +98,30 @@ def outbound_json(payload: dict[str, Any]) -> dict[str, Any]:
             raise ValueError("Invalid outbound JSON body.") from exc
         if len(body_data) > 64 * 1024:
             raise ValueError("Outbound request exceeded the 64 KiB limit.")
-    request = Request(
+    if "text_body" in payload:
+        if "body" in payload or method != "POST" or not isinstance(payload["text_body"], str):
+            raise ValueError("Only POST supports an exclusive text body.")
+        body_data = payload["text_body"].encode("utf-8")
+        if len(body_data) > 64 * 1024:
+            raise ValueError("Outbound request exceeded the 64 KiB limit.")
+    return Request(
         url,
         data=body_data,
         method=method,
         headers={
             "Accept": "application/json",
             **headers,
-            **({"Content-Type": "application/json"} if body_data else {}),
+            **({"Content-Type": "application/json"} if "body" in payload else {}),
         },
     )
+
+
+def outbound_json(payload: dict[str, Any]) -> dict[str, Any]:
+    """Bounded JSON/text GET/POST; never return remote error bodies or credentials."""
+    response_format = payload.get("response_format", "json")
+    if response_format not in {"json", "text"}:
+        raise ValueError("Unsupported outbound response format.")
+    request = _outbound_request(payload)
     try:
         with build_opener(NoRedirects()).open(request, timeout=8) as response:
             body = response.read(MAX_BYTES + 1)
@@ -89,6 +133,12 @@ def outbound_json(payload: dict[str, Any]) -> dict[str, Any]:
         result = {"status": code, "error": "Remote server rejected the request."}
         if retry.isdecimal():
             result["retry_after_seconds"] = min(int(retry), 3600)
+        elif retry:
+            try:
+                delay = (parsedate_to_datetime(retry) - datetime.now(timezone.utc)).total_seconds()
+                result["retry_after_seconds"] = min(3600, max(0, math.ceil(delay)))
+            except (ValueError, TypeError, OverflowError):
+                pass
         return result
     except (URLError, OSError, TimeoutError) as exc:
         reason = getattr(exc, "reason", exc)
@@ -105,6 +155,11 @@ def outbound_json(payload: dict[str, Any]) -> dict[str, Any]:
         }
     if len(body) > MAX_BYTES:
         raise ValueError("Outbound response exceeded the 4 MiB limit.")
+    if response_format == "text":
+        try:
+            return {"status": status, "text": body.decode("utf-8")}
+        except UnicodeDecodeError as exc:
+            raise ValueError("Remote server returned invalid text.") from exc
     try:
         data = json.loads(body)
     except (ValueError, UnicodeDecodeError) as exc:

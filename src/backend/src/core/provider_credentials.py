@@ -40,7 +40,8 @@ def _decrypt(value: str | None) -> str | None:
 
 
 @dataclass(frozen=True)
-class MetadataProviderCredentials:
+# A value object holds the independent credentials for the supported providers.
+class MetadataProviderCredentials:  # pylint: disable=too-many-instance-attributes
     """Effective provider credentials for one user and deployment."""
 
     steamgriddb_api_key: str | None

@@ -22,8 +22,8 @@ from src.database.models.movies import Movie, MovieStatus
 from src.database.models.notification import Notification
 from src.database.models.user import User
 from src.database.session import SessionLocal
-from src.features.metadata.anime.anizip import AniZipClient
 from src.features.episode_progress import apply_counter, counter_from_flags, materialize_progress
+from src.features.metadata.anime.anizip import AniZipClient
 from src.features.metadata.tv.search import _looks_like_anime
 from src.features.notifications import _episode_row, generate_for_user
 from src.features.tv_seasons import check_new_seasons, new_seasons
@@ -105,24 +105,24 @@ class _Show:
 
 def test_first_episode_is_a_season_start_and_later_ones_are_episodes():
     prefs = dict(DEFAULTS)
-    first = _episode_row("anime", _Show(), 1, 1, 1_700_000_000, prefs)
-    later = _episode_row("anime", _Show(), 1, 5, 1_700_000_000, prefs)
+    first = _episode_row("anime", _Show(), 1, 1, 1_700_000_000, prefs=prefs)
+    later = _episode_row("anime", _Show(), 1, 5, 1_700_000_000, prefs=prefs)
     assert first and first["kind"] == "season_started"
     assert later and later["kind"] == "episode_aired" and later["body"] == "Episode 5 aired"
     assert later["event_at"] == 1_700_000_000  # the exact time, untouched
 
 
 def test_tv_later_seasons_name_the_season():
-    row = _episode_row("tv", _Show(), 3, 4, 1_700_000_000, dict(DEFAULTS))
+    row = _episode_row("tv", _Show(), 3, 4, 1_700_000_000, prefs=dict(DEFAULTS))
     assert row and row["body"] == "Season 3 episode 4 aired"
 
 
 def test_notification_toggles_switch_each_kind_off():
     prefs = {**DEFAULTS, "notify_episode_aired": False}
-    assert _episode_row("anime", _Show(), 1, 5, 1, prefs) is None
-    assert _episode_row("anime", _Show(), 1, 1, 1, prefs) is not None
+    assert _episode_row("anime", _Show(), 1, 5, 1, prefs=prefs) is None
+    assert _episode_row("anime", _Show(), 1, 1, 1, prefs=prefs) is not None
     prefs = {**DEFAULTS, "notify_season_started": False}
-    assert _episode_row("anime", _Show(), 1, 1, 1, prefs) is None
+    assert _episode_row("anime", _Show(), 1, 1, 1, prefs=prefs) is None
 
 
 class _FakeResponse:
@@ -588,7 +588,9 @@ async def test_route_level_flow_flags_moves_the_counter_and_the_library_number()
             assert sorted(e.episode_number for e in rows if e.watched) == [1, 2, 3, 4]
 
             # checking episode 8 on the title page moves the library number to 5
-            await update_episode(show_id, season_id, ids[7], EpisodeUpdate(watched=True), db, user)
+            await update_episode(
+                show_id, season_id, ids[7], EpisodeUpdate(watched=True), db=db, current_user=user
+            )
             s = (
                 await db.execute(select(AnimeSeason).where(AnimeSeason.id == season_id))
             ).scalar_one()
@@ -641,7 +643,7 @@ async def test_unchecking_episodes_works_including_ones_the_counter_covered():
 
             # episode 2 was only counted by the counter; unchecking it must stick
             result = await update_episode(
-                show_id, season_id, ids[1], EpisodeUpdate(watched=False), db, user
+                show_id, season_id, ids[1], EpisodeUpdate(watched=False), db=db, current_user=user
             )
             episodes = {e.episode_number: e.watched for e in result.seasons[0].episodes}
             assert episodes == {1: True, 2: False, 3: True, 4: True, 5: False, 6: False}
@@ -649,7 +651,7 @@ async def test_unchecking_episodes_works_including_ones_the_counter_covered():
 
             # and a flagged one
             result = await update_episode(
-                show_id, season_id, ids[3], EpisodeUpdate(watched=False), db, user
+                show_id, season_id, ids[3], EpisodeUpdate(watched=False), db=db, current_user=user
             )
             assert result.seasons[0].episodes_watched == 2
             assert {e.episode_number for e in result.seasons[0].episodes if e.watched} == {1, 3}
@@ -676,7 +678,7 @@ class _FakeTVMaze:
 
 
 @pytest.mark.asyncio
-async def test_new_tv_season_is_added_and_announced_once_but_not_on_the_first_check():
+async def test_new_tv_season_is_added_and_announced_once_but_not_on_the_first_check(monkeypatch):
     from src.database.models.tv_show import TVSeason, TVShow, TVShowStatus
 
     async with SessionLocal() as db:
@@ -708,9 +710,17 @@ async def test_new_tv_season_is_added_and_announced_once_but_not_on_the_first_ch
                 {"season_number": 1, "name": None, "episode_count": 8, "air_date": "2020-01-01"},
                 {"season_number": 2, "name": None, "episode_count": 10, "air_date": "2027-03-01"},
             ]
+            from src.features import tv_seasons
+
+            async def canonical_seasons(*args, **kwargs):
+                return {
+                    "metadata": {"seasons": [{**entry, "title": entry["name"]} for entry in listed]}
+                }, []
+
+            monkeypatch.setattr(tv_seasons, "collect_record", canonical_seasons)
             show = (await db.execute(select(TVShow).where(TVShow.id == show_id))).scalar_one()
             # first check: the season is added, but nothing is announced
-            assert await check_new_seasons(db, show, _FakeTVMaze(listed)) == 1  # type: ignore[arg-type]
+            assert await check_new_seasons(db, show) == 1  # type: ignore[arg-type]
             notes = (
                 (
                     await db.execute(
@@ -727,10 +737,8 @@ async def test_new_tv_season_is_added_and_announced_once_but_not_on_the_first_ch
                 {"season_number": 3, "name": None, "episode_count": None, "air_date": "2028-01-01"}
             )
             show = (await db.execute(select(TVShow).where(TVShow.id == show_id))).scalar_one()
-            assert await check_new_seasons(db, show, _FakeTVMaze(listed)) == 1  # type: ignore[arg-type]
-            assert (
-                await check_new_seasons(db, show, _FakeTVMaze(listed)) == 0
-            )  # nothing new the third time
+            assert await check_new_seasons(db, show) == 1  # type: ignore[arg-type]
+            assert await check_new_seasons(db, show) == 0  # nothing new the third time
             notes = (
                 (
                     await db.execute(
@@ -1025,7 +1033,7 @@ class _FakeAniList:
 
 
 @pytest.mark.asyncio
-async def test_details_fill_only_blank_fields_and_report_what_was_not_found():
+async def test_details_fill_only_blank_fields_and_report_what_was_not_found(monkeypatch):
     from src.features.imports.mal_apply import fill_details
 
     async with SessionLocal() as db:
@@ -1064,7 +1072,31 @@ async def test_details_fill_only_blank_fields_and_report_what_was_not_found():
                 locked_fields=[],
                 seasons=[AnimeSeason(season_number=1)],
             )
-            result = await fill_details([have, other], _FakeAniList())  # type: ignore[arg-type]
+            from src.features.imports import mal_apply
+
+            async def canonical_anime(user_id, candidate, **kwargs):
+                assert user_id == user.scratch_id
+                if candidate.provider_ids["mal"] == "2":
+                    return {}, ["MyAnimeList is unavailable"]
+                return {
+                    "title": "A",
+                    "provider_ids": {"anilist": "1", "mal": "1"},
+                    "metadata": {
+                        "genres": ["Sci-Fi"],
+                        "studios": ["Sunrise"],
+                        "description": "text",
+                        "episode_count": 26,
+                        "release_date": "1998-04-03",
+                        "scores": {"anilist": 86},
+                        "format": "TV",
+                        "episode_runtime_minutes": 24,
+                        "countries": ["JP"],
+                    },
+                    "assets": [{"kind": "poster", "url": "http://p/1.jpg"}],
+                }, []
+
+            monkeypatch.setattr(mal_apply, "resolve_owned_record", canonical_anime)
+            result = await fill_details([have, other])
             assert result == {"filled": 1, "not_found": 0, "lookup_failed": 1}
             assert (
                 have.poster_url == "http://p/1.jpg"
@@ -1080,6 +1112,55 @@ async def test_details_fill_only_blank_fields_and_report_what_was_not_found():
 
 
 # ----------------------------------------------------- restoring an own export
+@pytest.mark.asyncio
+async def test_scheduled_backups_match_manual_exports_and_keep_seven_snapshots(
+    monkeypatch, tmp_path
+):
+    import json
+    import time
+
+    from src.api.routes.export_import import export_library
+    from src.features.backup import scheduler
+
+    monkeypatch.setattr(scheduler, "_BACKUP_ROOT", tmp_path)
+    async with SessionLocal() as db:
+        user = None
+        try:
+            user = await _user(db)
+            db.add(
+                Movie(
+                    user_id=user.scratch_id,
+                    title="Backed up film",
+                    sort_title="backed up film",
+                    status=MovieStatus.WATCHED,
+                )
+            )
+            db.add(
+                Movie(
+                    user_id=user.scratch_id,
+                    title="Trashed film",
+                    sort_title="trashed film",
+                    deleted_at=1,
+                )
+            )
+            await db.commit()
+            paths = []
+            for index in range(9):
+                monkeypatch.setattr(time, "time", lambda value=1_800_000_000 + index: value)
+                path = await scheduler.run_backup_for_user(user.scratch_id)
+                assert path is not None
+                paths.append(path)
+            assert not paths[0].exists() and not paths[1].exists()
+            assert all(path.is_file() for path in paths[2:])
+            payload = json.loads(paths[-1].read_text())
+            manual = (await export_library(db, user)).model_dump(mode="json")
+            assert payload == manual
+            assert [movie["title"] for movie in payload["movies"]] == ["Backed up film"]
+        finally:
+            if user is not None:
+                await _cleanup(db, user)
+
+
 @pytest.mark.asyncio
 async def test_a_library_export_restores_movies_shows_and_anime_with_progress_and_is_safe_twice():
     import json
@@ -1107,8 +1188,8 @@ async def test_a_library_export_restores_movies_shows_and_anime_with_progress_an
                     genres=["Drama"],
                     tags=[],
                     features=[],
-                    director=[],
-                    writer=[],
+                    director=None,
+                    writer=None,
                     locked_fields=[],
                     rewatches=1,
                 )
@@ -1450,7 +1531,7 @@ class _FakeTMDB:
 
 
 @pytest.mark.asyncio
-async def test_list_import_keeps_existing_titles_fills_blanks_and_builds_seasons():
+async def test_list_import_keeps_existing_titles_fills_blanks_and_builds_seasons(monkeypatch):
     import io
 
     from fastapi import UploadFile
@@ -1509,7 +1590,51 @@ async def test_list_import_keeps_existing_titles_fills_blanks_and_builds_seasons
             items, _ = parse_imdb(_IMDB)
             matches = await match_titles(db, user.scratch_id, items)
             rows = [(m.imported, m.existing, True) for m in matches if m.existing is not None]
-            result = await fill(_FakeTMDB(), rows)
+            from src.features.imports import list_apply
+
+            async def canonical_media(user_id, candidate, **kwargs):
+                assert user_id == user.scratch_id
+                if candidate.media_type.value == "movie":
+                    return {
+                        "title": candidate.title,
+                        "metadata": {
+                            "description": "text",
+                            "release_date": "1979-05-25",
+                            "runtime_minutes": 117,
+                            "studios": ["Fox"],
+                            "genres": ["Sci-Fi"],
+                            "scores": {"tmdb": 81},
+                        },
+                        "assets": [{"kind": "poster", "url": "http://p/alien.jpg"}],
+                    }, []
+                return {
+                    "title": candidate.title,
+                    "metadata": {
+                        "description": "tv text",
+                        "release_date": "2008-01-20",
+                        "creators": ["Vince"],
+                        "genres": ["Crime"],
+                        "scores": {"tmdb": 90},
+                        "seasons": [
+                            {
+                                "season_number": 1,
+                                "title": "S1",
+                                "episode_count": 7,
+                                "air_date": "2008-01-20",
+                            },
+                            {
+                                "season_number": 2,
+                                "title": "S2",
+                                "episode_count": 13,
+                                "air_date": "2009-03-08",
+                            },
+                        ],
+                    },
+                    "assets": [{"kind": "poster", "url": "http://p/bb.jpg"}],
+                }, []
+
+            monkeypatch.setattr(list_apply, "resolve_owned_record", canonical_media)
+            result = await fill(rows)
             assert result["not_found"] == 0 and result["seasons_assumed_watched"] == 1
             assert (
                 mine.description == "mine"
@@ -1569,7 +1694,7 @@ async def test_manual_calendar_entries_are_private_validated_and_in_the_feed():
             assert await list_events(None, None, db, other) == []  # nobody else sees them
 
             # a bad time is refused at the edge, a half-linked title is refused by the route
-            with pytest.raises(Exception):
+            with pytest.raises((TypeError, ValueError)):
                 EventCreate(title="x", event_date=date(2026, 1, 1), event_time="25:99")
             with pytest.raises(HTTPException) as bad:
                 await create_event(
@@ -1756,71 +1881,42 @@ def _eps(n, titled=True):
     return [{"episode_number": i, "title": f"Ep {i}" if titled else None} for i in range(1, n + 1)]
 
 
-class _Zip:
-    def __init__(self, count, kitsu="111", titled=True):
-        self.count, self.kitsu, self.titled = count, kitsu, titled
-
-    def lookup(self, _id):
-        return {
-            "episodes": _eps(self.count, self.titled),
-            "episode_count": self.count,
-            "kitsu_id": self.kitsu,
-            "mal_id": None,
-        }
-
-
-class _Kitsu:
-    called_with: list = []
-
-    def episodes(self, kitsu_id):
-        _Kitsu.called_with.append(kitsu_id)
-        return _eps(25)  # another entry's list: season 1 attached to season 2
-
-
-class _AniListTotals:
-    def __init__(self, total):
-        self.total = total
-
-    def final_totals(self, ids):
-        return {ids[0]: {"total": self.total, "status": "FINISHED" if self.total else "RELEASING"}}
-
-    def episodes(self, _id):
-        return []
-
-
-class _Jikan:
-    def episodes(self, _id):
-        return []
-
-
 @pytest.mark.asyncio
 async def test_another_entrys_episodes_can_no_longer_inflate_a_finished_season(monkeypatch):
     from src.features.metadata.anime import episode_sync
 
-    _Kitsu.called_with = []
-    monkeypatch.setattr(episode_sync, "AniZipClient", lambda: _Zip(12, kitsu="222"))
-    monkeypatch.setattr(episode_sync, "AniListClient", lambda: _AniListTotals(12))
-    monkeypatch.setattr(episode_sync, "JikanClient", lambda: _Jikan())
-    monkeypatch.setattr(episode_sync, "KitsuClient", lambda: _Kitsu())
+    owner = uuid.uuid4()
+    primary = {"episodes": _eps(12), "provider_ids": {"kitsu": "222"}}
+    fallback_calls = []
 
-    # complete from ani.zip alone: the slower providers are not even asked
-    fetch = await episode_sync.fetch_episodes_with_fallback("25777", "20958", "8671")
+    async def collect(user_id, candidate, *, resource, episode_phase=None):
+        assert user_id == owner
+        if resource == "airing":
+            return {"metadata": {"airing": {"status": "completed", "total_episodes": 12}}}, []
+        if episode_phase == "primary":
+            return {"metadata": primary}, []
+        if candidate.provider_ids.get("kitsu"):
+            fallback_calls.append(candidate.provider_ids["kitsu"])
+            return {"metadata": {"episodes": _eps(25)}}, []
+        return {"metadata": {"episodes": []}}, []
+
+    monkeypatch.setattr(episode_sync, "collect_owned_record", collect)
+    kwargs = {"user_id": owner, "title": "Season 2"}
+    # A complete primary inventory avoids slower fallbacks.
+    fetch = await episode_sync.fetch_episodes_with_fallback("25777", "20958", "8671", **kwargs)
     assert [e["episode_number"] for e in fetch.episodes] == list(range(1, 13))
-    assert fetch.final_total == 12 and fetch.kitsu_id == "222" and _Kitsu.called_with == []
+    assert fetch.final_total == 12 and fetch.kitsu_id == "222" and fallback_calls == []
 
-    # ani.zip is short (its titles are missing): the others are asked, but the stored
-    # Kitsu id (a title-search guess) is not used, only the one ani.zip vouches for
-    monkeypatch.setattr(episode_sync, "AniZipClient", lambda: _Zip(12, kitsu="222", titled=False))
-    fetch = await episode_sync.fetch_episodes_with_fallback("25777", "20958", "8671")
-    assert _Kitsu.called_with == ["222"]
-    # even then, nothing numbered past the entry's own total survives
+    # Only the primary's authoritative cross-ID is trusted, even when a stored guess differs.
+    primary["episodes"] = _eps(12, False)
+    fetch = await episode_sync.fetch_episodes_with_fallback("25777", "20958", "8671", **kwargs)
+    assert fallback_calls == ["222"]
     assert max(e["episode_number"] for e in fetch.episodes) == 12
 
-    # without any exact id, a stored Kitsu id is never trusted for an entry with an AniList id
-    _Kitsu.called_with = []
-    monkeypatch.setattr(episode_sync, "AniZipClient", lambda: _Zip(12, kitsu=None, titled=False))
-    await episode_sync.fetch_episodes_with_fallback("25777", "20958", "8671")
-    assert _Kitsu.called_with == []
+    fallback_calls.clear()
+    primary["provider_ids"] = {}
+    await episode_sync.fetch_episodes_with_fallback("25777", "20958", "8671", **kwargs)
+    assert fallback_calls == []
 
 
 def test_a_season_inflated_by_a_wrong_match_is_repaired_without_touching_watched_rows():
@@ -2075,21 +2171,19 @@ def test_the_episode_limit_is_what_can_exist_right_now():
 async def test_an_airing_show_is_not_padded_with_episodes_that_have_not_aired(monkeypatch):
     from src.features.metadata.anime import episode_sync
 
-    class _Long:
-        def lookup(self, _id):
-            return {"episodes": _eps(1402), "episode_count": 1402, "kitsu_id": None, "mal_id": None}
+    owner = uuid.uuid4()
 
-    class _Airing:
-        def final_totals(self, ids):
-            return {ids[0]: {"total": None, "planned": None, "next": 1180, "status": "RELEASING"}}
+    async def collect(user_id, candidate, *, resource, episode_phase=None):
+        assert user_id == owner
+        if resource == "airing":
+            return {"metadata": {"airing": {"status": "ongoing", "next_episode_number": 1180}}}, []
+        assert episode_phase == "primary"
+        return {"metadata": {"episodes": _eps(1402)}}, []
 
-        def episodes(self, _id):
-            return []
-
-    monkeypatch.setattr(episode_sync, "AniZipClient", lambda: _Long())
-    monkeypatch.setattr(episode_sync, "AniListClient", lambda: _Airing())
-    monkeypatch.setattr(episode_sync, "JikanClient", lambda: _Jikan())
-    fetch = await episode_sync.fetch_episodes_with_fallback("13", "21")
+    monkeypatch.setattr(episode_sync, "collect_owned_record", collect)
+    fetch = await episode_sync.fetch_episodes_with_fallback(
+        "13", "21", user_id=owner, title="One Piece"
+    )
     assert fetch.limit == 1179 and fetch.final_total is None
     assert max(e["episode_number"] for e in fetch.episodes) == 1179
 
@@ -2114,9 +2208,10 @@ def test_calendar_projects_no_episode_past_the_season_total():
         )
 
     window = now + 365 * 86400
-    numbers = lambda s: [
-        e["next_episode_number"] for e in _calendar_entries_for_show(s, "anime", window)
-    ]
+
+    def numbers(s):
+        return [e["next_episode_number"] for e in _calendar_entries_for_show(s, "anime", window)]
+
     assert numbers(show(24, 24)) == [24]  # the next episode is the last one
     assert numbers(show(11, 13)) == [11, 12, 13]
     # a count below the next episode is a lagging snapshot, not a ceiling

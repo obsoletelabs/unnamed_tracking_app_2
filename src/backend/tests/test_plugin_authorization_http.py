@@ -172,6 +172,7 @@ def boundary(monkeypatch):
         }
         runtime = SimpleNamespace(
             plugins=AsyncMock(return_value=[plugin]),
+            plugin_state=AsyncMock(return_value=plugin),
             plugin_ui=AsyncMock(return_value=document),
             action=AsyncMock(return_value={"completed": True}),
             route=AsyncMock(return_value={"body": {"ok": True}}),
@@ -184,7 +185,7 @@ def boundary(monkeypatch):
         async def database():
             yield db
 
-        monkeypatch.setattr(plugin_runtime, "_client", runtime)
+        monkeypatch.setattr(plugin_runtime, "client", runtime)
         monkeypatch.setenv("PLUGIN_RUNTIME_TOKEN", "x" * 32)
         app = FastAPI()
         app.include_router(auth.router)
@@ -1191,15 +1192,23 @@ async def test_runtime_egress_requires_persisted_operation_grant(
         )
     if capability == "notification_providers.deliver":
         await broker.run(
-            registry.notification_delivery, "audit.plugin", "deliver", {"delivery": {}},
-            user_id=str(boundary.users[0].id), installation_id=boundary.plugin["installation_id"],
+            registry.notification_delivery,
+            "audit.plugin",
+            "deliver",
+            {"delivery": {}},
+            user_id=str(boundary.users[0].id),
+            installation_id=boundary.plugin["installation_id"],
             attempt_id=str(uuid4()),
         )
     else:
         with pytest.raises(broker.runtime.RuntimePolicyError, match="notification provider"):
             await broker.run(
-                registry.notification_delivery, "audit.plugin", "deliver", {"delivery": {}},
-                user_id=str(boundary.users[0].id), installation_id=boundary.plugin["installation_id"],
+                registry.notification_delivery,
+                "audit.plugin",
+                "deliver",
+                {"delivery": {}},
+                user_id=str(boundary.users[0].id),
+                installation_id=boundary.plugin["installation_id"],
                 attempt_id=str(uuid4()),
             )
         return

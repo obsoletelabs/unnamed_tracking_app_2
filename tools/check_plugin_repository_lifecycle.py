@@ -34,7 +34,7 @@ from plugin_conformance import InstalledPluginConformance
 
 HOST = Path(__file__).resolve().parents[1]
 PLUGIN = "example.jellyfin-media-sync"
-FIXTURE_BASE = "https://raw.githubusercontent.com/Rosefall-a/unnamed_tracking_app_plugins/integration-fixture"
+FIXTURE_BASE = "https://raw.githubusercontent.com/obsoletelabs/unnamed_tracking_app_plugins/integration-fixture"
 PASSWORD = "Integration-test-password1!"
 
 
@@ -62,7 +62,7 @@ def configure_downloads(work):
     sys.path.insert(0, str(HOST / "src/backend"))
     from src.api.routes.plugin_manager import acquisition
 
-    original = acquisition._download_remote_file
+    original = acquisition.download_remote_file
 
     async def download(url, *, json_document=False):
         if not url.startswith(FIXTURE_BASE + "/"):
@@ -76,7 +76,7 @@ def configure_downloads(work):
             path = Path(stream.name)
         return path, source.name, len(data)
 
-    acquisition._download_remote_file = download
+    acquisition.download_remote_file = download
 
 
 def serve_host(work, port):
@@ -497,7 +497,7 @@ def acceptance(plugins_root, work, browser=False):
                     json={
                         "url": item["url"],
                         "source_type": "catalogue",
-                        "catalogue_url": "https://raw.githubusercontent.com/Rosefall-a/unnamed_tracking_app_plugins/main/list.json",
+                        "catalogue_url": "https://raw.githubusercontent.com/obsoletelabs/unnamed_tracking_app_plugins/main/list.json",
                     },
                 )
                 assert preview["version"] == item["version"]
@@ -519,7 +519,7 @@ def acceptance(plugins_root, work, browser=False):
             live_source = {
                 "url": live_release["url"],
                 "source_type": "catalogue",
-                "catalogue_url": "https://raw.githubusercontent.com/Rosefall-a/unnamed_tracking_app_plugins/main/list.json",
+                "catalogue_url": "https://raw.githubusercontent.com/obsoletelabs/unnamed_tracking_app_plugins/main/list.json",
             }
             live_preview = request("POST", "/install/preview-url", json=live_source)
             if live_preview["api_contract_version"] == "1.0.0":

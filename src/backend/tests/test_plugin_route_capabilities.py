@@ -54,7 +54,7 @@ async def test_action_dispatch_requires_exact_installation_grant(monkeypatch) ->
     user = SimpleNamespace(id=uuid4())
     runtime = FakeRuntimeClient(installation_id)
     grant = AsyncMock(return_value=False)
-    monkeypatch.setattr(plugin_runtime, "_client", runtime)
+    monkeypatch.setattr(plugin_runtime, "client", runtime)
     monkeypatch.setattr(plugin_contributions, "has_capability_grant", grant)
 
     with pytest.raises(HTTPException) as denied:
@@ -84,7 +84,7 @@ async def test_action_result_cannot_spoof_host_identity(monkeypatch) -> None:
     installation_id = uuid4()
     user = SimpleNamespace(id=uuid4())
     runtime = FakeRuntimeClient(installation_id)
-    monkeypatch.setattr(plugin_runtime, "_client", runtime)
+    monkeypatch.setattr(plugin_runtime, "client", runtime)
     monkeypatch.setattr(
         plugin_contributions,
         "has_capability_grant",
@@ -114,7 +114,10 @@ async def test_secret_write_requires_storage_grant_and_stays_runtime_private(
     user = SimpleNamespace(id=uuid4())
     runtime = FakeRuntimeClient(installation_id)
     grant = AsyncMock(side_effect=[False, True])
-    monkeypatch.setattr(plugin_runtime, "_client", runtime)
+    db = AsyncMock()
+    invalidate = AsyncMock()
+    monkeypatch.setattr(plugin_contributions, "invalidate_legacy_configuration", invalidate)
+    monkeypatch.setattr(plugin_runtime, "client", runtime)
     monkeypatch.setattr(plugin_contributions, "has_capability_grant", grant)
 
     with pytest.raises(HTTPException) as denied:
@@ -122,17 +125,19 @@ async def test_secret_write_requires_storage_grant_and_stays_runtime_private(
             "example.plugin",
             "webhook",
             {"value": "secret-value"},
-            ANY,
+            db,
             user,
         )
     assert denied.value.status_code == 403
     runtime.save_secret.assert_not_awaited()
+    invalidate.assert_not_awaited()
+    db.commit.assert_not_awaited()
 
     result = await plugins.save_plugin_secret(
         "example.plugin",
         "webhook",
         {"value": "secret-value"},
-        ANY,
+        db,
         user,
     )
 
@@ -141,6 +146,8 @@ async def test_secret_write_requires_storage_grant_and_stays_runtime_private(
         "key": "webhook",
         "saved": True,
     }
+    invalidate.assert_awaited_once_with(db, installation_id)
+    db.commit.assert_awaited_once()
     runtime.save_secret.assert_awaited_once_with(
         "example.plugin",
         "secrets/webhook",
@@ -155,10 +162,10 @@ async def test_native_frontend_asset_requires_native_grant(monkeypatch) -> None:
     runtime = SimpleNamespace(
         native_frontend_asset=AsyncMock(return_value=b"export default () => {}")
     )
-    monkeypatch.setattr(plugin_runtime, "_client", runtime)
+    monkeypatch.setattr(plugin_runtime, "client", runtime)
     monkeypatch.setattr(
         plugin_runtime,
-        "_plugin_and_capabilities",
+        "plugin_and_capabilities",
         AsyncMock(return_value=({}, frozenset())),
     )
 
@@ -197,7 +204,7 @@ async def test_context_payload_requires_declared_scoped_capability(monkeypatch) 
         }
     )
     grant = AsyncMock(side_effect=[True, False])
-    monkeypatch.setattr(plugin_runtime, "_client", runtime)
+    monkeypatch.setattr(plugin_runtime, "client", runtime)
     monkeypatch.setattr(plugin_contributions, "has_capability_grant", grant)
 
     with pytest.raises(HTTPException) as denied:

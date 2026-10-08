@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from dataclasses import dataclass
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -23,7 +24,7 @@ from src.features.notification_destinations import resolve_destinations
 from src.features.notification_policy import INBOX_PROVIDER, select_projection
 from src.plugin_api.runtime_client import PluginRuntimeUnavailable
 
-from .base import DeliveryResult, notification_message
+from .base import DeliveryResult, NotificationProvider, ProviderDestination, notification_message
 from .registry import get_notification_providers
 
 logger = logging.getLogger(__name__)
@@ -127,16 +128,27 @@ async def _finish(
     await db.commit()
 
 
-async def _dispatch(db: AsyncSession, delivery_id: UUID, token: UUID) -> bool:
-    delivery = await db.get(NotificationDelivery, delivery_id, populate_existing=True)
-    if delivery is None or delivery.status != "processing" or delivery.claim_token != token:
-        return False
+@dataclass(frozen=True)
+class _DeliveryWork:
+    notification: Notification
+    endpoint: NotificationDestination
+    provider: NotificationProvider
+    destination: ProviderDestination
+
+
+# Each denial records a distinct lifecycle reason; explicit exits keep the
+# security gates reviewable without nesting network and database operations.
+# pylint: disable-next=too-many-return-statements
+async def _resolve_work(
+    db: AsyncSession, delivery: NotificationDelivery, token: UUID
+) -> _DeliveryWork | None:
+    delivery_id = delivery.id
     notification = await db.get(Notification, delivery.notification_id, populate_existing=True)
     endpoint = await db.get(NotificationDestination, delivery.destination_id)
     now = int(time.time())
     if notification is None or notification.deleted_at is not None:
         await _finish(db, delivery_id, token, "cancelled")
-        return False
+        return None
     prefs = await load_preferences(db, notification.user_id)
     projection = select_projection(notification, endpoint, prefs) if endpoint else None
     if (
@@ -146,20 +158,20 @@ async def _dispatch(db: AsyncSession, delivery_id: UUID, token: UUID) -> bool:
         or (notification.expires_at is not None and notification.expires_at <= now)
     ):
         await _finish(db, delivery_id, token, "suppressed", "routing_changed")
-        return False
+        return None
     providers = await get_notification_providers(db)
     provider = providers.get(delivery.provider_id)
     if provider is None:
         await _finish(db, delivery_id, token, "suppressed", "provider_revoked")
-        return False
+        return None
     registration = getattr(provider, "registration", None)
     if registration is not None and registration.installation_id != endpoint.installation_id:
         await _finish(db, delivery_id, token, "suppressed", "installation_changed")
-        return False
+        return None
     user = await db.get(User, notification.user_id)
     if user is None or not user.is_active:
         await _finish(db, delivery_id, token, "suppressed", "user_inactive")
-        return False
+        return None
     setting = await db.scalar(
         select(NotificationProviderSetting).where(
             NotificationProviderSetting.user_id == user.id,
@@ -172,13 +184,24 @@ async def _dispatch(db: AsyncSession, delivery_id: UUID, token: UUID) -> bool:
         )
     except (PluginRuntimeUnavailable, TimeoutError):
         await _finish(db, delivery_id, token, "retry_wait", "provider_unavailable")
-        return False
+        return None
     if destination is None:
         await _finish(db, delivery_id, token, "suppressed", "authorization_unavailable")
-        return False
+        return None
     if delivery.attempts >= MAX_ATTEMPTS:
         await _finish(db, delivery_id, token, "failed_permanent", "attempts_exhausted")
+        return None
+    return _DeliveryWork(notification, endpoint, provider, destination)
+
+
+async def _dispatch(db: AsyncSession, delivery_id: UUID, token: UUID) -> bool:
+    delivery = await db.get(NotificationDelivery, delivery_id, populate_existing=True)
+    if delivery is None or delivery.status != "processing" or delivery.claim_token != token:
         return False
+    work = await _resolve_work(db, delivery, token)
+    if work is None:
+        return False
+    notification, endpoint = work.notification, work.endpoint
     # Claim revalidation prevents a delete/revocation that happened during lookup
     # from releasing new transport work. Deletion after this commit is best effort.
     await db.refresh(delivery)
@@ -199,6 +222,7 @@ async def _dispatch(db: AsyncSession, delivery_id: UUID, token: UUID) -> bool:
         await _finish(db, delivery_id, token, "suppressed", "routing_changed")
         return False
     delivery.attempts += 1
+    now = int(time.time())
     delivery.attempted_at = now
     attempt = NotificationDeliveryAttempt(
         delivery_id=delivery.id, number=delivery.attempts, claim_token=token, started_at=now
@@ -211,9 +235,10 @@ async def _dispatch(db: AsyncSession, delivery_id: UUID, token: UUID) -> bool:
     await db.commit()
     try:
         result = await asyncio.wait_for(
-            provider.deliver(db, destination, message), TRANSPORT_TIMEOUT_SECONDS
+            work.provider.deliver(db, work.destination, message), TRANSPORT_TIMEOUT_SECONDS
         )
-    except Exception:  # transport failures are isolated and never expose endpoint secrets
+    # Providers are third-party failure boundaries. Never expose endpoint secrets.
+    except Exception:  # pylint: disable=broad-exception-caught
         result = DeliveryResult(success=False, retryable=True, error="provider_error")
     attempt.finished_at = int(time.time())
     attempt.outcome = "sent" if result.success else "failed"
@@ -259,7 +284,8 @@ async def process_pending_deliveries(db: AsyncSession, limit: int = 5) -> int:
             break
         try:
             delivered += int(await _dispatch(db, *claim))
-        except Exception:
+        # One adapter failure must not stop deliveries to other eligible endpoints.
+        except Exception:  # pylint: disable=broad-exception-caught
             await db.rollback()
             logger.warning(
                 "Notification dispatch failed: delivery_id=%s reason=dispatch_error", claim[0]
