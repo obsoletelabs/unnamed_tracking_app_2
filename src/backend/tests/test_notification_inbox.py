@@ -168,3 +168,77 @@ async def test_expiry_does_not_reappear_or_cross_account(inbox_owner, monkeypatc
         assert await db.get(Notification, expired.id, populate_existing=True) is None
         assert await db.get(Notification, other.id, populate_existing=True) is not None
         assert (await query_inbox(db, owner, InboxQuery()))[1]["total"] == 0
+
+
+async def test_routing_metadata_is_owner_scoped_secret_free_and_policy_checked(inbox_owner):
+    from src.core.auth import get_current_user
+    from src.database.models.notification_destination import NotificationDestination
+    from src.features.notification_policy import INBOX_PROVIDER
+    from src.main import app
+
+    owner, stranger = inbox_owner
+    async with SessionLocal() as db:
+        target = NotificationDestination(
+            user_id=owner,
+            provider_id="retired.provider",
+            endpoint_key="private-address",
+            kind="legacy_webhook",
+            channel_context="external",
+            privacy=0,
+            active=False,
+            configuration_ref="secret-credential-reference",
+            installation_id=uuid4(),
+        )
+        hidden = NotificationDestination(
+            user_id=stranger,
+            provider_id="hidden.provider",
+            endpoint_key="stranger-address",
+            kind="email",
+            channel_context="external",
+            privacy=1,
+        )
+        db.add_all([target, hidden])
+        await db.commit()
+        user = await db.get(User, owner)
+        target_id, hidden_id = str(target.id), str(hidden.id)
+    app.dependency_overrides[get_current_user] = lambda: user
+    try:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.get("/api/settings/notification-providers/destinations")
+            assert response.status_code == 200
+            metadata = response.json()
+            destinations = {row["id"]: row for row in metadata["destinations"]}
+            assert hidden_id not in destinations
+            assert "hidden.provider" not in response.text
+            assert "secret-credential-reference" not in response.text
+            assert (
+                "private-address" not in response.text and "stranger-address" not in response.text
+            )
+            retired = destinations[target_id]
+            assert not retired["active"] and not retired["available"]
+            assert retired["trust"] == "PUBLIC"
+            assert "security.session.anomaly" not in retired["eligible_types"]
+            assert "game.sale.started" in retired["eligible_types"]
+            inbox = next(
+                row for row in destinations.values() if row["provider_id"] == INBOX_PROVIDER
+            )
+            assert (
+                inbox["trust"] == "SECURE" and "security.session.anomaly" in inbox["eligible_types"]
+            )
+            # Owner preference changes cannot affect a stranger's real destination.
+            response = await client.patch(
+                "/api/preferences",
+                json={
+                    "notification_routes": {
+                        "game.sale.started": {hidden_id: {"enabled": False, "urgency": "critical"}}
+                    }
+                },
+            )
+            assert response.status_code == 200
+        async with SessionLocal() as db:
+            assert (await load_preferences(db, stranger))["notification_routes"] == {}
+            assert (await db.get(NotificationDestination, hidden_id)).enabled
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)

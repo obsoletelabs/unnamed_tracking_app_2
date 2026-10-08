@@ -45,6 +45,17 @@ def preference_enabled(notification: Notification, preferences: dict[str, Any]) 
     return preferences.get("notification_types", {}).get(notification.event_type, True)
 
 
+def route_choice(
+    event_type: str, destination_id: str, preferences: dict[str, Any]
+) -> dict[str, Any]:
+    """Resolve a personal choice, defaulting to normal; urgency grants no trust."""
+    return (
+        preferences.get("notification_routes", {})
+        .get(event_type, {})
+        .get(destination_id, {"enabled": True, "urgency": "normal"})
+    )
+
+
 # Separate early denials keep trust, preferences and disclosure decisions explicit.
 # pylint: disable-next=too-many-return-statements
 def select_projection(
@@ -62,6 +73,8 @@ def select_projection(
     ):
         return None
     if preferences.get("notification_destinations", {}).get(str(destination.id)) is False:
+        return None
+    if not route_choice(notification.event_type, str(destination.id), preferences)["enabled"]:
         return None
     if destination.provider_id in {
         entry.strip() for entry in settings.NOTIFICATION_BLOCKED_PROVIDERS.split(",")
