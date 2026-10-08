@@ -28,7 +28,7 @@ it("exposes only public cosmetic tokens and releases its observer", () => {
   );
   const initial = readPluginAppearance();
   expect(initial).toMatchObject({
-    api_contract_version: "1.1.0",
+    api_contract_version: "1.1.2",
     mode: "dark",
     high_contrast: true,
     tokens: { "--ui-bg": "#123456" },
