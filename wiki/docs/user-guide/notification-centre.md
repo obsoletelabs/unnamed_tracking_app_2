@@ -14,6 +14,16 @@ Temporary plugin reminders are listed separately. They are plugin shortcuts, not
 
 Open **Settings → Notifications** or use the centre's **Notification settings** link. Existing media controls remain available, alongside switches for game releases, game sales, price targets and unusual sign-in alerts. Game sales and targets require a connected producer that supplies live price observations; a game's recorded purchase price is not a feed.
 
+Each notification type has an on/off switch and a **Providers** expansion. Inside it, choose individual destinations and **Normal** or **Critical** delivery urgency. Turning off a type keeps these choices. A destination that cannot satisfy the type's trust or server policy is visibly unavailable. Sign-in alerts still require SECURE destinations when delivered as Normal.
+
+Critical is a request for higher transport urgency, such as sound or Do Not Disturb override where supported. It does not change notification sensitivity, verification or permissions. The existing inbox and legacy webhook adapters support normal delivery only; a Critical choice is saved for a compatible provider, with that limitation shown beside the control.
+
+**Your providers** controls external provider enrollment for your account and whether each existing destination is used. Inactive destinations and routing choices remain visible after removal; reinstall does not reclaim them automatically. The legacy webhook uses administrator configuration and generic public release facts. This section does not expose its credentials or pretend that it is a personal, verified endpoint. Personal endpoint enrollment and richer webhook consent follow in the provider work.
+
+![Per-type provider routing and urgency](../assets/notification-centre/settings-routing-dark.png)
+
+![Account provider controls](../assets/notification-centre/settings-providers-light.png)
+
 Choose **Server default** or your own inbox duration, including **6 months**, **1 year** and unlimited history where allowed. The page shows the effective duration and any server maximum. A previous longer choice stays saved even when an administrator caps it; the cap is visible. New accounts inherit the server default. Existing saved choices remain overrides.
 
 Administrators set `NOTIFICATION_RETENTION_DEFAULT_DAYS` (default 30) and `NOTIFICATION_RETENTION_MAXIMUM_DAYS` (default 0, no maximum) through deployment configuration. Zero for the default means unlimited history. A finite maximum also caps an unlimited choice. Inbox expiry does not cancel external work: content required by pending deliveries remains until those deliveries finish or expire, while it is hidden from the inbox. Explicit deletion has stronger cancellation behavior.

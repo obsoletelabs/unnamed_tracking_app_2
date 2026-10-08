@@ -5,6 +5,7 @@
 import { ref, computed, onMounted } from "vue";
 import SegmentedControl from "./SegmentedControl.vue";
 import ToggleButton from "./ToggleButton.vue";
+import NotificationRoutingSection from "./NotificationRoutingSection.vue";
 import {
   DEFAULT_PREFERENCES,
   fetchPreferences,
@@ -110,28 +111,6 @@ const retentionOptions = computed(() => [
         Number(option.value) === prefs.value.notification_retention_days),
   ),
 ]);
-const GAME_NOTIFICATION_ROWS = [
-  {
-    key: "notify_game_released",
-    label: "Game releases",
-    hint: "known releases for wishlist, backlog and on-hold games",
-  },
-  {
-    key: "notify_game_sale",
-    label: "Game sales",
-    hint: "sale observations from connected integrations",
-  },
-  {
-    key: "notify_game_price_hit",
-    label: "Price targets",
-    hint: "a live game price crosses your chosen target",
-  },
-  {
-    key: "notify_session_anomaly",
-    label: "Security alerts",
-    hint: "unusual sign-in locations, delivered only to eligible secure destinations",
-  },
-] as const;
 function chooseRetention(value: string) {
   void change(
     value === "inherit"
@@ -292,17 +271,11 @@ const props = withDefaults(
         Dismiss hides a notice from the inbox. Delete also cancels unsent
         deliveries. Browser notifications are separate from this saved history.
       </p>
-      <h4 class="scope-title">Games and account</h4>
-      <ToggleButton
-        v-for="row in GAME_NOTIFICATION_ROWS"
-        :key="row.key"
-        :model-value="prefs[row.key]"
-        :label="row.label"
-        :disabled="!loaded"
-        @update:model-value="change({ [row.key]: $event })"
-        ><strong>{{ row.label }}</strong
-        >: {{ row.hint }}</ToggleButton
-      >
+      <NotificationRoutingSection
+        :prefs="prefs"
+        :loaded="loaded"
+        @change="change"
+      />
       <h4 class="scope-title">Notify me about titles that are</h4>
       <ToggleButton
         v-for="row in NOTIFY_STATUS_ROWS"
@@ -344,43 +317,6 @@ const props = withDefaults(
         notices are about titles you finished, so they follow the kinds above
         and their own switches below, not this list.
       </p>
-      <h4 class="scope-title">What to notify me about</h4>
-      <ToggleButton
-        :model-value="prefs.notify_episode_aired"
-        label="Episode aired"
-        :disabled="!loaded"
-        @update:model-value="change({ notify_episode_aired: $event })"
-      >
-        <strong>Episode aired</strong>: a new episode of something you are
-        watching, planning to watch or have on hold
-      </ToggleButton>
-      <ToggleButton
-        :model-value="prefs.notify_season_started"
-        label="Season started airing"
-        :disabled="!loaded"
-        @update:model-value="change({ notify_season_started: $event })"
-      >
-        <strong>Season started airing</strong>: the first episode of a season
-        aired
-      </ToggleButton>
-      <ToggleButton
-        :model-value="prefs.notify_sequel_announced"
-        label="New season listed"
-        :disabled="!loaded"
-        @update:model-value="change({ notify_sequel_announced: $event })"
-      >
-        <strong>New season listed</strong>: a sequel appears for an anime you
-        completed
-      </ToggleButton>
-      <ToggleButton
-        :model-value="prefs.notify_movie_released"
-        label="Movie released"
-        :disabled="!loaded"
-        @update:model-value="change({ notify_movie_released: $event })"
-      >
-        <strong>Movie released</strong>: a movie you were waiting on has come
-        out
-      </ToggleButton>
     </template>
   </section>
 </template>

@@ -233,3 +233,70 @@ export async function dismissMediaNotification(id: string): Promise<void> {
     "dismiss notification",
   );
 }
+
+export interface NotificationRoutingType {
+  event_type: string;
+  preference_key: string;
+  label: string;
+  description: string;
+  required_trust: "PRIVATE" | "SECURE";
+}
+
+export interface NotificationRoutingProvider {
+  id: string;
+  name: string;
+  enabled: boolean;
+  available: boolean;
+  configuration_scope: "internal" | "server";
+  critical_supported: boolean;
+}
+
+export interface NotificationRoutingDestination {
+  id: string;
+  provider_id: string;
+  provider_name: string;
+  kind: string;
+  context: "internal" | "external";
+  trust: "PUBLIC" | "PRIVATE" | "SECURE";
+  active: boolean;
+  enabled: boolean;
+  available: boolean;
+  provider_enabled: boolean;
+  critical_supported: boolean;
+  eligible_types: string[];
+  shared_configuration: boolean;
+}
+
+export interface NotificationRoutingSettings {
+  types: NotificationRoutingType[];
+  providers: NotificationRoutingProvider[];
+  destinations: NotificationRoutingDestination[];
+}
+
+export async function fetchNotificationRouting(): Promise<NotificationRoutingSettings> {
+  const response = await fetch(
+    "/api/settings/notification-providers/destinations",
+    {
+      credentials: "include",
+    },
+  );
+  if (!response.ok)
+    throw new Error("Failed to load notification destinations.");
+  return response.json();
+}
+
+export async function setNotificationProviderEnabled(
+  providerId: string,
+  enabled: boolean,
+): Promise<void> {
+  const response = await fetch(
+    `/api/settings/notification-providers/${encodeURIComponent(providerId)}`,
+    {
+      method: "PUT",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    },
+  );
+  if (!response.ok) throw new Error("Failed to update notification provider.");
+}

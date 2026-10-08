@@ -33,6 +33,12 @@ export interface Preferences {
   notify_game_sale: boolean;
   notify_game_price_hit: boolean;
   notify_session_anomaly: boolean;
+  notification_types: Record<string, boolean>;
+  notification_destinations: Record<string, boolean>;
+  notification_routes: Record<
+    string,
+    Record<string, { enabled: boolean; urgency: "normal" | "critical" }>
+  >;
   notify_statuses: ("watching" | "plan" | "hold")[];
   calendar_airing_statuses: ("watching" | "plan" | "hold")[];
   notify_media_types: ("anime" | "tv" | "movie")[];
@@ -84,6 +90,9 @@ export const DEFAULT_PREFERENCES: Preferences = {
   notify_game_sale: true,
   notify_game_price_hit: true,
   notify_session_anomaly: true,
+  notification_types: {},
+  notification_destinations: {},
+  notification_routes: {},
   notify_statuses: ["watching", "plan", "hold"],
   notify_media_types: ["anime", "tv", "movie"],
   notification_retention_days: 30,
