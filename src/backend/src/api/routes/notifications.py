@@ -2,7 +2,7 @@
 
 import time
 from collections.abc import Sequence
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -19,6 +19,7 @@ from src.database.models.notification import Notification
 from src.database.models.user import User
 from src.database.session import get_db
 from src.features.notification_controller import emit_legacy_rows
+from src.features.notification_inbox import InboxQuery, query_inbox, retention_policy
 from src.features.notification_lifecycle import delete_notice, dismiss, visible_inbox
 from src.features.notifications import generate_for_user
 
@@ -44,6 +45,14 @@ def _read(n: Notification) -> dict:
         else None,
         "event_at": n.event_at,
         "read": n.read_at is not None,
+        "read_at": n.read_at,
+        "created_at": n.created_at,
+        "event_type": n.event_type,
+        "source": n.source,
+        "severity": n.severity,
+        "purpose": n.purpose,
+        "required_trust": n.required_trust,
+        "group_key": n.group_key,
     }
 
 
@@ -83,31 +92,24 @@ async def unread_count(
 
 @router.get("")
 async def list_notifications(
-    limit: int = Query(default=50, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
-    unread_only: bool = Query(default=False),
+    filters: Annotated[InboxQuery, Query()],
     db: AsyncSession = _NOTIFICATION_DB,
     current_user: User = _NOTIFICATION_USER,
 ) -> dict:
     await generate_for_user(db, current_user.id)
-    stmt = select(Notification).where(visible_inbox(current_user.id))
-    if unread_only:
-        stmt = stmt.where(Notification.read_at.is_(None))
-    rows = (
-        (await db.execute(stmt.order_by(Notification.event_at.desc()).limit(limit).offset(offset)))
-        .scalars()
-        .all()
-    )
-    unread = await db.scalar(
-        select(sql_count())
-        .select_from(Notification)
-        .where(visible_inbox(current_user.id), Notification.read_at.is_(None))
-    )
+    rows, summary = await query_inbox(db, current_user.id, filters)
     titles = await _display_titles(db, current_user.id, rows)
     return {
         "items": [{**_read(n), "title": titles.get(n.id, n.title)} for n in rows],
-        "unread": unread or 0,
+        **summary,
     }
+
+
+@router.get("/policy")
+async def notification_inbox_policy(
+    db: AsyncSession = _NOTIFICATION_DB, current_user: User = _NOTIFICATION_USER
+) -> dict:
+    return retention_policy(await load_preferences(db, current_user.id))
 
 
 @router.post("/regenerate")

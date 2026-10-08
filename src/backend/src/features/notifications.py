@@ -15,7 +15,7 @@ from datetime import date, datetime, timezone
 from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.preferences import load_preferences
@@ -26,6 +26,7 @@ from src.database.models.notification_delivery import NotificationDelivery
 from src.database.models.tv_show import TVEpisode, TVSeason, TVShow, TVShowStatus
 from src.features.game_notifications import generate_game_releases
 from src.features.notification_controller import emit_legacy_rows
+from src.features.notification_inbox import retention_policy
 
 # How far back "just aired" reaches. A week covers someone away for a few
 # days without turning first use into a flood of old episodes.
@@ -223,12 +224,16 @@ async def generate_for_user(db: AsyncSession, user_id: UUID) -> int:
     since = now - WINDOW_SECONDS
     rows: list[dict[str, Any]] = []
 
-    # a notification older than the chosen retention is cleared (0 = keep).
-    # Only ones older than the "just aired" window are removed, so a cleared
-    # one can never be generated again and come straight back.
-    retention_days = int(prefs["notification_retention_days"])
+    # Inbox expiry does not cancel external sends. Keep transport content until
+    # queued work finishes; minimal receipts prevent deleted history reappearing.
+    retention_days = retention_policy(prefs)["effective_days"]
     if retention_days:
-        cutoff = min(now - retention_days * 86400, since)
+        cutoff = now - retention_days * 86400
+        await db.execute(
+            update(Notification)
+            .where(Notification.user_id == user_id, Notification.event_at < cutoff)
+            .values(inbox_visible=False)
+        )
         await db.execute(
             delete(Notification).where(
                 Notification.user_id == user_id,

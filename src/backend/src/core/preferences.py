@@ -50,6 +50,7 @@ DEFAULTS: dict[str, Any] = {
     "notify_statuses": ["watching", "plan", "hold"],
     "notify_media_types": ["anime", "tv", "movie"],
     "notification_retention_days": 30,
+    "notification_retention_inherit": True,
     "library_default_layout": "list",
     "title_language": "english",
     "lists_default_sort": "custom",
@@ -270,17 +271,23 @@ _VALUE_VALIDATORS: dict[str, Callable[[Any], Any]] = {
 
 async def load_preferences(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
     row = await db.scalar(select(UserPreferences).where(UserPreferences.user_id == user_id))
-    return {**DEFAULTS, **(row.data if row else {})}
+    data = row.data if row else {}
+    # Existing stored choices remain overrides; new accounts inherit the server default.
+    if "notification_retention_days" in data and "notification_retention_inherit" not in data:
+        data = {**data, "notification_retention_inherit": False}
+    return {**DEFAULTS, **data}
 
 
 async def save_preferences(
     db: AsyncSession, user_id: UUID, changes: dict[str, Any]
 ) -> dict[str, Any]:
     clean = {k: validate_preference(k, v) for k, v in changes.items()}
+    if "notification_retention_days" in clean:
+        clean.setdefault("notification_retention_inherit", False)
     row = await db.scalar(select(UserPreferences).where(UserPreferences.user_id == user_id))
     if row is None:
         row = UserPreferences(user_id=user_id, data={})
         db.add(row)
     row.data = {**row.data, **clean}
     await db.commit()
-    return {**DEFAULTS, **row.data}
+    return await load_preferences(db, user_id)

@@ -126,6 +126,22 @@ CONFIG_SECTIONS: tuple[ConfigSectionSpec, ...] = (
 # through resolution, validation, persistence, and the generated UI.
 CONFIG_REGISTRY: tuple[ConfigSpec, ...] = (
     ConfigSpec(
+        "NOTIFICATION_RETENTION_DEFAULT_DAYS",
+        source=ConfigSource.ENV,
+        visible=False,
+        input_type="integer",
+        default=30,
+        description="Default inbox history in days; 0 keeps history indefinitely.",
+    ),
+    ConfigSpec(
+        "NOTIFICATION_RETENTION_MAXIMUM_DAYS",
+        source=ConfigSource.ENV,
+        visible=False,
+        input_type="integer",
+        default=0,
+        description="Maximum inbox history in days; 0 imposes no maximum.",
+    ),
+    ConfigSpec(
         "NOTIFICATION_BLOCKED_PROVIDERS",
         source=ConfigSource.ENV,
         visible=False,
