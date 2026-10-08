@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from "vue";
 import ToggleButton from "./ToggleButton.vue";
+import EmailDestinationsSection from "./EmailDestinationsSection.vue";
 import {
   fetchNotificationRouting,
   setNotificationProviderEnabled,
@@ -108,6 +109,12 @@ function availability(destination: NotificationRoutingDestination) {
     ? "Public release facts only"
     : "Routing enabled";
 }
+function destinationName(destination: NotificationRoutingDestination) {
+  const name = destination.label
+    ? `${destination.provider_name} · ${destination.label}`
+    : destination.provider_name;
+  return destination.active ? name : `${name} · Inactive`;
+}
 </script>
 
 <template>
@@ -165,8 +172,8 @@ function availability(destination: NotificationRoutingDestination) {
                   destination.eligible_types.includes(type.event_type) &&
                   choice(type, destination).enabled
                 "
-                :label="`${type.label} / ${destination.provider_name}`"
-                :aria-label="`${type.label} / ${destination.provider_name}`"
+                :label="`${type.label} / ${destinationName(destination)}`"
+                :aria-label="`${type.label} / ${destinationName(destination)}`"
                 :disabled="
                   !loaded ||
                   !destination.eligible_types.includes(type.event_type) ||
@@ -177,7 +184,7 @@ function availability(destination: NotificationRoutingDestination) {
                   setRoute(type, destination, { enabled: $event })
                 "
               >
-                <strong>{{ destination.provider_name }}</strong>
+                <strong>{{ destinationName(destination) }}</strong>
               </ToggleButton>
               <p class="hint">
                 {{ destination.trust }} ·
@@ -195,7 +202,7 @@ function availability(destination: NotificationRoutingDestination) {
             <label class="urgency">
               <span>Delivery urgency</span>
               <select
-                :aria-label="`${type.label} / ${destination.provider_name} urgency`"
+                :aria-label="`${type.label} / ${destinationName(destination)} urgency`"
                 :value="choice(type, destination).urgency"
                 :disabled="
                   !loaded ||
@@ -217,6 +224,9 @@ function availability(destination: NotificationRoutingDestination) {
                 >Normal delivery only today; a Critical request stays
                 saved.</span
               >
+              <span v-else class="hint">{{
+                destination.critical_description
+              }}</span>
             </label>
           </div>
           <p
@@ -226,7 +236,7 @@ function availability(destination: NotificationRoutingDestination) {
             :key="provider.id"
             class="hint"
           >
-            {{ provider.name }}: enable it under Your providers to create a
+            {{ provider.name }}: configure it under Your providers to create a
             destination.
           </p>
           <p class="hint">
@@ -270,14 +280,34 @@ function availability(destination: NotificationRoutingDestination) {
             <p class="hint">
               {{
                 provider.available
-                  ? "Uses administrator-configured delivery. Personal endpoint setup will be added with destination enrollment."
+                  ? provider.id === "core.smtp"
+                    ? "Uses server SMTP settings and your own addresses below."
+                    : "Uses administrator-configured delivery. Personal endpoint setup will be added with destination enrollment."
                   : "Provider unavailable. Your choices are retained; reinstall does not reactivate old destinations."
               }}
             </p>
           </template>
+          <p
+            v-if="provider.transport_warning"
+            class="restriction"
+            role="status"
+          >
+            {{ provider.transport_warning }}
+          </p>
+          <EmailDestinationsSection
+            v-if="provider.id === 'core.smtp'"
+            :provider="provider"
+            :destinations="
+              routing.destinations.filter((d) => d.provider_id === provider.id)
+            "
+            :prefs="prefs"
+            :loaded="loaded"
+            @changed="reload"
+            @change="emit('change', $event)"
+          />
           <div
             v-for="destination in routing.destinations.filter(
-              (d) => d.provider_id === provider.id,
+              (d) => d.provider_id === provider.id && d.kind !== 'email',
             )"
             :key="destination.id"
             class="personal-destination"

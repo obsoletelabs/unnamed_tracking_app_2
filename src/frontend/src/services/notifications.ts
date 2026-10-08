@@ -2,6 +2,8 @@
 // airing, new season listed for something you finished, movie released.
 // Exact release discovery also runs in the server's scheduled jobs loop.
 
+import { failedRequest } from "./apiError";
+
 export type MediaNotificationKind =
   "episode_aired" | "season_started" | "sequel_announced" | "movie_released";
 
@@ -249,6 +251,9 @@ export interface NotificationRoutingProvider {
   available: boolean;
   configuration_scope: "internal" | "server";
   critical_supported: boolean;
+  critical_description?: string | null;
+  transport_warning?: string | null;
+  secure_transport?: boolean;
 }
 
 export interface NotificationRoutingDestination {
@@ -265,6 +270,12 @@ export interface NotificationRoutingDestination {
   critical_supported: boolean;
   eligible_types: string[];
   shared_configuration: boolean;
+  critical_description?: string | null;
+  label?: string | null;
+  masked_address?: string | null;
+  recovery_allowed?: boolean;
+  revision?: number;
+  verification_available?: boolean;
 }
 
 export interface NotificationRoutingSettings {
@@ -299,4 +310,70 @@ export async function setNotificationProviderEnabled(
     },
   );
   if (!response.ok) throw new Error("Failed to update notification provider.");
+}
+
+async function emailRequest<T>(
+  path: string,
+  method: string,
+  payload?: object,
+): Promise<T> {
+  const response = await fetch(
+    `/api/settings/notification-providers/email-destinations${path}`,
+    {
+      method,
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      ...(payload ? { body: JSON.stringify(payload) } : {}),
+    },
+  );
+  if (!response.ok) throw await failedRequest(response);
+  return response.json();
+}
+
+export function createEmailDestination(address: string, label: string) {
+  return emailRequest<{ id: string }>("", "POST", { address, label });
+}
+export function updateEmailDestination(
+  id: string,
+  changes: {
+    address?: string;
+    label?: string;
+    enabled?: boolean;
+    recovery_allowed?: boolean;
+  },
+) {
+  return emailRequest<{ updated: boolean }>(
+    `/${encodeURIComponent(id)}`,
+    "PATCH",
+    changes,
+  );
+}
+export function removeEmailDestination(id: string) {
+  return emailRequest<{ removed: boolean }>(
+    `/${encodeURIComponent(id)}`,
+    "DELETE",
+  );
+}
+export function requestEmailVerification(id: string) {
+  return emailRequest<{ challenge_id: string; expires_in: number }>(
+    `/${encodeURIComponent(id)}/verification`,
+    "POST",
+  );
+}
+export function confirmEmailVerification(
+  id: string,
+  challengeId: string,
+  code: string,
+) {
+  return emailRequest<{ verified: boolean }>(
+    `/${encodeURIComponent(id)}/verification/confirm`,
+    "POST",
+    { challenge_id: challengeId, code },
+  );
+}
+export function revokeEmailVerification(id: string) {
+  return emailRequest<{ revoked: boolean }>(
+    `/${encodeURIComponent(id)}/verification/revoke`,
+    "POST",
+  );
 }

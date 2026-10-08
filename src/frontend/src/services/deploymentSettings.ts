@@ -19,7 +19,12 @@ export interface OidcProviderSetting {
   client_secret_configured: boolean;
 }
 export interface DeploymentSettings {
-  providers: Record<string, string | boolean | null>;
+  smtp?: {
+    configured: boolean;
+    tls_mode: "starttls" | "ssl" | "none";
+    secure_transport: boolean;
+  };
+  providers: Record<string, string | number | boolean | null>;
   provider_locks: Record<string, boolean>;
   real_ip: {
     header: string;
@@ -55,7 +60,7 @@ export async function fetchDeploymentSettings(): Promise<DeploymentSettings> {
   return await response.json();
 }
 export async function updateDeploymentSettings(
-  payload: Record<string, string | boolean | null>,
+  payload: Record<string, string | number | boolean | null>,
 ): Promise<DeploymentSettings> {
   const response = await fetch("/api/settings/deployment", {
     method: "PUT",

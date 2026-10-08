@@ -7,6 +7,7 @@ import {
   updateDeploymentSettings,
 } from "../../services/deploymentSettings";
 import TrustedProxyControls from "./TrustedProxyControls.vue";
+import SmtpSettingsSection from "./SmtpSettingsSection.vue";
 
 const fields = [
   ["retroachievements_api_key", "RetroAchievements API key"],
@@ -95,6 +96,7 @@ async function save() {
     </p>
     <div v-if="loading">Loading…</div>
     <template v-else>
+      <SmtpSettingsSection />
       <MetadataProviderSettings initial-scope="system" />
       <h3>Account integrations</h3>
       <p class="hint">
