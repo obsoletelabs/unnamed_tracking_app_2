@@ -17,8 +17,8 @@ class NotificationDelivery(Base):
     __table_args__ = (
         UniqueConstraint(
             "notification_id",
-            "provider_id",
-            name="uq_notification_delivery_notification_provider",
+            "destination_id",
+            name="uq_notification_delivery_notification_destination",
         ),
         Index("ix_notification_delivery_pending", "status", "next_attempt_at"),
     )
@@ -30,7 +30,14 @@ class NotificationDelivery(Base):
         nullable=False,
     )
     provider_id: Mapped[str] = mapped_column(String(128), nullable=False)
-    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    destination_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("notification_destinations.id"), nullable=True
+    )
+    destination_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    projection: Mapped[str] = mapped_column(String(32), nullable=False, default="canonical")
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    claim_token: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    lease_until: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     attempted_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)

@@ -6,7 +6,16 @@ deduplicated by `dedupe_key` so re-checking never notifies twice."""
 import time
 from uuid import UUID, uuid4
 
-from sqlalchemy import BigInteger, ForeignKey, Index, String, Text, UniqueConstraint
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -25,8 +34,8 @@ class Notification(Base):
         PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     # "episode_aired" | "season_started" | "sequel_announced" | "movie_released"
-    kind: Mapped[str] = mapped_column(String(30), nullable=False)
-    media_type: Mapped[str] = mapped_column(String(10), nullable=False)
+    kind: Mapped[str] = mapped_column(String(128), nullable=False)
+    media_type: Mapped[str] = mapped_column(String(32), nullable=False)
     media_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
@@ -35,6 +44,19 @@ class Notification(Base):
     event_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
     dedupe_key: Mapped[str] = mapped_column(String(200), nullable=False)
     read_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    event_type: Mapped[str] = mapped_column(String(128), nullable=False, default="legacy")
+    source: Mapped[str] = mapped_column(String(128), nullable=False, default="host")
+    required_trust: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    purpose: Mapped[str] = mapped_column(String(32), nullable=False, default="standard")
+    severity: Mapped[str] = mapped_column(String(16), nullable=False, default="info")
+    group_key: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    inbox_visible: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    dismissed_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    deleted_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    expires_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # Approved public facts are rendered by the core, never by redacting in a plugin.
+    public_title: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    public_body: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[int] = mapped_column(
         BigInteger, nullable=False, default=lambda: int(time.time())
     )
