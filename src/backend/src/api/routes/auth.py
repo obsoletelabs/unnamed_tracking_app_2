@@ -18,7 +18,6 @@ from src.core.auth import (
     get_current_admin,
     get_current_user,
     hash_password,
-    hash_token,
     password_policy,
     revoke_session,
     session_cookie_name,
@@ -29,9 +28,9 @@ from src.core.auth import (
 from src.core.config import settings
 from src.core.crypto import encrypt_secret
 from src.core.session_manager import create_session
+from src.database.models.app_integration_settings import AppIntegrationSettings
 from src.database.models.auth import UserApiKey
 from src.database.models.user import User
-from src.database.models.app_integration_settings import AppIntegrationSettings
 from src.database.session import get_db
 from src.features.metadata.games.psn import PSNClient, PSNError
 
@@ -83,7 +82,6 @@ class UserProfileUpdateRequest(BaseModel):
         return validate_password(value) if value is not None else None
 
 
-
 @router.get("/password-policy")
 async def get_password_policy() -> dict[str, int | bool]:
     """Return the effective local-password policy without exposing secrets."""
@@ -108,13 +106,16 @@ async def update_password_policy(
     from src.core.env_handler import EnvConfigHandler
 
     handler = EnvConfigHandler()
-    if any(handler.has(name) for name in (
-        "PASSWORD_MIN_LENGTH",
-        "PASSWORD_REQUIRE_UPPERCASE",
-        "PASSWORD_REQUIRE_LOWERCASE",
-        "PASSWORD_REQUIRE_DIGIT",
-        "PASSWORD_REQUIRE_SYMBOL",
-    )):
+    if any(
+        handler.has(name)
+        for name in (
+            "PASSWORD_MIN_LENGTH",
+            "PASSWORD_REQUIRE_UPPERCASE",
+            "PASSWORD_REQUIRE_LOWERCASE",
+            "PASSWORD_REQUIRE_DIGIT",
+            "PASSWORD_REQUIRE_SYMBOL",
+        )
+    ):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Password policy is managed by the deployment environment and cannot be changed here.",

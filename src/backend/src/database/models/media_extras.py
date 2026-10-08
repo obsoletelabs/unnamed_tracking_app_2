@@ -15,7 +15,6 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     Date,
-    Enum as SAEnum,
     ForeignKey,
     Index,
     Integer,
@@ -23,7 +22,11 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
+from sqlalchemy import (
+    Enum as SAEnum,
+)
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.database.base import Base
