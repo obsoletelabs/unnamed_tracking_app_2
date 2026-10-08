@@ -40,6 +40,11 @@ DEFAULTS: dict[str, Any] = {
     "notify_sequel_announced": True,
     "notify_movie_released": True,
     "notify_session_anomaly": True,
+    "notify_game_released": True,
+    "notify_game_sale": True,
+    "notify_game_price_hit": True,
+    "notification_types": {},
+    "notification_destinations": {},
     "notify_statuses": ["watching", "plan", "hold"],
     "notify_media_types": ["anime", "tv", "movie"],
     "notification_retention_days": 30,
@@ -66,7 +71,7 @@ _CHOICES: dict[str, tuple[Any, ...]] = {
     "ui_style": ("archive-pocket",),
     "calendar_default_view": ("month", "week", "agenda"),
     "calendar_week_start": (0, 1),
-    "notification_retention_days": (0, 7, 14, 30, 90),
+    "notification_retention_days": (0, 7, 14, 30, 90, 180, 365),
     "library_default_layout": ("list", "shelf", "board"),
     "lists_default_sort": ("custom", "name", "count", "recent"),
     "title_language": ("english", "romaji", "native"),
@@ -114,6 +119,13 @@ def validate_preference(key: str, value: Any) -> Any:
     if key not in DEFAULTS:
         raise ValueError(f"Unknown preference {key!r}")
     default = DEFAULTS[key]
+    if key in {"notification_types", "notification_destinations"}:
+        if not isinstance(value, dict) or len(value) > 256 or any(
+            not isinstance(name, str) or not re.fullmatch(r"[a-zA-Z0-9._:-]{1,200}", name)
+            or not isinstance(enabled, bool) for name, enabled in value.items()
+        ):
+            raise ValueError(f"{key} must be a bounded mapping of identifiers to booleans")
+        return dict(value)
     if key == "ui_theme_package":
         if not isinstance(value, str) or not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,127}", value):
             raise ValueError("ui_theme_package must be a bounded theme identifier")

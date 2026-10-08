@@ -122,6 +122,7 @@ async def test_plugin_provider_dispatches_minimized_delivery_contract(monkeypatc
         "retryable": False,
         "error": None,
     }
+    runtime.notification_delivery.return_value = runtime.action.return_value
     provider = PluginNotificationProvider(registration, runtime=runtime)
     user = type("User", (), {"id": uuid4()})()
     setting = NotificationProviderSetting(
@@ -143,15 +144,18 @@ async def test_plugin_provider_dispatches_minimized_delivery_contract(monkeypatc
         media_type="plugin",
         media_id=uuid4(),
         event_at=1,
+        attempt_id=uuid4(),
     )
 
     result = await provider.deliver(AsyncMock(), destination, message)
 
     assert result.success
-    runtime.action.assert_awaited_once()
-    plugin_id, action_id, payload = runtime.action.await_args.args
+    runtime.notification_delivery.assert_awaited_once()
+    runtime.action.assert_not_awaited()
+    plugin_id, action_id, payload = runtime.notification_delivery.await_args.args
     assert (plugin_id, action_id) == ("example.plugin", "deliver")
-    assert payload["user_id"] == str(user.id)
+    assert "user_id" not in payload
+    assert runtime.notification_delivery.await_args.kwargs["user_id"] == str(user.id)
     assert set(payload["delivery"]) == {
         "notification_id",
         "kind",

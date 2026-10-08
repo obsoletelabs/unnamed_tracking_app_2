@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from urllib.parse import quote_plus
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from src.core.config_registry import CONFIG_REGISTRY
@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     SECRET_KEY: str = ""
     STARTUP_MODE: str = ""
+    NOTIFICATION_BLOCKED_PROVIDERS: str = ""
+    NOTIFICATION_BLOCKED_TYPES: str = ""
+    NOTIFICATION_MINIMUM_TRUST: int = Field(default=0, ge=0, le=2)
     MAX_UPLOAD_SIZE_MB: int = 15
     MAX_SAVE_ARCHIVE_SIZE_MB: int = 4096
     MAX_CLIP_SIZE_MB: int = 500

@@ -19,6 +19,8 @@ import httpx
 import pytest
 from fastapi import FastAPI
 from sqlalchemy import create_engine, select
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session
 
 from src.api.routes import auth, plugin_permissions, plugins
@@ -30,10 +32,13 @@ from src.database.models.achievement import Achievement  # noqa: F401
 from src.database.models.auth import UserSession
 from src.database.models.notification import Notification
 from src.database.models.notification_delivery import NotificationDelivery
+from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_provider_setting import NotificationProviderSetting
+from src.database.models.notification_receipt import NotificationReceipt
 from src.database.models.plugin_notification_provider import PluginNotificationProviderRegistration
 from src.database.models.plugin_permissions import PluginPermissionGrant, PluginPermissionRequest
 from src.database.models.user import User
+from src.database.models.user_preferences import UserPreferences
 from src.database.session import get_db
 from src.features.notification_providers.base import NotificationMessage
 from src.features.notification_providers.plugin import PluginNotificationProvider
@@ -71,6 +76,12 @@ class PersistedDb:
         self.session.flush()
 
 
+@compiles(JSONB, "sqlite")
+def _sqlite_preference_json(_type, _compiler, **_kwargs):
+    """The persisted gateway fixture exercises JSON preferences without a PostgreSQL driver."""
+    return "JSON"
+
+
 @pytest.fixture
 def boundary(monkeypatch):
     engine = create_engine("sqlite://")
@@ -81,6 +92,9 @@ def boundary(monkeypatch):
         UserSession,
         PluginNotificationProviderRegistration,
         Notification,
+        NotificationDestination,
+        NotificationReceipt,
+        UserPreferences,
         NotificationDelivery,
         NotificationProviderSetting,
     ):
@@ -1171,9 +1185,24 @@ async def test_runtime_egress_requires_persisted_operation_grant(
         )
     assert sent == []
     row = grant(boundary, capability, user_id=boundary.users[0].id)
-    await broker.run(
-        registry.action, "audit.plugin", "deliver", {}, user_id=str(boundary.users[0].id)
-    )
+    with pytest.raises(broker.runtime.RuntimePolicyError, match="core-authorized"):
+        await broker.run(
+            registry.action, "audit.plugin", "deliver", {}, user_id=str(boundary.users[0].id)
+        )
+    if capability == "notification_providers.deliver":
+        await broker.run(
+            registry.notification_delivery, "audit.plugin", "deliver", {"delivery": {}},
+            user_id=str(boundary.users[0].id), installation_id=boundary.plugin["installation_id"],
+            attempt_id=str(uuid4()),
+        )
+    else:
+        with pytest.raises(broker.runtime.RuntimePolicyError, match="notification provider"):
+            await broker.run(
+                registry.notification_delivery, "audit.plugin", "deliver", {"delivery": {}},
+                user_id=str(boundary.users[0].id), installation_id=boundary.plugin["installation_id"],
+                attempt_id=str(uuid4()),
+            )
+        return
     assert len(sent) == 1
     assert (
         await request(boundary, f"/api/plugin-permissions/grants/{row.id}/revoke")

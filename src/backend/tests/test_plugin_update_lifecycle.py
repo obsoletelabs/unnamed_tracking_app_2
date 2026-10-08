@@ -124,7 +124,7 @@ async def test_unverified_update_re_reviews_every_permission(monkeypatch, tmp_pa
 
 
 @pytest.mark.asyncio
-async def test_update_notification_uses_existing_notification_rows() -> None:
+async def test_update_notification_uses_controller(monkeypatch) -> None:
     admin_id = uuid4()
 
     class Db:
@@ -141,6 +141,9 @@ async def test_update_notification_uses_existing_notification_rows() -> None:
             self.rows.append(row)
 
     db = Db()
+    from unittest.mock import AsyncMock
+    emit = AsyncMock(return_value=[uuid4()])
+    monkeypatch.setattr(plugin_catalogues, "emit_legacy_rows", emit)
     await plugins._notify_plugin_update(
         db,
         {
@@ -150,9 +153,10 @@ async def test_update_notification_uses_existing_notification_rows() -> None:
             "update_available": True,
         },
     )
-    assert len(db.rows) == 1
-    assert db.rows[0].kind == "plugin_update"
-    assert db.rows[0].dedupe_key == "plugin-update:example.update:2.0.0"
+    assert emit.await_args.args[:2] == (db, admin_id)
+    notice = emit.await_args.args[2][0]
+    assert notice["kind"] == "plugin_update"
+    assert notice["dedupe_key"] == "plugin-update:example.update:2.0.0"
 
 
 @pytest.mark.asyncio

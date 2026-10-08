@@ -5,6 +5,7 @@ import io
 import json
 import uuid
 import zipfile
+from uuid import uuid4
 
 import pytest
 from runtime import (
@@ -749,7 +750,7 @@ def test_frontend_asset_is_namespaced(tmp_path, activate_registry) -> None:
     assert "PG" in asset["content"]
 
 
-def test_runtime_discord_action_reads_secret_from_private_storage(
+def test_runtime_discord_generic_action_cannot_bypass_core(
     tmp_path, monkeypatch, activate_registry
 ) -> None:
     from runtime import PluginRegistry, PluginSupervisor
@@ -825,15 +826,11 @@ def test_runtime_discord_action_reads_secret_from_private_storage(
         lambda url, content: delivered.append((url, content)),
     )
     activate_registry(registry, "example.discord")
-    result = registry.action("example.discord", "announce", {})
+    from runtime import RuntimePolicyError
+    with pytest.raises(RuntimePolicyError, match="core-authorized"):
+        registry.action("example.discord", "announce", {"_notification_authorized": True})
     assert approved == ["notifications.send", "notifications.send"]
-    assert result == {"completed": True}
-    assert delivered == [
-        (
-            "https://discord.com/api/webhooks/test/secret",
-            "hello",
-        )
-    ]
+    assert delivered == []
 
 
 def test_runtime_action_returns_structured_provider_result(
@@ -941,13 +938,20 @@ def test_runtime_discord_provider_returns_core_delivery_result(
     )
 
     activate_registry(registry, "example.provider")
-    assert registry.action("example.provider", "deliver", {}) == {
+    from runtime import RuntimePolicyError
+    with pytest.raises(RuntimePolicyError, match="core-authorized"):
+        registry.action("example.provider", "deliver", {})
+    installed = registry._item(package)
+    assert registry.notification_delivery(
+        "example.provider", "deliver", {"delivery": {}}, user_id=str(uuid4()),
+        installation_id=installed["installation_id"], attempt_id=str(uuid4()),
+    ) == {
         "success": True,
         "retryable": False,
         "error": None,
     }
     assert delivered == [("https://discord.com/api/webhooks/test/secret", "hello")]
-    assert approved == ["notification_providers.deliver"]
+    assert approved == ["notification_providers.deliver"] * 3
 
 
 def test_action_handler_can_use_the_mediated_plugin_gateway(

@@ -123,6 +123,19 @@ CONFIG_SECTIONS: tuple[ConfigSectionSpec, ...] = (
 # through resolution, validation, persistence, and the generated UI.
 CONFIG_REGISTRY: tuple[ConfigSpec, ...] = (
     ConfigSpec(
+        "NOTIFICATION_BLOCKED_PROVIDERS", source=ConfigSource.ENV, visible=False, default="",
+        description="Comma-separated provider IDs disallowed by deployment policy.",
+    ),
+    ConfigSpec(
+        "NOTIFICATION_BLOCKED_TYPES", source=ConfigSource.ENV, visible=False, default="",
+        description="Comma-separated notification event types disallowed by deployment policy.",
+    ),
+    ConfigSpec(
+        "NOTIFICATION_MINIMUM_TRUST", source=ConfigSource.ENV, visible=False,
+        input_type="number", default=0,
+        description="Deployment minimum destination trust (0 PUBLIC, 1 PRIVATE, 2 SECURE).",
+    ),
+    ConfigSpec(
         "POSTGRES_USER",
         "database",
         ConfigSource.ENV,

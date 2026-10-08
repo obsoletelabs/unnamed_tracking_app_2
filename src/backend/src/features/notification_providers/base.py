@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Protocol
-from uuid import UUID
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +22,7 @@ class NotificationMessage:
     media_type: str
     media_id: UUID
     event_at: int
+    attempt_id: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -56,13 +57,30 @@ class NotificationProvider(Protocol):
     ) -> DeliveryResult: ...
 
 
-def notification_message(notification: Notification) -> NotificationMessage:
+def notification_message(
+    notification: Notification, *, projection: str = "canonical", attempt_id: UUID | None = None
+) -> NotificationMessage:
+    public = projection in {"public_release", "media_shared"}
     return NotificationMessage(
         id=notification.id,
         kind=notification.kind,
-        title=notification.title,
-        body=notification.body,
+        title=(notification.public_title or "Release announcement")
+        if public
+        else notification.title,
+        body=(
+            (notification.public_body or "Released")
+            + (
+                "\nSelected/followed by the destination owner."
+                if projection == "media_shared"
+                else ""
+            )
+        )
+        if public
+        else notification.body,
         media_type=notification.media_type,
-        media_id=notification.media_id,
+        media_id=uuid5(NAMESPACE_URL, f"release:{notification.public_title}")
+        if public
+        else notification.media_id,
         event_at=notification.event_at,
+        attempt_id=attempt_id,
     )

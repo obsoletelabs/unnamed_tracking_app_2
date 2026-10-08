@@ -16,9 +16,9 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.database.models.notification import Notification
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features.notification_controller import emit_legacy_rows
 from src.plugin_api.catalogues import CatalogueStore, CatalogueStoreError
 from src.plugin_api.contracts import parse_semver
 from src.plugin_api.management_auth import get_plugin_manager_admin, get_plugin_manager_reader
@@ -291,35 +291,22 @@ async def _notify_plugin_update(
     )
     if not admin_ids:
         return
-    existing = set(
-        await db.scalars(
-            select(Notification.user_id).where(
-                Notification.user_id.in_(admin_ids),
-                Notification.dedupe_key == dedupe_key,
-            )
-        )
-    )
     now = int(time.time())
     for user_id in admin_ids:
-        if user_id in existing:
-            continue
-        db.add(
-            Notification(
-                user_id=user_id,
-                kind="plugin_update",
-                media_type="plugin",
-                media_id=uuid5(NAMESPACE_URL, f"urn:unnamed-tracking:plugin:{plugin_id}"),
-                title=f"Plugin update {'failed' if failed else 'available'}: {plugin_id}",
-                body=(
+        await emit_legacy_rows(db, user_id, [{
+                "kind": "plugin_update",
+                "media_type": "plugin",
+                "media_id": uuid5(NAMESPACE_URL, f"urn:unnamed-tracking:plugin:{plugin_id}"),
+                "title": f"Plugin update {'failed' if failed else 'available'}: {plugin_id}",
+                "body": (
                     f"Version {version} could not be activated. The previous package is retained; inspect Plugin Manager diagnostics."
                     if failed
                     else f"Version {version} is available (installed: {update['current_version']})."
                 ),
-                poster_url=None,
-                event_at=now,
-                dedupe_key=dedupe_key,
-            )
-        )
+                "poster_url": None,
+                "event_at": now,
+                "dedupe_key": dedupe_key,
+        }])
 
 
 @router.post("/updates/check")

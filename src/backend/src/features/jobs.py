@@ -259,12 +259,14 @@ async def _run_due_anilist_imports(now: int) -> None:
 async def run_jobs_loop() -> None:
     """Run eligible schedules without blocking imports or notification delivery."""
     from src.features.plugin_jobs import get_plugin_jobs
+    from src.features.notification_scans import scan_notification_users
 
     while True:
         await asyncio.sleep(TICK_SECONDS)
         try:
             now = int(time.time())
             await _run_due_anilist_imports(now)
+            await scan_notification_users()
             async with SessionLocal() as db:
                 await process_pending_deliveries(db)
                 due = []

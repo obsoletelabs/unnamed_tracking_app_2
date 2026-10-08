@@ -44,7 +44,7 @@ except ImportError:  # pragma: no cover - Windows development/test fallback
     resource = None  # type: ignore[assignment]
 
 _PLUGIN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
-PLUGIN_API_CONTRACT_VERSION = "1.1.0"
+PLUGIN_API_CONTRACT_VERSION = "1.1.2"
 _ENTRYPOINT = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*(?::[A-Za-z_][A-Za-z0-9_]*)?$")
 # Linux parent-death signals follow the spawning thread. HTTP request threads
 # end after their response, while supervised workers must live until shutdown.
@@ -119,8 +119,8 @@ def plugin_contract_compatibility_reason(
             f"Plugin API contract {declared} is v1.0-only. Limited compatibility is available "
             "for shipped examples and already-installed plugins; new plugins must target v1.1."
         )
-    if version != (1, 1, 0):
-        return f"Plugin API contract {declared} is not supported by this host (1.1.0)."
+    if version[:2] != (1, 1) or version > (1, 1, 2):
+        return f"Plugin API contract {declared} is not supported by this host (1.1.2)."
     return None
 
 
@@ -2791,6 +2791,7 @@ class PluginRegistry:
         values: dict[str, Any],
         *,
         user_id: str | None = None,
+        _notification_authorized: bool = False,
     ) -> dict[str, Any]:
         self._require_active(plugin_id)
         document = self.ui(plugin_id)
@@ -2856,6 +2857,10 @@ class PluginRegistry:
                     else "notifications.send",
                     user_id=user_id,
                 )
+                if not _notification_authorized or not delivery_provider:
+                    raise RuntimePolicyError(
+                        "Discord transport requires core-authorized notification delivery"
+                    )
                 content = message.get("content")
                 if not isinstance(content, str) or not content.strip():
                     raise RuntimePolicyError(
@@ -2883,6 +2888,30 @@ class PluginRegistry:
                     else {"completed": True}
                 )
         return result
+
+    def notification_delivery(
+        self, plugin_id: str, action_id: str, values: dict[str, Any], *,
+        user_id: str, installation_id: str, attempt_id: str,
+    ) -> dict[str, Any]:
+        """Host-authenticated work; generic action payloads cannot confer authority."""
+        UUID(user_id)
+        UUID(attempt_id)
+        package, manifest = self.package(plugin_id)
+        if not any(
+            item.get("name") == "notification_providers.deliver"
+            for item in manifest.get("capabilities", [])
+        ):
+            raise RuntimePolicyError("Plugin does not declare a notification provider")
+        if self._item(package).get("installation_id") != str(UUID(installation_id)):
+            raise RuntimePolicyError("Notification delivery belongs to another installation")
+        if set(values) != {"delivery"} or not isinstance(values["delivery"], dict):
+            raise RuntimePolicyError("Notification delivery work is invalid")
+        self.supervisor._authorize_capability(
+            plugin_id, "notification_providers.deliver", user_id=user_id
+        )
+        return self.action(
+            plugin_id, action_id, values, user_id=user_id, _notification_authorized=True
+        )
 
     def route(
         self,
@@ -3140,6 +3169,19 @@ class RuntimeHandler(BaseHTTPRequestHandler):
                     payload.get("values", {}),
                     user_id=payload.get("user_id"),
                 )  # type: ignore[attr-defined]
+                self._json(200, result)
+                return
+            if len(parts) == 4 and parts[0] == "plugins" and parts[2] == "notification-deliveries":
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 1 <= length <= 16384:
+                    raise RuntimePolicyError("Notification work exceeds its bounds")
+                payload = json.loads(self.rfile.read(length))
+                result = self.server.registry.notification_delivery(
+                    parts[1], parts[3], payload.get("values", {}),
+                    user_id=str(payload.get("user_id", "")),
+                    installation_id=str(payload.get("installation_id", "")),
+                    attempt_id=str(payload.get("attempt_id", "")),
+                )
                 self._json(200, result)
                 return
             if len(parts) == 4 and parts[0] == "plugins" and parts[2] == "tasks":
