@@ -11,3 +11,5 @@ Save the webhook through the plugin's secret field, then explicitly enable the p
 Delivery is best-effort. The core persists attempts and retries transport failures up to three times. Removing or revoking a provider stops eligible queued work. A temporary runtime outage delays work until it is available or the notification's delivery validity expires.
 
 The inbox defaults to 30 days of history. Retention preferences also support 180 and 365 days, or unlimited retention. Minimal deduplication receipts outlive notification content so old events do not reappear after deletion or retention cleanup.
+
+The [notification centre](notification-centre.md) provides paginated inbox filtering, grouped presentation and explicit retention controls. Destination enrollment is still separate work; the shared plugin bridge does not become a concrete private webhook through this UI.

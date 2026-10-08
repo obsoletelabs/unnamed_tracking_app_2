@@ -29,10 +29,15 @@ export interface Preferences {
   notify_season_started: boolean;
   notify_sequel_announced: boolean;
   notify_movie_released: boolean;
+  notify_game_released: boolean;
+  notify_game_sale: boolean;
+  notify_game_price_hit: boolean;
+  notify_session_anomaly: boolean;
   notify_statuses: ("watching" | "plan" | "hold")[];
   calendar_airing_statuses: ("watching" | "plan" | "hold")[];
   notify_media_types: ("anime" | "tv" | "movie")[];
-  notification_retention_days: 0 | 7 | 14 | 30 | 90;
+  notification_retention_days: 0 | 7 | 14 | 30 | 90 | 180 | 365;
+  notification_retention_inherit: boolean;
   library_default_layout: "list" | "shelf" | "board";
   lists_default_sort: "custom" | "name" | "count" | "recent";
   title_language: "english" | "romaji" | "native";
@@ -75,9 +80,14 @@ export const DEFAULT_PREFERENCES: Preferences = {
   notify_season_started: true,
   notify_sequel_announced: true,
   notify_movie_released: true,
+  notify_game_released: true,
+  notify_game_sale: true,
+  notify_game_price_hit: true,
+  notify_session_anomaly: true,
   notify_statuses: ["watching", "plan", "hold"],
   notify_media_types: ["anime", "tv", "movie"],
   notification_retention_days: 30,
+  notification_retention_inherit: true,
   library_default_layout: "list",
   lists_default_sort: "custom",
   title_language: "english",
