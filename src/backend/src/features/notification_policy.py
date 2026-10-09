@@ -75,7 +75,7 @@ def select_projection(
     if preferences.get("notification_destinations", {}).get(str(destination.id)) is False:
         return None
     # Possession challenges must not be copied to the already authenticated inbox.
-    if notification.purpose == "verification" and (
+    if notification.purpose in {"verification", "test"} and (
         notification.media_type != "notification_destination"
         or notification.media_id != destination.id
     ):

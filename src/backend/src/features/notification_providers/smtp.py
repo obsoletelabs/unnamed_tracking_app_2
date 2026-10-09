@@ -19,6 +19,7 @@ from src.database.models.notification_verification import NotificationVerificati
 from src.database.models.user import User
 from src.features.notification_unsubscribe import unsubscribe_link
 from src.features.notification_urls import notification_url
+from src.features.notification_verification_links import verification_link
 from src.features.smtp_configuration import (
     SMTP_PROVIDER,
     SmtpConfiguration,
@@ -79,6 +80,25 @@ def send_mail(
     finally:
         # QUIT failure after DATA acceptance must not turn a successful send into a retry.
         client.close()
+
+
+async def deliver_mail(
+    config: SmtpConfiguration,
+    address: str,
+    message: NotificationMessage,
+    unsubscribe_url: str | None = None,
+) -> DeliveryResult:
+    """Use the same transport and sanitized outcomes for dispatch and admin diagnostics."""
+    try:
+        await asyncio.to_thread(send_mail, config, address, message, unsubscribe_url)
+    except smtplib.SMTPResponseException as exc:
+        return DeliveryResult(False, retryable=400 <= exc.smtp_code < 500, error="smtp_rejected")
+    except smtplib.SMTPRecipientsRefused as exc:
+        retryable = any(400 <= code < 500 for code, _ in exc.recipients.values())
+        return DeliveryResult(False, retryable=retryable, error="smtp_recipient_rejected")
+    except (OSError, smtplib.SMTPException):
+        return DeliveryResult(False, retryable=True, error="smtp_unavailable")
+    return DeliveryResult(True)
 
 
 class SmtpNotificationProvider:
@@ -145,30 +165,21 @@ class SmtpNotificationProvider:
             if challenge is None or not challenge.encrypted_code:
                 return DeliveryResult(False, error="verification_expired")
             code = decrypt_secret(challenge.encrypted_code)
+            endpoint = await db.get(NotificationDestination, destination.endpoint_id)
+            origin = await notification_url(db, destination.user_id, endpoint)
+            link = verification_link(origin, challenge) if origin else None
             message = replace(
                 message,
                 body=(
                     f"Your verification code is {code}.\nIt expires in 10 minutes.\n"
-                    "If you did not request this code, ignore this email."
+                    + (f"Or open this link and confirm to verify:\n{link}\n" if link else "")
+                    + "If you did not request this code, ignore this email."
                 ),
             )
-        try:
-            link = None
-            if message.purpose == "standard" and message.kind != "destination_verification":
-                endpoint = await db.get(NotificationDestination, destination.endpoint_id)
-                origin = await notification_url(db, destination.user_id, endpoint)
-                if origin and endpoint:
-                    link = unsubscribe_link(origin, endpoint)
-            await asyncio.to_thread(
-                send_mail, destination.configuration, destination.address, message, link
-            )
-        except smtplib.SMTPResponseException as exc:
-            return DeliveryResult(
-                False, retryable=400 <= exc.smtp_code < 500, error="smtp_rejected"
-            )
-        except smtplib.SMTPRecipientsRefused as exc:
-            retryable = any(400 <= code < 500 for code, _ in exc.recipients.values())
-            return DeliveryResult(False, retryable=retryable, error="smtp_recipient_rejected")
-        except (OSError, smtplib.SMTPException):
-            return DeliveryResult(False, retryable=True, error="smtp_unavailable")
-        return DeliveryResult(True)
+        link = None
+        if message.purpose == "standard" and message.kind != "destination_verification":
+            endpoint = await db.get(NotificationDestination, destination.endpoint_id)
+            origin = await notification_url(db, destination.user_id, endpoint)
+            if origin and endpoint:
+                link = unsubscribe_link(origin, endpoint)
+        return await deliver_mail(destination.configuration, destination.address, message, link)
