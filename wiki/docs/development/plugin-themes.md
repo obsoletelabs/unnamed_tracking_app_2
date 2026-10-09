@@ -80,3 +80,10 @@ packages whose bundled appearance helper validates that existing wire version.
 The opaque `allow-scripts` sandbox and independently authorized actions remain
 in force. Document paper, images and other rendered media may retain their
 content colors while the reader's controls follow the host palette.
+
+The actual installed document reader follows the selected plugin palette on
+phone and desktop, including its opaque frame:
+
+![Phone reader with the dark plugin palette](../assets/plugin-appearance-compatibility/reader-phone-dark.png)
+
+![Desktop reader with the light plugin palette](../assets/plugin-appearance-compatibility/reader-desktop-light.png)
