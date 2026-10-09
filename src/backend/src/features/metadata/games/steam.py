@@ -16,6 +16,7 @@ import html
 import re
 import threading
 import time
+from urllib.parse import urlsplit
 
 import requests
 
@@ -46,13 +47,65 @@ class SteamLibraryError(RuntimeError):
     """Raised when the Steam Web API rejects a library-sync call."""
 
 
+_STEAMID64_BASE = 76561197960265728
+_STEAMID2 = re.compile(r"STEAM_[01]:([01]):([0-9]+)", re.IGNORECASE)
+_STEAMID3 = re.compile(r"(?:\[U:1:([0-9]+)\]|U:1:([0-9]+))", re.IGNORECASE)
+_PRIVATE_LIBRARY = (
+    "Steam did not share this account's games. In Steam, set Profile > Privacy "
+    "Settings > Game details to Public, check that the profile ID is your own "
+    "account, then try again."
+)
+
+
+def parse_steam_identifier(identifier: str) -> str:
+    """Normalize a profile link, SteamID2/3/64 or vanity name before lookup."""
+    value = identifier.strip()
+    invalid = "Enter a valid Steam profile link, vanity name or Steam ID."
+    if "://" in value or value.lower().startswith(
+        ("steamcommunity.com/", "www.steamcommunity.com/")
+    ):
+        try:
+            url = urlsplit(value if "://" in value else f"https://{value}")
+        except ValueError as exc:
+            raise SteamLibraryError(invalid) from exc
+        parts = url.path.strip("/").split("/")
+        is_profile_host = (
+            url.hostname in {"steamcommunity.com", "www.steamcommunity.com"}
+            and url.username is None
+        )
+        if (
+            url.scheme.lower() not in {"http", "https"}
+            or not is_profile_host
+            or len(parts) < 2
+            or parts[0] not in {"id", "profiles"}
+            or not parts[1]
+        ):
+            raise SteamLibraryError(invalid)
+        value = parts[1]
+        if parts[0] == "profiles" and not (
+            value.isascii() and value.isdigit() and len(value) == 17
+        ):
+            raise SteamLibraryError(invalid)
+    steamid2 = _STEAMID2.fullmatch(value)
+    steamid3 = _STEAMID3.fullmatch(value)
+    if steamid2:
+        account = int(steamid2[2]) * 2 + int(steamid2[1])
+    elif steamid3:
+        account = int(steamid3[1] or steamid3[2])
+    elif value.upper().startswith(("STEAM_", "U:", "[U:")):
+        raise SteamLibraryError(invalid)
+    else:
+        return value
+    if not 0 < account <= 0xFFFFFFFF:
+        raise SteamLibraryError(invalid)
+    return str(_STEAMID64_BASE + account)
+
+
 def resolve_steam_id(identifier: str, api_key: str) -> str:
     """Every Steam Web API library call needs a numeric SteamID64 — the API
     key alone only identifies the calling app, not whose library to fetch.
-    Takes just the plain profile ID: either your vanity name (the part
-    after steamcommunity.com/id/) or the raw 17-digit SteamID64 itself —
-    not the full profile link."""
-    vanity = identifier.strip()
+    Takes a profile link, vanity name or SteamID2/3/64."""
+    vanity = parse_steam_identifier(identifier)
     if vanity.isdigit() and len(vanity) == 17:
         return vanity
     if not vanity:
@@ -77,9 +130,7 @@ def resolve_steam_id(identifier: str, api_key: str) -> str:
 
 
 def get_owned_games(steam_id: str, api_key: str) -> list[dict]:
-    """The caller's owned-games library — requires their Community profile
-    to have game details set to public, or this returns an empty list with
-    no error (Steam's API silently omits games rather than rejecting)."""
+    """The owned games, distinguishing a public empty library from private data."""
     try:
         resp = SESSION.get(
             f"{_WEB_API_BASE}/IPlayerService/GetOwnedGames/v1/",
@@ -93,14 +144,27 @@ def get_owned_games(steam_id: str, api_key: str) -> list[dict]:
         )
     except requests.RequestException as exc:
         raise SteamLibraryError(f"Could not reach Steam: {exc}") from exc
-    if resp.status_code == 403:
+    if resp.status_code in (401, 403):
         raise SteamLibraryError("Steam rejected the API key.")
     if resp.status_code >= 400:
         raise SteamLibraryError(f"Steam library request failed ({resp.status_code}).")
     try:
-        return resp.json().get("response", {}).get("games", [])
+        body = resp.json()
     except ValueError as exc:
         raise SteamLibraryError("Steam returned invalid JSON.") from exc
+    if not isinstance(body, dict) or not isinstance(body.get("response", {}), dict):
+        raise SteamLibraryError("Steam returned an invalid library response.")
+    payload = body.get("response", {})
+    if "games" not in payload:
+        if payload.get("game_count") == 0:
+            return []
+        raise SteamLibraryError(_PRIVATE_LIBRARY)
+    games = payload["games"]
+    if not isinstance(games, list) or any(not isinstance(game, dict) for game in games):
+        raise SteamLibraryError("Steam returned an invalid library response.")
+    if not games and payload.get("game_count", 0):
+        raise SteamLibraryError("Steam returned an invalid library response.")
+    return games
 
 
 def get_player_summary(steam_id: str, api_key: str) -> dict:

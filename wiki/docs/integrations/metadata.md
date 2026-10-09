@@ -139,6 +139,18 @@ they do not imply that every authenticated provider has been configured or valid
 - Title locks, ownership, personal state and missing-field preservation remain enforced.
 
 
+## Steam account identifiers and privacy
+
+The Steam connection accepts a full `steamcommunity.com/id/...` or
+`steamcommunity.com/profiles/...` link, a vanity name, SteamID64, SteamID2
+(`STEAM_0:0:11101`) or SteamID3 (`[U:1:22202]`). Numeric identifiers are converted
+locally; vanity names use Steam's profile lookup.
+
+If Steam does not share the library, the connection or sync reports the privacy
+problem and leaves existing games unchanged. Set **Profile → Privacy Settings →
+Game details** to **Public** and verify the account ID before retrying. An
+explicitly empty public library remains a valid empty library.
+
 ## Steam tags as genres
 
 Steam's own genres are broad: Elden Ring is only Action and RPG. Steam players
