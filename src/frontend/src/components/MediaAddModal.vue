@@ -92,7 +92,7 @@ function submit() {
     <div class="fields">
       <label
         ><span>Status</span
-        ><select v-model="form.status">
+        ><select v-model="form.status" aria-label="Status">
           <option
             v-for="status in STATUS_BUCKETS"
             :key="status.key"
