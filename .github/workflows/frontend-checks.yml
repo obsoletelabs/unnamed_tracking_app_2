@@ -54,14 +54,17 @@ jobs:
         run: npm run format
 
       - name: Lint
+        id: frontend-lint
         working-directory: src/frontend
         run: npm run lint
 
       - name: Type check
+        id: frontend-typecheck
         working-directory: src/frontend
         run: npm run typecheck
 
       - name: Tests
+        id: frontend-tests
         working-directory: src/frontend
         run: npm run test
 
