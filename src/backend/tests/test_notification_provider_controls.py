@@ -32,6 +32,7 @@ from src.features.notification_providers.delivery import process_pending_deliver
 from src.features.notification_settings import routing_settings
 from src.features.notification_tests import TEST_EVENT
 from src.features.notification_verification_links import verification_link
+from tests.test_notification_email import mailbox as mailbox
 
 
 @pytest.fixture
