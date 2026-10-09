@@ -2,19 +2,33 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable
+from typing import TypeVar
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import get_current_user
+from src.core.public_url import normalize_public_url
 from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_provider_setting import NotificationProviderSetting
 from src.database.models.user import User
 from src.database.session import get_db
 from src.features.notification_destinations import resolve_destinations
+from src.features.notification_enrollment import (
+    EnrollmentError,
+    confirm_verification,
+    create_email,
+    request_verification,
+    revoke_email,
+    update_email,
+)
 from src.features.notification_providers.registry import get_notification_providers
 from src.features.notification_settings import routing_settings
+from src.features.smtp_configuration import SMTP_PROVIDER
 
 _NOTIFICATION_DB = Depends(get_db)
 _NOTIFICATION_USER = Depends(get_current_user)
@@ -24,6 +38,148 @@ router = APIRouter(prefix="/api/settings/notification-providers", tags=["setting
 
 class ProviderUpdate(BaseModel):
     enabled: bool
+
+
+class EmailCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    address: str = Field(min_length=3, max_length=254)
+    label: str = Field(default="Email", max_length=80)
+
+
+class EmailUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    address: str | None = Field(default=None, min_length=3, max_length=254)
+    label: str | None = Field(default=None, max_length=80)
+    enabled: bool | None = None
+    recovery_allowed: bool | None = None
+
+
+class VerificationConfirm(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    challenge_id: UUID
+    code: str = Field(pattern=r"^[0-9]{8}$")
+
+
+class DestinationUrlUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    notification_url: str = Field(max_length=2048)
+
+    @field_validator("notification_url")
+    @classmethod
+    def validate_url(cls, value: str) -> str:
+        return normalize_public_url(value)
+
+
+@router.patch("/destinations/{destination_id}/url")
+async def update_destination_url(
+    destination_id: UUID,
+    payload: DestinationUrlUpdate,
+    db: AsyncSession = _NOTIFICATION_DB,
+    current_user: User = _NOTIFICATION_USER,
+) -> dict:
+    destination = await db.scalar(
+        select(NotificationDestination)
+        .where(
+            NotificationDestination.id == destination_id,
+            NotificationDestination.user_id == current_user.id,
+            NotificationDestination.active.is_(True),
+            NotificationDestination.channel_context == "external",
+        )
+        .with_for_update()
+    )
+    if destination is None:
+        raise HTTPException(404, "External notification destination not found")
+    # Link preference changes do not prove possession or change destination trust.
+    destination.notification_url = payload.notification_url or None
+    await db.commit()
+    return {"updated": True}
+
+
+_Result = TypeVar("_Result")
+
+
+async def _enrollment(db: AsyncSession, operation: Awaitable[_Result]) -> _Result:
+    try:
+        return await operation
+    except EnrollmentError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    except ValueError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail="Enter a valid email destination") from exc
+
+
+@router.post("/email-destinations", status_code=201)
+async def create_email_destination(
+    payload: EmailCreate,
+    db: AsyncSession = _NOTIFICATION_DB,
+    current_user: User = _NOTIFICATION_USER,
+) -> dict:
+    destination_id = await _enrollment(
+        db, create_email(db, current_user.id, payload.address, payload.label)
+    )
+    return {"id": str(destination_id)}
+
+
+@router.patch("/email-destinations/{destination_id}")
+async def update_email_destination(
+    destination_id: UUID,
+    payload: EmailUpdate,
+    db: AsyncSession = _NOTIFICATION_DB,
+    current_user: User = _NOTIFICATION_USER,
+) -> dict:
+    await _enrollment(
+        db, update_email(db, current_user.id, destination_id, payload.model_dump(exclude_none=True))
+    )
+    return {"updated": True}
+
+
+@router.delete("/email-destinations/{destination_id}")
+async def remove_email_destination(
+    destination_id: UUID,
+    db: AsyncSession = _NOTIFICATION_DB,
+    current_user: User = _NOTIFICATION_USER,
+) -> dict:
+    await _enrollment(db, revoke_email(db, current_user.id, destination_id, remove=True))
+    return {"removed": True}
+
+
+@router.post("/email-destinations/{destination_id}/verification")
+async def request_email_verification(
+    destination_id: UUID,
+    db: AsyncSession = _NOTIFICATION_DB,
+    current_user: User = _NOTIFICATION_USER,
+) -> dict:
+    challenge_id = await _enrollment(db, request_verification(db, current_user.id, destination_id))
+    return {"challenge_id": str(challenge_id), "expires_in": 600}
+
+
+@router.post("/email-destinations/{destination_id}/verification/confirm")
+async def confirm_email_verification(
+    destination_id: UUID,
+    payload: VerificationConfirm,
+    db: AsyncSession = _NOTIFICATION_DB,
+    current_user: User = _NOTIFICATION_USER,
+) -> dict:
+    verified = await _enrollment(
+        db,
+        confirm_verification(
+            db, current_user.id, destination_id, payload.challenge_id, payload.code
+        ),
+    )
+    if not verified:
+        raise HTTPException(status_code=400, detail="The code is invalid, expired or already used")
+    return {"verified": True}
+
+
+@router.post("/email-destinations/{destination_id}/verification/revoke")
+async def revoke_email_verification(
+    destination_id: UUID,
+    db: AsyncSession = _NOTIFICATION_DB,
+    current_user: User = _NOTIFICATION_USER,
+) -> dict:
+    await _enrollment(db, revoke_email(db, current_user.id, destination_id))
+    return {"revoked": True}
 
 
 @router.get("/destinations")
@@ -66,7 +222,7 @@ async def list_notification_provider_settings(
                 "id": provider_id,
                 "name": provider.name,
                 "enabled": row.enabled,
-                "kind": "plugin",
+                "kind": "builtin" if provider_id == SMTP_PROVIDER else "plugin",
             }
         )
     await db.commit()
@@ -104,5 +260,5 @@ async def update_notification_provider_setting(
         "id": provider_id,
         "name": provider.name,
         "enabled": row.enabled,
-        "kind": "plugin",
+        "kind": "builtin" if provider_id == SMTP_PROVIDER else "plugin",
     }

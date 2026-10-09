@@ -26,12 +26,14 @@ from src.core.crypto import encrypt_secret
 from src.core.env_handler import EnvConfigHandler
 from src.core.oidc import get_or_create_oidc_settings
 from src.core.provider_credentials import apply_deployment_provider_credentials
+from src.core.public_url import validate_deployment_url
 from src.core.session_manager import create_session
 from src.database.models.app_integration_settings import AppIntegrationSettings
 from src.database.models.game import Game
 from src.database.models.oidc_settings import OidcSettings
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features.smtp_configuration import SMTP_FIELDS, validate_smtp_value
 
 _DB_DEFAULT = Depends(get_db)
 _ADMIN_DEFAULT = Depends(get_current_admin)
@@ -68,6 +70,8 @@ class SetupRequest(BaseModel):
 
 
 _APP_FIELDS = {
+    "PUBLIC_APP_URL": "public_app_url",
+    **SMTP_FIELDS,
     "STEAMGRIDDB_API_KEY": "steamgriddb_api_key",
     "RETROACHIEVEMENTS_API_KEY": "retroachievements_api_key",
     "GIANTBOMB_API_KEY": "giantbomb_api_key",
@@ -94,6 +98,8 @@ def _persisted_values(app: AppIntegrationSettings, oidc: OidcSettings) -> dict[s
         if value:
             values[f"{spec_name}__configured"] = True
             if spec_name in {
+                "PUBLIC_APP_URL",
+                *(set(SMTP_FIELDS) - {"SMTP_PASSWORD"}),
                 "IGDB_CLIENT_ID",
                 "SCREENSCRAPER_DEVID",
                 "SCREENSCRAPER_SSID",
@@ -173,8 +179,24 @@ async def _save_configuration(
         value = values[name]
         if value in (None, ""):
             continue
+        if name in SMTP_FIELDS:
+            try:
+                value = validate_smtp_value(attribute, value)
+            except ValueError as exc:
+                raise HTTPException(400, f"Invalid {name} configuration") from exc
+        if name == "PUBLIC_APP_URL":
+            try:
+                value = validate_deployment_url(value)
+            except ValueError as exc:
+                raise HTTPException(400, str(exc)) from exc
         spec = next(spec for spec in CONFIG_REGISTRY if spec.name == name)
-        setattr(app, attribute, encrypt_secret(str(value)) if spec.secret else str(value))
+        setattr(
+            app,
+            attribute,
+            encrypt_secret(str(value))
+            if spec.secret
+            else (int(value) if name == "SMTP_PORT" else str(value)),
+        )
 
     _save_password_policy(app, values, handler)
     _save_oidc_configuration(oidc, values, selected_sections, generated_redirect_uri, handler)

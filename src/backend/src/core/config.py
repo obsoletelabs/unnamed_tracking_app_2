@@ -5,11 +5,12 @@ from __future__ import annotations
 import logging
 from urllib.parse import quote_plus
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from src.core.config_registry import CONFIG_REGISTRY
 from src.core.env_handler import EnvConfigHandler
+from src.core.public_url import validate_deployment_url
 
 
 class Settings(BaseSettings):
@@ -36,6 +37,13 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     METADATA_HEALTH_INTERVAL_SECONDS: int = 1800
     SECRET_KEY: str = ""
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = Field(default=587, ge=1, le=65535)
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM_ADDRESS: str = ""
+    SMTP_TLS_MODE: str = "starttls"
+    PUBLIC_APP_URL: str = ""
     STARTUP_MODE: str = ""
     NOTIFICATION_BLOCKED_PROVIDERS: str = ""
     NOTIFICATION_BLOCKED_TYPES: str = ""
@@ -78,6 +86,11 @@ class Settings(BaseSettings):
     OIDC_USER_MATCH_FIELD: str = "email"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @field_validator("PUBLIC_APP_URL")
+    @classmethod
+    def validate_public_url(cls, value: str) -> str:
+        return validate_deployment_url(value)
 
     @model_validator(mode="after")
     def resolve_database(self) -> "Settings":

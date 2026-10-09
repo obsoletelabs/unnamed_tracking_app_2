@@ -21,7 +21,7 @@ from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_provider_setting import NotificationProviderSetting
 from src.database.models.user import User
 from src.features.notification_destinations import resolve_destinations
-from src.features.notification_policy import INBOX_PROVIDER, select_projection
+from src.features.notification_policy import INBOX_PROVIDER, Trust, route_choice, select_projection
 from src.plugin_api.runtime_client import PluginRuntimeUnavailable
 
 from .base import DeliveryResult, NotificationProvider, ProviderDestination, notification_message
@@ -58,6 +58,9 @@ async def ensure_deliveries(
                     destination_id=destination.id,
                     destination_revision=destination.revision,
                     projection=projection,
+                    requested_urgency=route_choice(
+                        notification.event_type, str(destination.id), prefs
+                    )["urgency"],
                     status="sent" if inbox else "pending",
                     attempts=0,
                     next_attempt_at=now,
@@ -136,6 +139,44 @@ class _DeliveryWork:
     destination: ProviderDestination
 
 
+async def _lookup_destination(provider, db, user, setting, endpoint):
+    lookup = getattr(provider, "lookup_endpoint", None)
+    if lookup is not None:
+        destination = await lookup(db, user, setting, endpoint)
+        if destination is not None and (
+            destination.user_id != endpoint.user_id
+            or destination.endpoint_id != endpoint.id
+            or destination.endpoint_revision != endpoint.revision
+        ):
+            return None
+        return destination
+    return await provider.lookup_destination(db, user, setting)
+
+
+def _transport_allowed(notification: Notification, destination: ProviderDestination) -> bool:
+    return destination.allows_sensitive or (
+        notification.required_trust < Trust.SECURE
+        and notification.purpose not in {"security", "recovery", "verification"}
+    )
+
+
+async def _refresh_destination(db: AsyncSession, work: _DeliveryWork) -> ProviderDestination | None:
+    if getattr(work.provider, "lookup_endpoint", None) is None:
+        return work.destination
+    user = await db.get(User, work.notification.user_id, populate_existing=True)
+    if user is None or not user.is_active:
+        return None
+    setting = await db.scalar(
+        select(NotificationProviderSetting)
+        .where(
+            NotificationProviderSetting.user_id == user.id,
+            NotificationProviderSetting.provider_id == work.provider.id,
+        )
+        .execution_options(populate_existing=True)
+    )
+    return await _lookup_destination(work.provider, db, user, setting, work.endpoint)
+
+
 # Each denial records a distinct lifecycle reason; explicit exits keep the
 # security gates reviewable without nesting network and database operations.
 # pylint: disable-next=too-many-return-statements
@@ -180,13 +221,16 @@ async def _resolve_work(
     )
     try:
         destination = await asyncio.wait_for(
-            provider.lookup_destination(db, user, setting), TRANSPORT_TIMEOUT_SECONDS
+            _lookup_destination(provider, db, user, setting, endpoint), TRANSPORT_TIMEOUT_SECONDS
         )
     except (PluginRuntimeUnavailable, TimeoutError):
         await _finish(db, delivery_id, token, "retry_wait", "provider_unavailable")
         return None
     if destination is None:
         await _finish(db, delivery_id, token, "suppressed", "authorization_unavailable")
+        return None
+    if not _transport_allowed(notification, destination):
+        await _finish(db, delivery_id, token, "suppressed", "transport_security_required")
         return None
     if delivery.attempts >= MAX_ATTEMPTS:
         await _finish(db, delivery_id, token, "failed_permanent", "attempts_exhausted")
@@ -221,6 +265,20 @@ async def _dispatch(db: AsyncSession, delivery_id: UUID, token: UUID) -> bool:
     ):
         await _finish(db, delivery_id, token, "suppressed", "routing_changed")
         return False
+    # Built-in endpoint transports resolve again after the final policy refresh;
+    # a deployment TLS change cannot reuse the earlier configuration snapshot.
+    destination = await _refresh_destination(db, work)
+    if destination is None or not _transport_allowed(notification, destination):
+        await _finish(db, delivery_id, token, "suppressed", "transport_security_required")
+        return False
+    delivery.requested_urgency = route_choice(
+        notification.event_type, str(endpoint.id), current_preferences
+    )["urgency"]
+    delivery.effective_urgency = (
+        delivery.requested_urgency
+        if getattr(work.provider, "critical_supported", False) is True
+        else "normal"
+    )
     delivery.attempts += 1
     now = int(time.time())
     delivery.attempted_at = now
@@ -230,12 +288,15 @@ async def _dispatch(db: AsyncSession, delivery_id: UUID, token: UUID) -> bool:
     db.add(attempt)
     await db.flush()
     message = notification_message(
-        notification, projection=delivery.projection, attempt_id=attempt.id
+        notification,
+        projection=delivery.projection,
+        attempt_id=attempt.id,
+        urgency=delivery.effective_urgency,
     )
     await db.commit()
     try:
         result = await asyncio.wait_for(
-            work.provider.deliver(db, work.destination, message), TRANSPORT_TIMEOUT_SECONDS
+            work.provider.deliver(db, destination, message), TRANSPORT_TIMEOUT_SECONDS
         )
     # Providers are third-party failure boundaries. Never expose endpoint secrets.
     except Exception:  # pylint: disable=broad-exception-caught

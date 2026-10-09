@@ -50,6 +50,15 @@ class AppIntegrationSettings(Base):
     xbox_client_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     xbox_client_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # SMTP deployment configuration; per-user recipient addresses live on destinations.
+    smtp_host: Mapped[str | None] = mapped_column(String(253), nullable=True)
+    smtp_port: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    smtp_username: Mapped[str | None] = mapped_column(String(254), nullable=True)
+    smtp_password: Mapped[str | None] = mapped_column(Text, nullable=True)
+    smtp_from_address: Mapped[str | None] = mapped_column(String(254), nullable=True)
+    smtp_tls_mode: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    public_app_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+
     password_min_length: Mapped[int | None] = mapped_column(nullable=True)
     password_require_uppercase: Mapped[bool | None] = mapped_column(nullable=True)
     password_require_lowercase: Mapped[bool | None] = mapped_column(nullable=True)

@@ -9,6 +9,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import settings
+from src.core.env_handler import EnvConfigHandler
+from src.core.public_url import is_public_app_url, normalize_public_url
 from src.database.models.app_integration_settings import AppIntegrationSettings
 
 
@@ -23,6 +25,19 @@ async def get_or_create_app_integration_settings(db: AsyncSession) -> AppIntegra
         await db.commit()
         await db.refresh(row)
     return row
+
+
+async def get_public_app_url(db: AsyncSession) -> str:
+    """Only a configured public FQDN acts as the shared notification URL default."""
+    handler = EnvConfigHandler()
+    if handler.has("PUBLIC_APP_URL"):
+        value = handler.get("PUBLIC_APP_URL")
+    else:
+        row = await get_or_create_app_integration_settings(db)
+        await db.refresh(row)
+        value = row.public_app_url
+    normalized = normalize_public_url(str(value or ""))
+    return normalized if is_public_app_url(normalized) else ""
 
 
 async def get_max_upload_size_mb(db: AsyncSession) -> int:

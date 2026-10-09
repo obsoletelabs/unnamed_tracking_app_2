@@ -12,6 +12,7 @@ from src.database.models.notification_provider_setting import NotificationProvid
 from src.database.models.plugin_notification_provider import PluginNotificationProviderRegistration
 from src.features.notification_controller import EVENT_TYPES
 from src.features.notification_destinations import resolve_destinations
+from src.features.notification_enrollment import endpoint_address
 from src.features.notification_policy import (
     INBOX_PROVIDER,
     MEDIA_KINDS,
@@ -19,6 +20,8 @@ from src.features.notification_policy import (
     effective_trust,
     select_projection,
 )
+from src.features.notification_urls import notification_url
+from src.features.smtp_configuration import SMTP_PROVIDER, SmtpConfiguration, smtp_configuration
 
 _TYPE_LABELS = {
     "episode_aired": ("New episodes", "An episode of a title you follow has aired."),
@@ -95,26 +98,18 @@ async def routing_settings(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
             )
         )
     }
-    provider_ids = {row.provider_id for row in destinations} | {
-        row.provider_id for row in registrations.values() if row.revoked_at is None
-    }
-    providers = []
-    for provider_id in sorted(provider_ids):
-        registration = registrations.get(provider_id)
-        inbox = provider_id == INBOX_PROVIDER
-        providers.append(
-            {
-                "id": provider_id,
-                "name": "In-app inbox"
-                if inbox
-                else (registration.name if registration else provider_id),
-                "enabled": True if inbox else settings.get(provider_id, False),
-                "available": inbox or bool(registration and registration.revoked_at is None),
-                "configuration_scope": "internal" if inbox else "server",
-                # Existing inbox and legacy webhook adapters have no critical transport.
-                "critical_supported": False,
-            }
+    smtp = await smtp_configuration(db)
+    provider_ids = (
+        {SMTP_PROVIDER}
+        | {row.provider_id for row in destinations}
+        | {row.provider_id for row in registrations.values() if row.revoked_at is None}
+    )
+    providers = [
+        _provider_settings(
+            provider_id, registrations.get(provider_id), settings.get(provider_id, False), smtp
         )
+        for provider_id in sorted(provider_ids)
+    ]
     by_provider = {provider["id"]: provider for provider in providers}
     result = []
     for destination in destinations:
@@ -135,13 +130,27 @@ async def routing_settings(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
                 "enabled": destination.enabled,
                 "available": provider["available"] and installation_matches,
                 "provider_enabled": provider["enabled"],
-                "critical_supported": False,
-                "eligible_types": _eligible_types(destination),
+                "critical_supported": provider["critical_supported"],
+                "critical_description": provider["critical_description"],
+                "eligible_types": [
+                    event_type
+                    for event_type in _eligible_types(destination)
+                    if provider["secure_transport"] or event_type != "security.session.anomaly"
+                ],
                 "shared_configuration": destination.kind == "legacy_webhook",
+                "label": destination.display_name,
+                "notification_url": destination.notification_url,
+                "masked_address": _masked_address(destination),
+                "recovery_allowed": destination.recovery_allowed,
+                "revision": destination.revision,
+                "verification_available": destination.provider_id == SMTP_PROVIDER
+                and provider["available"]
+                and provider["secure_transport"],
             }
         )
     await db.commit()
     return {
+        "default_url": await notification_url(db, user_id),
         "providers": providers,
         "destinations": result,
         "types": [
@@ -154,4 +163,45 @@ async def routing_settings(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
             }
             for kind, event_type in EVENT_TYPES.items()
         ],
+    }
+
+
+def _masked_address(destination: NotificationDestination) -> str | None:
+    if destination.provider_id != SMTP_PROVIDER or not destination.encrypted_configuration:
+        return None
+    address = endpoint_address(destination)
+    local, domain = address.rsplit("@", 1)
+    return f"{local[:1]}***@{domain}"
+
+
+def _provider_settings(
+    provider_id: str,
+    registration: PluginNotificationProviderRegistration | None,
+    enabled: bool,
+    smtp: SmtpConfiguration,
+) -> dict[str, Any]:
+    inbox = provider_id == INBOX_PROVIDER
+    email = provider_id == SMTP_PROVIDER
+    return {
+        "id": provider_id,
+        "name": "In-app inbox"
+        if inbox
+        else ("Email (SMTP)" if email else (registration.name if registration else provider_id)),
+        "enabled": True if inbox else enabled,
+        "available": inbox
+        or (smtp.configured if email else bool(registration and registration.revoked_at is None)),
+        "configuration_scope": "internal" if inbox else "server",
+        "critical_supported": email,
+        "critical_description": (
+            "Adds high-priority email headers; your mail client decides how to alert you."
+        )
+        if email
+        else None,
+        "transport_warning": (
+            "SMTP does not use TLS. Email contents and credentials travel "
+            "without transport encryption."
+        )
+        if email and smtp.configured and smtp.tls_mode == "none"
+        else None,
+        "secure_transport": smtp.allows_sensitive if email else True,
     }

@@ -25,6 +25,8 @@ class User(Base):
     # by URL and can't send a login cookie, so the feed authenticates by
     # this instead. NULL until the user first asks for their feed URL.
     calendar_token: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
+    # Most recent signed-in app origin; unrelated to identity-provider callbacks.
+    last_app_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     steamgriddb_api_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
     psn_npsso_token: Mapped[str | None] = mapped_column(Text, nullable=True)
     psn_validated_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)

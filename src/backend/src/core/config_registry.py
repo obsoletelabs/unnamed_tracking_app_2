@@ -119,12 +119,60 @@ CONFIG_SECTIONS: tuple[ConfigSectionSpec, ...] = (
         50,
         default=True,
     ),
+    ConfigSectionSpec(
+        "smtp",
+        "Email notifications",
+        "Deployment SMTP transport; users enroll their own recipient addresses.",
+        60,
+    ),
 )
 
 # Add a field here first when introducing a new deployment/setup variable.
 # docs/CONFIGURATION.md contains the complete workflow for wiring that variable
 # through resolution, validation, persistence, and the generated UI.
 CONFIG_REGISTRY: tuple[ConfigSpec, ...] = (
+    ConfigSpec(
+        "PUBLIC_APP_URL",
+        "general",
+        label="Public app URL",
+        hint="Optional HTTPS public FQDN. Notifications fall back to each user's last-used "
+        "app URL; independent of OIDC.",
+        storage="app_integration",
+    ),
+    ConfigSpec("SMTP_HOST", "smtp", label="SMTP host", storage="app_integration"),
+    ConfigSpec(
+        "SMTP_PORT",
+        "smtp",
+        input_type="integer",
+        label="SMTP port",
+        hint="Leave unset for the transport default: TLS 465, STARTTLS 587, plaintext 25.",
+        storage="app_integration",
+    ),
+    ConfigSpec("SMTP_USERNAME", "smtp", label="SMTP username", storage="app_integration"),
+    ConfigSpec(
+        "SMTP_PASSWORD",
+        "smtp",
+        input_type="password",
+        label="SMTP password",
+        secret=True,
+        storage="app_integration",
+    ),
+    ConfigSpec(
+        "SMTP_FROM_ADDRESS", "smtp", label="Sender email address", storage="app_integration"
+    ),
+    ConfigSpec(
+        "SMTP_TLS_MODE",
+        "smtp",
+        input_type="select",
+        label="Transport security",
+        default="starttls",
+        choices=(
+            ("starttls", "STARTTLS"),
+            ("ssl", "Implicit TLS"),
+            ("none", "Plaintext (warning)"),
+        ),
+        storage="app_integration",
+    ),
     ConfigSpec(
         "NOTIFICATION_RETENTION_DEFAULT_DAYS",
         source=ConfigSource.ENV,

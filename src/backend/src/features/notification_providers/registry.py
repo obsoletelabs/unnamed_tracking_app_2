@@ -10,6 +10,7 @@ from src.plugin_api.runtime_client import PluginRuntimeClient
 
 from .base import NotificationProvider
 from .plugin import PluginNotificationProvider
+from .smtp import SmtpNotificationProvider
 
 
 async def get_notification_providers(
@@ -22,10 +23,16 @@ async def get_notification_providers(
             )
         )
     ).all()
-    if not registrations:
-        return {}
-    runtime = PluginRuntimeClient()
-    return {
-        registration.provider_id: PluginNotificationProvider(registration, runtime=runtime)
-        for registration in registrations
+    providers: dict[str, NotificationProvider] = {
+        SmtpNotificationProvider.id: SmtpNotificationProvider()
     }
+    if not registrations:
+        return providers
+    runtime = PluginRuntimeClient()
+    providers.update(
+        {
+            registration.provider_id: PluginNotificationProvider(registration, runtime=runtime)
+            for registration in registrations
+        }
+    )
+    return providers

@@ -54,6 +54,29 @@ These values are used for environment-based bootstrap of the initial administrat
 
 The normal setup flow can collect these values instead of providing them through the environment.
 
+## Application URL
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `PUBLIC_APP_URL` | Automatic per-user origin | Optional HTTPS public FQDN used after notification URL preferences and before each user's last-used app URL. ENV takes precedence over the setup/Application setting. Independent of OIDC; credentials, paths, queries and fragments are rejected. |
+
+Each signed-in user has an independently remembered app origin. Users can override notification links globally or per external destination, including separate email and webhook domains. Public DNS for the configured FQDN is managed outside the app.
+
+## Email notifications
+
+SMTP is built into the host and uses the central registry with ENV precedence over administrator settings. Nonempty ENV values lock the corresponding UI fields. User recipient addresses and their verification are separate personal destinations.
+
+| Variable | Purpose |
+|---|---|
+| `SMTP_HOST` | SMTP server hostname or literal IP. |
+| `SMTP_PORT` | Optional custom port; unset uses TLS 465, STARTTLS 587, or plaintext 25. |
+| `SMTP_TLS_MODE` | `starttls` (default), `ssl` for implicit TLS, or `none`. |
+| `SMTP_FROM_ADDRESS` | Single sender address. |
+| `SMTP_USERNAME` | Optional authentication username. |
+| `SMTP_PASSWORD` | Optional authentication password. Stored UI values are encrypted and never returned. |
+
+Missing public URL does not disable SMTP, but unsubscribe links are unavailable. SMTP plaintext warns; sensitive/recovery/verification messages require TLS except development or a literal local SMTP endpoint. See [notification providers](../user-guide/notification-providers.md) for the exact transport policy, verification and unsubscribe lifecycle. Password-reset and invite features remain plugins.
+
 ## Metadata/provider credentials
 
 These registry fields can be supplied through the environment and are deployment-owned when an environment value is present:

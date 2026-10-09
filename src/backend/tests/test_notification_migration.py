@@ -7,6 +7,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import psycopg
+import pytest
 from psycopg import sql
 from sqlalchemy.engine import make_url
 
@@ -94,6 +95,24 @@ def test_populated_notification_upgrade_preserves_inbox_and_suppresses_unsafe_wo
                 FROM notification_destinations WHERE kind = 'legacy_webhook'""").fetchone() == (
                 0,
                 installation_id,
+            )
+            assert connection.execute(
+                "SELECT DISTINCT requested_urgency, effective_urgency FROM notification_deliveries"
+            ).fetchall() == [("normal", "normal")]
+            email_destination = uuid4()
+            connection.execute(
+                """INSERT INTO notification_destinations
+                (id, user_id, provider_id, endpoint_key, kind, channel_context, privacy,
+                 revision, enabled, active, recovery_allowed, created_at)
+                VALUES (%s, %s, 'core.smtp', 'test-email', 'email', 'external', 1,
+                        1, true, true, false, 1)""",
+                (email_destination, user_id),
+            )
+            with pytest.raises(subprocess.CalledProcessError) as failure:
+                migrate("downgrade", "22ff87d4d01c")
+            assert "Remove active email destinations" in failure.value.stderr
+            connection.execute(
+                "DELETE FROM notification_destinations WHERE id = %s", (email_destination,)
             )
             migrate("downgrade", "d8338e79fbbd")
             assert connection.execute("SELECT id, read_at FROM notifications").fetchone() == (

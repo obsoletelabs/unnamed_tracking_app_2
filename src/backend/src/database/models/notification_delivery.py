@@ -13,6 +13,12 @@ from src.database.base import Base
 
 
 class NotificationDelivery(Base):
+    requested_urgency: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="normal", server_default="normal"
+    )
+    effective_urgency: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="normal", server_default="normal"
+    )
     __tablename__ = "notification_deliveries"
     __table_args__ = (
         UniqueConstraint(

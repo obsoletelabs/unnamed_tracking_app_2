@@ -194,8 +194,8 @@ async def test_lifecycle_revokes_all_host_execution_boundaries(tmp_path, monkeyp
                 active_providers = await providers.get_notification_providers(db)
                 # Registration remains discoverable during outages; actual
                 # destination authorization still requires a running owner.
-                assert bool(active_providers)
-                provider = next(iter(active_providers.values()))
+                assert "core.smtp" in active_providers
+                provider = active_providers[f"{plugin_id}.provider"]
                 destination = await provider.lookup_destination(
                     db, user, SimpleNamespace(enabled=True, user_id=user.id)
                 )

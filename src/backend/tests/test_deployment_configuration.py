@@ -96,6 +96,49 @@ async def test_provider_updates_encrypt_secrets_and_preserve_blank_values(config
     assert "secret" not in response.json()["providers"].values()
 
 
+async def test_smtp_configuration_uses_existing_encryption_and_env_locks(configuration):
+    response = await configuration.http.put(
+        "/api/settings/deployment",
+        json={
+            "smtp_host": "smtp.example.test",
+            "smtp_port": 465,
+            "smtp_tls_mode": "ssl",
+            "smtp_from_address": "sender@example.test",
+            "smtp_password": "smtp-secret",
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["providers"]["smtp_port"] == 465
+    assert response.json()["providers"]["smtp_password_configured"]
+    assert decrypt_secret(configuration.integration.smtp_password) == "smtp-secret"
+    assert "smtp-secret" not in response.text
+    response = await configuration.http.put("/api/settings/deployment", json={"smtp_password": ""})
+    assert response.status_code == 200 and configuration.integration.smtp_password
+    response = await configuration.http.put(
+        "/api/settings/deployment", json={"smtp_password": None}
+    )
+    assert response.status_code == 200 and configuration.integration.smtp_password is None
+    configuration.env["SMTP_HOST"] = "environment.example.test"
+    response = await configuration.http.put(
+        "/api/settings/deployment", json={"smtp_host": "replacement"}
+    )
+    assert response.status_code == 409
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("smtp_port", 0),
+        ("smtp_tls_mode", "invalid"),
+        ("smtp_from_address", "a\r\nBcc:bad@test"),
+        ("smtp_host", "bad host"),
+    ],
+)
+async def test_smtp_invalid_configuration_is_rejected(configuration, field, value):
+    response = await configuration.http.put("/api/settings/deployment", json={field: value})
+    assert response.status_code in {400, 422}
+
+
 @pytest.mark.parametrize(
     ("field", "env_name"),
     [
@@ -220,3 +263,45 @@ async def test_real_ip_configuration_uses_the_existing_validators(configuration)
         "/api/settings/deployment", json={"nginx_realip_trusted_proxies": "not-a-network"}
     )
     assert response.status_code == 400
+
+
+async def test_public_url_persistence_validation_and_env_lock(configuration):
+    response = await configuration.http.put(
+        "/api/settings/deployment", json={"public_app_url": "https://app.example.test/"}
+    )
+    assert response.status_code == 200, response.text
+    assert configuration.integration.public_app_url == "https://app.example.test"
+    assert response.json()["app"]["public_app_url"] == "https://app.example.test"
+    response = await configuration.http.put(
+        "/api/settings/deployment", json={"public_app_url": "http://external.test"}
+    )
+    assert response.status_code == 400
+    configuration.env["PUBLIC_APP_URL"] = "https://locked.example.test"
+    response = await configuration.http.put(
+        "/api/settings/deployment", json={"public_app_url": "https://override.test"}
+    )
+    assert response.status_code == 409
+    response = await configuration.http.get("/api/settings/deployment")
+    assert response.json()["provider_locks"]["public_app_url"] is True
+
+
+async def test_smtp_automatic_port_remains_unset_on_mode_changes(configuration):
+    response = await configuration.http.put(
+        "/api/settings/deployment", json={"smtp_tls_mode": "ssl", "smtp_port": None}
+    )
+    assert response.status_code == 200 and configuration.integration.smtp_port is None
+    response = await configuration.http.put("/api/settings/deployment", json={"smtp_port": 2525})
+    assert response.status_code == 200
+    response = await configuration.http.put(
+        "/api/settings/deployment", json={"smtp_tls_mode": "none"}
+    )
+    assert response.status_code == 200 and configuration.integration.smtp_port == 2525
+
+
+async def test_setup_persists_public_url_through_registry(configuration):
+    response = await configuration.http.put(
+        "/api/setup/configuration",
+        json={"configuration": {"PUBLIC_APP_URL": "https://app.example.test/"}},
+    )
+    assert response.status_code == 200
+    assert configuration.integration.public_app_url == "https://app.example.test"

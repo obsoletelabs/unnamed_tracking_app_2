@@ -3,7 +3,7 @@
 import time
 from uuid import UUID, uuid4
 
-from sqlalchemy import BigInteger, Boolean, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -35,6 +35,10 @@ class NotificationDestination(Base):
     installation_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     # Opaque host-owned reference, never an address/secret returned to a renderer.
     configuration_ref: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # Host-only encrypted endpoint values; plugins and routing DTOs never receive these.
+    encrypted_configuration: Mapped[str | None] = mapped_column(Text, nullable=True)
+    display_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    notification_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     recovery_allowed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     media_consent_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
     media_consent_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
