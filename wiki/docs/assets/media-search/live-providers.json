@@ -1,0 +1,25 @@
+{
+  "host_source_head": "07d081d3899a1493aa17e5cc1663cccf1edec315",
+  "provider_response_fixture": false,
+  "requests": [
+    {
+      "query": "Dune",
+      "media_type": "movie"
+    },
+    {
+      "query": "Dune",
+      "media_type": "tv_show"
+    },
+    {
+      "query": "Dune",
+      "media_type": "anime"
+    }
+  ],
+  "counts": {
+    "movie": 0,
+    "tv_show": 3,
+    "anime": 1
+  },
+  "warnings": [],
+  "page_errors": []
+}

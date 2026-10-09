@@ -71,8 +71,9 @@ const groups = [
     id: "media",
     label: "Media",
     icon: "media",
-    paths: ["/movies", "/tv", "/anime", "/media/collections"],
+    paths: ["/movies", "/tv", "/anime", "/media/collections", "/media/search"],
     entries: [
+      { path: "/media/search", label: "Add media", icon: "media" },
       { path: "/movies", label: "Movies", icon: "media" },
       { path: "/tv", label: "TV shows", icon: "tv" },
       { path: "/anime", label: "Anime", icon: "anime" },
@@ -616,9 +617,13 @@ onUnmounted(() => {
           to="/movies"
           data-tour="nav-media"
           :class="{
-            active: ['/movies', '/tv', '/anime', '/media/collections'].some(
-              isActive,
-            ),
+            active: [
+              '/movies',
+              '/tv',
+              '/anime',
+              '/media/collections',
+              '/media/search',
+            ].some(isActive),
           }"
           :aria-current="isActive('/movies') ? 'page' : undefined"
           :title="navigationTooltip('Movies', '/movies')"

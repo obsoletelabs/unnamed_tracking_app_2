@@ -33,18 +33,8 @@ import {
 // Shows, and Anime without knowing about seasons, episode tables, or any
 // other per-entity detail — each Library.vue page adapts its real
 // entities into this shape and reacts to the events below.
-import type {
-  LibraryCardVM,
-  SearchResultVM,
-  QuickAddForm,
-  EditForm,
-} from "../../types/mediaLibrary";
-export type {
-  LibraryCardVM,
-  SearchResultVM,
-  QuickAddForm,
-  EditForm,
-} from "../../types/mediaLibrary";
+import type { LibraryCardVM, EditForm } from "../../types/mediaLibrary";
+export type { LibraryCardVM, EditForm } from "../../types/mediaLibrary";
 
 // The pill/tab labels shown everywhere in this view come from the shared
 // 5-value bucket set in utils/mediaStatus.ts — the pill's CSS modifier
@@ -62,13 +52,6 @@ const props = defineProps<{
   loading: boolean;
   error: string | null;
   detailRoute: (id: string) => string;
-  search: (
-    query: string,
-  ) => Promise<{ results: SearchResultVM[]; providerErrors: string[] }>;
-  createFromResult: (
-    result: SearchResultVM,
-    form: QuickAddForm,
-  ) => Promise<void>;
 }>();
 
 const emit = defineEmits<{
@@ -758,96 +741,13 @@ function saveEdit() {
   }
 }
 
-// ---- quick add (two-step: search -> fill-out form) ----
-const quickAddOpen = ref(false);
-const quickAddStep = ref<"search" | "form">("search");
-const quickAddQuery = ref("");
-const quickAddResults = ref<SearchResultVM[]>([]);
-const quickAddProviderErrors = ref<string[]>([]);
-const quickAddSearching = ref(false);
-const quickAddPick = ref<SearchResultVM | null>(null);
-const quickAddForm = reactive<QuickAddForm>({
-  status: "plan",
-  watched: 0,
-  seen: false,
-  score: null,
-  startDate: null,
-  endDate: null,
-});
-const quickAddSaving = ref(false);
-
+// All three libraries share the progressive search page. The type is only a
+// local display filter; every provider search still covers movies, TV and anime.
 function openQuickAdd() {
-  quickAddStep.value = "search";
-  quickAddQuery.value = "";
-  quickAddResults.value = [];
-  quickAddProviderErrors.value = [];
-  quickAddOpen.value = true;
-}
-function onEscape(e: KeyboardEvent) {
-  if (e.key === "Escape" && quickAddOpen.value) closeQuickAdd();
-}
-onMounted(() => window.addEventListener("keydown", onEscape));
-onBeforeUnmount(() => window.removeEventListener("keydown", onEscape));
-function closeQuickAdd() {
-  quickAddOpen.value = false;
-  quickAddPick.value = null;
-}
-async function runQuickAddSearch() {
-  if (!quickAddQuery.value.trim()) {
-    quickAddResults.value = [];
-    return;
-  }
-  quickAddSearching.value = true;
-  try {
-    const { results, providerErrors } = await props.search(quickAddQuery.value);
-    quickAddResults.value = results;
-    quickAddProviderErrors.value = providerErrors;
-  } finally {
-    quickAddSearching.value = false;
-  }
-}
-function pickQuickAddResult(result: SearchResultVM) {
-  quickAddPick.value = result;
-  quickAddForm.status = "plan";
-  quickAddForm.watched = 0;
-  quickAddForm.seen = false;
-  quickAddForm.score = null;
-  quickAddForm.startDate = null;
-  quickAddForm.endDate = null;
-  quickAddStep.value = "form";
-}
-function quickAddBackToSearch() {
-  quickAddStep.value = "search";
-}
-// The max attribute alone doesn't stop someone from typing past it — a
-// fresh add has no legitimate reason to start above the known total
-// (unlike the ongoing rewatch case, where advancing past it is allowed).
-function clampQuickAddWatched() {
-  const max = quickAddPick.value?.episodeTotal;
-  if (max !== null && max !== undefined && quickAddForm.watched > max) {
-    quickAddForm.watched = max;
-  }
-}
-async function saveQuickAdd() {
-  if (!quickAddPick.value) return;
-  quickAddSaving.value = true;
-  // Same as the edit modal: picking Completed catches episodes watched up
-  // to the known total automatically instead of leaving it at 0.
-  const watched =
-    quickAddForm.status === "completed" &&
-    quickAddPick.value.episodeTotal !== null
-      ? quickAddPick.value.episodeTotal
-      : quickAddForm.watched;
-  try {
-    await props.createFromResult(quickAddPick.value, {
-      ...quickAddForm,
-      watched,
-      status: bucketToReal(quickAddForm.status),
-    });
-    closeQuickAdd();
-  } finally {
-    quickAddSaving.value = false;
-  }
+  void router.push({
+    path: "/media/search",
+    query: { type: props.kind === "tv" ? "tv_show" : props.kind },
+  });
 }
 
 defineExpose({ openQuickAdd });
@@ -1814,183 +1714,6 @@ defineExpose({ openQuickAdd });
           <button type="button" class="btn-solid" @click="saveEdit">
             Save
           </button>
-        </div>
-      </div>
-    </UiModal>
-
-    <!-- ===== Quick Add ===== -->
-    <UiModal
-      v-if="quickAddOpen"
-      :title="addLabel.replace('+ ', '')"
-      description="Search, then pick the right result."
-      size="wide"
-      @close="closeQuickAdd"
-    >
-      <div class="media-modal-content qa-card">
-        <div v-if="quickAddStep === 'search'">
-          <div class="qa-body">
-            <div class="qa-search-row">
-              <input
-                v-model="quickAddQuery"
-                aria-label="Search media by title"
-                autofocus
-                placeholder="Search by title..."
-                @keyup.enter="runQuickAddSearch"
-              />
-              <button
-                type="button"
-                class="qa-add-btn"
-                @click="runQuickAddSearch"
-              >
-                Search
-              </button>
-            </div>
-            <p
-              v-if="quickAddProviderErrors.length"
-              class="empty-state error"
-              style="padding: 8px 0; font-size: 0.78rem"
-            >
-              {{ quickAddProviderErrors.join(" · ") }}
-            </p>
-            <p v-if="quickAddSearching" class="empty-state">Searching…</p>
-            <p v-else-if="!quickAddResults.length" class="empty-state">
-              No results yet. Search above.
-            </p>
-            <div v-else class="qa-results">
-              <div v-for="(r, i) in quickAddResults" :key="i" class="qa-result">
-                <div
-                  class="qa-result-art"
-                  :style="
-                    r.poster ? { backgroundImage: `url(${r.poster})` } : {}
-                  "
-                ></div>
-                <div class="qa-result-titles">
-                  <div class="qa-result-english">{{ r.title }}</div>
-                  <div
-                    v-if="r.releaseYear || r.episodeTotal"
-                    class="qa-result-meta"
-                  >
-                    <span v-if="r.releaseYear">{{ r.releaseYear }}</span>
-                    <span v-if="r.episodeTotal"
-                      >{{ r.episodeTotal }} episode{{
-                        r.episodeTotal === 1 ? "" : "s"
-                      }}</span
-                    >
-                  </div>
-                  <div v-if="r.description" class="qa-result-desc">
-                    {{ r.description }}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  class="qa-add-btn"
-                  @click="pickQuickAddResult(r)"
-                >
-                  + Add
-                </button>
-              </div>
-            </div>
-            <div class="qa-search-foot">
-              <button type="button" class="btn-outline" @click="closeQuickAdd">
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div v-else>
-          <div class="qa-body">
-            <button
-              type="button"
-              class="qa-back-link"
-              @click="quickAddBackToSearch"
-            >
-              &larr; Back to results
-            </button>
-            <div class="qa-form-header">
-              <div
-                class="qa-form-art"
-                :style="
-                  quickAddPick?.poster
-                    ? { backgroundImage: `url(${quickAddPick.poster})` }
-                    : {}
-                "
-              ></div>
-              <div class="qa-form-titles">
-                <div class="qa-result-english">{{ quickAddPick?.title }}</div>
-                <div
-                  v-if="quickAddPick?.releaseYear || quickAddPick?.episodeTotal"
-                  class="qa-result-meta"
-                >
-                  <span v-if="quickAddPick?.releaseYear">{{
-                    quickAddPick.releaseYear
-                  }}</span>
-                  <span v-if="quickAddPick?.episodeTotal"
-                    >{{ quickAddPick.episodeTotal }} episode{{
-                      quickAddPick.episodeTotal === 1 ? "" : "s"
-                    }}</span
-                  >
-                </div>
-              </div>
-            </div>
-            <p class="qa-section-label">Your progress</p>
-            <div class="qa-field-grid">
-              <label class="qa-field">
-                <span>Status</span>
-                <select v-model="quickAddForm.status">
-                  <option v-for="s in STATUSES" :key="s.key" :value="s.key">
-                    {{ s.label }}
-                  </option>
-                </select>
-              </label>
-              <label v-if="kind !== 'movie'" class="qa-field">
-                <span
-                  >Episodes watched<template v-if="quickAddPick?.episodeTotal">
-                    of {{ quickAddPick.episodeTotal }}</template
-                  ></span
-                >
-                <input
-                  v-model.number="quickAddForm.watched"
-                  type="number"
-                  min="0"
-                  :max="quickAddPick?.episodeTotal ?? undefined"
-                  @change="clampQuickAddWatched"
-                />
-              </label>
-              <label class="qa-field">
-                <span>Your rating (0–10)</span>
-                <input
-                  v-model.number="quickAddForm.score"
-                  type="number"
-                  min="0"
-                  max="10"
-                  step="0.1"
-                  placeholder="–"
-                />
-              </label>
-              <label class="qa-field">
-                <span>Start date</span>
-                <input v-model="quickAddForm.startDate" type="date" />
-              </label>
-              <label class="qa-field">
-                <span>End date</span>
-                <input v-model="quickAddForm.endDate" type="date" />
-              </label>
-            </div>
-            <div class="modal-actions">
-              <button type="button" class="btn-outline" @click="closeQuickAdd">
-                Cancel
-              </button>
-              <button
-                type="button"
-                class="btn-solid"
-                :disabled="quickAddSaving"
-                @click="saveQuickAdd"
-              >
-                {{ quickAddSaving ? "Adding…" : "Add to Library" }}
-              </button>
-            </div>
-          </div>
         </div>
       </div>
     </UiModal>

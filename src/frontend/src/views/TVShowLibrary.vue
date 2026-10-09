@@ -7,8 +7,6 @@ import {
   updateTVShow,
   deleteTVShow,
   tvShowToInput,
-  searchTVShowMetadata,
-  createTVShow,
   updateSeason,
 } from "../services/tvShows";
 import type { SeasonUpdateInput } from "../services/tvShows";
@@ -18,8 +16,6 @@ import MediaLibraryView from "../components/library/MediaLibraryView.vue";
 import { statusBucket, bucketToReal } from "../utils/mediaStatus";
 import type {
   LibraryCardVM,
-  SearchResultVM,
-  QuickAddForm,
   EditForm,
 } from "../components/library/MediaLibraryView.vue";
 
@@ -259,71 +255,6 @@ async function onBulkDelete(ids: string[]) {
   shows.value = shows.value.filter((s) => !ids.includes(s.id));
 }
 
-async function search(
-  query: string,
-): Promise<{ results: SearchResultVM[]; providerErrors: string[] }> {
-  const { results, providerErrors } = await searchTVShowMetadata(query);
-  return {
-    results: results.map((r) => ({
-      title: r.title,
-      poster: r.posterUrl,
-      description: r.description,
-      episodeTotal: r.seasons.length
-        ? r.seasons.reduce((sum, s) => sum + (s.episodeCount ?? 0), 0)
-        : null,
-      releaseYear: r.firstAirDate ? r.firstAirDate.slice(0, 4) : null,
-    })),
-    providerErrors,
-  };
-}
-
-async function createFromResult(
-  result: SearchResultVM,
-  form: QuickAddForm,
-): Promise<void> {
-  const { results } = await searchTVShowMetadata(result.title, 1);
-  const match = results.find((r) => r.title === result.title) ?? results[0];
-  // TMDB results carry a real per-season breakdown; TVmaze's don't (it has
-  // no season-level endpoint wired up here) — fall back to a single
-  // Season 1 using the flat episode total so there's always somewhere for
-  // "episodes watched" to land, regardless of which provider found it.
-  const seasons =
-    match?.seasons && match.seasons.length > 0
-      ? match.seasons
-      : [{ seasonNumber: 1, episodeCount: result.episodeTotal ?? undefined }];
-  const created = await createTVShow({
-    title: result.title,
-    description: match?.description ?? null,
-    firstAirDate: match?.firstAirDate ?? null,
-    episodeRuntimeMinutes: match?.episodeRuntimeMinutes ?? null,
-    creators: match?.creators ?? [],
-    studios: match?.studios ?? [],
-    genres: match?.genres ?? [],
-    posterUrl: result.poster,
-    backdropUrl: match?.backdropUrl ?? null,
-    tmdbScore: match?.tmdbScore ?? null,
-    // Only TVmaze IDs are useful here — that's the only provider the
-    // episode sync knows how to call back into. tvmazeId survives even
-    // when TMDB/OMDb "owns" the merged search result (see search.py's
-    // _merge_or_append), unlike providerId which only reflects whichever
-    // provider happened to match the title first.
-    externalId: match?.tvmazeId ?? null,
-    status: form.status as TVShowStatus,
-    ratingOverall: form.score,
-    startDate: form.startDate,
-    endDate: form.endDate,
-    seasons,
-  });
-  let finalShow = created;
-  const firstSeason = created.seasons[0];
-  if (firstSeason && form.watched > 0) {
-    finalShow = await updateSeason(created.id, firstSeason.id, {
-      episodesWatched: form.watched,
-    });
-  }
-  shows.value.push(finalShow);
-}
-
 function detailRoute(id: string): string {
   return `/tv/${id}`;
 }
@@ -340,8 +271,6 @@ function detailRoute(id: string): string {
     :loading="loading"
     :error="error"
     :detail-route="detailRoute"
-    :search="search"
-    :create-from-result="createFromResult"
     @filters-change="load"
     @load-more="loadMore"
     @toggle-favorite="onToggleFavorite"

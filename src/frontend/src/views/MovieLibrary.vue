@@ -7,16 +7,12 @@ import {
   updateMovie,
   deleteMovie,
   movieToInput,
-  searchMovieMetadata,
-  createMovie,
 } from "../services/movies";
 import type { Movie, MovieStatus } from "../types/movie";
 import { localMediaImage } from "../utils/mediaImages";
 import MediaLibraryView from "../components/library/MediaLibraryView.vue";
 import type {
   LibraryCardVM,
-  SearchResultVM,
-  QuickAddForm,
   EditForm,
 } from "../components/library/MediaLibraryView.vue";
 
@@ -197,52 +193,6 @@ async function onBulkDelete(ids: string[]) {
   movies.value = movies.value.filter((m) => !ids.includes(m.id));
 }
 
-async function search(
-  query: string,
-): Promise<{ results: SearchResultVM[]; providerErrors: string[] }> {
-  const { results, providerErrors } = await searchMovieMetadata(query);
-  return {
-    results: results.map((r) => ({
-      title: r.title,
-      poster: r.posterUrl,
-      description: r.description,
-      episodeTotal: null,
-      releaseYear: r.releaseDate ? r.releaseDate.slice(0, 4) : null,
-    })),
-    providerErrors,
-  };
-}
-
-async function createFromResult(
-  result: SearchResultVM,
-  form: QuickAddForm,
-): Promise<void> {
-  // Re-run the search to recover the full metadata result behind this
-  // title (the normalized SearchResultVM only carries what the shared
-  // library view needs to render — the rest of the real fields still
-  // come straight from the same provider search).
-  const { results } = await searchMovieMetadata(result.title, 1);
-  const match = results.find((r) => r.title === result.title) ?? results[0];
-  const created = await createMovie({
-    title: result.title,
-    description: match?.description ?? null,
-    releaseDate: match?.releaseDate ?? null,
-    director: match?.director ?? null,
-    writer: match?.writer ?? null,
-    studios: match?.studios ?? [],
-    countries: match?.countries ?? [],
-    genres: match?.genres ?? [],
-    posterUrl: result.poster,
-    backdropUrl: match?.backdropUrl ?? null,
-    tmdbScore: match?.tmdbScore ?? null,
-    status: form.status as MovieStatus,
-    ratingOverall: form.score,
-    startDate: form.startDate,
-    endDate: form.endDate,
-  });
-  movies.value.push(created);
-}
-
 function detailRoute(id: string): string {
   return `/movies/${id}`;
 }
@@ -259,8 +209,6 @@ function detailRoute(id: string): string {
     :loading="loading"
     :error="error"
     :detail-route="detailRoute"
-    :search="search"
-    :create-from-result="createFromResult"
     @filters-change="load"
     @load-more="loadMore"
     @toggle-favorite="onToggleFavorite"

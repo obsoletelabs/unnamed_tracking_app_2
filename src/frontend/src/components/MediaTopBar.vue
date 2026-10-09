@@ -6,7 +6,7 @@ import AppTopBar from "./AppTopBar.vue";
 import MediaKindSwitch from "./MediaKindSwitch.vue";
 
 defineProps<{
-  active: "movie" | "tv" | "anime" | "lists";
+  active: "movie" | "tv" | "anime" | "lists" | "search";
 }>();
 </script>
 
