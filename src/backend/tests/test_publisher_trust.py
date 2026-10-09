@@ -4,6 +4,7 @@ import base64
 import hashlib
 import json
 import zipfile
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -128,17 +129,26 @@ def test_production_identities_keep_official_demo_and_generic_trust_separate() -
     official_v2 = publishers["unnamed-tracking-official-2026-10-07-v2"]
     examples_v2 = publishers["unnamed-tracking-examples-2026-10-07-v2"]
     generic_v2 = publishers["unnamed-tracking-generic-2026-10-07-v2"]
+    before_rotation = datetime(2026, 10, 7, 15, tzinfo=UTC)
     assert len({official.public_key, examples.public_key, generic.public_key}) == 3
-    assert official.channel == "official" and official.allows_plugin("official.pwa")
+    assert official.channel == "official" and official.allows_plugin(
+        "official.pwa", now=before_rotation
+    )
     assert not official.allows_plugin("example.lifecycle")
-    assert examples.channel == "demo" and examples.allows_plugin("example.lifecycle")
-    assert generic.channel == "community" and generic.allows_plugin("example.lifecycle")
-    assert generic.allows_plugin("plugin.lifecycle")
+    assert examples.channel == "demo" and examples.allows_plugin(
+        "example.lifecycle", now=before_rotation
+    )
+    assert generic.channel == "community" and generic.allows_plugin(
+        "example.lifecycle", now=before_rotation
+    )
+    assert generic.allows_plugin("plugin.lifecycle", now=before_rotation)
     assert not examples.allows_plugin("official.pwa")
     assert not generic.allows_plugin("official.pwa")
     assert publishers["official-example-2026"].channel == "demo"
     assert len({official_v2.public_key, examples_v2.public_key, generic_v2.public_key}) == 3
     assert official_v2.channel == "official" and official_v2.allows_plugin("official.pwa")
+    assert official_v2.allows_plugin("example.self-service-session-manager")
+    assert not official_v2.allows_plugin("example.self-service-session-manager-extra")
     assert not official_v2.allows_plugin("example.lifecycle")
     assert examples_v2.channel == "demo" and examples_v2.allows_plugin("example.lifecycle")
     assert generic_v2.channel == "community" and generic_v2.allows_plugin("plugin.lifecycle")

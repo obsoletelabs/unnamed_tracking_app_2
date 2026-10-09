@@ -13,7 +13,15 @@
         "9c9b14e6114ad93cc1001f2a9b1e7612dfed34070e07958342755c8f588e1c44": ["9dadbac9027bc16892fe605047d3d714066d49798615ad65db9f59789c132d7e"],
         "e5ae730510d63f421fd882df4c14cbd0bd5aec26085be238fa4af134498bb283": ["ffe533ccf73b422647d7ee475100645713adad12577bd8d5fecfbde00505d185"],
         "8ca5e5b6bb98b8e7d1b73cf83e27c5ca3dc8c8b8b11725274f109a1f42b4dd17": ["fbaca980103ddbfba440847e18a508755f4cd0678ac589e294a6604fe45f31da"]
-      }
+      },
+      "not_before": "2026-01-01T00:00:00Z",
+      "not_after": "2026-10-07T16:00:00Z",
+      "successor_key_id": "unnamed-tracking-examples-2026-10-07-v2",
+      "historical_package_sha256": [
+        "3068fc9368d08550188034379405404a0e32e03db266127ba79d12adda4d6b7a",
+        "c0c0ced8df0bd84f773d5494b8e2106421615bd904bfcdc47bc9c16cb011ec47",
+        "de33720df61f822a5d87bef7bd80a8e6e6de37de00ab7cf8cf4aff9d3e2b7a97"
+      ]
     },
     {
       "key_id": "official-example-2026-additional",
@@ -23,7 +31,11 @@
       "status": "active",
       "plugin_id_prefixes": ["example."],
       "channel": "demo",
-      "legacy_manifest_hashes": {}
+      "legacy_manifest_hashes": {},
+      "not_before": "2026-01-01T00:00:00Z",
+      "not_after": "2026-10-07T16:00:00Z",
+      "successor_key_id": "unnamed-tracking-examples-2026-10-07-v2",
+      "historical_package_sha256": []
     },
     {
       "key_id": "non-secret-testkey",
@@ -36,6 +48,7 @@
       "legacy_manifest_hashes": {
         "8d09ac72e6c465fd72436fed964a4e6e28f29b14e6737d31d11ca24d3eb57481": ["bcb1a94b8c84b1c3c329e02dc28a0fbaa678def42be6f5e30197ab69ee38eaa4"],
         "de431fe9f3504d2d77e9f06596414cfe6630447a04d6a0e431ff2c7d6e96d151": ["73f91ea10ef68ed3a3bb3076a9cce73863bc3eefede97927c5f55d0598681827"],
+        "1af6b0e8b5ea6f498d08e0655176f803e8dce49015fffbbf15a005f11fb07013": ["1e468f322e7d6a44bd4c6e9e972057f986b2070f9e1191d432e1cd31762dd551"],
         "e471d9b315ba8611c24452f6f2b63bb94a2bbd7a401fedf73af4efab13d829fe": ["17ecf274cfe1066ce40b0cecf7ed318f153c60d47933361ba3ae0e49fea8b2d3"],
         "4ef595d2099cfd8babb7d6c7724ddb401a1f6b3b4cfc352fc09c611107df7648": ["a2fdace4c6401496a7a52326ec0ad73b6c6ee0536c062ddd9423a54d4f1c7a6e"],
         "3c8a5709cbec3cd02d98da3d1f7aaf8493ed55eee57ee9fb23275874da4703b6": ["3ed73c7097958d54d983f88a03a0ce56a8985c3292cc50b8079f3f85d35ebfc9"],
@@ -65,7 +78,45 @@
         "665fb64ba2ae7a373e062267c3a3d4a7c7fd10d0d73fe972f8900571082cb89e": ["2f4d73314bfdd42fc9309c6353e1376ee1d779e79eaecf8d50129a059b1cfab7"],
         "0a5e8787a65779656763b813fbb8e2979f34dbb3ead72e93aacda92bb1dcced3": ["17b1be45e72e569813d0f2caf729d9b13ab141d70c76e09af47f4bf67a1ee8b8"],
         "1d28e5df1685799a765a5759017ba8ad08373aa9f620068c6cfe2d5be870a8d6": ["bad290ad26d739a0f3af00b7d9214af2888e9394d33066dd1afdfc4fc2e125c9"]
-      }
+      },
+      "not_before": "2026-01-01T00:00:00Z",
+      "not_after": "2026-10-07T16:00:00Z",
+      "successor_key_id": "unnamed-tracking-examples-2026-10-07-v2",
+      "historical_package_sha256": [
+        "0732ac61fbcd2d30a80a99c3f1a04f146b6b5ada7c4925598204308335fcc060",
+        "085fca2f0aa705042155527c1380a6b0b4112b4f52b0367d70856b80b6a4a0e4",
+        "1482e6b559cf6b84af826b774d3a80032b7c8ea569cf459f69a501884e581f69",
+        "192987671766589da6ced65973b65962eb6c3e3f1c9fc0bd8bf93f327b923f1d",
+        "1d019cc939c4ff0cfa793eaaeb4d5df74df5ac62726ebb4eab68db854cf5fdd2",
+        "2940fb1a8cdd6daff8c43071660ba5ae1234fb1f9ecfb6e1d3916a25ef345277",
+        "3ad7f790a81b7722ea2547a85f94938df619f6150aaf62a42c815fc403694816",
+        "472e0ecb35f6ad2d16c12b2d42d6ec0e0661eecfd191c0017bd7698e678c4eb7",
+        "4ad387ed1210653a51826bd693d5a317279a05466bf9ef9c3d918adf99666aa0",
+        "4b970195439d4802205f9c2b325fe30ef65b718d32e94e7b8a1d9e76c5a11759",
+        "4f547d06027721634d73ecc99a4be9768692de8fe76a811d69a7aee9a33370be",
+        "555f9afdae6dacc738eed3f6d65e9fc7fb60ecf0d2468d2de7400f40fb16599b",
+        "58ac3d13dbf44152874d55ac3b95ea92faf436ae94832ab0a17a527ada3e2c0a",
+        "5bfe0a562944d5aedfe72dfcf36cc7a84fb71a7068665858adc233d74773ca65",
+        "6394120555c90fbda09ba24fc6e14b3bd0cfcdbb78f96182b564d6ace4a95e26",
+        "652347ca59fa4b9d6c1f951e6ded29973ee0f95d8a8206ecaddac02dc0089b09",
+        "6e4203b78c47a7a958087f8ce1875176cbd53fd26dd987823d9335fa015ffe60",
+        "832b5bdd13e19fa79b0bb8a1fa0c5665734914cb34b69bc67cbdc8c5b854e354",
+        "8d3f9487449072a1ee877f9efa26f1f669d4cfb471170a5425d557c11e9b944d",
+        "9af332489d24d40b7c6350f18d9060dab02376ffd076421be91c59466a530801",
+        "a928ca4c9dd502c9a6e4f6cc633b0823b1be84dbafb3f56d690004e7798886ce",
+        "ac9135096a205a49d1ddbb7d21ec87466d58a278a938e5a8d431e6873c8b94fb",
+        "b5e0ddd92ef0971abd3a63e1a4dd9a3e40caed174f793f10c84480391ee9fae3",
+        "b958b20ae77ea31063212044b68c636abe77b5e09db795bb7ff1b95136f973a4",
+        "bfc29e48104657cdc9ff4f8af7e808389a8b3ec84412aaa5df3e0618b7b26b69",
+        "c2bd173b769266adddc54bcbf3dd3857168c92c9179de9bd5f6aed6dd1481101",
+        "d18e68a30044c1e617b5f3e6af12c33b5516a799041ee180c6622b173e4af39b",
+        "d551be236b02d6274a60564e4cc59c7b2b18773b49dd96e44d2cee9055edea77",
+        "d649697db73db4e65eb8c171bc91377cb7ceb5ed48414971bc61dea8ce22ee3d",
+        "dfc9eee628dabcdeb08822796e6b17b199c47d769ccabaa488bba17cee992460",
+        "e980c7d42d1cbe20ea5a9b298e8f558ce92572f1ad13fad2019a67aed4511f48",
+        "f2b888c7d515a13cfdc0116ea619486cefd1441011bda582efd262f92eff053b",
+        "fce6ccb1be45e2177a994ba8bcb219d198d1a77ec06f5217d5aaa772b9a62e88"
+      ]
     },
     {
       "key_id": "unnamed-tracking-examples-2026-10-v1",
@@ -75,7 +126,22 @@
       "status": "active",
       "plugin_id_prefixes": ["example."],
       "channel": "demo",
-      "legacy_manifest_hashes": {}
+      "legacy_manifest_hashes": {},
+      "not_after": "2026-10-07T16:00:00Z",
+      "successor_key_id": "unnamed-tracking-examples-2026-10-07-v2",
+      "historical_package_sha256": [
+        "00d17c0dadccd0cc570b70d00cbdb199d752a305c98c2ea21951aac501cfdce1",
+        "44812c4dcbfda769c85928cd6f1b43afe7a73f5d6aab0676a42cc2b98d073627",
+        "58332109ffb1c5a946d77806cf7bbf459d63184230272f865c441684ef83d0de",
+        "72fc13e2ed82a93ea123e614173b457bace997a283bd15175f21f8a83bdc15de",
+        "8d199f8571bcf667862140a0f47f05bb36b3ae845622e82ce344555c8a448f16",
+        "9a4e1243490691068038b3e89c36add291d16c81df992b133b1ec4fa5eabec5d",
+        "9c64cdec1284c4a865602576100888ffa5216925a98ccf782e222cb347562327",
+        "c1da990cd45eecfb9e0703f4a1de930588166dc40950e2c0abf592cd56b305b3",
+        "c592ee0b9d63d7cb7be79a4254ed194f713729871631118e0fb8a6b6bee69a43",
+        "f12ba6234b4e65fa799bf1b3c9675f45b3305fc2a1202da6fc12971efbc4c2b9",
+        "f73cc6a061c0db948f59f76669718f169c44f0b804728910e0932e41b36db212"
+      ]
     },
     {
       "key_id": "unnamed-tracking-official-2026-10-v1",
@@ -85,7 +151,15 @@
       "status": "active",
       "plugin_id_prefixes": ["official."],
       "channel": "official",
-      "legacy_manifest_hashes": {}
+      "legacy_manifest_hashes": {},
+      "not_after": "2026-10-07T16:00:00Z",
+      "successor_key_id": "unnamed-tracking-official-2026-10-07-v2",
+      "historical_package_sha256": [
+        "83fbc13c6ddfc0fec23702c5aa504eabae683af6ef2eb560200fa7ee2bcc79cc",
+        "b564e0c0bf6466b7c7149be85023b0cbc2187f0ffd8e3d2e0496c49708014612",
+        "c1906ee8fe95542d5a81c727cb2def3a9c841bc74a41ddd6ec81cd5b942ffcc8",
+        "fc1d38e6ce1796bcef6817b3f08a1d336bf8aadf4708c449212deaec5b56798c"
+      ]
     },
     {
       "key_id": "unnamed-tracking-generic-2026-10-v1",
@@ -95,7 +169,10 @@
       "status": "active",
       "plugin_id_prefixes": ["example.", "plugin."],
       "channel": "community",
-      "legacy_manifest_hashes": {}
+      "legacy_manifest_hashes": {},
+      "not_after": "2026-10-07T16:00:00Z",
+      "successor_key_id": "unnamed-tracking-generic-2026-10-07-v2",
+      "historical_package_sha256": []
     },
     {
       "key_id": "unnamed-tracking-generic-2026-10-07-v2",
@@ -105,7 +182,10 @@
       "status": "active",
       "plugin_id_prefixes": ["example.", "plugin."],
       "channel": "community",
-      "legacy_manifest_hashes": {}
+      "legacy_manifest_hashes": {},
+      "not_before": "2026-10-06T16:00:00Z",
+      "not_after": null,
+      "successor_key_id": null
     },
     {
       "key_id": "unnamed-tracking-examples-2026-10-07-v2",
@@ -115,7 +195,10 @@
       "status": "active",
       "plugin_id_prefixes": ["example."],
       "channel": "demo",
-      "legacy_manifest_hashes": {}
+      "legacy_manifest_hashes": {},
+      "not_before": "2026-10-06T16:00:00Z",
+      "not_after": null,
+      "successor_key_id": null
     },
     {
       "key_id": "unnamed-tracking-official-2026-10-07-v2",
@@ -125,7 +208,13 @@
       "status": "active",
       "plugin_id_prefixes": ["official."],
       "channel": "official",
-      "legacy_manifest_hashes": {}
+      "legacy_manifest_hashes": {},
+      "plugin_ids": [
+        "example.self-service-session-manager"
+      ],
+      "not_before": "2026-10-06T16:00:00Z",
+      "not_after": null,
+      "successor_key_id": null
     }
   ]
 }

@@ -7,6 +7,7 @@ exercise the actual signed artifact, not a host-local fixture.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import io
 import json
 import os
@@ -15,6 +16,7 @@ from pathlib import Path
 
 import pytest
 
+from src.plugin_api.installer import inspect_package
 from src.plugin_api.publisher_trust import load_trusted_publishers
 from src.plugin_api.updates import PackageVerificationError, PluginPackageVerifier
 
@@ -27,6 +29,25 @@ def _plugin_repository() -> Path:
     if not (root / "publishers" / "registry.json").is_file():
         pytest.skip("PLUGIN_REPOSITORY_PATH does not contain the publisher registry")
     return root
+
+
+def test_all_reviewed_historical_archives_remain_trusted_by_bundled_host_policy() -> None:
+    repository = _plugin_repository()
+    publishers = load_trusted_publishers()
+    pins = {
+        pin for publisher in publishers.values() for pin in publisher.historical_package_sha256
+    }
+    assert len(pins) == 51
+    archives = {
+        hashlib.sha256(path.read_bytes()).hexdigest(): path
+        for path in (repository / "dist").glob("*.utp")
+    }
+    assert pins <= archives.keys()
+    verifier = PluginPackageVerifier(publishers)
+    for digest in pins:
+        package = inspect_package(archives[digest], verifier)
+        assert package.trust.signature_verified, archives[digest].name
+        assert package.package.archive_sha256 == digest
 
 
 def _write_modified_package(source: Path, destination: Path, *, unsigned: bool = False) -> None:

@@ -1,8 +1,11 @@
 """Real registry persistence, isolation reporting, and recovery behavior."""
 
+import base64
+import io
 import json
 import sys
 import uuid
+import zipfile
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -10,6 +13,60 @@ import pytest
 import runtime
 from runtime import PluginRegistry, PluginSupervisor, RuntimePolicyError
 from test_runtime import _package_bytes
+
+
+def test_reinstall_and_retained_history_preserve_complete_archive_bytes(tmp_path):
+    registry = PluginRegistry(tmp_path / "plugins", PluginSupervisor(tmp_path / "work"))
+    identity = str(uuid.uuid4())
+    output = io.BytesIO(_package_bytes())
+    with zipfile.ZipFile(output, "a") as archive:
+        archive.comment = b"published archive metadata must be retained"
+    original = output.getvalue()
+    registry.install_package(original, "first.utp", installation_id=identity)
+    assert base64.b64decode(registry.package_archive("example.upload")["package"]) == original
+    package, manifest = registry.package("example.upload")
+    assert registry.digest(package) == manifest["integrity"]["sha256"]
+
+    update = _package_bytes(version="2.0.0")
+    operation = str(uuid.uuid4())
+    registry.install_package(
+        update,
+        "update.utp",
+        replace=True,
+        installation_id=identity,
+        operation_id=operation,
+        expected_version="1.0.0",
+    )
+    registry.finish_installation("example.upload", operation, commit=True)
+    registry.finish_activation("example.upload", operation, commit=True)
+    history_id = registry.list()[0]["history"][0]["id"]
+    assert base64.b64decode(registry.package_archive("example.upload")["package"]) == update
+    retained = base64.b64decode(registry.package_archive("example.upload", history_id)["package"])
+    assert retained == original
+
+    rollback = str(uuid.uuid4())
+    registry.install_package(
+        retained,
+        "rollback.utp",
+        replace=True,
+        installation_id=identity,
+        operation_id=rollback,
+        expected_version="2.0.0",
+    )
+    registry.finish_installation("example.upload", rollback, commit=True)
+    registry.finish_activation("example.upload", rollback, commit=True)
+    assert base64.b64decode(registry.package_archive("example.upload")["package"]) == original
+
+
+def test_legacy_installations_reconstruct_without_claiming_original_archive_bytes(tmp_path):
+    registry = PluginRegistry(tmp_path / "plugins", PluginSupervisor(tmp_path / "work"))
+    registry.install_package(_package_bytes(), "first.utp", installation_id=str(uuid.uuid4()))
+    package, manifest = registry.package("example.upload")
+    (package / runtime._PACKAGE_ARCHIVE).unlink()
+    rebuilt = base64.b64decode(registry.package_archive("example.upload")["package"])
+    with zipfile.ZipFile(io.BytesIO(rebuilt)) as archive:
+        assert json.loads(archive.read("manifest.json")) == manifest
+        assert not any(runtime._PACKAGE_ARCHIVE in name for name in archive.namelist())
 
 
 def test_startup_probe_reports_actual_bubblewrap_capability(tmp_path, monkeypatch):

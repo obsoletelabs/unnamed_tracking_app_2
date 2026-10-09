@@ -70,6 +70,7 @@ _MAX_PACKAGE_ENTRIES = 1000
 _MAX_PACKAGE_FILE_BYTES = 16 * 1024 * 1024
 _MAX_PACKAGE_UNCOMPRESSED_BYTES = 64 * 1024 * 1024
 _MAX_PACKAGE_COMPRESSION_RATIO = 100.0
+_PACKAGE_ARCHIVE = ".runtime-state-package.utp"
 _BACKEND_ROUTE_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
 _BACKEND_ROUTE_SEGMENT = re.compile(r"^(?:[a-z0-9][a-z0-9._-]*|\{[a-z_][a-z0-9_]*\})$")
 _BACKEND_ROUTE_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE"}
@@ -1930,6 +1931,8 @@ class PluginRegistry:
                     relative = info.filename[len("payload/") :]
                     if not relative:
                         raise RuntimePolicyError("payload entry must have a filename")
+                    if relative == _PACKAGE_ARCHIVE:
+                        raise RuntimePolicyError("plugin payload uses a reserved runtime path")
                     data = read_bounded(info)
                     payload.append((relative, data))
                 else:
@@ -2137,6 +2140,9 @@ class PluginRegistry:
                 destination.write_bytes(data)
                 destination.chmod(0o700)
             (staging / "manifest.json").write_bytes(manifest_data)
+            original_archive = staging / _PACKAGE_ARCHIVE
+            original_archive.write_bytes(package)
+            original_archive.chmod(0o600)
             if target.exists():
                 backup = (
                     self.root
@@ -2341,6 +2347,17 @@ class PluginRegistry:
             manifest = json.loads(
                 (package / "manifest.json").read_text(encoding="utf-8")
             )
+        original_archive = package / _PACKAGE_ARCHIVE
+        if original_archive.exists():
+            if original_archive.is_symlink() or not original_archive.is_file():
+                raise RuntimePolicyError("invalid retained plugin archive")
+            with original_archive.open("rb") as source:
+                original = source.read(_MAX_PACKAGE_BYTES + 1)
+            if len(original) > _MAX_PACKAGE_BYTES:
+                raise RuntimePolicyError("retained plugin archive exceeds maximum size")
+            return {"package": base64.b64encode(original).decode("ascii")}
+        # Older installations did not retain the compressed bytes. Their rebuilt
+        # archive still requires normal host verification and cannot bypass expiry pins.
         output = io.BytesIO()
         with zipfile.ZipFile(output, "w") as archive:
             archive.writestr("manifest.json", json.dumps(manifest))

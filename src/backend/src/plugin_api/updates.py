@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
+import io
 import json
 import os
 import re
@@ -20,6 +21,7 @@ import tempfile
 import zipfile
 import zlib
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import Protocol
 
@@ -87,6 +89,10 @@ class TrustedPublisher:
     channel: str = "community"
     legacy_manifest_hashes: dict[str, list[str]] = field(default_factory=dict)
     require_manifest_binding: bool = False
+    plugin_ids: tuple[str, ...] = ()
+    not_before: datetime | None = None
+    not_after: datetime | None = None
+    historical_package_sha256: frozenset[str] = field(default_factory=frozenset)
 
     def verifier(self) -> Ed25519PublicKey:
         try:
@@ -94,11 +100,37 @@ class TrustedPublisher:
         except ValueError as exc:
             raise PackageVerificationError("invalid trusted publisher public key") from exc
 
-    def allows_plugin(self, plugin_id: str) -> bool:
-        """Return whether this non-revoked publisher may sign the plugin ID."""
-        return self.status in {"active", "retiring"} and (
-            not self.plugin_id_prefixes
+    def valid_at(self, now: datetime | None = None) -> bool:
+        """Use host time and an inclusive start/exclusive expiry boundary."""
+        instant = now if now is not None else datetime.now(UTC)
+        if instant.tzinfo is None or instant.utcoffset() is None:
+            raise ValueError("publisher validity requires timezone-aware time")
+        return (self.not_before is None or instant >= self.not_before) and (
+            self.not_after is None or instant < self.not_after
+        )
+
+    def allows_plugin(self, plugin_id: str, *, now: datetime | None = None) -> bool:
+        """Return whether this publisher may sign a new package for the ID."""
+        return self.allows_package(plugin_id, None, now=now)
+
+    def allows_package(
+        self, plugin_id: str, archive_sha256: str | None, *, now: datetime | None = None
+    ) -> bool:
+        """Expired keys retain only exact reviewed archives within their scope."""
+        if self.status not in {"active", "retiring"} or not (
+            (not self.plugin_id_prefixes and not self.plugin_ids)
+            or plugin_id in self.plugin_ids
             or any(plugin_id.startswith(prefix) for prefix in self.plugin_id_prefixes)
+        ):
+            return False
+        instant = now if now is not None else datetime.now(UTC)
+        valid = self.valid_at(instant)
+        if self.not_before is not None and instant < self.not_before:
+            return False
+        return valid or (
+            self.not_after is not None
+            and instant >= self.not_after
+            and archive_sha256 in self.historical_package_sha256
         )
 
 
@@ -111,6 +143,7 @@ class VerifiedPackage:
     payload_digest: str
     distribution: dict[str, object] = field(default_factory=dict)
     signing_version: int = 1
+    archive_sha256: str = ""
 
 
 @dataclass(frozen=True)
@@ -209,13 +242,23 @@ class PluginPackageVerifier:
                     raise PackageFormatError("plugin payload file exceeds maximum size")
         return bytes(data)
 
-    def _read_package(self, package_path: Path) -> tuple[bytes, list[tuple[str, bytes]]]:
+    def _archive_bytes(self, package_path: Path) -> bytes:
+        """Bound and snapshot the exact compressed bytes used for verification."""
         if not package_path.is_file():
             raise PackageFormatError("plugin package must be a file")
         try:
-            if package_path.stat().st_size > self.max_package_bytes:
-                raise PackageFormatError("plugin package exceeds maximum compressed size")
-            with zipfile.ZipFile(package_path) as archive:
+            with package_path.open("rb") as source:
+                data = source.read(self.max_package_bytes + 1)
+        except OSError as exc:
+            raise PackageFormatError("invalid plugin package archive") from exc
+        if len(data) > self.max_package_bytes:
+            raise PackageFormatError("plugin package exceeds maximum compressed size")
+        return data
+
+    def _read_package(self, package_path: Path) -> tuple[bytes, list[tuple[str, bytes]], str]:
+        archive_data = self._archive_bytes(package_path)
+        try:
+            with zipfile.ZipFile(io.BytesIO(archive_data)) as archive:
                 manifest_data, payload = self._read_archive(archive)
         except (
             OSError,
@@ -229,7 +272,7 @@ class PluginPackageVerifier:
 
         if manifest_data is None:
             raise PackageFormatError("package is missing manifest.json")
-        return manifest_data, payload
+        return manifest_data, payload, hashlib.sha256(archive_data).hexdigest()
 
     def _read_archive(
         self, archive: zipfile.ZipFile
@@ -255,6 +298,8 @@ class PluginPackageVerifier:
                 relative = info.filename[len(self.PAYLOAD_PREFIX) :]
                 if not relative:
                     raise PackageFormatError("payload entry must have a filename")
+                if relative == ".runtime-state-package.utp":
+                    raise PackageFormatError("plugin payload uses a reserved runtime path")
                 payload.append((relative, self._read_bounded(archive, info)))
             else:
                 raise PackageFormatError("package contains an unexpected file")
@@ -381,13 +426,13 @@ class PluginPackageVerifier:
             raise PackageVerificationError("signed manifest envelope does not match") from exc
 
     def _validate_legacy_manifest(
-        self, manifest: PluginManifest, manifest_data: bytes, digest: str
+        self, manifest: PluginManifest, manifest_data: bytes, digest: str, archive_sha256: str
     ) -> None:
         publisher = self.publishers.get(manifest.integrity.key_id or "")
         if (
             publisher is not None
             and publisher.require_manifest_binding
-            and publisher.allows_plugin(manifest.plugin_id)
+            and publisher.allows_package(manifest.plugin_id, archive_sha256)
         ):
             raw_manifest = json.loads(manifest_data)
             claim = {key: value for key, value in raw_manifest.items() if key != "integrity"}
@@ -402,7 +447,7 @@ class PluginPackageVerifier:
             raise PackageVerificationError("signed PWA contributions require a v2 signature")
 
     def _verify_signature(
-        self, manifest: PluginManifest, digest: str, signing_version: int
+        self, manifest: PluginManifest, digest: str, signing_version: int, archive_sha256: str
     ) -> None:
         signature = manifest.integrity.signature
         if signature is None:
@@ -414,7 +459,7 @@ class PluginPackageVerifier:
             publisher = self.publishers.get(manifest.integrity.key_id)
             if publisher is None:
                 raise PackageVerificationError("plugin package publisher is not trusted")
-            if not publisher.allows_plugin(manifest.plugin_id):
+            if not publisher.allows_package(manifest.plugin_id, archive_sha256):
                 raise PackageVerificationError(
                     "plugin package publisher is not trusted for this plugin"
                 )
@@ -434,8 +479,21 @@ class PluginPackageVerifier:
                     "plugin package signature verification failed"
                 ) from exc
 
+    def _validate_publisher_period(self, manifest: PluginManifest, archive_sha256: str) -> None:
+        """Known revoked/expired signers cannot become overridable unknown keys."""
+        publisher = self.publishers.get(manifest.integrity.key_id or "")
+        if publisher is not None and manifest.integrity.signature:
+            instant = datetime.now(UTC)
+            if (publisher.status == "revoked" or not publisher.valid_at(instant)) and not (
+                publisher.allows_package(manifest.plugin_id, archive_sha256, now=instant)
+            ):
+                raise PackageVerificationError(
+                    "plugin package publisher is not trusted for this plugin: "
+                    "revoked, expired or not yet valid"
+                )
+
     def inspect(self, package_path: Path, *, verify_signature: bool = True) -> VerifiedPackage:
-        manifest_data, payload = self._read_package(package_path)
+        manifest_data, payload, archive_sha256 = self._read_package(package_path)
         try:
             manifest = PluginManifest.model_validate_json(manifest_data)
         except ValueError as exc:
@@ -448,26 +506,32 @@ class PluginPackageVerifier:
         self._validate_ui_contract(manifest, payload)
         distribution = self._distribution_metadata(manifest, payload)
         signing_version = 2 if (manifest.integrity.signature or "").startswith("v2:") else 1
+        self._validate_publisher_period(manifest, archive_sha256)
         if signing_version == 2:
             self._validate_signing_envelope(manifest, payload)
         if manifest.integrity.signature and signing_version == 1:
-            self._validate_legacy_manifest(manifest, manifest_data, digest)
+            self._validate_legacy_manifest(manifest, manifest_data, digest, archive_sha256)
         if verify_signature:
-            self._verify_signature(manifest, digest, signing_version)
+            self._verify_signature(manifest, digest, signing_version, archive_sha256)
         return VerifiedPackage(
             manifest=manifest,
             package_path=package_path,
             payload_digest=digest,
             distribution=distribution,
             signing_version=signing_version,
+            archive_sha256=archive_sha256,
         )
 
     def extract(self, verified: VerifiedPackage, destination: Path) -> Path:
         if destination.exists():
             raise PackageFormatError("plugin extraction destination already exists")
+        archive_data = self._archive_bytes(verified.package_path)
+        if hashlib.sha256(archive_data).hexdigest() != verified.archive_sha256:
+            raise PackageVerificationError("plugin package changed after verification")
+        self._validate_publisher_period(verified.manifest, verified.archive_sha256)
         destination.mkdir(mode=0o700, parents=True, exist_ok=False)
         try:
-            with zipfile.ZipFile(verified.package_path) as archive:
+            with zipfile.ZipFile(io.BytesIO(archive_data)) as archive:
                 for info in archive.infolist():
                     if info.is_dir() or not info.filename.startswith(self.PAYLOAD_PREFIX):
                         continue
@@ -613,12 +677,14 @@ class PluginUpdateManager:
             if (
                 snapshot.manifest != verified.manifest
                 or snapshot.payload_digest != verified.payload_digest
+                or snapshot.archive_sha256 != verified.archive_sha256
             ):
                 raise PackageVerificationError("plugin package changed after verification")
             verified_snapshot = VerifiedPackage(
                 manifest=snapshot.manifest,
                 package_path=package_snapshot,
                 payload_digest=snapshot.payload_digest,
+                archive_sha256=snapshot.archive_sha256,
             )
             self.verifier.extract(verified_snapshot, staging)
             (staging / "manifest.json").write_text(
@@ -635,6 +701,7 @@ class PluginUpdateManager:
             manifest=verified.manifest,
             package_path=target,
             payload_digest=verified.payload_digest,
+            archive_sha256=verified.archive_sha256,
         )
         self._staged[verified.manifest.plugin_id] = staged
         return staged

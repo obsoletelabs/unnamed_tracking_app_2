@@ -10,6 +10,33 @@ The installer derives historical selection from the checked catalogue's current 
 
 `catalogue_channel` is derived from the scoped trusted publisher registry for discovery grouping. It is provisional catalogue metadata, not a signature verification result. Installation review and installed publisher trust continue to use the inspected package.
 
+## Publisher key rotation
+
+The reviewed publisher registry accepts timezone-aware `not_before` and
+`not_after` values. The start is inclusive and expiry is exclusive, using the
+host's current time. Expired and revoked keys cannot become administrator-overridable
+unknown-publisher warnings. Claimed build/signing dates never extend key validity.
+
+An expired key remains eligible only for the exact complete archive SHA-256 values
+listed in its `historical_package_sha256`. These exceptions still require a valid
+payload digest, signature, scoped plugin ID and reviewed v1 manifest binding or
+v2 signed envelope. A pin cannot bypass revocation or the validity start. Archive
+bytes are bounded and snapshotted for verification; extraction and staging reject
+changed archives. Keep published `.utp` files byte-identical, including ZIP metadata.
+
+The runtime retains the original compressed archive with each newly installed
+version, including retained history, so reinstall and rollback preserve its hash.
+Versions installed before archive retention have only reconstructed payloads;
+after their signing key expires, supply the original published `.utp` to reinstall
+or restore them. Reconstruction cannot establish a historical exception.
+
+`plugin_ids` grants exact IDs alongside `plugin_id_prefixes`. The successor official
+key grants `official.` and the stable `example.self-service-session-manager` ID;
+other `example.` plugins remain outside its scope. Demo and community keys keep
+their separate channels and namespace limits. The bundled October rotation policy
+contains 51 reviewed historical archives and expires prior keys at
+`2026-10-07T16:00:00Z` (October 8 midnight in Australia/Perth).
+
 ## Staging and permission review
 
 Discovered releases are distinct from installed versions. A staged archive is stored on the backend persistent volume with downloaded, awaiting_permissions or denied status. Discovery/download never changes the active package or grants.
