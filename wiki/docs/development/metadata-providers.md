@@ -30,6 +30,14 @@ The older synchronous provider clients remain for account integration/compatibil
 metadata discovery uses the native adapters. AniList's franchise traversal is shared
 between the legacy synchronous client and the native asynchronous transport.
 
+The native IGDB adapter reuses Twitch application tokens in memory for each
+credential fingerprint, refreshing before their advertised expiry. Concurrent
+requests share one refresh while retaining their own deadlines and cancellation.
+An IGDB HTTP 401 invalidates only the rejected token and retries once; other errors
+retain the normal provider failure and pacing rules. Credential changes use a
+separate cache entry. Tokens are never persisted, and old credential entries are
+bounded to 32 per backend process.
+
 ## Public contract
 
 This is an additive **Plugin API v1 contract version 1.1.1** extension. Packages
