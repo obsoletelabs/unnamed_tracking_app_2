@@ -5,6 +5,22 @@ on screen and preserves their scroll position. Posters, backdrops and achievemen
 icons are downloaded into the server's cache when saved, with the original URL used
 as a fallback if the download fails. Existing images are cached when first viewed.
 
+After a connection loss, the visible library retries when internet access returns.
+If the tab was hidden, it waits until you return. A failed load also retries when
+you focus the window again. Successful requests clear the previous error and keep
+your selected filters; you do not need to reload the browser page.
+
+The [browser recovery checks](../assets/library-recovery/conformance.json) cover
+games, movies, TV and anime at phone and desktop widths, using actual backend
+responses after injected connection failures. The same browser document recovers.
+
+| Connection unavailable | Connection restored |
+| --- | --- |
+| ![Movie library with a failed connection](../assets/library-recovery/unavailable-390.png) | ![Movie library after reconnecting without a reload](../assets/library-recovery/recovered-390.png) |
+
+[Desktop before reconnecting](../assets/library-recovery/unavailable-1440.png)
+and [after reconnecting](../assets/library-recovery/recovered-1440.png).
+
 Yamtrack CSV imports continue to skip anime entries while their mapping and duplicate
 matching remain unresolved. Movies and TV shows can still be imported.
 

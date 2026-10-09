@@ -60,6 +60,7 @@ const items = computed(() => movies.value.map(toVM));
 // Only the very first load shows the loading state; a refresh when the
 // page comes back swaps data in quietly, so titles never blink away.
 let loadRequest = 0;
+const refreshing = ref(false);
 const total = ref(0);
 const statusCounts = ref<Record<string, number>>({});
 const scoreRanks = ref<Record<string, number>>({});
@@ -84,6 +85,7 @@ async function load(
   currentFilters.value = filters;
   currentSearch.value = filters.search;
   const request = ++loadRequest;
+  refreshing.value = true;
   if (!movies.value.length) loading.value = true;
   try {
     const page = await fetchMoviesPage(0, pageSize, filters);
@@ -92,14 +94,20 @@ async function load(
     total.value = page.total;
     statusCounts.value = page.statusCounts;
     scoreRanks.value = page.scoreRanks;
+    error.value = null;
   } catch (e) {
+    if (request !== loadRequest) return;
     error.value = e instanceof Error ? e.message : "Failed to load movies.";
   } finally {
-    loading.value = false;
+    if (request === loadRequest) {
+      loading.value = false;
+      refreshing.value = false;
+    }
   }
 }
 async function loadMore() {
   if (loading.value || movies.value.length >= total.value) return;
+  const request = loadRequest;
   loading.value = true;
   try {
     const page = await fetchMoviesPage(
@@ -107,16 +115,22 @@ async function loadMore() {
       pageSize,
       currentFilters.value,
     );
+    if (request !== loadRequest) return;
     movies.value.push(...page.items);
+    error.value = null;
   } catch (e) {
+    if (request !== loadRequest) return;
     error.value =
       e instanceof Error ? e.message : "Failed to load more movies.";
   } finally {
-    loading.value = false;
+    if (request === loadRequest) loading.value = false;
   }
 }
 onMounted(load);
-useKeptAlive(load);
+useKeptAlive(load, {
+  isLoading: () => refreshing.value || loading.value,
+  hasError: () => error.value !== null,
+});
 
 function findMovie(id: string): Movie {
   const movie = movies.value.find((m) => m.id === id);
