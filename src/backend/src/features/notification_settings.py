@@ -202,6 +202,12 @@ async def routing_settings(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
                 "active": destination.active,
                 "enabled": destination.enabled,
                 "available": provider["available"] and installation_matches,
+                "reactivation_available": bool(
+                    destination.kind == "discord_webhook"
+                    and destination.encrypted_configuration
+                    and provider["available"]
+                    and installation_matches
+                ),
                 "provider_enabled": provider["enabled"],
                 "critical_supported": provider["critical_supported"],
                 "critical_description": provider["critical_description"],
@@ -214,6 +220,9 @@ async def routing_settings(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
                 "masked_address": _masked_address(destination),
                 "recovery_allowed": destination.recovery_allowed,
                 "revision": destination.revision,
+                "media_disclosure_confirmed": destination.media_consent_revision
+                == destination.revision
+                and destination.media_consent_at is not None,
                 "verification_available": destination.provider_id == SMTP_PROVIDER
                 and provider["available"]
                 and provider["secure_transport"],
@@ -252,7 +261,12 @@ def _provider_settings(
         "enabled": True if inbox else enabled,
         "available": inbox
         or (smtp.configured if email else bool(registration and registration.revoked_at is None)),
-        "configuration_scope": "internal" if inbox else "server",
+        "configuration_scope": "internal"
+        if inbox
+        else ("user" if registration and registration.transport == "discord_webhook" else "server"),
+        "destination_kind": "discord_webhook"
+        if registration and registration.transport == "discord_webhook"
+        else None,
         "critical_supported": email,
         "critical_description": (
             "Adds high-priority email headers; your mail client decides how to alert you."

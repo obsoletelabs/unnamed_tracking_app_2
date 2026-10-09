@@ -22,6 +22,9 @@ class PluginNotificationProviderRegistration(Base):
     provider_id: Mapped[str] = mapped_column(String(128), nullable=False)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     action_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    transport: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="legacy", server_default="legacy"
+    )
     registered_at: Mapped[int] = mapped_column(
         BigInteger,
         nullable=False,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import hmac
 import json
 import mimetypes
@@ -16,7 +17,7 @@ from typing import Any
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.routes.settings import (
@@ -36,6 +37,7 @@ from src.features.metadata.providers import (
 )
 from src.features.metadata.service import search_games
 from src.features.notification_controller import emit_legacy_rows
+from src.features.notification_destinations import retire_provider_destinations
 from src.features.notification_sources import emit_source, register_source, unregister_source
 from src.plugin_api.capabilities import capability_implies
 from src.plugin_api.contracts import (
@@ -581,13 +583,23 @@ async def _register_provider(
     expected_prefix = f"{plugin_id}."
     if not registration.provider_id.startswith(expected_prefix):
         raise ValueError(f"provider_id must start with {expected_prefix}")
+    if db.get_bind().dialect.name == "postgresql":
+        lock_key = int.from_bytes(
+            hashlib.sha256(f"notification-provider:{registration.provider_id}".encode()).digest()[
+                :8
+            ],
+            "big",
+            signed=True,
+        )
+        await db.execute(select(func.pg_advisory_xact_lock(lock_key)))
     existing = await db.scalar(
         select(PluginNotificationProviderRegistration).where(
             PluginNotificationProviderRegistration.provider_id == registration.provider_id
         )
     )
     if existing is not None and (
-        existing.plugin_id != plugin_id or existing.installation_id != installation_id
+        existing.plugin_id != plugin_id
+        or (existing.installation_id != installation_id and existing.revoked_at is None)
     ):
         raise ValueError("notification provider ID is already registered")
     if existing is None:
@@ -597,11 +609,18 @@ async def _register_provider(
             provider_id=registration.provider_id,
             name=registration.name,
             action_id=registration.action_id,
+            transport=registration.transport,
         )
         db.add(existing)
     else:
+        if existing.transport != registration.transport and existing.revoked_at is None:
+            raise ValueError("Unregister the provider before changing its transport contract")
+        if existing.revoked_at is not None:
+            await retire_provider_destinations(db, registration.provider_id)
+        existing.installation_id = installation_id
         existing.name = registration.name
         existing.action_id = registration.action_id
+        existing.transport = registration.transport
         existing.revoked_at = None
     await db.commit()
     return {
@@ -625,6 +644,7 @@ async def _unregister_provider(
     if row is None:
         raise LookupError("notification provider registration not found")
     row.revoked_at = int(time.time())
+    await retire_provider_destinations(db, provider_id)
     await db.commit()
     return {"unregistered": True, "provider_id": provider_id}
 

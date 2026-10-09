@@ -296,3 +296,50 @@ class PluginRuntimeClient:
             },
             timeout=_ACTION_REQUEST_TIMEOUT,
         )
+
+    async def notification_layout(
+        self,
+        plugin_id: str,
+        action_id: str,
+        values: dict[str, Any],
+        *,
+        user_id: str,
+        installation_id: str,
+        attempt_id: str,
+    ) -> dict[str, Any]:
+        """The renderer never receives transport credentials or legacy egress authority."""
+        return await self._request(
+            "POST",
+            f"/plugins/{quote(plugin_id, safe='')}/notification-layouts/{quote(action_id, safe='')}",
+            json={
+                "values": values,
+                "user_id": user_id,
+                "installation_id": installation_id,
+                "attempt_id": attempt_id,
+            },
+            timeout=_ACTION_REQUEST_TIMEOUT,
+        )
+
+    async def notification_transport(
+        self,
+        plugin_id: str,
+        webhook: str,
+        payload: dict[str, Any],
+        *,
+        user_id: str,
+        installation_id: str,
+        attempt_id: str,
+    ) -> dict[str, Any]:
+        """Host-only broker operation; this envelope is never executed in a plugin worker."""
+        return await self._request(
+            "POST",
+            f"/plugins/{quote(plugin_id, safe='')}/notification-transports/discord",
+            json={
+                "webhook": webhook,
+                "payload": payload,
+                "user_id": user_id,
+                "installation_id": installation_id,
+                "attempt_id": attempt_id,
+            },
+            timeout=_ACTION_REQUEST_TIMEOUT,
+        )

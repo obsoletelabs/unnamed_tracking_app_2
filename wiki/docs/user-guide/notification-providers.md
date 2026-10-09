@@ -57,14 +57,53 @@ This is confirmation-based header support, not RFC 8058 one-click. `List-Unsubsc
 
 ![Email verification confirmation](../assets/notification-settings/verify-email-mobile.png)
 
-## Plugin providers
+## Discord webhooks
 
-An existing Discord webhook is a PUBLIC destination. It can receive generic release facts, including the library's release title. It cannot receive personal selection/following details, account identifiers, watch history/status, ratings or security notices. The compatibility bridge does not treat a configured webhook as verified or as consent for richer announcements.
+The maintained companion plugin **Discord Notifications** (`official.discord-notifications`)
+uses protected host delivery. Install and approve its provider permissions, then
+add webhooks under **Account → Notifications → Your providers → Discord**. The
+initial release is a reviewed source preview until signed catalogue promotion;
+use a compatible host implementing the protected Plugin API 1.1.2 contract.
+Administrators must permit Discord egress in the existing plugin runtime.
 
-Save the webhook through the plugin's secret field, then explicitly enable the provider preference. Changing a stored plugin secret disables affected webhook destinations and suppresses their queued routing work; enable them again after configuration is complete. Uninstall preserves history and inactive preferences, but reinstall does not automatically reactivate old destinations.
+Add a label and an ordinary Discord HTTPS webhook. Each concrete webhook is
+PUBLIC, and its token is encrypted by the app; plugins and settings responses
+never receive it. Multiple webhooks have independent preferences and consent.
+Configured destinations appear first; inactive history can be expanded separately.
+Use **Send test notification** to queue a generic example to that destination.
+Forum threads and Discord DMs are not supported in this increment.
+
+The default is a generic release announcement, including the release title and
+public release facts. **Choose richer media sharing** presents an explicit
+confirmation for that one webhook: title, season/episode/release facts and the
+fact that you selected/followed it. Artwork is not sent yet. Account identifiers,
+watch history/status, ratings, private price targets, security messages and
+recovery tokens remain excluded. Confirmation never promotes webhook trust.
+
+Disabling a webhook clears its consent and cancels unsent work. Re-enabling it
+never replays old messages. Editing its label preserves the endpoint; replacing
+its URL requires removing it and adding a new webhook with fresh consent.
+Removal erases credentials while preserving history and routing choices.
+Provider/plugin disable and grant revocation retire affected destinations;
+same-installation reactivation is explicit. Reinstallation needs new enrollment
+and cannot reclaim old credentials or consent.
+
+![Personal webhooks and separate sharing consent](../assets/notification-webhooks/webhooks-desktop-dark.png)
+
+![Webhook disclosure confirmation](../assets/notification-webhooks/webhook-disclosure-dark.png)
+
+![Mobile webhook settings](../assets/notification-webhooks/webhooks-mobile-light.png)
+
+### Legacy plugin compatibility
+
+Existing shared-secret plugin registrations retain the PUBLIC compatibility
+bridge. Save their webhook through their plugin secret field and enable the
+provider preference. Changing a legacy secret disables its endpoints and queued
+work. That storage is readable by the legacy plugin; it is not the protected
+host vault. Credentials and richer consent are never transferred to the new ID.
 
 Delivery is best-effort. The core persists attempts and retries transport failures up to three times. Removing or revoking a provider stops eligible queued work. A temporary runtime outage delays work until it is available or the notification's delivery validity expires.
 
 The inbox defaults to 30 days of history. Retention preferences also support 180 and 365 days, or unlimited retention. Minimal deduplication receipts outlive notification content so old events do not reappear after deletion or retention cleanup.
 
-The [notification centre](notification-centre.md) provides paginated inbox filtering, grouped presentation and explicit retention controls. The shared plugin bridge remains a PUBLIC legacy webhook; personal webhook enrollment and browser push are separate provider work.
+The [notification centre](notification-centre.md) provides paginated inbox filtering, grouped presentation and explicit retention controls. Browser/PWA push remains separate from the in-app inbox and is still pending implementation.

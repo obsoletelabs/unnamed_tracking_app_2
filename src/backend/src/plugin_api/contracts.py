@@ -70,7 +70,11 @@ from .compatibility import (
     plugin_contract_compatibility_reason,
 )
 from .dependency_graph import walk_dependency_graph
-from .notification_contracts import NotificationEventEmission, NotificationTypeRegistration
+from .notification_contracts import (
+    NotificationEventEmission,
+    NotificationFieldLayout,
+    NotificationTypeRegistration,
+)
 from .ui_contracts import (
     HostExtensionSlot,
     HostPage,
@@ -277,6 +281,7 @@ __all__ = [
     "DocumentContentRepresentation",
     "SessionRepresentation",
     "NotificationProviderRegistration",
+    "NotificationFieldLayout",
     "NotificationEventEmission",
     "NotificationTypeRegistration",
     "NotificationDeliveryRepresentation",

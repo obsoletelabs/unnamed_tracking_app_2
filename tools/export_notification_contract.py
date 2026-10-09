@@ -7,7 +7,12 @@ import argparse
 import json
 from pathlib import Path
 
-from src.plugin_api import NotificationEventEmission, NotificationTypeRegistration
+from src.plugin_api import (
+    NotificationEventEmission,
+    NotificationFieldLayout,
+    NotificationProviderRegistration,
+    NotificationTypeRegistration,
+)
 
 
 def export(destination: Path) -> None:
@@ -15,6 +20,8 @@ def export(destination: Path) -> None:
     for name, model in (
         ("notification-type-v1", NotificationTypeRegistration),
         ("notification-event-v1", NotificationEventEmission),
+        ("notification-provider-v1", NotificationProviderRegistration),
+        ("notification-layout-v1", NotificationFieldLayout),
     ):
         schema = model.model_json_schema()
         schema["$schema"] = "https://json-schema.org/draft/2020-12/schema"

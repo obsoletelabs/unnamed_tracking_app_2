@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import ToggleButton from "./ToggleButton.vue";
 import EmailDestinationsSection from "./EmailDestinationsSection.vue";
+import WebhookDestinationsSection from "./WebhookDestinationsSection.vue";
 import NotificationLinkSettings from "./NotificationLinkSettings.vue";
 import {
   fetchNotificationRouting,
@@ -215,7 +216,9 @@ async function testDestination(destination: NotificationRoutingDestination) {
                 provider.available
                   ? provider.id === "core.smtp"
                     ? "Uses server SMTP settings and your own addresses below."
-                    : "Uses administrator-configured delivery. Configure an available destination below."
+                    : provider.configuration_scope === "user"
+                      ? "Add separate webhooks for your account below. Credentials stay protected by the app."
+                      : "Uses administrator-configured delivery. Configure an available destination below."
                   : "Provider unavailable. Your choices are retained; reinstall does not reactivate old destinations."
               }}
             </p>
@@ -238,9 +241,28 @@ async function testDestination(destination: NotificationRoutingDestination) {
             @changed="reload"
             @change="emit('change', $event)"
           />
+          <WebhookDestinationsSection
+            v-if="
+              provider.destination_kind === 'discord_webhook' ||
+              routing.destinations.some(
+                (d) =>
+                  d.provider_id === provider.id && d.kind === 'discord_webhook',
+              )
+            "
+            :provider="provider"
+            :destinations="
+              routing.destinations.filter((d) => d.provider_id === provider.id)
+            "
+            :prefs="prefs"
+            :loaded="loaded"
+            @changed="reload"
+            @change="emit('change', $event)"
+          />
           <div
             v-for="destination in routing.destinations.filter(
-              (d) => d.provider_id === provider.id && d.kind !== 'email',
+              (d) =>
+                d.provider_id === provider.id &&
+                !['email', 'discord_webhook'].includes(d.kind),
             )"
             :key="destination.id"
             class="personal-destination"

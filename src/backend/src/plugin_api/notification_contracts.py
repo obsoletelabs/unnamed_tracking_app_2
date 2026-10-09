@@ -55,3 +55,18 @@ class NotificationEventEmission(ContractModel):
         if any(isinstance(value, int) and abs(value) > 2**53 - 1 for value in values.values()):
             raise ValueError("Event integer parameters exceed their bounds")
         return self
+
+
+class NotificationFieldLayout(ContractModel):
+    """A provider can arrange approved fields, never append arbitrary destination content."""
+
+    style: Literal["plain", "embed"] = "embed"
+    fields: tuple[Literal["title", "body", "event_at", "link"], ...] = Field(
+        default=("title", "body", "event_at", "link"), min_length=1, max_length=4
+    )
+
+    @model_validator(mode="after")
+    def unique_fields(self) -> Self:
+        if len(set(self.fields)) != len(self.fields):
+            raise ValueError("Layout fields must be unique approved references")
+        return self

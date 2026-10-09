@@ -20,7 +20,8 @@ from src.database.models.plugin_permissions import (
 )
 from src.database.models.user import User
 from src.database.session import get_db
-from src.plugin_api.capabilities import capability_definition
+from src.features.notification_destinations import retire_plugin_destinations
+from src.plugin_api.capabilities import capability_definition, capability_implies
 from src.plugin_api.contracts import Capability
 from src.plugin_api.grants import (
     ensure_capability_grant,
@@ -245,6 +246,10 @@ async def revoke_grant(
         .values(revoked_at=int(time.time()), revoked_by_operation=None)
         .execution_options(synchronize_session="fetch")
     )
+    if row.device_id is None and capability_implies(
+        row.capability, "notification_providers.deliver"
+    ):
+        await retire_plugin_destinations(db, row.plugin_id, row.user_id, row.installation_id)
     await db.commit()
     return {"id": str(row.id), "status": "revoked"}
 

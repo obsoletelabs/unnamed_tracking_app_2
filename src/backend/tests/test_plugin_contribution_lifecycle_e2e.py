@@ -131,6 +131,8 @@ async def test_lifecycle_revokes_all_host_execution_boundaries(tmp_path, monkeyp
     async def scalars(statement):
         if "plugin_permission_grants" in str(statement):
             return []
+        if "SELECT plugin_notification_provider_registrations.provider_id" in str(statement):
+            return [registration.provider_id]
         return SimpleNamespace(all=lambda: [registration])
 
     db.scalars.side_effect = scalars

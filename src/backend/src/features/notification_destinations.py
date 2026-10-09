@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import select, true, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
@@ -12,6 +12,49 @@ from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_provider_setting import NotificationProviderSetting
 from src.database.models.plugin_notification_provider import PluginNotificationProviderRegistration
 from src.features.notification_policy import INBOX_PROVIDER, Trust
+
+
+async def retire_provider_destinations(
+    db: AsyncSession, provider_id: str, user_id: UUID | None = None
+) -> None:
+    """Keep endpoint history without reactivating it when a provider is re-registered."""
+    owner = (NotificationDestination.user_id == user_id) if user_id else true()
+    destination_ids = select(NotificationDestination.id).where(
+        NotificationDestination.provider_id == provider_id, owner
+    )
+    await db.execute(
+        update(NotificationDelivery)
+        .where(
+            NotificationDelivery.destination_id.in_(destination_ids),
+            NotificationDelivery.status.in_(("pending", "processing", "retry_wait")),
+        )
+        .values(
+            status="suppressed", last_error="provider_revoked", claim_token=None, lease_until=None
+        )
+    )
+    await db.execute(
+        update(NotificationDestination)
+        .where(NotificationDestination.provider_id == provider_id, owner)
+        .values(active=False, enabled=False, media_consent_revision=None, media_consent_at=None)
+    )
+
+
+async def retire_plugin_destinations(
+    db: AsyncSession,
+    plugin_id: str,
+    user_id: UUID | None = None,
+    installation_id: UUID | None = None,
+) -> None:
+    provider_ids = await db.scalars(
+        select(PluginNotificationProviderRegistration.provider_id).where(
+            PluginNotificationProviderRegistration.plugin_id == plugin_id,
+            (PluginNotificationProviderRegistration.installation_id == installation_id)
+            if installation_id
+            else true(),
+        )
+    )
+    for provider_id in provider_ids:
+        await retire_provider_destinations(db, provider_id, user_id)
 
 
 async def invalidate_legacy_configuration(db: AsyncSession, installation_id: UUID) -> None:
@@ -93,6 +136,10 @@ async def resolve_destinations(db: AsyncSession, user_id: UUID) -> list[Notifica
         .all()
     )
     for registration in registrations:
+        if registration.transport != "legacy":
+            # Protected endpoints require explicit owner enrollment; provider
+            # registration or a routing toggle cannot claim anyone's credentials.
+            continue
         await db.execute(
             pg_insert(NotificationDestination)
             .values(

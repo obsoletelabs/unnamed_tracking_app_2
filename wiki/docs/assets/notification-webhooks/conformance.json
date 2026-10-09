@@ -1,0 +1,22 @@
+{
+  "date": "2026-10-10",
+  "browser": "Edge",
+  "widths": [
+    1440,
+    390
+  ],
+  "signed_package_installed": true,
+  "actual_plugin_worker": true,
+  "actual_gateway_and_grants": true,
+  "network_io": "captured final broker send; no external Discord credentials",
+  "checks": [
+    "standalone signed package installation",
+    "PUBLIC endpoint enrollment and encrypted secret exclusion",
+    "per-webhook explicit media consent",
+    "real render and core dispatch to broker capture",
+    "multiple independent webhook consent",
+    "disable clears consent",
+    "desktop/mobile no overflow"
+  ],
+  "errors": []
+}

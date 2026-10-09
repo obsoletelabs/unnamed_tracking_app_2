@@ -8,7 +8,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import get_current_admin, get_current_user
@@ -17,7 +17,10 @@ from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_provider_setting import NotificationProviderSetting
 from src.database.models.user import User
 from src.database.session import get_db
-from src.features.notification_destinations import resolve_destinations
+from src.features.notification_destinations import (
+    resolve_destinations,
+    retire_provider_destinations,
+)
 from src.features.notification_enrollment import (
     EnrollmentError,
     confirm_verification,
@@ -29,6 +32,7 @@ from src.features.notification_enrollment import (
 from src.features.notification_providers.registry import get_notification_providers
 from src.features.notification_settings import routing_settings
 from src.features.notification_tests import queue_destination_test, test_smtp
+from src.features.notification_webhooks import create_webhook, remove_webhook, update_webhook
 from src.features.smtp_configuration import SMTP_PROVIDER, normalize_email
 
 _NOTIFICATION_DB = Depends(get_db)
@@ -53,6 +57,20 @@ class EmailUpdate(BaseModel):
     label: str | None = Field(default=None, max_length=80)
     enabled: bool | None = None
     recovery_allowed: bool | None = None
+
+
+class WebhookCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    provider_id: str = Field(min_length=3, max_length=128)
+    url: str = Field(min_length=1, max_length=512)
+    label: str = Field(default="Discord webhook", max_length=80)
+
+
+class WebhookUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    label: str | None = Field(default=None, max_length=80)
+    enabled: bool | None = None
+    share_followed_media: bool | None = None
 
 
 class SmtpTestRequest(BaseModel):
@@ -117,7 +135,45 @@ async def _enrollment(db: AsyncSession, operation: Awaitable[_Result]) -> _Resul
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     except ValueError as exc:
         await db.rollback()
-        raise HTTPException(status_code=400, detail="Enter a valid email destination") from exc
+        raise HTTPException(
+            status_code=400, detail="Enter a valid notification destination"
+        ) from exc
+
+
+@router.post("/webhook-destinations", status_code=201)
+async def create_webhook_destination(
+    payload: WebhookCreate,
+    db: AsyncSession = _NOTIFICATION_DB,
+    current_user: User = _NOTIFICATION_USER,
+) -> dict:
+    destination_id = await _enrollment(
+        db, create_webhook(db, current_user.id, payload.provider_id, payload.url, payload.label)
+    )
+    return {"id": str(destination_id)}
+
+
+@router.patch("/webhook-destinations/{destination_id}")
+async def update_webhook_destination(
+    destination_id: UUID,
+    payload: WebhookUpdate,
+    db: AsyncSession = _NOTIFICATION_DB,
+    current_user: User = _NOTIFICATION_USER,
+) -> dict:
+    await _enrollment(
+        db,
+        update_webhook(db, current_user.id, destination_id, payload.model_dump(exclude_none=True)),
+    )
+    return {"updated": True}
+
+
+@router.delete("/webhook-destinations/{destination_id}")
+async def remove_webhook_destination(
+    destination_id: UUID,
+    db: AsyncSession = _NOTIFICATION_DB,
+    current_user: User = _NOTIFICATION_USER,
+) -> dict:
+    await _enrollment(db, remove_webhook(db, current_user.id, destination_id))
+    return {"removed": True}
 
 
 @router.post("/smtp/test")
@@ -274,15 +330,20 @@ async def update_notification_provider_setting(
     await resolve_destinations(db, current_user.id)
     registration = getattr(provider, "registration", None)
     if registration is not None:
+        if not payload.enabled:
+            await retire_provider_destinations(db, provider_id, current_user.id)
         await db.execute(
             update(NotificationDestination)
             .where(
                 NotificationDestination.user_id == current_user.id,
                 NotificationDestination.provider_id == provider_id,
                 NotificationDestination.installation_id == registration.installation_id,
-                NotificationDestination.active.is_(True),
+                or_(
+                    NotificationDestination.kind == "legacy_webhook",
+                    NotificationDestination.encrypted_configuration.is_not(None),
+                ),
             )
-            .values(enabled=payload.enabled)
+            .values(enabled=payload.enabled, active=payload.enabled)
         )
     await db.commit()
     return {
