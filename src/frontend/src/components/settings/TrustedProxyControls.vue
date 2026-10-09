@@ -1,10 +1,7 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
-
-interface Preset {
-  label: string;
-  values: string[];
-}
+import { computed, onMounted, ref } from "vue";
+import { fetchProxyPresets, validateProxyEntries } from "../../services/realIp";
+import type { ProxyPreset } from "../../services/realIp";
 
 const props = defineProps<{
   modelValue: string;
@@ -15,9 +12,11 @@ const emit = defineEmits<{
   "update:modelValue": [value: string];
 }>();
 
-const presets = ref<Record<string, Preset>>({});
+const presets = ref<Record<string, ProxyPreset>>({});
 const custom = ref("");
 const error = ref<string | null>(null);
+const busy = ref(false);
+const entries = computed(() => tokens(props.modelValue));
 
 function tokens(value: string): string[] {
   return value
@@ -27,6 +26,7 @@ function tokens(value: string): string[] {
 }
 
 function add(values: string[]) {
+  if (props.disabled || busy.value) return;
   const merged = [...tokens(props.modelValue)];
   for (const value of values) {
     if (!merged.includes(value)) merged.push(value);
@@ -34,29 +34,39 @@ function add(values: string[]) {
   emit("update:modelValue", merged.join(" "));
 }
 
-function addCustom() {
+function remove(value: string) {
+  if (props.disabled || busy.value) return;
+  emit(
+    "update:modelValue",
+    entries.value.filter((item) => item !== value).join(" "),
+  );
+}
+
+async function addCustom() {
+  if (props.disabled || busy.value) return;
   error.value = null;
   const values = tokens(custom.value);
   if (!values.length) return;
-  if (values.some((value) => !/^[0-9A-Fa-f:./]+$/.test(value))) {
-    error.value = "Custom entries must be IP addresses or CIDR ranges.";
-    return;
+  busy.value = true;
+  try {
+    const normalized = await validateProxyEntries(
+      [...entries.value, ...values].join(" "),
+    );
+    emit("update:modelValue", normalized);
+    custom.value = "";
+  } catch (reason) {
+    error.value =
+      reason instanceof Error
+        ? reason.message
+        : "Enter valid IP addresses or CIDR ranges.";
+  } finally {
+    busy.value = false;
   }
-  add(values);
-  custom.value = "";
 }
 
 onMounted(async () => {
   try {
-    const response = await fetch("/api/internal/real-ip/presets", {
-      credentials: "include",
-    });
-    if (!response.ok) throw new Error();
-    presets.value = (
-      (await response.json()) as {
-        presets: Record<string, Preset>;
-      }
-    ).presets;
+    presets.value = await fetchProxyPresets();
   } catch {
     error.value = "Unable to load proxy presets.";
   }
@@ -70,39 +80,48 @@ onMounted(async () => {
         v-for="(preset, key) in presets"
         :key="key"
         type="button"
-        :disabled="disabled"
+        :disabled="disabled || busy"
         @click="add(preset.values)"
       >
         Enable {{ preset.label }}
       </button>
     </div>
-    <input
-      :value="modelValue"
-      :disabled="disabled"
-      placeholder="127.0.0.1/32 ::1/128"
-      @input="
-        emit('update:modelValue', ($event.target as HTMLInputElement).value)
-      "
-    />
+    <ul class="proxy-list" aria-label="Trusted proxy ranges">
+      <li v-for="entry in entries" :key="entry">
+        <code>{{ entry }}</code
+        ><button
+          type="button"
+          :aria-label="`Remove ${entry}`"
+          :disabled="disabled || busy"
+          @click="remove(entry)"
+        >
+          Remove
+        </button>
+      </li>
+    </ul>
+    <p v-if="!entries.length" class="empty">No proxy addresses are trusted.</p>
     <div class="custom-row">
-      <input
+      <textarea
         v-model="custom"
-        :disabled="disabled"
-        placeholder="Custom IP/CIDR ranges"
+        :disabled="disabled || busy"
+        rows="3"
+        maxlength="8192"
+        aria-label="Custom IP or CIDR ranges"
+        placeholder="One IP/CIDR per line, e.g. 192.168.1.0/24"
       />
       <button
         type="button"
-        :disabled="disabled || !custom.trim()"
+        :disabled="disabled || busy || !custom.trim()"
         @click="addCustom"
       >
-        Add custom
+        {{ busy ? "Validating…" : "Add custom" }}
       </button>
     </div>
     <small>
       Loopback is the safe default. Presets add trusted proxy ranges;
       environment-managed values are locked.
     </small>
-    <small v-if="error" class="error">{{ error }}</small>
+    <small v-if="error" class="error" role="alert">{{ error }}</small>
   </div>
 </template>
 
@@ -119,7 +138,7 @@ onMounted(async () => {
   gap: 8px;
 }
 
-.proxy-controls input {
+.proxy-controls textarea {
   background: var(--ui-surface);
   border: 1px solid var(--ui-border-strong);
   border-radius: var(--ui-radius-control);
@@ -133,8 +152,43 @@ onMounted(async () => {
   gap: 8px;
 }
 
-.custom-row input {
+.custom-row textarea {
   flex: 1;
+  min-width: 0;
+  resize: vertical;
+}
+
+.proxy-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 360px;
+  overflow: auto;
+}
+.proxy-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-control);
+  padding: 6px 10px;
+}
+.proxy-list code {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.empty {
+  color: var(--ui-dim);
+  font-size: 13px;
+}
+@media (max-width: 760px) {
+  .custom-row {
+    flex-direction: column;
+  }
 }
 
 .proxy-controls button {

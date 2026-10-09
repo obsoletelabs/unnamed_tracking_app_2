@@ -62,6 +62,19 @@ The normal setup flow can collect these values instead of providing them through
 
 Each signed-in user has an independently remembered app origin. Users can override notification links globally or per external destination, including separate email and webhook domains. Public DNS for the configured FQDN is managed outside the app.
 
+## Production Nginx TLS
+
+Configure TLS and trusted proxies under **Settings → Administration → Application** or setup. The production container validates and gracefully reloads Nginx immediately after a successful save. Invalid certificate/configuration changes retain the working configuration. Development saves apply when used in production; it has no embedded Nginx listener. Environment values lock corresponding fields and require container recreation to change.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `NGINX_TLS_ENABLED` | `false` | Enable production HTTPS; publish port 443 first. |
+| `NGINX_TLS_REDIRECT_HTTP` | `false` | Redirect HTTP to HTTPS; requires TLS and reachable external HTTPS. |
+| `NGINX_TLS_CERTIFICATE` | Empty | Absolute mounted PEM certificate/chain path. |
+| `NGINX_TLS_PRIVATE_KEY` | Empty | Absolute mounted PEM private-key path, supplied with the certificate. |
+
+Leave both paths blank to use the conventional mounted pair or a generated localhost certificate. Saving TLS settings activates renewed mounted certificates even when their paths are unchanged; there is no separate reload button. See [production Docker](../deployment/production-docker.md) for mounts, fallback and proxy trust behavior.
+
 ## Email notifications
 
 SMTP is built into the host and uses the central registry with ENV precedence over administrator settings. Nonempty ENV values lock the corresponding UI fields. User recipient addresses and their verification are separate personal destinations.
@@ -75,7 +88,7 @@ SMTP is built into the host and uses the central registry with ENV precedence ov
 | `SMTP_USERNAME` | Optional authentication username. |
 | `SMTP_PASSWORD` | Optional authentication password. Stored UI values are encrypted and never returned. |
 
-Missing public URL does not disable SMTP, but unsubscribe links are unavailable. SMTP plaintext warns; sensitive/recovery/verification messages require TLS except development or a literal local SMTP endpoint. See [notification providers](../user-guide/notification-providers.md) for the exact transport policy, verification and unsubscribe lifecycle. Password-reset and invite features remain plugins.
+Missing a usable notification URL does not disable SMTP, but unsubscribe links are unavailable. SMTP plaintext warns; sensitive/recovery/verification messages require TLS except development or a literal local SMTP endpoint. See [notification providers](../user-guide/notification-providers.md) for the exact transport policy, verification and unsubscribe lifecycle. Password-reset and invite features remain plugins.
 
 ## Metadata/provider credentials
 
