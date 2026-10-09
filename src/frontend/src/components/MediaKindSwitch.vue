@@ -5,12 +5,18 @@ import SegmentedTabs from "./SegmentedTabs.vue";
 import type { SegmentOption } from "./SegmentedTabs.vue";
 
 defineProps<{
-  active: "movie" | "tv" | "anime" | "lists";
+  active: "movie" | "tv" | "anime" | "lists" | "search";
 }>();
 
 // Icons are the sidebar's own Movies / TV / Anime icons, and the same
 // Collections icon the Games bar uses.
 const OPTIONS: SegmentOption[] = [
+  {
+    value: "search",
+    label: "Add media",
+    to: "/media/search",
+    icon: '<circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 5 5" />',
+  },
   {
     value: "movie",
     label: "Movies",
