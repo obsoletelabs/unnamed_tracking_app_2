@@ -36,6 +36,8 @@ from src.database.models.achievement import Achievement
 from src.database.models.game import Game, GameStatus
 from src.database.models.user import User
 from src.database.session import SessionLocal, get_db
+from src.features.imports.library_games import LibraryIndex
+from src.features.imports.library_games import get_or_create_game as _get_or_create_game
 from src.features.metadata.games import steam
 from src.features.metadata.games.psn import PSNClient, PSNError
 from src.features.metadata.games.retroachievements import (
@@ -44,7 +46,7 @@ from src.features.metadata.games.retroachievements import (
 )
 from src.features.metadata.locked_fields import apply_metadata_updates
 from src.features.metadata.service import game_result, library_candidate, resolve_library_record
-from src.helpers.save_game_asset import AssetKind, create_game_folder, save_game_asset
+from src.helpers.save_game_asset import AssetKind, save_game_asset
 from src.helpers.steam_achievement_rows import (  # noqa: F401
     needs_community_descriptions as _needs_community_descriptions,
 )
@@ -56,9 +58,6 @@ from src.plugin_api.metadata_contracts import MediaType
 router = APIRouter(
     prefix="/api/library-sync", tags=["library-sync"], dependencies=[Depends(get_current_user)]
 )
-
-_SLUG_INVALID = re.compile(r"[^A-Za-z0-9_-]+")
-
 
 _SYNC_CONCURRENCY = 5
 
@@ -220,66 +219,6 @@ async def _enrich_new_game(game: Game, user: User, preferences: dict) -> None:
         for url in match.get(field + "s", []):
             if await _download_asset(url, game.id, asset_kind):
                 break
-
-
-def _slugify(title: str) -> str:
-    slug = _SLUG_INVALID.sub("-", title).strip("-")
-    return slug or "game"
-
-
-async def _unique_folder_location(db: AsyncSession, title: str) -> str:
-    base = _slugify(title)
-    candidate = base
-    suffix = 2
-    while await db.scalar(select(Game.id).where(Game.folder_location == candidate)) is not None:
-        candidate = f"{base}-{suffix}"
-        suffix += 1
-    return candidate
-
-
-async def _get_or_create_game(
-    db: AsyncSession, user_id: UUID, title: str, source: str, external_id: str | None = None
-) -> tuple[Game, bool]:
-    """Match by (user, source, external_id) when the provider gives a
-    stable id — a title alone drifts (Steam has reported a different
-    display name for the same appid between calls, e.g. briefly appending
-    "- GOTY Edition"), which was creating duplicate rows for one real game.
-    Falls back to matching by (user, source, title) when no id is given."""
-    statement = (
-        select(Game)
-        .where(Game.user_id == user_id, Game.source == source, Game.deleted_at.is_(None))
-        .with_for_update()
-        .execution_options(populate_existing=True)
-    )
-    existing = (
-        await db.scalar(statement.where(Game.external_id == external_id)) if external_id else None
-    )
-    if existing is None:
-        existing = await db.scalar(statement.where(Game.title == title))
-    if existing:
-        if existing.title != title:
-            apply_metadata_updates(existing, {"title": title, "sort_title": title.lower()})
-        if external_id and not existing.external_id:
-            existing.external_id = external_id
-        # this sync just saw it again — clear any earlier "missing from your
-        # library" flag (see _flag_stale_games)
-        existing.stale_since = None
-        return existing, False
-
-    folder_location = await _unique_folder_location(db, title)
-    game = Game(
-        user_id=user_id,
-        title=title,
-        sort_title=title.lower(),
-        folder_location=folder_location,
-        source=source,
-        external_id=external_id,
-        status=GameStatus.BACKLOG,
-    )
-    db.add(game)
-    await db.flush()
-    create_game_folder(user_id, folder_location)
-    return game, True
 
 
 async def _flag_stale_games(
@@ -595,6 +534,7 @@ async def sync_steam_library(
         )
     )
 
+    index = await LibraryIndex.load(db, current_user.id, "Steam")
     games_added = games_updated = achievements_synced = 0
     newly_created: list[tuple[Game, int]] = []
     synced_titles: list[str] = []
@@ -608,7 +548,7 @@ async def sync_steam_library(
         fetch_index += 1
 
         game, created = await _get_or_create_game(
-            db, current_user.id, title, "Steam", external_id=str(app_id)
+            db, current_user.id, title, "Steam", external_id=str(app_id), index=index
         )
         touched_ids.add(game.id)
         game.playtime_seconds = int(entry.get("playtime_forever", 0)) * 60
@@ -693,6 +633,7 @@ async def sync_retroachievements_library(
     game_ids = [str(entry.get("GameID")) for entry in owned_games if entry.get("GameID")]
     progress_results = await asyncio.gather(*(_fetch_progress(gid) for gid in game_ids))
 
+    index = await LibraryIndex.load(db, current_user.id, "RetroAchievements")
     games_added = games_updated = achievements_synced = 0
     newly_created: list[Game] = []
     synced_titles: list[str] = []
@@ -707,6 +648,7 @@ async def sync_retroachievements_library(
             title,
             "RetroAchievements",
             external_id=str(entry.get("GameID") or "") or None,
+            index=index,
         )
         touched_ids.add(game.id)
         games_added += created
@@ -792,6 +734,7 @@ async def sync_psn_library(
         )
     )
 
+    index = await LibraryIndex.load(db, current_user.id, "PlayStation")
     games_added = games_updated = achievements_synced = 0
     newly_created: list[Game] = []
     synced_titles: list[str] = []
@@ -805,7 +748,12 @@ async def sync_psn_library(
         result_index += 1
 
         game, created = await _get_or_create_game(
-            db, current_user.id, title, "PlayStation", external_id=entry.get("npCommunicationId")
+            db,
+            current_user.id,
+            title,
+            "PlayStation",
+            external_id=entry.get("npCommunicationId"),
+            index=index,
         )
         touched_ids.add(game.id)
         games_added += created

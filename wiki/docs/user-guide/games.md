@@ -27,6 +27,11 @@ updates a purchased wishlist game's status. Turning the setting off leaves exist
 entries in the library. An optional wishlist failure does not prevent owned-game
 enrichment.
 
+Library imports match existing games by provider ID. Different provider IDs with
+the same title stay separate, while a matching record without a provider ID can
+be adopted. Resyncs preserve locked titles. Import folder names are allocated
+within your account and fit the storage limit, including collision suffixes.
+
 ## Detail-page data
 
 A game can have:
