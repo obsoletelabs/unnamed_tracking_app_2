@@ -11,7 +11,13 @@ from src.database.models.game import FOLDER_NAME_MAX_LENGTH, Game
 from src.database.models.user import User
 from src.database.session import SessionLocal
 from src.features.imports import library_games
+from src.helpers import save_game_asset
 from tests.test_game_files_flow import game_flow  # noqa: F401
+
+
+@pytest.fixture(autouse=True)
+def isolated_import_storage(tmp_path, monkeypatch):
+    monkeypatch.setattr(save_game_asset, "_DATA_ROOT", tmp_path)
 
 
 async def test_steam_sync_uses_constant_library_selects(flow, monkeypatch):
