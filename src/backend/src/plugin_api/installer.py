@@ -167,7 +167,10 @@ def inspect_package(
             ),
         )
 
-    if publisher is None or not publisher.allows_plugin(candidate.manifest.plugin_id):
+    verifier.validate_publisher_policy(candidate.manifest, candidate.archive_sha256)
+    if publisher is None or not publisher.allows_package(
+        candidate.manifest.plugin_id, candidate.archive_sha256
+    ):
         return InspectedPackage(
             candidate,
             PackageTrust(

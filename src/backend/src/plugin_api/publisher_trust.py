@@ -7,7 +7,9 @@ import binascii
 import hashlib
 import json
 import re
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import TypedDict
 
 from .updates import TrustedPublisher
 
@@ -34,10 +36,8 @@ def _publisher_metadata(entry: dict) -> tuple[str, str, str, list[str], str]:
         raise PublisherTrustError(error)
     if not isinstance(encoded_key, str):
         raise PublisherTrustError(error)
-    if (
-        not isinstance(scopes, list)
-        or not scopes
-        or not all(isinstance(scope, str) and scope for scope in scopes)
+    if not isinstance(scopes, list) or not all(
+        isinstance(scope, str) and scope for scope in scopes
     ):
         raise PublisherTrustError(error)
     if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
@@ -59,6 +59,59 @@ def _legacy_manifest_hashes(value: object) -> dict[str, list[str]]:
     return value
 
 
+class _RotationPolicy(TypedDict):
+    plugin_ids: tuple[str, ...]
+    not_before: datetime | None
+    not_after: datetime | None
+    historical_package_sha256: frozenset[str]
+
+
+def _timestamp(entry: dict, field_name: str) -> datetime | None:
+    value = entry.get(field_name)
+    if value is None:
+        return None
+    try:
+        if not isinstance(value, str):
+            raise ValueError("timestamp must be a string")
+        instant = datetime.fromisoformat(value)
+        if instant.tzinfo is None or instant.utcoffset() is None:
+            raise ValueError("timestamp must include a timezone")
+        return instant.astimezone(UTC)
+    except ValueError as exc:
+        raise PublisherTrustError(f"invalid publisher {field_name} timestamp") from exc
+
+
+def _rotation_policy(entry: dict) -> _RotationPolicy:
+    plugin_ids = entry.get("plugin_ids", [])
+    pins = entry.get("historical_package_sha256", [])
+    if (
+        not isinstance(plugin_ids, list)
+        or len(plugin_ids) > 128
+        or any(not isinstance(value, str) or not _KEY_ID.fullmatch(value) for value in plugin_ids)
+        or len(plugin_ids) != len(set(plugin_ids))
+    ):
+        raise PublisherTrustError("invalid exact publisher plugin IDs")
+    if (
+        not isinstance(pins, list)
+        or len(pins) > 2048
+        or any(
+            not isinstance(value, str) or not re.fullmatch(r"[a-f0-9]{64}", value) for value in pins
+        )
+        or len(pins) != len(set(pins))
+    ):
+        raise PublisherTrustError("invalid historical package SHA-256 pins")
+    not_before = _timestamp(entry, "not_before")
+    not_after = _timestamp(entry, "not_after")
+    if not_before is not None and not_after is not None and not_before >= not_after:
+        raise PublisherTrustError("invalid publisher validity interval")
+    return {
+        "plugin_ids": tuple(plugin_ids),
+        "not_before": not_before,
+        "not_after": not_after,
+        "historical_package_sha256": frozenset(pins),
+    }
+
+
 def _load_publisher(entry: object, publishers: dict[str, TrustedPublisher]) -> TrustedPublisher:
     if not isinstance(entry, dict):
         raise PublisherTrustError("publisher trust registry contains an invalid entry")
@@ -77,6 +130,9 @@ def _load_publisher(entry: object, publishers: dict[str, TrustedPublisher]) -> T
     if not isinstance(channel, str) or channel not in {"official", "demo", "community"}:
         raise PublisherTrustError("invalid publisher channel")
     legacy = _legacy_manifest_hashes(entry.get("legacy_manifest_hashes", {}))
+    rotation = _rotation_policy(entry)
+    if not scopes and not rotation["plugin_ids"]:
+        raise PublisherTrustError("publisher trust registry must declare a plugin scope")
     return TrustedPublisher(
         key_id=key_id,
         public_key=public_key,
@@ -86,6 +142,7 @@ def _load_publisher(entry: object, publishers: dict[str, TrustedPublisher]) -> T
         channel=channel,
         legacy_manifest_hashes=legacy,
         require_manifest_binding=True,
+        **rotation,
     )
 
 
