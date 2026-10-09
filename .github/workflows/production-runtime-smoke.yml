@@ -51,9 +51,10 @@ jobs:
           file: src/docker-container/Dockerfile
           load: true
           tags: unnamed_tracking_app:runtime-smoke
-          # Reuse the production-container workflow's layers, then keep a smoke-specific cache too.
-          cache-from: type=gha,scope=production-container
-          cache-from: type=gha,scope=production-runtime-smoke
+          # Reuse production-container layers, with a smoke-specific cache as fallback.
+          cache-from: |
+            type=gha,scope=production-container
+            type=gha,scope=production-runtime-smoke
           cache-to: type=gha,mode=max,scope=production-runtime-smoke
 
       - name: Pull the exact published production image
