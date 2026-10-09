@@ -202,6 +202,12 @@ async def routing_settings(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
                 "active": destination.active,
                 "enabled": destination.enabled,
                 "available": provider["available"] and installation_matches,
+                "reactivation_available": bool(
+                    destination.kind == "discord_webhook"
+                    and destination.encrypted_configuration
+                    and provider["available"]
+                    and installation_matches
+                ),
                 "provider_enabled": provider["enabled"],
                 "critical_supported": provider["critical_supported"],
                 "critical_description": provider["critical_description"],

@@ -284,7 +284,8 @@ export interface NotificationRoutingProvider {
   name: string;
   enabled: boolean;
   available: boolean;
-  configuration_scope: "internal" | "server";
+  configuration_scope: "internal" | "server" | "user";
+  destination_kind?: "discord_webhook" | null;
   critical_supported: boolean;
   critical_description?: string | null;
   transport_warning?: string | null;
@@ -312,6 +313,8 @@ export interface NotificationRoutingDestination {
   recovery_allowed?: boolean;
   revision?: number;
   verification_available?: boolean;
+  media_disclosure_confirmed?: boolean;
+  reactivation_available?: boolean;
 }
 
 export interface NotificationRoutingSettings {
@@ -365,13 +368,14 @@ export async function setNotificationProviderEnabled(
   if (!response.ok) throw new Error("Failed to update notification provider.");
 }
 
-async function emailRequest<T>(
+async function destinationRequest<T>(
+  kind: "email" | "webhook",
   path: string,
   method: string,
   payload?: object,
 ): Promise<T> {
   const response = await fetch(
-    `/api/settings/notification-providers/email-destinations${path}`,
+    `/api/settings/notification-providers/${kind}-destinations${path}`,
     {
       method,
       credentials: "include",
@@ -384,7 +388,10 @@ async function emailRequest<T>(
 }
 
 export function createEmailDestination(address: string, label: string) {
-  return emailRequest<{ id: string }>("", "POST", { address, label });
+  return destinationRequest<{ id: string }>("email", "", "POST", {
+    address,
+    label,
+  });
 }
 export function updateEmailDestination(
   id: string,
@@ -395,20 +402,23 @@ export function updateEmailDestination(
     recovery_allowed?: boolean;
   },
 ) {
-  return emailRequest<{ updated: boolean }>(
+  return destinationRequest<{ updated: boolean }>(
+    "email",
     `/${encodeURIComponent(id)}`,
     "PATCH",
     changes,
   );
 }
 export function removeEmailDestination(id: string) {
-  return emailRequest<{ removed: boolean }>(
+  return destinationRequest<{ removed: boolean }>(
+    "email",
     `/${encodeURIComponent(id)}`,
     "DELETE",
   );
 }
 export function requestEmailVerification(id: string) {
-  return emailRequest<{ challenge_id: string; expires_in: number }>(
+  return destinationRequest<{ challenge_id: string; expires_in: number }>(
+    "email",
     `/${encodeURIComponent(id)}/verification`,
     "POST",
   );
@@ -418,15 +428,51 @@ export function confirmEmailVerification(
   challengeId: string,
   code: string,
 ) {
-  return emailRequest<{ verified: boolean }>(
+  return destinationRequest<{ verified: boolean }>(
+    "email",
     `/${encodeURIComponent(id)}/verification/confirm`,
     "POST",
     { challenge_id: challengeId, code },
   );
 }
 export function revokeEmailVerification(id: string) {
-  return emailRequest<{ revoked: boolean }>(
+  return destinationRequest<{ revoked: boolean }>(
+    "email",
     `/${encodeURIComponent(id)}/verification/revoke`,
     "POST",
+  );
+}
+
+export function createWebhookDestination(
+  providerId: string,
+  url: string,
+  label: string,
+) {
+  return destinationRequest<{ id: string }>("webhook", "", "POST", {
+    provider_id: providerId,
+    url,
+    label,
+  });
+}
+export function updateWebhookDestination(
+  id: string,
+  changes: {
+    label?: string;
+    enabled?: boolean;
+    share_followed_media?: boolean;
+  },
+) {
+  return destinationRequest<{ updated: boolean }>(
+    "webhook",
+    `/${encodeURIComponent(id)}`,
+    "PATCH",
+    changes,
+  );
+}
+export function removeWebhookDestination(id: string) {
+  return destinationRequest<{ removed: boolean }>(
+    "webhook",
+    `/${encodeURIComponent(id)}`,
+    "DELETE",
   );
 }

@@ -213,6 +213,11 @@ async def test_multiple_owner_webhooks_are_encrypted_public_and_rendered_without
         assert json.loads(decrypt_secret(endpoint.encrypted_configuration))["webhook"] == WEBHOOK
         result = await routing_settings(db, p.owner)
         assert WEBHOOK not in json.dumps(result) and "a" * 40 not in json.dumps(result)
+        assert all(
+            item["reactivation_available"]
+            for item in result["destinations"]
+            if item["provider_id"] == p.provider
+        )
         assert (
             next(item for item in result["providers"] if item["id"] == p.provider)[
                 "configuration_scope"
@@ -370,6 +375,10 @@ async def test_provider_reinstall_retains_inactive_history_without_reclaiming_co
             )
         )
         await db.commit()
+        metadata = await routing_settings(db, p.owner)
+        assert not next(d for d in metadata["destinations"] if d["id"] == str(old_id))[
+            "reactivation_available"
+        ]
         new_id = await create_webhook(db, p.owner, p.provider, WEBHOOK, "Fresh enrollment")
         assert new_id != old_id
         new = await db.get(NotificationDestination, new_id)
