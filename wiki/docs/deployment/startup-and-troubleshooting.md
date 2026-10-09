@@ -41,6 +41,15 @@ container's published HTTP port directly to distinguish proxy routing from an
 application startup failure. Embedded HTTPS is activated during the ready
 handoff; the pre-readiness diagnostic listener uses HTTP.
 
+![The startup page while PostgreSQL is unavailable on a phone](../assets/database-startup/waiting-390.png)
+
+![Database failure diagnostics remain available after the deadline](../assets/database-startup/failed-1440.png)
+
+These screenshots use the real production image with an intentionally
+unresolvable database host. The browser checks confirmed waiting and failure
+states at 390px and 1440px, JSON API failures, no horizontal overflow, and a
+database failure transition 121.18 seconds after container launch.
+
 Raw logs are intentionally not rendered by default: they are useful for operators but noisy for normal startup. The startup page does not add a reload button or other log-management controls.
 
 ## Detailed diagnostics
