@@ -1,8 +1,10 @@
 """Bulk Steam sync skips unnecessary requests and preserves unavailable progress."""
 
+from unittest.mock import Mock
 from uuid import uuid4
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import delete, select
 
 from src.api.routes import library_sync
@@ -29,6 +31,41 @@ async def steam_owner():
     async with SessionLocal() as db:
         await db.execute(delete(User).where(User.id == identity))
         await db.commit()
+
+
+async def test_private_library_does_not_mark_owned_games_stale(steam_owner, monkeypatch):
+    async with SessionLocal() as db:
+        user = await db.get(User, steam_owner)
+        game = Game(
+            user_id=user.id,
+            title="Owned Steam game",
+            sort_title="owned steam game",
+            folder_location="owned-steam-game",
+            source="Steam",
+            external_id="123",
+            status=GameStatus.PLAYING,
+        )
+        db.add(game)
+        await db.commit()
+        game_id = game.id
+
+    reply = Mock(status_code=200)
+    reply.json.return_value = {"response": {}}
+    monkeypatch.setattr(library_sync.steam.SESSION, "get", Mock(return_value=reply))
+    monkeypatch.setattr(library_sync.steam, "resolve_steam_id", lambda sid, _key: sid)
+    async with SessionLocal() as db:
+        user = await db.get(User, steam_owner)
+        with pytest.raises(HTTPException) as failure:
+            await library_sync.sync_steam_library(db=db, current_user=user)
+        assert failure.value.status_code == 502
+        assert "Game details to Public" in failure.value.detail
+
+    async with SessionLocal() as db:
+        game = await db.get(Game, game_id)
+        user = await db.get(User, steam_owner)
+        assert game.stale_since is None
+        assert game.status == GameStatus.PLAYING
+        assert user.steam_library_synced_at is None
 
 
 @pytest.mark.parametrize("response_kind", ["no-schema", "unavailable", "failed", "locked"])
