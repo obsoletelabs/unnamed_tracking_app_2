@@ -26,6 +26,7 @@ from src.core.preferences import load_preferences
 from src.database.models.game import Game, GameStatus
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features.imports.library_games import LibraryIndex
 from src.features.metadata.games import steam, steam_wishlist
 
 router = APIRouter(
@@ -64,10 +65,16 @@ async def import_wishlist(
     except steam.SteamLibraryError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
+    index = await LibraryIndex.load(db, current_user.id, "Steam")
     game_ids: list[str] = []
     for app_id in app_ids:
         game, created = await _get_or_create_game(
-            db, current_user.id, f"{_PLACEHOLDER}{app_id}", "Steam", external_id=str(app_id)
+            db,
+            current_user.id,
+            f"{_PLACEHOLDER}{app_id}",
+            "Steam",
+            external_id=str(app_id),
+            index=index,
         )
         if created:
             game.status = GameStatus.WISHLIST
