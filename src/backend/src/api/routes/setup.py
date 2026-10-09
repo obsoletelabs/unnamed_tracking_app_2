@@ -106,8 +106,7 @@ def _persisted_values(app: AppIntegrationSettings, oidc: OidcSettings) -> dict[s
     for spec_name, attribute in _APP_FIELDS.items():
         value = getattr(app, attribute)
         if value or (
-            spec_name in {*NGINX_TLS_FIELDS, "NGINX_REALIP_TRUSTED_PROXIES"}
-            and value is not None
+            spec_name in {*NGINX_TLS_FIELDS, "NGINX_REALIP_TRUSTED_PROXIES"} and value is not None
         ):
             values[f"{spec_name}__configured"] = True
             if spec_name in {
