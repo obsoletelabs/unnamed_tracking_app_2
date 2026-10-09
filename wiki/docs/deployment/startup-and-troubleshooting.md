@@ -116,6 +116,8 @@ destinations preserve real page paths, queries and fragments. The base page,
 sign-in entrypoints and setup are excluded from `return_to`; existing redundant
 entry-page queries are removed while other query parameters are preserved.
 
+![Neutral screen while setup and authentication resolve](../assets/startup-routing/loading.jpg)
+
 [Startup recovery validation](../assets/ui-redevelopment/stage-startup-conformance.json)
 covers 16 real-backend connection-failure cases across phone/desktop and both
 themes, plus automatic recovery.
