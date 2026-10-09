@@ -17,7 +17,7 @@ from tests.test_game_files_flow import game_flow  # noqa: F401
 
 @pytest.fixture(autouse=True)
 def isolated_import_storage(tmp_path, monkeypatch):
-    monkeypatch.setattr(save_game_asset, "_DATA_ROOT", tmp_path)
+    monkeypatch.setattr(save_game_asset, "DATA_ROOT", tmp_path)
 
 
 async def test_steam_sync_uses_constant_library_selects(flow, monkeypatch):
@@ -81,7 +81,7 @@ async def test_same_title_with_distinct_provider_ids_creates_distinct_games(flow
 
 
 @pytest.mark.parametrize("collision", [False, True])
-async def test_import_folder_names_fit_the_column(flow, collision):
+async def test_import_folder_names_fit_the_column(flow, collision, tmp_path):
     title = "a" * FOLDER_NAME_MAX_LENGTH
     async with SessionLocal() as db:
         if collision:
@@ -100,6 +100,7 @@ async def test_import_folder_names_fit_the_column(flow, collision):
         assert created
         assert len(game.folder_location) <= FOLDER_NAME_MAX_LENGTH
         assert game.folder_location == (title[:-2] + "-2" if collision else title)
+        assert (tmp_path / str(flow.user_id) / "games" / game.folder_location / "notes").is_dir()
         await db.commit()
 
 
