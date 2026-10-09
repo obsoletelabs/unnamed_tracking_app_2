@@ -34,9 +34,7 @@ def _plugin_repository() -> Path:
 def test_all_reviewed_historical_archives_remain_trusted_by_bundled_host_policy() -> None:
     repository = _plugin_repository()
     publishers = load_trusted_publishers()
-    pins = {
-        pin for publisher in publishers.values() for pin in publisher.historical_package_sha256
-    }
+    pins = {pin for publisher in publishers.values() for pin in publisher.historical_package_sha256}
     assert len(pins) == 51
     archives = {
         hashlib.sha256(path.read_bytes()).hexdigest(): path

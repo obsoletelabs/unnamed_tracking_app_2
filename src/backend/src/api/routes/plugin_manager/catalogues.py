@@ -99,8 +99,7 @@ def _catalog_entries(payload: Any, *, source_url: str | None = None) -> list[dic
             )
             entry.catalogue_channel = (
                 publisher.channel
-                if publisher
-                and publisher.allows_package(entry.plugin_id, entry.package_sha256)
+                if publisher and publisher.allows_package(entry.plugin_id, entry.package_sha256)
                 else "unverified"
             )
             if entry.changelog_url:

@@ -87,7 +87,9 @@ def signed_archive(tmp_path: Path, *, version: int = 2) -> tuple[Path, dict[str,
 @pytest.mark.parametrize("offset,allowed", [(-1, True), (0, False), (1, False)])
 def test_key_cutoff_is_exclusive(offset: int, allowed: bool) -> None:
     publisher = TrustedPublisher("test", b"x" * 32, not_after=CUTOFF)
-    assert publisher.allows_plugin("example.test", now=CUTOFF + timedelta(seconds=offset)) is allowed
+    assert (
+        publisher.allows_plugin("example.test", now=CUTOFF + timedelta(seconds=offset)) is allowed
+    )
 
 
 def test_history_cannot_bypass_start_revocation_or_scope() -> None:

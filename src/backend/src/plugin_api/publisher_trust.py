@@ -36,9 +36,8 @@ def _publisher_metadata(entry: dict) -> tuple[str, str, str, list[str], str]:
         raise PublisherTrustError(error)
     if not isinstance(encoded_key, str):
         raise PublisherTrustError(error)
-    if (
-        not isinstance(scopes, list)
-        or not all(isinstance(scope, str) and scope for scope in scopes)
+    if not isinstance(scopes, list) or not all(
+        isinstance(scope, str) and scope for scope in scopes
     ):
         raise PublisherTrustError(error)
     if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
@@ -95,7 +94,9 @@ def _rotation_policy(entry: dict) -> _RotationPolicy:
     if (
         not isinstance(pins, list)
         or len(pins) > 2048
-        or any(not isinstance(value, str) or not re.fullmatch(r"[a-f0-9]{64}", value) for value in pins)
+        or any(
+            not isinstance(value, str) or not re.fullmatch(r"[a-f0-9]{64}", value) for value in pins
+        )
         or len(pins) != len(set(pins))
     ):
         raise PublisherTrustError("invalid historical package SHA-256 pins")
