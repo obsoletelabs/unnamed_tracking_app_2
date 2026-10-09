@@ -156,14 +156,21 @@ const KEPT_ALIVE = [
 
 <template>
   <PwaStatus />
-  <!-- First-run setup and the direct OIDC entrypoint deliberately bypass
-       normal authentication, so both must render while authChecked is false. -->
+  <!-- Authentication can finish before its redirect commits. Render only the
+       confirmed destination, keeping the previous page hidden during startup.
+       Setup and OIDC remain public once their startup state is confirmed. -->
   <template
     v-if="
-      (authChecked && startupState !== 'unavailable') ||
-      route.path === '/setup' ||
-      route.name === 'oidc-start' ||
-      route.name === 'oidc-provider-start'
+      (startupState === 'ready' &&
+        authChecked &&
+        currentUser &&
+        route.matched.length > 0) ||
+      (startupState === 'setup-required' && route.name === 'setup') ||
+      (startupState === 'auth-required' &&
+        (route.name === 'login' ||
+          route.name === 'local-login' ||
+          route.name === 'oidc-start' ||
+          route.name === 'oidc-provider-start'))
     "
   >
     <SidebarNav v-if="sidebarShown" />
@@ -239,7 +246,7 @@ const KEPT_ALIVE = [
       <button type="button" @click="retryStartup">Retry connection</button>
     </section>
   </main>
-  <main v-else class="app-loading">
+  <main v-else class="app-loading" role="status" aria-live="polite">
     <p>Loading…</p>
   </main>
 </template>

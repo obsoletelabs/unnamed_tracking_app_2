@@ -109,6 +109,15 @@ without reloading the document. A failed authentication check is retried rather
 than treated as a confirmed signed-out response; older responses cannot replace
 a newer successful login. A confirmed 401 still leads to ordinary sign-in.
 
+During the initial setup and authentication checks, the frontend shows a neutral
+**Loading…** screen. It waits for the confirmed destination before mounting Home,
+sign-in, or setup, so Home does not flash ahead of a sign-in redirect. Return
+destinations preserve real page paths, queries and fragments. The base page,
+sign-in entrypoints and setup are excluded from `return_to`; existing redundant
+entry-page queries are removed while other query parameters are preserved.
+
+![Neutral screen while setup and authentication resolve](../assets/startup-routing/loading.jpg)
+
 [Startup recovery validation](../assets/ui-redevelopment/stage-startup-conformance.json)
 covers 16 real-backend connection-failure cases across phone/desktop and both
 themes, plus automatic recovery.

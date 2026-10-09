@@ -281,6 +281,26 @@ function setupRedirect(toPath: string) {
 router.beforeEach(async (to, from) => {
   captureLibraryNavigation(to.path, from.path, window.scrollY);
 
+  const entryPage =
+    to.path === "/setup" ||
+    to.path === "/login" ||
+    to.path.startsWith("/login/");
+  const destination = entryPage
+    ? (safeReturnPath(to.query.return_to) ?? to.fullPath)
+    : to.fullPath;
+
+  // Entry pages are never return destinations. Clean old bookmarks as well as
+  // newly generated redirects without discarding OIDC errors or setup options.
+  if (
+    entryPage &&
+    "return_to" in to.query &&
+    !safeReturnPath(to.query.return_to)
+  ) {
+    const query = { ...to.query };
+    delete query.return_to;
+    return { path: to.path, query, hash: to.hash, replace: true };
+  }
+
   if (setupState === "unknown") {
     setStartupState("checking");
     try {
@@ -295,7 +315,7 @@ router.beforeEach(async (to, from) => {
         !startupUiShown
       ) {
         startupUiShown = true;
-        return setupRedirect(to.fullPath);
+        return setupRedirect(destination);
       } else {
         startupUiShown = true;
       }
@@ -325,7 +345,7 @@ router.beforeEach(async (to, from) => {
   }
 
   if (setupState === "required") {
-    if (to.path !== "/setup") return setupRedirect(to.fullPath);
+    if (to.path !== "/setup") return setupRedirect(destination);
     return;
   }
 
