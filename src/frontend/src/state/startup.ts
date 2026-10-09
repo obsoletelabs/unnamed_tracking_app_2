@@ -28,6 +28,14 @@ export function safeReturnPath(value: unknown): string | null {
   try {
     const url = new URL(value, "https://unnamed-tracking.invalid");
     if (url.origin !== "https://unnamed-tracking.invalid") return null;
+    const pathname = url.pathname.replace(/\/+$/, "");
+    if (
+      !pathname ||
+      pathname === "/setup" ||
+      pathname === "/login" ||
+      pathname.startsWith("/login/")
+    )
+      return null;
     const normalized = url.pathname + url.search + url.hash;
     if (normalized !== value) return null;
     return normalized;
@@ -61,7 +69,7 @@ export function consumeReturnPath(queryValue: unknown): string | null {
 
   try {
     const storedPath = safeReturnPath(sessionStorage.getItem(RETURN_PATH_KEY));
-    if (storedPath) sessionStorage.removeItem(RETURN_PATH_KEY);
+    sessionStorage.removeItem(RETURN_PATH_KEY);
     return storedPath;
   } catch {
     return null;

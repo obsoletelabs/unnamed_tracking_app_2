@@ -45,6 +45,31 @@ describe("startup state", () => {
     expect(safeReturnPath("javascript:alert(1)")).toBeNull();
   });
 
+  it.each([
+    "/",
+    "/?welcome=1#top",
+    "/login",
+    "/login/",
+    "/login/local",
+    "/login/oidcstart?return_to=/games",
+    "/login/provider",
+    "/setup",
+    "/setup/",
+    "/setup?return_to=/games",
+  ])("does not remember the entry page %s as a destination", (path) => {
+    expect(safeReturnPath(path)).toBeNull();
+    expect(rememberReturnPath(path)).toBeNull();
+    expect(consumeReturnPath(path)).toBeNull();
+  });
+
+  it("removes obsolete entry-page destinations from storage", () => {
+    sessionStorage.setItem("unnamedTracking.startupReturnPath", "/login");
+    expect(consumeReturnPath(undefined)).toBeNull();
+    expect(
+      sessionStorage.getItem("unnamedTracking.startupReturnPath"),
+    ).toBeNull();
+  });
+
   it("falls back safely when the return path is missing or malformed", () => {
     expect(consumeReturnPath(undefined)).toBeNull();
     expect(consumeReturnPath("not a route")).toBeNull();
