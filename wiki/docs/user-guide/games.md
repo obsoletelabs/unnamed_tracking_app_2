@@ -16,6 +16,10 @@ Steam library sync saves games and achievements before fetching store details an
 artwork in small batches. A failed details batch does not discard the imported
 library; the sync result reports games whose details could not be fetched.
 
+Provider settings show each source's active library game count and the time of
+its last successful sync. Trashed games are excluded; restoring them returns
+them to the count.
+
 Settings > Metadata > Scan & providers includes **Import my Steam wishlist**, off
 by default. When enabled, new wishlist entries are added with Wishlist status and
 receive store titles and artwork during enrichment. A later owned-library sync

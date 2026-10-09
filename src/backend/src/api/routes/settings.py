@@ -397,14 +397,19 @@ async def get_provider_credentials(
         "RetroAchievements": current_user.retroachievements_library_synced_at,
         "PlayStation": current_user.psn_library_synced_at,
     }
-    for provider, last_synced in sync_timestamp_columns.items():
-        count = await db.scalar(
-            select(sql_count(Game.id)).where(
-                Game.user_id == current_user.id, Game.source == provider
-            )
+    rows = await db.execute(
+        select(Game.source, sql_count(Game.id))
+        .where(
+            Game.user_id == current_user.id,
+            Game.source.in_(list(sync_timestamp_columns)),
+            Game.deleted_at.is_(None),
         )
+        .group_by(Game.source)
+    )
+    counts = dict(rows.tuples().all())
+    for provider, last_synced in sync_timestamp_columns.items():
         result.setdefault(provider, {"status": "not_configured"})
-        result[provider]["library_games"] = count
+        result[provider]["library_games"] = counts.get(provider, 0)
         result[provider]["last_synced_at"] = last_synced
 
     # display identity — who's actually connected, not just a green dot
