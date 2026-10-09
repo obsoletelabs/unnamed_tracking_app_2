@@ -7,6 +7,7 @@ import ssl
 import time
 from dataclasses import dataclass, replace
 from email.message import EmailMessage
+from email.policy import SMTP
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +17,8 @@ from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_provider_setting import NotificationProviderSetting
 from src.database.models.notification_verification import NotificationVerification
 from src.database.models.user import User
+from src.features.notification_unsubscribe import unsubscribe_link
+from src.features.notification_urls import notification_url
 from src.features.smtp_configuration import (
     SMTP_PROVIDER,
     SmtpConfiguration,
@@ -32,9 +35,15 @@ class SmtpDestination(ProviderDestination):
     configuration: SmtpConfiguration | None = None
 
 
-def send_mail(config: SmtpConfiguration, address: str, message: NotificationMessage) -> None:
+def send_mail(
+    config: SmtpConfiguration,
+    address: str,
+    message: NotificationMessage,
+    unsubscribe_url: str | None = None,
+) -> None:
     """Blocking stdlib transport runs in a thread with bounded socket/deadline timeouts."""
-    mail = EmailMessage()
+    # Keep opaque List-Unsubscribe URLs intact instead of RFC2047-folding them.
+    mail = EmailMessage(policy=SMTP.clone(max_line_length=998))
     mail["Subject"] = " ".join(message.title.splitlines())
     mail["From"] = normalize_email(config.from_address)
     mail["To"] = normalize_email(address)
@@ -42,7 +51,11 @@ def send_mail(config: SmtpConfiguration, address: str, message: NotificationMess
     if message.urgency == "critical":
         mail["Importance"] = "high"
         mail["X-Priority"] = "1"
-    mail.set_content(message.body)
+    body = message.body
+    if unsubscribe_url:
+        mail["List-Unsubscribe"] = f"<{unsubscribe_url}>"
+        body += f"\n\nStop email notifications to this destination:\n{unsubscribe_url}"
+    mail.set_content(body)
     context = ssl.create_default_context()
     deadline = time.monotonic() + 25
     client = (
@@ -140,8 +153,14 @@ class SmtpNotificationProvider:
                 ),
             )
         try:
+            link = None
+            if message.purpose == "standard" and message.kind != "destination_verification":
+                endpoint = await db.get(NotificationDestination, destination.endpoint_id)
+                origin = await notification_url(db, destination.user_id, endpoint)
+                if origin and endpoint:
+                    link = unsubscribe_link(origin, endpoint)
             await asyncio.to_thread(
-                send_mail, destination.configuration, destination.address, message
+                send_mail, destination.configuration, destination.address, message, link
             )
         except smtplib.SMTPResponseException as exc:
             return DeliveryResult(

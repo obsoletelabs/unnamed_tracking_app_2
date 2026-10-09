@@ -131,13 +131,21 @@ CONFIG_SECTIONS: tuple[ConfigSectionSpec, ...] = (
 # docs/CONFIGURATION.md contains the complete workflow for wiring that variable
 # through resolution, validation, persistence, and the generated UI.
 CONFIG_REGISTRY: tuple[ConfigSpec, ...] = (
+    ConfigSpec(
+        "PUBLIC_APP_URL",
+        "general",
+        label="Public app URL",
+        hint="Optional HTTPS public FQDN. Notifications fall back to each user's last-used "
+        "app URL; independent of OIDC.",
+        storage="app_integration",
+    ),
     ConfigSpec("SMTP_HOST", "smtp", label="SMTP host", storage="app_integration"),
     ConfigSpec(
         "SMTP_PORT",
         "smtp",
         input_type="integer",
         label="SMTP port",
-        default=587,
+        hint="Leave unset for the transport default: TLS 465, STARTTLS 587, plaintext 25.",
         storage="app_integration",
     ),
     ConfigSpec("SMTP_USERNAME", "smtp", label="SMTP username", storage="app_integration"),

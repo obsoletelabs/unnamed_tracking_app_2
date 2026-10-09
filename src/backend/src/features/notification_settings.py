@@ -20,6 +20,7 @@ from src.features.notification_policy import (
     effective_trust,
     select_projection,
 )
+from src.features.notification_urls import notification_url
 from src.features.smtp_configuration import SMTP_PROVIDER, SmtpConfiguration, smtp_configuration
 
 _TYPE_LABELS = {
@@ -138,6 +139,7 @@ async def routing_settings(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
                 ],
                 "shared_configuration": destination.kind == "legacy_webhook",
                 "label": destination.display_name,
+                "notification_url": destination.notification_url,
                 "masked_address": _masked_address(destination),
                 "recovery_allowed": destination.recovery_allowed,
                 "revision": destination.revision,
@@ -148,6 +150,7 @@ async def routing_settings(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
         )
     await db.commit()
     return {
+        "default_url": await notification_url(db, user_id),
         "providers": providers,
         "destinations": result,
         "types": [

@@ -14,7 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import (
     SESSION_TTL_SECONDS,
+    AuthenticatedActor,
     create_api_key,
+    get_current_actor,
     get_current_admin,
     get_current_user,
     hash_password,
@@ -34,6 +36,7 @@ from src.database.models.auth import UserApiKey
 from src.database.models.user import User
 from src.database.session import get_db
 from src.features.metadata.games.psn import PSNClient, PSNError
+from src.features.notification_urls import remember_app_url
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -188,13 +191,21 @@ async def logout(
 
 
 @router.get("/me")
-async def current_user(user: User = Depends(get_current_user)) -> dict[str, str | bool | None]:
+async def current_user(
+    request: Request,
+    user: User = Depends(get_current_user),
+    actor: AuthenticatedActor = Depends(get_current_actor),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, str | bool | None]:
+    if actor.credential_kind == "session":
+        await remember_app_url(db, user, request)
     return {
         "id": str(user.id),
         "username": user.username,
         "email": user.email,
         "is_admin": user.is_admin,
         "steamgriddb_api_key": user.steamgriddb_api_key,
+        "last_app_url": user.last_app_url,
     }
 
 

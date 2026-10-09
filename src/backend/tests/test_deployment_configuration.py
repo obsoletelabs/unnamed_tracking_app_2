@@ -263,3 +263,45 @@ async def test_real_ip_configuration_uses_the_existing_validators(configuration)
         "/api/settings/deployment", json={"nginx_realip_trusted_proxies": "not-a-network"}
     )
     assert response.status_code == 400
+
+
+async def test_public_url_persistence_validation_and_env_lock(configuration):
+    response = await configuration.http.put(
+        "/api/settings/deployment", json={"public_app_url": "https://app.example.test/"}
+    )
+    assert response.status_code == 200, response.text
+    assert configuration.integration.public_app_url == "https://app.example.test"
+    assert response.json()["app"]["public_app_url"] == "https://app.example.test"
+    response = await configuration.http.put(
+        "/api/settings/deployment", json={"public_app_url": "http://external.test"}
+    )
+    assert response.status_code == 400
+    configuration.env["PUBLIC_APP_URL"] = "https://locked.example.test"
+    response = await configuration.http.put(
+        "/api/settings/deployment", json={"public_app_url": "https://override.test"}
+    )
+    assert response.status_code == 409
+    response = await configuration.http.get("/api/settings/deployment")
+    assert response.json()["provider_locks"]["public_app_url"] is True
+
+
+async def test_smtp_automatic_port_remains_unset_on_mode_changes(configuration):
+    response = await configuration.http.put(
+        "/api/settings/deployment", json={"smtp_tls_mode": "ssl", "smtp_port": None}
+    )
+    assert response.status_code == 200 and configuration.integration.smtp_port is None
+    response = await configuration.http.put("/api/settings/deployment", json={"smtp_port": 2525})
+    assert response.status_code == 200
+    response = await configuration.http.put(
+        "/api/settings/deployment", json={"smtp_tls_mode": "none"}
+    )
+    assert response.status_code == 200 and configuration.integration.smtp_port == 2525
+
+
+async def test_setup_persists_public_url_through_registry(configuration):
+    response = await configuration.http.put(
+        "/api/setup/configuration",
+        json={"configuration": {"PUBLIC_APP_URL": "https://app.example.test/"}},
+    )
+    assert response.status_code == 200
+    assert configuration.integration.public_app_url == "https://app.example.test"

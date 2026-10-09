@@ -13,12 +13,12 @@ from sqlalchemy.sql.functions import count as sql_count
 
 from src.core.config import settings
 from src.core.crypto import decrypt_secret, encrypt_secret
-from src.database.models.notification_delivery import NotificationDelivery
 from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_provider_setting import NotificationProviderSetting
 from src.database.models.notification_verification import NotificationVerification
 from src.database.models.user import User
 from src.features.notification_controller import emit_verification_request
+from src.features.notification_lifecycle import retire_destination_work
 from src.features.notification_policy import Trust
 from src.features.smtp_configuration import SMTP_PROVIDER, normalize_email, smtp_configuration
 
@@ -124,23 +124,7 @@ async def invalidate_endpoint(db: AsyncSession, destination: NotificationDestina
     destination.recovery_allowed = False
     destination.media_consent_revision = None
     destination.media_consent_at = None
-    await db.execute(
-        update(NotificationVerification)
-        .where(
-            NotificationVerification.destination_id == destination.id,
-        )
-        .values(encrypted_code=None, used_at=int(time.time()))
-    )
-    await db.execute(
-        update(NotificationDelivery)
-        .where(
-            NotificationDelivery.destination_id == destination.id,
-            NotificationDelivery.status.in_(("pending", "processing", "retry_wait")),
-        )
-        .values(
-            status="suppressed", last_error="endpoint_changed", claim_token=None, lease_until=None
-        )
-    )
+    await retire_destination_work(db, destination.id, "endpoint_changed")
 
 
 async def update_email(

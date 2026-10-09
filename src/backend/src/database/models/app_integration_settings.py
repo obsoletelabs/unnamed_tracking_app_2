@@ -57,6 +57,7 @@ class AppIntegrationSettings(Base):
     smtp_password: Mapped[str | None] = mapped_column(Text, nullable=True)
     smtp_from_address: Mapped[str | None] = mapped_column(String(254), nullable=True)
     smtp_tls_mode: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    public_app_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
 
     password_min_length: Mapped[int | None] = mapped_column(nullable=True)
     password_require_uppercase: Mapped[bool | None] = mapped_column(nullable=True)

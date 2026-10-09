@@ -38,6 +38,7 @@ class NotificationDestination(Base):
     # Host-only encrypted endpoint values; plugins and routing DTOs never receive these.
     encrypted_configuration: Mapped[str | None] = mapped_column(Text, nullable=True)
     display_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    notification_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     recovery_allowed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     media_consent_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
     media_consent_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)

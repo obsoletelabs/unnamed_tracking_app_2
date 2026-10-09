@@ -7,6 +7,7 @@ import time
 from email.parser import BytesParser
 from types import SimpleNamespace
 from unittest.mock import Mock
+from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
 import pytest
@@ -15,9 +16,11 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import delete, select, update
 
 from src.api.routes.notification_providers import router
+from src.api.routes.notification_unsubscribe import router as unsubscribe_router
 from src.core.auth import get_current_user
-from src.core.crypto import decrypt_secret
+from src.core.crypto import decrypt_secret, encrypt_secret
 from src.core.preferences import save_preferences
+from src.core.public_url import normalize_public_url, validate_deployment_url
 from src.database.models.notification import Notification
 from src.database.models.notification_delivery import NotificationDelivery
 from src.database.models.notification_destination import NotificationDestination
@@ -42,6 +45,12 @@ from src.features.notification_providers.delivery import (
 )
 from src.features.notification_providers.smtp import SmtpNotificationProvider, send_mail
 from src.features.notification_settings import routing_settings
+from src.features.notification_unsubscribe import (
+    UNSUBSCRIBE_PATH,
+    UnsubscribeError,
+    unsubscribe_email,
+    unsubscribe_link,
+)
 from src.features.smtp_configuration import SmtpConfiguration, normalize_email
 
 
@@ -133,6 +142,13 @@ async def verify(db, account, endpoint, mailbox):
 def test_email_headers_reject_multiple_or_invalid_mailboxes(address):
     with pytest.raises(ValueError):
         normalize_email(address)
+
+
+@pytest.mark.parametrize("mode,port", [("starttls", 587), ("ssl", 465), ("none", 25)])
+def test_transport_defaults_preserve_explicit_ports(mode, port):
+    assert SmtpConfiguration(tls_mode=mode).port == port
+    assert SmtpConfiguration.model_validate({"tls_mode": mode, "port": None}).port == port
+    assert SmtpConfiguration(tls_mode=mode, port=2525).port == 2525
 
 
 @pytest.mark.parametrize(
@@ -486,3 +502,180 @@ async def test_enrollment_api_owner_scope_and_unforgeable_trust(email_account):
             assert response.status_code == 200 and "code" not in response.json()
             response = await client.post(f"{base}/{endpoint}/verification")
             assert response.status_code == 429
+
+
+def link_token(link):
+    return parse_qs(urlsplit(link).query)["token"][0]
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "https://user:password@external.test",
+        "https://external.test/app",
+        "https://external.test?next=evil",
+        "https://external.test#fragment",
+        "//external.test",
+        "https://external.test\nBcc:bad",
+        "https://external.test:invalid",
+        "https://external.test<injected>",
+    ],
+)
+def test_public_link_origin_rejects_unsafe_configuration(value):
+    with pytest.raises(ValueError):
+        normalize_public_url(value)
+
+
+@pytest.mark.parametrize(
+    "value", ["http://external.test", "https://localhost", "https://192.168.1.2", "https://app.lan"]
+)
+def test_shared_default_requires_public_fqdn(value):
+    with pytest.raises(ValueError):
+        validate_deployment_url(value)
+
+
+@pytest.mark.parametrize(
+    "value,normalized",
+    [
+        ("https://app.example.test/", "https://app.example.test"),
+        ("http://localhost:5174/", "http://localhost:5174"),
+        ("http://127.0.0.1:5174", "http://127.0.0.1:5174"),
+        ("http://[::1]:5174/", "http://[::1]:5174"),
+    ],
+)
+def test_public_link_origin_normalizes_explicit_hosts(value, normalized):
+    assert normalize_public_url(value) == normalized
+
+
+async def test_unsubscribe_header_and_get_post_destination_isolation(
+    email_account, mailbox, monkeypatch
+):
+    monkeypatch.setenv("PUBLIC_APP_URL", "https://app.example.test")
+    app = FastAPI()
+    app.include_router(unsubscribe_router)
+    async with SessionLocal() as db:
+        first = await create_email(db, email_account, "first@example.test", "Private label")
+        second = await create_email(db, email_account, "second@example.test", "Second")
+        await verify(db, email_account, first, mailbox)
+        assert "List-Unsubscribe" not in mailbox[-1]
+        await update_email(db, email_account, first, {"recovery_allowed": True})
+        await emit_legacy_rows(db, email_account, [draft()])
+        assert await process_pending_deliveries(db) == 2
+        received = next(mail for mail in reversed(mailbox) if mail["To"] == "first@example.test")
+        link = received["List-Unsubscribe"].strip("<>")
+        assert link.startswith("https://app.example.test" + UNSUBSCRIBE_PATH)
+        assert "first@example.test" not in link and "Private label" not in link
+        assert "List-Unsubscribe-Post" not in received
+        assert link in received.get_payload(decode=True).decode()
+        assert "=?" not in received["List-Unsubscribe"]
+        await emit_legacy_rows(db, email_account, [draft()])
+        endpoint = await db.get(NotificationDestination, first)
+        revision = endpoint.revision
+        encrypted = endpoint.encrypted_configuration
+        app.dependency_overrides[get_db] = lambda: db
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://forged-host.test"
+        ) as client:
+            token = link_token(link)
+            for _ in range(2):
+                response = await client.get(UNSUBSCRIBE_PATH, params={"token": token})
+                assert response.status_code == 200
+                assert "Stop email notifications?" in response.text
+                assert "first@example.test" not in response.text
+                assert response.headers["referrer-policy"] == "no-referrer"
+                assert response.headers["cache-control"] == "no-store"
+                assert endpoint.enabled and endpoint.revision == revision
+            response = await client.post(UNSUBSCRIBE_PATH, data={"token": token})
+            assert response.status_code == 400 and endpoint.enabled
+            response = await client.post(
+                UNSUBSCRIBE_PATH,
+                data={"token": token, "confirm": "unsubscribe"},
+                headers={"sec-fetch-site": "cross-site"},
+            )
+            assert response.status_code == 400 and endpoint.enabled
+            for _ in range(2):
+                response = await client.post(
+                    UNSUBSCRIBE_PATH, data={"token": token, "confirm": "unsubscribe"}
+                )
+                assert response.status_code == 200
+            assert not endpoint.enabled and endpoint.revision == revision + 1
+            assert endpoint.encrypted_configuration == encrypted
+            assert effective_trust(endpoint) == Trust.SECURE and endpoint.recovery_allowed
+            assert (await db.get(NotificationDestination, second)).enabled
+            queued = list(
+                (
+                    await db.scalars(
+                        select(NotificationDelivery).where(
+                            NotificationDelivery.destination_id == first
+                        )
+                    )
+                ).all()
+            )
+            assert all(delivery.status in {"sent", "suppressed"} for delivery in queued)
+            assert any(delivery.last_error == "email_unsubscribed" for delivery in queued)
+            assert await db.scalar(
+                select(Notification.id).where(Notification.user_id == email_account)
+            )
+            assert await process_pending_deliveries(db) == 1  # second email still receives its work
+            await update_email(db, email_account, first, {"enabled": True})
+            response = await client.post(
+                UNSUBSCRIBE_PATH, data={"token": token, "confirm": "unsubscribe"}
+            )
+            await db.refresh(endpoint)
+            assert response.status_code == 400 and endpoint.enabled
+
+
+@pytest.mark.parametrize(
+    "mutation", ["forged", "expired", "owner", "purpose", "revision", "address", "removed"]
+)
+async def test_unsubscribe_invalid_authority_cannot_change_activation(
+    email_account, monkeypatch, mutation
+):
+    async with SessionLocal() as db:
+        identity = await create_email(db, email_account, "owner@example.test", "Email")
+        endpoint = await db.get(NotificationDestination, identity)
+        token = link_token(unsubscribe_link("https://app.example.test", endpoint))
+        if mutation == "forged":
+            token = "not-an-authenticated-token"
+        elif mutation == "expired":
+            monkeypatch.setattr(
+                "src.features.notification_unsubscribe.time.time", lambda: 9999999999
+            )
+        elif mutation in {"owner", "purpose", "revision"}:
+            import json
+
+            payload = json.loads(decrypt_secret(token))
+            payload[mutation] = {"owner": str(uuid4()), "purpose": "verify.email", "revision": 999}[
+                mutation
+            ]
+            token = encrypt_secret(json.dumps(payload))
+        elif mutation == "address":
+            await update_email(db, email_account, identity, {"address": "changed@example.test"})
+        else:
+            await revoke_email(db, email_account, identity, remove=True)
+        before = (endpoint.enabled, endpoint.revision, endpoint.verified_revision)
+        with pytest.raises(UnsubscribeError):
+            await unsubscribe_email(db, token)
+        await db.refresh(endpoint)
+        assert (endpoint.enabled, endpoint.revision, endpoint.verified_revision) == before
+
+
+@pytest.mark.parametrize("purpose", ["verification", "recovery", "security"])
+async def test_transactional_messages_do_not_advertise_unsubscribe(
+    email_account, mailbox, monkeypatch, purpose
+):
+    monkeypatch.setenv("PUBLIC_APP_URL", "https://app.example.test")
+    async with SessionLocal() as db:
+        identity = await create_email(db, email_account, "owner@example.test", "Email")
+        destination = await SmtpNotificationProvider().lookup_endpoint(
+            db,
+            await db.get(User, email_account),
+            SimpleNamespace(user_id=email_account, enabled=True),
+            await db.get(NotificationDestination, identity),
+        )
+        message = NotificationMessage(
+            uuid4(), "notice", "Title", "Body", "system", uuid4(), 1, purpose=purpose
+        )
+        assert (await SmtpNotificationProvider().deliver(db, destination, message)).success
+        assert "List-Unsubscribe" not in mailbox[-1]
+        assert "email-unsubscribe" not in mailbox[-1].get_payload()

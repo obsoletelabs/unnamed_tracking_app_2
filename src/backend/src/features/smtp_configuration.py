@@ -5,7 +5,7 @@ from email.errors import HeaderParseError
 from email.headerregistry import Address
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.app_integrations import get_or_create_app_integration_settings
@@ -44,6 +44,13 @@ class SmtpConfiguration(BaseModel):
     password: str = Field(default="", max_length=4096, repr=False)
     from_address: str = Field(default="", max_length=254)
     tls_mode: Literal["starttls", "ssl", "none"] = "starttls"
+
+    @model_validator(mode="before")
+    @classmethod
+    def default_port(cls, values):
+        if isinstance(values, dict) and values.get("port") is None:
+            values = {**values, "port": {"ssl": 465, "none": 25}.get(values.get("tls_mode"), 587)}
+        return values
 
     @field_validator("host", "username")
     @classmethod

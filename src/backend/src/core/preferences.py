@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.page_settings import DEFAULT_PAGE_SETTINGS, validate_page_settings
+from src.core.public_url import normalize_public_url
 from src.database.models.user_preferences import UserPreferences
 from src.helpers.shortcut_keys import validate_shortcut_overrides
 
@@ -48,6 +49,7 @@ DEFAULTS: dict[str, Any] = {
     "notification_types": {},
     "notification_destinations": {},
     "notification_routes": {},
+    "notification_url": "",
     "notify_statuses": ["watching", "plan", "hold"],
     "notify_media_types": ["anime", "tv", "movie"],
     "notification_retention_days": 30,
@@ -293,6 +295,7 @@ def _validate_notification_routes(value: Any) -> dict[str, dict[str, dict[str, A
 
 
 _VALUE_VALIDATORS: dict[str, Callable[[Any], Any]] = {
+    "notification_url": normalize_public_url,
     "notification_types": _validate_notification_mapping,
     "notification_destinations": _validate_notification_mapping,
     "notification_routes": _validate_notification_routes,

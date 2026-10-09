@@ -9,12 +9,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.app_integrations import get_or_create_app_integration_settings
+from src.core.app_integrations import get_or_create_app_integration_settings, get_public_app_url
 from src.core.auth import get_current_admin
 from src.core.crypto import encrypt_secret
 from src.core.env_handler import EnvConfigHandler
 from src.core.oidc import get_or_create_oidc_settings
 from src.core.provider_credentials import apply_deployment_provider_credentials
+from src.core.public_url import validate_deployment_url
 from src.core.real_ip import (
     get_effective_real_ip_config,
     validate_real_ip_header,
@@ -35,6 +36,7 @@ router = APIRouter(
 
 
 class DeploymentSettingsRequest(BaseModel):
+    public_app_url: str | None = Field(default=None, max_length=2048)
     smtp_host: str | None = Field(default=None, max_length=253)
     smtp_port: int | None = Field(default=None, ge=1, le=65535)
     smtp_username: str | None = Field(default=None, max_length=254)
@@ -83,6 +85,7 @@ _SECRET_FIELDS = {
 }
 # pylint: enable=duplicate-code
 _SAFE_PROVIDER_FIELDS = {
+    "public_app_url",
     *(set(SMTP_FIELDS.values()) - {"smtp_password"}),
     "igdb_client_id",
     "screenscraper_ssid",
@@ -91,6 +94,7 @@ _SAFE_PROVIDER_FIELDS = {
 }
 
 _PROVIDER_ENV_NAMES = {
+    "public_app_url": "PUBLIC_APP_URL",
     **{attribute: name for name, attribute in SMTP_FIELDS.items()},
     "steamgriddb_api_key": "STEAMGRIDDB_API_KEY",
     "retroachievements_api_key": "RETROACHIEVEMENTS_API_KEY",
@@ -146,7 +150,6 @@ def _provider_rows(row):
 
 
 async def get_deployment_settings(db: AsyncSession, admin: User) -> dict:
-    del admin
     app = await get_or_create_app_integration_settings(db)
     oidc = await get_or_create_oidc_settings(db)
     handler = EnvConfigHandler()
@@ -168,6 +171,11 @@ async def get_deployment_settings(db: AsyncSession, admin: User) -> dict:
     )
     smtp = await smtp_configuration(db)
     return {
+        "app": {
+            "public_app_url": await get_public_app_url(db) or None,
+            "last_app_url": admin.last_app_url,
+            "url_locked": handler.has("PUBLIC_APP_URL"),
+        },
         "smtp": {
             "configured": smtp.configured,
             "tls_mode": smtp.tls_mode,
@@ -366,9 +374,13 @@ async def update_deployment_settings(
             raise HTTPException(
                 409, f"{field} is managed by the deployment environment and cannot be changed here."
             )
-        if field in SMTP_FIELDS.values():
+        if field in SMTP_FIELDS.values() or field == "public_app_url":
             try:
-                value = validate_smtp_value(field, value)
+                value = (
+                    validate_deployment_url(value or "")
+                    if field == "public_app_url"
+                    else validate_smtp_value(field, value)
+                )
             except ValueError as exc:
                 raise HTTPException(400, f"Invalid {field} configuration") from exc
         if field == "oidc_providers_json":

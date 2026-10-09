@@ -37,6 +37,7 @@ from src.api.routes import (
     metadata,
     movies,
     notification_providers,
+    notification_unsubscribe,
     notifications,
     preferences,
     session_manager,
@@ -143,6 +144,7 @@ app.include_router(steam_tags_refresh.router)
 app.include_router(media_lists.router)
 app.include_router(notifications.router)
 app.include_router(notification_providers.router)
+app.include_router(notification_unsubscribe.router)
 app.include_router(session_manager.router)
 app.include_router(media_stats.router)
 app.include_router(preferences.router)

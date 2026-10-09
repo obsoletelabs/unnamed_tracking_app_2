@@ -8,6 +8,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.notification import Notification
 from src.database.models.notification_delivery import NotificationDelivery
+from src.database.models.notification_verification import NotificationVerification
+
+
+async def retire_destination_work(db: AsyncSession, destination_id: UUID, reason: str) -> None:
+    """Withdraw queued work and outstanding challenges without deleting history."""
+    await db.execute(
+        update(NotificationVerification)
+        .where(NotificationVerification.destination_id == destination_id)
+        .values(encrypted_code=None, used_at=int(time.time()))
+    )
+    await db.execute(
+        update(NotificationDelivery)
+        .where(
+            NotificationDelivery.destination_id == destination_id,
+            NotificationDelivery.status.in_(("pending", "processing", "retry_wait")),
+        )
+        .values(status="suppressed", last_error=reason, claim_token=None, lease_until=None)
+    )
 
 
 def visible_inbox(user_id: UUID):

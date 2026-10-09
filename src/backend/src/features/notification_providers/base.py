@@ -24,6 +24,7 @@ class NotificationMessage:  # pylint: disable=too-many-instance-attributes
     event_at: int
     attempt_id: UUID | None = None
     urgency: str = "normal"
+    purpose: str = "standard"
 
 
 @dataclass(frozen=True)
@@ -92,4 +93,5 @@ def notification_message(
         event_at=notification.event_at,
         attempt_id=attempt_id,
         urgency=urgency,
+        purpose=notification.purpose,
     )

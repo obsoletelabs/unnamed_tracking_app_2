@@ -7,11 +7,12 @@ from typing import TypeVar
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import get_current_user
+from src.core.public_url import normalize_public_url
 from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_provider_setting import NotificationProviderSetting
 from src.database.models.user import User
@@ -57,6 +58,41 @@ class VerificationConfirm(BaseModel):
     model_config = ConfigDict(extra="forbid")
     challenge_id: UUID
     code: str = Field(pattern=r"^[0-9]{8}$")
+
+
+class DestinationUrlUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    notification_url: str = Field(max_length=2048)
+
+    @field_validator("notification_url")
+    @classmethod
+    def validate_url(cls, value: str) -> str:
+        return normalize_public_url(value)
+
+
+@router.patch("/destinations/{destination_id}/url")
+async def update_destination_url(
+    destination_id: UUID,
+    payload: DestinationUrlUpdate,
+    db: AsyncSession = _NOTIFICATION_DB,
+    current_user: User = _NOTIFICATION_USER,
+) -> dict:
+    destination = await db.scalar(
+        select(NotificationDestination)
+        .where(
+            NotificationDestination.id == destination_id,
+            NotificationDestination.user_id == current_user.id,
+            NotificationDestination.active.is_(True),
+            NotificationDestination.channel_context == "external",
+        )
+        .with_for_update()
+    )
+    if destination is None:
+        raise HTTPException(404, "External notification destination not found")
+    # Link preference changes do not prove possession or change destination trust.
+    destination.notification_url = payload.notification_url or None
+    await db.commit()
+    return {"updated": True}
 
 
 _Result = TypeVar("_Result")
