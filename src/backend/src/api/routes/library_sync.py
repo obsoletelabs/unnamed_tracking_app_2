@@ -514,10 +514,16 @@ async def sync_steam_library(
         async with semaphore:
             try:
                 schema = await asyncio.to_thread(steam.get_schema_for_game, api_key, app_id)
+                if not schema:
+                    return {}, [], None
                 unlocked = await asyncio.to_thread(
                     steam.get_player_achievements, steam_id, api_key, app_id
                 )
             except steam.SteamLibraryError:
+                return {}, [], None
+            # Steam lists locked achievements too. No player rows for a known
+            # schema means unavailable progress, so retain the stored snapshot.
+            if not unlocked:
                 return {}, [], None
             descriptions = None
             if _needs_community_descriptions(schema):
