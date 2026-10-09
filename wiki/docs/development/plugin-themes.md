@@ -74,6 +74,16 @@ lets phone readers reveal their controls without a fixed desktop-sized frame.
 Snapshots contain `api_contract_version: "1.1.0"`, `mode`, `high_contrast`,
 `reduce_motion` and an allowlist of cosmetic `tokens`. They contain no account
 identifiers, authentication, library content, secrets or other preferences.
+The appearance wire version remains `1.1.0` independently of the overall host
+Plugin API version. Additive cosmetic fields do not require rewriting signed
+packages whose bundled appearance helper validates that existing wire version.
 The opaque `allow-scripts` sandbox and independently authorized actions remain
 in force. Document paper, images and other rendered media may retain their
 content colors while the reader's controls follow the host palette.
+
+The actual installed document reader follows the selected plugin palette on
+phone and desktop, including its opaque frame:
+
+![Phone reader with the dark plugin palette](../assets/plugin-appearance-compatibility/reader-phone-dark.png)
+
+![Desktop reader with the light plugin palette](../assets/plugin-appearance-compatibility/reader-desktop-light.png)
