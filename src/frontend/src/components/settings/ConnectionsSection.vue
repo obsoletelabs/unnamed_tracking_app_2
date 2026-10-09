@@ -119,6 +119,10 @@ async function sync(row: Row) {
       syncMessage.value += ` Details could not be fetched for ${r.enrich_failed} games.`;
     if (r.wishlist_failed)
       syncMessage.value += " Wishlist import failed; owned games were saved.";
+    const unavailable =
+      (r.achievements_unavailable?.length ?? 0) + (r.achievements_failed ?? 0);
+    if (unavailable)
+      syncMessage.value += ` Achievement progress was unavailable for ${unavailable} games; stored progress was kept.`;
     await load();
   } catch (e) {
     syncMessage.value = e instanceof Error ? e.message : "Sync failed.";

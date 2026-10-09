@@ -18,6 +18,7 @@ import asyncio
 import re
 import time
 from datetime import UTC, date, datetime
+from typing import Literal
 from uuid import UUID
 
 import requests
@@ -38,6 +39,7 @@ from src.database.models.user import User
 from src.database.session import SessionLocal, get_db
 from src.features.imports.library_games import LibraryIndex
 from src.features.imports.library_games import get_or_create_game as _get_or_create_game
+from src.features.imports.steam_achievements import SteamAchievementData, fetch_steam_achievements
 from src.features.metadata.games import steam
 from src.features.metadata.games.psn import PSNClient, PSNError
 from src.features.metadata.games.retroachievements import (
@@ -486,6 +488,7 @@ async def _fetch_psn_rows(user: User, external_id: str, platform: str | None) ->
 async def sync_steam_library(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    achievements: Literal["now", "later"] = "now",
 ) -> dict:
     if not current_user.steam_id or not current_user.steam_api_key:
         raise HTTPException(
@@ -510,27 +513,11 @@ async def sync_steam_library(
 
     async def _fetch_achievements(
         app_id: int,
-    ) -> tuple[dict[str, dict], list[dict], dict[str, str] | None]:
+    ) -> SteamAchievementData:
+        if achievements == "later":
+            return {}, [], None
         async with semaphore:
-            try:
-                schema = await asyncio.to_thread(steam.get_schema_for_game, api_key, app_id)
-                if not schema:
-                    return {}, [], None
-                unlocked = await asyncio.to_thread(
-                    steam.get_player_achievements, steam_id, api_key, app_id
-                )
-            except steam.SteamLibraryError:
-                return {}, [], None
-            # Steam lists locked achievements too. No player rows for a known
-            # schema means unavailable progress, so retain the stored snapshot.
-            if not unlocked:
-                return {}, [], None
-            descriptions = None
-            if _needs_community_descriptions(schema):
-                descriptions = await asyncio.to_thread(
-                    steam.get_community_descriptions, steam_id, app_id
-                )
-            return schema, unlocked, descriptions
+            return await fetch_steam_achievements(steam_id, api_key, app_id)
 
     fetches = await asyncio.gather(
         *(
@@ -545,6 +532,8 @@ async def sync_steam_library(
     newly_created: list[tuple[Game, int]] = []
     synced_titles: list[str] = []
     touched_ids: set[UUID] = set()
+    achievement_ids: list[str] = []
+    status_ids: list[str] = []
     fetch_index = 0
     for entry in owned_games:
         title, app_id = entry.get("name"), entry.get("appid")
@@ -557,6 +546,7 @@ async def sync_steam_library(
             db, current_user.id, title, "Steam", external_id=str(app_id), index=index
         )
         touched_ids.add(game.id)
+        achievement_ids.append(str(game.id))
         game.playtime_seconds = int(entry.get("playtime_forever", 0)) * 60
         if entry.get("rtime_last_played"):
             game.last_played_at = int(entry["rtime_last_played"])
@@ -566,7 +556,7 @@ async def sync_steam_library(
         became_owned = not created and game.status == GameStatus.WISHLIST
 
         total_achievements = unlocked_count = 0
-        if schema:
+        if schema and unlocked is not None:
             rows = _steam_achievement_rows(schema, unlocked, None, descriptions)
             await _replace_achievements(db, game.id, "Steam", rows)
             achievements_synced += len(rows)
@@ -582,6 +572,7 @@ async def sync_steam_library(
                     unlocked_achievements=unlocked_count,
                 ),
             )
+            status_ids.append(str(game.id))
         if created:
             _add_source_tag_and_collection(game, "Steam")
             newly_created.append((game, app_id))
@@ -598,6 +589,8 @@ async def sync_steam_library(
         # the new games still to be enriched (store details, tags, artwork), which
         # is slow, so the app asks for it in batches: see steam_import_steps.py
         "enrich_game_ids": [str(g.id) for g, _ in newly_created],
+        "achievement_game_ids": achievement_ids if achievements == "later" else [],
+        "status_game_ids": status_ids if achievements == "later" else [],
     }
 
 

@@ -219,9 +219,9 @@ const {
           @submit.prevent="saveCard(PROVIDER_CARDS.Steam)"
         >
           <p class="tile-hint">
-            Both fields are required to import your library: your profile ID
-            (after steamcommunity.com/id/, not the full link) and a Web API key.
-            Your profile's game details must be set to Public.
+            Both fields are required to import your library: your Steam profile
+            link, vanity name or SteamID, and a Web API key. Your profile's game
+            details must be set to Public.
           </p>
           <label
             v-for="field in PROVIDER_CARDS.Steam.fields"

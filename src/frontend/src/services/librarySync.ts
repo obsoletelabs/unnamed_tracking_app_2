@@ -12,6 +12,14 @@ export interface LibrarySyncResult {
   wishlist_added?: number;
   wishlist_failed?: boolean;
   enrich_failed?: number;
+  achievements_failed?: number;
+  achievements_unavailable?: string[];
+}
+
+interface SteamImportResult extends LibrarySyncResult {
+  enrich_game_ids?: string[];
+  achievement_game_ids?: string[];
+  status_game_ids?: string[];
 }
 
 export type LibrarySyncProvider = "steam" | "psn" | "retroachievements";
@@ -28,7 +36,8 @@ export async function syncLibrary(
     };
   }
 
-  const response = await fetch(`/api/library-sync/${provider}`, {
+  const suffix = provider === "steam" ? "?achievements=later" : "";
+  const response = await fetch(`/api/library-sync/${provider}${suffix}`, {
     method: "POST",
     credentials: "include",
   });
@@ -38,8 +47,7 @@ export async function syncLibrary(
       `Library sync failed: ${response.status} ${response.statusText} ${message}`,
     );
   }
-  const result: LibrarySyncResult & { enrich_game_ids?: string[] } =
-    await response.json();
+  const result: SteamImportResult = await response.json();
   if (provider === "steam") await finishSteamImport(result);
   return result;
 }
@@ -48,6 +56,7 @@ export async function syncLibrary(
 // artwork is not (about a second each). The server does that a few games at a
 // time, so one request never runs long enough to time out.
 const ENRICH_BATCH = 5;
+const ACHIEVEMENT_BATCH = 5;
 
 async function postSteamStep<T>(path: string, body?: unknown): Promise<T> {
   const response = await fetch(`/api/library-sync/steam/${path}`, {
@@ -61,9 +70,28 @@ async function postSteamStep<T>(path: string, body?: unknown): Promise<T> {
   return (await response.json()) as T;
 }
 
-async function finishSteamImport(
-  result: LibrarySyncResult & { enrich_game_ids?: string[] },
-): Promise<void> {
+async function finishSteamImport(result: SteamImportResult): Promise<void> {
+  const achievementIds = [...new Set(result.achievement_game_ids ?? [])];
+  const statusIds = new Set(result.status_game_ids ?? []);
+  result.achievements_synced ??= 0;
+  result.achievements_failed = 0;
+  result.achievements_unavailable = [];
+  for (let i = 0; i < achievementIds.length; i += ACHIEVEMENT_BATCH) {
+    const batchIds = achievementIds.slice(i, i + ACHIEVEMENT_BATCH);
+    try {
+      const batch = await postSteamStep<{
+        achievements_synced: number;
+        achievements_unavailable: string[];
+      }>("achievements", {
+        game_ids: batchIds,
+        status_game_ids: batchIds.filter((id) => statusIds.has(id)),
+      });
+      result.achievements_synced += batch.achievements_synced;
+      result.achievements_unavailable.push(...batch.achievements_unavailable);
+    } catch {
+      result.achievements_failed += batchIds.length;
+    }
+  }
   const ids = [...(result.enrich_game_ids ?? [])];
   try {
     const wishlist = await postSteamStep<{ added: number; game_ids: string[] }>(
