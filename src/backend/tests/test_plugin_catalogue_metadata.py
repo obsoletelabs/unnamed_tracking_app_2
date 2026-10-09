@@ -22,6 +22,7 @@ from src.plugin_api.installer import inspect_package
 from src.plugin_api.updates import (
     PackageFormatError,
     PluginPackageVerifier,
+    TrustedPublisher,
     canonical_payload_digest,
 )
 
@@ -265,7 +266,12 @@ def test_catalogue_category_uses_scoped_registry_not_advertised_brand(
     monkeypatch, channel, allowed, expected
 ):
     monkeypatch.setattr(plugin_acquisition, "validate_remote_url", lambda url: url)
-    publisher = SimpleNamespace(channel=channel, allows_plugin=lambda plugin_id: allowed)
+    publisher = TrustedPublisher(
+        "key",
+        b"x" * 32,
+        channel=channel or "community",
+        plugin_id_prefixes=("example." if allowed else "other.",),
+    )
     monkeypatch.setattr(
         plugin_acquisition,
         "plugin_package_verifier",
