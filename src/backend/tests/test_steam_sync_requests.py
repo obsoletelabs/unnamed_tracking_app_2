@@ -68,6 +68,32 @@ async def test_private_library_does_not_mark_owned_games_stale(steam_owner, monk
         assert user.steam_library_synced_at is None
 
 
+async def test_deferred_sync_saves_games_without_achievement_requests(steam_owner, monkeypatch):
+    monkeypatch.setattr(library_sync.steam, "resolve_steam_id", lambda sid, _key: sid)
+    monkeypatch.setattr(
+        library_sync.steam,
+        "get_owned_games",
+        lambda *_: [{"appid": 123, "name": "Deferred game", "playtime_forever": 5}],
+    )
+    schema = Mock(side_effect=AssertionError("Owned games must be saved before achievements"))
+    monkeypatch.setattr(library_sync.steam, "get_schema_for_game", schema)
+    async with SessionLocal() as db:
+        user = await db.get(User, steam_owner)
+        result = await library_sync.sync_steam_library(
+            achievements="later", db=db, current_user=user
+        )
+        assert result["games_added"] == 1
+        assert result["achievements_synced"] == 0
+        assert result["achievement_game_ids"] == result["status_game_ids"]
+        identity = result["achievement_game_ids"][0]
+    async with SessionLocal() as db:
+        game = await db.scalar(select(Game).where(Game.user_id == steam_owner))
+        assert str(game.id) == identity
+        assert game.playtime_seconds == 300
+        assert game.status == GameStatus.PLAYED
+    schema.assert_not_called()
+
+
 @pytest.mark.parametrize("response_kind", ["no-schema", "unavailable", "failed", "locked"])
 async def test_bulk_sync_achievement_requests_and_saved_progress(
     steam_owner, monkeypatch, response_kind

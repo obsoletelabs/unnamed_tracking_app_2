@@ -403,7 +403,7 @@ export function useMetadataSources() {
       key: "Steam",
       label: "Steam",
       description:
-        "No account needed for metadata search. Importing your library and achievements requires both fields below: your profile ID (the part after steamcommunity.com/id/, not the full link) and a Web API key. Your profile's game details must also be set to Public, or Steam silently returns an empty library.",
+        "No account needed for metadata search. Importing your library and achievements requires both fields below: your Steam profile link, vanity name or SteamID, and a Web API key. Your profile's game details must be Public; a private library leaves saved games unchanged and reports a privacy error.",
       fields: [
         { key: "steam_id", label: "Profile ID", type: "text" },
         { key: "api_key", label: "Web API Key", type: "password" },
@@ -638,9 +638,15 @@ export function useMetadataSources() {
     );
     try {
       const result = await syncLibrary(provider);
+      const unavailable =
+        (result.achievements_unavailable?.length ?? 0) +
+        (result.achievements_failed ?? 0);
+      const warning = unavailable
+        ? `; achievement progress unavailable for ${unavailable} games (stored progress kept)`
+        : "";
       completeTask(
         taskId,
-        `${result.games_added} added, ${result.games_updated} updated, ${result.achievements_synced} achievements`,
+        `${result.games_added} added, ${result.games_updated} updated, ${result.achievements_synced} achievements${warning}`,
       );
       // the request itself wasn't live, but revealing the touched titles one
       // at a time still reads as a real "feed" once the result is in
