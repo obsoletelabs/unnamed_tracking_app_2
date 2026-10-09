@@ -1898,6 +1898,12 @@ class PluginRegistry:
                     raise RuntimePolicyError("plugin package contains an unsafe path")
                 if info.filename in names:
                     raise RuntimePolicyError("plugin package contains duplicate paths")
+                reserved_path = "payload/" + _PACKAGE_ARCHIVE
+                if (
+                    info.filename == reserved_path
+                    or info.filename.startswith(reserved_path + "/")
+                ):
+                    raise RuntimePolicyError("plugin payload uses a reserved runtime path")
                 names.add(info.filename)
                 mode = (info.external_attr >> 16) & 0o170000
                 if mode == stat.S_IFLNK:
@@ -1931,8 +1937,6 @@ class PluginRegistry:
                     relative = info.filename[len("payload/") :]
                     if not relative:
                         raise RuntimePolicyError("payload entry must have a filename")
-                    if relative == _PACKAGE_ARCHIVE:
-                        raise RuntimePolicyError("plugin payload uses a reserved runtime path")
                     data = read_bounded(info)
                     payload.append((relative, data))
                 else:
@@ -2348,7 +2352,7 @@ class PluginRegistry:
                 (package / "manifest.json").read_text(encoding="utf-8")
             )
         original_archive = package / _PACKAGE_ARCHIVE
-        if original_archive.exists():
+        if original_archive.exists() or original_archive.is_symlink():
             if original_archive.is_symlink() or not original_archive.is_file():
                 raise RuntimePolicyError("invalid retained plugin archive")
             with original_archive.open("rb") as source:

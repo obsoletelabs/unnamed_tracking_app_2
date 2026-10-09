@@ -13,9 +13,11 @@ from pathlib import Path
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+from src.plugin_api import updates
 from src.plugin_api.installer import inspect_package
 from src.plugin_api.publisher_trust import PublisherTrustError, load_trusted_publishers
 from src.plugin_api.updates import (
+    PackageFormatError,
     PackageVerificationError,
     PluginPackageVerifier,
     TrustedPublisher,
@@ -211,3 +213,60 @@ def test_extraction_rejects_archive_changed_after_inspection(tmp_path: Path) -> 
     with pytest.raises(PackageVerificationError, match="changed"):
         verifier.extract(verified, destination)
     assert not destination.exists()
+
+
+def test_expiry_during_preview_cannot_become_an_overridable_warning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    package, entry = signed_archive(tmp_path)
+    entry.update(not_after=CUTOFF.isoformat(), historical_package_sha256=[])
+    registry = tmp_path / "registry.json"
+    write_registry(registry, entry)
+    verifier = PluginPackageVerifier(load_trusted_publishers(registry))
+
+    class Clock(datetime):
+        calls = 0
+
+        @classmethod
+        def now(cls, tz=None):
+            del tz
+            cls.calls += 1
+            return CUTOFF - timedelta(seconds=1) if cls.calls == 1 else CUTOFF
+
+    monkeypatch.setattr(updates, "datetime", Clock)
+    with pytest.raises(PackageVerificationError, match="publisher"):
+        inspect_package(package, verifier)
+
+
+@pytest.mark.parametrize("version", [1, 2])
+def test_even_an_explicit_archive_pin_cannot_bypass_signature_validation(
+    tmp_path: Path, version: int
+) -> None:
+    package, entry = signed_archive(tmp_path, version=version)
+    with zipfile.ZipFile(package) as archive:
+        members = {name: archive.read(name) for name in archive.namelist()}
+    manifest = json.loads(members["manifest.json"])
+    manifest["integrity"]["signature"] = ("v2:" if version == 2 else "") + base64.b64encode(
+        b"x" * 64
+    ).decode()
+    members["manifest.json"] = json.dumps(manifest).encode()
+    with zipfile.ZipFile(package, "w") as archive:
+        for name, data in members.items():
+            archive.writestr(name, data)
+    entry["historical_package_sha256"] = [hashlib.sha256(package.read_bytes()).hexdigest()]
+    registry = tmp_path / "registry.json"
+    write_registry(registry, entry)
+    verifier = PluginPackageVerifier(load_trusted_publishers(registry))
+    with pytest.raises(PackageVerificationError, match="signature"):
+        verifier.inspect(package)
+    assert not inspect_package(package, verifier).trust.installable
+
+
+@pytest.mark.parametrize("name", [".runtime-state-package.utp", ".runtime-state-package.utp/file"])
+def test_archive_cannot_replace_runtime_owned_metadata(tmp_path: Path, name: str) -> None:
+    package = tmp_path / "reserved.utp"
+    with zipfile.ZipFile(package, "w") as archive:
+        archive.writestr("manifest.json", "{}")
+        archive.writestr("payload/" + name, b"replace cache")
+    with pytest.raises(PackageFormatError, match="reserved runtime path"):
+        PluginPackageVerifier().inspect(package)

@@ -7,12 +7,14 @@ exercise the actual signed artifact, not a host-local fixture.
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import io
 import json
 import os
 import zipfile
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
@@ -46,6 +48,34 @@ def test_all_reviewed_historical_archives_remain_trusted_by_bundled_host_policy(
         package = inspect_package(archives[digest], verifier)
         assert package.trust.signature_verified, archives[digest].name
         assert package.package.archive_sha256 == digest
+
+
+def test_current_published_packages_install_with_original_archive_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = _plugin_repository()
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[2] / "plugin-runtime"))
+    from runtime import PluginRegistry, PluginSupervisor
+
+    catalogue = json.loads((repository / "list.json").read_text(encoding="utf-8"))
+    verifier = PluginPackageVerifier(load_trusted_publishers())
+    session_manager_seen = False
+    for index, entry in enumerate(catalogue["plugins"]):
+        path = repository / "dist" / entry["package"]["filename"]
+        inspected = inspect_package(path, verifier)
+        assert inspected.trust.signature_verified, path.name
+        plugin_id = inspected.package.manifest.plugin_id
+        if plugin_id == "example.self-service-session-manager":
+            assert inspected.trust.publisher_channel == "official"
+            session_manager_seen = True
+        work = tmp_path / str(index)
+        registry = PluginRegistry(work / "plugins", PluginSupervisor(work / "workers"))
+        original = path.read_bytes()
+        registry.install_package(original, path.name, installation_id=str(uuid4()))
+        retained = base64.b64decode(registry.package_archive(plugin_id)["package"])
+        assert retained == original
+        assert registry.list()[0]["enabled"] is False
+    assert session_manager_seen
 
 
 def _write_modified_package(source: Path, destination: Path, *, unsigned: bool = False) -> None:

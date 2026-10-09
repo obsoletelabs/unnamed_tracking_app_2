@@ -298,8 +298,6 @@ class PluginPackageVerifier:
                 relative = info.filename[len(self.PAYLOAD_PREFIX) :]
                 if not relative:
                     raise PackageFormatError("payload entry must have a filename")
-                if relative == ".runtime-state-package.utp":
-                    raise PackageFormatError("plugin payload uses a reserved runtime path")
                 payload.append((relative, self._read_bounded(archive, info)))
             else:
                 raise PackageFormatError("package contains an unexpected file")
@@ -309,6 +307,9 @@ class PluginPackageVerifier:
         self, info: zipfile.ZipInfo, names: set[str], total_uncompressed: int
     ) -> int:
         self._validate_member(info.filename)
+        reserved_path = self.PAYLOAD_PREFIX + ".runtime-state-package.utp"
+        if info.filename == reserved_path or info.filename.startswith(reserved_path + "/"):
+            raise PackageFormatError("plugin payload uses a reserved runtime path")
         mode = (info.external_attr >> 16) & 0o170000
         if mode == stat.S_IFLNK:
             raise PackageFormatError("package contains a symbolic link")
@@ -479,7 +480,7 @@ class PluginPackageVerifier:
                     "plugin package signature verification failed"
                 ) from exc
 
-    def _validate_publisher_period(self, manifest: PluginManifest, archive_sha256: str) -> None:
+    def validate_publisher_policy(self, manifest: PluginManifest, archive_sha256: str) -> None:
         """Known revoked/expired signers cannot become overridable unknown keys."""
         publisher = self.publishers.get(manifest.integrity.key_id or "")
         if publisher is not None and manifest.integrity.signature:
@@ -506,7 +507,7 @@ class PluginPackageVerifier:
         self._validate_ui_contract(manifest, payload)
         distribution = self._distribution_metadata(manifest, payload)
         signing_version = 2 if (manifest.integrity.signature or "").startswith("v2:") else 1
-        self._validate_publisher_period(manifest, archive_sha256)
+        self.validate_publisher_policy(manifest, archive_sha256)
         if signing_version == 2:
             self._validate_signing_envelope(manifest, payload)
         if manifest.integrity.signature and signing_version == 1:
@@ -528,7 +529,7 @@ class PluginPackageVerifier:
         archive_data = self._archive_bytes(verified.package_path)
         if hashlib.sha256(archive_data).hexdigest() != verified.archive_sha256:
             raise PackageVerificationError("plugin package changed after verification")
-        self._validate_publisher_period(verified.manifest, verified.archive_sha256)
+        self.validate_publisher_policy(verified.manifest, verified.archive_sha256)
         destination.mkdir(mode=0o700, parents=True, exist_ok=False)
         try:
             with zipfile.ZipFile(io.BytesIO(archive_data)) as archive:

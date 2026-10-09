@@ -167,6 +167,7 @@ def inspect_package(
             ),
         )
 
+    verifier.validate_publisher_policy(candidate.manifest, candidate.archive_sha256)
     if publisher is None or not publisher.allows_package(
         candidate.manifest.plugin_id, candidate.archive_sha256
     ):

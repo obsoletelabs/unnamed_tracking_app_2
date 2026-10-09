@@ -69,6 +69,17 @@ def test_legacy_installations_reconstruct_without_claiming_original_archive_byte
         assert not any(runtime._PACKAGE_ARCHIVE in name for name in archive.namelist())
 
 
+@pytest.mark.parametrize("name", [".runtime-state-package.utp", ".runtime-state-package.utp/file"])
+def test_payload_cannot_replace_retained_archive(tmp_path, name):
+    registry = PluginRegistry(tmp_path / "plugins", PluginSupervisor(tmp_path / "work"))
+    output = io.BytesIO(_package_bytes())
+    with zipfile.ZipFile(output, "a") as archive:
+        archive.writestr("payload/" + name, b"forged cache")
+    with pytest.raises(RuntimePolicyError, match="reserved runtime path"):
+        registry.install_package(output.getvalue(), "bad.utp", installation_id=str(uuid.uuid4()))
+    assert not registry.packages()
+
+
 def test_startup_probe_reports_actual_bubblewrap_capability(tmp_path, monkeypatch):
     supervisor = PluginSupervisor(tmp_path / "work", tmp_path / "storage")
     calls = []
