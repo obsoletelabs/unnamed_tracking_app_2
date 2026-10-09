@@ -1,4 +1,7 @@
 name: Plugin repository integration
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
 
 on:
   push:
@@ -61,9 +64,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: pip
+          cache-dependency-path: src/backend/requirements.txt
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: npm
+          cache-dependency-path: .integration-plugins/package-lock.json
       - name: Install host and builder dependencies
         run: |
           python -m pip install -r src/backend/requirements.txt jsonschema
@@ -92,6 +99,14 @@ jobs:
           python tools/verify_packages.py .validation/dist/*.utp
           python tools/validate_packages.py .validation/dist/*.utp
           python tools/check_host_contract.py --host-root "$GITHUB_WORKSPACE"
+      - name: Cache Playwright browser
+        uses: actions/cache@v5.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('.integration-plugins/package-lock.json') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
       - name: Install browser tooling from the plugin repository
         working-directory: .integration-plugins
         run: |

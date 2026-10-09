@@ -1,4 +1,7 @@
 name: Backend checks
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
 
 on:
   push:
@@ -92,6 +95,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Require every backend check to pass
+        id: backend-result
         env:
           CHECK_RESULTS: ${{ toJSON(needs) }}
         run: |
@@ -106,6 +110,17 @@ jobs:
           if failures:
               raise SystemExit(f"Backend checks did not all pass: {failures}")
           PY
+
+      - name: Report to Actions Dashboard
+        if: always() && vars.PUSH_TO_DISPLAY_ENABLED == 'true'
+        uses: pushtodisplay/actions-dashboard@ce26532a36af079259315587543935064f22e6b4
+        env:
+          PUSH_TO_DISPLAY_API_KEY: ${{ secrets.PUSH_TO_DISPLAY_API_KEY }}
+          PUSH_TO_DISPLAY_BOARD: ${{ vars.PUSH_TO_DISPLAY_BOARD }}
+        with:
+          steps-json: ${{ toJSON(steps) }}
+          panel-id: 2
+          label: Backend CI
 
   migration-graph:
     name: Alembic migration graph
@@ -269,6 +284,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: src/backend/requirements.txt
       - name: Install test dependencies
         run: python -m pip install -r ../backend/requirements.txt
       - name: Test plugin runtime policy

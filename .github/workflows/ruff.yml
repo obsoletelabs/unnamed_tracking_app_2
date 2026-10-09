@@ -1,4 +1,7 @@
 name: Ruff
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
 
 on:
   push:
@@ -27,6 +30,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: src/backend/requirements.txt
       - name: Install Ruff
         run: python -m pip install ruff
       - name: Check Ruff formatting
@@ -39,6 +44,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: src/backend/requirements.txt
       - name: Install Ruff
         run: python -m pip install ruff
       - name: Run Ruff lint
@@ -63,6 +70,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: src/backend/requirements.txt
       - name: Install Ruff
         run: python -m pip install ruff
       - name: Apply Ruff safe fixes
