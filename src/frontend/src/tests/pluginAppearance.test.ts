@@ -4,7 +4,7 @@ import {
   readPluginAppearance,
 } from "../services/pluginAppearance";
 afterEach(() => vi.unstubAllGlobals());
-it("exposes only public cosmetic tokens and releases its observer", () => {
+it("keeps the appearance wire version compatible with published frames and releases its observer", () => {
   const classes = new Set(["high-contrast"]);
   const root = {
     dataset: { theme: "dark" },
@@ -28,7 +28,7 @@ it("exposes only public cosmetic tokens and releases its observer", () => {
   );
   const initial = readPluginAppearance();
   expect(initial).toMatchObject({
-    api_contract_version: "1.1.2",
+    api_contract_version: "1.1.0",
     mode: "dark",
     high_contrast: true,
     tokens: { "--ui-bg": "#123456" },
@@ -51,7 +51,10 @@ it("exposes only public cosmetic tokens and releases its observer", () => {
   expect(callback).toHaveBeenCalledTimes(1);
   root.dataset.theme = "light";
   changed();
-  expect(callback.mock.lastCall?.[0].mode).toBe("light");
+  expect(callback.mock.lastCall?.[0]).toMatchObject({
+    api_contract_version: "1.1.0",
+    mode: "light",
+  });
   stop();
   expect(disconnect).toHaveBeenCalledOnce();
 });
