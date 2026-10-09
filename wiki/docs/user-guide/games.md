@@ -16,6 +16,11 @@ Steam library sync saves games and achievements before fetching store details an
 artwork in small batches. A failed details batch does not discard the imported
 library; the sync result reports games whose details could not be fetched.
 
+Owned-library sync skips player achievement requests for games without an
+achievement schema. If Steam supplies a schema but no player progress, existing
+achievements keep their stored unlock state until a later successful sync.
+An explicit player list with every achievement locked is still applied.
+
 Provider settings show each source's active library game count and the time of
 its last successful sync. Trashed games are excluded; restoring them returns
 them to the count.
