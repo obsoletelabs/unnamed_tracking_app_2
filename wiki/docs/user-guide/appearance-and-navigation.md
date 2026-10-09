@@ -11,6 +11,8 @@ Switching between Games and Media keeps the loaded library visible while refresh
 The sidebar highlights the most specific library entry. Game collections and
 their detail pages highlight **Collections**; game detail pages highlight
 **All games**. The Games group stays highlighted for both areas.
+The [phone and desktop browser checks](../assets/sidebar-navigation/conformance.json)
+verify this selection in the actual navigation layouts.
 
 The phone menu contains keyboard focus, closes with Escape or its close button, and returns focus to the opening control. Desktop navigation can be resized by dragging its right edge, or focusing that edge and using Left/Right; Home/End choose its minimum/maximum width. Double-click resets the width. Navigation remembers the width and the Auto, Overlay, Pinned or Icon rail choice on this device. Phones always use the bottom bar regardless of that desktop choice.
 
