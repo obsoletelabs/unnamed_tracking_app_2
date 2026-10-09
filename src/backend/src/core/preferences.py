@@ -47,9 +47,11 @@ DEFAULTS: dict[str, Any] = {
     "notify_game_price_hit": True,
     "notification_types": {},
     "notification_destinations": {},
+    "notification_routes": {},
     "notify_statuses": ["watching", "plan", "hold"],
     "notify_media_types": ["anime", "tv", "movie"],
     "notification_retention_days": 30,
+    "notification_retention_inherit": True,
     "library_default_layout": "list",
     "title_language": "english",
     "lists_default_sort": "custom",
@@ -253,9 +255,47 @@ def _validate_notification_mapping(value: Any) -> dict[str, bool]:
     return dict(value)
 
 
+def _validate_notification_routes(value: Any) -> dict[str, dict[str, dict[str, Any]]]:
+    """Personal routing choices cannot assert trust, verification or provider capabilities."""
+    if not isinstance(value, dict) or len(value) > 128:
+        raise ValueError("Notification routes must contain at most 128 notification types")
+    clean: dict[str, dict[str, dict[str, Any]]] = {}
+    route_count = 0
+    for event_type, routes in value.items():
+        if (
+            not isinstance(event_type, str)
+            or not re.fullmatch(r"[a-zA-Z0-9._:-]{1,200}", event_type)
+            or not isinstance(routes, dict)
+        ):
+            raise ValueError("Notification routes require bounded type identifiers")
+        route_count += len(routes)
+        if route_count > 512:
+            raise ValueError("Notification routes must contain at most 512 destination choices")
+        clean[event_type] = {}
+        for destination_id, choice in routes.items():
+            try:
+                if (
+                    not isinstance(destination_id, str)
+                    or str(UUID(destination_id)) != destination_id
+                ):
+                    raise ValueError
+            except (ValueError, AttributeError) as exc:
+                raise ValueError("Notification routes require destination UUIDs") from exc
+            if (
+                not isinstance(choice, dict)
+                or set(choice) != {"enabled", "urgency"}
+                or not isinstance(choice["enabled"], bool)
+                or choice["urgency"] not in ("normal", "critical")
+            ):
+                raise ValueError("A route requires enabled and normal/critical urgency only")
+            clean[event_type][destination_id] = dict(choice)
+    return clean
+
+
 _VALUE_VALIDATORS: dict[str, Callable[[Any], Any]] = {
     "notification_types": _validate_notification_mapping,
     "notification_destinations": _validate_notification_mapping,
+    "notification_routes": _validate_notification_routes,
     "ui_theme_package": _validate_theme_package,
     "home_widgets": _validate_home_widgets,
     "home_widget_config": _validate_widget_config,
@@ -270,17 +310,23 @@ _VALUE_VALIDATORS: dict[str, Callable[[Any], Any]] = {
 
 async def load_preferences(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
     row = await db.scalar(select(UserPreferences).where(UserPreferences.user_id == user_id))
-    return {**DEFAULTS, **(row.data if row else {})}
+    data = row.data if row else {}
+    # Existing stored choices remain overrides; new accounts inherit the server default.
+    if "notification_retention_days" in data and "notification_retention_inherit" not in data:
+        data = {**data, "notification_retention_inherit": False}
+    return {**DEFAULTS, **data}
 
 
 async def save_preferences(
     db: AsyncSession, user_id: UUID, changes: dict[str, Any]
 ) -> dict[str, Any]:
     clean = {k: validate_preference(k, v) for k, v in changes.items()}
+    if "notification_retention_days" in clean:
+        clean.setdefault("notification_retention_inherit", False)
     row = await db.scalar(select(UserPreferences).where(UserPreferences.user_id == user_id))
     if row is None:
         row = UserPreferences(user_id=user_id, data={})
         db.add(row)
     row.data = {**row.data, **clean}
     await db.commit()
-    return {**DEFAULTS, **row.data}
+    return await load_preferences(db, user_id)

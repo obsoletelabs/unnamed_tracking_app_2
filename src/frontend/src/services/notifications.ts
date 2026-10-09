@@ -15,6 +15,14 @@ export interface MediaNotification {
   posterUrl: string | null;
   eventAt: number;
   read: boolean;
+  eventType?: string;
+  source?: string;
+  severity?: "info" | "warning" | "error";
+  purpose?: string;
+  requiredTrust?: number;
+  groupKey?: string | null;
+  createdAt?: number;
+  readAt?: number | null;
 }
 
 interface BackendNotification {
@@ -27,6 +35,46 @@ interface BackendNotification {
   poster_url: string | null;
   event_at: number;
   read: boolean;
+  event_type?: string;
+  source?: string;
+  severity?: "info" | "warning" | "error";
+  purpose?: string;
+  required_trust?: number;
+  group_key?: string | null;
+  created_at?: number;
+  read_at?: number | null;
+}
+
+export type InboxFilter =
+  | "all"
+  | "unread"
+  | "episodes"
+  | "seasons"
+  | "releases"
+  | "security"
+  | "plugins";
+export interface InboxOptions {
+  category?: InboxFilter;
+  search?: string;
+  source?: string;
+  severity?: "" | "info" | "warning" | "error";
+  offset?: number;
+}
+export interface InboxPage {
+  items: MediaNotification[];
+  unread: number;
+  total: number;
+  counts: Partial<Record<InboxFilter, number>>;
+  nextOffset: number | null;
+  sources: string[];
+}
+export interface InboxRetentionPolicy {
+  default_days: number;
+  maximum_days: number;
+  requested_days: number;
+  effective_days: number;
+  inherited: boolean;
+  limited: boolean;
 }
 
 async function ok(response: Response, action: string): Promise<Response> {
@@ -36,9 +84,15 @@ async function ok(response: Response, action: string): Promise<Response> {
 
 export async function fetchMediaNotifications(
   limit = 50,
-): Promise<{ items: MediaNotification[]; unread: number }> {
+  options: InboxOptions = {},
+): Promise<InboxPage> {
+  const parameters = new URLSearchParams({ limit: String(limit) });
+  for (const [name, value] of Object.entries(options)) {
+    if (value !== undefined && value !== "")
+      parameters.set(name, String(value));
+  }
   const response = await ok(
-    await fetch(`/api/notifications?limit=${limit}`, {
+    await fetch(`/api/notifications?${parameters}`, {
       credentials: "include",
     }),
     "load notifications",
@@ -46,9 +100,17 @@ export async function fetchMediaNotifications(
   const raw = (await response.json()) as {
     items: BackendNotification[];
     unread: number;
+    total?: number;
+    counts?: Partial<Record<InboxFilter, number>>;
+    next_offset?: number | null;
+    sources?: string[];
   };
   return {
     unread: raw.unread,
+    total: raw.total ?? raw.items.length,
+    counts: raw.counts ?? {},
+    nextOffset: raw.next_offset ?? null,
+    sources: raw.sources ?? [],
     items: raw.items.map((n) => ({
       id: n.id,
       kind: n.kind,
@@ -59,8 +121,34 @@ export async function fetchMediaNotifications(
       posterUrl: n.poster_url,
       eventAt: n.event_at,
       read: n.read,
+      eventType: n.event_type ?? n.kind,
+      source: n.source ?? "host",
+      severity: n.severity ?? "info",
+      purpose: n.purpose ?? "standard",
+      requiredTrust: n.required_trust ?? 1,
+      groupKey: n.group_key ?? null,
+      createdAt: n.created_at ?? n.event_at,
+      readAt: n.read_at ?? null,
     })),
   };
+}
+
+export async function fetchInboxRetentionPolicy(): Promise<InboxRetentionPolicy> {
+  const response = await ok(
+    await fetch("/api/notifications/policy", { credentials: "include" }),
+    "load inbox policy",
+  );
+  return await response.json();
+}
+
+export async function deleteMediaNotification(id: string): Promise<void> {
+  await ok(
+    await fetch(`/api/notifications/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      credentials: "include",
+    }),
+    "delete notification",
+  );
 }
 
 export async function createTestNotification(payload: {
@@ -144,4 +232,71 @@ export async function dismissMediaNotification(id: string): Promise<void> {
     }),
     "dismiss notification",
   );
+}
+
+export interface NotificationRoutingType {
+  event_type: string;
+  preference_key: string;
+  label: string;
+  description: string;
+  required_trust: "PRIVATE" | "SECURE";
+}
+
+export interface NotificationRoutingProvider {
+  id: string;
+  name: string;
+  enabled: boolean;
+  available: boolean;
+  configuration_scope: "internal" | "server";
+  critical_supported: boolean;
+}
+
+export interface NotificationRoutingDestination {
+  id: string;
+  provider_id: string;
+  provider_name: string;
+  kind: string;
+  context: "internal" | "external";
+  trust: "PUBLIC" | "PRIVATE" | "SECURE";
+  active: boolean;
+  enabled: boolean;
+  available: boolean;
+  provider_enabled: boolean;
+  critical_supported: boolean;
+  eligible_types: string[];
+  shared_configuration: boolean;
+}
+
+export interface NotificationRoutingSettings {
+  types: NotificationRoutingType[];
+  providers: NotificationRoutingProvider[];
+  destinations: NotificationRoutingDestination[];
+}
+
+export async function fetchNotificationRouting(): Promise<NotificationRoutingSettings> {
+  const response = await fetch(
+    "/api/settings/notification-providers/destinations",
+    {
+      credentials: "include",
+    },
+  );
+  if (!response.ok)
+    throw new Error("Failed to load notification destinations.");
+  return response.json();
+}
+
+export async function setNotificationProviderEnabled(
+  providerId: string,
+  enabled: boolean,
+): Promise<void> {
+  const response = await fetch(
+    `/api/settings/notification-providers/${encodeURIComponent(providerId)}`,
+    {
+      method: "PUT",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    },
+  );
+  if (!response.ok) throw new Error("Failed to update notification provider.");
 }

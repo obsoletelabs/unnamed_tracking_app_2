@@ -1,6 +1,7 @@
 // Episode/season/movie notifications from the server: the app's one
 // notification source. Persisted server-side, so they can be read/unread.
-import { ref } from "vue";
+import { ref, watch } from "vue";
+import { currentUser } from "./auth";
 import { notificationDestination } from "../utils/notificationPresentation";
 import {
   fetchMediaNotifications,
@@ -11,10 +12,23 @@ import type { MediaNotification } from "../services/notifications";
 
 export const mediaNotifications = ref<MediaNotification[]>([]);
 export const mediaUnread = ref(0);
+let generation = 0;
+watch(
+  () => currentUser.value?.id,
+  () => {
+    generation++;
+    mediaNotifications.value = [];
+    mediaUnread.value = 0;
+  },
+  { flush: "sync" },
+);
 
 export async function refreshMediaNotifications() {
+  const request = ++generation;
+  const account = currentUser.value?.id;
   try {
     const res = await fetchMediaNotifications();
+    if (request !== generation || currentUser.value?.id !== account) return;
     mediaNotifications.value = res.items;
     mediaUnread.value = res.unread;
   } catch {
@@ -23,6 +37,7 @@ export async function refreshMediaNotifications() {
 }
 
 export async function readMediaNotification(id: string) {
+  const request = generation;
   const n = mediaNotifications.value.find((m) => m.id === id);
   if (!n || n.read) return;
   n.read = true;
@@ -30,12 +45,14 @@ export async function readMediaNotification(id: string) {
   try {
     await markNotificationRead(id);
   } catch {
+    if (request !== generation) return;
     n.read = false;
     mediaUnread.value += 1;
   }
 }
 
 export async function readAllMediaNotifications() {
+  const request = generation;
   const before = mediaNotifications.value.map((n) => n.read);
   mediaNotifications.value.forEach((n) => (n.read = true));
   const unread = mediaUnread.value;
@@ -43,6 +60,7 @@ export async function readAllMediaNotifications() {
   try {
     await markAllNotificationsRead();
   } catch {
+    if (request !== generation) return;
     mediaNotifications.value.forEach((n, i) => (n.read = before[i]));
     mediaUnread.value = unread;
   }

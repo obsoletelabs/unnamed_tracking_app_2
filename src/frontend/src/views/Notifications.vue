@@ -1,9 +1,5 @@
 <script setup lang="ts">
-// Every notification in one place, with the detail behind each: which
-// title, what happened, and the exact time it happened (the provider's own
-// air time, not when the app noticed). The sidebar group shows the latest
-// few; this page is the full list with filters and per-item actions.
-import { ref, computed, onMounted, watch } from "vue";
+import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 import { useRouter } from "vue-router";
 import AppTopBar from "../components/AppTopBar.vue";
 import SegmentedTabs from "../components/SegmentedTabs.vue";
@@ -14,11 +10,17 @@ import {
   markNotificationUnread,
   markAllNotificationsRead,
   dismissMediaNotification,
+  deleteMediaNotification,
 } from "../services/notifications";
-import type { MediaNotification } from "../services/notifications";
+import type {
+  MediaNotification,
+  InboxFilter,
+  InboxPage,
+} from "../services/notifications";
 import { refreshMediaNotifications } from "../state/notifications";
 import { useKeptAlive } from "../utils/useKeptAlive";
 import { useConfirm } from "../state/dialog";
+import { currentUser } from "../state/auth";
 import {
   readPluginReminders,
   pluginReminderRevision,
@@ -26,111 +28,144 @@ import {
 import {
   notificationPresentation,
   notificationDestination,
+  groupNotifications,
 } from "../utils/notificationPresentation";
 
-type Filter =
-  "all" | "unread" | "episodes" | "seasons" | "releases" | "plugins";
-const FILTERS: { key: Filter; label: string }[] = [
+const FILTERS: { key: InboxFilter; label: string }[] = [
   { key: "all", label: "All" },
   { key: "unread", label: "Unread" },
   { key: "episodes", label: "Episodes" },
   { key: "seasons", label: "Seasons" },
   { key: "releases", label: "Releases" },
+  { key: "security", label: "Security" },
   { key: "plugins", label: "Plugins" },
 ];
-
 const router = useRouter();
 const confirm = useConfirm();
 const items = ref<MediaNotification[]>([]);
+const summary = ref<Omit<InboxPage, "items">>({
+  total: 0,
+  unread: 0,
+  counts: {},
+  nextOffset: null,
+  sources: [],
+});
 const loading = ref(true);
+const pending = ref(false);
 const error = ref<string | null>(null);
-const filter = ref<Filter>("all");
+const filter = ref<InboxFilter>("all");
+const search = ref("");
+const source = ref("");
 const openId = ref<string | null>(null);
+const expandedGroups = ref(new Set<string>());
 const reminders = ref<Awaited<ReturnType<typeof readPluginReminders>>>([]);
+let generation = 0;
 let reminderGeneration = 0;
+let searchTimer: ReturnType<typeof setTimeout> | undefined;
 async function loadReminders() {
-  const generation = ++reminderGeneration;
+  const request = ++reminderGeneration;
+  const account = currentUser.value?.id;
   const values = await readPluginReminders();
-  if (generation === reminderGeneration) reminders.value = values;
+  if (request === reminderGeneration && currentUser.value?.id === account)
+    reminders.value = values;
 }
 watch(pluginReminderRevision, () => void loadReminders(), { immediate: true });
 const shownReminders = computed(() =>
-  filter.value === "all" || filter.value === "plugins" ? reminders.value : [],
+  filter.value === "all" || filter.value === "plugins"
+    ? reminders.value.filter((r) =>
+        `${r.label} ${r.description}`
+          .toLowerCase()
+          .includes(search.value.toLowerCase()),
+      )
+    : [],
 );
-
-async function load() {
+async function load(more = false) {
+  const request = ++generation;
+  const account = currentUser.value?.id;
+  loading.value = true;
   error.value = null;
-  void loadReminders();
   try {
-    items.value = (await fetchMediaNotifications(200)).items;
+    const page = await fetchMediaNotifications(50, {
+      category: filter.value,
+      search: search.value,
+      source: source.value,
+      offset: more ? (summary.value.nextOffset ?? 0) : 0,
+    });
+    if (request !== generation || currentUser.value?.id !== account) return;
+    items.value = more
+      ? [
+          ...new Map(
+            [...items.value, ...page.items].map((n) => [n.id, n]),
+          ).values(),
+        ]
+      : page.items;
+    summary.value = page;
   } catch (e) {
-    error.value =
-      e instanceof Error ? e.message : "Failed to load notifications.";
+    if (request === generation)
+      error.value =
+        e instanceof Error ? e.message : "Failed to load notifications.";
   } finally {
-    loading.value = false;
+    if (request === generation) loading.value = false;
   }
 }
-onMounted(load);
-useKeptAlive(load);
-
-const unreadCount = computed(() => items.value.filter((n) => !n.read).length);
-const counts = computed(() => {
-  const c: Record<Filter, number> = {
-    all: items.value.length + reminders.value.length,
-    unread: unreadCount.value,
-    episodes: 0,
-    seasons: 0,
-    releases: 0,
-    plugins: reminders.value.length,
-  };
-  for (const n of items.value) {
-    const group = notificationPresentation(n.kind).group;
-    if (group) c[group] += 1;
-  }
-  return c;
+onMounted(() => void load());
+useKeptAlive(() => void load());
+watch([filter, source], () => {
+  clearTimeout(searchTimer);
+  void load();
 });
+watch(search, () => {
+  generation++;
+  loading.value = true;
+  summary.value.nextOffset = null;
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => void load(), 250);
+});
+watch(
+  () => currentUser.value?.id,
+  () => {
+    generation++;
+    reminderGeneration++;
+    items.value = [];
+    reminders.value = [];
+  },
+);
+onUnmounted(() => {
+  generation++;
+  reminderGeneration++;
+  clearTimeout(searchTimer);
+});
+const unreadCount = computed(() => summary.value.unread);
 const filterOptions = computed<SegmentOption[]>(() =>
   FILTERS.map((f) => ({
     value: f.key,
     label: f.label,
-    count: counts.value[f.key],
+    count: summary.value.counts[f.key] ?? 0,
   })),
 );
-const shown = computed(() => {
-  return items.value.filter((n) => {
-    if (filter.value === "all") return true;
-    if (filter.value === "unread") return !n.read;
-    return notificationPresentation(n.kind).group === filter.value;
-  });
+const grouped = computed(() => {
+  const days = new Map<string, ReturnType<typeof groupNotifications>>();
+  for (const cluster of groupNotifications(items.value)) {
+    const existing = days.get(cluster.day);
+    if (existing) existing.push(cluster);
+    else days.set(cluster.day, [cluster]);
+  }
+  return [...days.entries()].sort((a, b) => b[0].localeCompare(a[0]));
 });
-
-function dayKey(unix: number): string {
-  const d = new Date(unix * 1000);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
 function dayLabel(key: string): string {
-  const now = new Date();
-  const today = dayKey(now.getTime() / 1000);
-  const yesterday = dayKey(now.getTime() / 1000 - 86400);
-  if (key === today) return "Today";
-  if (key === yesterday) return "Yesterday";
-  return new Date(`${key}T00:00:00`).toLocaleDateString(undefined, {
+  const date = new Date(`${key}T00:00:00`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (date.getTime() === today.getTime()) return "Today";
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (date.getTime() === yesterday.getTime()) return "Yesterday";
+  return date.toLocaleDateString(undefined, {
     weekday: "long",
     month: "short",
     day: "numeric",
   });
 }
-const grouped = computed(() => {
-  const map = new Map<string, MediaNotification[]>();
-  for (const n of shown.value) {
-    const k = dayKey(n.eventAt);
-    const list = map.get(k);
-    if (list) list.push(n);
-    else map.set(k, [n]);
-  }
-  return [...map.entries()].sort((a, b) => b[0].localeCompare(a[0]));
-});
-
 function exactTime(unix: number): string {
   return new Date(unix * 1000).toLocaleString(undefined, {
     weekday: "short",
@@ -148,65 +183,72 @@ function timeOnly(unix: number): string {
     minute: "2-digit",
   });
 }
-function ago(unix: number): string {
-  const s = Math.max(0, Math.floor(Date.now() / 1000 - unix));
-  if (s < 60) return "just now";
-  const unit = (n: number, word: string) =>
-    `${n} ${word}${n === 1 ? "" : "s"} ago`;
-  if (s < 3600) return unit(Math.floor(s / 60), "minute");
-  if (s < 86400) return unit(Math.floor(s / 3600), "hour");
-  return unit(Math.floor(s / 86400), "day");
-}
 const TYPE_LABEL: Record<string, string> = {
+  game: "Game",
   movie: "Movie",
   tv: "TV show",
   anime: "Anime",
   plugin: "Plugin",
+  system: "Account",
 };
-
-// ---- actions ----
-async function setRead(n: MediaNotification, read: boolean) {
-  const before = n.read;
-  n.read = read;
+function toggleGroup(key: string) {
+  const next = new Set(expandedGroups.value);
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
+  expandedGroups.value = next;
+}
+async function mutate(action: () => Promise<unknown>) {
+  if (pending.value) return;
+  const account = currentUser.value?.id;
+  pending.value = true;
+  error.value = null;
   try {
-    if (read) await markNotificationRead(n.id);
-    else await markNotificationUnread(n.id);
-    refreshMediaNotifications();
+    await action();
+    if (currentUser.value?.id !== account) return;
+    await load();
+    await refreshMediaNotifications();
   } catch (e) {
-    n.read = before;
-    error.value = e instanceof Error ? e.message : "Failed to update.";
+    if (currentUser.value?.id !== account) return;
+    const message =
+      e instanceof Error ? e.message : "Failed to update notification.";
+    // A grouped operation may have succeeded for some members before a failure.
+    await load();
+    await refreshMediaNotifications();
+    error.value = message;
+  } finally {
+    pending.value = false;
   }
+}
+async function setRead(n: MediaNotification, read: boolean) {
+  await mutate(() =>
+    read ? markNotificationRead(n.id) : markNotificationUnread(n.id),
+  );
 }
 async function readAll() {
-  const before = items.value.map((n) => n.read);
-  items.value.forEach((n) => (n.read = true));
-  try {
-    await markAllNotificationsRead();
-    refreshMediaNotifications();
-  } catch (e) {
-    items.value.forEach((n, i) => (n.read = before[i]));
-    error.value = e instanceof Error ? e.message : "Failed to update.";
-  }
+  await mutate(markAllNotificationsRead);
 }
 async function dismiss(n: MediaNotification) {
+  await mutate(() => dismissMediaNotification(n.id));
+}
+async function remove(n: MediaNotification) {
   const ok = await confirm({
-    message: "Remove this notification?",
-    confirmLabel: "Remove",
+    message:
+      "Delete this notification and cancel its unsent deliveries? A delivery already in progress may finish.",
+    confirmLabel: "Delete",
   });
-  if (!ok) return;
-  try {
-    await dismissMediaNotification(n.id);
-    items.value = items.value.filter((x) => x.id !== n.id);
-    refreshMediaNotifications();
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : "Failed to remove.";
-  }
+  if (ok) await mutate(() => deleteMediaNotification(n.id));
+}
+async function groupRead(members: MediaNotification[]) {
+  await mutate(async () => {
+    for (const n of members.filter((n) => !n.read))
+      await markNotificationRead(n.id);
+  });
 }
 async function open(n: MediaNotification) {
   const destination = notificationDestination(n);
   if (!destination) return;
   if (!n.read) await setRead(n, true);
-  router.push(destination);
+  await router.push(destination);
 }
 function toggleOpen(n: MediaNotification) {
   openId.value = openId.value === n.id ? null : n.id;
@@ -220,13 +262,13 @@ function toggleOpen(n: MediaNotification) {
         :options="filterOptions"
         :model-value="filter"
         aria-label="Filter notifications"
-        @update:model-value="filter = $event as Filter"
+        @update:model-value="filter = $event as InboxFilter"
       />
       <template #actions>
         <button
           type="button"
           class="ui-btn ui-btn-secondary"
-          :disabled="!unreadCount"
+          :disabled="!unreadCount || pending"
           @click="readAll"
         >
           Mark All Read
@@ -239,16 +281,48 @@ function toggleOpen(n: MediaNotification) {
         <div>
           <h1>Notifications</h1>
           <div class="sub">
-            {{ unreadCount ? `${unreadCount} unread` : "All caught up" }}
+            {{ unreadCount ? `${unreadCount} unread` : "All caught up" }} ·
+            {{ summary.total }} matching notifications
           </div>
         </div>
       </div>
+      <div class="inbox-tools">
+        <label
+          >Search notifications<input
+            v-model="search"
+            type="search"
+            maxlength="200"
+            placeholder="Search titles or messages"
+        /></label>
+        <label
+          >Source<select v-model="source">
+            <option value="">All sources</option>
+            <option
+              v-for="entry in summary.sources"
+              :key="entry"
+              :value="entry"
+            >
+              {{ entry === "host" ? "Tracking app" : entry }}
+            </option>
+          </select></label
+        >
+        <RouterLink
+          to="/settings?section=notifications"
+          class="ui-btn ui-btn-secondary"
+          >Notification settings</RouterLink
+        >
+      </div>
       <p v-if="error" class="ui-state error">{{ error }}</p>
-      <p v-if="loading" class="ui-state">Loading…</p>
+      <p v-if="loading && !items.length" class="ui-state" role="status">
+        Loading…
+      </p>
 
-      <template v-else>
+      <template v-if="!loading || items.length">
         <section v-if="shownReminders.length" class="plugin-reminders">
-          <h2>Plugin reminders</h2>
+          <h2>Temporary plugin reminders</h2>
+          <p class="sub">
+            These plugin shortcuts are separate from your saved inbox.
+          </p>
           <button
             v-for="reminder in shownReminders"
             :key="`${reminder.pluginId}:${reminder.id}`"
@@ -270,108 +344,266 @@ function toggleOpen(n: MediaNotification) {
             }}
           </p>
           <p class="empty-sub">
-            Episodes, season starts, new seasons and movie releases show up here
-            as they happen, using the exact time the provider lists. Choose
-            which ones you get under Settings, Calendar and Notifications.
+            Releases, game sales, price targets, account alerts and plugin
+            updates appear here. Adjust your filters or notification settings.
           </p>
         </div>
 
         <section v-for="[key, day] in grouped" :key="key" class="day">
           <h2 class="day-heading">{{ dayLabel(key) }}</h2>
           <div class="list">
-            <article
-              v-for="n in day"
-              :key="n.id"
-              class="card"
-              :class="{ unread: !n.read, open: openId === n.id }"
+            <section
+              v-for="cluster in day"
+              :key="cluster.key"
+              class="notification-cluster"
             >
-              <button type="button" class="card-row" @click="toggleOpen(n)">
-                <span
-                  class="poster"
-                  :style="
-                    n.posterUrl
-                      ? { backgroundImage: `url(${n.posterUrl})` }
-                      : {}
-                  "
+              <div v-if="cluster.items.length > 1" class="cluster-heading">
+                <button
+                  type="button"
+                  class="cluster-toggle"
+                  :aria-expanded="expandedGroups.has(cluster.key)"
+                  @click="toggleGroup(cluster.key)"
                 >
-                  <span v-if="!n.posterUrl" class="poster-initial">{{
-                    n.title.slice(0, 1)
+                  <strong>{{ cluster.items[0]!.title }}</strong>
+                  <span>{{
+                    notificationPresentation(cluster.items[0]!.kind).label
                   }}</span>
-                </span>
-                <span class="card-main">
-                  <span class="card-title">{{ n.title }}</span>
-                  <span class="card-body">{{ n.body }}</span>
-                  <span class="card-time"
-                    >{{ timeOnly(n.eventAt) }} · {{ ago(n.eventAt) }}</span
+                  <span
+                    >{{ cluster.items.length }} related updates ·
+                    {{ cluster.items.filter((n) => !n.read).length }}
+                    unread</span
                   >
-                </span>
-                <span
-                  class="badge"
-                  :class="notificationPresentation(n.kind).tone"
-                  >{{ notificationPresentation(n.kind).label }}</span
+                </button>
+                <button
+                  type="button"
+                  class="ui-btn ui-btn-sm ui-btn-secondary"
+                  :disabled="pending || cluster.items.every((n) => n.read)"
+                  @click="groupRead(cluster.items)"
                 >
-                <span v-if="!n.read" class="unread-dot" title="Unread"></span>
-              </button>
-
-              <div v-if="openId === n.id" class="detail">
-                <dl>
-                  <div>
-                    <dt>What happened</dt>
-                    <dd>
-                      {{ notificationPresentation(n.kind).label }}: {{ n.body }}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Title</dt>
-                    <dd>
-                      {{ n.title }} ({{
-                        TYPE_LABEL[n.mediaType] ?? "Notification"
-                      }})
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>
-                      {{
-                        n.kind === "sequel_announced" ? "Noticed" : "Exact time"
-                      }}
-                    </dt>
-                    <dd>{{ exactTime(n.eventAt) }}</dd>
-                  </div>
-                </dl>
-                <div class="detail-actions">
-                  <button
-                    v-if="notificationDestination(n)"
-                    type="button"
-                    class="ui-btn ui-btn-sm ui-btn-primary"
-                    @click="open(n)"
-                  >
-                    Open Title
-                  </button>
-                  <button
-                    type="button"
-                    class="ui-btn ui-btn-sm ui-btn-secondary"
-                    @click="setRead(n, !n.read)"
-                  >
-                    {{ n.read ? "Mark Unread" : "Mark Read" }}
-                  </button>
-                  <button
-                    type="button"
-                    class="ui-btn ui-btn-sm ui-btn-danger-soft"
-                    @click="dismiss(n)"
-                  >
-                    Remove
-                  </button>
-                </div>
+                  Read these updates
+                </button>
               </div>
-            </article>
+              <div
+                v-if="
+                  cluster.items.length === 1 || expandedGroups.has(cluster.key)
+                "
+                class="list"
+              >
+                <article
+                  v-for="n in cluster.items"
+                  :key="n.id"
+                  class="card"
+                  :class="{
+                    unread: !n.read,
+                    open: openId === n.id,
+                    warning: n.severity === 'warning' || n.severity === 'error',
+                  }"
+                >
+                  <button
+                    type="button"
+                    class="card-row"
+                    :aria-expanded="openId === n.id"
+                    :aria-controls="`notice-${n.id}`"
+                    @click="toggleOpen(n)"
+                  >
+                    <span
+                      class="poster"
+                      :style="
+                        n.posterUrl
+                          ? { backgroundImage: `url(${n.posterUrl})` }
+                          : {}
+                      "
+                    >
+                      <span v-if="!n.posterUrl" class="poster-initial">{{
+                        n.title.slice(0, 1)
+                      }}</span>
+                    </span>
+                    <span class="card-main">
+                      <span class="card-title">{{ n.title }}</span>
+                      <span class="card-body">{{ n.body }}</span>
+                      <span class="card-time"
+                        >{{ timeOnly(n.eventAt) }} ·
+                        {{
+                          n.source === "host" ? "Tracking app" : n.source
+                        }}</span
+                      >
+                    </span>
+                    <span
+                      class="badge"
+                      :class="notificationPresentation(n.kind).tone"
+                      >{{ notificationPresentation(n.kind).label }}</span
+                    >
+                    <span
+                      v-if="!n.read"
+                      class="unread-dot"
+                      title="Unread"
+                    ></span>
+                  </button>
+
+                  <div
+                    v-if="openId === n.id"
+                    :id="`notice-${n.id}`"
+                    class="detail"
+                  >
+                    <dl>
+                      <div>
+                        <dt>Source</dt>
+                        <dd>
+                          {{ n.source === "host" ? "Tracking app" : n.source }}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>What happened</dt>
+                        <dd>
+                          {{ notificationPresentation(n.kind).label }}:
+                          {{ n.body }}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Title</dt>
+                        <dd>
+                          {{ n.title }} ({{
+                            TYPE_LABEL[n.mediaType] ?? "Notification"
+                          }})
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>
+                          {{
+                            n.kind === "sequel_announced"
+                              ? "Noticed"
+                              : "Exact time"
+                          }}
+                        </dt>
+                        <dd>{{ exactTime(n.eventAt) }}</dd>
+                      </div>
+                    </dl>
+                    <div class="detail-actions">
+                      <button
+                        v-if="notificationDestination(n)"
+                        type="button"
+                        class="ui-btn ui-btn-sm ui-btn-primary"
+                        @click="open(n)"
+                      >
+                        Open {{ TYPE_LABEL[n.mediaType] ?? "item" }}
+                      </button>
+                      <button
+                        type="button"
+                        class="ui-btn ui-btn-sm ui-btn-secondary"
+                        :disabled="pending"
+                        @click="setRead(n, !n.read)"
+                      >
+                        {{ n.read ? "Mark Unread" : "Mark Read" }}
+                      </button>
+                      <button
+                        type="button"
+                        class="ui-btn ui-btn-sm ui-btn-secondary"
+                        :disabled="pending"
+                        @click="dismiss(n)"
+                      >
+                        Dismiss
+                      </button>
+                      <button
+                        type="button"
+                        class="ui-btn ui-btn-sm ui-btn-danger-soft"
+                        :disabled="pending"
+                        @click="remove(n)"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              </div>
+            </section>
           </div>
         </section>
+        <div class="inbox-pagination">
+          <span class="sub"
+            >{{ items.length }} of {{ summary.total }} matching
+            notifications</span
+          ><button
+            v-if="summary.nextOffset !== null"
+            type="button"
+            class="ui-btn ui-btn-secondary"
+            :disabled="loading || pending"
+            @click="load(true)"
+          >
+            {{ loading ? "Loading…" : "Load more" }}
+          </button>
+        </div>
       </template>
     </div>
   </main>
 </template>
 
 <style scoped>
+.inbox-tools {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 22px;
+}
+.inbox-tools label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--ui-dim);
+  flex: 1;
+  min-width: 160px;
+}
+.inbox-tools input,
+.inbox-tools select {
+  padding: 9px 12px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-control);
+  color: var(--ui-text);
+  background: var(--ui-surface);
+  font: inherit;
+  width: 100%;
+  box-sizing: border-box;
+}
+.notification-cluster {
+  display: grid;
+  gap: 8px;
+}
+.cluster-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-card);
+  background: var(--ui-surface-2);
+}
+.cluster-toggle {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 4px;
+  text-align: left;
+  color: var(--ui-text);
+  border: 0;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+.cluster-toggle span {
+  font-size: 0.75rem;
+  color: var(--ui-dim);
+}
+.inbox-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 0;
+}
+.card.warning {
+  border-left: 3px solid var(--ui-error);
+}
 .plugin-reminders {
   display: grid;
   gap: 10px;

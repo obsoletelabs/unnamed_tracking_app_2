@@ -14,6 +14,7 @@ from src.database.models.user import User
 from src.database.session import get_db
 from src.features.notification_destinations import resolve_destinations
 from src.features.notification_providers.registry import get_notification_providers
+from src.features.notification_settings import routing_settings
 
 _NOTIFICATION_DB = Depends(get_db)
 _NOTIFICATION_USER = Depends(get_current_user)
@@ -23,6 +24,14 @@ router = APIRouter(prefix="/api/settings/notification-providers", tags=["setting
 
 class ProviderUpdate(BaseModel):
     enabled: bool
+
+
+@router.get("/destinations")
+async def list_notification_destinations(
+    db: AsyncSession = _NOTIFICATION_DB,
+    current_user: User = _NOTIFICATION_USER,
+) -> dict:
+    return await routing_settings(db, current_user.id)
 
 
 async def _setting(db: AsyncSession, user_id, provider_id: str) -> NotificationProviderSetting:

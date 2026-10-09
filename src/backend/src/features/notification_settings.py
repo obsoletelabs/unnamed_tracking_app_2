@@ -1,0 +1,157 @@
+"""Owner-only routing metadata; endpoint addresses and configuration remain host-owned."""
+
+from typing import Any
+from uuid import UUID
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.database.models.notification import Notification
+from src.database.models.notification_destination import NotificationDestination
+from src.database.models.notification_provider_setting import NotificationProviderSetting
+from src.database.models.plugin_notification_provider import PluginNotificationProviderRegistration
+from src.features.notification_controller import EVENT_TYPES
+from src.features.notification_destinations import resolve_destinations
+from src.features.notification_policy import (
+    INBOX_PROVIDER,
+    MEDIA_KINDS,
+    Trust,
+    effective_trust,
+    select_projection,
+)
+
+_TYPE_LABELS = {
+    "episode_aired": ("New episodes", "An episode of a title you follow has aired."),
+    "season_started": ("New seasons", "A new season has started airing."),
+    "sequel_announced": ("Sequel announcements", "A sequel to a completed title was announced."),
+    "movie_released": ("Movie releases", "A followed movie has been released."),
+    "game_released": ("Game releases", "Known releases for wishlist, backlog and on-hold games."),
+    "game_sale": ("Game sales", "Sale observations from connected integrations."),
+    "game_price_hit": ("Price targets", "A live game price crosses your chosen target."),
+    "session_anomaly": ("Security alerts", "Unusual sign-in locations; secure destinations only."),
+    "plugin_update": ("Plugin updates", "Updates to installed plugins."),
+    "plugin": ("Plugin notifications", "Notices from permitted plugin sources."),
+}
+
+
+def _eligible_types(destination: NotificationDestination) -> list[str]:
+    # Test disclosure eligibility independently of the user's on/off choices.
+    # The real route is still rechecked at creation and immediately before I/O.
+    candidate = NotificationDestination(
+        id=destination.id,
+        user_id=destination.user_id,
+        provider_id=destination.provider_id,
+        kind=destination.kind,
+        channel_context=destination.channel_context,
+        privacy=destination.privacy,
+        revision=destination.revision,
+        verified_revision=destination.verified_revision,
+        verification_method=destination.verification_method,
+        verification_revoked_at=destination.verification_revoked_at,
+        installation_id=destination.installation_id,
+        recovery_allowed=destination.recovery_allowed,
+        media_consent_revision=destination.media_consent_revision,
+        media_consent_at=destination.media_consent_at,
+        active=True,
+        enabled=True,
+    )
+    eligible = []
+    for kind, event_type in EVENT_TYPES.items():
+        security = kind == "session_anomaly"
+        notice = Notification(
+            user_id=destination.user_id,
+            kind=kind,
+            event_type=event_type,
+            required_trust=int(Trust.SECURE if security else Trust.PRIVATE),
+            purpose="security" if security else "standard",
+            deleted_at=None,
+            public_title="Release announcement" if kind in MEDIA_KINDS else None,
+            public_body="Released" if kind in MEDIA_KINDS else None,
+        )
+        if select_projection(notice, candidate, {}):
+            eligible.append(event_type)
+    return eligible
+
+
+async def routing_settings(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
+    """Include inactive owner choices without exposing secrets or performing runtime I/O."""
+    await resolve_destinations(db, user_id)
+    destinations = list(
+        await db.scalars(
+            select(NotificationDestination)
+            .where(NotificationDestination.user_id == user_id)
+            .order_by(NotificationDestination.created_at, NotificationDestination.id)
+        )
+    )
+    registrations = {
+        row.provider_id: row
+        for row in await db.scalars(select(PluginNotificationProviderRegistration))
+    }
+    settings = {
+        row.provider_id: row.enabled
+        for row in await db.scalars(
+            select(NotificationProviderSetting).where(
+                NotificationProviderSetting.user_id == user_id
+            )
+        )
+    }
+    provider_ids = {row.provider_id for row in destinations} | {
+        row.provider_id for row in registrations.values() if row.revoked_at is None
+    }
+    providers = []
+    for provider_id in sorted(provider_ids):
+        registration = registrations.get(provider_id)
+        inbox = provider_id == INBOX_PROVIDER
+        providers.append(
+            {
+                "id": provider_id,
+                "name": "In-app inbox"
+                if inbox
+                else (registration.name if registration else provider_id),
+                "enabled": True if inbox else settings.get(provider_id, False),
+                "available": inbox or bool(registration and registration.revoked_at is None),
+                "configuration_scope": "internal" if inbox else "server",
+                # Existing inbox and legacy webhook adapters have no critical transport.
+                "critical_supported": False,
+            }
+        )
+    by_provider = {provider["id"]: provider for provider in providers}
+    result = []
+    for destination in destinations:
+        provider = by_provider[destination.provider_id]
+        registration = registrations.get(destination.provider_id)
+        installation_matches = destination.installation_id is None or bool(
+            registration and destination.installation_id == registration.installation_id
+        )
+        result.append(
+            {
+                "id": str(destination.id),
+                "provider_id": destination.provider_id,
+                "provider_name": provider["name"],
+                "kind": destination.kind,
+                "context": destination.channel_context,
+                "trust": effective_trust(destination).name,
+                "active": destination.active,
+                "enabled": destination.enabled,
+                "available": provider["available"] and installation_matches,
+                "provider_enabled": provider["enabled"],
+                "critical_supported": False,
+                "eligible_types": _eligible_types(destination),
+                "shared_configuration": destination.kind == "legacy_webhook",
+            }
+        )
+    await db.commit()
+    return {
+        "providers": providers,
+        "destinations": result,
+        "types": [
+            {
+                "event_type": event_type,
+                "preference_key": f"notify_{kind}",
+                "label": _TYPE_LABELS[kind][0],
+                "description": _TYPE_LABELS[kind][1],
+                "required_trust": "SECURE" if kind == "session_anomaly" else "PRIVATE",
+            }
+            for kind, event_type in EVENT_TYPES.items()
+        ],
+    }

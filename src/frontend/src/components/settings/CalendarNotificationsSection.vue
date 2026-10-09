@@ -2,9 +2,10 @@
 // Calendar and notification preferences. These are stored on the server
 // (not in this browser), so they follow you between devices, and each
 // change saves as soon as it is made.
-import { ref, onMounted } from "vue";
+import { ref, computed, onMounted } from "vue";
 import SegmentedControl from "./SegmentedControl.vue";
 import ToggleButton from "./ToggleButton.vue";
+import NotificationRoutingSection from "./NotificationRoutingSection.vue";
 import {
   DEFAULT_PREFERENCES,
   fetchPreferences,
@@ -12,15 +13,20 @@ import {
 } from "../../services/preferences";
 import type { Preferences } from "../../services/preferences";
 import { preferences as sharedPreferences } from "../../state/preferences";
+import { fetchInboxRetentionPolicy } from "../../services/notifications";
+import type { InboxRetentionPolicy } from "../../services/notifications";
 
 const prefs = ref<Preferences>({ ...DEFAULT_PREFERENCES });
 const loaded = ref(false);
 const error = ref<string | null>(null);
 const savedNote = ref("");
+const retention = ref<InboxRetentionPolicy | null>(null);
 
 onMounted(async () => {
   try {
     prefs.value = await fetchPreferences();
+    if (props.part === "notifications")
+      retention.value = await fetchInboxRetentionPolicy();
   } catch (e) {
     error.value = e instanceof Error ? e.message : "Failed to load settings.";
   } finally {
@@ -37,6 +43,8 @@ async function change(changes: Partial<Preferences>) {
     if (latest) {
       prefs.value = saved;
       sharedPreferences.value = saved;
+      if (props.part === "notifications")
+        retention.value = await fetchInboxRetentionPolicy();
     }
     savedNote.value = "Saved";
     setTimeout(() => (savedNote.value = ""), 1500);
@@ -83,13 +91,38 @@ const viewOptions = [
   { value: "week", label: "Week" },
   { value: "agenda", label: "Agenda" },
 ];
-const retentionOptions = [
+const durationOptions = [
   { value: "7", label: "7 days" },
   { value: "14", label: "14 days" },
   { value: "30", label: "30 days" },
   { value: "90", label: "90 days" },
-  { value: "0", label: "Never" },
+  { value: "180", label: "6 months" },
+  { value: "365", label: "1 year" },
+  { value: "0", label: "Unlimited" },
 ];
+const retentionOptions = computed(() => [
+  { value: "inherit", label: "Server default" },
+  ...durationOptions.filter(
+    (option) =>
+      !retention.value?.maximum_days ||
+      (Number(option.value) > 0 &&
+        Number(option.value) <= retention.value.maximum_days) ||
+      (!prefs.value.notification_retention_inherit &&
+        Number(option.value) === prefs.value.notification_retention_days),
+  ),
+]);
+function chooseRetention(value: string) {
+  void change(
+    value === "inherit"
+      ? { notification_retention_inherit: true }
+      : {
+          notification_retention_inherit: false,
+          notification_retention_days: Number(
+            value,
+          ) as Preferences["notification_retention_days"],
+        },
+  );
+}
 const weekOptions = [
   { value: "0", label: "Sunday" },
   { value: "1", label: "Monday" },
@@ -206,19 +239,43 @@ const props = withDefaults(
         show in the bell at the top of every page.
       </p>
       <div class="field">
-        <span>Clear notifications after</span>
+        <span>Keep inbox history</span>
         <SegmentedControl
-          :model-value="String(prefs.notification_retention_days)"
-          :options="retentionOptions"
-          @update:model-value="
-            change({
-              notification_retention_days: Number(
-                $event,
-              ) as Preferences['notification_retention_days'],
-            })
+          :model-value="
+            prefs.notification_retention_inherit
+              ? 'inherit'
+              : String(prefs.notification_retention_days)
           "
+          :options="retentionOptions"
+          @update:model-value="chooseRetention"
         />
       </div>
+      <p v-if="retention" class="section-hint" role="status">
+        Your inbox keeps
+        {{
+          retention.effective_days
+            ? `${retention.effective_days} days`
+            : "unlimited"
+        }}
+        of history. Server default: {{ retention.default_days || "unlimited"
+        }}{{ retention.default_days ? " days" : "" }}.<template
+          v-if="retention.maximum_days"
+        >
+          Server maximum: {{ retention.maximum_days }} days.</template
+        ><strong v-if="retention.limited">
+          Your saved choice is limited by the server maximum; it has not been
+          overwritten.</strong
+        >
+      </p>
+      <p class="section-hint">
+        Dismiss hides a notice from the inbox. Delete also cancels unsent
+        deliveries. Browser notifications are separate from this saved history.
+      </p>
+      <NotificationRoutingSection
+        :prefs="prefs"
+        :loaded="loaded"
+        @change="change"
+      />
       <h4 class="scope-title">Notify me about titles that are</h4>
       <ToggleButton
         v-for="row in NOTIFY_STATUS_ROWS"
@@ -260,43 +317,6 @@ const props = withDefaults(
         notices are about titles you finished, so they follow the kinds above
         and their own switches below, not this list.
       </p>
-      <h4 class="scope-title">What to notify me about</h4>
-      <ToggleButton
-        :model-value="prefs.notify_episode_aired"
-        label="Episode aired"
-        :disabled="!loaded"
-        @update:model-value="change({ notify_episode_aired: $event })"
-      >
-        <strong>Episode aired</strong>: a new episode of something you are
-        watching, planning to watch or have on hold
-      </ToggleButton>
-      <ToggleButton
-        :model-value="prefs.notify_season_started"
-        label="Season started airing"
-        :disabled="!loaded"
-        @update:model-value="change({ notify_season_started: $event })"
-      >
-        <strong>Season started airing</strong>: the first episode of a season
-        aired
-      </ToggleButton>
-      <ToggleButton
-        :model-value="prefs.notify_sequel_announced"
-        label="New season listed"
-        :disabled="!loaded"
-        @update:model-value="change({ notify_sequel_announced: $event })"
-      >
-        <strong>New season listed</strong>: a sequel appears for an anime you
-        completed
-      </ToggleButton>
-      <ToggleButton
-        :model-value="prefs.notify_movie_released"
-        label="Movie released"
-        :disabled="!loaded"
-        @update:model-value="change({ notify_movie_released: $event })"
-      >
-        <strong>Movie released</strong>: a movie you were waiting on has come
-        out
-      </ToggleButton>
     </template>
   </section>
 </template>

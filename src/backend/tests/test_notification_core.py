@@ -10,7 +10,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import delete, func, select
 
-from src.core.preferences import DEFAULTS, save_preferences
+from src.core.preferences import DEFAULTS, save_preferences, validate_preference
 from src.database.models.game import Game, GameStatus
 from src.database.models.notification import Notification
 from src.database.models.notification_delivery import NotificationDelivery
@@ -28,6 +28,7 @@ from src.features.notification_policy import (
     INBOX_PROVIDER,
     Trust,
     effective_trust,
+    route_choice,
     select_projection,
 )
 from src.features.notification_providers.base import DeliveryResult, ProviderDestination
@@ -230,6 +231,82 @@ async def test_user_opt_out_and_destination_routing_preferences(account):
         second = await accept(db, account)
         assert (await db.get(Notification, identity)).inbox_visible
         assert not (await db.get(Notification, second)).inbox_visible
+
+
+@pytest.mark.parametrize("urgency", ["normal", "critical"])
+def test_route_urgency_cannot_weaken_security_or_public_disclosure(urgency):
+    owner = uuid4()
+    public = endpoint(owner, Trust.PUBLIC)
+    private = endpoint(owner, Trust.PRIVATE)
+    secure = endpoint(owner, Trust.SECURE)
+    notification = notice(owner, Trust.SECURE)
+    choices = {
+        "notification_routes": {
+            notification.event_type: {
+                str(target.id): {"enabled": True, "urgency": urgency}
+                for target in (public, private, secure)
+            }
+        }
+    }
+    assert select_projection(notification, public, choices) is None
+    assert select_projection(notification, private, choices) is None
+    assert select_projection(notification, secure, choices) == "canonical"
+    assert route_choice(notification.event_type, str(secure.id), choices)["urgency"] == urgency
+    assert route_choice("unconfigured", str(secure.id), choices)["urgency"] == "normal"
+
+
+@pytest.mark.parametrize(
+    "choice",
+    [
+        {"enabled": True, "urgency": "critical", "trust": "SECURE"},
+        {"enabled": True, "urgency": "urgent"},
+        {"enabled": "yes", "urgency": "normal"},
+        {"enabled": True},
+    ],
+)
+def test_routing_preferences_reject_unbounded_or_security_assertions(choice):
+    with pytest.raises(ValueError):
+        validate_preference(
+            "notification_routes", {"security.session.anomaly": {str(uuid4()): choice}}
+        )
+
+
+async def test_per_type_route_opt_out_is_rechecked_before_dispatch(account, monkeypatch):
+    transport = Transport()
+    monkeypatch.setattr(
+        "src.features.notification_providers.delivery.get_notification_providers",
+        AsyncMock(return_value={"a": transport}),
+    )
+    async with SessionLocal() as db:
+        identity = await queued_work(db, account, ["a"])
+        work = await db.scalar(
+            select(NotificationDelivery).where(
+                NotificationDelivery.notification_id == identity,
+                NotificationDelivery.provider_id == "a",
+            )
+        )
+        notification = await db.get(Notification, identity)
+        await save_preferences(
+            db,
+            account,
+            {
+                "notification_routes": {
+                    notification.event_type: {
+                        str(work.destination_id): {
+                            "enabled": False,
+                            "urgency": "critical",
+                        }
+                    }
+                }
+            },
+        )
+        claim = await _claim(db)
+        assert claim[0] == work.id
+        assert not await _dispatch(db, *claim)
+        await db.refresh(work)
+        assert work.status == "suppressed" and work.attempts == 0
+        assert not transport.messages
+        assert (await db.get(Notification, identity)).inbox_visible
 
 
 async def test_shared_configuration_change_invalidates_revision_proof_consent_and_work(account):
