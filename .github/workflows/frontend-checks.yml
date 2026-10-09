@@ -64,3 +64,14 @@ jobs:
       - name: Tests
         working-directory: src/frontend
         run: npm run test
+
+      - name: Report to Actions Dashboard
+        if: always() && env.PUSH_TO_DISPLAY_API_KEY != ''
+        uses: pushtodisplay/actions-dashboard@ce26532a36af079259315587543935064f22e6b4
+        env:
+          PUSH_TO_DISPLAY_API_KEY: ${{ secrets.PUSH_TO_DISPLAY_API_KEY }}
+          PUSH_TO_DISPLAY_BOARD: ${{ vars.PUSH_TO_DISPLAY_BOARD }}
+        with:
+          steps-json: ${{ toJSON(steps) }}
+          panel-id: 1
+          label: Frontend CI
