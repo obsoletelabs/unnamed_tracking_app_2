@@ -81,6 +81,14 @@ const groups = [
     ],
   },
 ];
+function entryActive(group: (typeof groups)[number], path: string) {
+  return (
+    isActive(path) &&
+    !group.entries.some(
+      (entry) => entry.path.length > path.length && isActive(entry.path),
+    )
+  );
+}
 const expandedGroups = ref(
   new Set(
     groups
@@ -428,8 +436,10 @@ onUnmounted(() => {
                 :key="entry.path"
                 :to="entry.path"
                 class="nav-item"
-                :class="{ active: isActive(entry.path) }"
-                :aria-current="isActive(entry.path) ? 'page' : undefined"
+                :class="{ active: entryActive(group, entry.path) }"
+                :aria-current="
+                  entryActive(group, entry.path) ? 'page' : undefined
+                "
                 :title="navigationTooltip(entry.label, entry.path)"
                 :aria-keyshortcuts="navigationShortcutForPath(entry.path)"
                 @click="close"
