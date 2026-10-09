@@ -12,7 +12,7 @@ Temporary plugin reminders are listed separately. They are plugin shortcuts, not
 
 ## Preferences and history
 
-Open **Settings → Notifications** or use the centre's **Notification settings** link. Existing media controls remain available, alongside switches for game releases, game sales, price targets and unusual sign-in alerts. Game sales and targets require a connected producer that supplies live price observations; a game's recorded purchase price is not a feed.
+Open **Settings → Account → Notifications** or use the centre's **Notification settings** link. Configured providers come first, followed by notification types and inbox history. Calendar preferences have their own page. Followed-media filters live inside the relevant type's expansion, with one type switch and one routing configuration. Game release and unusual sign-in alerts have working host producers. Game sale/price-target controls appear only after a connected source emits live observations; a game's recorded purchase price is not a feed.
 
 Each notification type has an on/off switch and a **Providers** expansion. Inside it, choose individual destinations and **Normal** or **Critical** delivery urgency. Turning off a type keeps these choices. A destination that cannot satisfy the type's trust or server policy is visibly unavailable. Sign-in alerts still require SECURE destinations when delivered as Normal.
 

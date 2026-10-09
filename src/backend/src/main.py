@@ -38,6 +38,7 @@ from src.api.routes import (
     movies,
     notification_providers,
     notification_unsubscribe,
+    notification_verification,
     notifications,
     preferences,
     session_manager,
@@ -67,6 +68,7 @@ from src.features.backup.scheduler import run_backup_loop
 from src.features.jobs import run_jobs_loop
 from src.features.metadata.core import CORE_PROVIDERS, core_registration
 from src.features.metadata.health import monitor as provider_health_monitor
+from src.features.notification_logging import protect_notification_link_logs
 from src.features.trash.sweep import run_sweep_loop
 from src.helpers import image_prefetch
 from src.plugin_api.backend_routes import reserve_host_routes
@@ -145,6 +147,8 @@ app.include_router(media_lists.router)
 app.include_router(notifications.router)
 app.include_router(notification_providers.router)
 app.include_router(notification_unsubscribe.router)
+app.include_router(notification_verification.router)
+protect_notification_link_logs()
 app.include_router(session_manager.router)
 app.include_router(media_stats.router)
 app.include_router(preferences.router)

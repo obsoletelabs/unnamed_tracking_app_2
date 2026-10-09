@@ -7,6 +7,7 @@ import ServerIntegrationsSection from "./ServerIntegrationsSection.vue";
 import AppSettingsSection from "./AppSettingsSection.vue";
 import LimitsSection from "./LimitsSection.vue";
 import DevToolsSection from "./DevToolsSection.vue";
+import AdminNotificationSettings from "./AdminNotificationSettings.vue";
 
 const props = defineProps<{ initialTab?: string }>();
 
@@ -17,6 +18,7 @@ const TABS = [
   { id: "sso", label: "Single sign-on" },
   { id: "integrations", label: "Integrations" },
   { id: "app", label: "Application" },
+  { id: "notifications", label: "Notifications" },
   { id: "limits", label: "Limits" },
   { id: "dev-tools", label: "Dev Tools" },
 ];
@@ -32,6 +34,7 @@ const tab = ref(
     <OidcSettingsSection v-else-if="tab === 'sso'" />
     <ServerIntegrationsSection v-else-if="tab === 'integrations'" />
     <AppSettingsSection v-else-if="tab === 'app'" />
+    <AdminNotificationSettings v-else-if="tab === 'notifications'" />
     <LimitsSection v-else-if="tab === 'limits'" />
     <DevToolsSection v-else />
   </div>

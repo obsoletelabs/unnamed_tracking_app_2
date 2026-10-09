@@ -6,11 +6,45 @@ import {
   updateEmailDestination,
   revokeEmailVerification,
   removeEmailDestination,
+  sendSmtpTest,
+  sendDestinationTest,
 } from "../services/notifications";
 
 afterEach(() => vi.unstubAllGlobals());
 
 describe("email destination contract", () => {
+  it("tests SMTP through the admin boundary and personal providers through owned destinations", async () => {
+    const fetch = vi
+      .fn()
+      .mockImplementation(
+        async (url: string) =>
+          new Response(
+            url.endsWith("smtp/test")
+              ? '{"sent":true}'
+              : '{"status":"pending"}',
+          ),
+      );
+    vi.stubGlobal("fetch", fetch);
+    await sendSmtpTest("account@example.test");
+    expect(fetch.mock.calls[0]).toEqual([
+      "/api/settings/notification-providers/smtp/test",
+      expect.objectContaining({
+        credentials: "include",
+        method: "POST",
+        body: '{"address":"account@example.test"}',
+      }),
+    ]);
+    expect(await sendDestinationTest("owned")).toEqual({ status: "pending" });
+    expect(fetch.mock.calls[1][0]).toBe(
+      "/api/settings/notification-providers/destinations/owned/test",
+    );
+    fetch.mockResolvedValue(
+      new Response('{"sent":false,"error":"smtp_rejected"}'),
+    );
+    await expect(sendSmtpTest("account@example.test")).rejects.toThrow(
+      "smtp_rejected",
+    );
+  });
   it("separates enrollment, proof, recovery consent and removal with authenticated requests", async () => {
     const fetch = vi
       .fn()

@@ -30,7 +30,9 @@ import DevToolsSection from "../components/settings/DevToolsSection.vue";
 import TasksSection from "../components/settings/TasksSection.vue";
 import StatsSection from "../components/settings/StatsSection.vue";
 import ExportImportSection from "../components/settings/ExportImportSection.vue";
-import CalendarNotificationsSection from "../components/settings/CalendarNotificationsSection.vue";
+import CalendarSettingsSection from "../components/settings/CalendarSettingsSection.vue";
+import NotificationSettingsSection from "../components/settings/NotificationSettingsSection.vue";
+import AdminNotificationSettings from "../components/settings/AdminNotificationSettings.vue";
 import KeyboardShortcutsSection from "../components/settings/KeyboardShortcutsSection.vue";
 import ConnectionsSection from "../components/settings/ConnectionsSection.vue";
 import AniListImportSection from "../components/settings/AniListImportSection.vue";
@@ -71,6 +73,7 @@ const coreSectionIds = new Set([
   "metadata",
   "connections",
   "notifications",
+  "admin-notifications",
   "calendar",
   "shortcuts",
   "profile",
@@ -180,6 +183,7 @@ const groups = computed<SettingsGroup[]>(() => {
       sections: [
         { id: "profile", label: "Profile" },
         { id: "connections", label: "Connections" },
+        { id: "notifications", label: "Notifications" },
         { id: "api-keys", label: "API Keys" },
         { id: "sessions", label: "Sessions" },
       ],
@@ -191,7 +195,6 @@ const groups = computed<SettingsGroup[]>(() => {
         { id: "appearance", label: "Appearance & interface" },
         { id: "app-installation", label: "App installation" },
         { id: "game-page", label: "Game page" },
-        { id: "notifications", label: "Notifications" },
         { id: "calendar", label: "Calendar" },
         { id: "shortcuts", label: "Keyboard Shortcuts" },
       ],
@@ -207,25 +210,40 @@ const groups = computed<SettingsGroup[]>(() => {
     },
   ];
   if (currentUser.value?.is_admin)
-    result.push({
-      label: "Server management",
-      area: "administration",
-      sections: [
-        { id: "users", label: "Users" },
-        { id: "admin-sessions", label: "Session Manager" },
-        { id: "oidc", label: "Single sign-on" },
-        { id: "password-policy", label: "Password policy" },
-        { id: "server-integrations", label: "Server integrations" },
-        { id: "app-settings", label: "Application" },
-        { id: "limits", label: "Limits" },
-        { id: "dev-tools", label: "Developer tools" },
-        { id: "branding", label: "App branding" },
-        { id: "plugins", label: "Plugins" },
-        { id: "themes", label: "Themes" },
-        { id: "tasks", label: "Background tasks" },
-        { id: "stats", label: "Storage & usage" },
-      ],
-    });
+    result.push(
+      {
+        label: "Users & access",
+        area: "administration",
+        sections: [
+          { id: "users", label: "Users" },
+          { id: "admin-sessions", label: "Session Manager" },
+          { id: "oidc", label: "Single sign-on" },
+          { id: "password-policy", label: "Password policy" },
+        ],
+      },
+      {
+        label: "Application & extensions",
+        area: "administration",
+        sections: [
+          { id: "app-settings", label: "Application" },
+          { id: "branding", label: "App branding" },
+          { id: "plugins", label: "Plugins" },
+          { id: "themes", label: "Themes" },
+        ],
+      },
+      {
+        label: "Operations",
+        area: "administration",
+        sections: [
+          { id: "admin-notifications", label: "Notifications" },
+          { id: "server-integrations", label: "Server integrations" },
+          { id: "limits", label: "Upload limits" },
+          { id: "tasks", label: "Background tasks" },
+          { id: "stats", label: "Storage & usage" },
+          { id: "dev-tools", label: "Developer tools" },
+        ],
+      },
+    );
   else
     result.push({
       label: "Information",
@@ -294,6 +312,8 @@ function resolveSection(id: string | undefined): {
       users: "users",
       sso: "oidc",
       integrations: "server-integrations",
+      app: "app-settings",
+      notifications: "admin-notifications",
       limits: "limits",
       "dev-tools": "dev-tools",
     };
@@ -502,14 +522,15 @@ function backToArea() {
           <BrandingSection
             v-else-if="activeSection === 'branding' && currentUser?.is_admin"
           />
-          <CalendarNotificationsSection
+          <NotificationSettingsSection
             v-else-if="activeSection === 'notifications'"
-            part="notifications"
           />
-          <CalendarNotificationsSection
-            v-else-if="activeSection === 'calendar'"
-            part="calendar"
+          <AdminNotificationSettings
+            v-else-if="
+              activeSection === 'admin-notifications' && currentUser?.is_admin
+            "
           />
+          <CalendarSettingsSection v-else-if="activeSection === 'calendar'" />
           <KeyboardShortcutsSection v-else-if="activeSection === 'shortcuts'" />
           <ConnectionsSection
             v-else-if="activeSection === 'connections'"

@@ -2,11 +2,11 @@
 
 The authenticated in-app inbox and external deliveries are separate destinations. Marking a notification read or dismissing it changes the inbox; it does not cancel external work. Deleting it cancels unsent work and removes its stored content. A delivery already in progress may finish.
 
-External providers are optional. Plugin providers also need an active installation and permission grant. **Settings → Notifications → Your providers** controls account participation and personal destinations; each notification type expands into destination and Normal/Critical choices.
+External providers are optional. Plugin providers also need an active installation and permission grant. **Settings → Account → Notifications** starts with your configured providers and personal destinations, followed by notification types and Normal/Critical routing choices. Calendar settings are separate. Only implemented sources appear; price observation controls appear after a connected source emits an observation for your account.
 
 ## Built-in email
 
-Administrators configure SMTP under **Settings → Server → Integrations → Email delivery** or through the existing ENV handler. SMTP is built into the host. Password reset and invitation features remain plugins; adding SMTP does not install those features.
+Administrators configure SMTP under **Settings → Administration → Notifications → Email delivery** or through the existing ENV handler. SMTP is built into the host. Password reset and invitation features remain plugins; adding SMTP does not install those features.
 
 | ENV name | Meaning |
 | --- | --- |
@@ -21,7 +21,13 @@ ENV values take precedence and cannot be replaced from the UI. STARTTLS and impl
 
 The port follows transport security until you edit it. A saved custom port stays fixed when security changes. **Use default port**, then save, restores automatic selection. Existing explicitly stored ports are preserved as custom values. ENV-managed ports remain locked.
 
-Add one or more personal email addresses under **Your providers → Email (SMTP)**. Addresses start PRIVATE and may receive ordinary notifications. Use **Send verification code**, then enter the eight-digit code from that email. Codes expire in ten minutes, allow five incorrect attempts and are single-use. Resends are limited to one per minute per destination and ten requests per hour per user. Codes travel only to the selected email, never to the in-app inbox or another destination.
+Add one or more personal email addresses under **Your providers → Email (SMTP)**. The initial address is your configured app email; you can enter another address. Prefilling an address does not enroll or verify it. Addresses start PRIVATE and may receive ordinary notifications. Request a verification email, then either open **Verify this email** and confirm, or enter its eight-digit code in settings. Links and codes share the same ten-minute, single-use challenge. Opening the link does not consume it, sign you into the app, or enable recovery routing. An address change, revoked challenge or successful code/link invalidates the other method. Codes allow five incorrect attempts. Resends are limited to one per minute per destination and ten requests per hour per user. Proof travels only to the selected email, never to another destination. When no usable app URL exists, code entry remains available.
+
+### Test delivery
+
+Save SMTP settings, then enter a **Test recipient** and click **Send test email**. It defaults to the administrator's configured app email and uses the effective saved/ENV host, transport, sender and credentials. The fixed example contains no user activity or recovery secrets. The result reports SMTP acceptance or a sanitized transport failure; acceptance does not guarantee inbox placement. Test recipients are not enrolled or verified, and tests omit unsubscribe headers.
+
+Personal destinations have **Send test notification** controls. These queue the same generic example through the central dispatcher and target only that destination. Disabled preferences/providers still prevent delivery; test work does not leak into your other destinations. An inbox test appears in the inbox. Requests are limited to ten per account per hour; attempts, including failed SMTP diagnostics, count toward this limit.
 
 Successful verification makes that exact address revision SECURE until it changes or verification is revoked. **Allow recovery messages** is a separate opt-in for a verified external destination; it does not create a password-reset feature. Editing a label keeps proof. Replacing an address or revoking verification clears proof and recovery eligibility and suppresses pending deliveries. Removing an address also erases its encrypted configuration; retained history and routing choices cannot reclaim it through a new enrollment.
 
@@ -41,13 +47,15 @@ This is confirmation-based header support, not RFC 8058 one-click. `List-Unsubsc
 
 ![Mobile unsubscribe confirmation](../assets/notification-email/unsubscribe-confirmation-mobile.png)
 
-![SMTP port and transport settings](../assets/notification-email/smtp-port-defaults-dark.png)
+![Server notification settings and SMTP diagnostic](../assets/notification-settings/admin-notifications-dark.png)
 
 ![Shared app URL settings](../assets/notification-email/app-url-settings-dark.png)
 
 ![Personal notification URL settings](../assets/notification-email/notification-url-settings-dark.png)
 
-![Verified personal email destination](../assets/notification-email/email-verified-dark.png)
+![Personal providers and verified email](../assets/notification-settings/personal-providers-dark.png)
+
+![Email verification confirmation](../assets/notification-settings/verify-email-mobile.png)
 
 ## Plugin providers
 

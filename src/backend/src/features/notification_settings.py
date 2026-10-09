@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.database.models.notification import Notification
 from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_provider_setting import NotificationProviderSetting
+from src.database.models.notification_receipt import NotificationReceipt
 from src.database.models.plugin_notification_provider import PluginNotificationProviderRegistration
 from src.features.notification_controller import EVENT_TYPES
 from src.features.notification_destinations import resolve_destinations
@@ -99,6 +100,20 @@ async def routing_settings(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
         )
     }
     smtp = await smtp_configuration(db)
+    # Price handlers are integration hooks, not an installed live price source.
+    # Expose their controls only after this recipient has received an observation.
+    observed_types = set(
+        await db.scalars(
+            select(NotificationReceipt.event_type)
+            .where(
+                NotificationReceipt.user_id == user_id,
+                NotificationReceipt.event_type.in_(
+                    ("game.sale.started", "game.price.threshold_hit")
+                ),
+            )
+            .distinct()
+        )
+    )
     provider_ids = (
         {SMTP_PROVIDER}
         | {row.provider_id for row in destinations}
@@ -162,6 +177,7 @@ async def routing_settings(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
                 "required_trust": "SECURE" if kind == "session_anomaly" else "PRIVATE",
             }
             for kind, event_type in EVENT_TYPES.items()
+            if kind not in {"game_sale", "game_price_hit"} or event_type in observed_types
         ],
     }
 

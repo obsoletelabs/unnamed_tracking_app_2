@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.auth import get_current_user
+from src.core.auth import get_current_admin, get_current_user
 from src.core.public_url import normalize_public_url
 from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_provider_setting import NotificationProviderSetting
@@ -28,7 +28,8 @@ from src.features.notification_enrollment import (
 )
 from src.features.notification_providers.registry import get_notification_providers
 from src.features.notification_settings import routing_settings
-from src.features.smtp_configuration import SMTP_PROVIDER
+from src.features.notification_tests import queue_destination_test, test_smtp
+from src.features.smtp_configuration import SMTP_PROVIDER, normalize_email
 
 _NOTIFICATION_DB = Depends(get_db)
 _NOTIFICATION_USER = Depends(get_current_user)
@@ -52,6 +53,16 @@ class EmailUpdate(BaseModel):
     label: str | None = Field(default=None, max_length=80)
     enabled: bool | None = None
     recovery_allowed: bool | None = None
+
+
+class SmtpTestRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    address: str = Field(min_length=3, max_length=254)
+
+    @field_validator("address")
+    @classmethod
+    def validate_address(cls, value: str) -> str:
+        return normalize_email(value)
 
 
 class VerificationConfirm(BaseModel):
@@ -107,6 +118,24 @@ async def _enrollment(db: AsyncSession, operation: Awaitable[_Result]) -> _Resul
     except ValueError as exc:
         await db.rollback()
         raise HTTPException(status_code=400, detail="Enter a valid email destination") from exc
+
+
+@router.post("/smtp/test")
+async def send_smtp_test(
+    payload: SmtpTestRequest,
+    db: AsyncSession = _NOTIFICATION_DB,
+    current_admin: User = Depends(get_current_admin),
+) -> dict:
+    return await _enrollment(db, test_smtp(db, current_admin.id, payload.address))
+
+
+@router.post("/destinations/{destination_id}/test")
+async def send_destination_test(
+    destination_id: UUID,
+    db: AsyncSession = _NOTIFICATION_DB,
+    current_user: User = _NOTIFICATION_USER,
+) -> dict:
+    return await _enrollment(db, queue_destination_test(db, current_user.id, destination_id))
 
 
 @router.post("/email-destinations", status_code=201)

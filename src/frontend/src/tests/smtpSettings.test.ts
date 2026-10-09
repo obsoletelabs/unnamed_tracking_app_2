@@ -1,6 +1,8 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { createRenderer, nextTick, ssrContextKey } from "vue";
 import SmtpSettingsSection from "../components/settings/SmtpSettingsSection.vue";
+import { currentUser } from "../state/auth";
+import { sendSmtpTest } from "../services/notifications";
 import {
   fetchDeploymentSettings,
   updateDeploymentSettings,
@@ -11,6 +13,7 @@ vi.mock("../services/deploymentSettings", () => ({
   fetchDeploymentSettings: vi.fn(),
   updateDeploymentSettings: vi.fn(),
 }));
+vi.mock("../services/notifications", () => ({ sendSmtpTest: vi.fn() }));
 
 // Exercise the real SFC's mounted state and save contract in Vitest's Node runtime.
 // The browser regression separately checks the actual select/input event bindings.
@@ -32,14 +35,24 @@ interface SmtpState {
   editField(key: string): void;
   useDefaultPort(): void;
   save(): Promise<void>;
+  testAddress: string;
+  testResult: string;
+  testError: string;
+  sendTest(): Promise<void>;
 }
 const applications: ReturnType<typeof renderer.createApp>[] = [];
 afterEach(() => {
   applications.splice(0).forEach((app) => app.unmount());
   vi.clearAllMocks();
+  currentUser.value = null;
 });
 function deployment(port: number | null, mode = "starttls", locked = false) {
   return {
+    smtp: {
+      configured: true,
+      tls_mode: mode as "starttls" | "ssl" | "none",
+      secure_transport: true,
+    },
     providers: { smtp_port: port, smtp_tls_mode: mode },
     provider_locks: { smtp_port: locked },
     real_ip: {
@@ -141,4 +154,32 @@ it("does not replace or submit a deployment-owned port", async () => {
 it("loads the selected transport default when no port was saved", async () => {
   const state = await mount(deployment(null, "none"));
   expect(state.values.smtp_port).toBe("25");
+});
+
+it("defaults test mail to the account address and tests saved settings only", async () => {
+  currentUser.value = {
+    id: "owner",
+    username: "owner",
+    email: "account@example.test",
+    is_admin: true,
+    steamgriddb_api_key: null,
+  };
+  vi.mocked(sendSmtpTest).mockResolvedValue();
+  const state = await mount(deployment(null));
+  expect(state.testAddress).toBe("account@example.test");
+  state.values.smtp_tls_mode = "ssl";
+  state.changeTransport();
+  await state.sendTest();
+  expect(sendSmtpTest).not.toHaveBeenCalled();
+  await state.save();
+  state.testAddress = "entered@example.test";
+  await state.sendTest();
+  expect(sendSmtpTest).toHaveBeenCalledWith("entered@example.test");
+  expect(state.testResult).toContain("SMTP accepted");
+  vi.mocked(sendSmtpTest).mockRejectedValue(
+    new Error("SMTP test failed (smtp_rejected)"),
+  );
+  await state.sendTest();
+  expect(state.testResult).toBe("");
+  expect(state.testError).toContain("smtp_rejected");
 });

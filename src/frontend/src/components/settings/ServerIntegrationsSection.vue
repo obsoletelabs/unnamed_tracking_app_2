@@ -7,8 +7,6 @@ import {
   updateDeploymentSettings,
 } from "../../services/deploymentSettings";
 
-import SmtpSettingsSection from "./SmtpSettingsSection.vue";
-
 const fields = [
   ["retroachievements_api_key", "RetroAchievements API key"],
   ["xbox_client_id", "Xbox client ID"],
@@ -88,7 +86,12 @@ async function save() {
     </p>
     <div v-if="loading">Loading…</div>
     <template v-else>
-      <SmtpSettingsSection />
+      <p class="hint">
+        Email delivery and notification providers are configured under
+        <router-link to="/settings?section=admin-notifications"
+          >Notifications</router-link
+        >.
+      </p>
       <MetadataProviderSettings initial-scope="system" />
       <h3>Account integrations</h3>
       <p class="hint">

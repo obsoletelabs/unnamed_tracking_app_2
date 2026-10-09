@@ -48,6 +48,8 @@ const ICON_PATHS: Record<string, string> = {
   logs: "M4 6h16 M4 12h16 M4 18h10",
   notifications:
     "M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9 M13.7 21a2 2 0 0 1-3.4 0",
+  "admin-notifications":
+    "M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9 M13.7 21a2 2 0 0 1-3.4 0",
   calendar: "M3 5h18v16H3z M3 10h18 M8 3v4 M16 3v4",
   shortcuts: "M3 6h18v12H3z M7 10h.01 M11 10h.01 M15 10h.01 M7 14h10",
   connections:
