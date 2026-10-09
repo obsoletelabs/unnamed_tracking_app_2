@@ -1,5 +1,10 @@
 # Metadata providers
 
+While refining or backspacing a query, matching results retain preloaded text
+and release years until fresh nonempty provider values arrive. Selecting a
+retained result keeps those fields in the preview. Artwork comes from the
+current selection; an unselected result does not reuse old artwork.
+
 Unnamed Tracking App includes hardcoded Steam, IGDB, SteamGridDB, TVmaze, AniList, AniZip and OMDb providers. Steam game search, TV and anime search work without installing plugins. Optional provider plugins can extend the suite. Search results arrive progressively; from five query characters, up to five metadata fetches run concurrently from the top down. Each completed fetch starts the next while the query stays unchanged. Text patches update the result's year as they arrive. Artwork starts after selection. Configure the built-in providers through **Settings → Metadata/API**. Install optional providers through Plugin Manager. Provider order and field-saving preferences remain per user.
 
 The final text-only verification searched `toaster`, `Portal 2` and `Half-Life`

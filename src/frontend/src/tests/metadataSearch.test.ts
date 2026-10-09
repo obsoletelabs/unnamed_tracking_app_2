@@ -187,3 +187,89 @@ it("keeps receiving text-only year patches after identity search finishes", asyn
     search.results.value.every((result) => result.assets.length === 0),
   ).toBe(true);
 });
+
+it("retains preloaded text when a changed query returns the same bare identity", async () => {
+  const { query, search, fetch } = setup();
+  await search.search();
+  const retained = {
+    ...candidate("Caramel", "same"),
+    year: 2011,
+    metadata: { year: 2011, description: "Preloaded text", genres: ["Puzzle"] },
+    assets: [
+      {
+        kind: "key_art" as const,
+        url: "https://images.example/cover",
+        width: null,
+        height: null,
+      },
+    ],
+  };
+  add(Stream.instances[0]!, retained, 1);
+  query.value = "cara";
+  await vi.advanceTimersByTimeAsync(250);
+  add(
+    Stream.instances[1]!,
+    {
+      ...candidate("Caramel", "same"),
+      metadata: { description: null, genres: [] },
+    },
+    1,
+    "cara",
+  );
+  expect(search.results.value[0]?.year).toBe(2011);
+  expect(search.results.value[0]?.metadata).toEqual(retained.metadata);
+  expect(search.results.value[0]?.assets).toEqual([]);
+  const original = fetch.getMockImplementation()!;
+  fetch.mockImplementation(async (url, options) =>
+    url.endsWith("/selection")
+      ? new Response(JSON.stringify(candidate("Caramel", "same")))
+      : original(url, options),
+  );
+  const selection = await search.select(search.results.value[0]!);
+  expect(selection.metadata).toEqual(retained.metadata);
+  expect(selection.year).toBe(2011);
+});
+
+it("accepts fresh text and years while retaining fields a partial update omits", async () => {
+  const { search } = setup();
+  await search.search();
+  const stream = Stream.instances[0]!;
+  add(
+    stream,
+    {
+      ...candidate("Caramel", "same"),
+      year: 2011,
+      metadata: { year: 2011, description: "Old text", genres: ["Puzzle"] },
+    },
+    1,
+  );
+  stream.emit({
+    id: 2,
+    session_id: "car",
+    event: "result_updated",
+    result: {
+      ...candidate("Caramel", "same"),
+      year: 2012,
+      metadata: { year: 2012, description: "Fresh text", genres: [] },
+    },
+  });
+  expect(search.results.value[0]?.metadata).toEqual({
+    year: 2012,
+    description: "Fresh text",
+    genres: ["Puzzle"],
+  });
+  expect(search.results.value[0]?.year).toBe(2012);
+});
+
+it("does not carry cached text across conflicting provider identities", async () => {
+  const { search } = setup();
+  await search.search();
+  const stream = Stream.instances[0]!;
+  add(stream, { ...candidate("Caramel", "same"), year: 2011 }, 1);
+  add(
+    stream,
+    { ...candidate("Caramel", "same"), external_id: "different-edition" },
+    2,
+  );
+  expect(search.results.value[0]?.year).toBeNull();
+});
