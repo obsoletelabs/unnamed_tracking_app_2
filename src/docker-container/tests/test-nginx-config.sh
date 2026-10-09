@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 
+python /opt/production-tests/test-database-wait.py
+
 render=/usr/local/bin/render-production-nginx
 base=/etc/nginx/ready.conf
 work=/tmp/nginx-config-tests
