@@ -27,6 +27,44 @@ export function matchesMetadataQuery(
   );
 }
 
+function retainMetadata(
+  previous: MetadataCandidate | undefined,
+  incoming: MetadataCandidate,
+): MetadataCandidate {
+  if (
+    !previous ||
+    previous.provider !== incoming.provider ||
+    previous.external_id !== incoming.external_id ||
+    previous.media_type !== incoming.media_type ||
+    Object.entries(previous.provider_ids).some(
+      ([namespace, identity]) =>
+        incoming.provider_ids[namespace] !== undefined &&
+        incoming.provider_ids[namespace] !== identity,
+    )
+  )
+    return incoming;
+  // Search identities and partial text patches contain empty defaults until
+  // preloading finishes. Preserve known text; fresh nonempty values take priority.
+  const fields = Object.entries(incoming.metadata).filter(
+    ([, value]) =>
+      value !== null &&
+      value !== undefined &&
+      value !== "" &&
+      (!Array.isArray(value) || value.length > 0) &&
+      (typeof value !== "object" || Object.keys(value).length > 0),
+  );
+  const year = incoming.year ?? incoming.metadata.year ?? previous.year;
+  return {
+    ...incoming,
+    year,
+    metadata: {
+      ...previous.metadata,
+      ...Object.fromEntries(fields),
+      ...(year !== null ? { year } : {}),
+    },
+  };
+}
+
 export function useMetadataSearch(
   query: Ref<string>,
   mediaType: MetadataMediaType,
@@ -90,7 +128,11 @@ export function useMetadataSearch(
         lastEventId = event.id;
         if (event.result) {
           const next = new Map(known.value);
-          next.set(event.result.id, event.result);
+          const result = retainMetadata(
+            next.get(event.result.id),
+            event.result,
+          );
+          next.set(result.id, result);
           // Bound retained local candidates while keeping backspacing useful.
           while (next.size > 300) {
             const oldest = next.keys().next().value!;
@@ -99,8 +141,7 @@ export function useMetadataSearch(
           }
           known.value = next;
           origins.set(event.result.id, { sessionId, eventId: event.id });
-          if (selected.value?.id === event.result.id)
-            selected.value = event.result;
+          if (selected.value?.id === result.id) selected.value = result;
         }
         if (event.event === "result_removed" && event.candidate_id) {
           const next = new Map(known.value);
@@ -201,10 +242,11 @@ export function useMetadataSearch(
     // Subscribe before selection so fast enrichment events cannot be missed.
     listen(origin.sessionId, expectedGeneration, origin.eventId);
     try {
-      const result = await selectMetadataCandidate(
+      const response = await selectMetadataCandidate(
         origin.sessionId,
         candidate.id,
       );
+      const result = retainMetadata(known.value.get(response.id), response);
       // The selection response may arrive after a newer enrichment event.
       if (generation === expectedGeneration && lastEventId === origin.eventId)
         selected.value = result;
