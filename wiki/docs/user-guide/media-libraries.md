@@ -5,6 +5,11 @@ on screen and preserves their scroll position. Posters, backdrops and achievemen
 icons are downloaded into the server's cache when saved, with the original URL used
 as a fallback if the download fails. Existing images are cached when first viewed.
 
+After a connection loss, the visible library retries when internet access returns.
+If the tab was hidden, it waits until you return. A failed load also retries when
+you focus the window again. Successful requests clear the previous error and keep
+your selected filters; you do not need to reload the browser page.
+
 Yamtrack CSV imports continue to skip anime entries while their mapping and duplicate
 matching remain unresolved. Movies and TV shows can still be imported.
 

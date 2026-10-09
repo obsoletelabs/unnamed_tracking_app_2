@@ -642,6 +642,7 @@ export function useGameLibrary() {
   // one's result, loadGames is re-triggered from many places (save, delete,
   // collection changes) that can overlap
   let loadGamesToken = 0;
+  const refreshing = ref(false);
 
   function selectFirstForDetailView() {
     if (
@@ -654,6 +655,7 @@ export function useGameLibrary() {
 
   async function loadGames() {
     const token = ++loadGamesToken;
+    refreshing.value = true;
     // A library seen earlier in this visit is drawn at once and refreshed
     // behind it, instead of a "Loading…" screen on every return to the page.
     const seen = games.value.length ? null : peekAllGames();
@@ -693,7 +695,10 @@ export function useGameLibrary() {
       if (token !== loadGamesToken) return;
       error.value = err instanceof Error ? err.message : "Failed to load games";
     } finally {
-      if (token === loadGamesToken) loading.value = false;
+      if (token === loadGamesToken) {
+        loading.value = false;
+        refreshing.value = false;
+      }
     }
   }
 
@@ -707,10 +712,16 @@ export function useGameLibrary() {
     await loadGames();
     await restoreLibraryScroll();
   });
-  useKeptAlive(() => {
-    void loadGames();
-    void restoreLibraryScroll();
-  });
+  useKeptAlive(
+    () => {
+      void loadGames();
+      void restoreLibraryScroll();
+    },
+    {
+      isLoading: () => refreshing.value,
+      hasError: () => error.value !== null,
+    },
+  );
 
   // filters are only remembered while you stay on this page, leaving it
   // (any other route) wipes them so the next visit starts from a clean slate
