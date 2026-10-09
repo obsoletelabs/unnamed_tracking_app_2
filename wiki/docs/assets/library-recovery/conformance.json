@@ -1,0 +1,92 @@
+{
+  "backend": "real",
+  "recovered_without_reload": [
+    {
+      "kind": "game",
+      "width": 390,
+      "signal": "online"
+    },
+    {
+      "kind": "game",
+      "width": 390,
+      "signal": "focus"
+    },
+    {
+      "kind": "movie",
+      "width": 390,
+      "signal": "online"
+    },
+    {
+      "kind": "movie",
+      "width": 390,
+      "signal": "focus"
+    },
+    {
+      "kind": "tv",
+      "width": 390,
+      "signal": "online"
+    },
+    {
+      "kind": "tv",
+      "width": 390,
+      "signal": "focus"
+    },
+    {
+      "kind": "anime",
+      "width": 390,
+      "signal": "online"
+    },
+    {
+      "kind": "anime",
+      "width": 390,
+      "signal": "focus"
+    },
+    {
+      "kind": "game",
+      "width": 1440,
+      "signal": "online"
+    },
+    {
+      "kind": "game",
+      "width": 1440,
+      "signal": "focus"
+    },
+    {
+      "kind": "movie",
+      "width": 1440,
+      "signal": "online"
+    },
+    {
+      "kind": "movie",
+      "width": 1440,
+      "signal": "focus"
+    },
+    {
+      "kind": "tv",
+      "width": 1440,
+      "signal": "online"
+    },
+    {
+      "kind": "tv",
+      "width": 1440,
+      "signal": "focus"
+    },
+    {
+      "kind": "anime",
+      "width": 1440,
+      "signal": "online"
+    },
+    {
+      "kind": "anime",
+      "width": 1440,
+      "signal": "focus"
+    }
+  ],
+  "screenshots": [
+    "unavailable-390.png",
+    "recovered-390.png",
+    "unavailable-1440.png",
+    "recovered-1440.png"
+  ],
+  "host_source_head": "4b03ff4c4b4bc6b961ee55c943cb0dcca6a4bbf9"
+}
