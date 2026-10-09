@@ -96,6 +96,14 @@ jobs:
           python tools/verify_packages.py .validation/dist/*.utp
           python tools/validate_packages.py .validation/dist/*.utp
           python tools/check_host_contract.py --host-root "$GITHUB_WORKSPACE"
+      - name: Cache Playwright browser
+        uses: actions/cache@v5.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('.integration-plugins/package-lock.json') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
       - name: Install browser tooling from the plugin repository
         working-directory: .integration-plugins
         run: |
