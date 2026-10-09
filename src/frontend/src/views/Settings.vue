@@ -24,6 +24,7 @@ import AdminSection from "../components/settings/AdminSection.vue";
 import OidcSettingsSection from "../components/settings/OidcSettingsSection.vue";
 import PasswordPolicySection from "../components/settings/PasswordPolicySection.vue";
 import ServerIntegrationsSection from "../components/settings/ServerIntegrationsSection.vue";
+import AppSettingsSection from "../components/settings/AppSettingsSection.vue";
 import LimitsSection from "../components/settings/LimitsSection.vue";
 import DevToolsSection from "../components/settings/DevToolsSection.vue";
 import TasksSection from "../components/settings/TasksSection.vue";
@@ -93,6 +94,7 @@ const coreSectionIds = new Set([
   "oidc",
   "password-policy",
   "server-integrations",
+  "app-settings",
   "users",
   "plugins",
   "themes",
@@ -214,6 +216,7 @@ const groups = computed<SettingsGroup[]>(() => {
         { id: "oidc", label: "Single sign-on" },
         { id: "password-policy", label: "Password policy" },
         { id: "server-integrations", label: "Server integrations" },
+        { id: "app-settings", label: "Application" },
         { id: "limits", label: "Limits" },
         { id: "dev-tools", label: "Developer tools" },
         { id: "branding", label: "App branding" },
@@ -575,6 +578,11 @@ function backToArea() {
           <PasswordPolicySection
             v-else-if="
               activeSection === 'password-policy' && currentUser?.is_admin
+            "
+          />
+          <AppSettingsSection
+            v-else-if="
+              activeSection === 'app-settings' && currentUser?.is_admin
             "
           />
           <ServerIntegrationsSection

@@ -272,6 +272,7 @@ export interface NotificationRoutingDestination {
   shared_configuration: boolean;
   critical_description?: string | null;
   label?: string | null;
+  notification_url?: string | null;
   masked_address?: string | null;
   recovery_allowed?: boolean;
   revision?: number;
@@ -279,9 +280,26 @@ export interface NotificationRoutingDestination {
 }
 
 export interface NotificationRoutingSettings {
+  default_url?: string;
   types: NotificationRoutingType[];
   providers: NotificationRoutingProvider[];
   destinations: NotificationRoutingDestination[];
+}
+
+export async function setDestinationNotificationUrl(
+  id: string,
+  url: string,
+): Promise<void> {
+  const response = await fetch(
+    `/api/settings/notification-providers/destinations/${encodeURIComponent(id)}/url`,
+    {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ notification_url: url }),
+    },
+  );
+  if (!response.ok) throw await failedRequest(response);
 }
 
 export async function fetchNotificationRouting(): Promise<NotificationRoutingSettings> {

@@ -9,11 +9,11 @@ import type { DeploymentSettings } from "../../services/deploymentSettings";
 
 const fields = [
   ["smtp_host", "SMTP host"],
-  ["smtp_port", "SMTP port"],
   ["smtp_from_address", "Sender email address"],
+  ["smtp_port", "SMTP port"],
+  ["smtp_tls_mode", "Transport security"],
   ["smtp_username", "SMTP username"],
   ["smtp_password", "SMTP password"],
-  ["smtp_tls_mode", "Transport security"],
 ] as const;
 const settings = ref<DeploymentSettings | null>(null);
 const values = reactive<Record<string, string>>({
@@ -24,6 +24,28 @@ const dirty = reactive<Record<string, boolean>>({});
 const error = ref("");
 const saved = ref(false);
 const busy = ref(false);
+const automaticPort = ref(true);
+const defaultPorts: Record<string, string> = {
+  starttls: "587",
+  ssl: "465",
+  none: "25",
+};
+
+function changeTransport() {
+  dirty.smtp_tls_mode = true;
+  if (automaticPort.value && !settings.value?.provider_locks.smtp_port)
+    values.smtp_port =
+      defaultPorts[values.smtp_tls_mode ?? "starttls"] ?? "587";
+}
+function useDefaultPort() {
+  automaticPort.value = true;
+  dirty.smtp_port = true;
+  values.smtp_port = defaultPorts[values.smtp_tls_mode ?? "starttls"] ?? "587";
+}
+function editField(key: string) {
+  dirty[key] = true;
+  if (key === "smtp_port") automaticPort.value = false;
+}
 
 function apply(result: DeploymentSettings) {
   settings.value = result;
@@ -42,6 +64,10 @@ function apply(result: DeploymentSettings) {
   values.smtp_password = "";
   if (result.provider_locks.smtp_tls_mode && result.smtp)
     values.smtp_tls_mode = result.smtp.tls_mode;
+  automaticPort.value = result.providers.smtp_port == null;
+  if (automaticPort.value)
+    values.smtp_port =
+      defaultPorts[values.smtp_tls_mode ?? "starttls"] ?? "587";
   if (result.provider_locks.smtp_port) values.smtp_port = "";
 }
 onMounted(async () => {
@@ -64,7 +90,11 @@ async function save() {
       if (!dirty[key] || settings.value?.provider_locks[key]) continue;
       if (key === "smtp_password" && !values[key]) continue;
       payload[key] =
-        key === "smtp_port" ? Number(values[key]) : values[key] || null;
+        key === "smtp_port"
+          ? automaticPort.value
+            ? null
+            : Number(values[key])
+          : values[key] || null;
     }
     apply(await updateDeploymentSettings(payload));
     saved.value = true;
@@ -131,7 +161,7 @@ async function clearPassword() {
             :aria-label="label"
             v-model="values[key]"
             :disabled="busy || settings.provider_locks[key]"
-            @change="dirty[key] = true"
+            @change="changeTransport"
           >
             <option value="starttls">STARTTLS</option>
             <option value="ssl">Implicit TLS</option>
@@ -155,10 +185,26 @@ async function clearPassword() {
                 ? 'Managed by deployment environment'
                 : ''
             "
-            @input="dirty[key] = true"
+            @input="editField(key)"
           />
         </label>
       </div>
+      <p v-if="!settings.provider_locks.smtp_port" class="hint">
+        {{
+          automaticPort
+            ? "Port follows transport security."
+            : "Custom port is kept when transport security changes."
+        }}
+        Defaults: implicit TLS 465, STARTTLS 587, plaintext 25.
+        <button
+          v-if="!automaticPort"
+          type="button"
+          :disabled="busy"
+          @click="useDefaultPort"
+        >
+          Use default port
+        </button>
+      </p>
       <button
         v-if="
           settings.providers.smtp_password_configured &&
@@ -182,6 +228,12 @@ async function clearPassword() {
       </p>
       <p class="hint">
         Password reset and invite features are plugins; SMTP itself is built in.
+      </p>
+      <p class="hint">
+        Notification links use each user's URL preferences, the shared app URL,
+        or their last-used app URL. Configure the shared URL under Application.
+        Unsubscribe links ask for confirmation; verification and recovery emails
+        do not include them.
       </p>
       <p v-if="saved" class="success" role="status">SMTP settings saved.</p>
       <button :disabled="busy">

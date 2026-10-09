@@ -35,6 +35,7 @@ export interface Preferences {
   notify_session_anomaly: boolean;
   notification_types: Record<string, boolean>;
   notification_destinations: Record<string, boolean>;
+  notification_url: string;
   notification_routes: Record<
     string,
     Record<string, { enabled: boolean; urgency: "normal" | "critical" }>
@@ -92,6 +93,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   notify_session_anomaly: true,
   notification_types: {},
   notification_destinations: {},
+  notification_url: "",
   notification_routes: {},
   notify_statuses: ["watching", "plan", "hold"],
   notify_media_types: ["anime", "tv", "movie"],

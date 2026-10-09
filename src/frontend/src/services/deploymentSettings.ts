@@ -19,6 +19,11 @@ export interface OidcProviderSetting {
   client_secret_configured: boolean;
 }
 export interface DeploymentSettings {
+  app?: {
+    public_app_url: string | null;
+    last_app_url: string | null;
+    url_locked: boolean;
+  };
   smtp?: {
     configured: boolean;
     tls_mode: "starttls" | "ssl" | "none";

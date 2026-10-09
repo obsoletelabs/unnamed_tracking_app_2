@@ -4,6 +4,7 @@ import SettingsTabs from "./SettingsTabs.vue";
 import AdminSection from "./AdminSection.vue";
 import OidcSettingsSection from "./OidcSettingsSection.vue";
 import ServerIntegrationsSection from "./ServerIntegrationsSection.vue";
+import AppSettingsSection from "./AppSettingsSection.vue";
 import LimitsSection from "./LimitsSection.vue";
 import DevToolsSection from "./DevToolsSection.vue";
 
@@ -15,6 +16,7 @@ const TABS = [
   { id: "users", label: "Users" },
   { id: "sso", label: "Single sign-on" },
   { id: "integrations", label: "Integrations" },
+  { id: "app", label: "Application" },
   { id: "limits", label: "Limits" },
   { id: "dev-tools", label: "Dev Tools" },
 ];
@@ -29,6 +31,7 @@ const tab = ref(
     <AdminSection v-if="tab === 'users'" />
     <OidcSettingsSection v-else-if="tab === 'sso'" />
     <ServerIntegrationsSection v-else-if="tab === 'integrations'" />
+    <AppSettingsSection v-else-if="tab === 'app'" />
     <LimitsSection v-else-if="tab === 'limits'" />
     <DevToolsSection v-else />
   </div>

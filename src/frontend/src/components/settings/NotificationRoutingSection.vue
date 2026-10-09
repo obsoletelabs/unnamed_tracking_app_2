@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from "vue";
+import { onMounted, onUnmounted, ref, watch } from "vue";
 import ToggleButton from "./ToggleButton.vue";
 import EmailDestinationsSection from "./EmailDestinationsSection.vue";
+import NotificationLinkSettings from "./NotificationLinkSettings.vue";
 import {
   fetchNotificationRouting,
   setNotificationProviderEnabled,
@@ -35,6 +36,7 @@ async function reload() {
   }
 }
 onMounted(reload);
+watch(() => props.prefs.notification_url, reload);
 
 function typeEnabled(type: NotificationRoutingType) {
   const legacy = props.prefs[type.preference_key as keyof Preferences];
@@ -127,6 +129,13 @@ function destinationName(destination: NotificationRoutingDestination) {
     <p v-if="error" class="error" role="alert">{{ error }}</p>
     <p v-if="!routing && !error" class="hint">Loading providers…</p>
     <template v-if="routing">
+      <NotificationLinkSettings
+        :routing="routing"
+        :prefs="prefs"
+        :loaded="loaded"
+        @change="emit('change', $event)"
+        @changed="reload"
+      />
       <article
         v-for="type in routing.types"
         :key="type.event_type"
