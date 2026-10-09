@@ -1232,6 +1232,105 @@ async def test_action_capability_version_cannot_fall_back_to_version_one(boundar
 
 
 @pytest.mark.asyncio
+async def test_protected_renderer_never_activates_legacy_transport(
+    boundary, broker, monkeypatch, tmp_path
+):
+    registry = broker.runtime.PluginRegistry(tmp_path / "registry", broker.supervisor)
+    registry._transition("audit.plugin", enabled=True, status="running")
+    monkeypatch.setattr(registry, "_item", lambda _package: boundary.plugin)
+    monkeypatch.setattr(broker.supervisor, "running", lambda _id: True)
+    monkeypatch.setattr(
+        registry, "ui", lambda _id: {"actions": [{"id": "layout", "handler": "entry:layout"}]}
+    )
+    monkeypatch.setattr(
+        registry,
+        "package",
+        lambda _id: (
+            tmp_path,
+            {
+                "api_contract_version": "1.1.2",
+                "capabilities": [{"name": "notification_providers.deliver"}],
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        broker.supervisor,
+        "execute",
+        lambda *_args, **_kwargs: b'{"discord":true,"content":"Unrelated private content"}',
+    )
+    sent = []
+    monkeypatch.setattr(registry, "_discord_webhook", lambda *args: sent.append(args))
+    monkeypatch.setenv("PLUGIN_RUNTIME_DISCORD_EGRESS", "true")
+    grant(boundary, "notification_providers.deliver", user_id=boundary.users[0].id)
+    with pytest.raises(broker.runtime.RuntimePolicyError, match="core-authorized"):
+        await broker.run(
+            registry.notification_layout,
+            "audit.plugin",
+            "layout",
+            {"delivery": {}},
+            user_id=str(boundary.users[0].id),
+            installation_id=boundary.plugin["installation_id"],
+            attempt_id=str(uuid4()),
+        )
+    assert sent == []
+
+
+@pytest.mark.asyncio
+async def test_protected_broker_keeps_credentials_outside_plugin_execution(
+    boundary, broker, monkeypatch, tmp_path
+):
+    registry = broker.runtime.PluginRegistry(tmp_path / "registry", broker.supervisor)
+    registry._transition("audit.plugin", enabled=True, status="running")
+    monkeypatch.setattr(registry, "_item", lambda _package: boundary.plugin)
+    monkeypatch.setattr(broker.supervisor, "running", lambda _id: True)
+    monkeypatch.setattr(
+        registry,
+        "package",
+        lambda _id: (
+            tmp_path,
+            {
+                "api_contract_version": "1.1.2",
+                "capabilities": [{"name": "notification_providers.deliver"}],
+            },
+        ),
+    )
+    executed = []
+    monkeypatch.setattr(
+        broker.supervisor, "execute", lambda *args, **_kwargs: executed.append(args)
+    )
+    sent = []
+    monkeypatch.setattr(
+        broker.runtime, "send_discord", lambda *args: sent.append(args) or {"success": True}
+    )
+    payload = {
+        "webhook": "https://discord.com/api/webhooks/1234567890/" + "a" * 40,
+        "payload": {"content": "Host approved", "allowed_mentions": {"parse": []}},
+        "user_id": str(boundary.users[0].id),
+        "installation_id": boundary.plugin["installation_id"],
+        "attempt_id": str(uuid4()),
+    }
+    monkeypatch.setenv("PLUGIN_RUNTIME_DISCORD_EGRESS", "true")
+    with pytest.raises(broker.runtime.RuntimePolicyError, match="gateway request failed"):
+        await broker.run(registry.notification_transport, "audit.plugin", payload)
+    assert sent == []
+    row = grant(boundary, "notification_providers.deliver", user_id=boundary.users[0].id)
+    wrong = {**payload, "installation_id": str(uuid4())}
+    with pytest.raises(broker.runtime.RuntimePolicyError, match="another installation"):
+        await broker.run(registry.notification_transport, "audit.plugin", wrong)
+    monkeypatch.setenv("PLUGIN_RUNTIME_DISCORD_EGRESS", "false")
+    with pytest.raises(broker.runtime.RuntimePolicyError, match="egress is disabled"):
+        await broker.run(registry.notification_transport, "audit.plugin", payload)
+    monkeypatch.setenv("PLUGIN_RUNTIME_DISCORD_EGRESS", "true")
+    assert (await broker.run(registry.notification_transport, "audit.plugin", payload))["success"]
+    assert sent == [(payload["webhook"], payload["payload"])] and executed == []
+    row.revoked_at = 1
+    boundary.session.commit()
+    with pytest.raises(broker.runtime.RuntimePolicyError, match="gateway request failed"):
+        await broker.run(registry.notification_transport, "audit.plugin", payload)
+    assert len(sent) == 1 and executed == []
+
+
+@pytest.mark.asyncio
 async def test_inactive_user_and_unknown_operation_fail_closed(boundary):
     grant(boundary, "api.full")
     assert (

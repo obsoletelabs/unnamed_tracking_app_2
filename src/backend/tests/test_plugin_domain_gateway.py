@@ -38,6 +38,9 @@ class FakeDb:
         self.added = []
         self.commits = 0
 
+    def get_bind(self):
+        return SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
+
     async def scalar(self, _statement):
         return self.scalar_results.pop(0)
 

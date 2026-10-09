@@ -36,6 +36,7 @@ from urllib.request import Request, urlopen
 from uuid import UUID, uuid4
 
 from legacy_compatibility import LEGACY_WARNING, legacy_plugin_allowed
+from notification_transport import send_discord
 from storage import PluginStorage
 
 try:
@@ -76,6 +77,9 @@ _BACKEND_ROUTE_SEGMENT = re.compile(r"^(?:[a-z0-9][a-z0-9._-]*|\{[a-z_][a-z0-9_]
 _BACKEND_ROUTE_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE"}
 _RESERVED_PLUGIN_ROUTE_ROOTS = {
     "actions",
+    "notification-deliveries",
+    "notification-layouts",
+    "notification-transports",
     "changelog",
     "capabilities",
     "disable",
@@ -2918,6 +2922,7 @@ class PluginRegistry:
     def notification_delivery(
         self, plugin_id: str, action_id: str, values: dict[str, Any], *,
         user_id: str, installation_id: str, attempt_id: str,
+        _render_only: bool = False,
     ) -> dict[str, Any]:
         """Host-authenticated work; generic action payloads cannot confer authority."""
         UUID(user_id)
@@ -2936,8 +2941,38 @@ class PluginRegistry:
             plugin_id, "notification_providers.deliver", user_id=user_id
         )
         return self.action(
-            plugin_id, action_id, values, user_id=user_id, _notification_authorized=True
+            plugin_id, action_id, values, user_id=user_id,
+            _notification_authorized=not _render_only,
         )
+
+    def notification_layout(
+        self, plugin_id: str, action_id: str, values: dict[str, Any], *,
+        user_id: str, installation_id: str, attempt_id: str,
+    ) -> dict[str, Any]:
+        return self.notification_delivery(
+            plugin_id, action_id, values, user_id=user_id,
+            installation_id=installation_id, attempt_id=attempt_id, _render_only=True,
+        )
+
+    def notification_transport(
+        self, plugin_id: str, payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Host-only transport envelope; never forwarded to supervisor.execute/storage."""
+        if not isinstance(payload, dict) or set(payload) != {"webhook", "payload", "user_id", "installation_id", "attempt_id"}:
+            raise RuntimePolicyError("Protected notification transport is invalid")
+        user_id = str(UUID(str(payload["user_id"])))
+        UUID(str(payload["attempt_id"]))
+        self._require_active(plugin_id)
+        package, manifest = self.package(plugin_id)
+        if self._item(package).get("installation_id") != str(UUID(str(payload["installation_id"]))):
+            raise RuntimePolicyError("Protected transport belongs to another installation")
+        if not any(item.get("name") == "notification_providers.deliver"
+                   for item in manifest.get("capabilities", [])):
+            raise RuntimePolicyError("Plugin does not declare a notification provider")
+        self.supervisor._authorize_capability(plugin_id, "notification_providers.deliver", user_id=user_id)
+        if os.getenv("PLUGIN_RUNTIME_DISCORD_EGRESS", "false").lower() != "true":
+            raise RuntimePolicyError("Discord egress is disabled in this runtime")
+        return send_discord(str(payload["webhook"]), payload["payload"])
 
     def route(
         self,
@@ -3200,18 +3235,29 @@ class RuntimeHandler(BaseHTTPRequestHandler):
                 )  # type: ignore[attr-defined]
                 self._json(200, result)
                 return
-            if len(parts) == 4 and parts[0] == "plugins" and parts[2] == "notification-deliveries":
+            if len(parts) == 4 and parts[0] == "plugins" and parts[2] in {"notification-deliveries", "notification-layouts"}:
                 length = int(self.headers.get("Content-Length", "0"))
                 # Up to 10,000 Unicode body characters plus bounded delivery metadata.
                 if not 1 <= length <= 65536:
                     raise RuntimePolicyError("Notification work exceeds its bounds")
                 payload = json.loads(self.rfile.read(length))
-                result = self.server.registry.notification_delivery(
+                operation = (self.server.registry.notification_layout
+                             if parts[2] == "notification-layouts"
+                             else self.server.registry.notification_delivery)
+                result = operation(
                     parts[1], parts[3], payload.get("values", {}),
                     user_id=str(payload.get("user_id", "")),
                     installation_id=str(payload.get("installation_id", "")),
                     attempt_id=str(payload.get("attempt_id", "")),
                 )
+                self._json(200, result)
+                return
+            if len(parts) == 4 and parts[0] == "plugins" and parts[2:] == ["notification-transports", "discord"]:
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 1 <= length <= 65536:
+                    raise RuntimePolicyError("Protected transport exceeds its bounds")
+                payload = json.loads(self.rfile.read(length))
+                result = self.server.registry.notification_transport(parts[1], payload)
                 self._json(200, result)
                 return
             if len(parts) == 4 and parts[0] == "plugins" and parts[2] == "tasks":

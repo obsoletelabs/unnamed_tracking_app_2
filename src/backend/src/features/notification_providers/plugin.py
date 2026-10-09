@@ -2,19 +2,24 @@
 
 from __future__ import annotations
 
+import json
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.crypto import decrypt_secret
+from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_provider_setting import NotificationProviderSetting
 from src.database.models.plugin_notification_provider import (
     PluginNotificationProviderRegistration,
 )
 from src.database.models.user import User
+from src.features.notification_urls import notification_url
 from src.plugin_api.contracts import (
     NotificationDeliveryRepresentation,
     NotificationDeliveryResult,
+    NotificationFieldLayout,
 )
 from src.plugin_api.grants import has_capability_grant, installation_is_executable
 from src.plugin_api.runtime_client import (
@@ -24,6 +29,8 @@ from src.plugin_api.runtime_client import (
 )
 
 from .base import DeliveryResult, NotificationMessage, ProviderDestination
+from .eligibility import revalidate_delivery_attempt
+from .webhook import discord_payload, normalize_discord_webhook
 
 
 class PluginNotificationProvider:
@@ -37,6 +44,7 @@ class PluginNotificationProvider:
         self.registration = registration
         self.id = registration.provider_id
         self.name = registration.name
+        self.transport = getattr(registration, "transport", None) or "legacy"
         self._runtime = runtime or PluginRuntimeClient()
 
     async def lookup_destination(
@@ -47,12 +55,48 @@ class PluginNotificationProvider:
     ) -> ProviderDestination | None:
         if setting is None or not setting.enabled or setting.user_id != user.id:
             return None
-        allowed = await self._authorized(db, user.id)
+        if self.transport != "legacy":
+            return None
+        allowed = await self.is_authorized(db, user.id)
         if not allowed:
             return None
         return ProviderDestination(user_id=user.id, display=self.name)
 
-    async def _authorized(self, db: AsyncSession, user_id: UUID) -> bool:
+    async def lookup_endpoint(
+        self,
+        db: AsyncSession,
+        user: User,
+        setting: NotificationProviderSetting | None,
+        endpoint: NotificationDestination,
+    ) -> ProviderDestination | None:
+        if setting is None or not setting.enabled or setting.user_id != user.id:
+            return None
+        if (
+            endpoint.user_id != user.id
+            or endpoint.provider_id != self.id
+            or not endpoint.active
+            or not endpoint.enabled
+            or endpoint.installation_id != self.registration.installation_id
+        ):
+            return None
+        if not await self.is_authorized(db, user.id):
+            return None
+        protected = self.transport == "discord_webhook"
+        if protected and (
+            endpoint.kind != "discord_webhook" or not endpoint.encrypted_configuration
+        ):
+            return None
+        if not protected and endpoint.kind != "legacy_webhook":
+            return None
+        return ProviderDestination(
+            user_id=user.id,
+            display=endpoint.display_name or self.name,
+            allows_sensitive=False,
+            endpoint_id=endpoint.id,
+            endpoint_revision=endpoint.revision,
+        )
+
+    async def is_authorized(self, db: AsyncSession, user_id: UUID) -> bool:
         """Recheck durable registration, grants and live installation at delivery."""
         allowed = await has_capability_grant(
             db,
@@ -75,6 +119,8 @@ class PluginNotificationProvider:
                 PluginNotificationProviderRegistration.installation_id
                 == self.registration.installation_id,
                 PluginNotificationProviderRegistration.revoked_at.is_(None),
+                PluginNotificationProviderRegistration.action_id == self.registration.action_id,
+                PluginNotificationProviderRegistration.transport == self.transport,
             )
         )
         if registration is None:
@@ -105,12 +151,14 @@ class PluginNotificationProvider:
             event_at=message.event_at,
         )
         try:
-            if not await self._authorized(db, destination.user_id):
+            if not await self.is_authorized(db, destination.user_id):
                 return DeliveryResult(
                     success=False, error="Plugin provider authorization is unavailable."
                 )
             if message.attempt_id is None:
                 return DeliveryResult(success=False, error="Core delivery attempt is required.")
+            if self.transport == "discord_webhook":
+                return await self._deliver_protected(db, destination, message, work)
             response = await self._runtime.notification_delivery(
                 self.registration.plugin_id,
                 self.registration.action_id,
@@ -129,3 +177,52 @@ class PluginNotificationProvider:
             retryable=result.retryable,
             error=result.error,
         )
+
+    # Distinct fail-closed outcomes keep each routing and transport gate visible.
+    # pylint: disable-next=too-many-return-statements
+    async def _deliver_protected(self, db, destination, message, work) -> DeliveryResult:
+        try:
+            plan = await self._runtime.notification_layout(
+                self.registration.plugin_id,
+                self.registration.action_id,
+                {"delivery": work.model_dump(mode="json")},
+                user_id=str(destination.user_id),
+                installation_id=str(self.registration.installation_id),
+                attempt_id=str(message.attempt_id),
+            )
+            layout = NotificationFieldLayout.model_validate(plan)
+        except (PluginRuntimeRequestError, PluginRuntimeUnavailable):
+            return DeliveryResult(False, retryable=True, error="provider_renderer_unavailable")
+        except ValueError:
+            return DeliveryResult(False, error="provider_layout_invalid")
+        endpoint = await revalidate_delivery_attempt(db, destination, message)
+        if endpoint is None or not await self.is_authorized(db, destination.user_id):
+            return DeliveryResult(False, error="provider_routing_changed")
+        if (
+            endpoint.installation_id != self.registration.installation_id
+            or not endpoint.encrypted_configuration
+        ):
+            return DeliveryResult(False, error="provider_endpoint_changed")
+        link = await notification_url(db, endpoint.user_id, endpoint)
+        payload = discord_payload(layout, message, link)
+        endpoint = await revalidate_delivery_attempt(db, destination, message)
+        if endpoint is None or not endpoint.encrypted_configuration:
+            return DeliveryResult(False, error="provider_routing_changed")
+        try:
+            url = normalize_discord_webhook(
+                json.loads(decrypt_secret(endpoint.encrypted_configuration))["webhook"]
+            )
+            response = await self._runtime.notification_transport(
+                self.registration.plugin_id,
+                url,
+                payload,
+                user_id=str(endpoint.user_id),
+                installation_id=str(self.registration.installation_id),
+                attempt_id=str(message.attempt_id),
+            )
+            result = NotificationDeliveryResult.model_validate(response)
+        except (PluginRuntimeRequestError, PluginRuntimeUnavailable):
+            return DeliveryResult(False, retryable=True, error="provider_transport_unavailable")
+        except (ValueError, KeyError):
+            return DeliveryResult(False, error="provider_configuration_invalid")
+        return DeliveryResult(result.success, result.retryable, result.error)

@@ -66,20 +66,24 @@ def _address_key(address: str) -> str:
     return hmac.new(settings.SECRET_KEY.encode(), address.encode(), hashlib.sha256).hexdigest()
 
 
-async def create_email(db: AsyncSession, user_id: UUID, address: str, label: str) -> UUID:
-    address = normalize_email(address)
-    await _lock_owner(db, user_id)
+async def enforce_destination_limit(db: AsyncSession, user_id: UUID, provider_id: str) -> None:
     count = await db.scalar(
         select(sql_count())
         .select_from(NotificationDestination)
         .where(
             NotificationDestination.user_id == user_id,
             NotificationDestination.active.is_(True),
-            NotificationDestination.provider_id == SMTP_PROVIDER,
+            NotificationDestination.provider_id == provider_id,
         )
     )
     if count and count >= 20:
-        raise EnrollmentError("At most 20 active email destinations are allowed")
+        raise EnrollmentError("At most 20 active destinations per provider are allowed")
+
+
+async def create_email(db: AsyncSession, user_id: UUID, address: str, label: str) -> UUID:
+    address = normalize_email(address)
+    await _lock_owner(db, user_id)
+    await enforce_destination_limit(db, user_id, SMTP_PROVIDER)
     existing = await db.scalar(
         select(NotificationDestination.id).where(
             NotificationDestination.user_id == user_id,

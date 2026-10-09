@@ -12,6 +12,7 @@ WORKDIR /opt/plugin-runtime
 COPY src/plugin-runtime/runtime.py ./runtime.py
 COPY src/plugin-runtime/storage.py ./storage.py
 COPY src/plugin-runtime/legacy_compatibility.py ./legacy_compatibility.py
+COPY src/plugin-runtime/notification_transport.py ./notification_transport.py
 COPY src/backend/src/plugin_api/legacy_compatibility.json ./legacy_compatibility.json
 
 USER 10001:10001

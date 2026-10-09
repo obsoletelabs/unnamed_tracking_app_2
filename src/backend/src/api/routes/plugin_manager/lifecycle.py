@@ -22,7 +22,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.auth import get_current_admin, hash_token
 from src.database.models.auth import UserApiKey
 from src.database.models.media_provider import MediaProviderLink
-from src.database.models.notification_destination import NotificationDestination
 from src.database.models.plugin_notification_provider import PluginNotificationProviderRegistration
 from src.database.models.plugin_permission_audit import PluginPermissionAudit
 from src.database.models.plugin_permissions import (
@@ -33,6 +32,7 @@ from src.database.models.plugin_permissions import (
 )
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features.notification_destinations import retire_plugin_destinations
 from src.features.notification_source_policy import retire_sources
 from src.plugin_api.capabilities import calculate_permission_delta
 from src.plugin_api.contracts import CapabilityRef, PermissionDeclaration
@@ -331,17 +331,7 @@ async def revoke_management_token(
 
 async def _purge_plugin_database(db: AsyncSession, plugin_id: str) -> None:
     await retire_sources(db, plugin_id)
-    await db.execute(
-        sql_update(NotificationDestination)
-        .where(
-            NotificationDestination.provider_id.in_(
-                select(PluginNotificationProviderRegistration.provider_id).where(
-                    PluginNotificationProviderRegistration.plugin_id == plugin_id
-                )
-            )
-        )
-        .values(active=False, enabled=False)
-    )
+    await retire_plugin_destinations(db, plugin_id)
 
     for model in (
         MediaProviderLink,
@@ -678,6 +668,7 @@ async def disable_plugin(
     with runtime.runtime_errors():
         await runtime.client.stop(quote(plugin_id, safe=""))
     await retire_sources(db, plugin_id)
+    await retire_plugin_destinations(db, plugin_id)
     await db.commit()
     return {"plugin_id": plugin_id, "enabled": False}
 
@@ -705,6 +696,7 @@ async def revoke_plugin_permissions(
 ) -> dict:
     del admin
     await retire_sources(db, plugin_id)
+    await retire_plugin_destinations(db, plugin_id)
     rows = await db.scalars(
         select(PluginPermissionGrant).where(
             PluginPermissionGrant.plugin_id == plugin_id,

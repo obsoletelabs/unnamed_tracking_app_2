@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 from enum import StrEnum
-from typing import Any, Generic, TypeVar
+from typing import Any, Generic, Literal, TypeVar
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -222,6 +222,9 @@ class NotificationProviderRegistration(ContractModel):
         max_length=128,
         pattern=r"^[a-z0-9][a-z0-9._-]*$",
     )
+    # Existing registrations keep the restricted shared-secret compatibility path.
+    # Protected transport selects a mechanism, never a destination trust level.
+    transport: Literal["legacy", "discord_webhook"] = "legacy"
 
 
 class NotificationDeliveryRepresentation(ContractModel):

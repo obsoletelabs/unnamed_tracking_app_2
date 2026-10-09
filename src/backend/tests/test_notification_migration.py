@@ -76,6 +76,18 @@ def test_populated_notification_upgrade_preserves_inbox_and_suppresses_unsafe_wo
             )
             migrate("upgrade", "head")
             assert connection.execute(
+                "SELECT transport FROM plugin_notification_provider_registrations"
+            ).fetchone() == ("legacy",)
+            connection.execute(
+                "UPDATE plugin_notification_provider_registrations SET transport = 'discord_webhook'"
+            )
+            with pytest.raises(subprocess.CalledProcessError) as failure:
+                migrate("downgrade", "c4771032f3c4")
+            assert "Remove protected provider registrations" in failure.value.stderr
+            connection.execute(
+                "UPDATE plugin_notification_provider_registrations SET transport = 'legacy'"
+            )
+            assert connection.execute(
                 "SELECT accepted_at FROM notification_receipts"
             ).fetchone() == (0,)
             assert connection.execute(
