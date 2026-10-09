@@ -406,7 +406,7 @@ async def get_provider_credentials(
         )
         .group_by(Game.source)
     )
-    counts = {source: count for source, count in rows.tuples()}
+    counts = dict(rows.tuples())
     for provider, last_synced in sync_timestamp_columns.items():
         result.setdefault(provider, {"status": "not_configured"})
         result[provider]["library_games"] = counts.get(provider, 0)
