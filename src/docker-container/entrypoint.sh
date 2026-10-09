@@ -171,10 +171,11 @@ done
 
 log "Backend healthy"
 
-if ! realip_env="$("/usr/local/bin/fetch-realip-config.sh")"; then
-  fail_startup "FRONTEND_FAILED" "Unable to resolve production Nginx real-IP configuration from the backend." "ready" "ready" "ready" "failed"
+if ! python -m src.core.nginx_configuration --output "$STATUS_DIR/nginx.env" \
+  > "$STATUS_DIR/nginx-config.log" 2>&1; then
+  fail_startup "FRONTEND_FAILED" "Unable to resolve production Nginx TLS/proxy configuration." "ready" "ready" "ready" "failed"
 fi
-eval "$realip_env"
+. "$STATUS_DIR/nginx.env"
 
 write_status "STARTING_FRONTEND" "starting" "ready" "ready" "ready" "starting" "Activating the production frontend."
 
@@ -215,7 +216,7 @@ fi
 attempt=1
 # Reload is asynchronous: startup workers can still answer HTTP 200. Publish
 # READY only after a request returns the actual compiled application document.
-while ! { curl -fsS http://127.0.0.1/ -o "$STATUS_DIR/frontend-probe.html" &&
+while ! { curl -kfsSL http://127.0.0.1/ -o "$STATUS_DIR/frontend-probe.html" &&
   cmp -s /srv/frontend/index.html "$STATUS_DIR/frontend-probe.html"; } 2>/dev/null; do
   log "Frontend not ready (attempt $attempt)"
   if [ "$attempt" -ge 15 ]; then fail_startup "FRONTEND_FAILED" "Nginx could not serve the production frontend. See Docker stderr for Nginx diagnostics." "ready" "ready" "ready" "failed"; fi

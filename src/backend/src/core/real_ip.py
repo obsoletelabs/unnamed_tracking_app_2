@@ -95,7 +95,7 @@ def get_effective_real_ip_config(
     )
     if handler.has("NGINX_REALIP_TRUSTED_PROXIES"):
         trusted = handler.get("NGINX_REALIP_TRUSTED_PROXIES")
-    elif persisted_trusted_proxies and str(persisted_trusted_proxies).strip():
+    elif persisted_trusted_proxies is not None:
         trusted = persisted_trusted_proxies
     else:
         trusted = " ".join(DEFAULT_TRUSTED_PROXIES)

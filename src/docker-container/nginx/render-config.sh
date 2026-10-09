@@ -19,9 +19,31 @@ tmp_output="${output}.tmp.$$"
 realip_tmp="${output}.realip.$$"
 
 cleanup() {
-  rm -f "$tmp_output" "$realip_tmp"
+  rm -f "$tmp_output" "${tmp_output}.base" "$realip_tmp"
 }
 trap cleanup EXIT INT TERM
+
+case "$enabled" in
+  true|TRUE|1|yes|YES) enabled=true ;;
+  false|FALSE|0|no|NO|"") enabled=false ;;
+  *) printf '%s\n' "Invalid NGINX_TLS_ENABLED value." >&2; exit 1 ;;
+esac
+case "$redirect" in
+  true|TRUE|1|yes|YES) redirect=true ;;
+  false|FALSE|0|no|NO|"") redirect=false ;;
+  *) printf '%s\n' "Invalid NGINX_TLS_REDIRECT_HTTP value." >&2; exit 1 ;;
+esac
+if [ "$redirect" = true ] && [ "$enabled" != true ]; then
+  printf '%s\n' "HTTP redirection requires TLS to be enabled." >&2
+  exit 1
+fi
+for tls_path in "$cert" "$key"; do
+  case "$tls_path" in
+    "") ;;
+    /*) case "$tls_path" in *[!A-Za-z0-9_./-]*) printf '%s\n' "Invalid TLS file path." >&2; exit 1 ;; esac ;;
+    *) printf '%s\n' "TLS file paths must be absolute." >&2; exit 1 ;;
+  esac
+done
 
 case "$realip_header" in
   ''|*[!A-Za-z0-9_-]*)
@@ -104,6 +126,6 @@ else
   cat "${tmp_output}.base" > "$tmp_output"
 fi
 
-rm -f "${tmp_output}.base"
+rm -f "${tmp_output}.base" "$realip_tmp"
 mv "$tmp_output" "$output"
 trap - EXIT INT TERM

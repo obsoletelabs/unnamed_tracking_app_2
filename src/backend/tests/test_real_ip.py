@@ -1,3 +1,8 @@
+import pytest
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
+
+from src.api.routes.real_ip import router
 from src.core.env_handler import EnvConfigHandler
 from src.core.real_ip import (
     DEFAULT_REAL_IP_HEADER,
@@ -53,3 +58,29 @@ def test_invalid_values():
         raise AssertionError("invalid proxy list unexpectedly accepted")
     except ValueError:
         pass
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [("192.168.1.42/24\n::1/128 192.168.1.0/24", "192.168.1.0/24 ::1/128"), ("", "")],
+)
+async def test_proxy_validation_canonicalizes_and_deduplicates_without_configuration_access(
+    value, expected
+):
+    app = FastAPI()
+    app.include_router(router)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/api/internal/real-ip/validate", json={"value": value})
+        assert response.status_code == 200 and response.json() == {"value": expected}
+
+
+@pytest.mark.parametrize(
+    "value", ["999.1.1.1", "10.0.0.1/34", "2001::broken", "10.0.0.1;include /tmp/evil", "x" * 8193]
+)
+async def test_proxy_validation_rejects_invalid_entries(value):
+    app = FastAPI()
+    app.include_router(router)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        assert (
+            await client.post("/api/internal/real-ip/validate", json={"value": value})
+        ).status_code == 422

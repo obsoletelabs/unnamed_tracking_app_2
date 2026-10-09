@@ -80,6 +80,10 @@ class AppIntegrationSettings(Base):
 
     nginx_realip_header: Mapped[str | None] = mapped_column(String(128), nullable=True)
     nginx_realip_trusted_proxies: Mapped[str | None] = mapped_column(Text, nullable=True)
+    nginx_tls_enabled: Mapped[bool | None] = mapped_column(nullable=True)
+    nginx_tls_redirect_http: Mapped[bool | None] = mapped_column(nullable=True)
+    nginx_tls_certificate: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    nginx_tls_private_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
     updated_at: Mapped[int] = mapped_column(
         BigInteger, nullable=False, default=unix_timestamp, onupdate=unix_timestamp

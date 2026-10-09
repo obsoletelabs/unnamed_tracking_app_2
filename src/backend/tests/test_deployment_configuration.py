@@ -1,6 +1,7 @@
 """Deployment updates enforce locks and persist secrets through the public routes."""
 
 import json
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -14,6 +15,7 @@ from src.api.routes import auth_oidc, deployment_settings, setup
 from src.core.auth import get_current_admin
 from src.core.crypto import decrypt_secret, encrypt_secret
 from src.core.env_handler import EnvConfigHandler
+from src.core.nginx_configuration import NginxActivationError
 from src.database.models.app_integration_settings import AppIntegrationSettings
 from src.database.models.oidc_settings import OidcSettings
 from src.database.models.user import User
@@ -37,6 +39,9 @@ class ConfigurationDb:
 
     async def commit(self):
         self.session.commit()
+
+    async def rollback(self):
+        self.session.rollback()
 
     async def refresh(self, row):
         self.session.refresh(row)
@@ -305,3 +310,87 @@ async def test_setup_persists_public_url_through_registry(configuration):
     )
     assert response.status_code == 200
     assert configuration.integration.public_app_url == "https://app.example.test"
+
+
+async def test_tls_configuration_is_validated_persisted_and_environment_locked(configuration):
+    response = await configuration.http.put(
+        "/api/settings/deployment",
+        json={
+            "nginx_tls_enabled": True,
+            "nginx_tls_redirect_http": True,
+            "nginx_tls_certificate": "/etc/nginx/tls/cert.pem",
+            "nginx_tls_private_key": "/etc/nginx/tls/key.pem",
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["nginx"]["enabled"] and response.json()["nginx"]["redirect_http"]
+    configuration.env["NGINX_TLS_ENABLED"] = "true"
+    response = await configuration.http.put(
+        "/api/settings/deployment", json={"nginx_tls_enabled": False}
+    )
+    assert response.status_code == 409
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"nginx_tls_redirect_http": True},
+        {"nginx_tls_certificate": "/tmp/only-cert.pem"},
+        {"nginx_tls_certificate": "/tmp/cert;include.conf"},
+    ],
+)
+async def test_invalid_tls_changes_do_not_persist(configuration, payload):
+    response = await configuration.http.put("/api/settings/deployment", json=payload)
+    assert response.status_code == 400
+    configuration.session.refresh(configuration.integration)
+    assert configuration.integration.nginx_tls_enabled is None
+    assert configuration.integration.nginx_tls_certificate is None
+
+
+async def test_failed_tls_activation_does_not_persist_and_smtp_save_does_not_reload(
+    configuration, monkeypatch
+):
+    seen = []
+
+    @asynccontextmanager
+    async def activation(candidate):
+        seen.append(candidate)
+        if candidate is not None:
+            raise NginxActivationError("invalid certificate")
+        yield False
+
+    monkeypatch.setattr(deployment_settings, "apply_nginx_change", activation)
+    response = await configuration.http.put(
+        "/api/settings/deployment", json={"nginx_tls_enabled": True}
+    )
+    assert response.status_code == 400
+    configuration.session.refresh(configuration.integration)
+    assert configuration.integration.nginx_tls_enabled is None
+    assert (
+        await configuration.http.put("/api/settings/deployment", json={"smtp_port": 2525})
+    ).status_code == 200
+    assert seen[-1] is None
+
+
+async def test_setup_persists_boolean_tls_settings_without_string_coercion(configuration):
+    response = await configuration.http.put(
+        "/api/setup/configuration",
+        json={"configuration": {"NGINX_TLS_ENABLED": False, "NGINX_TLS_REDIRECT_HTTP": False}},
+    )
+    assert response.status_code == 200, response.text
+    assert configuration.integration.nginx_tls_enabled is False
+    assert configuration.integration.nginx_tls_redirect_http is False
+
+
+async def test_empty_proxy_list_is_an_explicit_no_trust_override(configuration):
+    response = await configuration.http.put(
+        "/api/settings/deployment", json={"nginx_realip_trusted_proxies": ""}
+    )
+    assert response.status_code == 200
+    assert response.json()["real_ip"]["trusted_proxies"] == ""
+    response = await configuration.http.get("/api/setup/configuration")
+    proxy = next(section for section in response.json()["sections"] if section["id"] == "proxy")
+    field = next(
+        field for field in proxy["fields"] if field["name"] == "NGINX_REALIP_TRUSTED_PROXIES"
+    )
+    assert field["value"] == "" and field["source"] == "database"
