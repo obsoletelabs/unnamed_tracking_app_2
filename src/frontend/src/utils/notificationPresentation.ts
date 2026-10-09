@@ -19,6 +19,13 @@ const kinds: Record<string, Presentation> = {
     tone: "violet",
     group: "releases",
   },
+  game_released: { label: "Game released", tone: "green", group: "releases" },
+  game_sale: { label: "Game on sale", tone: "amber", group: "releases" },
+  game_price_hit: {
+    label: "Price target reached",
+    tone: "blue",
+    group: "releases",
+  },
   plugin: { label: "Plugin", tone: "violet", group: "plugins" },
 };
 const fallback: Presentation = {
@@ -36,6 +43,7 @@ export function notificationDestination(
 ): string | null {
   if (!n.mediaId) return null;
   const roots: Record<string, string> = {
+    game: "/games",
     movie: "/movies",
     tv: "/tv",
     anime: "/anime",

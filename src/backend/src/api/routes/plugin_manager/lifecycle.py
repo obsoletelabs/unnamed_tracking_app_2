@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.auth import get_current_admin, hash_token
 from src.database.models.auth import UserApiKey
 from src.database.models.media_provider import MediaProviderLink
+from src.database.models.notification_destination import NotificationDestination
 from src.database.models.plugin_notification_provider import PluginNotificationProviderRegistration
 from src.database.models.plugin_permission_audit import PluginPermissionAudit
 from src.database.models.plugin_permissions import (
@@ -328,6 +329,17 @@ async def revoke_management_token(
 
 
 async def _purge_plugin_database(db: AsyncSession, plugin_id: str) -> None:
+    await db.execute(
+        sql_update(NotificationDestination)
+        .where(
+            NotificationDestination.provider_id.in_(
+                select(PluginNotificationProviderRegistration.provider_id).where(
+                    PluginNotificationProviderRegistration.plugin_id == plugin_id
+                )
+            )
+        )
+        .values(active=False, enabled=False)
+    )
 
     for model in (
         MediaProviderLink,

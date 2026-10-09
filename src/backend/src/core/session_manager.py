@@ -8,16 +8,13 @@ from dataclasses import dataclass
 
 from fastapi import Request
 from sqlalchemy import delete, or_, select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import SESSION_TTL_SECONDS, hash_token
 from src.core.geoip import geoip
 from src.database.models.auth import UserSession
-from src.database.models.notification import Notification
-from src.database.models.notification_delivery import NotificationDelivery
 from src.database.models.user import User
-from src.features.notification_providers.registry import get_notification_providers
+from src.features.notification_controller import emit_legacy_rows
 
 
 @dataclass(frozen=True)
@@ -56,40 +53,25 @@ def _set_anomaly(previous: UserSession | None, current: UserSession) -> None:
 async def _queue_anomaly_notification(db: AsyncSession, user: User, session: UserSession) -> None:
     if not session.anomaly_reason:
         return
-    now = int(time.time())
-    statement = (
-        pg_insert(Notification)
-        .values(
-            user_id=user.id,
-            kind="session_anomaly",
-            title="New sign-in location",
-            body=(
-                f"A session was created from {session.geo_country or 'an unavailable location'} "
-                f"at {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime(session.created_at))}. "
-                "Location is approximate and may be inaccurate."
-            ),
-            media_type="system",
-            media_id=session.id,
-            event_at=session.created_at,
-            created_at=now,
-            dedupe_key=f"session-anomaly:{session.id}",
-        )
-        .on_conflict_do_nothing(constraint="uq_notifications_user_dedupe")
-        .returning(Notification.id)
+    await emit_legacy_rows(
+        db,
+        user.id,
+        [
+            {
+                "kind": "session_anomaly",
+                "title": "New sign-in location",
+                "body": (
+                    f"A session was created from {session.geo_country or 'an unavailable location'} "
+                    f"at {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime(session.created_at))}. "
+                    "Location is approximate and may be inaccurate."
+                ),
+                "media_type": "system",
+                "media_id": session.id,
+                "event_at": session.created_at,
+                "dedupe_key": f"session-anomaly:{session.id}",
+            }
+        ],
     )
-    notification_id = await db.scalar(statement)
-    if notification_id:
-        providers = await get_notification_providers(db)
-        for provider_id in providers:
-            db.add(
-                NotificationDelivery(
-                    notification_id=notification_id,
-                    provider_id=provider_id,
-                    status="pending",
-                    attempts=0,
-                    next_attempt_at=now,
-                )
-            )
 
 
 # pylint: enable=duplicate-code

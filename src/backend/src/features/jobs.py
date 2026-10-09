@@ -30,6 +30,7 @@ from src.features.imports.anilist import import_anilist_library
 from src.features.metadata import refresh_job
 from src.features.metadata.refresh import check_airing_episodes
 from src.features.notification_providers.delivery import process_pending_deliveries
+from src.features.notification_scans import scan_notification_users
 
 logger = logging.getLogger(__name__)
 TICK_SECONDS = 60
@@ -286,6 +287,7 @@ async def run_jobs_loop() -> None:
         try:
             now = int(time.time())
             await _run_due_anilist_imports(now)
+            await scan_notification_users()
             async with SessionLocal() as db:
                 await process_pending_deliveries(db)
                 due = []

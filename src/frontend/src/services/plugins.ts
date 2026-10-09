@@ -14,10 +14,12 @@ export type PluginStatus =
   | "disabled"
   | "incompatible"
   | "unknown";
-export const PLUGIN_API_CONTRACT_VERSION = "1.1.0";
+export const PLUGIN_API_CONTRACT_VERSION = "1.1.2";
 export function pluginContributionsActive(plugin: PluginSummary): boolean {
   return (
-    (plugin.api_contract_version === PLUGIN_API_CONTRACT_VERSION ||
+    (["1.1.0", "1.1.1", PLUGIN_API_CONTRACT_VERSION].includes(
+      plugin.api_contract_version ?? "",
+    ) ||
       (plugin.legacy_compatibility === true &&
         /^1\.0\.\d+$/.test(plugin.api_contract_version ?? "1.0.0"))) &&
     plugin.enabled &&

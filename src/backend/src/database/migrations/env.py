@@ -31,7 +31,10 @@ from src.database.models import (
     movies,  # noqa: F401
     notification,  # noqa: F401
     notification_delivery,  # noqa: F401
+    notification_delivery_attempt,  # noqa: F401
+    notification_destination,  # noqa: F401
     notification_provider_setting,  # noqa: F401
+    notification_receipt,  # noqa: F401
     oidc_provider,  # noqa: F401
     oidc_settings,  # noqa: F401
     plugin_metadata_provider,  # noqa: F401

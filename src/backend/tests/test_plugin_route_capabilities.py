@@ -114,6 +114,9 @@ async def test_secret_write_requires_storage_grant_and_stays_runtime_private(
     user = SimpleNamespace(id=uuid4())
     runtime = FakeRuntimeClient(installation_id)
     grant = AsyncMock(side_effect=[False, True])
+    db = AsyncMock()
+    invalidate = AsyncMock()
+    monkeypatch.setattr(plugin_contributions, "invalidate_legacy_configuration", invalidate)
     monkeypatch.setattr(plugin_runtime, "client", runtime)
     monkeypatch.setattr(plugin_contributions, "has_capability_grant", grant)
 
@@ -122,17 +125,19 @@ async def test_secret_write_requires_storage_grant_and_stays_runtime_private(
             "example.plugin",
             "webhook",
             {"value": "secret-value"},
-            ANY,
+            db,
             user,
         )
     assert denied.value.status_code == 403
     runtime.save_secret.assert_not_awaited()
+    invalidate.assert_not_awaited()
+    db.commit.assert_not_awaited()
 
     result = await plugins.save_plugin_secret(
         "example.plugin",
         "webhook",
         {"value": "secret-value"},
-        ANY,
+        db,
         user,
     )
 
@@ -141,6 +146,8 @@ async def test_secret_write_requires_storage_grant_and_stays_runtime_private(
         "key": "webhook",
         "saved": True,
     }
+    invalidate.assert_awaited_once_with(db, installation_id)
+    db.commit.assert_awaited_once()
     runtime.save_secret.assert_awaited_once_with(
         "example.plugin",
         "secrets/webhook",

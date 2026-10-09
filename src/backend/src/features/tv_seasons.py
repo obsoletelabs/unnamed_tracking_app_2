@@ -20,14 +20,13 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.preferences import load_preferences
-from src.database.models.notification import Notification
 from src.database.models.tv_show import TVSeason, TVShow, TVShowStatus
 from src.database.session import SessionLocal
 from src.features.metadata.service import collect_record, library_candidate
+from src.features.notification_controller import emit_legacy_rows
 from src.plugin_api.metadata_contracts import MediaType
 
 logger = logging.getLogger(__name__)
@@ -113,11 +112,7 @@ async def check_new_seasons(db: AsyncSession, show: TVShow) -> int:
                         "created_at": now,
                     }
                 )
-            await db.execute(
-                pg_insert(Notification)
-                .values(rows)
-                .on_conflict_do_nothing(constraint="uq_notifications_user_dedupe")
-            )
+            await emit_legacy_rows(db, show.user_id, rows)
     await db.commit()
     return len(fresh)
 

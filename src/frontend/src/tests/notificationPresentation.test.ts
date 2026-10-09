@@ -31,6 +31,7 @@ it("preserves known media groups and actual title routes", () => {
   expect(notificationPresentation("season_started").group).toBe("seasons");
   expect(notificationPresentation("movie_released").group).toBe("releases");
   for (const [mediaType, root] of [
+    ["game", "games"],
     ["movie", "movies"],
     ["tv", "tv"],
     ["anime", "anime"],
@@ -49,3 +50,8 @@ it("preserves known media groups and actual title routes", () => {
     }),
   ).toBeNull();
 });
+
+it.each(["game_released", "game_sale", "game_price_hit"])(
+  "puts %s in release notifications",
+  (kind) => expect(notificationPresentation(kind).group).toBe("releases"),
+);

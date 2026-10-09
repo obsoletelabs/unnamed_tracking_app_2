@@ -177,8 +177,9 @@ def test_runtime_handles_discord_action_output(
     )
 
     activate_registry(registry, "example.plugin")
-    assert registry.action("example.plugin", "announce", {}) == {"completed": True}
-    assert sent == [("https://discord.com/api/webhooks/test/x", "hello")]
+    with pytest.raises(RuntimePolicyError, match="core-authorized"):
+        registry.action("example.plugin", "announce", {})
+    assert sent == []
     assert approved == ["notifications.send"]
 
 

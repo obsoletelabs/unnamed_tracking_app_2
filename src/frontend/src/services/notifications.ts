@@ -1,7 +1,6 @@
 // Media notifications from the server: episode aired, season started
 // airing, new season listed for something you finished, movie released.
-// The server builds them from exact air times when this is asked for, so
-// polling this is what makes them appear.
+// Exact release discovery also runs in the server's scheduled jobs loop.
 
 export type MediaNotificationKind =
   "episode_aired" | "season_started" | "sequel_announced" | "movie_released";
@@ -137,12 +136,12 @@ export async function markAllNotificationsRead(): Promise<void> {
   );
 }
 
-export async function deleteMediaNotification(id: string): Promise<void> {
+export async function dismissMediaNotification(id: string): Promise<void> {
   await ok(
-    await fetch(`/api/notifications/${id}`, {
-      method: "DELETE",
+    await fetch(`/api/notifications/${id}/dismiss`, {
+      method: "POST",
       credentials: "include",
     }),
-    "delete notification",
+    "dismiss notification",
   );
 }

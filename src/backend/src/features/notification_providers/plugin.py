@@ -109,14 +109,17 @@ class PluginNotificationProvider:
                 return DeliveryResult(
                     success=False, error="Plugin provider authorization is unavailable."
                 )
-            response = await self._runtime.action(
+            if message.attempt_id is None:
+                return DeliveryResult(success=False, error="Core delivery attempt is required.")
+            response = await self._runtime.notification_delivery(
                 self.registration.plugin_id,
                 self.registration.action_id,
                 {
                     "delivery": work.model_dump(mode="json"),
-                    "user_id": str(destination.user_id),
                 },
                 user_id=str(destination.user_id),
+                installation_id=str(self.registration.installation_id),
+                attempt_id=str(message.attempt_id),
             )
             result = NotificationDeliveryResult.model_validate(response)
         except (PluginRuntimeRequestError, PluginRuntimeUnavailable, ValueError) as exc:

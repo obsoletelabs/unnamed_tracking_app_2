@@ -13,7 +13,7 @@ import {
   markNotificationRead,
   markNotificationUnread,
   markAllNotificationsRead,
-  deleteMediaNotification,
+  dismissMediaNotification,
 } from "../services/notifications";
 import type { MediaNotification } from "../services/notifications";
 import { refreshMediaNotifications } from "../state/notifications";
@@ -195,7 +195,7 @@ async function dismiss(n: MediaNotification) {
   });
   if (!ok) return;
   try {
-    await deleteMediaNotification(n.id);
+    await dismissMediaNotification(n.id);
     items.value = items.value.filter((x) => x.id !== n.id);
     refreshMediaNotifications();
   } catch (e) {

@@ -3,6 +3,7 @@ import { watch } from "vue";
 import { keyboardShortcuts, activeShortcutKeys } from "../state/shortcuts";
 import { NAVIGATION_SHORTCUTS } from "../utils/shortcutDefinitions";
 import { pluginShortcutBindings } from "./pluginShortcutBridge";
+import { PLUGIN_API_CONTRACT_VERSION } from "./plugins";
 
 // Only public appearance tokens and navigation keys cross the opaque boundary.
 export const PLUGIN_APPEARANCE_TOKENS = [
@@ -17,7 +18,7 @@ export const PLUGIN_APPEARANCE_TOKENS = [
   "--ui-focus-ring",
 ] as const;
 export interface PluginAppearance {
-  api_contract_version: "1.1.0";
+  api_contract_version: "1.1.0" | "1.1.1" | "1.1.2";
   mode: PaletteMode;
   high_contrast: boolean;
   reduce_motion: boolean;
@@ -31,7 +32,7 @@ export function readPluginAppearance(): PluginAppearance {
     typeof document === "undefined" ? null : document.documentElement;
   const style = root ? getComputedStyle(root) : null;
   return {
-    api_contract_version: "1.1.0",
+    api_contract_version: PLUGIN_API_CONTRACT_VERSION,
     mode: root?.dataset.theme === "dark" ? "dark" : "light",
     high_contrast: root?.classList.contains("high-contrast") ?? false,
     reduce_motion: root?.classList.contains("reduce-motion") ?? false,

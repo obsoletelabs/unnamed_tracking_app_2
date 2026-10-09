@@ -45,7 +45,7 @@ async def test_verified_incompatible_package_has_reviewable_preview(
     assert preview["signature_verified"]
     assert preview["installable"] is (not expected)
     assert expected in preview["compatibility_reason"]
-    assert preview["host_api_contract_version"] == "1.1.1"
+    assert preview["host_api_contract_version"] == "1.1.2"
     assert preview["host_sdk_version"] == "1.1.0"
     assert preview["host_application_version"] == "1.0.0"
     assert preview["sdk_version_range"] == sdk
@@ -85,7 +85,7 @@ async def test_platform_reports_actual_versions_and_health(monkeypatch, state):
     monkeypatch.setenv("PLUGIN_APPLICATION_VERSION", "1.0.0")
     reported = {
         "available": True,
-        "api_contract_version": "1.1.1",
+        "api_contract_version": "1.1.2",
         "sdk_version": "1.1.0",
         "application_version": "1.0.0",
     }
@@ -100,14 +100,14 @@ async def test_platform_reports_actual_versions_and_health(monkeypatch, state):
     )
     monkeypatch.setattr(plugin_runtime, "client", SimpleNamespace(health=health))
     result = await plugins.runtime_health(SimpleNamespace())
-    assert result["host_api_contract_version"] == "1.1.1"
+    assert result["host_api_contract_version"] == "1.1.2"
     assert result["host_sdk_version"] == "1.1.0"
     assert result["host_application_version"] == "1.0.0"
     assert result["version_health"] == (
         "healthy" if state == "healthy" else "unavailable" if state == "offline" else "incompatible"
     )
     if state == "mismatch":
-        assert "host 1.1.1, runtime 1.0.0" in result["version_error"]
+        assert "host 1.1.2, runtime 1.0.0" in result["version_error"]
         assert "host 1.1.0, runtime 2.0.0" in result["version_error"]
     elif state == "missing":
         assert "does not report its SDK" in result["version_error"]

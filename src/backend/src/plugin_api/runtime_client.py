@@ -273,3 +273,26 @@ class PluginRuntimeClient:
         if not isinstance(result, dict):
             raise PluginRuntimeRequestError("plugin backend route returned an invalid response")
         return result
+
+    async def notification_delivery(
+        self,
+        plugin_id: str,
+        action_id: str,
+        values: dict[str, Any],
+        *,
+        user_id: str,
+        installation_id: str,
+        attempt_id: str,
+    ) -> dict[str, Any]:
+        """Private host transport; authority is outside plugin/UI action values."""
+        return await self._request(
+            "POST",
+            f"/plugins/{quote(plugin_id, safe='')}/notification-deliveries/{quote(action_id, safe='')}",
+            json={
+                "values": values,
+                "user_id": user_id,
+                "installation_id": installation_id,
+                "attempt_id": attempt_id,
+            },
+            timeout=_ACTION_REQUEST_TIMEOUT,
+        )

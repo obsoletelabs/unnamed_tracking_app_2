@@ -1,6 +1,4 @@
-"""In-app notifications. The bell polls `/unread-count`, which also
-generates anything newly due (see features/notifications.py), so there is
-no background job behind this."""
+"""In-app inbox APIs, with shared discovery from polling and the existing jobs loop."""
 
 import time
 from collections.abc import Sequence
@@ -9,7 +7,7 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import delete, select, update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.functions import count as sql_count
 
@@ -20,7 +18,13 @@ from src.database.models.anime import Anime
 from src.database.models.notification import Notification
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features.notification_controller import emit_legacy_rows
+from src.features.notification_lifecycle import delete_notice, dismiss, visible_inbox
 from src.features.notifications import generate_for_user
+
+_NOTIFICATION_DB = Depends(get_db)
+_NOTIFICATION_USER = Depends(get_current_user)
+_NOTIFICATION_ADMIN = Depends(get_current_admin)
 
 router = APIRouter(
     prefix="/api/notifications", tags=["notifications"], dependencies=[Depends(get_current_user)]
@@ -66,13 +70,13 @@ async def _display_titles(
 
 @router.get("/unread-count")
 async def unread_count(
-    db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)
+    db: AsyncSession = _NOTIFICATION_DB, current_user: User = _NOTIFICATION_USER
 ) -> dict:
     await generate_for_user(db, current_user.id)
     count = await db.scalar(
         select(sql_count())
         .select_from(Notification)
-        .where(Notification.user_id == current_user.id, Notification.read_at.is_(None))
+        .where(visible_inbox(current_user.id), Notification.read_at.is_(None))
     )
     return {"unread": count or 0}
 
@@ -82,11 +86,11 @@ async def list_notifications(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     unread_only: bool = Query(default=False),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db: AsyncSession = _NOTIFICATION_DB,
+    current_user: User = _NOTIFICATION_USER,
 ) -> dict:
     await generate_for_user(db, current_user.id)
-    stmt = select(Notification).where(Notification.user_id == current_user.id)
+    stmt = select(Notification).where(visible_inbox(current_user.id))
     if unread_only:
         stmt = stmt.where(Notification.read_at.is_(None))
     rows = (
@@ -97,7 +101,7 @@ async def list_notifications(
     unread = await db.scalar(
         select(sql_count())
         .select_from(Notification)
-        .where(Notification.user_id == current_user.id, Notification.read_at.is_(None))
+        .where(visible_inbox(current_user.id), Notification.read_at.is_(None))
     )
     titles = await _display_titles(db, current_user.id, rows)
     return {
@@ -108,8 +112,8 @@ async def list_notifications(
 
 @router.post("/regenerate")
 async def regenerate_notifications(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_admin),
+    db: AsyncSession = _NOTIFICATION_DB,
+    current_user: User = _NOTIFICATION_ADMIN,
 ) -> dict:
     """Admin-only: runs the same generation the bell's poll triggers, on
     demand, so a just-edited air date or release date doesn't need a poll
@@ -128,38 +132,46 @@ class TestNotificationRequest(BaseModel):
 @router.post("/test", status_code=status.HTTP_201_CREATED)
 async def create_test_notification(
     payload: TestNotificationRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_admin),
+    db: AsyncSession = _NOTIFICATION_DB,
+    current_user: User = _NOTIFICATION_ADMIN,
 ) -> dict:
     """Admin-only: fabricates a real notification row for your own account
     so the bell, the list, and read/unread/delete can all be exercised
     without waiting on an actual episode to air or movie to release. The
     media id is a random placeholder, so it won't link to a real page."""
     now = int(time.time())
-    notification = Notification(
-        user_id=current_user.id,
-        kind=payload.kind,
-        media_type=payload.media_type,
-        media_id=uuid4(),
-        title=payload.title,
-        body=payload.body,
-        poster_url=None,
-        event_at=now,
-        dedupe_key=f"test:{uuid4()}",
-        created_at=now,
+    notification_ids = await emit_legacy_rows(
+        db,
+        current_user.id,
+        [
+            {
+                "kind": payload.kind,
+                "media_type": payload.media_type,
+                "media_id": uuid4(),
+                "title": payload.title,
+                "body": payload.body,
+                "poster_url": None,
+                "event_at": now,
+                "dedupe_key": f"test:{uuid4()}",
+            }
+        ],
+        source="host.test",
     )
-    db.add(notification)
+    if not notification_ids:
+        raise HTTPException(status_code=409, detail="Notification disabled by preferences")
+    notification = await db.get(Notification, notification_ids[0])
+    assert notification is not None
     await db.commit()
     return _read(notification)
 
 
 @router.post("/read-all", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def mark_all_read(
-    db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)
+    db: AsyncSession = _NOTIFICATION_DB, current_user: User = _NOTIFICATION_USER
 ) -> None:
     await db.execute(
         update(Notification)
-        .where(Notification.user_id == current_user.id, Notification.read_at.is_(None))
+        .where(visible_inbox(current_user.id), Notification.read_at.is_(None))
         .values(read_at=int(time.time()))
     )
     await db.commit()
@@ -168,12 +180,12 @@ async def mark_all_read(
 @router.post("/{notification_id}/read", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def mark_read(
     notification_id: UUID,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db: AsyncSession = _NOTIFICATION_DB,
+    current_user: User = _NOTIFICATION_USER,
 ) -> None:
     result = await db.execute(
         update(Notification)
-        .where(Notification.id == notification_id, Notification.user_id == current_user.id)
+        .where(Notification.id == notification_id, visible_inbox(current_user.id))
         .values(read_at=int(time.time()))
     )
     if not result.rowcount:
@@ -186,12 +198,12 @@ async def mark_read(
 )
 async def mark_unread(
     notification_id: UUID,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db: AsyncSession = _NOTIFICATION_DB,
+    current_user: User = _NOTIFICATION_USER,
 ) -> None:
     result = await db.execute(
         update(Notification)
-        .where(Notification.id == notification_id, Notification.user_id == current_user.id)
+        .where(Notification.id == notification_id, visible_inbox(current_user.id))
         .values(read_at=None)
     )
     if not result.rowcount:
@@ -202,12 +214,20 @@ async def mark_unread(
 @router.delete("/{notification_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def delete_notification(
     notification_id: UUID,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db: AsyncSession = _NOTIFICATION_DB,
+    current_user: User = _NOTIFICATION_USER,
 ) -> None:
-    await db.execute(
-        delete(Notification).where(
-            Notification.id == notification_id, Notification.user_id == current_user.id
-        )
-    )
+    await delete_notice(db, current_user.id, notification_id)
+    await db.commit()
+
+
+@router.post(
+    "/{notification_id}/dismiss", status_code=status.HTTP_204_NO_CONTENT, response_model=None
+)
+async def dismiss_notification(
+    notification_id: UUID,
+    db: AsyncSession = _NOTIFICATION_DB,
+    current_user: User = _NOTIFICATION_USER,
+) -> None:
+    await dismiss(db, current_user.id, notification_id)
     await db.commit()

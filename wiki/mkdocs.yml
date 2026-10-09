@@ -92,6 +92,7 @@ nav:
       - Plugin Home Widgets: development/plugin-home-widgets.md
       - Custom Plugin Frontend Sandbox: development/plugin-ui-sandbox.md
       - Plugin Notification Providers: development/notification-providers.md
+      - Notification Core: development/notification-core.md
       - Reference Plugins: development/reference-plugins.md
       - Plugin Integration Validation: development/plugin-validation.md
       - Installed-plugin Conformance: development/plugin-conformance.md

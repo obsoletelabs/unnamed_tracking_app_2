@@ -26,7 +26,6 @@ from src.database.models.game import Game
 from src.database.models.game_file_item import GameFileItem
 from src.database.models.media_item import MediaItem
 from src.database.models.movies import Movie, MovieStatus
-from src.database.models.notification import Notification
 from src.database.models.plugin_notification_provider import (
     PluginNotificationProviderRegistration,
 )
@@ -36,7 +35,7 @@ from src.features.metadata.providers import (
     unregister_provider,
 )
 from src.features.metadata.service import search_games
-from src.features.notification_providers.delivery import ensure_deliveries
+from src.features.notification_controller import emit_legacy_rows
 from src.plugin_api.capabilities import capability_implies
 from src.plugin_api.contracts import (
     DocumentChunkRepresentation,
@@ -525,21 +524,27 @@ async def _send_notification(
     body = str(payload.get("body", "")).strip()
     if not title or not body:
         raise ValueError("notification title and body are required")
-    notification = Notification(
-        user_id=user_id,
-        kind="plugin",
-        media_type="plugin",
-        media_id=uuid5(NAMESPACE_URL, f"unnamed-tracking:plugin:{plugin_id}"),
-        title=title[:500],
-        body=body[:10000],
-        event_at=int(time.time()),
-        dedupe_key=f"plugin:{plugin_id}:{time.time_ns()}",
+    notification_ids = await emit_legacy_rows(
+        db,
+        user_id,
+        [
+            {
+                "kind": "plugin",
+                "media_type": "plugin",
+                "media_id": uuid5(NAMESPACE_URL, f"unnamed-tracking:plugin:{plugin_id}"),
+                "title": title[:500],
+                "body": body[:10000],
+                "event_at": int(time.time()),
+                "dedupe_key": f"plugin:{plugin_id}:{time.time_ns()}",
+            }
+        ],
+        source=plugin_id,
     )
-    db.add(notification)
-    await db.flush()
-    await ensure_deliveries(db, [notification.id])
     await db.commit()
-    return {"sent": True, "notification_id": str(notification.id)}
+    return {
+        "sent": bool(notification_ids),
+        "notification_id": str(notification_ids[0]) if notification_ids else None,
+    }
 
 
 async def _register_provider(

@@ -102,6 +102,7 @@ async def test_lifecycle_revokes_all_host_execution_boundaries(tmp_path, monkeyp
     dispatch = AsyncMock(return_value={"events": []})
     monkeypatch.setattr(plugin_contributions, "dispatch_gateway_request", dispatch)
     registration = SimpleNamespace(
+        id=uuid4(),
         plugin_id=plugin_id,
         installation_id=installation_id,
         provider_id=f"{plugin_id}.provider",
@@ -109,6 +110,11 @@ async def test_lifecycle_revokes_all_host_execution_boundaries(tmp_path, monkeyp
         action_id="run",
     )
     db = AsyncMock()
+    db.scalar.return_value = user.id
+    monkeypatch.setattr(
+        "src.features.notification_providers.plugin.has_capability_grant",
+        AsyncMock(return_value=True),
+    )
     db.execute.return_value = [
         (capability, 1)
         for capability in (
@@ -186,7 +192,14 @@ async def test_lifecycle_revokes_all_host_execution_boundaries(tmp_path, monkeyp
                     )
                     assert response.status_code == expected
                 active_providers = await providers.get_notification_providers(db)
-                assert bool(active_providers) == (status == "running")
+                # Registration remains discoverable during outages; actual
+                # destination authorization still requires a running owner.
+                assert bool(active_providers)
+                provider = next(iter(active_providers.values()))
+                destination = await provider.lookup_destination(
+                    db, user, SimpleNamespace(enabled=True, user_id=user.id)
+                )
+                assert (destination is not None) is (status == "running")
                 # The disabled/quarantined owner still reserves its backend declaration.
                 summary = (await client.get("/api/plugins")).json()[0]
                 assert summary["backend_routes"][0]["path"] == "/api/contract-lifecycle"

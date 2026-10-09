@@ -42,6 +42,11 @@ DEFAULTS: dict[str, Any] = {
     "notify_sequel_announced": True,
     "notify_movie_released": True,
     "notify_session_anomaly": True,
+    "notify_game_released": True,
+    "notify_game_sale": True,
+    "notify_game_price_hit": True,
+    "notification_types": {},
+    "notification_destinations": {},
     "notify_statuses": ["watching", "plan", "hold"],
     "notify_media_types": ["anime", "tv", "movie"],
     "notification_retention_days": 30,
@@ -70,7 +75,7 @@ _CHOICES: dict[str, tuple[Any, ...]] = {
     "ui_style": ("archive-pocket",),
     "calendar_default_view": ("month", "week", "agenda"),
     "calendar_week_start": (0, 1),
-    "notification_retention_days": (0, 7, 14, 30, 90),
+    "notification_retention_days": (0, 7, 14, 30, 90, 180, 365),
     "library_default_layout": ("list", "shelf", "board"),
     "lists_default_sort": ("custom", "name", "count", "recent"),
     "title_language": ("english", "romaji", "native"),
@@ -233,7 +238,24 @@ def _validate_widget_config(value: Any) -> dict[str, dict[str, Any]]:
     return {identifier: dict(options) for identifier, options in value.items()}
 
 
+def _validate_notification_mapping(value: Any) -> dict[str, bool]:
+    if (
+        not isinstance(value, dict)
+        or len(value) > 256
+        or any(
+            not isinstance(name, str)
+            or not re.fullmatch(r"[a-zA-Z0-9._:-]{1,200}", name)
+            or not isinstance(enabled, bool)
+            for name, enabled in value.items()
+        )
+    ):
+        raise ValueError("Notification preferences must map bounded identifiers to booleans")
+    return dict(value)
+
+
 _VALUE_VALIDATORS: dict[str, Callable[[Any], Any]] = {
+    "notification_types": _validate_notification_mapping,
+    "notification_destinations": _validate_notification_mapping,
     "ui_theme_package": _validate_theme_package,
     "home_widgets": _validate_home_widgets,
     "home_widget_config": _validate_widget_config,

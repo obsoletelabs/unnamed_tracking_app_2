@@ -5,6 +5,7 @@ import io
 import json
 import uuid
 import zipfile
+from uuid import uuid4
 
 import pytest
 from runtime import (
@@ -721,6 +722,39 @@ def test_runtime_http_preparation_and_completion_are_authenticated(
         ) as response:
             assert response.status == 200
         assert registry._state()["example.upload"]["enabled"] is True
+        delivery_calls = []
+        monkeypatch.setattr(
+            registry,
+            "notification_delivery",
+            lambda *args, **kwargs: delivery_calls.append((args, kwargs)) or {"success": True},
+        )
+        body = "🎮" * 10000
+        work = json.dumps(
+            {
+                "values": {"delivery": {"body": body}},
+                "user_id": str(uuid.uuid4()),
+                "installation_id": headers["X-Plugin-Installation-ID"],
+                "attempt_id": str(uuid.uuid4()),
+            },
+            ensure_ascii=False,
+        ).encode()
+        delivery_url = base_url + "/plugins/example.upload/notification-deliveries/deliver"
+        with pytest.raises(HTTPError) as unauthorized_delivery:
+            urlopen(Request(delivery_url, data=work, method="POST"), timeout=5)
+        assert unauthorized_delivery.value.code == 401
+        assert not delivery_calls
+        with urlopen(
+            Request(delivery_url, data=work, method="POST", headers=headers), timeout=5
+        ) as response:
+            assert json.load(response) == {"success": True}
+        assert delivery_calls[0][0][2]["delivery"]["body"] == body
+        with pytest.raises(HTTPError) as oversized_delivery:
+            urlopen(
+                Request(delivery_url, data=b" " * 65537, method="POST", headers=headers),
+                timeout=5,
+            )
+        assert oversized_delivery.value.code == 422
+        assert len(delivery_calls) == 1
     finally:
         server.shutdown()
         worker.join(timeout=5)
@@ -765,7 +799,7 @@ def test_frontend_asset_is_namespaced(tmp_path, activate_registry) -> None:
     assert "PG" in asset["content"]
 
 
-def test_runtime_discord_action_reads_secret_from_private_storage(
+def test_runtime_discord_generic_action_cannot_bypass_core(
     tmp_path, monkeypatch, activate_registry
 ) -> None:
     from runtime import PluginRegistry, PluginSupervisor
@@ -841,15 +875,11 @@ def test_runtime_discord_action_reads_secret_from_private_storage(
         lambda url, content: delivered.append((url, content)),
     )
     activate_registry(registry, "example.discord")
-    result = registry.action("example.discord", "announce", {})
+    from runtime import RuntimePolicyError
+    with pytest.raises(RuntimePolicyError, match="core-authorized"):
+        registry.action("example.discord", "announce", {"_notification_authorized": True})
     assert approved == ["notifications.send", "notifications.send"]
-    assert result == {"completed": True}
-    assert delivered == [
-        (
-            "https://discord.com/api/webhooks/test/secret",
-            "hello",
-        )
-    ]
+    assert delivered == []
 
 
 def test_runtime_action_returns_structured_provider_result(
@@ -957,13 +987,20 @@ def test_runtime_discord_provider_returns_core_delivery_result(
     )
 
     activate_registry(registry, "example.provider")
-    assert registry.action("example.provider", "deliver", {}) == {
+    from runtime import RuntimePolicyError
+    with pytest.raises(RuntimePolicyError, match="core-authorized"):
+        registry.action("example.provider", "deliver", {})
+    installed = registry._item(package)
+    assert registry.notification_delivery(
+        "example.provider", "deliver", {"delivery": {}}, user_id=str(uuid4()),
+        installation_id=installed["installation_id"], attempt_id=str(uuid4()),
+    ) == {
         "success": True,
         "retryable": False,
         "error": None,
     }
     assert delivered == [("https://discord.com/api/webhooks/test/secret", "hello")]
-    assert approved == ["notification_providers.deliver"]
+    assert approved == ["notification_providers.deliver"] * 3
 
 
 def test_action_handler_can_use_the_mediated_plugin_gateway(

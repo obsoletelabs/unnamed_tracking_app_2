@@ -3,10 +3,8 @@ episode notification exists only because a provider gave that episode an
 air time (or the show's confirmed next-episode time) that has now passed,
 and its `event_at` is that exact time.
 
-There is no scheduler: generation runs when the app asks for
-notifications (the bell polls), so it costs nothing while nobody is
-looking and needs no new background job. Deduplication by `dedupe_key`
-makes running it any number of times safe."""
+Generation is shared by inbox polling and bounded scans in the existing
+jobs loop. Durable receipts make discovery safe after content deletion."""
 
 from __future__ import annotations
 
@@ -18,15 +16,16 @@ from typing import Any, cast
 from uuid import UUID
 
 from sqlalchemy import delete, select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.preferences import load_preferences
 from src.database.models.anime import Anime, AnimeEpisode, AnimeSeason, AnimeStatus
 from src.database.models.movies import Movie, MovieStatus
 from src.database.models.notification import Notification
+from src.database.models.notification_delivery import NotificationDelivery
 from src.database.models.tv_show import TVEpisode, TVSeason, TVShow, TVShowStatus
-from src.features.notification_providers.delivery import ensure_deliveries
+from src.features.game_notifications import generate_game_releases
+from src.features.notification_controller import emit_legacy_rows
 
 # How far back "just aired" reaches. A week covers someone away for a few
 # days without turning first use into a flood of old episodes.
@@ -53,16 +52,7 @@ def _noon_utc(d: date) -> int:
 async def _insert(db: AsyncSession, user_id: UUID, rows: list[dict[str, Any]]) -> int:
     if not rows:
         return 0
-    now = int(time.time())
-    stmt = (
-        pg_insert(Notification)
-        .values([{**r, "user_id": user_id, "created_at": now} for r in rows])
-        .on_conflict_do_nothing(constraint="uq_notifications_user_dedupe")
-    )
-    result = await db.execute(stmt.returning(Notification.id))
-    notification_ids = list(result.scalars())
-    await ensure_deliveries(db, notification_ids)
-    return len(notification_ids)
+    return len(await emit_legacy_rows(db, user_id, rows))
 
 
 def _episode_row(
@@ -241,7 +231,13 @@ async def generate_for_user(db: AsyncSession, user_id: UUID) -> int:
         cutoff = min(now - retention_days * 86400, since)
         await db.execute(
             delete(Notification).where(
-                Notification.user_id == user_id, Notification.event_at < cutoff
+                Notification.user_id == user_id,
+                Notification.event_at < cutoff,
+                ~Notification.id.in_(
+                    select(NotificationDelivery.notification_id).where(
+                        NotificationDelivery.status.in_(("pending", "processing", "retry_wait"))
+                    )
+                ),
             )
         )
 
@@ -260,6 +256,7 @@ async def generate_for_user(db: AsyncSession, user_id: UUID) -> int:
         )
     rows.extend(await _movie_notifications(db, user_id, prefs, window))
     created = await _insert(db, user_id, rows)
+    created += await generate_game_releases(db, user_id, now=now)
     await db.commit()
     return created
 

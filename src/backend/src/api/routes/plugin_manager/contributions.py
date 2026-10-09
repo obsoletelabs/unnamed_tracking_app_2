@@ -35,6 +35,7 @@ from src.core.auth import get_current_user, hash_token, session_cookie_name
 from src.database.models.auth import UserSession
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features.notification_destinations import invalidate_legacy_configuration
 from src.plugin_api.compatibility import is_legacy_contract
 from src.plugin_api.contracts import (
     PLUGIN_API_CONTRACT_VERSION,
@@ -263,6 +264,8 @@ async def save_plugin_secret(
     value = payload.get("value")
     if not isinstance(value, str) or not value:
         raise HTTPException(status_code=400, detail="Secret value must be a non-empty string.")
+    await invalidate_legacy_configuration(db, UUID(str(plugin["installation_id"])))
+    await db.commit()
     try:
         await runtime.client.save_secret(quote(plugin_id, safe=""), f"secrets/{key}", value)
     except PluginRuntimeUnavailable as exc:
