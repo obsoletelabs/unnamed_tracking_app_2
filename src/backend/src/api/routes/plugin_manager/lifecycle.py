@@ -33,6 +33,7 @@ from src.database.models.plugin_permissions import (
 )
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features.notification_source_policy import retire_sources
 from src.plugin_api.capabilities import calculate_permission_delta
 from src.plugin_api.contracts import CapabilityRef, PermissionDeclaration
 from src.plugin_api.grants import (
@@ -329,6 +330,7 @@ async def revoke_management_token(
 
 
 async def _purge_plugin_database(db: AsyncSession, plugin_id: str) -> None:
+    await retire_sources(db, plugin_id)
     await db.execute(
         sql_update(NotificationDestination)
         .where(
@@ -669,10 +671,14 @@ async def enable_plugin(
 
 
 @router.post("/{plugin_id}/disable")
-async def disable_plugin(plugin_id: str, admin: User = _PLUGIN_ADMIN) -> dict:
+async def disable_plugin(
+    plugin_id: str, admin: User = _PLUGIN_ADMIN, db: AsyncSession = _PLUGIN_DB
+) -> dict:
     del admin
     with runtime.runtime_errors():
         await runtime.client.stop(quote(plugin_id, safe=""))
+    await retire_sources(db, plugin_id)
+    await db.commit()
     return {"plugin_id": plugin_id, "enabled": False}
 
 
@@ -698,6 +704,7 @@ async def revoke_plugin_permissions(
     admin: User = _PLUGIN_ADMIN,
 ) -> dict:
     del admin
+    await retire_sources(db, plugin_id)
     rows = await db.scalars(
         select(PluginPermissionGrant).where(
             PluginPermissionGrant.plugin_id == plugin_id,

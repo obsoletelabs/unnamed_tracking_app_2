@@ -40,7 +40,9 @@ def effective_trust(destination: NotificationDestination) -> Trust:
 
 
 def preference_enabled(notification: Notification, preferences: dict[str, Any]) -> bool:
-    if not preferences.get(f"notify_{notification.kind}", True):
+    if notification.source_installation_id is None and not preferences.get(
+        f"notify_{notification.kind}", True
+    ):
         return False
     return preferences.get("notification_types", {}).get(notification.event_type, True)
 

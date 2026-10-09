@@ -334,3 +334,7 @@ through one shared metadata handler. Core search does not require the plugin run
 Provider configuration and health appear in the host's metadata settings.
 See [the progressive metadata contract](../development/metadata-providers.md) for
 phase separation, scoped credential migration, deadlines and persistence behavior.
+
+### Notification event sources
+
+Contract 1.1.2 adds `notification_sources.register`, `notification_sources.unregister` and `notifications.emit` through the existing gateway/capability system. Public DTOs `NotificationTypeRegistration` and `NotificationEventEmission` are exported from `src.plugin_api`. Namespaced declarations are host-interpreted, recipient scope comes from the authenticated action/subscribed background user, and providers remain separate. Sensitive content additionally requires the explicit critical `notifications.sensitive` grant, which broad notification/full-API grants do not imply. See [notification core](notification-core.md#registered-plugin-notification-sources-contract-112) for limits, routing and retained lifecycle semantics. Existing `notifications.send` callers remain supported.

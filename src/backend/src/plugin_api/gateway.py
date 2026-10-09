@@ -36,6 +36,7 @@ from src.features.metadata.providers import (
 )
 from src.features.metadata.service import search_games
 from src.features.notification_controller import emit_legacy_rows
+from src.features.notification_sources import emit_source, register_source, unregister_source
 from src.plugin_api.capabilities import capability_implies
 from src.plugin_api.contracts import (
     DocumentChunkRepresentation,
@@ -84,6 +85,9 @@ _METHOD_CAPABILITIES = {
     "network.request": "network.outbound",
     "events.poll": "events.subscribe",
     "notifications.send": "notifications.send",
+    "notifications.emit": "notifications.emit",
+    "notification_sources.register": "notification_sources.register",
+    "notification_sources.unregister": "notification_sources.register",
     "notification_providers.register": "notification_providers.register",
     "notification_providers.unregister": "notification_providers.register",
     "metadata_providers.register": "metadata_providers.register",
@@ -176,7 +180,21 @@ async def dispatch_gateway_request(
         "media.import": partial(_import_media, db, user_id=user_id, payload=payload),
         "events.poll": partial(_poll_events, db, user_id=user_id, payload=payload),
         "notifications.send": partial(
-            _send_notification, db, user_id=user_id, plugin_id=plugin_id, payload=payload
+            _send_notification,
+            db,
+            user_id=user_id,
+            plugin_id=plugin_id,
+            installation_id=installation_id,
+            payload=payload,
+        ),
+        "notifications.emit": partial(
+            emit_source, db, plugin_id, installation_id, user_id, payload
+        ),
+        "notification_sources.register": partial(
+            register_source, db, plugin_id, installation_id, user_id, payload
+        ),
+        "notification_sources.unregister": partial(
+            unregister_source, db, plugin_id, installation_id, payload
         ),
         "notification_providers.register": partial(
             _register_provider,
@@ -518,7 +536,12 @@ async def _poll_events(
 
 
 async def _send_notification(
-    db: AsyncSession, *, user_id: UUID, plugin_id: str, payload: dict[str, Any]
+    db: AsyncSession,
+    *,
+    user_id: UUID,
+    plugin_id: str,
+    installation_id: UUID,
+    payload: dict[str, Any],
 ) -> dict[str, Any]:
     title = str(payload.get("title", "")).strip()
     body = str(payload.get("body", "")).strip()
@@ -539,6 +562,7 @@ async def _send_notification(
             }
         ],
         source=plugin_id,
+        source_installation_id=installation_id,
     )
     await db.commit()
     return {

@@ -22,6 +22,7 @@ from src.database.models.notification_provider_setting import NotificationProvid
 from src.database.models.user import User
 from src.features.notification_destinations import resolve_destinations
 from src.features.notification_policy import INBOX_PROVIDER, Trust, route_choice, select_projection
+from src.features.notification_source_policy import source_delivery_allowed
 from src.plugin_api.runtime_client import PluginRuntimeUnavailable
 
 from .base import DeliveryResult, NotificationProvider, ProviderDestination, notification_message
@@ -190,6 +191,9 @@ async def _resolve_work(
     if notification is None or notification.deleted_at is not None:
         await _finish(db, delivery_id, token, "cancelled")
         return None
+    if not await source_delivery_allowed(db, notification):
+        await _finish(db, delivery_id, token, "suppressed", "source_revoked")
+        return None
     prefs = await load_preferences(db, notification.user_id)
     projection = select_projection(notification, endpoint, prefs) if endpoint else None
     if (
@@ -238,6 +242,8 @@ async def _resolve_work(
     return _DeliveryWork(notification, endpoint, provider, destination)
 
 
+# Separate exits ensure source revocation is rechecked before transport I/O.
+# pylint: disable-next=too-many-return-statements
 async def _dispatch(db: AsyncSession, delivery_id: UUID, token: UUID) -> bool:
     delivery = await db.get(NotificationDelivery, delivery_id, populate_existing=True)
     if delivery is None or delivery.status != "processing" or delivery.claim_token != token:
@@ -258,6 +264,9 @@ async def _dispatch(db: AsyncSession, delivery_id: UUID, token: UUID) -> bool:
         await db.commit()
         return False
     await db.refresh(endpoint)
+    if not await source_delivery_allowed(db, notification):
+        await _finish(db, delivery_id, token, "suppressed", "source_revoked")
+        return False
     current_preferences = await load_preferences(db, notification.user_id)
     if (
         endpoint.revision != delivery.destination_revision

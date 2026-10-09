@@ -75,6 +75,26 @@ def test_populated_notification_upgrade_preserves_inbox_and_suppresses_unsafe_wo
                 (uuid4(), notification_id),
             )
             migrate("upgrade", "head")
+            assert connection.execute(
+                "SELECT accepted_at FROM notification_receipts"
+            ).fetchone() == (0,)
+            assert connection.execute(
+                "SELECT source_installation_id FROM notifications"
+            ).fetchone() == (None,)
+            assert all(
+                connection.execute("SELECT to_regclass(%s)", (table,)).fetchone()[0]
+                for table in ("game_note_details", "game_note_versions")
+            )
+            connection.execute(
+                """INSERT INTO plugin_notification_type_registrations
+                (id, plugin_id, installation_id, event_type, definition, registered_at)
+                VALUES (%s, 'example.migration', %s, 'example.migration.notice', '{}', 1)""",
+                (uuid4(), installation_id),
+            )
+            with pytest.raises(subprocess.CalledProcessError) as failure:
+                migrate("downgrade", "24bc18feb852")
+            assert "Cannot remove retained notification source identities" in failure.value.stderr
+            connection.execute("DELETE FROM plugin_notification_type_registrations")
             assert connection.execute("""SELECT id, read_at, required_trust, purpose, body
                 FROM notifications""").fetchone() == (
                 notification_id,

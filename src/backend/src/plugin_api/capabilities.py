@@ -57,6 +57,8 @@ _PARENTS: dict[Capability, Capability] = {
     Capability.SESSIONS_GEOIP_READ: Capability.SESSIONS,
     Capability.SESSIONS_GEOIP_CONFIGURE: Capability.SESSIONS,
     Capability.NOTIFICATIONS_SEND: Capability.NOTIFICATIONS,
+    Capability.NOTIFICATIONS_EMIT: Capability.NOTIFICATIONS,
+    Capability.NOTIFICATION_SOURCES_REGISTER: Capability.NOTIFICATIONS,
     Capability.NOTIFICATION_PROVIDERS: Capability.NOTIFICATIONS,
     Capability.NOTIFICATION_PROVIDERS_REGISTER: Capability.NOTIFICATION_PROVIDERS,
     Capability.NOTIFICATION_PROVIDERS_DELIVER: Capability.NOTIFICATION_PROVIDERS,
@@ -95,6 +97,8 @@ _FULL_API_IMPLIED = frozenset(
         Capability.SESSIONS_GEOIP_CONFIGURE,
         Capability.NOTIFICATIONS,
         Capability.NOTIFICATIONS_SEND,
+        Capability.NOTIFICATIONS_EMIT,
+        Capability.NOTIFICATION_SOURCES_REGISTER,
         Capability.NOTIFICATION_PROVIDERS,
         Capability.NOTIFICATION_PROVIDERS_REGISTER,
         Capability.NOTIFICATION_PROVIDERS_DELIVER,
@@ -111,6 +115,8 @@ _FULL_API_IMPLIED = frozenset(
 _CRITICAL = frozenset(
     {
         Capability.FULL_API,
+        # Sensitive notification content always requires its own explicit grant.
+        Capability.NOTIFICATIONS_SENSITIVE,
         Capability.FRONTEND_NATIVE,
         Capability.FRONTEND_PWA,
         Capability.BACKEND_ROUTES_HOST,
@@ -130,6 +136,8 @@ _HIGH = frozenset(
         Capability.SESSIONS_GEOIP_READ,
         Capability.SESSIONS_GEOIP_CONFIGURE,
         Capability.NOTIFICATIONS_SEND,
+        Capability.NOTIFICATIONS_EMIT,
+        Capability.NOTIFICATION_SOURCES_REGISTER,
         Capability.NOTIFICATION_PROVIDERS,
         Capability.NOTIFICATION_PROVIDERS_REGISTER,
         Capability.NOTIFICATION_PROVIDERS_DELIVER,
