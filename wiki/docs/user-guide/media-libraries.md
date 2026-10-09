@@ -80,6 +80,12 @@ and rating stay as you entered them. Completed fills known episode totals.
 If a season-progress request fails after the title was saved, the confirmation
 links to that saved title and explains that its progress needs updating.
 
+The [browser conformance checks](../assets/media-search/conformance.json) cover
+phone and desktop entry points, partial responses and real database saves.
+Provider timing uses explicit fixtures; the separate
+[live provider check](../assets/media-search/live-providers.json) uses the
+configured core providers without fixtures.
+
 The existing Edit dialogs still let you search for metadata and adjust the full
 form. Fields you changed yourself are kept rather than overwritten (the dialog
 tells you which it skipped).
