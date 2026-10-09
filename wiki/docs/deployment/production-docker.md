@@ -89,7 +89,11 @@ Diagnostic endpoints are `/_startup/status.json` and `/_startup/details.txt`. Ra
 The startup JavaScript polls asynchronously and slows down after READY. When a failure is reported, the loading animation stops and concise diagnostic details open.
 ## Optional embedded TLS
 
-HTTP-only remains the default. TLS is deployment-only. When TLS is enabled, the container selects `readytls.conf` or `readytlsredirect.conf` before replacing `/etc/nginx/nginx.conf`. If `NGINX_TLS_CERTIFICATE` and `NGINX_TLS_PRIVATE_KEY` are empty, a complete `/etc/nginx/tls/tls.crt` and `/etc/nginx/tls/tls.key` pair is used automatically when present; otherwise a self-signed localhost certificate/key pair is generated under `/run/unnamed-tracking/tls`. Explicit certificate/key paths remain supported for production. TLS is disabled by default.
+HTTP-only remains the default. Administrators configure production TLS under **Settings → Administration → Application → HTTPS / TLS**, during setup, or through the existing environment registry. Environment values lock their corresponding fields. Saving in the production container validates a candidate with `nginx -t`, atomically activates it, gracefully reloads Nginx and confirms the new workers before committing settings. Invalid configuration, failed activation or a failed database save restores the previous configuration. No Docker socket or full application restart is needed.
+
+Saving TLS settings also activates renewed mounted certificates when their paths are unchanged. There is no separate reload button. Certificate and private-key paths have separate labeled fields; contents are never uploaded. Paths must be absolute and free of directive/shell syntax. Supply both paths together. Saved settings survive container restart, and the healthcheck follows HTTP-to-HTTPS redirection. The development stack can save settings for production but does not run the embedded Nginx listener.
+
+When TLS is enabled, the container selects `readytls.conf` or `readytlsredirect.conf` before replacing `/etc/nginx/nginx.conf`. If `NGINX_TLS_CERTIFICATE` and `NGINX_TLS_PRIVATE_KEY` are empty, a complete `/etc/nginx/tls/tls.crt` and `/etc/nginx/tls/tls.key` pair is used automatically when present; otherwise a self-signed localhost certificate/key pair is generated under `/run/unnamed-tracking/tls`. Explicit certificate/key paths remain supported for production. TLS is disabled by default.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
@@ -100,6 +104,12 @@ HTTP-only remains the default. TLS is deployment-only. When TLS is enabled, the 
 
 When enabled, publish container port 443 and mount the certificate directory read-only. Do not bake keys into the image.
 
+Confirm external HTTPS access before enabling HTTP redirection. Changes to container environment variables require container recreation; unlocked settings changed through the app reload immediately.
+
+![Production TLS applied automatically on save](../assets/application-settings/tls-production-reloaded-dark.png)
+
+![TLS settings on mobile](../assets/application-settings/tls-blocks-mobile.png)
+
 `AUTH_COOKIE_SECURE=true` should be used when the public application URL is HTTPS. Nginx sends `X-Forwarded-Proto` and Uvicorn accepts that header only from the local proxy, preserving HTTPS for request-derived OIDC callback URLs.
 
 If TLS is enabled but the certificate/key is missing, unreadable, malformed, or mismatched, Nginx validation fails and startup reports a frontend/configuration failure. Because the startup configuration remains HTTP-only until the production handoff, the diagnostic page remains reachable during this failure.
@@ -109,6 +119,14 @@ If TLS is enabled but the certificate/key is missing, unreadable, malformed, or 
 Production Nginx restores the originating client address when the request comes through a trusted reverse proxy. The default configuration uses `X-Forwarded-For` with recursive real-IP processing, but only loopback is trusted initially. Settings/setup provides explicit Cloudflare, local/private, CGNAT/VPS, and custom range controls. Nginx only accepts the forwarded address when the immediate peer is in the trusted-proxy set; with recursive processing enabled it selects the last non-trusted address in the forwarded chain. This prevents an arbitrary direct client from making a forwarded header authoritative. See the [NGINX real-IP module documentation](https://nginx.org/en/docs/http/ngx_http_realip_module.html).
 
 The built-in trusted set is deliberately limited to IPv4/IPv6 loopback (`127.0.0.1/32` and `::1/128`). Cloudflare, local/private, CGNAT/VPS, and custom ranges are opt-in through Settings/setup. The backend owns the preset definitions, and the combined production container asks the backend for the effective configuration before rendering Nginx.
+
+Application settings and setup show one removable row per trusted address/CIDR, with long values wrapped. Paste custom entries one per line; the backend validates and canonicalizes them before adding them, rejecting malformed IPs or subnet sizes. Presets do not duplicate existing rows. Removing all saved entries explicitly trusts no proxy addresses. Proxy changes use the same immediate production validation/reload path as TLS changes.
+
+Quick-add buttons remain available for local/private, CGNAT/VPS and Cloudflare ranges. Each added range can be removed independently before saving.
+
+![Individual proxy entries and quick-add presets](../assets/application-settings/proxy-entries-dark.png)
+
+![Wrapped proxy entries on mobile](../assets/application-settings/proxy-entries-mobile.png)
 
 Environment values take precedence over saved Settings/setup values:
 

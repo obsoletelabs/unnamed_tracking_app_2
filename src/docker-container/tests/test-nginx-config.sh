@@ -144,3 +144,7 @@ grep -q 'X-Forwarded-Proto $scheme' "$rendered"
 grep -q 'proxy_read_timeout 60s' "$rendered"
 
 echo "production Nginx/TLS configuration tests passed"
+PYTHONPATH=/app STARTUP_MODE=testing \
+DATABASE_URL=postgresql+psycopg://test:test@127.0.0.1/test \
+SECRET_KEY=bm90aWZpY2F0aW9uLXRlc3Qta2V5LTAxMjM0NTY3ODk= \
+python /opt/production-tests/test-nginx-reload.py

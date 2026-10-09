@@ -19,6 +19,14 @@ export interface OidcProviderSetting {
   client_secret_configured: boolean;
 }
 export interface DeploymentSettings {
+  nginx?: {
+    enabled: boolean;
+    redirect_http: boolean;
+    certificate: string;
+    private_key: string;
+    runtime_available: boolean;
+    locked: Record<string, boolean>;
+  };
   app?: {
     public_app_url: string | null;
     last_app_url: string | null;

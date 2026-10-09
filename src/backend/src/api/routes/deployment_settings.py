@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
+from functools import partial
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -13,6 +15,15 @@ from src.core.app_integrations import get_or_create_app_integration_settings, ge
 from src.core.auth import get_current_admin
 from src.core.crypto import encrypt_secret
 from src.core.env_handler import EnvConfigHandler
+from src.core.nginx_configuration import (
+    NGINX_TLS_FIELDS,
+    NginxActivationError,
+    apply_nginx_change,
+    effective_nginx_configuration,
+    lock_nginx_configuration,
+    nginx_runtime_available,
+    validate_nginx_value,
+)
 from src.core.oidc import get_or_create_oidc_settings
 from src.core.provider_credentials import apply_deployment_provider_credentials
 from src.core.public_url import validate_deployment_url
@@ -36,6 +47,11 @@ router = APIRouter(
 
 
 class DeploymentSettingsRequest(BaseModel):
+    nginx_tls_enabled: bool | None = None
+    nginx_tls_redirect_http: bool | None = None
+    nginx_tls_certificate: str | None = Field(default=None, max_length=512)
+    nginx_tls_private_key: str | None = Field(default=None, max_length=512)
+    reload_nginx: bool = False
     public_app_url: str | None = Field(default=None, max_length=2048)
     smtp_host: str | None = Field(default=None, max_length=253)
     smtp_port: int | None = Field(default=None, ge=1, le=65535)
@@ -171,6 +187,16 @@ async def get_deployment_settings(db: AsyncSession, admin: User) -> dict:
     )
     smtp = await smtp_configuration(db)
     return {
+        "nginx": {
+            **effective_nginx_configuration(app, handler).model_dump(
+                exclude={"header", "trusted_proxies"}
+            ),
+            "runtime_available": nginx_runtime_available(),
+            "locked": {
+                attribute.removeprefix("nginx_tls_"): handler.has(name)
+                for name, attribute in NGINX_TLS_FIELDS.items()
+            },
+        },
         "app": {
             "public_app_url": await get_public_app_url(db) or None,
             "last_app_url": admin.last_app_url,
@@ -321,21 +347,25 @@ def _update_oidc_field(oidc: OidcSettings, field: str, value: Any) -> None:
         setattr(oidc, field.removeprefix("oidc_"), value or None)
 
 
-_REAL_IP_FIELDS = {
+_NGINX_FIELDS: dict[str, tuple[str, Callable[[Any], Any]]] = {
     "nginx_realip_header": ("NGINX_REALIP_HEADER", validate_real_ip_header),
     "nginx_realip_trusted_proxies": ("NGINX_REALIP_TRUSTED_PROXIES", validate_trusted_proxies),
+    **{
+        attribute: (name, partial(validate_nginx_value, attribute))
+        for name, attribute in NGINX_TLS_FIELDS.items()
+    },
 }
 
 
-def _update_real_ip_field(
-    app: AppIntegrationSettings, handler: EnvConfigHandler, field: str, value: str | None
+def _update_nginx_field(
+    app: AppIntegrationSettings, handler: EnvConfigHandler, field: str, value: Any
 ) -> None:
-    env_name, validator = _REAL_IP_FIELDS[field]
+    env_name, validator = _NGINX_FIELDS[field]
     if handler.has(env_name):
         raise HTTPException(
             409, f"{field} is managed by the deployment environment and cannot be changed here."
         )
-    if value is not None:
+    if value is not None or field in NGINX_TLS_FIELDS.values():
         try:
             setattr(app, field, validator(value))
         except ValueError as exc:
@@ -351,6 +381,7 @@ async def update_deployment_settings(
     app = await get_or_create_app_integration_settings(db)
     oidc = await get_or_create_oidc_settings(db)
     handler = EnvConfigHandler()
+    before_nginx = await lock_nginx_configuration(db, app, handler)
     provider_locks = {
         field: handler.has(env_name) for field, env_name in _PROVIDER_ENV_NAMES.items()
     }
@@ -359,12 +390,12 @@ async def update_deployment_settings(
     }
     locked_fields["oidc_allow_new_users"] = handler.has("OIDC_ISSUER_URL")
     locked_fields["oidc_enabled"] = False
-    effective_oidc_enabled = bool(oidc.enabled)
-    if payload.oidc_enabled is not None:
-        effective_oidc_enabled = bool(payload.oidc_enabled)
-    for field, value in payload.model_dump(exclude_unset=True).items():
-        if field in _REAL_IP_FIELDS:
-            _update_real_ip_field(app, handler, field, value)
+    effective_oidc_enabled = bool(
+        oidc.enabled if payload.oidc_enabled is None else payload.oidc_enabled
+    )
+    for field, value in payload.model_dump(exclude_unset=True, exclude={"reload_nginx"}).items():
+        if field in _NGINX_FIELDS:
+            _update_nginx_field(app, handler, field, value)
             continue
         if (
             provider_locks.get(field)
@@ -394,6 +425,13 @@ async def update_deployment_settings(
                 setattr(app, field, encrypt_secret(value))
         elif field in _SAFE_PROVIDER_FIELDS:
             setattr(app, field, value or None)
-    await db.commit()
+    try:
+        after_nginx = effective_nginx_configuration(app, handler)
+        requested = payload.reload_nginx or before_nginx != after_nginx
+        async with apply_nginx_change(after_nginx if requested else None):
+            await db.commit()
+    except (ValueError, NginxActivationError) as exc:
+        await db.rollback()
+        raise HTTPException(400, str(exc)) from exc
     apply_deployment_provider_credentials(app)
     return await get_deployment_settings(db, admin)

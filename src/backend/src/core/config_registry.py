@@ -132,6 +132,39 @@ CONFIG_SECTIONS: tuple[ConfigSectionSpec, ...] = (
 # through resolution, validation, persistence, and the generated UI.
 CONFIG_REGISTRY: tuple[ConfigSpec, ...] = (
     ConfigSpec(
+        "NGINX_TLS_ENABLED",
+        "proxy",
+        input_type="checkbox",
+        label="Enable production HTTPS",
+        default=False,
+        storage="app_integration",
+    ),
+    ConfigSpec(
+        "NGINX_TLS_REDIRECT_HTTP",
+        "proxy",
+        input_type="checkbox",
+        label="Redirect HTTP to HTTPS",
+        default=False,
+        storage="app_integration",
+    ),
+    ConfigSpec(
+        "NGINX_TLS_CERTIFICATE",
+        "proxy",
+        label="TLS certificate file path",
+        hint=(
+            "Mounted container path; leave both paths blank for default mounts "
+            "or a localhost self-signed certificate."
+        ),
+        storage="app_integration",
+    ),
+    ConfigSpec(
+        "NGINX_TLS_PRIVATE_KEY",
+        "proxy",
+        label="TLS private key file path",
+        hint="Mounted container path, never the private key contents.",
+        storage="app_integration",
+    ),
+    ConfigSpec(
         "PUBLIC_APP_URL",
         "general",
         label="Public app URL",

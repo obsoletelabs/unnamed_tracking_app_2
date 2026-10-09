@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import TrustedProxyControls from "./TrustedProxyControls.vue";
+import TlsSettingsSection from "./TlsSettingsSection.vue";
 import {
   fetchDeploymentSettings,
   updateDeploymentSettings,
@@ -103,11 +104,18 @@ async function save() {
           :disabled="busy || settings.real_ip.locked.trusted_proxies"
         />
       </section>
-      <p v-if="saved" class="success" role="status">App settings saved.</p>
+      <p v-if="saved" class="success" role="status">
+        App settings saved.{{
+          settings.nginx?.runtime_available
+            ? " Proxy changes are validated and applied to Nginx immediately."
+            : ""
+        }}
+      </p>
       <button :disabled="busy">
         {{ busy ? "Saving…" : "Save app settings" }}
       </button>
     </form>
+    <TlsSettingsSection v-if="settings" />
     <p v-if="error" class="error" role="alert">{{ error }}</p>
   </section>
 </template>

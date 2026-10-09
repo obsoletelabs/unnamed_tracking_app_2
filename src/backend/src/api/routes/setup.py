@@ -24,6 +24,15 @@ from src.core.config import settings
 from src.core.config_registry import CONFIG_REGISTRY
 from src.core.crypto import encrypt_secret
 from src.core.env_handler import EnvConfigHandler
+from src.core.nginx_configuration import (
+    NGINX_TLS_FIELDS,
+    NginxActivationError,
+    NginxConfiguration,
+    apply_nginx_change,
+    effective_nginx_configuration,
+    lock_nginx_configuration,
+    validate_nginx_value,
+)
 from src.core.oidc import get_or_create_oidc_settings
 from src.core.provider_credentials import apply_deployment_provider_credentials
 from src.core.public_url import validate_deployment_url
@@ -70,6 +79,7 @@ class SetupRequest(BaseModel):
 
 
 _APP_FIELDS = {
+    **NGINX_TLS_FIELDS,
     "PUBLIC_APP_URL": "public_app_url",
     **SMTP_FIELDS,
     "STEAMGRIDDB_API_KEY": "steamgriddb_api_key",
@@ -95,9 +105,12 @@ def _persisted_values(app: AppIntegrationSettings, oidc: OidcSettings) -> dict[s
     values: dict[str, Any] = {}
     for spec_name, attribute in _APP_FIELDS.items():
         value = getattr(app, attribute)
-        if value:
+        if value or (
+            spec_name in {*NGINX_TLS_FIELDS, "NGINX_REALIP_TRUSTED_PROXIES"} and value is not None
+        ):
             values[f"{spec_name}__configured"] = True
             if spec_name in {
+                *NGINX_TLS_FIELDS,
                 "PUBLIC_APP_URL",
                 *(set(SMTP_FIELDS) - {"SMTP_PASSWORD"}),
                 "IGDB_CLIENT_ID",
@@ -163,7 +176,7 @@ async def _save_configuration(
     values: dict[str, Any],
     selected_sections: set[str],
     generated_redirect_uri: str,
-) -> None:
+) -> NginxConfiguration | None:
     """Persist only fields owned by the setup registry.
 
     Environment-owned values are deliberately ignored here: the environment
@@ -172,12 +185,13 @@ async def _save_configuration(
     app = await get_or_create_app_integration_settings(db)
     oidc = await get_or_create_oidc_settings(db)
     handler = EnvConfigHandler()
+    before_nginx = await lock_nginx_configuration(db, app, handler)
 
     for name, attribute in _APP_FIELDS.items():
         if name not in values or handler.has(name):
             continue
         value = values[name]
-        if value in (None, ""):
+        if value is None or (value == "" and name != "NGINX_REALIP_TRUSTED_PROXIES"):
             continue
         if name in SMTP_FIELDS:
             try:
@@ -189,6 +203,12 @@ async def _save_configuration(
                 value = validate_deployment_url(value)
             except ValueError as exc:
                 raise HTTPException(400, str(exc)) from exc
+        if name in NGINX_TLS_FIELDS:
+            try:
+                setattr(app, attribute, validate_nginx_value(attribute, value))
+            except ValueError as exc:
+                raise HTTPException(400, f"Invalid {name} configuration") from exc
+            continue
         spec = next(spec for spec in CONFIG_REGISTRY if spec.name == name)
         setattr(
             app,
@@ -200,6 +220,11 @@ async def _save_configuration(
 
     _save_password_policy(app, values, handler)
     _save_oidc_configuration(oidc, values, selected_sections, generated_redirect_uri, handler)
+    try:
+        after_nginx = effective_nginx_configuration(app, handler)
+    except ValueError as exc:
+        raise HTTPException(400, "Invalid production TLS/proxy configuration") from exc
+    return after_nginx if before_nginx != after_nginx else None
 
 
 def _save_password_policy(
@@ -360,10 +385,15 @@ async def update_setup_configuration(
 ) -> dict[str, object]:
     del admin
     selected = set(payload.sections)
-    await _save_configuration(
+    nginx = await _save_configuration(
         db, payload.configuration, selected, str(request.url_for("oidc_callback"))
     )
-    await db.commit()
+    try:
+        async with apply_nginx_change(nginx):
+            await db.commit()
+    except NginxActivationError as exc:
+        await db.rollback()
+        raise HTTPException(400, str(exc)) from exc
     app = await get_or_create_app_integration_settings(db)
     if (
         app.password_min_length is not None
@@ -426,7 +456,7 @@ async def setup_admin(
     ):
         selected.add("oidc")
 
-    await _save_configuration(db, values, selected, str(request.url_for("oidc_callback")))
+    nginx = await _save_configuration(db, values, selected, str(request.url_for("oidc_callback")))
     await db.flush()
     apply_deployment_provider_credentials(await get_or_create_app_integration_settings(db))
 
@@ -442,15 +472,18 @@ async def setup_admin(
         await db.flush()
         await db.execute(update(Game).where(Game.user_id.is_(None)).values(user_id=user.id))
 
-        session_context = await create_session(db, user, request)
-        session_token = session_context.token
-        await db.commit()
+        session_token = (await create_session(db, user, request)).token
+        async with apply_nginx_change(nginx):
+            await db.commit()
         await db.refresh(user)
     except IntegrityError as exc:
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="Username or email already exists."
         ) from exc
+    except NginxActivationError as exc:
+        await db.rollback()
+        raise HTTPException(400, str(exc)) from exc
 
     response.set_cookie(
         key=session_cookie_name(request.headers.get("host", "")),
