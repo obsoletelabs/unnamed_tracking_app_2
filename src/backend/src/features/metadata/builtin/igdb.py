@@ -1,6 +1,11 @@
 """IGDB v4 provider with host-owned Twitch authentication and request pacing."""
 
+import asyncio
 import json
+import math
+import time
+from collections import OrderedDict
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from urllib.parse import urlencode
 
@@ -27,33 +32,96 @@ DECLARATION = {
 }
 
 
+@dataclass
+class _TokenState:
+    value: str | None = field(default=None, repr=False)
+    expires_at: float = 0
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+
+
+_tokens: OrderedDict[str, _TokenState] = OrderedDict()
+
+
+def _token_state(key: str) -> _TokenState:
+    if key in _tokens:
+        _tokens.move_to_end(key)
+        return _tokens[key]
+    # Keep old credential rotations bounded without evicting an active refresh.
+    if len(_tokens) >= 32:
+        for previous, state in list(_tokens.items()):
+            if not state.lock.locked():
+                del _tokens[previous]
+                break
+        else:
+            return _TokenState()
+    state = _TokenState()
+    _tokens[key] = state
+    return state
+
+
+async def _access_token(http: ProviderHttp, credentials: dict[str, str]) -> str:
+    state = _token_state(http.key)
+    # Waiting for another request's refresh consumes this request's own deadline.
+    async with asyncio.timeout(max(0.001, http.deadline - time.monotonic())):
+        async with state.lock:
+            if state.value and state.expires_at > time.monotonic():
+                return state.value
+            state.value = None
+            try:
+                response = await http(
+                    "https://id.twitch.tv/oauth2/token?"
+                    + urlencode({**credentials, "grant_type": "client_credentials"}),
+                    method="POST",
+                )
+            except ProviderFailure as exc:
+                if exc.status in {400, 401, 403}:
+                    raise ProviderFailure("invalid_configuration") from exc
+                raise
+            if not isinstance(response, dict):
+                raise ProviderFailure("invalid_response")
+            token = response.get("access_token")
+            if not isinstance(token, str) or not token:
+                raise ProviderFailure("invalid_configuration")
+            lifetime = response.get("expires_in")
+            if (
+                isinstance(lifetime, bool)
+                or not isinstance(lifetime, (int, float))
+                or not math.isfinite(lifetime)
+                or lifetime <= 0
+            ):
+                raise ProviderFailure("invalid_response")
+            state.value = token
+            state.expires_at = time.monotonic() + lifetime - min(60, lifetime * 0.1)
+            return token
+
+
 async def games(values, query):
     credentials = provider_values(PROVIDER_ID, ("client_id", "client_secret"))
     http = ProviderHttp(values["request"], "igdb", min_gap=0.35)
-    try:
-        token = (
-            await http(
-                "https://id.twitch.tv/oauth2/token?"
-                + urlencode({**credentials, "grant_type": "client_credentials"}),
+    for attempt in range(2):
+        token = await _access_token(http, credentials)
+        try:
+            return await http(
+                "https://api.igdb.com/v4/games",
                 method="POST",
+                text_body=query,
+                headers={
+                    "Client-ID": credentials["client_id"],
+                    "Authorization": "Bearer " + token,
+                    "Content-Type": "text/plain",
+                },
             )
-        ).get("access_token")
-    except ProviderFailure as exc:
-        if exc.status in {400, 401, 403}:
-            raise ProviderFailure("invalid_configuration") from exc
-        raise
-    if not token:
-        raise ProviderFailure("invalid_configuration")
-    return await http(
-        "https://api.igdb.com/v4/games",
-        method="POST",
-        text_body=query,
-        headers={
-            "Client-ID": credentials["client_id"],
-            "Authorization": "Bearer " + token,
-            "Content-Type": "text/plain",
-        },
-    )
+        except ProviderFailure as exc:
+            if exc.status != 401:
+                raise
+            state = _tokens.get(http.key)
+            # A late rejection must not invalidate another request's newer token.
+            if state and state.value == token:
+                state.value = None
+                state.expires_at = 0
+            if attempt == 1:
+                raise
+    raise ProviderFailure("invalid_configuration")
 
 
 async def search(values):

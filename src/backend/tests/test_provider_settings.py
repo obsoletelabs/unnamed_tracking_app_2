@@ -5,13 +5,15 @@ from uuid import uuid4
 
 import httpx
 import pytest
+from sqlalchemy import delete, event
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.routes import settings as settings_routes
 from src.core.auth import get_current_user
 from src.core.crypto import decrypt_secret
+from src.database.models.game import Game
 from src.database.models.user import User
-from src.database.session import get_db
+from src.database.session import SessionLocal, get_db
 from src.features.metadata.games.steam import SteamLibraryError
 from src.main import app
 
@@ -117,3 +119,84 @@ async def test_encrypted_provider_credentials_and_unknown_provider(credentials, 
     response = await client.put("/api/settings/provider-credentials/unknown", json={"fields": {}})
     assert response.status_code == 400
     db.commit.assert_awaited_once()
+
+
+async def test_library_counts_use_one_query_and_only_callers_active_games():
+    owner_id, other_id = uuid4(), uuid4()
+    statements = []
+
+    def record_statement(_connection, _cursor, statement, _parameters, _context, _executemany):
+        if "FROM games" in statement:
+            statements.append(statement)
+
+    async with SessionLocal() as db:
+        owner = User(
+            id=owner_id,
+            username=f"counts_{owner_id.hex}",
+            email=f"{owner_id}@example.test",
+            password_hash="x",
+            steam_library_synced_at=42,
+            psn_library_synced_at=99,
+        )
+        db.add_all(
+            [
+                owner,
+                User(
+                    id=other_id,
+                    username=f"counts_{other_id.hex}",
+                    email=f"{other_id}@example.test",
+                    password_hash="x",
+                ),
+            ]
+        )
+        await db.flush()
+        for user_id, source, deleted_at in [
+            (owner_id, "Steam", None),
+            (owner_id, "Steam", None),
+            (owner_id, "Steam", 123),
+            (owner_id, "PlayStation", None),
+            (owner_id, "GOG", None),
+            (other_id, "Steam", None),
+            (other_id, "RetroAchievements", None),
+        ]:
+            identity = uuid4().hex
+            db.add(
+                Game(
+                    user_id=user_id,
+                    title=identity,
+                    sort_title=identity,
+                    folder_location=identity,
+                    source=source,
+                    deleted_at=deleted_at,
+                )
+            )
+        await db.commit()
+
+        async def database():
+            yield db
+
+        app.dependency_overrides[get_db] = database
+        app.dependency_overrides[get_current_user] = lambda: owner
+        engine = db.bind.sync_engine
+        event.listen(engine, "before_cursor_execute", record_statement)
+        try:
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                response = await client.get("/api/settings/provider-credentials")
+            assert response.status_code == 200, response.text
+            providers = response.json()
+            assert providers["Steam"]["library_games"] == 2
+            assert providers["PlayStation"]["library_games"] == 1
+            assert providers["RetroAchievements"]["library_games"] == 0
+            assert providers["Steam"]["last_synced_at"] == 42
+            assert providers["PlayStation"]["last_synced_at"] == 99
+            assert providers["RetroAchievements"]["last_synced_at"] is None
+            assert len(statements) == 1
+        finally:
+            event.remove(engine, "before_cursor_execute", record_statement)
+            app.dependency_overrides.pop(get_db, None)
+            app.dependency_overrides.pop(get_current_user, None)
+            await db.rollback()
+            await db.execute(delete(User).where(User.id.in_([owner_id, other_id])))
+            await db.commit()
