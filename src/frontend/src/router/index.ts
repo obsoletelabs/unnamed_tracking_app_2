@@ -38,6 +38,9 @@ const router = createRouter({
     )
       return false;
     if (savedPosition) return savedPosition;
+    // Filter and sort controls update the query on the current page. They do
+    // not navigate away, so leave the viewport at the user's current position.
+    if (to.path === from.path && to.hash === from.hash) return false;
     return { top: 0 };
   },
   routes: [

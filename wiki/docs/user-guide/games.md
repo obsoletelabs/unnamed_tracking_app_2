@@ -82,6 +82,12 @@ highlighted there and shown as removable pills above the results. Metadata label
 such as `Genre: Indie` and `Indie` match the same choice. Selecting multiple tags
 shows games matching any selected tag; the other filters narrow that selection.
 
+Changing tags, genres, sorting or other query filters on the current page keeps
+your scroll position. The URL still updates for sharing. Navigating to another
+page starts at the top, and browser back/forward restores its saved position.
+
+![Selecting another genre keeps the filter panel in the same viewport](../assets/filter-scroll/after.jpg)
+
 The game total reflects the visible results. All and each status tab count games
 matching the current search and other filters, so switching status remains useful.
 Tabs with no matches show zero.
