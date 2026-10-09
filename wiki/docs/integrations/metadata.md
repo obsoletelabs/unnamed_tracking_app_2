@@ -165,6 +165,14 @@ and `status_game_ids` for the subsequent authenticated
 game IDs and rechecks ownership, source, deletion and provider identity before
 saving. The application's client sends five games per request.
 
+![Steam import keeps saved games when achievement progress is unavailable](../assets/steam-batches/connections-390.png)
+
+![The metadata import entry point reports unavailable progress too](../assets/steam-batches/sources-1440.png)
+
+These import-result screenshots use explicit Steam-response fixtures against a
+disposable application account. They demonstrate the partial-failure messages
+and responsive layout; they do not represent a live Steam account import.
+
 ## Steam tags as genres
 
 Steam's own genres are broad: Elden Ring is only Action and RPG. Steam players
