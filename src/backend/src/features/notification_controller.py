@@ -97,6 +97,7 @@ class NotificationDraft:  # pylint: disable=too-many-instance-attributes
     public_body: str | None = None
     group_key: str | None = None
     fingerprint: str | None = None
+    source_installation_id: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -112,8 +113,28 @@ class NotificationEvent:
     data: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class NotificationInterpretation:
+    """Host-validated source policy; producers cannot pass it through legacy send APIs."""
+
+    event_type: str
+    required_trust: Trust
+    purpose: str
+    severity: str
+    installation_id: UUID
+
+
+async def emit_interpreted(
+    db: AsyncSession, draft: NotificationDraft, interpretation: NotificationInterpretation
+) -> UUID | None:
+    """Registered plugin source boundary; authorization precedes host interpretation."""
+    if draft.kind != "plugin" or not interpretation.event_type.startswith(f"{draft.source}."):
+        raise ValueError("Registered notification source identity is invalid")
+    return await _accept(db, draft, interpretation)
+
+
 async def emit(db: AsyncSession, event: NotificationEvent) -> UUID | None:
-    """Resolve a registered host handler. Public plugin sources arrive in Phase 4A."""
+    """Resolve a registered host handler; plugin facts use the source gateway boundary."""
     # The interpreter returns this module's draft/event types; import after initialization.
     # pylint: disable-next=import-outside-toplevel
     from src.features.game_notifications import interpret_game_event
@@ -124,7 +145,11 @@ async def emit(db: AsyncSession, event: NotificationEvent) -> UUID | None:
     return await _accept(db, draft) if draft else None
 
 
-async def _accept(db: AsyncSession, event: NotificationDraft) -> UUID | None:
+async def _accept(
+    db: AsyncSession,
+    event: NotificationDraft,
+    interpretation: NotificationInterpretation | None = None,
+) -> UUID | None:
     """Flush atomically; the caller owns commit and no provider is contacted here."""
     if event.kind not in EVENT_TYPES:
         raise ValueError("Unknown host notification type")
@@ -144,11 +169,16 @@ async def _accept(db: AsyncSession, event: NotificationDraft) -> UUID | None:
     if user_exists is None:
         return None
     security = event.kind == "session_anomaly"
+    purpose = interpretation.purpose if interpretation else "security" if security else "standard"
+    lifetime = 600 if purpose == "recovery" else 86400 if purpose == "security" else 30 * 86400
     notification = Notification(
         user_id=event.user_id,
         kind=event.kind,
-        event_type=EVENT_TYPES[event.kind],
+        event_type=interpretation.event_type if interpretation else EVENT_TYPES[event.kind],
         source=event.source,
+        source_installation_id=interpretation.installation_id
+        if interpretation
+        else event.source_installation_id,
         media_type=event.entity_type,
         media_id=event.entity_id,
         title=event.title,
@@ -156,11 +186,17 @@ async def _accept(db: AsyncSession, event: NotificationDraft) -> UUID | None:
         poster_url=event.poster_url,
         event_at=event.occurred_at,
         dedupe_key=event.dedupe_key,
-        required_trust=int(Trust.SECURE if security else Trust.PRIVATE),
-        purpose="security" if security else "standard",
-        severity="warning" if security else "info",
+        required_trust=int(
+            interpretation.required_trust
+            if interpretation
+            else Trust.SECURE
+            if security
+            else Trust.PRIVATE
+        ),
+        purpose=purpose,
+        severity=interpretation.severity if interpretation else "warning" if security else "info",
         group_key=event.group_key,
-        expires_at=event.occurred_at + (86400 if security else 30 * 86400),
+        expires_at=event.occurred_at + lifetime,
         public_title=event.public_title if event.kind in MEDIA_KINDS else None,
         public_body=event.public_body if event.kind in MEDIA_KINDS else None,
         inbox_visible=False,
@@ -202,7 +238,12 @@ async def _accept(db: AsyncSession, event: NotificationDraft) -> UUID | None:
 
 
 async def emit_legacy_rows(
-    db: AsyncSession, user_id: UUID, rows: list[dict[str, Any]], *, source: str = "host"
+    db: AsyncSession,
+    user_id: UUID,
+    rows: list[dict[str, Any]],
+    *,
+    source: str = "host",
+    source_installation_id: UUID | None = None,
 ) -> list[UUID]:
     """Compatibility for existing host enrichment; never a plugin-selected type/policy."""
     created = []
@@ -218,6 +259,7 @@ async def emit_legacy_rows(
             body=row["body"],
             poster_url=row.get("poster_url"),
             source=source,
+            source_installation_id=source_installation_id,
             # These four legacy media handlers only contain public release facts.
             # Custom plugin text is never eligible for this projection.
             public_title=row["title"] if row["kind"] in MEDIA_KINDS and source == "host" else None,

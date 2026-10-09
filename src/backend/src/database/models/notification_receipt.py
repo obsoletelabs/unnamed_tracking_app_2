@@ -6,7 +6,7 @@ from sqlalchemy import BigInteger, ForeignKey, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from src.database.base import Base
+from src.database.base import Base, unix_timestamp
 
 
 class NotificationReceipt(Base):
@@ -23,4 +23,7 @@ class NotificationReceipt(Base):
     event_type: Mapped[str] = mapped_column(String(128), nullable=False)
     source: Mapped[str] = mapped_column(String(128), nullable=False)
     occurred_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    accepted_at: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=unix_timestamp, server_default="0"
+    )
     fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)

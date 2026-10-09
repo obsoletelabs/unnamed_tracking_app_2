@@ -6,11 +6,13 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.preferences import load_preferences
 from src.database.models.notification import Notification
 from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_provider_setting import NotificationProviderSetting
 from src.database.models.notification_receipt import NotificationReceipt
 from src.database.models.plugin_notification_provider import PluginNotificationProviderRegistration
+from src.database.models.plugin_notification_type import PluginNotificationTypeRegistration
 from src.features.notification_controller import EVENT_TYPES
 from src.features.notification_destinations import resolve_destinations
 from src.features.notification_enrollment import endpoint_address
@@ -23,6 +25,7 @@ from src.features.notification_policy import (
 )
 from src.features.notification_urls import notification_url
 from src.features.smtp_configuration import SMTP_PROVIDER, SmtpConfiguration, smtp_configuration
+from src.plugin_api.grants import has_capability_grant
 
 _TYPE_LABELS = {
     "episode_aired": ("New episodes", "An episode of a title you follow has aired."),
@@ -38,7 +41,9 @@ _TYPE_LABELS = {
 }
 
 
-def _eligible_types(destination: NotificationDestination) -> list[str]:
+def _eligible_types(
+    destination: NotificationDestination, types: list[dict[str, Any]], *, secure_transport: bool
+) -> list[str]:
     # Test disclosure eligibility independently of the user's on/off choices.
     # The real route is still rechecked at creation and immediately before I/O.
     candidate = NotificationDestination(
@@ -60,14 +65,16 @@ def _eligible_types(destination: NotificationDestination) -> list[str]:
         enabled=True,
     )
     eligible = []
-    for kind, event_type in EVENT_TYPES.items():
-        security = kind == "session_anomaly"
+    for item in types:
+        if not item["available"] or (item["required_trust"] == "SECURE" and not secure_transport):
+            continue
+        kind, event_type = item["kind"], item["event_type"]
         notice = Notification(
             user_id=destination.user_id,
             kind=kind,
             event_type=event_type,
-            required_trust=int(Trust.SECURE if security else Trust.PRIVATE),
-            purpose="security" if security else "standard",
+            required_trust=int(Trust[item["required_trust"]]),
+            purpose=item["purpose"],
             deleted_at=None,
             public_title="Release announcement" if kind in MEDIA_KINDS else None,
             public_body="Released" if kind in MEDIA_KINDS else None,
@@ -75,6 +82,70 @@ def _eligible_types(destination: NotificationDestination) -> list[str]:
         if select_projection(notice, candidate, {}):
             eligible.append(event_type)
     return eligible
+
+
+async def _type_catalog(db: AsyncSession, user_id: UUID) -> list[dict[str, Any]]:
+    # Price handlers are integration hooks, not an installed live price source.
+    # Retain inactive source controls for recipients who already have history.
+    observed_types = set(
+        await db.scalars(
+            select(NotificationReceipt.event_type)
+            .where(NotificationReceipt.user_id == user_id)
+            .distinct()
+        )
+    )
+    preferences = await load_preferences(db, user_id)
+    remembered_types = set(preferences["notification_types"]) | set(
+        preferences["notification_routes"]
+    )
+    types = [
+        {
+            "event_type": event_type,
+            "preference_key": f"notify_{kind}",
+            "label": _TYPE_LABELS[kind][0],
+            "description": _TYPE_LABELS[kind][1],
+            "required_trust": "SECURE" if kind == "session_anomaly" else "PRIVATE",
+            "purpose": "security" if kind == "session_anomaly" else "standard",
+            "kind": kind,
+            "available": True,
+            "visible": kind not in {"game_sale", "game_price_hit"} or event_type in observed_types,
+        }
+        for kind, event_type in EVENT_TYPES.items()
+    ]
+    for row in await db.scalars(select(PluginNotificationTypeRegistration)):
+        available = row.revoked_at is None and await has_capability_grant(
+            db,
+            plugin_id=row.plugin_id,
+            installation_id=row.installation_id,
+            user_id=user_id,
+            capability="notifications.emit",
+        )
+        if available and row.definition["required_trust"] == "SECURE":
+            available = await has_capability_grant(
+                db,
+                plugin_id=row.plugin_id,
+                installation_id=row.installation_id,
+                user_id=user_id,
+                capability="notifications.sensitive",
+            )
+        if available or row.event_type in observed_types or row.event_type in remembered_types:
+            types.append(
+                {
+                    "event_type": row.event_type,
+                    # Namespaced types have independent preferences. The legacy
+                    # generic switch remains limited to notifications.send.
+                    "preference_key": "",
+                    "label": row.definition["label"],
+                    "description": row.definition["description"]
+                    + ("" if available else " (Source inactive; preferences retained.)"),
+                    "required_trust": row.definition["required_trust"],
+                    "purpose": row.definition["purpose"],
+                    "kind": "plugin",
+                    "available": available,
+                    "visible": True,
+                }
+            )
+    return types
 
 
 async def routing_settings(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
@@ -100,20 +171,6 @@ async def routing_settings(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
         )
     }
     smtp = await smtp_configuration(db)
-    # Price handlers are integration hooks, not an installed live price source.
-    # Expose their controls only after this recipient has received an observation.
-    observed_types = set(
-        await db.scalars(
-            select(NotificationReceipt.event_type)
-            .where(
-                NotificationReceipt.user_id == user_id,
-                NotificationReceipt.event_type.in_(
-                    ("game.sale.started", "game.price.threshold_hit")
-                ),
-            )
-            .distinct()
-        )
-    )
     provider_ids = (
         {SMTP_PROVIDER}
         | {row.provider_id for row in destinations}
@@ -126,6 +183,7 @@ async def routing_settings(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
         for provider_id in sorted(provider_ids)
     ]
     by_provider = {provider["id"]: provider for provider in providers}
+    types = await _type_catalog(db, user_id)
     result = []
     for destination in destinations:
         provider = by_provider[destination.provider_id]
@@ -147,11 +205,9 @@ async def routing_settings(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
                 "provider_enabled": provider["enabled"],
                 "critical_supported": provider["critical_supported"],
                 "critical_description": provider["critical_description"],
-                "eligible_types": [
-                    event_type
-                    for event_type in _eligible_types(destination)
-                    if provider["secure_transport"] or event_type != "security.session.anomaly"
-                ],
+                "eligible_types": _eligible_types(
+                    destination, types, secure_transport=provider["secure_transport"]
+                ),
                 "shared_configuration": destination.kind == "legacy_webhook",
                 "label": destination.display_name,
                 "notification_url": destination.notification_url,
@@ -168,17 +224,7 @@ async def routing_settings(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
         "default_url": await notification_url(db, user_id),
         "providers": providers,
         "destinations": result,
-        "types": [
-            {
-                "event_type": event_type,
-                "preference_key": f"notify_{kind}",
-                "label": _TYPE_LABELS[kind][0],
-                "description": _TYPE_LABELS[kind][1],
-                "required_trust": "SECURE" if kind == "session_anomaly" else "PRIVATE",
-            }
-            for kind, event_type in EVENT_TYPES.items()
-            if kind not in {"game_sale", "game_price_hit"} or event_type in observed_types
-        ],
+        "types": [item for item in types if item["visible"]],
     }
 
 

@@ -40,6 +40,7 @@ from src.database.models import (
     oidc_settings,  # noqa: F401
     plugin_metadata_provider,  # noqa: F401
     plugin_notification_provider,  # noqa: F401
+    plugin_notification_type,  # noqa: F401
     plugin_permission_audit,  # noqa: F401
     plugin_permissions,  # noqa: F401
     tv_show,  # noqa: F401

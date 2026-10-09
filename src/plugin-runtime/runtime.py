@@ -584,6 +584,7 @@ class PluginSupervisor:
             operations = {
                 "media.sync": "media.write",
                 "notifications.send": "notifications.send",
+                "notifications.emit": "notifications.emit",
             }
             if payload.get("method") not in operations or operations[
                 payload["method"]

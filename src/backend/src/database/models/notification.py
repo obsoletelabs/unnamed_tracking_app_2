@@ -46,6 +46,9 @@ class Notification(Base):
     read_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     event_type: Mapped[str] = mapped_column(String(128), nullable=False, default="legacy")
     source: Mapped[str] = mapped_column(String(128), nullable=False, default="host")
+    source_installation_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), nullable=True
+    )
     required_trust: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     purpose: Mapped[str] = mapped_column(String(32), nullable=False, default="standard")
     severity: Mapped[str] = mapped_column(String(16), nullable=False, default="info")
