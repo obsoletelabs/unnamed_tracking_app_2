@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { reactive, ref } from "vue";
+import { currentUser } from "../../state/auth";
 import ToggleButton from "./ToggleButton.vue";
 import {
   createEmailDestination,
@@ -8,6 +9,7 @@ import {
   requestEmailVerification,
   confirmEmailVerification,
   revokeEmailVerification,
+  sendDestinationTest,
 } from "../../services/notifications";
 import type {
   NotificationRoutingDestination,
@@ -25,7 +27,7 @@ const emit = defineEmits<{
   changed: [];
   change: [changes: Partial<Preferences>];
 }>();
-const address = ref("");
+const address = ref(currentUser.value?.email ?? "");
 const label = ref("");
 const error = ref("");
 const status = ref("");
@@ -55,7 +57,7 @@ async function perform(operation: () => Promise<unknown>, success: string) {
 async function add() {
   await perform(async () => {
     await createEmailDestination(address.value, label.value);
-    address.value = "";
+    address.value = currentUser.value?.email ?? "";
     label.value = "";
   }, "Email added. Verify it to receive security notifications.");
 }
@@ -64,7 +66,7 @@ async function sendCode(destination: NotificationRoutingDestination) {
     const result = await requestEmailVerification(destination.id);
     challenges[destination.id] = result.challenge_id;
     codes[destination.id] = "";
-  }, "Code queued for this address. Check your email; it expires in 10 minutes.");
+  }, "Verification email queued. Use its link or enter the code; both expire in 10 minutes.");
 }
 async function verify(destination: NotificationRoutingDestination) {
   await perform(async () => {
@@ -160,6 +162,23 @@ async function saveEdit(destination: NotificationRoutingDestination) {
         Use this email
       </ToggleButton>
       <div class="actions">
+        <button
+          :disabled="
+            busy ||
+            !destination.available ||
+            !destination.enabled ||
+            !destination.provider_enabled ||
+            prefs.notification_destinations[destination.id] === false
+          "
+          @click="
+            perform(
+              () => sendDestinationTest(destination.id),
+              'Example notification queued for this email. Delivery follows your saved routing.',
+            )
+          "
+        >
+          Send test notification
+        </button>
         <button
           :disabled="
             busy ||

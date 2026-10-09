@@ -87,6 +87,12 @@ const SETTINGS_SHORTCUTS: {
   { label: "Single sign-on", section: "oidc", adminOnly: true },
   { label: "Password policy", section: "password-policy", adminOnly: true },
   {
+    label: "Server notifications & SMTP",
+    section: "admin-notifications",
+    adminOnly: true,
+  },
+  { label: "Application & TLS", section: "app-settings", adminOnly: true },
+  {
     label: "Server integrations",
     section: "server-integrations",
     adminOnly: true,

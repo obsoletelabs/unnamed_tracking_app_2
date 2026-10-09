@@ -143,6 +143,41 @@ export async function fetchInboxRetentionPolicy(): Promise<InboxRetentionPolicy>
   return await response.json();
 }
 
+export async function sendSmtpTest(address: string): Promise<void> {
+  const response = await fetch(
+    "/api/settings/notification-providers/smtp/test",
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address }),
+    },
+  );
+  if (!response.ok) throw await failedRequest(response);
+  const result = (await response.json()) as {
+    sent: boolean;
+    error: string | null;
+  };
+  if (!result.sent)
+    throw new Error(
+      `SMTP test failed (${result.error ?? "delivery_failed"}). Check the saved server settings.`,
+    );
+}
+
+export async function sendDestinationTest(
+  destinationId: string,
+): Promise<{ status: string }> {
+  const response = await fetch(
+    `/api/settings/notification-providers/destinations/${encodeURIComponent(destinationId)}/test`,
+    {
+      method: "POST",
+      credentials: "include",
+    },
+  );
+  if (!response.ok) throw await failedRequest(response);
+  return await response.json();
+}
+
 export async function deleteMediaNotification(id: string): Promise<void> {
   await ok(
     await fetch(`/api/notifications/${encodeURIComponent(id)}`, {

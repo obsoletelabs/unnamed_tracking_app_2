@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
+import { currentUser } from "../../state/auth";
+import { sendSmtpTest } from "../../services/notifications";
 import PasswordInput from "../PasswordInput.vue";
 import {
   fetchDeploymentSettings,
@@ -25,6 +27,11 @@ const error = ref("");
 const saved = ref(false);
 const busy = ref(false);
 const automaticPort = ref(true);
+const testAddress = ref(currentUser.value?.email ?? "");
+const testing = ref(false);
+const testResult = ref("");
+const testError = ref("");
+const unsaved = computed(() => Object.values(dirty).some(Boolean));
 const defaultPorts: Record<string, string> = {
   starttls: "587",
   ssl: "465",
@@ -121,6 +128,22 @@ async function clearPassword() {
     busy.value = false;
   }
 }
+async function sendTest() {
+  if (busy.value || testing.value || unsaved.value) return;
+  testing.value = true;
+  testResult.value = "";
+  testError.value = "";
+  try {
+    await sendSmtpTest(testAddress.value);
+    testResult.value =
+      "SMTP accepted the test email. Check the recipient's inbox.";
+  } catch (reason) {
+    testError.value =
+      reason instanceof Error ? reason.message : "Could not send test email.";
+  } finally {
+    testing.value = false;
+  }
+}
 </script>
 
 <template>
@@ -133,114 +156,145 @@ async function clearPassword() {
     </p>
     <p v-if="!settings && !error" class="hint">Loading SMTP settings…</p>
     <form v-if="settings" @submit.prevent="save">
-      <div class="grid">
-        <label v-for="[key, label] in fields" :key="key">
-          <span
-            >{{ label
-            }}{{
-              settings.provider_locks[key] ? " · Managed by ENV" : ""
-            }}</span
+      <fieldset :disabled="testing" class="smtp-fields">
+        <div class="grid">
+          <label v-for="[key, label] in fields" :key="key">
+            <span
+              >{{ label
+              }}{{
+                settings.provider_locks[key] ? " · Managed by ENV" : ""
+              }}</span
+            >
+            <PasswordInput
+              v-if="key === 'smtp_password'"
+              :model-value="values[key] ?? ''"
+              mode="replace"
+              :disabled="busy || settings.provider_locks[key]"
+              :placeholder="
+                settings.providers.smtp_password_configured
+                  ? 'Saved — enter a value to replace it'
+                  : ''
+              "
+              @update:model-value="
+                values[key] = $event;
+                dirty[key] = true;
+              "
+            />
+            <select
+              v-else-if="key === 'smtp_tls_mode'"
+              :aria-label="label"
+              v-model="values[key]"
+              :disabled="busy || settings.provider_locks[key]"
+              @change="changeTransport"
+            >
+              <option value="starttls">STARTTLS</option>
+              <option value="ssl">Implicit TLS</option>
+              <option value="none">Plaintext</option>
+            </select>
+            <input
+              v-else
+              v-model="values[key]"
+              :type="
+                key === 'smtp_port'
+                  ? 'number'
+                  : key === 'smtp_from_address'
+                    ? 'email'
+                    : 'text'
+              "
+              :min="key === 'smtp_port' ? 1 : undefined"
+              :max="key === 'smtp_port' ? 65535 : undefined"
+              :disabled="busy || settings.provider_locks[key]"
+              :placeholder="
+                settings.provider_locks[key]
+                  ? 'Managed by deployment environment'
+                  : ''
+              "
+              @input="editField(key)"
+            />
+          </label>
+        </div>
+        <p v-if="!settings.provider_locks.smtp_port" class="hint">
+          {{
+            automaticPort
+              ? "Port follows transport security."
+              : "Custom port is kept when transport security changes."
+          }}
+          Defaults: implicit TLS 465, STARTTLS 587, plaintext 25.
+          <button
+            v-if="!automaticPort"
+            type="button"
+            :disabled="busy"
+            @click="useDefaultPort"
           >
-          <PasswordInput
-            v-if="key === 'smtp_password'"
-            :model-value="values[key] ?? ''"
-            mode="replace"
-            :disabled="busy || settings.provider_locks[key]"
-            :placeholder="
-              settings.providers.smtp_password_configured
-                ? 'Saved — enter a value to replace it'
-                : ''
-            "
-            @update:model-value="
-              values[key] = $event;
-              dirty[key] = true;
-            "
-          />
-          <select
-            v-else-if="key === 'smtp_tls_mode'"
-            :aria-label="label"
-            v-model="values[key]"
-            :disabled="busy || settings.provider_locks[key]"
-            @change="changeTransport"
-          >
-            <option value="starttls">STARTTLS</option>
-            <option value="ssl">Implicit TLS</option>
-            <option value="none">Plaintext</option>
-          </select>
-          <input
-            v-else
-            v-model="values[key]"
-            :type="
-              key === 'smtp_port'
-                ? 'number'
-                : key === 'smtp_from_address'
-                  ? 'email'
-                  : 'text'
-            "
-            :min="key === 'smtp_port' ? 1 : undefined"
-            :max="key === 'smtp_port' ? 65535 : undefined"
-            :disabled="busy || settings.provider_locks[key]"
-            :placeholder="
-              settings.provider_locks[key]
-                ? 'Managed by deployment environment'
-                : ''
-            "
-            @input="editField(key)"
-          />
-        </label>
-      </div>
-      <p v-if="!settings.provider_locks.smtp_port" class="hint">
-        {{
-          automaticPort
-            ? "Port follows transport security."
-            : "Custom port is kept when transport security changes."
-        }}
-        Defaults: implicit TLS 465, STARTTLS 587, plaintext 25.
+            Use default port
+          </button>
+        </p>
         <button
-          v-if="!automaticPort"
+          v-if="
+            settings.providers.smtp_password_configured &&
+            !settings.provider_locks.smtp_password
+          "
           type="button"
           :disabled="busy"
-          @click="useDefaultPort"
+          @click="clearPassword"
         >
-          Use default port
+          Remove stored SMTP password
         </button>
-      </p>
-      <button
-        v-if="
-          settings.providers.smtp_password_configured &&
-          !settings.provider_locks.smtp_password
-        "
-        type="button"
-        :disabled="busy"
-        @click="clearPassword"
-      >
-        Remove stored SMTP password
-      </button>
-      <p class="hint">
-        STARTTLS and implicit TLS verify the server certificate. Choose the
-        matching port for your SMTP server. Critical urgency adds high-priority
-        headers; mail clients decide how to alert.
-      </p>
-      <p v-if="values.smtp_tls_mode === 'none'" class="warning" role="status">
-        Plaintext SMTP exposes email contents and credentials in transit.
-        Security, recovery and verification messages are allowed only in
-        development mode or when the configured server is a literal local IP.
-      </p>
-      <p class="hint">
-        Password reset and invite features are plugins; SMTP itself is built in.
-      </p>
-      <p class="hint">
-        Notification links use each user's URL preferences, the shared app URL,
-        or their last-used app URL. Configure the shared URL under Application.
-        Unsubscribe links ask for confirmation; verification and recovery emails
-        do not include them.
-      </p>
-      <p v-if="saved" class="success" role="status">SMTP settings saved.</p>
-      <button :disabled="busy">
-        {{ busy ? "Saving…" : "Save SMTP settings" }}
-      </button>
+        <p class="hint">
+          STARTTLS and implicit TLS verify the server certificate. Choose the
+          matching port for your SMTP server. Critical urgency adds
+          high-priority headers; mail clients decide how to alert.
+        </p>
+        <p v-if="values.smtp_tls_mode === 'none'" class="warning" role="status">
+          Plaintext SMTP exposes email contents and credentials in transit.
+          Security, recovery and verification messages are allowed only in
+          development mode or when the configured server is a literal local IP.
+        </p>
+        <p class="hint">
+          Password reset and invite features are plugins; SMTP itself is built
+          in.
+        </p>
+        <p class="hint">
+          Notification links use each user's URL preferences, the shared app
+          URL, or their last-used app URL. Configure the shared URL under
+          Application. Unsubscribe links ask for confirmation; verification and
+          recovery emails do not include them.
+        </p>
+        <p v-if="saved" class="success" role="status">SMTP settings saved.</p>
+        <button :disabled="busy">
+          {{ busy ? "Saving…" : "Save SMTP settings" }}
+        </button>
+      </fieldset>
     </form>
     <p v-if="error" class="error" role="alert">{{ error }}</p>
+    <form v-if="settings" class="test-form" @submit.prevent="sendTest">
+      <h4>Test email delivery</h4>
+      <p class="hint">
+        Uses saved settings and configured ENV credentials. Sends only this
+        example:
+      </p>
+      <blockquote>
+        <strong>Test notification</strong><br />Example release: A new episode
+        is available. This is a delivery test.
+      </blockquote>
+      <label
+        >Test recipient<input
+          v-model="testAddress"
+          type="email"
+          autocomplete="email"
+          maxlength="254"
+          required
+          :disabled="busy || testing"
+      /></label>
+      <p v-if="unsaved" class="hint">Save your changes before testing.</p>
+      <button
+        :disabled="busy || testing || unsaved || !settings.smtp?.configured"
+      >
+        {{ testing ? "Sending test…" : "Send test email" }}
+      </button>
+      <p v-if="testResult" class="success" role="status">{{ testResult }}</p>
+      <p v-if="testError" class="error" role="alert">{{ testError }}</p>
+    </form>
   </section>
 </template>
 
@@ -248,6 +302,34 @@ async function clearPassword() {
 .smtp-section {
   padding-bottom: 18px;
   border-bottom: 1px solid var(--ui-border);
+}
+.smtp-fields {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.test-form {
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+.test-form h4,
+.test-form p {
+  margin: 0;
+}
+.test-form label {
+  width: min(100%, 400px);
+}
+blockquote {
+  margin: 0;
+  padding: 12px 16px;
+  background: var(--ui-surface-2);
+  border-left: 3px solid var(--ui-accent);
+  font-size: 13px;
+  line-height: 1.6;
 }
 h3 {
   margin: 0 0 10px;
