@@ -12,6 +12,7 @@ from src.database.models.achievement import Achievement
 from src.database.models.game import Game, GameStatus
 from src.database.models.user import User
 from src.database.session import SessionLocal
+from src.helpers import save_game_asset
 
 
 @pytest.fixture
@@ -68,7 +69,10 @@ async def test_private_library_does_not_mark_owned_games_stale(steam_owner, monk
         assert user.steam_library_synced_at is None
 
 
-async def test_deferred_sync_saves_games_without_achievement_requests(steam_owner, monkeypatch):
+async def test_deferred_sync_saves_games_without_achievement_requests(
+    steam_owner, monkeypatch, tmp_path
+):
+    monkeypatch.setattr(save_game_asset, "DATA_ROOT", tmp_path)
     monkeypatch.setattr(library_sync.steam, "resolve_steam_id", lambda sid, _key: sid)
     monkeypatch.setattr(
         library_sync.steam,
