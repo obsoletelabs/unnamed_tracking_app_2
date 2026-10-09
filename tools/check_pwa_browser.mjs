@@ -344,9 +344,12 @@ try {
   execFileSync(process.env.PWA_ACCEPTANCE_PYTHON, [path.join(path.dirname(fileURLToPath(import.meta.url)), "check_pwa_lifecycle.py"), "--expire-session"], { env: process.env });
   await page.goto(origin + "/");
   await page.waitForURL(url => url.pathname === "/login");
-  assert.ok([null, "/"].includes(new URL(page.url()).searchParams.get("return_to")),
-    "Expired sessions return to sign-in with a safe local return target");
-  assert.equal(new URL(page.url()).searchParams.get("return_to"), "/");
+  assert.equal(new URL(page.url()).searchParams.get("return_to"), null,
+    "Expired sessions at the base URL return to sign-in without a redundant return target");
+  await page.goto(origin + "/games?tag=Puzzle");
+  await page.waitForURL(url => url.pathname === "/login");
+  assert.equal(new URL(page.url()).searchParams.get("return_to"), "/games?tag=Puzzle",
+    "Expired sessions preserve an actual library destination and its filters");
   const cacheEntries = await page.evaluate(async () => {
     const keys = await caches.keys();
     return (await Promise.all(keys.filter(key => key.startsWith("unnamed-tracking:pwa:")).map(async key => (await (await caches.open(key)).keys()).map(r => r.url)))).flat();
