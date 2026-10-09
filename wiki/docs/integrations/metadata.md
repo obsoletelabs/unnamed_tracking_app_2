@@ -151,6 +151,28 @@ problem and leaves existing games unchanged. Set **Profile → Privacy Settings 
 Game details** to **Public** and verify the account ID before retrying. An
 explicitly empty public library remains a valid empty library.
 
+The application saves owned games and playtime first, then reads achievements in
+small batches before fetching store details. A failed batch leaves the imported
+games available. Unavailable achievement progress keeps the previous snapshot;
+the completion message reports any games whose progress could not be read.
+Existing manually chosen game statuses are preserved. New imports can settle
+their initial automatic status once their achievement progress arrives.
+
+API clients retain the immediate achievement sync by default. Clients opting
+into `/api/library-sync/steam?achievements=later` receive `achievement_game_ids`
+and `status_game_ids` for the subsequent authenticated
+`/api/library-sync/steam/achievements` requests. Each request accepts up to 25
+game IDs and rechecks ownership, source, deletion and provider identity before
+saving. The application's client sends five games per request.
+
+![Steam import keeps saved games when achievement progress is unavailable](../assets/steam-batches/connections-390.png)
+
+![The metadata import entry point reports unavailable progress too](../assets/steam-batches/sources-1440.png)
+
+These import-result screenshots use explicit Steam-response fixtures against a
+disposable application account. They demonstrate the partial-failure messages
+and responsive layout; they do not represent a live Steam account import.
+
 ## Steam tags as genres
 
 Steam's own genres are broad: Elden Ring is only Action and RPG. Steam players

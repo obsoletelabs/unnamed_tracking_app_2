@@ -28,6 +28,28 @@ A backend crash after readiness changes the status to `BACKEND_CRASHED` and make
 
 The static startup page reports application starting, database state, migration state, backend state, frontend state, application ready, and application failed. Normal startup does not render backend, migration, Nginx, or Docker log output. On failure the spinner is replaced by a failure indicator and a concise diagnostic message.
 
+Nginx serves the startup page over HTTP before checking PostgreSQL. The database
+wait uses a 120-second elapsed deadline, with each readiness probe capped at two
+seconds, including DNS resolution. A database that remains unavailable moves to
+`DATABASE_FAILED` within a few seconds of that deadline while the HTTP diagnostic
+listener remains available. API requests return JSON with HTTP 503 and a
+`Retry-After: 5` header during startup.
+
+If a reverse proxy only forwards to healthy containers, it can hide these
+diagnostics while the application is starting or has failed. Inspect the
+container's published HTTP port directly to distinguish proxy routing from an
+application startup failure. Embedded HTTPS is activated during the ready
+handoff; the pre-readiness diagnostic listener uses HTTP.
+
+![The startup page while PostgreSQL is unavailable on a phone](../assets/database-startup/waiting-390.png)
+
+![Database failure diagnostics remain available after the deadline](../assets/database-startup/failed-1440.png)
+
+These screenshots use the real production image with an intentionally
+unresolvable database host. The browser checks confirmed waiting and failure
+states at 390px and 1440px, JSON API failures, no horizontal overflow, and a
+database failure transition 121.18 seconds after container launch.
+
 Raw logs are intentionally not rendered by default: they are useful for operators but noisy for normal startup. The startup page does not add a reload button or other log-management controls.
 
 ## Detailed diagnostics

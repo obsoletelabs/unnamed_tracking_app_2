@@ -1,0 +1,52 @@
+{
+  "host_source_head": "31cbac4fd2d12ad8b81b8680e64d709cfdfd8f1e",
+  "provider_import_fixture": true,
+  "checks": [
+    {
+      "section": "connections",
+      "width": 390,
+      "achievement_batch_sizes": [
+        5,
+        1
+      ],
+      "unavailable_games": 2,
+      "document_preserved": true
+    },
+    {
+      "section": "sources",
+      "width": 390,
+      "achievement_batch_sizes": [
+        5,
+        1
+      ],
+      "unavailable_games": 2,
+      "document_preserved": true
+    },
+    {
+      "section": "connections",
+      "width": 1440,
+      "achievement_batch_sizes": [
+        5,
+        1
+      ],
+      "unavailable_games": 2,
+      "document_preserved": true
+    },
+    {
+      "section": "sources",
+      "width": 1440,
+      "achievement_batch_sizes": [
+        5,
+        1
+      ],
+      "unavailable_games": 2,
+      "document_preserved": true
+    }
+  ],
+  "screenshots": [
+    "connections-390.png",
+    "sources-390.png",
+    "connections-1440.png",
+    "sources-1440.png"
+  ]
+}

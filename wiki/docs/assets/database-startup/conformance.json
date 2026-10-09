@@ -1,0 +1,35 @@
+{
+  "host_source_head": "86bff385c9d4112e4bc36f4855256a9f03daef10",
+  "real_production_backend": true,
+  "checks": [
+    {
+      "width": 390,
+      "phase": "WAITING_FOR_DATABASE",
+      "html_status": 200,
+      "api_status": 503
+    },
+    {
+      "width": 1440,
+      "phase": "WAITING_FOR_DATABASE",
+      "html_status": 200,
+      "api_status": 503
+    },
+    {
+      "width": 390,
+      "phase": "DATABASE_FAILED",
+      "diagnostics_visible": true
+    },
+    {
+      "width": 1440,
+      "phase": "DATABASE_FAILED",
+      "diagnostics_visible": true
+    }
+  ],
+  "screenshots": [
+    "waiting-390.png",
+    "waiting-1440.png",
+    "failed-390.png",
+    "failed-1440.png"
+  ],
+  "failure_elapsed_seconds": 121.18
+}

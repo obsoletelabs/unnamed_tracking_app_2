@@ -1,10 +1,8 @@
 """The slow parts of a Steam import, done a few games at a time.
 
-The library sync itself only saves the games and their achievements, which is
-quick. Reading each new game's store page, tags, series and artwork takes about
-a second per game, so it happens here in small batches the app asks for one
-after another: no single request runs long enough to time out, and a game that
-fails to enrich is left as it is instead of failing the rest.
+The frontend saves owned games first, then asks for achievements and enrichment
+in small batches. Failed provider reads leave the saved games and unavailable
+achievement snapshots intact.
 """
 
 import asyncio
@@ -17,9 +15,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.routes.library_sync import (
+    _SYNC_CONCURRENCY,
     _add_source_tag_and_collection,
+    _apply_status,
     _enrich_steam_game_by_appid,
     _get_or_create_game,
+    _infer_status,
+    _replace_achievements,
 )
 from src.core.auth import get_current_user
 from src.core.preferences import load_preferences
@@ -27,7 +29,9 @@ from src.database.models.game import Game, GameStatus
 from src.database.models.user import User
 from src.database.session import get_db
 from src.features.imports.library_games import LibraryIndex
+from src.features.imports.steam_achievements import SteamAchievementData, fetch_steam_achievements
 from src.features.metadata.games import steam, steam_wishlist
+from src.helpers.steam_achievement_rows import steam_achievement_rows
 
 router = APIRouter(
     prefix="/api/library-sync/steam",
@@ -40,6 +44,101 @@ _PLACEHOLDER = "Steam app "
 
 class EnrichRequest(BaseModel):
     game_ids: list[UUID] = Field(max_length=25)
+
+
+class AchievementsRequest(EnrichRequest):
+    status_game_ids: list[UUID] = Field(default_factory=list, max_length=25)
+
+
+@router.post("/achievements")
+async def import_achievements(
+    body: AchievementsRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Fetch at most 25 owned Steam games, then lock and recheck before saving."""
+    api_key = current_user.steam_api_key
+    if not current_user.steam_id or not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Save your Steam ID and API key first."
+        )
+    try:
+        steam_id = await asyncio.to_thread(steam.resolve_steam_id, current_user.steam_id, api_key)
+    except steam.SteamLibraryError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    scope = (
+        Game.id.in_(body.game_ids),
+        Game.user_id == current_user.id,
+        Game.source == "Steam",
+        Game.deleted_at.is_(None),
+    )
+    references = (await db.execute(select(Game.id, Game.external_id).where(*scope))).all()
+    semaphore = asyncio.Semaphore(_SYNC_CONCURRENCY)
+
+    async def fetch(app_id: str | None) -> SteamAchievementData:
+        if not app_id or not app_id.isascii() or not app_id.isdigit():
+            return {}, None, None
+        async with semaphore:
+            return await fetch_steam_achievements(steam_id, api_key, int(app_id))
+
+    snapshots = await asyncio.gather(*(fetch(reference.external_id) for reference in references))
+    fetched = {
+        reference.id: (reference.external_id, data)
+        for reference, data in zip(references, snapshots, strict=True)
+    }
+    return await _save_achievement_batch(db, current_user.id, fetched, body.status_game_ids)
+
+
+async def _save_achievement_batch(
+    db: AsyncSession,
+    user_id: UUID,
+    fetched: dict[UUID, tuple[str | None, SteamAchievementData]],
+    status_game_ids: list[UUID],
+) -> dict[str, Any]:
+    """Apply snapshots only to identities still owned when the provider responds."""
+    games = (
+        await db.scalars(
+            select(Game)
+            .where(
+                Game.id.in_(fetched),
+                Game.user_id == user_id,
+                Game.source == "Steam",
+                Game.deleted_at.is_(None),
+            )
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).all()
+    settle = set(status_game_ids)
+    synced = 0
+    unavailable: list[str] = []
+    for game in games:
+        snapshot = fetched.get(game.id)
+        if snapshot is None or snapshot[0] != game.external_id:
+            continue
+        schema, unlocked, descriptions = snapshot[1]
+        if unlocked is None:
+            unavailable.append(game.title)
+            continue
+        rows = steam_achievement_rows(schema, unlocked, None, descriptions)
+        if schema:
+            await _replace_achievements(db, game.id, "Steam", rows)
+            synced += len(rows)
+        # Only the fresh imports identified by the original sync may settle
+        # their automatic status. A subsequent manual choice is retained.
+        if game.id in settle and game.status == _infer_status(
+            playtime_seconds=game.playtime_seconds
+        ):
+            _apply_status(
+                game,
+                _infer_status(
+                    playtime_seconds=game.playtime_seconds,
+                    total_achievements=len(rows),
+                    unlocked_achievements=sum(1 for row in rows if row["unlocked"]),
+                ),
+            )
+    await db.commit()
+    return {"achievements_synced": synced, "achievements_unavailable": unavailable}
 
 
 @router.post("/wishlist")
