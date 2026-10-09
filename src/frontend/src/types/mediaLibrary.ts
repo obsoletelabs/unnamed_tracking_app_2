@@ -32,14 +32,6 @@ export interface LibraryCardVM {
   altTitles?: string[];
 }
 
-export interface SearchResultVM {
-  title: string;
-  poster: string | null;
-  description: string | null;
-  episodeTotal: number | null;
-  releaseYear: string | null;
-}
-
 export interface QuickAddForm {
   status: string;
   watched: number;

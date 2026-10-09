@@ -65,10 +65,30 @@ theirs, and more load as you scroll.
 
 ## Editing
 
-Movies, TV shows and anime use the same Add and Edit dialog layout. The search
-box at the top fills in the form from a metadata provider, and fields you have
-changed yourself are kept rather than overwritten (the dialog tells you which
-it skipped).
+Use **Add media** in the media navigation to search movies, TV shows and anime
+together. Each library's Add button opens the same page with its type selected.
+Results appear as providers respond; a slower or unavailable provider does not
+hide results from the others. Switching the type tabs filters the results locally
+without another provider request, and refining the title immediately filters
+already received results while the next search is prepared.
+
+Pick a result to set status, episode progress, rating and dates before adding it.
+The selected provider identity and available metadata are saved directly, so two
+adaptations with the same title do not get mixed up by another title search.
+Details and artwork can continue arriving while the dialog is open; your progress
+and rating stay as you entered them. Completed fills known episode totals.
+If a season-progress request fails after the title was saved, the confirmation
+links to that saved title and explains that its progress needs updating.
+
+The [browser conformance checks](../assets/media-search/conformance.json) cover
+phone and desktop entry points, partial responses and real database saves.
+Provider timing uses explicit fixtures; the separate
+[live provider check](../assets/media-search/live-providers.json) uses the
+configured core providers without fixtures.
+
+The existing Edit dialogs still let you search for metadata and adjust the full
+form. Fields you changed yourself are kept rather than overwritten (the dialog
+tells you which it skipped).
 
 ## Metadata provider extension (1.1.1)
 

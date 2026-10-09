@@ -1,0 +1,43 @@
+{
+  "host_source_head": "07d081d3899a1493aa17e5cc1663cccf1edec315",
+  "provider_response_fixture": true,
+  "real_media_persistence": true,
+  "checks": [
+    {
+      "width": 390,
+      "three_library_entry_points": true,
+      "progressive_results": true,
+      "local_type_filter": true,
+      "exact_homonym_identity": true,
+      "late_progress_preserved": true,
+      "invalid_progress_rejected": true,
+      "empty_optional_fields": true,
+      "persisted_media_types": 3,
+      "partial_provider_failure": true,
+      "document_preserved": true,
+      "page_errors": []
+    },
+    {
+      "width": 1440,
+      "three_library_entry_points": true,
+      "progressive_results": true,
+      "local_type_filter": true,
+      "exact_homonym_identity": true,
+      "late_progress_preserved": true,
+      "invalid_progress_rejected": true,
+      "empty_optional_fields": true,
+      "persisted_media_types": 3,
+      "partial_provider_failure": true,
+      "document_preserved": true,
+      "page_errors": []
+    }
+  ],
+  "screenshots": [
+    "results-390.png",
+    "add-390.png",
+    "partial-provider-390.png",
+    "results-1440.png",
+    "add-1440.png",
+    "partial-provider-1440.png"
+  ]
+}

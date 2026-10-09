@@ -294,11 +294,19 @@ export function useMetadataSearch(
     { flush: "sync" },
   );
 
-  onScopeDispose(() => {
-    stopWatch();
+  function stop() {
     ++generation;
     if (timer) clearTimeout(timer);
+    timer = null;
     disconnect();
+    searching.value = false;
+    enrichingMedia.value = false;
+    selected.value = null;
+  }
+
+  onScopeDispose(() => {
+    stopWatch();
+    stop();
   });
 
   return {
@@ -311,5 +319,6 @@ export function useMetadataSearch(
     search,
     select,
     focus,
+    stop,
   };
 }

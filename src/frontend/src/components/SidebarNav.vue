@@ -71,8 +71,9 @@ const groups = [
     id: "media",
     label: "Media",
     icon: "media",
-    paths: ["/movies", "/tv", "/anime", "/media/collections"],
+    paths: ["/movies", "/tv", "/anime", "/media/collections", "/media/search"],
     entries: [
+      { path: "/media/search", label: "Add media", icon: "media" },
       { path: "/movies", label: "Movies", icon: "media" },
       { path: "/tv", label: "TV shows", icon: "tv" },
       { path: "/anime", label: "Anime", icon: "anime" },
@@ -80,6 +81,14 @@ const groups = [
     ],
   },
 ];
+function entryActive(group: (typeof groups)[number], path: string) {
+  return (
+    isActive(path) &&
+    !group.entries.some(
+      (entry) => entry.path.length > path.length && isActive(entry.path),
+    )
+  );
+}
 const expandedGroups = ref(
   new Set(
     groups
@@ -427,8 +436,10 @@ onUnmounted(() => {
                 :key="entry.path"
                 :to="entry.path"
                 class="nav-item"
-                :class="{ active: isActive(entry.path) }"
-                :aria-current="isActive(entry.path) ? 'page' : undefined"
+                :class="{ active: entryActive(group, entry.path) }"
+                :aria-current="
+                  entryActive(group, entry.path) ? 'page' : undefined
+                "
                 :title="navigationTooltip(entry.label, entry.path)"
                 :aria-keyshortcuts="navigationShortcutForPath(entry.path)"
                 @click="close"
@@ -616,9 +627,13 @@ onUnmounted(() => {
           to="/movies"
           data-tour="nav-media"
           :class="{
-            active: ['/movies', '/tv', '/anime', '/media/collections'].some(
-              isActive,
-            ),
+            active: [
+              '/movies',
+              '/tv',
+              '/anime',
+              '/media/collections',
+              '/media/search',
+            ].some(isActive),
           }"
           :aria-current="isActive('/movies') ? 'page' : undefined"
           :title="navigationTooltip('Movies', '/movies')"

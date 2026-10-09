@@ -111,6 +111,12 @@ const router = createRouter({
       component: () => import("../views/GameDetail.vue"),
     },
     {
+      path: "/media/search",
+      name: "media-search",
+      meta: { title: "Add media" },
+      component: () => import("../views/MediaSearch.vue"),
+    },
+    {
       path: "/movies",
       name: "movie-library",
       meta: { title: "Movies" },

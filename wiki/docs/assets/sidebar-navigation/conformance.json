@@ -1,0 +1,42 @@
+{
+  "host_source_head": "9d1fb68596369a95073108ba338408ff48947214",
+  "before_fix": false,
+  "checks": [
+    {
+      "route": "/games",
+      "width": 390,
+      "active_entries": [
+        "/games"
+      ],
+      "page_errors": [],
+      "screenshot": null
+    },
+    {
+      "route": "/games/collections",
+      "width": 390,
+      "active_entries": [
+        "/games/collections"
+      ],
+      "page_errors": [],
+      "screenshot": "after-390.png"
+    },
+    {
+      "route": "/games",
+      "width": 1440,
+      "active_entries": [
+        "/games"
+      ],
+      "page_errors": [],
+      "screenshot": null
+    },
+    {
+      "route": "/games/collections",
+      "width": 1440,
+      "active_entries": [
+        "/games/collections"
+      ],
+      "page_errors": [],
+      "screenshot": "after-1440.png"
+    }
+  ]
+}

@@ -7,8 +7,6 @@ import {
   updateAnime,
   deleteAnime,
   animeToInput,
-  searchAnimeMetadata,
-  createAnime,
   updateSeason,
 } from "../services/anime";
 import type { SeasonUpdateInput } from "../services/anime";
@@ -19,8 +17,6 @@ import { displayTitle } from "../utils/displayTitle";
 import { statusBucket, bucketToReal } from "../utils/mediaStatus";
 import type {
   LibraryCardVM,
-  SearchResultVM,
-  QuickAddForm,
   EditForm,
 } from "../components/library/MediaLibraryView.vue";
 
@@ -305,67 +301,6 @@ async function onBulkDelete(ids: string[]) {
   shows.value = shows.value.filter((s) => !ids.includes(s.id));
 }
 
-async function search(
-  query: string,
-): Promise<{ results: SearchResultVM[]; providerErrors: string[] }> {
-  const { results, providerErrors } = await searchAnimeMetadata(query);
-  return {
-    results: results.map((r) => ({
-      title: r.title,
-      poster: r.posterUrl,
-      description: r.description,
-      episodeTotal: r.episodeCount,
-      releaseYear: r.firstAirDate ? r.firstAirDate.slice(0, 4) : null,
-    })),
-    providerErrors,
-  };
-}
-
-async function createFromResult(
-  result: SearchResultVM,
-  form: QuickAddForm,
-): Promise<void> {
-  const { results } = await searchAnimeMetadata(result.title, 1);
-  const match = results.find((r) => r.title === result.title) ?? results[0];
-  // Pass the episode count through explicitly instead of leaving seasons
-  // omitted (which auto-creates a default Season 1 with no count) — the
-  // metadata search already knows the total, so there's no reason the
-  // progress bar and "watched/total" label should come up unknown.
-  const episodeCount = match?.episodeCount ?? result.episodeTotal ?? null;
-  const created = await createAnime({
-    title: result.title,
-    description: match?.description ?? null,
-    firstAirDate: match?.firstAirDate ?? null,
-    episodeRuntimeMinutes: match?.episodeRuntimeMinutes ?? null,
-    studios: match?.studios ?? [],
-    genres: match?.genres ?? [],
-    posterUrl: result.poster,
-    backdropUrl: match?.backdropUrl ?? null,
-    format: match?.format ?? null,
-    anilistScore: match?.anilistScore ?? null,
-    malScore: match?.malScore ?? null,
-    externalId: match?.malId ?? null,
-    // AniList is the primary provider, so provider_id is its id whenever
-    // AniList matched (the common case) — kept separately from
-    // externalId (MAL's) so episode sync has a fallback when Jikan is
-    // unreachable or never matched this title.
-    anilistId: match?.provider === "AniList" ? match.providerId : null,
-    status: form.status as AnimeStatus,
-    ratingOverall: form.score,
-    startDate: form.startDate,
-    endDate: form.endDate,
-    seasons: [{ seasonNumber: 1, episodeCount }],
-  });
-  let finalShow = created;
-  const firstSeason = created.seasons[0];
-  if (firstSeason && form.watched > 0) {
-    finalShow = await updateSeason(created.id, firstSeason.id, {
-      episodesWatched: form.watched,
-    });
-  }
-  shows.value.push(finalShow);
-}
-
 function detailRoute(id: string): string {
   return `/anime/${id}`;
 }
@@ -382,8 +317,6 @@ function detailRoute(id: string): string {
     :loading="loading"
     :error="error"
     :detail-route="detailRoute"
-    :search="search"
-    :create-from-result="createFromResult"
     @filters-change="load"
     @load-more="loadMore"
     @toggle-favorite="onToggleFavorite"
