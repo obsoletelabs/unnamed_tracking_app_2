@@ -1,4 +1,4 @@
-"""Export public notification source schemas for the independent Plugin API 1.1.2 SDK.
+"""Export public notification schemas for the independent Plugin API SDK.
 
 Run with backend dependencies installed and PYTHONPATH=src/backend.
 """
@@ -10,6 +10,8 @@ from pathlib import Path
 from src.plugin_api import (
     NotificationEventEmission,
     NotificationFieldLayout,
+    NotificationLifecyclePage,
+    NotificationLifecycleQuery,
     NotificationProviderRegistration,
     NotificationTypeRegistration,
 )
@@ -22,10 +24,14 @@ def export(destination: Path) -> None:
         ("notification-event-v1", NotificationEventEmission),
         ("notification-provider-v1", NotificationProviderRegistration),
         ("notification-layout-v1", NotificationFieldLayout),
+        ("notification-lifecycle-query-v1", NotificationLifecycleQuery),
+        ("notification-lifecycle-page-v1", NotificationLifecyclePage),
     ):
         schema = model.model_json_schema()
         schema["$schema"] = "https://json-schema.org/draft/2020-12/schema"
-        schema["x-api-contract-version"] = "1.1.2"
+        schema["x-api-contract-version"] = (
+            "1.1.4" if "lifecycle" in name else "1.1.2"
+        )
         (destination / f"{name}.schema.json").write_text(
             json.dumps(schema, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
         )

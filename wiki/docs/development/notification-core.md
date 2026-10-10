@@ -103,3 +103,43 @@ The controller persists interpretation, source installation, payload-free dedupe
 Disable, unregister, uninstall and administrative grant revocation retire source records and suppress pending/processing/retry deliveries. History/preferences remain. Re-registration can accept new events but does not replay old deliveries or reclaim destination credentials/consent. Dispatch rechecks source installation and grants before transport lookup and immediately before sending. A source runtime outage alone does not invalidate an already accepted fact; explicit lifecycle retirement does. Transport already started when revocation commits is best effort, like destination deletion.
 
 Migration `c4771032f3c4` follows `24bc18feb852`, adds retained type records, nullable source-installation identity and receipt acceptance time, and preserves existing notification and unrelated game-note tables. Old receipts receive acceptance time zero; all new host receipts use server time. Downgrade refuses retained source identities instead of silently losing authorization/history.
+
+
+Notification lifecycle replay is separately granted and contains only scoped metadata. See [Plugin API lifecycle replay](plugin-api-v1.md#notification-lifecycle-replay-114) for ordering, scope and retention. Inbox expiry does not erase its independently retained audit history, and no delivery credentials or content enter the feed.
+
+## Operating delivery and replay
+
+The existing jobs loop performs discovery, expiring verification/session cleanup,
+delivery and lifecycle publication. Keep it running after deployment; opening the
+inbox is not required for external delivery. Each stage is bounded, so backlogs
+can take several ticks to drain. Restarting a worker preserves queued work and
+the lifecycle outbox.
+
+`retry_wait` means the core will retry when its recorded next-attempt time is
+due. `failed_permanent` is terminal; changing configuration does not replay
+old terminal work. A provider outage can delay its work while other eligible
+destinations continue. Revocation, endpoint revision changes and deletion
+invalidate queued claims; already-started external I/O remains best effort.
+Never interpret a successful renderer action as a successful delivery.
+
+The three retention boundaries are independent: personal inbox visibility,
+transport validity, and lifecycle audit history. Minimal dedupe receipts outlive
+all three and currently have no expiry. Deleting an inbox item does not erase its
+dedupe receipt or independently retained plugin lifecycle metadata. Disabling or
+uninstalling a plugin retains history and inactive preferences; reinstallation
+requires renewed destination activation and consent, without automatic replay.
+
+Lifecycle publication sequences are assigned only after producer transactions
+commit. Consumers must retain the returned opaque cursor rather than compare
+timestamps or UUIDs. An expired cursor returns `resync_required`; start a fresh
+retained feed rather than assuming erased transitions can be reconstructed.
+Installation changes invalidate the old scope, and the explicit read grant is
+checked on every request. Audit rows contain identifiers, status and timestamps
+only; do not add notification bodies or credentials to replay diagnostics.
+
+Back up before upgrading and apply the single Alembic history through its head.
+Lifecycle revision `0037e34ac954` follows `08cca40cdb7f`, preserving main's game
+duplicate-review schema. It creates no historical transitions and refuses a
+downgrade that would erase populated lifecycle history. Provider secrets and
+encrypted cursors use the existing application encryption key; preserve that key
+with the deployment's protected configuration.

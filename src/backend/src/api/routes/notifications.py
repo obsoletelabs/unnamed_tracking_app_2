@@ -18,6 +18,7 @@ from src.database.models.anime import Anime
 from src.database.models.notification import Notification
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features.notification_audit import change_notices
 from src.features.notification_controller import emit_legacy_rows
 from src.features.notification_inbox import InboxQuery, query_inbox, retention_policy
 from src.features.notification_lifecycle import delete_notice, dismiss, visible_inbox
@@ -171,10 +172,12 @@ async def create_test_notification(
 async def mark_all_read(
     db: AsyncSession = _NOTIFICATION_DB, current_user: User = _NOTIFICATION_USER
 ) -> None:
-    await db.execute(
+    await change_notices(
+        db,
         update(Notification)
         .where(visible_inbox(current_user.id), Notification.read_at.is_(None))
-        .values(read_at=int(time.time()))
+        .values(read_at=int(time.time())),
+        "read",
     )
     await db.commit()
 
@@ -185,12 +188,14 @@ async def mark_read(
     db: AsyncSession = _NOTIFICATION_DB,
     current_user: User = _NOTIFICATION_USER,
 ) -> None:
-    result = await db.execute(
+    count = await change_notices(
+        db,
         update(Notification)
         .where(Notification.id == notification_id, visible_inbox(current_user.id))
-        .values(read_at=int(time.time()))
+        .values(read_at=int(time.time())),
+        "read",
     )
-    if not result.rowcount:
+    if not count:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found")
     await db.commit()
 
@@ -203,12 +208,14 @@ async def mark_unread(
     db: AsyncSession = _NOTIFICATION_DB,
     current_user: User = _NOTIFICATION_USER,
 ) -> None:
-    result = await db.execute(
+    count = await change_notices(
+        db,
         update(Notification)
         .where(Notification.id == notification_id, visible_inbox(current_user.id))
-        .values(read_at=None)
+        .values(read_at=None),
+        "unread",
     )
-    if not result.rowcount:
+    if not count:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found")
     await db.commit()
 

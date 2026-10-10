@@ -25,6 +25,7 @@ from src.database.models.notification import Notification
 from src.database.models.notification_delivery import NotificationDelivery
 from src.database.models.tv_show import TVEpisode, TVSeason, TVShow, TVShowStatus
 from src.features.game_notifications import generate_game_releases
+from src.features.notification_audit import change_notices
 from src.features.notification_controller import emit_legacy_rows
 from src.features.notification_inbox import retention_policy
 
@@ -229,10 +230,16 @@ async def generate_for_user(db: AsyncSession, user_id: UUID) -> int:
     retention_days = retention_policy(prefs)["effective_days"]
     if retention_days:
         cutoff = now - retention_days * 86400
-        await db.execute(
+        await change_notices(
+            db,
             update(Notification)
-            .where(Notification.user_id == user_id, Notification.event_at < cutoff)
-            .values(inbox_visible=False)
+            .where(
+                Notification.user_id == user_id,
+                Notification.event_at < cutoff,
+                Notification.inbox_visible.is_(True),
+            )
+            .values(inbox_visible=False),
+            "expired",
         )
         await db.execute(
             delete(Notification).where(

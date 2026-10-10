@@ -2,10 +2,45 @@
 
 from string import Formatter
 from typing import Literal, Self
+from uuid import UUID
 
 from pydantic import Field, StrictBool, StrictInt, StrictStr, model_validator
 
 from .base_contracts import ContractModel
+
+
+class NotificationLifecycleQuery(ContractModel):
+    cursor: str | None = Field(default=None, min_length=1, max_length=1024)
+    limit: int = Field(default=100, ge=1, le=200, strict=True)
+
+
+class NotificationLifecycleEvent(ContractModel):
+    id: UUID
+    notification_id: UUID
+    delivery_id: UUID | None = None
+    status: Literal[
+        "created",
+        "read",
+        "unread",
+        "dismissed",
+        "deleted",
+        "expired",
+        "pending",
+        "processing",
+        "sent",
+        "retry_wait",
+        "failed_permanent",
+        "suppressed",
+        "cancelled",
+    ]
+    occurred_at: str
+
+
+class NotificationLifecyclePage(ContractModel):
+    events: tuple[NotificationLifecycleEvent, ...]
+    cursor: str
+    has_more: bool
+    resync_required: bool
 
 
 class NotificationTypeRegistration(ContractModel):
