@@ -6,7 +6,10 @@ import type {
   UiAction,
   UiValues,
 } from "../../services/pluginUi";
-import { dispatchPluginAction } from "../../services/pluginUi";
+import {
+  dispatchPluginAction,
+  pluginExternalDestination,
+} from "../../services/pluginUi";
 import { pluginRequestError } from "../../services/apiError";
 import { approvePluginAction } from "../../services/pluginUi";
 import {
@@ -67,13 +70,15 @@ async function save(values: UiValues) {
 }
 
 async function run(action: UiAction, values: UiValues) {
-  await dispatchPluginAction(
+  const result = await dispatchPluginAction(
     props.pluginId,
     action.id,
     values,
     props.actionContext,
     Boolean(action.confirmation),
   );
+  const destination = pluginExternalDestination(action, result);
+  if (destination) window.location.assign(destination);
 }
 
 const nativeHost = computed(() => ({

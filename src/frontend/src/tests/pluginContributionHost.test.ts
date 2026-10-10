@@ -35,9 +35,21 @@ vi.mock("../services/pluginUi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../services/pluginUi")>()),
   dispatchPluginAction: vi.fn(async () => ({ completed: true })),
 }));
-vi.mock("../components/plugins/PluginUiHost.vue", () => ({
-  default: { render: () => null },
-}));
+vi.mock("../components/plugins/PluginUiHost.vue", async () => {
+  const { defineComponent, h } = await import("vue");
+  return {
+    default: defineComponent({
+      props: ["document"],
+      emits: ["action"],
+      setup(props, { emit }) {
+        return () =>
+          h("button", {
+            onClick: () => emit("action", props.document.actions[0], {}),
+          });
+      },
+    }),
+  };
+});
 
 // Vitest's Node environment imports SFCs in SSR mode. Use the real template's
 // client render function to exercise component reuse through the Vue renderer.
@@ -117,6 +129,58 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
+
+it.each(["declared", "undeclared", "failed"])(
+  "handles %s external navigation from a declarative plugin action",
+  async (mode) => {
+    const assign = vi.fn();
+    vi.stubGlobal("window", { location: { assign } });
+    vi.mocked(dispatchPluginAction).mockResolvedValueOnce({
+      redirect_url: "https://www.epicgames.com/id/login",
+      ...(mode === "failed" ? { ok: false } : {}),
+    });
+    const document: PluginUiDocument = {
+      schema_version: "v1",
+      plugin_id: "test.page-switch",
+      title: "External action",
+      settings: [],
+      tables: [],
+      dialogs: [],
+      menus: [],
+      pages: [],
+      actions: [
+        {
+          id: "signin",
+          label: "Sign in",
+          external_navigation: mode !== "undeclared",
+        },
+      ],
+    };
+    const root = node("root");
+    const app = renderer.createApp({
+      render: () =>
+        h(PluginContributionHost, {
+          pluginId: document.plugin_id,
+          document,
+          pageId: "login",
+        }),
+    });
+    app.provide(ssrContextKey, { modules: new Set<string>() });
+    app.mount(root);
+    try {
+      (findButton(root)!.props.onClick as () => void)();
+      await nextTick();
+      expect(dispatchPluginAction).toHaveBeenCalledOnce();
+      if (mode === "declared")
+        expect(assign).toHaveBeenCalledExactlyOnceWith(
+          "https://www.epicgames.com/id/login",
+        );
+      else expect(assign).not.toHaveBeenCalled();
+    } finally {
+      app.unmount();
+    }
+  },
+);
 
 it.each(["overview", "audit"])(
   "switches shared native pages from %s and back without reloading",

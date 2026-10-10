@@ -662,7 +662,11 @@ export function pluginExternalDestination(
   action: UiAction,
   result: Record<string, unknown>,
 ): string | null {
-  if (!action.external_navigation || typeof result.redirect_url !== "string")
+  if (
+    result.ok === false ||
+    !action.external_navigation ||
+    typeof result.redirect_url !== "string"
+  )
     return null;
   const url = new URL(result.redirect_url);
   if (
