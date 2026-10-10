@@ -18,6 +18,7 @@ from src.core.preferences import load_preferences
 from src.core.public_url import normalize_public_url
 from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_provider_setting import NotificationProviderSetting
+from src.database.models.plugin_notification_provider import PluginNotificationProviderRegistration
 from src.database.models.user import User
 from src.database.session import get_db
 from src.features.notification_browser import (
@@ -438,57 +439,37 @@ async def revoke_email_verification(
     return {"revoked": True}
 
 
-@router.post("/plugin-destinations", status_code=201)
-async def create_plugin_destination(
-    payload: PluginDestinationCreate,
-    db: AsyncSession = _NOTIFICATION_DB,
-    current_user: User = _NOTIFICATION_USER,
-) -> dict:
-    """Enroll one declared plugin destination without accepting endpoint credentials."""
-    providers = await get_notification_providers(db)
-    provider = providers.get(payload.provider_id)
+async def _authorized_plugin_provider(
+    db: AsyncSession, provider_id: str, user_id: UUID
+) -> tuple[PluginNotificationProvider, NotificationProviderDefinition]:
+    """Resolve a generic provider and re-check its per-user capability grant."""
+    provider = (await get_notification_providers(db)).get(provider_id)
     if (
         not isinstance(provider, PluginNotificationProvider)
         or provider.transport != "plugin"
         or not provider.registration.definition
     ):
         raise HTTPException(404, "Generic notification provider not found")
-    registration = provider.registration
     try:
-        if not await provider.is_authorized(db, current_user.id):
+        if not await provider.is_authorized(db, user_id):
             raise HTTPException(403, "Notification provider is not available to this account")
-    except PluginRuntimeUnavailable as exc:
+    except (PluginRuntimeRequestError, PluginRuntimeUnavailable) as exc:
         raise HTTPException(
             503, "Notification provider runtime is temporarily unavailable"
         ) from exc
-
-    definition = NotificationProviderDefinition.model_validate(registration.definition)
-    choice = next((item for item in definition.destinations if item.kind == payload.kind), None)
-    if choice is None:
-        raise HTTPException(404, "Notification destination type not declared by this provider")
-    if choice.fields:
-        raise HTTPException(
-            422,
-            "This destination requires provider-specific fields; use the provider settings page.",
-        )
-
-    endpoint_key = f"plugin:{choice.kind}"
-    endpoint = await db.scalar(
-        select(NotificationDestination)
-        .where(
-            NotificationDestination.user_id == current_user.id,
-            NotificationDestination.provider_id == registration.provider_id,
-            NotificationDestination.endpoint_key == endpoint_key,
-        )
-        .with_for_update()
+    return provider, NotificationProviderDefinition.model_validate(
+        provider.registration.definition
     )
+
+
+async def _run_plugin_destination_configuration(
+    provider: PluginNotificationProvider,
+    definition: NotificationProviderDefinition,
+    user_id: UUID,
+) -> None:
+    """Let the plugin validate its own linked identity before host enrollment."""
     try:
-        result = await provider._runtime.action(
-            registration.plugin_id,
-            definition.configure_action,
-            {},
-            user_id=str(current_user.id),
-        )
+        result = await provider.run_destination_action(definition.configure_action, user_id)
     except PluginRuntimeUnavailable as exc:
         raise HTTPException(
             503, "Notification provider runtime is temporarily unavailable"
@@ -499,44 +480,103 @@ async def create_plugin_destination(
                 409,
                 "Link and verify your Discord account before adding this destination",
             ) from exc
-        raise HTTPException(400, "Provider rejected destination configuration") from exc
+        raise HTTPException(
+            400, "Provider rejected destination configuration"
+        ) from exc
     if not isinstance(result, dict) or result.get("ok") is not True:
         raise HTTPException(400, "Provider rejected destination configuration")
 
-    if endpoint is not None and endpoint.active and endpoint.enabled:
-        return {"id": str(endpoint.id), "kind": endpoint.kind, "existing": True}
+
+def _save_plugin_destination(
+    db: AsyncSession,
+    user: User,
+    provider: PluginNotificationProvider,
+    *,
+    endpoint: NotificationDestination | None,
+    endpoint_key: str,
+    kind: str,
+    label: str,
+    privacy: str,
+) -> NotificationDestination:
+    """Create or reactivate an opaque host routing record; never store plugin secrets."""
+    registration = provider.registration
+    endpoint_privacy = int(Trust.PRIVATE if privacy == "PRIVATE" else Trust.PUBLIC)
     if endpoint is None:
         destination_id = uuid4()
         endpoint = NotificationDestination(
             id=destination_id,
-            user_id=current_user.id,
+            user_id=user.id,
             provider_id=registration.provider_id,
             endpoint_key=endpoint_key,
-            kind=choice.kind,
+            kind=kind,
             channel_context="external",
-            privacy=int(Trust.PRIVATE if choice.privacy == "PRIVATE" else Trust.PUBLIC),
+            privacy=endpoint_privacy,
             enabled=True,
             active=True,
             installation_id=registration.installation_id,
             configuration_ref=str(destination_id),
-            display_name=choice.label,
+            display_name=label,
         )
         db.add(endpoint)
-    else:
-        endpoint.revision += 1
-        endpoint.active = True
-        endpoint.enabled = True
-        endpoint.verified_revision = None
-        endpoint.verification_method = None
-        endpoint.verification_revoked_at = None
-        endpoint.media_consent_revision = None
-        endpoint.media_consent_at = None
-        endpoint.installation_id = registration.installation_id
-        endpoint.configuration_ref = str(endpoint.id)
-        endpoint.kind = choice.kind
-        endpoint.channel_context = "external"
-        endpoint.privacy = int(Trust.PRIVATE if choice.privacy == "PRIVATE" else Trust.PUBLIC)
-        endpoint.display_name = choice.label
+        return endpoint
+    endpoint.revision += 1
+    endpoint.active = True
+    endpoint.enabled = True
+    endpoint.verified_revision = None
+    endpoint.verification_method = None
+    endpoint.verification_revoked_at = None
+    endpoint.media_consent_revision = None
+    endpoint.media_consent_at = None
+    endpoint.installation_id = registration.installation_id
+    endpoint.configuration_ref = str(endpoint.id)
+    endpoint.kind = kind
+    endpoint.channel_context = "external"
+    endpoint.privacy = endpoint_privacy
+    endpoint.display_name = label
+    return endpoint
+
+
+@router.post("/plugin-destinations", status_code=201)
+async def create_plugin_destination(
+    payload: PluginDestinationCreate,
+    db: AsyncSession = _NOTIFICATION_DB,
+    current_user: User = _NOTIFICATION_USER,
+) -> dict:
+    """Enroll one declared plugin destination without accepting endpoint credentials."""
+    provider, definition = await _authorized_plugin_provider(
+        db, payload.provider_id, current_user.id
+    )
+    choice = next((item for item in definition.destinations if item.kind == payload.kind), None)
+    if choice is None:
+        raise HTTPException(404, "Notification destination type not declared by this provider")
+    if choice.fields:
+        raise HTTPException(
+            422,
+            "This destination requires provider-specific fields; use the provider settings page.",
+        )
+    endpoint_key = f"plugin:{choice.kind}"
+    endpoint = await db.scalar(
+        select(NotificationDestination)
+        .where(
+            NotificationDestination.user_id == current_user.id,
+            NotificationDestination.provider_id == provider.registration.provider_id,
+            NotificationDestination.endpoint_key == endpoint_key,
+        )
+        .with_for_update()
+    )
+    await _run_plugin_destination_configuration(provider, definition, current_user.id)
+    if endpoint is not None and endpoint.active and endpoint.enabled:
+        return {"id": str(endpoint.id), "kind": endpoint.kind, "existing": True}
+    endpoint = _save_plugin_destination(
+        db,
+        current_user,
+        provider,
+        endpoint=endpoint,
+        endpoint_key=endpoint_key,
+        kind=choice.kind,
+        label=choice.label,
+        privacy=choice.privacy,
+    )
     await db.commit()
     return {"id": str(endpoint.id), "kind": endpoint.kind, "existing": False}
 
