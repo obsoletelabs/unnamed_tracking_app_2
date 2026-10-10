@@ -218,6 +218,7 @@ const RELATIONSHIP_TYPE_OPTIONS: {
   { value: "dlc", label: "DLC" },
   { value: "standalone_expansion", label: "Standalone expansion" },
   { value: "total_conversion", label: "Total conversion" },
+  { value: "owned_copy", label: "Owned copy" },
 ];
 const source = ref(props.game?.source ?? "");
 const ageRating = ref(props.game?.ageRating ?? "");

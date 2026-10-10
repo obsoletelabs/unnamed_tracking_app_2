@@ -139,12 +139,19 @@ export function useGameDetail() {
     dlc: "DLC",
     standalone_expansion: "Standalone Expansion",
     total_conversion: "Total Conversion",
+    owned_copy: "Owned copy",
   };
 
   // games whose parentGameId points at this one, e.g. Minecraft's page
   // listing GTNH, Vanilla, Create Pack as variants of itself. The reverse of
   // the parent-breadcrumb link above.
-  const variants = ref<Game[]>([]);
+  const relatedGames = ref<Game[]>([]);
+  const variants = computed(() =>
+    relatedGames.value.filter((game) => game.relationshipType !== "owned_copy"),
+  );
+  const ownedCopies = computed(() =>
+    relatedGames.value.filter((game) => game.relationshipType === "owned_copy"),
+  );
 
   const {
     profiles,
@@ -337,10 +344,10 @@ export function useGameDetail() {
         // achievements are a nice-to-have overlay, a failure here
         // shouldn't block the rest of the game page from rendering
       });
-    if (!refresh) variants.value = [];
+    if (!refresh) relatedGames.value = [];
     void fetchGameVariants(id)
       .then((list) => {
-        if (route.params.id === id) variants.value = list;
+        if (route.params.id === id) relatedGames.value = list;
       })
       .catch(() => {
         // variants section just doesn't show, not worth failing the page
@@ -1724,6 +1731,7 @@ export function useGameDetail() {
     parentGameTitle,
     RELATIONSHIP_LABELS,
     variants,
+    ownedCopies,
     profiles,
     activeProfileId,
     newProfileName,

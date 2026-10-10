@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from "vue";
+import GroupGameCopiesDialog from "../game/GroupGameCopiesDialog.vue";
 import {
   fetchGameDuplicates,
   keepDuplicateGames,
@@ -12,6 +13,7 @@ const loading = ref(false);
 const loaded = ref(false);
 const busy = ref<string | null>(null);
 const error = ref<string | null>(null);
+const grouping = ref<DuplicatePair | null>(null);
 const request = new AbortController();
 
 function pairKey(pair: DuplicatePair): string {
@@ -51,6 +53,10 @@ async function keepBoth(pair: DuplicatePair): Promise<void> {
 
 onMounted(load);
 onBeforeUnmount(() => request.abort());
+async function grouped(): Promise<void> {
+  grouping.value = null;
+  await load();
+}
 </script>
 
 <template>
@@ -60,8 +66,8 @@ onBeforeUnmount(() => request.abort());
         <h2 id="duplicate-review-title">Possible duplicate games</h2>
         <p class="intro">
           Compare entries from your library and imports. Similar titles can be
-          different editions or copies. Keep both to remember your choice during
-          future checks.
+          different editions or copies. Group owned copies under a main game, or
+          keep separate entries to remember your choice during future checks.
         </p>
       </div>
       <button
@@ -130,6 +136,14 @@ onBeforeUnmount(() => request.abort());
       </div>
       <div class="pair-actions">
         <button
+          class="ui-btn ui-btn-primary"
+          type="button"
+          :disabled="busy !== null || loading"
+          @click="grouping = pair"
+        >
+          Group owned copies
+        </button>
+        <button
           class="ui-btn ui-btn-secondary"
           type="button"
           :disabled="busy !== null || loading"
@@ -142,6 +156,12 @@ onBeforeUnmount(() => request.abort());
     <p v-if="hasMore" class="intro">
       More pairs are available. Check again after reviewing these entries.
     </p>
+    <GroupGameCopiesDialog
+      v-if="grouping"
+      :games="[grouping.first, grouping.second]"
+      @close="grouping = null"
+      @grouped="grouped"
+    />
   </section>
 </template>
 
@@ -209,6 +229,8 @@ dd {
 }
 .pair-actions {
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   justify-content: flex-end;
   margin-top: 16px;
 }

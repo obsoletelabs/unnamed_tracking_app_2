@@ -16,6 +16,8 @@ const props = defineProps<{
   selected?: boolean;
   keyboardFocused?: boolean;
   rank?: number | null;
+  ownedCopyCount?: number;
+  possibleDuplicate?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -464,11 +466,27 @@ function copyFolderPath() {
         <span class="status">{{ localStatus }}</span>
         <span class="playtime">{{ playtimeLabel }}</span>
       </div>
+      <div v-if="(ownedCopyCount ?? 1) > 1" class="meta-row">
+        {{ ownedCopyCount }} owned copies
+      </div>
+      <RouterLink
+        v-if="possibleDuplicate"
+        class="copy-review-link"
+        to="/settings?section=library&tab=duplicates"
+        @click.stop
+        >Review possible duplicate</RouterLink
+      >
     </div>
   </div>
 </template>
 
 <style scoped>
+.copy-review-link {
+  display: block;
+  margin-top: 6px;
+  color: var(--ui-accent-text);
+  font-size: 0.8rem;
+}
 /* Media's page sets border-box on everything inside it; without the same
    here the rating box and the rest of the card come out a few px off */
 .game-card-wrap,

@@ -21,6 +21,9 @@ const {
   formatDisplayDate,
   computeScore,
   games,
+  libraryEntries,
+  ownedCopyCount,
+  possibleDuplicateIds,
   loading,
   error,
   showFormModal,
@@ -661,6 +664,8 @@ const compactPreview = computed(
               v-for="(game, colIndex) in cardsInRow(virtualRow.index)"
               :key="game.id"
               :game="game"
+              :owned-copy-count="ownedCopyCount(game)"
+              :possible-duplicate="possibleDuplicateIds.has(game.id)"
               :rank="rankByGameId.get(game.id) ?? null"
               :select-mode="selectMode"
               :selected="selectedIds.has(game.id)"
@@ -739,6 +744,16 @@ const compactPreview = computed(
             </div>
             <div class="list-title-col">
               <div class="list-title">{{ game.title }}</div>
+              <RouterLink
+                v-if="possibleDuplicateIds.has(game.id)"
+                class="list-sub"
+                to="/settings?section=library&tab=duplicates"
+                @click.stop
+                >Review possible duplicate</RouterLink
+              >
+              <div v-if="ownedCopyCount(game) > 1" class="list-sub">
+                {{ ownedCopyCount(game) }} owned copies
+              </div>
               <div class="list-sub">
                 {{ game.tags[0] ?? "No genre"
                 }}<template v-if="game.platforms[0]">
@@ -1099,7 +1114,7 @@ const compactPreview = computed(
 
       <RandomGamePicker
         v-if="showRandomPicker"
-        :games="games"
+        :games="libraryEntries"
         @close="showRandomPicker = false"
       />
 

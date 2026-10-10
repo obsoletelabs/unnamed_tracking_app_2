@@ -53,6 +53,8 @@ import {
   type GameLibraryFilters,
 } from "../utils/gameLibraryQuery";
 import type { Game, GameStatus } from "../types/game";
+import { gameOwnershipGroups } from "../utils/gameOwnership";
+import { fetchGameDuplicates } from "../services/gameDuplicates";
 import { usePrompt } from "../state/dialog";
 export function useGameLibrary() {
   const prompt = usePrompt();
@@ -65,6 +67,17 @@ export function useGameLibrary() {
   const route = useRoute();
 
   const games = ref<Game[]>([]);
+  const possibleDuplicateIds = ref(new Set<string>());
+  let duplicateRequest: AbortController | null = null;
+  onUnmounted(() => duplicateRequest?.abort());
+  const ownership = computed(() => gameOwnershipGroups(games.value));
+  const libraryEntries = computed(() => ownership.value.entries);
+  function ownedCopyCount(game: Game): number {
+    return ownership.value.members.get(game.id)?.length ?? 1;
+  }
+  function copiesOf(game: Game): Game[] {
+    return ownership.value.members.get(game.id) ?? [game];
+  }
   const loading = ref(true);
   const isLibraryActive = ref(true);
   const error = ref<string | null>(null);
@@ -655,6 +668,19 @@ export function useGameLibrary() {
 
   async function loadGames() {
     const token = ++loadGamesToken;
+    duplicateRequest?.abort();
+    duplicateRequest = new AbortController();
+    // Review hints never block the library or request external providers.
+    void fetchGameDuplicates(duplicateRequest.signal)
+      .then((result) => {
+        if (token === loadGamesToken)
+          possibleDuplicateIds.value = new Set(
+            result.pairs.flatMap((pair) => [pair.first.id, pair.second.id]),
+          );
+      })
+      .catch(() => {
+        /* A failed check does not imply the games are unique. */
+      });
     refreshing.value = true;
     // A library seen earlier in this visit is drawn at once and refreshed
     // behind it, instead of a "Loading…" screen on every return to the page.
@@ -956,11 +982,13 @@ export function useGameLibrary() {
   }
 
   const gamesMatchingFilters = computed(() => {
-    let result = games.value;
+    let result = libraryEntries.value;
     if (platformFilter.value !== "all") {
       result = result.filter((g) =>
-        g.platforms.some(
-          (p) => normalizePlatformFamily(p.platform) === platformFilter.value,
+        copiesOf(g).some((copy) =>
+          copy.platforms.some(
+            (p) => normalizePlatformFamily(p.platform) === platformFilter.value,
+          ),
         ),
       );
     }
@@ -989,15 +1017,23 @@ export function useGameLibrary() {
       result = result.filter((g) => g.language === languageFilter.value);
     }
     if (metadataProviderFilter.value !== "all") {
-      result = result.filter((g) => g.source === metadataProviderFilter.value);
+      result = result.filter((g) =>
+        copiesOf(g).some(
+          (copy) => copy.source === metadataProviderFilter.value,
+        ),
+      );
     }
     if (favoritesOnly.value) {
       result = result.filter((g) => g.favorite);
     }
     if (achievementsFilter.value === "has") {
-      result = result.filter((g) => g.achievementTotal > 0);
+      result = result.filter((g) =>
+        copiesOf(g).some((copy) => copy.achievementTotal > 0),
+      );
     } else if (achievementsFilter.value === "none") {
-      result = result.filter((g) => g.achievementTotal === 0);
+      result = result.filter((g) =>
+        copiesOf(g).every((copy) => copy.achievementTotal === 0),
+      );
     }
     if (retroAchievementsOnly.value) {
       result = result.filter(
@@ -1021,7 +1057,9 @@ export function useGameLibrary() {
 
     const q = searchQuery.value.trim().toLowerCase();
     if (q) {
-      result = result.filter((g) => fuzzyTitleMatch(g.title, q));
+      result = result.filter((g) =>
+        copiesOf(g).some((copy) => fuzzyTitleMatch(copy.title, q)),
+      );
     }
 
     return result;
@@ -1369,6 +1407,9 @@ export function useGameLibrary() {
     formatDisplayDate,
     computeScore,
     games,
+    libraryEntries,
+    ownedCopyCount,
+    possibleDuplicateIds,
     loading,
     error,
     showFormModal,

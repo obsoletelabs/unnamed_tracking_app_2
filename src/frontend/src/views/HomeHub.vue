@@ -30,6 +30,7 @@ import {
 import { fetchGames, deleteGame } from "../services/games";
 import { fetchWeeklyDigest, type WeeklyDigest } from "../services/stats";
 import type { Game } from "../types/game";
+import { gameOwnershipGroups } from "../utils/gameOwnership";
 
 const hasHomeOverride = computed(() =>
   pluginSlots.value.some((item) => item.slot === "home.replace"),
@@ -120,7 +121,7 @@ async function loadGames() {
   try {
     const result = await fetchGames();
     if (generation !== dataGeneration || request !== gamesRequest) return;
-    games.value = result;
+    games.value = gameOwnershipGroups(result).entries;
     gamesLoaded = true;
   } catch (reason) {
     if (generation === dataGeneration && request === gamesRequest)
