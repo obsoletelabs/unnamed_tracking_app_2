@@ -281,10 +281,17 @@ def _provider_settings(
         or (smtp.configured if email else bool(registration and registration.revoked_at is None)),
         "configuration_scope": "internal"
         if inbox
-        else ("user" if registration and registration.transport == "discord_webhook" else "server"),
-        "destination_kind": "discord_webhook"
-        if registration and registration.transport == "discord_webhook"
-        else None,
+        else (
+            "user"
+            if registration
+            and registration.transport in {"discord_webhook", "discord_bot_dm"}
+            else "server"
+        ),
+        "destination_kind": (
+            registration.transport
+            if registration and registration.transport in {"discord_webhook", "discord_bot_dm"}
+            else None
+        ),
         "critical_supported": email,
         "critical_description": (
             "Adds high-priority email headers; your mail client decides how to alert you."
