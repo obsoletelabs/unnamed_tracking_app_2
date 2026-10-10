@@ -72,8 +72,10 @@ from .dependency_graph import walk_dependency_graph
 from .notification_contracts import (
     NotificationEventEmission,
     NotificationFieldLayout,
-    NotificationProviderDeclaration as NotificationProviderRegistration,
     NotificationTypeRegistration,
+)
+from .notification_contracts import (
+    NotificationProviderDeclaration as NotificationProviderRegistration,
 )
 from .ui_contracts import (
     HostExtensionSlot,

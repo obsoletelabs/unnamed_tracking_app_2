@@ -14,7 +14,9 @@ class NotificationProviderDeclaration(ContractModel):
     provider_id: str = Field(min_length=3, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
     name: str = Field(min_length=1, max_length=128)
     action_id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
-    destination_kind: str = Field(default="plugin", min_length=1, max_length=32, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    destination_kind: str = Field(
+        default="plugin", min_length=1, max_length=32, pattern=r"^[a-z0-9][a-z0-9._-]*$"
+    )
     channel_context: Literal["external", "internal"] = "external"
     privacy: Literal["PUBLIC", "PRIVATE"] = "PUBLIC"
     transport: Literal["legacy", "plugin_public", "plugin_private"] = "plugin_public"
@@ -40,7 +42,9 @@ class NotificationTypeRegistration(ContractModel):
     severity: Literal["info", "warning", "error"] = "info"
     title_template: str = Field(min_length=1, max_length=500)
     body_template: str = Field(min_length=1, max_length=10000)
-    parameters: dict[str, Literal["string", "integer", "boolean"]] = Field(default_factory=dict, max_length=32)
+    parameters: dict[str, Literal["string", "integer", "boolean"]] = Field(
+        default_factory=dict, max_length=32
+    )
 
     @model_validator(mode="after")
     def validate_policy_and_templates(self) -> Self:
@@ -78,7 +82,9 @@ class NotificationFieldLayout(ContractModel):
     """A provider can arrange approved fields, never append arbitrary destination content."""
 
     style: Literal["plain", "embed"] = "embed"
-    fields: tuple[Literal["title", "body", "event_at", "link"], ...] = Field(default=("title", "body", "event_at", "link"), min_length=1, max_length=4)
+    fields: tuple[Literal["title", "body", "event_at", "link"], ...] = Field(
+        default=("title", "body", "event_at", "link"), min_length=1, max_length=4
+    )
 
     @model_validator(mode="after")
     def unique_fields(self) -> Self:

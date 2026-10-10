@@ -94,7 +94,9 @@ async def _type_catalog(db: AsyncSession, user_id: UUID) -> list[dict[str, Any]]
         )
     )
     preferences = await load_preferences(db, user_id)
-    remembered_types = set(preferences["notification_types"]) | set(preferences["notification_routes"])
+    remembered_types = set(preferences["notification_types"]) | set(
+        preferences["notification_routes"]
+    )
     types = [
         {
             "event_type": event_type,
@@ -160,7 +162,9 @@ async def routing_settings(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
     settings = {
         row.provider_id: row.enabled
         for row in await db.scalars(
-            select(NotificationProviderSetting).where(NotificationProviderSetting.user_id == user_id)
+            select(NotificationProviderSetting).where(
+                NotificationProviderSetting.user_id == user_id
+            )
         )
     }
     smtp = await smtp_configuration(db)
@@ -264,7 +268,9 @@ def _provider_settings(
 ) -> dict[str, Any]:
     inbox = provider_id == INBOX_PROVIDER
     email = provider_id == SMTP_PROVIDER
-    plugin_owned = bool(registration and registration.transport in {"plugin_public", "plugin_private"})
+    plugin_owned = bool(
+        registration and registration.transport in {"plugin_public", "plugin_private"}
+    )
     return {
         "id": provider_id,
         "name": "In-app inbox"
@@ -273,9 +279,7 @@ def _provider_settings(
         "enabled": True if inbox else enabled,
         "available": inbox
         or (smtp.configured if email else bool(registration and registration.revoked_at is None)),
-        "configuration_scope": "internal"
-        if inbox
-        else ("user" if plugin_owned else "server"),
+        "configuration_scope": "internal" if inbox else ("user" if plugin_owned else "server"),
         "destination_kind": registration.destination_kind if plugin_owned else None,
         "critical_supported": email,
         "critical_description": (

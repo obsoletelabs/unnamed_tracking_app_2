@@ -138,7 +138,9 @@ class PluginNotificationProvider:
         )
         try:
             if not await self.is_authorized(db, destination.user_id):
-                return DeliveryResult(success=False, error="Plugin provider authorization is unavailable.")
+                return DeliveryResult(
+                    success=False, error="Plugin provider authorization is unavailable."
+                )
             if message.attempt_id is None:
                 return DeliveryResult(success=False, error="Core delivery attempt is required.")
             endpoint = None
@@ -154,8 +156,12 @@ class PluginNotificationProvider:
                     "destination": {
                         "id": str(endpoint.id) if endpoint is not None else None,
                         "endpoint_key": endpoint.endpoint_key if endpoint is not None else None,
-                        "kind": endpoint.kind if endpoint is not None else self.registration.destination_kind,
-                        "configuration_ref": endpoint.configuration_ref if endpoint is not None else None,
+                        "kind": endpoint.kind
+                        if endpoint is not None
+                        else self.registration.destination_kind,
+                        "configuration_ref": endpoint.configuration_ref
+                        if endpoint is not None
+                        else None,
                         "privacy": endpoint.privacy if endpoint is not None else int(Trust.PUBLIC),
                     },
                     "_plugin_context": {"user_id": str(destination.user_id), "is_admin": False},
@@ -167,4 +173,6 @@ class PluginNotificationProvider:
             result = NotificationDeliveryResult.model_validate(response)
         except (PluginRuntimeRequestError, PluginRuntimeUnavailable, ValueError) as exc:
             return DeliveryResult(success=False, retryable=True, error=str(exc)[:512])
-        return DeliveryResult(success=result.success, retryable=result.retryable, error=result.error)
+        return DeliveryResult(
+            success=result.success, retryable=result.retryable, error=result.error
+        )
