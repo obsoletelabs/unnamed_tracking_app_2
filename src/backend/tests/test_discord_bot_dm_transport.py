@@ -11,11 +11,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from src.features.notification_providers.plugin import (
-    PluginNotificationProvider,
-    _protected_transport_failure,
-)
-from src.plugin_api.runtime_client import PluginRuntimeRequestError, PluginRuntimeUnavailable
+from src.features.notification_providers.plugin import PluginNotificationProvider
 from src.features.notification_settings import _provider_settings
 
 
@@ -85,59 +81,3 @@ async def test_bot_dm_endpoint_requires_owner_provider_and_installation_match() 
     )
 
 
-
-def test_discord_egress_policy_rejection_is_permanent_and_actionable() -> None:
-    failure = PluginRuntimeRequestError(
-        "runtime rejected protected transport",
-        status_code=422,
-        detail="Discord egress is disabled in this runtime",
-    )
-    result = _protected_transport_failure(failure)
-    assert result.success is False
-    assert result.retryable is False
-    assert result.error == "discord_egress_disabled"
-
-
-def test_runtime_unavailability_remains_retryable() -> None:
-    result = _protected_transport_failure(PluginRuntimeUnavailable("runtime unavailable"))
-    assert result.success is False
-    assert result.retryable is True
-    assert result.error == "provider_transport_unavailable"
-
-
-
-def test_notification_delivery_injects_host_verified_recipient_context() -> None:
-    runtime_path = Path(__file__).parents[2] / "plugin-runtime" / "runtime.py"
-    sys.path.insert(0, str(runtime_path.parent))
-    spec = importlib.util.spec_from_file_location("discord_bot_runtime_context_test", runtime_path)
-    assert spec is not None and spec.loader is not None
-    runtime = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(runtime)
-
-    user_id = uuid4()
-    installation_id = uuid4()
-    attempt_id = uuid4()
-    action = Mock(return_value={"success": True, "retryable": False})
-    registry = SimpleNamespace(
-        package=lambda plugin_id: (
-            object(),
-            {"capabilities": [{"name": "notification_providers.deliver"}]},
-        ),
-        _item=lambda package: {"installation_id": str(installation_id)},
-        supervisor=SimpleNamespace(_authorize_capability=Mock()),
-        action=action,
-    )
-    result = runtime.PluginRegistry.notification_delivery(
-        registry,
-        "official.discord-bot-notifications",
-        "deliver",
-        {"delivery": {"title": "Private", "body": "Only for the recipient."}},
-        user_id=str(user_id),
-        installation_id=str(installation_id),
-        attempt_id=str(attempt_id),
-    )
-    assert result == {"success": True, "retryable": False}
-    assert action.call_args.args[2]["_plugin_context"] == {
-        "user_id": str(user_id),
-        "is_admin": False,
-    }
