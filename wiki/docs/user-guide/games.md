@@ -14,6 +14,8 @@ Bulk edit changes selected records only. Locked fields are not overwritten by re
 
 Open **Settings > Library > Duplicates** to compare possible duplicate games across manual entries, Steam, other stores and plugin imports. Suggestions use matching titles or shared provider identities, so a manually renamed game can still be found. Known conflicting years, platforms and provider identities are excluded. Compare each entry's source, release, status, playtime and identities; open its title to inspect notes and files. **Keep both** remembers your decision across future checks and import reruns. Nothing is merged or deleted automatically. **Check again** refreshes the review and shows additional pairs after decisions.
 
+![Duplicate comparison on a phone](../assets/game-duplicates/duplicates-390.png)
+
 ## Steam imports
 
 Steam library sync saves games and achievements before fetching store details and
