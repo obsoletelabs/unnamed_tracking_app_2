@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from io import BytesIO
-from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
@@ -13,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.auth import get_current_user
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features.profile_pictures import profile_picture_path, profile_picture_version
 
 router = APIRouter(
     prefix="/api/user",
@@ -20,8 +20,6 @@ router = APIRouter(
     dependencies=[Depends(get_current_user)],
 )
 
-_USER_DATA_ROOT = Path("/data/user")
-_PROFILE_FILENAME = "profile.png"
 _MAX_PROFILE_SIZE = 10 * 1024 * 1024
 
 register_heif_opener()
@@ -50,17 +48,13 @@ async def _get_authorized_user(
     return await _get_user_or_404(user_id, db)
 
 
-def _profile_path(user_id: UUID) -> Path:
-    return _USER_DATA_ROOT / str(user_id) / _PROFILE_FILENAME
-
-
 @router.put("/{user_id}/profile-picture")
 async def upload_profile_picture(
     user_id: UUID,
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> dict[str, str]:
+) -> dict[str, str | None]:
     """Validate and save a user's profile picture as profile.png."""
     await _get_authorized_user(user_id, db, current_user)
 
@@ -86,10 +80,10 @@ async def upload_profile_picture(
             detail="File must be a valid image.",
         ) from exc
 
-    profile_directory = _USER_DATA_ROOT / str(user_id)
+    target_path = profile_picture_path(user_id)
+    profile_directory = target_path.parent
     profile_directory.mkdir(parents=True, exist_ok=True)
-    target_path = profile_directory / _PROFILE_FILENAME
-    temporary_path = profile_directory / f".{_PROFILE_FILENAME}.tmp"
+    temporary_path = profile_directory / f".{target_path.name}.tmp"
 
     try:
         profile_image.save(temporary_path, format="PNG")
@@ -108,19 +102,22 @@ async def upload_profile_picture(
         "user_id": str(user_id),
         "path": str(target_path),
         "status": "saved",
+        "profile_picture_version": await profile_picture_version(user_id),
     }
 
 
 @router.get("/{user_id}/profile-picture", response_class=FileResponse)
 async def get_profile_picture(
     user_id: UUID,
+    v: str | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> FileResponse:
     """Return the user's stored profile picture."""
     await _get_authorized_user(user_id, db, current_user)
-    target_path = _profile_path(user_id)
-    if not target_path.is_file():
+    target_path = profile_picture_path(user_id)
+    version = await profile_picture_version(user_id)
+    if version is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Profile picture not found for user {user_id}.",
@@ -129,5 +126,9 @@ async def get_profile_picture(
     return FileResponse(
         target_path,
         media_type="image/png",
-        headers={"Cache-Control": "no-store, max-age=0"},
+        headers={
+            "Cache-Control": "private, max-age=86400, immutable"
+            if v == version
+            else "private, no-store"
+        },
     )

@@ -22,8 +22,11 @@ The application supplies its own visibility control and suppresses Edge's native
 ## Profile pictures
 
 Upload a picture in Settings > Profile. JPEG, PNG and HEIC/HEIF images are accepted,
-up to 10 MB, and stored as PNG. The sidebar and profile menu refresh after a
+up to 10 MB, and stored as PNG. The profile page and profile menu refresh after a
 successful upload. Invalid or oversized uploads leave the existing picture intact.
+Accounts without a picture show initials immediately. Existing pictures reuse a
+stable private cache URL across page loads; uploading a replacement updates all
+profile surfaces. No database migration or re-upload is needed for saved pictures.
 
 ## API keys
 

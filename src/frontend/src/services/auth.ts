@@ -4,6 +4,7 @@ export interface CurrentUser {
   email: string;
   is_admin: boolean;
   steamgriddb_api_key: string | null;
+  profile_picture_version?: string | null;
 }
 
 export interface ApiKeySummary {
@@ -169,7 +170,7 @@ export interface UpdateProfilePayload {
 export async function uploadProfilePicture(
   userId: string,
   file: File,
-): Promise<void> {
+): Promise<string | null> {
   const formData = new FormData();
   formData.append("file", file);
 
@@ -188,8 +189,11 @@ export async function uploadProfilePicture(
         : `Failed to upload profile picture (${response.status}).`,
     );
   }
+  const result: { profile_picture_version?: string | null } =
+    await response.json();
+  return result.profile_picture_version ?? null;
 }
 
-export function profilePictureUrl(userId: string): string {
-  return `/api/user/${userId}/profile-picture`;
+export function profilePictureUrl(userId: string, version: string): string {
+  return `/api/user/${encodeURIComponent(userId)}/profile-picture?v=${encodeURIComponent(version)}`;
 }

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from "vue";
 import PasswordInput from "../PasswordInput.vue";
-import { currentUser, checkAuth, avatarVersion } from "../../state/auth";
+import { currentUser, checkAuth } from "../../state/auth";
 import PasswordRequirements from "./PasswordRequirements.vue";
 import {
   fetchPasswordPolicy,
@@ -17,11 +17,15 @@ import {
 const isMock = computed(() => currentUser.value?.id === "mock");
 
 const avatarUrl = computed(() =>
-  currentUser.value
-    ? `${profilePictureUrl(currentUser.value.id)}?t=${avatarVersion.value}`
+  currentUser.value?.profile_picture_version
+    ? profilePictureUrl(
+        currentUser.value.id,
+        currentUser.value.profile_picture_version,
+      )
     : "",
 );
 const avatarFailed = ref(false);
+watch(avatarUrl, () => (avatarFailed.value = false));
 
 const username = ref("");
 const email = ref("");
@@ -116,11 +120,17 @@ async function onAvatarFileChange(e: Event) {
 
   uploading.value = true;
   uploadError.value = null;
+  const userId = currentUser.value.id;
 
   try {
-    await uploadProfilePicture(currentUser.value.id, file);
-    avatarFailed.value = false;
-    avatarVersion.value = Date.now();
+    const version = await uploadProfilePicture(userId, file);
+    if (currentUser.value?.id === userId) {
+      currentUser.value = {
+        ...currentUser.value,
+        profile_picture_version: version,
+      };
+      avatarFailed.value = false;
+    }
   } catch (err) {
     uploadError.value =
       err instanceof Error ? err.message : "Failed to upload picture";
@@ -139,7 +149,7 @@ async function onAvatarFileChange(e: Event) {
 
     <div class="avatar-row">
       <img
-        v-if="!isMock && !avatarFailed"
+        v-if="!isMock && avatarUrl && !avatarFailed"
         :src="avatarUrl"
         alt=""
         class="avatar-image"
