@@ -19,6 +19,7 @@ import {
   saveAchievementLocal,
 } from "../state/achievementLocal";
 import type { Achievement, Game } from "../types/game";
+import GameTopBar from "../components/GameTopBar.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -179,6 +180,7 @@ function goBack() {
 </script>
 
 <template>
+  <GameTopBar active="games" />
   <main v-if="loading" class="achievement-detail loading-state">
     <p>Loading…</p>
   </main>
@@ -207,9 +209,11 @@ function goBack() {
           {{ achievement.description }}
         </p>
         <p v-if="isUnlocked(achievement)" class="achievement-unlocked">
-          Unlocked<template v-if="achievement.unlockedAt">
-            {{ formatUnlockedAt(achievement.unlockedAt) }}</template
-          >
+          {{
+            achievement.unlockedAt
+              ? `Unlocked ${formatUnlockedAt(achievement.unlockedAt)}`
+              : "Unlocked"
+          }}
         </p>
         <p v-else class="achievement-locked">Not yet unlocked</p>
       </div>

@@ -1,0 +1,21 @@
+{
+  "backend": "real",
+  "frontend": "compiled-source",
+  "host_source_head": null,
+  "passed": [
+    "Achievement shared navigation, spaced date, undated unlock, locked state, Back route and missing/error states: 390",
+    "Achievement shared navigation, spaced date, undated unlock, locked state, Back route and missing/error states: 1440"
+  ],
+  "screens": [],
+  "widths": [
+    320,
+    390,
+    430,
+    768,
+    1024,
+    1440,
+    1920,
+    2560
+  ],
+  "achievement_responses": "provider fixtures over a real disposable game"
+}
