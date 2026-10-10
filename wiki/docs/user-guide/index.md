@@ -17,3 +17,8 @@ Use the sidebar to open Home, media libraries, collections, calendar, inbox, sta
 - [Notification providers](notification-providers.md) explains external destinations and preference controls.
 
 Actions are scoped to the signed-in account unless the interface explicitly identifies an administrator operation.
+
+On phones, Settings > Account > Connections places Sync and Manage below each
+account's name and connection status. Settings > Storage & usage keeps playtime
+values visible beside long game titles; the full title is available on hover.
+Long labels in list views wrap within their row.
