@@ -18,7 +18,6 @@ from src.core.preferences import load_preferences
 from src.core.public_url import normalize_public_url
 from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_provider_setting import NotificationProviderSetting
-from src.database.models.plugin_notification_provider import PluginNotificationProviderRegistration
 from src.database.models.user import User
 from src.database.session import get_db
 from src.features.notification_browser import (
