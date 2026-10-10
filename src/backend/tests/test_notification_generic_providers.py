@@ -3,8 +3,9 @@
 import copy
 import json
 import time
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from pydantic import ValidationError
@@ -12,9 +13,12 @@ from sqlalchemy import select
 
 from src.database.models.notification_delivery import NotificationDelivery
 from src.database.models.notification_destination import NotificationDestination
+from src.api.routes.notification_providers import PluginDestinationCreate, create_plugin_destination
 from src.database.models.notification_provider_setting import NotificationProviderSetting
+from src.database.models.user import User
 from src.database.models.plugin_notification_provider import PluginNotificationProviderRegistration
 from src.database.session import SessionLocal
+from src.features.notification_policy import Trust
 from src.features.notification_destinations import resolve_destinations
 from src.features.notification_providers.base import NotificationMessage, ProviderDestination
 from src.features.notification_providers.delivery import process_pending_deliveries
@@ -284,3 +288,52 @@ async def test_generic_link_resolution_cannot_release_stale_authority(
         )
         await process_pending_deliveries(db, limit=5)
         p.runtime.notification_delivery.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_generic_private_destination_enrollment_is_owner_bound_and_idempotent(
+    webhook_provider, monkeypatch
+):
+    p = webhook_provider
+    registration = SimpleNamespace(
+        provider_id=p.provider,
+        plugin_id=p.plugin,
+        installation_id=p.installation,
+        transport="plugin",
+        definition={
+            "destinations": [
+                {"kind": "discord_bot_dm", "label": "Discord Bot DM", "privacy": "PRIVATE"}
+            ],
+            "configure_action": "configure-destination",
+            "retire_action": "retire-destination",
+        },
+    )
+    runtime = SimpleNamespace(action=AsyncMock(return_value={"ok": True}))
+    adapter = SimpleNamespace(
+        registration=registration,
+        is_authorized=AsyncMock(return_value=True),
+        _runtime=runtime,
+    )
+    monkeypatch.setattr(
+        "src.api.routes.notification_providers.get_notification_providers",
+        AsyncMock(return_value={p.provider: adapter}),
+    )
+
+    async with SessionLocal() as db:
+        owner = await db.get(User, p.owner)
+        payload = PluginDestinationCreate(provider_id=p.provider, kind="discord_bot_dm")
+        created = await create_plugin_destination(payload, db, owner)
+        endpoint = await db.get(NotificationDestination, UUID(created["id"]))
+        assert created == {"id": str(endpoint.id), "kind": "discord_bot_dm", "existing": False}
+        assert endpoint.user_id == p.owner
+        assert endpoint.installation_id == p.installation
+        assert endpoint.configuration_ref == str(endpoint.id)
+        assert endpoint.privacy == int(Trust.PRIVATE)
+        assert endpoint.encrypted_configuration is None
+        assert runtime.action.await_args.kwargs == {"user_id": str(p.owner)}
+
+        repeated = await create_plugin_destination(payload, db, owner)
+        assert repeated == {"id": str(endpoint.id), "kind": "discord_bot_dm", "existing": True}
+        assert endpoint.revision == 1
+        assert runtime.action.await_count == 2
+
