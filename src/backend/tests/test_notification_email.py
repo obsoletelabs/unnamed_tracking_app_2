@@ -5,6 +5,7 @@ import re
 import smtplib
 import time
 from email.parser import BytesParser
+from email.policy import default
 from types import SimpleNamespace
 from unittest.mock import Mock
 from urllib.parse import parse_qs, urlsplit
@@ -19,7 +20,7 @@ from src.api.routes.notification_providers import router
 from src.api.routes.notification_unsubscribe import router as unsubscribe_router
 from src.core.auth import get_current_user
 from src.core.crypto import decrypt_secret, encrypt_secret
-from src.core.preferences import save_preferences
+from src.core.preferences import load_preferences, save_preferences
 from src.core.public_url import normalize_public_url, validate_deployment_url
 from src.database.models.notification import Notification
 from src.database.models.notification_delivery import NotificationDelivery
@@ -48,6 +49,7 @@ from src.features.notification_settings import routing_settings
 from src.features.notification_unsubscribe import (
     UNSUBSCRIBE_PATH,
     UnsubscribeError,
+    UnsubscribeToken,
     unsubscribe_email,
     unsubscribe_link,
 )
@@ -72,7 +74,7 @@ async def mailbox(monkeypatch):
                         if not line:
                             return
                         content.extend(line[1:] if line.startswith(b"..") else line)
-                    received.append(BytesParser().parsebytes(bytes(content)))
+                    received.append(BytesParser(policy=default).parsebytes(bytes(content)))
                 writer.write(b"250 local.test\r\n")
                 await writer.drain()
         finally:
@@ -547,8 +549,9 @@ def test_public_link_origin_normalizes_explicit_hosts(value, normalized):
     assert normalize_public_url(value) == normalized
 
 
+@pytest.mark.parametrize("scope", [None, "all"])
 async def test_unsubscribe_header_and_get_post_destination_isolation(
-    email_account, mailbox, monkeypatch
+    email_account, mailbox, monkeypatch, scope
 ):
     monkeypatch.setenv("PUBLIC_APP_URL", "https://app.example.test")
     app = FastAPI()
@@ -566,9 +569,13 @@ async def test_unsubscribe_header_and_get_post_destination_isolation(
         assert link.startswith("https://app.example.test" + UNSUBSCRIBE_PATH)
         assert "first@example.test" not in link and "Private label" not in link
         assert "List-Unsubscribe-Post" not in received
-        assert link in received.get_payload(decode=True).decode()
+        assert link not in received.get_body(preferencelist=("plain",)).get_content()
+        html = received.get_body(preferencelist=("html",)).get_content()
+        assert f'href="{link}"' in html and ">here</a>" in html
         assert "=?" not in received["List-Unsubscribe"]
         await emit_legacy_rows(db, email_account, [draft()])
+        await emit_legacy_rows(db, email_account, [draft("season_started")])
+        await db.commit()
         endpoint = await db.get(NotificationDestination, first)
         revision = endpoint.revision
         encrypted = endpoint.encrypted_configuration
@@ -580,7 +587,11 @@ async def test_unsubscribe_header_and_get_post_destination_isolation(
             for _ in range(2):
                 response = await client.get(UNSUBSCRIBE_PATH, params={"token": token})
                 assert response.status_code == 200
-                assert "Stop email notifications?" in response.text
+                assert "Unsubscribe from this notification type?" in response.text
+                assert "plugin.notice" in response.text
+                assert 'name="scope" value="type"' in response.text
+                assert 'name="scope" value="all"' in response.text
+                assert "/settings?area=account" in response.text
                 assert "first@example.test" not in response.text
                 assert response.headers["referrer-policy"] == "no-referrer"
                 assert response.headers["cache-control"] == "no-store"
@@ -594,11 +605,19 @@ async def test_unsubscribe_header_and_get_post_destination_isolation(
             )
             assert response.status_code == 400 and endpoint.enabled
             for _ in range(2):
-                response = await client.post(
-                    UNSUBSCRIBE_PATH, data={"token": token, "confirm": "unsubscribe"}
-                )
+                values = {"token": token, "confirm": "unsubscribe"}
+                if scope:
+                    values["scope"] = scope
+                response = await client.post(UNSUBSCRIBE_PATH, data=values)
                 assert response.status_code == 200
-            assert not endpoint.enabled and endpoint.revision == revision + 1
+            if scope == "all":
+                assert not endpoint.enabled and endpoint.revision == revision + 1
+            else:
+                assert endpoint.enabled and endpoint.revision == revision
+                preferences = await load_preferences(db, email_account)
+                assert not preferences["notification_routes"]["plugin.notice"][str(first)][
+                    "enabled"
+                ]
             assert endpoint.encrypted_configuration == encrypted
             assert effective_trust(endpoint) == Trust.SECURE and endpoint.recovery_allowed
             assert (await db.get(NotificationDestination, second)).enabled
@@ -611,13 +630,23 @@ async def test_unsubscribe_header_and_get_post_destination_isolation(
                     )
                 ).all()
             )
-            assert all(delivery.status in {"sent", "suppressed"} for delivery in queued)
-            assert any(delivery.last_error == "email_unsubscribed" for delivery in queued)
+            if scope == "all":
+                assert all(delivery.status in {"sent", "suppressed"} for delivery in queued)
+            else:
+                assert any(delivery.status == "pending" for delivery in queued)
+            reason = "email_unsubscribed" if scope else "email_type_unsubscribed"
+            assert any(delivery.last_error == reason for delivery in queued)
             assert await db.scalar(
                 select(Notification.id).where(Notification.user_id == email_account)
             )
-            assert await process_pending_deliveries(db) == 1  # second email still receives its work
-            await update_email(db, email_account, first, {"enabled": True})
+            # The second email receives both types; type-only opt-out keeps the first's other type.
+            assert await process_pending_deliveries(db) == (2 if scope else 3)
+            if scope == "all":
+                await update_email(db, email_account, first, {"enabled": True})
+            else:
+                await update_email(
+                    db, email_account, first, {"address": "replacement@example.test"}
+                )
             response = await client.post(
                 UNSUBSCRIBE_PATH, data={"token": token, "confirm": "unsubscribe"}
             )
@@ -634,7 +663,7 @@ async def test_unsubscribe_invalid_authority_cannot_change_activation(
     async with SessionLocal() as db:
         identity = await create_email(db, email_account, "owner@example.test", "Email")
         endpoint = await db.get(NotificationDestination, identity)
-        token = link_token(unsubscribe_link("https://app.example.test", endpoint))
+        token = link_token(unsubscribe_link("https://app.example.test", endpoint, "plugin.notice"))
         if mutation == "forged":
             token = "not-an-authenticated-token"
         elif mutation == "expired":
@@ -679,3 +708,181 @@ async def test_transactional_messages_do_not_advertise_unsubscribe(
         assert (await SmtpNotificationProvider().deliver(db, destination, message)).success
         assert "List-Unsubscribe" not in mailbox[-1]
         assert "email-unsubscribe" not in mailbox[-1].get_payload()
+
+
+def test_subscription_email_html_escapes_content_without_exposing_link_in_plain_text(monkeypatch):
+    server = Mock()
+    monkeypatch.setattr(smtplib, "SMTP", Mock(return_value=server))
+    config = SmtpConfiguration(host="127.0.0.1", from_address="from@example.test", tls_mode="none")
+    message = NotificationMessage(
+        uuid4(),
+        "plugin",
+        "<script>Title</script>",
+        "<img src=x> & text\nNext",
+        "system",
+        uuid4(),
+        1,
+    )
+    link = "https://app.example.test/api/notifications/email-unsubscribe?token=opaque"
+    send_mail(config, "to@example.test", message, link)
+    mail = server.send_message.call_args.args[0]
+    assert mail["List-Unsubscribe"] == f"<{link}>"
+    assert mail.get_body(preferencelist=("plain",)).get_content().strip() == message.body
+    html = mail.get_body(preferencelist=("html",)).get_content()
+    assert "<script>" not in html and "<img src=x>" not in html
+    assert "&lt;script&gt;Title&lt;/script&gt;" in html and "&amp; text" in html
+    assert f'href="{link}">here</a>' in html
+
+
+async def test_legacy_unsubscribe_token_remains_explicit_all_type_opt_out(email_account):
+    async with SessionLocal() as db:
+        identity = await create_email(db, email_account, "legacy@example.test", "Email")
+        endpoint = await db.get(NotificationDestination, identity)
+        token = encrypt_secret(
+            UnsubscribeToken(
+                purpose="email.unsubscribe.v1",
+                owner=email_account,
+                destination=identity,
+                revision=endpoint.revision,
+                address_key=endpoint.endpoint_key,
+                expires=int(time.time()) + 3600,
+            ).model_dump_json(exclude_none=True)
+        )
+        app = FastAPI()
+        app.include_router(unsubscribe_router)
+        app.dependency_overrides[get_db] = lambda: db
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            page = await client.get(UNSUBSCRIBE_PATH, params={"token": token})
+            assert page.status_code == 200 and "older link" in page.text
+            assert 'name="scope" value="type"' not in page.text
+            assert 'name="scope" value="all"' in page.text
+            invalid = await client.post(
+                UNSUBSCRIBE_PATH,
+                data={
+                    "token": token,
+                    "confirm": "unsubscribe",
+                    "scope": "type",
+                },
+            )
+            await db.refresh(endpoint)
+            assert invalid.status_code == 400 and endpoint.enabled
+            response = await client.post(
+                UNSUBSCRIBE_PATH,
+                data={
+                    "token": token,
+                    "confirm": "unsubscribe",
+                    "scope": "all",
+                },
+            )
+            assert response.status_code == 200 and not endpoint.enabled
+
+
+async def test_type_opt_out_preserves_security_other_routes_and_requested_urgency(
+    email_account, mailbox
+):
+    async with SessionLocal() as db:
+        identity = await create_email(db, email_account, "scoped@example.test", "Email")
+        await verify(db, email_account, identity, mailbox)
+        await save_preferences(
+            db,
+            email_account,
+            {
+                "notification_routes": {
+                    "plugin.notice": {str(identity): {"enabled": True, "urgency": "critical"}},
+                    "media.season.started": {str(identity): {"enabled": True, "urgency": "normal"}},
+                }
+            },
+        )
+        notice_ids = []
+        for kind in ("plugin", "season_started", "session_anomaly"):
+            notice_ids.extend(await emit_legacy_rows(db, email_account, [draft(kind)]))
+        await db.commit()
+        endpoint = await db.get(NotificationDestination, identity)
+        token = link_token(unsubscribe_link("https://app.example.test", endpoint, "plugin.notice"))
+        assert await unsubscribe_email(db, token) == "plugin.notice"
+        preferences = await load_preferences(db, email_account)
+        assert preferences["notification_routes"]["plugin.notice"][str(identity)] == {
+            "enabled": False,
+            "urgency": "critical",
+        }
+        assert preferences["notification_routes"]["media.season.started"][str(identity)]["enabled"]
+        assert endpoint.enabled and endpoint.revision == 1
+        ordinary = await db.scalar(
+            select(NotificationDelivery).where(
+                NotificationDelivery.notification_id == notice_ids[1],
+                NotificationDelivery.destination_id == identity,
+            )
+        )
+        assert ordinary.status == "pending"
+        security = await db.scalar(
+            select(NotificationDelivery).where(
+                NotificationDelivery.notification_id == notice_ids[2],
+                NotificationDelivery.destination_id == identity,
+            )
+        )
+        assert security.status == "pending"
+        assert effective_trust(endpoint) == Trust.SECURE
+        assert len(notice_ids) == 3  # Other types and their inbox entries are retained.
+
+
+async def test_concurrent_type_opt_outs_preserve_both_destination_choices(email_account):
+    async with SessionLocal() as db:
+        first = await create_email(db, email_account, "first@example.test", "First")
+        second = await create_email(db, email_account, "second@example.test", "Second")
+        await save_preferences(db, email_account, {"ui_theme": "dark"})
+        tokens = [
+            link_token(
+                unsubscribe_link(
+                    "https://app.example.test",
+                    await db.get(NotificationDestination, identity),
+                    "plugin.notice",
+                )
+            )
+            for identity in (first, second)
+        ]
+
+    async def stop(token):
+        async with SessionLocal() as db:
+            return await unsubscribe_email(db, token)
+
+    assert await asyncio.gather(*(stop(token) for token in tokens)) == [
+        "plugin.notice",
+        "plugin.notice",
+    ]
+    async with SessionLocal() as db:
+        preferences = await load_preferences(db, email_account)
+        assert preferences["ui_theme"] == "dark"
+        choices = preferences["notification_routes"]["plugin.notice"]
+        assert not choices[str(first)]["enabled"] and not choices[str(second)]["enabled"]
+
+
+async def test_type_opt_out_preference_and_queued_suppression_roll_back_together(
+    email_account, monkeypatch
+):
+    async with SessionLocal() as db:
+        identity = await create_email(db, email_account, "owner@example.test", "Email")
+        notices = await emit_legacy_rows(db, email_account, [draft()])
+        await db.commit()
+        endpoint = await db.get(NotificationDestination, identity)
+        token = link_token(unsubscribe_link("https://app.example.test", endpoint, "plugin.notice"))
+
+        async def fail_suppression(*_args):
+            raise RuntimeError("owned transaction failure")
+
+        monkeypatch.setattr(
+            "src.features.notification_unsubscribe.retire_destination_type_work", fail_suppression
+        )
+        with pytest.raises(RuntimeError, match="owned transaction failure"):
+            await unsubscribe_email(db, token)
+        await db.rollback()
+        assert (
+            "plugin.notice"
+            not in (await load_preferences(db, email_account))["notification_routes"]
+        )
+        delivery = await db.scalar(
+            select(NotificationDelivery).where(
+                NotificationDelivery.notification_id == notices[0],
+                NotificationDelivery.destination_id == identity,
+            )
+        )
+        assert delivery.status == "pending"

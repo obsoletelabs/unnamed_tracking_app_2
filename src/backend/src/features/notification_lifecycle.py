@@ -45,6 +45,29 @@ async def invalidate_endpoint(
     await retire_destination_work(db, destination.id, reason)
 
 
+async def retire_destination_type_work(
+    db: AsyncSession, destination_id: UUID, event_type: str
+) -> None:
+    """A type opt-out preserves proof and unrelated queued destination work."""
+    await change_deliveries(
+        db,
+        update(NotificationDelivery)
+        .where(
+            NotificationDelivery.destination_id == destination_id,
+            NotificationDelivery.notification_id.in_(
+                select(Notification.id).where(Notification.event_type == event_type)
+            ),
+            NotificationDelivery.status.in_(("pending", "processing", "retry_wait")),
+        )
+        .values(
+            status="suppressed",
+            last_error="email_type_unsubscribed",
+            claim_token=None,
+            lease_until=None,
+        ),
+    )
+
+
 def visible_inbox(user_id: UUID):
     return (
         (Notification.user_id == user_id)
