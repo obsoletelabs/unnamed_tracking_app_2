@@ -23,14 +23,13 @@ class NotificationProviderDeclaration(ContractModel):
         pattern=r"^[a-z0-9][a-z0-9._-]*$",
     )
     destination_kind: str = Field(
+        default="plugin",
         min_length=1,
         max_length=32,
         pattern=r"^[a-z0-9][a-z0-9._-]*$",
     )
     channel_context: Literal["external", "internal"] = "external"
     privacy: Literal["PUBLIC", "PRIVATE"] = "PUBLIC"
-    # Backward-compatible storage field used by the current durable registration
-    # table. This is a generic delivery declaration, not a provider-specific transport.
     transport: Literal["plugin_public", "plugin_private"] = "plugin_public"
 
     @model_validator(mode="after")
@@ -52,9 +51,7 @@ class NotificationTypeRegistration(ContractModel):
     severity: Literal["info", "warning", "error"] = "info"
     title_template: str = Field(min_length=1, max_length=500)
     body_template: str = Field(min_length=1, max_length=10000)
-    parameters: dict[str, Literal["string", "integer", "boolean"]] = Field(
-        default_factory=dict, max_length=32
-    )
+    parameters: dict[str, Literal["string", "integer", "boolean"]] = Field(default_factory=dict, max_length=32)
 
     @model_validator(mode="after")
     def validate_policy_and_templates(self) -> Self:
@@ -92,9 +89,7 @@ class NotificationFieldLayout(ContractModel):
     """A provider can arrange approved fields, never append arbitrary destination content."""
 
     style: Literal["plain", "embed"] = "embed"
-    fields: tuple[Literal["title", "body", "event_at", "link"], ...] = Field(
-        default=("title", "body", "event_at", "link"), min_length=1, max_length=4
-    )
+    fields: tuple[Literal["title", "body", "event_at", "link"], ...] = Field(default=("title", "body", "event_at", "link"), min_length=1, max_length=4)
 
     @model_validator(mode="after")
     def unique_fields(self) -> Self:
