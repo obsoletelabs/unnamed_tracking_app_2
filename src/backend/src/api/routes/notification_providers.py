@@ -52,7 +52,7 @@ from src.features.notification_settings import routing_settings
 from src.features.notification_tests import queue_destination_test, test_smtp
 from src.features.notification_webhooks import create_webhook, remove_webhook, update_webhook
 from src.features.smtp_configuration import SMTP_PROVIDER, normalize_email
-from src.plugin_api.contracts import NotificationDestinationDeclaration, NotificationProviderDefinition
+from src.plugin_api.notification_contracts import NotificationDestinationDeclaration, NotificationProviderDefinition
 from src.plugin_api.runtime_client import PluginRuntimeRequestError, PluginRuntimeUnavailable
 
 _NOTIFICATION_DB = Depends(get_db)
