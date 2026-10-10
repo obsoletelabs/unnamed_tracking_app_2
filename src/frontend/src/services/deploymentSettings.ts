@@ -19,6 +19,11 @@ export interface OidcProviderSetting {
   client_secret_configured: boolean;
 }
 export interface DeploymentSettings {
+  browser_push?: {
+    configured: boolean;
+    subject: string | null;
+    public_key: string | null;
+  };
   nginx?: {
     enabled: boolean;
     redirect_http: boolean;

@@ -40,7 +40,7 @@ _OFFLINE_CSP = (
 def host_asset_revision() -> str:
     """Retire cached reconnect pages when reviewed host assets or policy change."""
     digest = hashlib.sha256(_OFFLINE_CSP.encode())
-    for name in ("service-worker.js", "offline.html"):
+    for name in ("service-worker.js", "offline.html", "notification-push.js"):
         digest.update((_ASSETS / name).read_bytes())
     return digest.hexdigest()
 
@@ -219,6 +219,7 @@ async def worker(db: AsyncSession = _DB) -> Response:
         "generation": generation(plugin) if plugin else "disabled",
     }
     script = (_ASSETS / "service-worker.js").read_text(encoding="utf-8")
+    script += "\n" + (_ASSETS / "notification-push.js").read_text(encoding="utf-8")
     return Response(
         "const PWA = " + json.dumps(config) + ";\n" + script,
         media_type="text/javascript",

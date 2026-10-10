@@ -51,7 +51,7 @@ from src.features.notification_unsubscribe import (
     unsubscribe_email,
     unsubscribe_link,
 )
-from src.features.smtp_configuration import SmtpConfiguration, normalize_email
+from src.features.smtp_configuration import SMTP_PROVIDER, SmtpConfiguration, normalize_email
 
 
 @pytest.fixture
@@ -222,7 +222,7 @@ async def test_endpoint_lookup_cannot_substitute_another_address_revision(email_
         second = await create_email(db, email_account, "second@example.test", "Work")
         provider = SmtpNotificationProvider()
         user = await db.get(User, email_account)
-        setting = SimpleNamespace(enabled=True, user_id=email_account)
+        setting = SimpleNamespace(enabled=True, user_id=email_account, provider_id=SMTP_PROVIDER)
         destination = await provider.lookup_endpoint(
             db, user, setting, await db.get(NotificationDestination, second)
         )
@@ -458,7 +458,7 @@ async def test_recipient_failures_remain_retryable_only_when_transient(
     async with SessionLocal() as db:
         endpoint = await create_email(db, email_account, "to@example.test", "Email")
         provider = SmtpNotificationProvider()
-        setting = SimpleNamespace(enabled=True, user_id=email_account)
+        setting = SimpleNamespace(enabled=True, user_id=email_account, provider_id=SMTP_PROVIDER)
         destination = await provider.lookup_endpoint(
             db,
             await db.get(User, email_account),
@@ -670,7 +670,7 @@ async def test_transactional_messages_do_not_advertise_unsubscribe(
         destination = await SmtpNotificationProvider().lookup_endpoint(
             db,
             await db.get(User, email_account),
-            SimpleNamespace(user_id=email_account, enabled=True),
+            SimpleNamespace(user_id=email_account, enabled=True, provider_id=SMTP_PROVIDER),
             await db.get(NotificationDestination, identity),
         )
         message = NotificationMessage(

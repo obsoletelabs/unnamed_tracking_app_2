@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import SmtpSettingsSection from "./SmtpSettingsSection.vue";
+import BrowserPushSettingsSection from "./BrowserPushSettingsSection.vue";
 import { fetchInboxRetentionPolicy } from "../../services/notifications";
 import type { InboxRetentionPolicy } from "../../services/notifications";
 
@@ -29,6 +30,7 @@ onMounted(async () => {
       >.
     </p>
     <SmtpSettingsSection />
+    <BrowserPushSettingsSection />
     <section>
       <h3>Plugin providers</h3>
       <p class="hint">

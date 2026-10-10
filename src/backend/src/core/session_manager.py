@@ -14,6 +14,7 @@ from src.core.auth import SESSION_TTL_SECONDS, hash_token
 from src.core.geoip import geoip
 from src.database.models.auth import UserSession
 from src.database.models.user import User
+from src.features.notification_browser import withdraw_previous_browser
 from src.features.notification_controller import emit_legacy_rows
 
 
@@ -110,6 +111,7 @@ async def create_session(db: AsyncSession, user: User, request: Request) -> Sess
         geo_network_organization=location.network_organization,
     )
     _set_anomaly(previous, session)
+    await withdraw_previous_browser(db, request)
     db.add(session)
     await db.flush()
     await _queue_anomaly_notification(db, user, session)

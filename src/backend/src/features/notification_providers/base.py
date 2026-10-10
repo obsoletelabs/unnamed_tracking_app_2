@@ -9,6 +9,7 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.notification import Notification
+from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_provider_setting import NotificationProviderSetting
 from src.database.models.user import User
 
@@ -34,6 +35,19 @@ class ProviderDestination:
     allows_sensitive: bool = True
     endpoint_id: UUID | None = None
     endpoint_revision: int | None = None
+
+    @classmethod
+    def for_endpoint(
+        cls, endpoint: NotificationDestination, display: str, *, allows_sensitive: bool = False
+    ):
+        """Bind a selected endpoint's owner and revision without copying credentials."""
+        return cls(
+            user_id=endpoint.user_id,
+            display=endpoint.display_name or display,
+            allows_sensitive=allows_sensitive,
+            endpoint_id=endpoint.id,
+            endpoint_revision=endpoint.revision,
+        )
 
 
 @dataclass(frozen=True)

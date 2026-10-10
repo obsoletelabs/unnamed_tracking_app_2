@@ -1,6 +1,7 @@
 """Core eligibility gate shared by delivery coordination and protected transports."""
 
 import time
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +16,25 @@ from src.features.notification_policy import select_projection
 from src.features.notification_source_policy import source_delivery_allowed
 
 from .base import NotificationMessage, ProviderDestination
+
+
+def endpoint_route_enabled(
+    provider_id: str,
+    user_id: UUID,
+    setting: NotificationProviderSetting | None,
+    endpoint: NotificationDestination,
+) -> bool:
+    """Require matching owner/provider identity as well as active endpoint opt-in."""
+    return bool(
+        setting
+        and setting.enabled
+        and setting.user_id == user_id
+        and setting.provider_id == provider_id
+        and endpoint.user_id == user_id
+        and endpoint.provider_id == provider_id
+        and endpoint.active
+        and endpoint.enabled
+    )
 
 
 async def revalidate_delivery_attempt(

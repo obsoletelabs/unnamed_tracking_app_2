@@ -11,16 +11,23 @@ from src.database.models.notification_delivery import NotificationDelivery
 from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_provider_setting import NotificationProviderSetting
 from src.database.models.plugin_notification_provider import PluginNotificationProviderRegistration
-from src.features.notification_policy import INBOX_PROVIDER, Trust
+from src.database.models.plugin_permissions import PluginPermissionGrant
+from src.features.notification_policy import INBOX_PROVIDER, PUSH_PROVIDER, Trust
 
 
-async def retire_provider_destinations(
-    db: AsyncSession, provider_id: str, user_id: UUID | None = None
+async def withdraw_provider_work(
+    db: AsyncSession,
+    provider_id: str,
+    user_id: UUID | None = None,
+    installation_id: UUID | None = None,
 ) -> None:
-    """Keep endpoint history without reactivating it when a provider is re-registered."""
+    """Withdraw unsent work without discarding destination configuration or proof."""
     owner = (NotificationDestination.user_id == user_id) if user_id else true()
+    installation = (
+        (NotificationDestination.installation_id == installation_id) if installation_id else true()
+    )
     destination_ids = select(NotificationDestination.id).where(
-        NotificationDestination.provider_id == provider_id, owner
+        NotificationDestination.provider_id == provider_id, owner, installation
     )
     await db.execute(
         update(NotificationDelivery)
@@ -32,10 +39,34 @@ async def retire_provider_destinations(
             status="suppressed", last_error="provider_revoked", claim_token=None, lease_until=None
         )
     )
+
+
+async def retire_provider_destinations(
+    db: AsyncSession,
+    provider_id: str,
+    user_id: UUID | None = None,
+    installation_id: UUID | None = None,
+) -> None:
+    """Keep endpoint history without reactivating it when a provider is re-registered."""
+    await withdraw_provider_work(db, provider_id, user_id, installation_id)
+    owner = (NotificationDestination.user_id == user_id) if user_id else true()
+    installation = (
+        (NotificationDestination.installation_id == installation_id) if installation_id else true()
+    )
     await db.execute(
         update(NotificationDestination)
-        .where(NotificationDestination.provider_id == provider_id, owner)
-        .values(active=False, enabled=False, media_consent_revision=None, media_consent_at=None)
+        .where(NotificationDestination.provider_id == provider_id, owner, installation)
+        .values(
+            active=False,
+            enabled=False,
+            media_consent_revision=None,
+            media_consent_at=None,
+            **(
+                {"encrypted_configuration": None, "revision": NotificationDestination.revision + 1}
+                if provider_id == PUSH_PROVIDER
+                else {}
+            ),
+        )
     )
 
 
@@ -55,6 +86,19 @@ async def retire_plugin_destinations(
     )
     for provider_id in provider_ids:
         await retire_provider_destinations(db, provider_id, user_id)
+    pwa_installations = (
+        {installation_id}
+        if installation_id
+        else set(
+            await db.scalars(
+                select(PluginPermissionGrant.installation_id).where(
+                    PluginPermissionGrant.plugin_id == plugin_id
+                )
+            )
+        )
+    )
+    for pwa_installation in pwa_installations:
+        await retire_provider_destinations(db, PUSH_PROVIDER, user_id, pwa_installation)
 
 
 async def invalidate_legacy_configuration(db: AsyncSession, installation_id: UUID) -> None:
@@ -156,6 +200,9 @@ async def resolve_destinations(db: AsyncSession, user_id: UUID) -> list[Notifica
             .on_conflict_do_nothing(index_elements=["user_id", "provider_id", "endpoint_key"])
         )
     allowed: ColumnElement[bool] = NotificationDestination.installation_id.is_(None)
+    # Browser push is built in but bound to the existing PWA installation.
+    # Its adapter still checks the live PWA grant, session and server key.
+    allowed = allowed | (NotificationDestination.provider_id == PUSH_PROVIDER)
     for registration in registrations:
         allowed = allowed | (
             (NotificationDestination.provider_id == registration.provider_id)

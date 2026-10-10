@@ -58,6 +58,9 @@ class AppIntegrationSettings(Base):
     smtp_from_address: Mapped[str | None] = mapped_column(String(254), nullable=True)
     smtp_tls_mode: Mapped[str | None] = mapped_column(String(16), nullable=True)
     public_app_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    # Browser subscription credentials remain on concrete user destinations.
+    web_push_vapid_subject: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    web_push_vapid_private_key: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     password_min_length: Mapped[int | None] = mapped_column(nullable=True)
     password_require_uppercase: Mapped[bool | None] = mapped_column(nullable=True)

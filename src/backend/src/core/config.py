@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = ""
     SMTP_FROM_ADDRESS: str = ""
     SMTP_TLS_MODE: str = "starttls"
+    WEB_PUSH_VAPID_SUBJECT: str = ""
+    WEB_PUSH_VAPID_PRIVATE_KEY: str = ""
     PUBLIC_APP_URL: str = ""
     STARTUP_MODE: str = ""
     NOTIFICATION_BLOCKED_PROVIDERS: str = ""

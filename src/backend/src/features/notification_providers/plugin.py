@@ -29,7 +29,7 @@ from src.plugin_api.runtime_client import (
 )
 
 from .base import DeliveryResult, NotificationMessage, ProviderDestination
-from .eligibility import revalidate_delivery_attempt
+from .eligibility import endpoint_route_enabled, revalidate_delivery_attempt
 from .webhook import discord_payload, normalize_discord_webhook
 
 
@@ -69,15 +69,9 @@ class PluginNotificationProvider:
         setting: NotificationProviderSetting | None,
         endpoint: NotificationDestination,
     ) -> ProviderDestination | None:
-        if setting is None or not setting.enabled or setting.user_id != user.id:
+        if not endpoint_route_enabled(self.id, user.id, setting, endpoint):
             return None
-        if (
-            endpoint.user_id != user.id
-            or endpoint.provider_id != self.id
-            or not endpoint.active
-            or not endpoint.enabled
-            or endpoint.installation_id != self.registration.installation_id
-        ):
+        if endpoint.installation_id != self.registration.installation_id:
             return None
         if not await self.is_authorized(db, user.id):
             return None
@@ -88,13 +82,7 @@ class PluginNotificationProvider:
             return None
         if not protected and endpoint.kind != "legacy_webhook":
             return None
-        return ProviderDestination(
-            user_id=user.id,
-            display=endpoint.display_name or self.name,
-            allows_sensitive=False,
-            endpoint_id=endpoint.id,
-            endpoint_revision=endpoint.revision,
-        )
+        return ProviderDestination.for_endpoint(endpoint, self.name)
 
     async def is_authorized(self, db: AsyncSession, user_id: UUID) -> bool:
         """Recheck durable registration, grants and live installation at delivery."""

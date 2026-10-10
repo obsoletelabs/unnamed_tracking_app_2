@@ -28,6 +28,7 @@ from src.features.smtp_configuration import (
 )
 
 from .base import DeliveryResult, NotificationMessage, ProviderDestination
+from .eligibility import endpoint_route_enabled
 
 
 @dataclass(frozen=True)
@@ -118,13 +119,7 @@ class SmtpNotificationProvider:
         setting: NotificationProviderSetting | None,
         endpoint: NotificationDestination,
     ) -> SmtpDestination | None:
-        if (
-            not setting
-            or not setting.enabled
-            or setting.user_id != user.id
-            or endpoint.user_id != user.id
-            or endpoint.provider_id != self.id
-        ):
+        if not endpoint_route_enabled(self.id, user.id, setting, endpoint):
             return None
         if not endpoint.active or not endpoint.enabled or not endpoint.encrypted_configuration:
             return None

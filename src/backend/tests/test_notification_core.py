@@ -16,6 +16,7 @@ from src.database.models.notification import Notification
 from src.database.models.notification_delivery import NotificationDelivery
 from src.database.models.notification_delivery_attempt import NotificationDeliveryAttempt
 from src.database.models.notification_destination import NotificationDestination
+from src.database.models.notification_provider_setting import NotificationProviderSetting
 from src.database.models.notification_receipt import NotificationReceipt
 from src.database.models.plugin_notification_provider import PluginNotificationProviderRegistration
 from src.database.models.user import User
@@ -426,6 +427,7 @@ class Transport:
 async def queued_work(db, account, providers):
     for name in providers:
         db.add(endpoint(account, provider_id=name))
+        db.add(NotificationProviderSetting(user_id=account, provider_id=name, enabled=True))
     await db.flush()
     identity = await accept(db, account)
     await db.commit()

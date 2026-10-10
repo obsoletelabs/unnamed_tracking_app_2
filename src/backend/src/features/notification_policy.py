@@ -8,6 +8,7 @@ from src.database.models.notification import Notification
 from src.database.models.notification_destination import NotificationDestination
 
 INBOX_PROVIDER = "core.inbox"
+PUSH_PROVIDER = "core.browser"
 MEDIA_KINDS = {
     "episode_aired",
     "season_started",

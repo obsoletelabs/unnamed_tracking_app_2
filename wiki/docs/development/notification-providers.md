@@ -37,4 +37,62 @@ Private runtime `notification-layouts` executes the renderer without legacy tran
 
 Disable, uninstall, registration withdrawal and provider-grant revocation deactivate affected destinations, clear richer consent and suppress unsent work. Same-installation destinations can be explicitly activated again without replaying that work; consent needs fresh confirmation. Reinstallation requires new enrollment with credentials and cannot automatically reclaim old configuration. Retained labels/preferences/history stay visible.
 
-SECURE destinations and raw output require further protected proof, purpose and explicit high-risk permission support; this initial public webhook contract does not accept them. Browser push remains separate work. Migration `a1a6b04b3606` follows `c4771032f3c4`, defaults existing registrations to legacy and preserves unrelated tables. Downgrade refuses protected registrations instead of converting them to legacy senders.
+SECURE destinations and raw output require further protected proof, purpose and explicit high-risk permission support; this initial public webhook contract does not accept them. Browser push uses the separate built-in adapter described below. Migration `a1a6b04b3606` follows `c4771032f3c4`, defaults existing registrations to legacy and preserves unrelated tables. Downgrade refuses protected registrations instead of converting them to legacy senders.
+
+## Browser push
+
+The existing setup registry and administrator deployment API accept
+`WEB_PUSH_VAPID_SUBJECT` / `web_push_vapid_subject` and
+`WEB_PUSH_VAPID_PRIVATE_KEY` / `web_push_vapid_private_key`. Nonempty ENV values
+remain authoritative and locked. The contact is an explicit mailto address or
+HTTPS URL; an account email is never substituted. The private value is base64
+DER P-256 key material, never a filesystem path. Database values use existing
+host encryption and responses expose only a configured flag and public key.
+
+Administrator `POST /api/settings/notification-providers/browser-configuration/key`
+generates a missing key on explicit request. Repeating it preserves the key; an
+ENV-owned key cannot be overwritten. Deployment updates preserve blank secrets
+and use explicit `null` to clear a saved key. Keep keys stable for subscriptions.
+Migration `42bb6ebaa05e` adds two nullable settings columns, supports normal
+metadata adoption/rerun and refuses downgrade while a saved key exists.
+
+This foundation also composes a reviewed host notification fragment into the
+existing root PWA worker. Canonical mobile-sourced assets stay unchanged. It
+accepts bounded opaque routing facts, checks live same-origin authenticated state
+before generic display, and opens only this origin's inbox. The built-in `core.browser` adapter uses the ordinary controller, destination preferences,
+leased deliveries and retry state. The provider is external/PRIVATE and Normal-only;
+security and recovery notifications cannot reach it, even if a database row has forged proof.
+
+Owner `GET /api/settings/notification-providers/browser-configuration` returns only the
+public key, current session destination ID and eligibility. POST `browser-destinations`
+requires a real authenticated browser session and strict subscription keys. PATCH/DELETE
+operate on the owner's active destination. Endpoint URLs/auth keys remain encrypted and
+write-only. At most 20 active browsers per owner are allowed. Enrollment serializes the
+concrete endpoint across owners; account changes create fresh IDs rather than reclaiming
+another user's destination/history. Each subscription binds the PWA installation,
+authenticated session and application public key. Delivery uses the current composed
+worker generation; branding/asset updates do not force unnecessary re-enrollment.
+
+Only reviewed HTTPS push services are accepted: FCM, Mozilla Autopush, Apple Web Push
+and single-label Windows notification hosts. The async public Web Push library encrypts
+an opaque envelope containing version, destination ID, revision and worker generation.
+It contains no notification ID, account information, private title/body or external link.
+Transport verifies TLS, disables environment proxies, rejects redirects, bounds time and
+response size, and persists sanitized results. Expired subscriptions (404/410) are retired;
+transient failures use the core's existing retries.
+
+The worker checks owner/session/revision/provider preferences and PWA/key eligibility
+through the no-store status endpoint before displaying its constant generic preview.
+Offline/unavailable/changed-account state fails closed. Clicking opens `/notifications`
+on the enrolled origin, independent of notification URL overrides. Browser subscription
+replacement requires fresh consent. Logout/session expiry, PWA withdrawal and key
+replacement make old endpoints ineligible; removal/revocation erases browser credentials
+and cancels unsent work. The existing job loop performs bounded expired-session cleanup.
+A disabled built-in provider preserves saved endpoints/proof but cancels queued deliveries;
+notifications created while it is disabled do not become later replay work.
+
+Admin key/contact controls live under Administration → Notifications; explicit key
+replacement/removal confirms the enrollment consequence. Account → Notifications has
+browser permission/enrollment, labels, route toggles, tests, removal and retained history.
+Native permission is requested directly from the enrollment click, never automatically.
+No second service worker, plugin framework or authentication mechanism is introduced.

@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import ToggleButton from "./ToggleButton.vue";
 import EmailDestinationsSection from "./EmailDestinationsSection.vue";
 import WebhookDestinationsSection from "./WebhookDestinationsSection.vue";
+import BrowserDestinationsSection from "./BrowserDestinationsSection.vue";
 import NotificationLinkSettings from "./NotificationLinkSettings.vue";
 import {
   fetchNotificationRouting,
@@ -216,9 +217,11 @@ async function testDestination(destination: NotificationRoutingDestination) {
                 provider.available
                   ? provider.id === "core.smtp"
                     ? "Uses server SMTP settings and your own addresses below."
-                    : provider.configuration_scope === "user"
-                      ? "Add separate webhooks for your account below. Credentials stay protected by the app."
-                      : "Uses administrator-configured delivery. Configure an available destination below."
+                    : provider.destination_kind === "browser_push"
+                      ? "Enroll each browser below. Delivery follows your signed-in session and the PWA lifecycle."
+                      : provider.configuration_scope === "user"
+                        ? "Add separate webhooks for your account below. Credentials stay protected by the app."
+                        : "Uses administrator-configured delivery. Configure an available destination below."
                   : "Provider unavailable. Your choices are retained; reinstall does not reactivate old destinations."
               }}
             </p>
@@ -232,6 +235,17 @@ async function testDestination(destination: NotificationRoutingDestination) {
           </p>
           <EmailDestinationsSection
             v-if="provider.id === 'core.smtp'"
+            :provider="provider"
+            :destinations="
+              routing.destinations.filter((d) => d.provider_id === provider.id)
+            "
+            :prefs="prefs"
+            :loaded="loaded"
+            @changed="reload"
+            @change="emit('change', $event)"
+          />
+          <BrowserDestinationsSection
+            v-if="provider.destination_kind === 'browser_push'"
             :provider="provider"
             :destinations="
               routing.destinations.filter((d) => d.provider_id === provider.id)
@@ -262,7 +276,7 @@ async function testDestination(destination: NotificationRoutingDestination) {
             v-for="destination in routing.destinations.filter(
               (d) =>
                 d.provider_id === provider.id &&
-                !['email', 'discord_webhook'].includes(d.kind),
+                !['email', 'discord_webhook', 'browser_push'].includes(d.kind),
             )"
             :key="destination.id"
             class="personal-destination"

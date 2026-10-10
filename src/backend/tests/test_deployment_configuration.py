@@ -17,9 +17,12 @@ from src.core.crypto import decrypt_secret, encrypt_secret
 from src.core.env_handler import EnvConfigHandler
 from src.core.nginx_configuration import NginxActivationError
 from src.database.models.app_integration_settings import AppIntegrationSettings
+from src.database.models.notification_delivery import NotificationDelivery
+from src.database.models.notification_destination import NotificationDestination
 from src.database.models.oidc_settings import OidcSettings
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features import notification_push_config
 
 
 class ConfigurationDb:
@@ -30,6 +33,9 @@ class ConfigurationDb:
 
     async def scalar(self, statement):
         return self.session.scalar(statement)
+
+    async def execute(self, statement):
+        return self.session.execute(statement)
 
     def add(self, row):
         self.session.add(row)
@@ -52,10 +58,15 @@ async def configuration(monkeypatch):
     engine = create_engine("sqlite://")
     AppIntegrationSettings.__table__.create(engine)
     OidcSettings.__table__.create(engine)
+    NotificationDestination.__table__.create(engine)
+    NotificationDelivery.__table__.create(engine)
     environment = {}
     for routes in (deployment_settings, setup):
         monkeypatch.setattr(routes, "EnvConfigHandler", lambda: EnvConfigHandler(environment))
         monkeypatch.setattr(routes, "apply_deployment_provider_credentials", Mock())
+    monkeypatch.setattr(
+        notification_push_config, "EnvConfigHandler", lambda: EnvConfigHandler(environment)
+    )
     monkeypatch.setattr(setup, "set_password_policy_override", Mock())
     with Session(engine, expire_on_commit=False) as session:
         integration = AppIntegrationSettings()
@@ -142,6 +153,94 @@ async def test_smtp_configuration_uses_existing_encryption_and_env_locks(configu
 async def test_smtp_invalid_configuration_is_rejected(configuration, field, value):
     response = await configuration.http.put("/api/settings/deployment", json={field: value})
     assert response.status_code in {400, 422}
+
+
+async def test_push_configuration_uses_existing_encryption_and_environment_locks(configuration):
+    private = notification_push_config.generate_vapid_key()
+    response = await configuration.http.put(
+        "/api/settings/deployment",
+        json={
+            "web_push_vapid_subject": "mailto:admin@example.test",
+            "web_push_vapid_private_key": private,
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["browser_push"]["configured"]
+    assert response.json()["providers"]["web_push_vapid_private_key_configured"]
+    stored = configuration.integration.web_push_vapid_private_key
+    assert stored != private and decrypt_secret(stored) == private
+    assert private not in response.text and stored not in response.text
+    response = await configuration.http.put(
+        "/api/settings/deployment", json={"web_push_vapid_private_key": ""}
+    )
+    assert response.status_code == 200
+    assert configuration.integration.web_push_vapid_private_key == stored
+    configuration.env["WEB_PUSH_VAPID_PRIVATE_KEY"] = notification_push_config.generate_vapid_key()
+    response = await configuration.http.put(
+        "/api/settings/deployment", json={"web_push_vapid_private_key": None}
+    )
+    assert response.status_code == 409
+    response = await configuration.http.get("/api/settings/deployment")
+    assert response.json()["provider_locks"]["web_push_vapid_private_key"]
+    assert configuration.env["WEB_PUSH_VAPID_PRIVATE_KEY"] not in response.text
+    configuration.env.clear()
+    response = await configuration.http.put(
+        "/api/settings/deployment", json={"web_push_vapid_private_key": None}
+    )
+    assert response.status_code == 200
+    assert configuration.integration.web_push_vapid_private_key is None
+    assert not response.json()["browser_push"]["configured"]
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("web_push_vapid_private_key", "/tmp/key.pem"),
+        ("web_push_vapid_subject", "http://example.test"),
+    ],
+)
+async def test_push_configuration_rejects_paths_and_insecure_contact(configuration, field, value):
+    response = await configuration.http.put("/api/settings/deployment", json={field: value})
+    assert response.status_code == 400
+
+
+async def test_push_key_generation_is_explicit_idempotent_and_environment_locked(configuration):
+    db = ConfigurationDb(configuration.session)
+    result = await notification_push_config.ensure_vapid_key(db)
+    stored = configuration.integration.web_push_vapid_private_key
+    assert result["public_key"]
+    assert result == await notification_push_config.ensure_vapid_key(db)
+    assert configuration.integration.web_push_vapid_private_key == stored
+    assert not (await notification_push_config.push_configuration(db)).configured
+    configuration.env["WEB_PUSH_VAPID_PRIVATE_KEY"] = notification_push_config.generate_vapid_key()
+    with pytest.raises(ValueError, match="deployment environment"):
+        await notification_push_config.ensure_vapid_key(db)
+
+
+async def test_setup_push_configuration_redacts_key_and_preserves_environment_authority(
+    configuration,
+):
+    private = notification_push_config.generate_vapid_key()
+    response = await configuration.http.put(
+        "/api/setup/configuration",
+        json={
+            "sections": ["web_push"],
+            "configuration": {
+                "WEB_PUSH_VAPID_SUBJECT": "mailto:admin@example.test",
+                "WEB_PUSH_VAPID_PRIVATE_KEY": private,
+            },
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert decrypt_secret(configuration.integration.web_push_vapid_private_key) == private
+    response = await configuration.http.get("/api/setup/configuration")
+    assert private not in response.text
+    configuration.env["WEB_PUSH_VAPID_PRIVATE_KEY"] = notification_push_config.generate_vapid_key()
+    response = await configuration.http.put(
+        "/api/setup/configuration", json={"configuration": {"WEB_PUSH_VAPID_PRIVATE_KEY": "forged"}}
+    )
+    assert response.status_code == 200
+    assert decrypt_secret(configuration.integration.web_push_vapid_private_key) == private
 
 
 @pytest.mark.parametrize(
