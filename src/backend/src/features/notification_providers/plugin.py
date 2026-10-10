@@ -217,7 +217,13 @@ class PluginNotificationProvider:
                 attempt_id=str(message.attempt_id),
             )
             result = NotificationDeliveryResult.model_validate(response)
-        except (PluginRuntimeRequestError, PluginRuntimeUnavailable):
+        except PluginRuntimeRequestError as exc:
+            if exc.detail == "Discord egress is disabled in this runtime":
+                return DeliveryResult(False, error="discord_egress_disabled")
+            if exc.status_code in {408, 425, 429}:
+                return DeliveryResult(False, retryable=True, error="provider_transport_unavailable")
+            return DeliveryResult(False, error="provider_transport_rejected")
+        except PluginRuntimeUnavailable:
             return DeliveryResult(False, retryable=True, error="provider_transport_unavailable")
         except (ValueError, KeyError):
             return DeliveryResult(False, error="provider_configuration_invalid")
