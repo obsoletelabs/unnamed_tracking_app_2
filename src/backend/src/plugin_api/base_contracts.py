@@ -224,7 +224,7 @@ class NotificationProviderRegistration(ContractModel):
     )
     # Existing registrations keep the restricted shared-secret compatibility path.
     # Protected transport selects a mechanism, never a destination trust level.
-    transport: Literal["legacy", "discord_webhook"] = "legacy"
+    transport: Literal["legacy", "discord_webhook", "discord_bot_dm"] = "legacy"
 
 
 class NotificationDeliveryRepresentation(ContractModel):
