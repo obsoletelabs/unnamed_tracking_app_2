@@ -466,7 +466,7 @@ function copyFolderPath() {
         <span class="status">{{ localStatus }}</span>
         <span class="playtime">{{ playtimeLabel }}</span>
       </div>
-      <div v-if="(ownedCopyCount ?? 1) > 1" class="meta-row">
+      <div v-if="(ownedCopyCount ?? 1) > 1" class="meta-row ownership-count">
         {{ ownedCopyCount }} owned copies
       </div>
       <RouterLink
@@ -880,7 +880,7 @@ function copyFolderPath() {
       max-height: 100px;
     }
     .title-row .score-tag,
-    .meta-row {
+    .meta-row:not(.ownership-count) {
       display: none;
     }
   }

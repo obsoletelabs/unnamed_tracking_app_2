@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, useId } from "vue";
 import UiModal from "../UiModal.vue";
 import { setOwnedCopy } from "../../services/gameOwnership";
 
@@ -11,6 +11,7 @@ interface Choice {
 }
 const props = defineProps<{ games: Choice[]; mainId?: string }>();
 const emit = defineEmits<{ close: []; grouped: [mainId: string] }>();
+const controlId = useId();
 const mainId = ref(props.mainId ?? props.games[0]?.id ?? "");
 const copyId = ref(
   props.games.find((game) => game.id !== mainId.value)?.id ?? "",
@@ -21,7 +22,7 @@ const candidates = computed(() =>
 const saving = ref(false);
 const error = ref<string | null>(null);
 function label(game: Choice): string {
-  return `${game.title} · ${game.source || "Manual entry"} · ${game.platform || "Unspecified platform"}`;
+  return `${game.source || "Manual entry"} · ${game.platform || "Unspecified platform"} · ${game.title}`;
 }
 function chooseMain(): void {
   if (mainId.value === copyId.value)
@@ -55,9 +56,11 @@ async function save(): Promise<void> {
       section.
     </p>
     <form id="group-copies-form" class="choices" @submit.prevent="save">
-      <label>
-        Main game
+      <div class="choice">
+        <label :for="`${controlId}-main`">Main game</label>
         <select
+          :id="`${controlId}-main`"
+          class="ui-field"
           v-model="mainId"
           :disabled="saving || !!props.mainId"
           @change="chooseMain"
@@ -66,15 +69,20 @@ async function save(): Promise<void> {
             {{ label(game) }}
           </option>
         </select>
-      </label>
-      <label>
-        Owned copy
-        <select v-model="copyId" :disabled="saving">
+      </div>
+      <div class="choice">
+        <label :for="`${controlId}-copy`">Owned copy</label>
+        <select
+          :id="`${controlId}-copy`"
+          v-model="copyId"
+          class="ui-field"
+          :disabled="saving"
+        >
           <option v-for="game in candidates" :key="game.id" :value="game.id">
             {{ label(game) }}
           </option>
         </select>
-      </label>
+      </div>
       <p v-if="error" class="group-error" role="alert">{{ error }}</p>
     </form>
     <template #footer>
@@ -103,7 +111,7 @@ async function save(): Promise<void> {
   display: grid;
   gap: 16px;
 }
-label {
+.choice {
   display: grid;
   gap: 6px;
   min-width: 0;
