@@ -10,6 +10,7 @@ from sqlalchemy import delete, select
 from src.core.preferences import save_preferences
 from src.database.models.notification import Notification
 from src.database.models.notification_delivery import NotificationDelivery
+from src.database.models.notification_provider_setting import NotificationProviderSetting
 from src.database.models.notification_receipt import NotificationReceipt
 from src.database.models.plugin_notification_type import PluginNotificationTypeRegistration
 from src.database.models.plugin_permissions import PluginPermissionGrant
@@ -292,6 +293,11 @@ async def test_legacy_sender_is_installation_bound_and_retires_without_registere
             )
         )
         db.add(endpoint(owner, provider_id="unavailable.transport", endpoint_key="legacy-source"))
+        db.add(
+            NotificationProviderSetting(
+                user_id=owner, provider_id="unavailable.transport", enabled=True
+            )
+        )
         await db.commit()
         result = await dispatch_gateway_request(
             db,
@@ -324,6 +330,9 @@ async def test_retirement_preserves_history_and_cannot_replay_on_reinstall(sourc
             owner, Trust.PRIVATE, provider_id="unavailable.transport", endpoint_key="source-test"
         )
         db.add(target)
+        db.add(
+            NotificationProviderSetting(user_id=owner, provider_id=target.provider_id, enabled=True)
+        )
         await db.commit()
         facts = event(plugin)
         result = await call(db, source, "notifications.emit", facts)
@@ -371,6 +380,7 @@ async def test_emit_revocation_stops_builtin_transport_before_lookup(source, mon
     async with SessionLocal() as db:
         await call(db, source, "notification_sources.register", definition(plugin))
         db.add(endpoint(owner, provider_id="core.smtp", endpoint_key="source-test"))
+        db.add(NotificationProviderSetting(user_id=owner, provider_id="core.smtp", enabled=True))
         await db.commit()
         await call(db, source, "notifications.emit", event(plugin))
         grant = await db.scalar(
