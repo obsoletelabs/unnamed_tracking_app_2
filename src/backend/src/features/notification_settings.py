@@ -288,8 +288,8 @@ def _provider_settings(
             else "server"
         ),
         "destination_kind": (
-            registration.transport
-            if registration and registration.transport in {"discord_webhook", "discord_bot_dm"}
+            "discord_webhook"
+            if registration and registration.transport == "discord_webhook"
             else None
         ),
         "critical_supported": email,
