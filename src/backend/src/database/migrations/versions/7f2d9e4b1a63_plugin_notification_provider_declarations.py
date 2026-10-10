@@ -4,8 +4,8 @@ Revision ID: 7f2d9e4b1a63
 Revises: 08cca40cdb7f
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision: str = "7f2d9e4b1a63"
 down_revision: str | None = "08cca40cdb7f"
@@ -33,7 +33,9 @@ def upgrade() -> None:
             "WHERE destination_kind IS NULL"
         )
     )
-    op.alter_column("plugin_notification_provider_registrations", "destination_kind", nullable=False)
+    op.alter_column(
+        "plugin_notification_provider_registrations", "destination_kind", nullable=False
+    )
     op.alter_column("plugin_notification_provider_registrations", "channel_context", nullable=False)
     op.alter_column("plugin_notification_provider_registrations", "privacy", nullable=False)
 
