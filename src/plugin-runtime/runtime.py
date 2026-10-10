@@ -45,7 +45,7 @@ except ImportError:  # pragma: no cover - Windows development/test fallback
     resource = None  # type: ignore[assignment]
 
 _PLUGIN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
-PLUGIN_API_CONTRACT_VERSION = "1.1.3"
+PLUGIN_API_CONTRACT_VERSION = "1.1.4"
 _ENTRYPOINT = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*(?::[A-Za-z_][A-Za-z0-9_]*)?$")
 # Linux parent-death signals follow the spawning thread. HTTP request threads
 # end after their response, while supervised workers must live until shutdown.
