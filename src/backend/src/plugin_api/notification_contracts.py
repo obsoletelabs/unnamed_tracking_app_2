@@ -11,29 +11,18 @@ from .base_contracts import ContractModel
 class NotificationProviderDeclaration(ContractModel):
     """A plugin declares its destination contract; the plugin performs delivery."""
 
-    provider_id: str = Field(
-        min_length=3,
-        max_length=128,
-        pattern=r"^[a-z0-9][a-z0-9._-]*$",
-    )
+    provider_id: str = Field(min_length=3, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
     name: str = Field(min_length=1, max_length=128)
-    action_id: str = Field(
-        min_length=1,
-        max_length=128,
-        pattern=r"^[a-z0-9][a-z0-9._-]*$",
-    )
-    destination_kind: str = Field(
-        default="plugin",
-        min_length=1,
-        max_length=32,
-        pattern=r"^[a-z0-9][a-z0-9._-]*$",
-    )
+    action_id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    destination_kind: str = Field(default="plugin", min_length=1, max_length=32, pattern=r"^[a-z0-9][a-z0-9._-]*$")
     channel_context: Literal["external", "internal"] = "external"
     privacy: Literal["PUBLIC", "PRIVATE"] = "PUBLIC"
-    transport: Literal["plugin_public", "plugin_private"] = "plugin_public"
+    transport: Literal["legacy", "plugin_public", "plugin_private"] = "plugin_public"
 
     @model_validator(mode="after")
     def synchronize_privacy(self) -> Self:
+        if self.transport == "legacy":
+            return self
         expected = "plugin_private" if self.privacy == "PRIVATE" else "plugin_public"
         if self.transport != expected:
             raise ValueError("transport must match the declared provider privacy")
