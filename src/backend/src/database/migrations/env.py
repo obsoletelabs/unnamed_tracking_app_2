@@ -19,6 +19,7 @@ from src.database.models import (
     game,  # noqa: F401
     game_archive,  # noqa: F401
     game_checklist_item,  # noqa: F401
+    game_duplicate_dismissal,  # noqa: F401
     game_field_change,  # noqa: F401
     game_file_item,  # noqa: F401
     game_profile,  # noqa: F401
