@@ -29,6 +29,16 @@ class NotificationProviderDeclaration(ContractModel):
     )
     channel_context: Literal["external", "internal"] = "external"
     privacy: Literal["PUBLIC", "PRIVATE"] = "PUBLIC"
+    # Backward-compatible storage field used by the current durable registration
+    # table. This is a generic delivery declaration, not a provider-specific transport.
+    transport: Literal["plugin_public", "plugin_private"] = "plugin_public"
+
+    @model_validator(mode="after")
+    def synchronize_privacy(self) -> Self:
+        expected = "plugin_private" if self.privacy == "PRIVATE" else "plugin_public"
+        if self.transport != expected:
+            raise ValueError("transport must match the declared provider privacy")
+        return self
 
 
 class NotificationTypeRegistration(ContractModel):
