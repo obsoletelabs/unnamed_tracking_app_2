@@ -1,4 +1,4 @@
-"""Host-owned endpoint resolution without network calls or credential disclosure."""
+"""Notification endpoint enrollment without network calls or credential disclosure."""
 
 from uuid import UUID
 
@@ -102,12 +102,7 @@ async def retire_plugin_destinations(
 
 
 async def invalidate_legacy_configuration(db: AsyncSession, installation_id: UUID) -> None:
-    """A shared plugin secret change invalidates every endpoint bound to that installation.
-
-    Disable before the runtime write, even if that write later fails. No old
-    consent, proof or queued work can silently move to the replacement endpoint.
-    The caller commits this boundary before contacting the runtime.
-    """
+    """Invalidate host-owned legacy endpoint secrets for a plugin installation."""
     provider_ids = select(PluginNotificationProviderRegistration.provider_id).where(
         PluginNotificationProviderRegistration.installation_id == installation_id
     )
@@ -147,7 +142,7 @@ async def invalidate_legacy_configuration(db: AsyncSession, installation_id: UUI
 
 
 async def resolve_destinations(db: AsyncSession, user_id: UUID) -> list[NotificationDestination]:
-    """Enroll the authenticated inbox and conservative opted-in legacy endpoints."""
+    """Enroll built-in, legacy and plugin-owned notification destinations."""
     await db.execute(
         pg_insert(NotificationDestination)
         .values(
@@ -180,28 +175,35 @@ async def resolve_destinations(db: AsyncSession, user_id: UUID) -> list[Notifica
         .all()
     )
     for registration in registrations:
-        if registration.transport != "legacy":
-            # Protected endpoints require explicit owner enrollment; provider
-            # registration or a routing toggle cannot claim anyone's credentials.
+        if registration.transport == "legacy":
+            kind = "legacy_webhook"
+            channel_context = "external"
+            privacy = Trust.PUBLIC
+            endpoint_key = "legacy"
+        elif registration.transport in {"plugin_public", "plugin_private"}:
+            kind = registration.destination_kind
+            channel_context = registration.channel_context
+            privacy = Trust.PRIVATE if registration.transport == "plugin_private" else Trust.PUBLIC
+            endpoint_key = "plugin"
+        else:
             continue
         await db.execute(
             pg_insert(NotificationDestination)
             .values(
                 user_id=user_id,
                 provider_id=registration.provider_id,
-                endpoint_key="legacy",
-                kind="legacy_webhook",
-                channel_context="external",
-                privacy=int(Trust.PUBLIC),
+                endpoint_key=endpoint_key,
+                kind=kind,
+                channel_context=channel_context,
+                privacy=int(privacy),
                 installation_id=registration.installation_id,
+                # The plugin owns the actual configuration. This is only an opaque
+                # routing reference; no URL/token is stored in the host destination.
+                configuration_ref=f"plugin:{registration.provider_id}",
             )
-            # An old installation owns its endpoint. Reinstall cannot silently
-            # reactivate it or claim its credentials/preferences.
             .on_conflict_do_nothing(index_elements=["user_id", "provider_id", "endpoint_key"])
         )
     allowed: ColumnElement[bool] = NotificationDestination.installation_id.is_(None)
-    # Browser push is built in but bound to the existing PWA installation.
-    # Its adapter still checks the live PWA grant, session and server key.
     allowed = allowed | (NotificationDestination.provider_id == PUSH_PROVIDER)
     for registration in registrations:
         allowed = allowed | (
