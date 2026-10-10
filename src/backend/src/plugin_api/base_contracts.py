@@ -11,7 +11,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 API_VERSION = "v1"
-PLUGIN_API_CONTRACT_VERSION = "1.1.2"
+PLUGIN_API_CONTRACT_VERSION = "1.1.3"
 Timestamp = datetime
 
 
