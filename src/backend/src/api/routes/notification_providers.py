@@ -616,6 +616,7 @@ async def update_notification_provider_setting(
                 or_(
                     NotificationDestination.kind == "legacy_webhook",
                     NotificationDestination.encrypted_configuration.is_not(None),
+                    NotificationDestination.configuration_ref.is_not(None),
                 ),
             )
             .values(enabled=payload.enabled, active=payload.enabled)
