@@ -16,6 +16,15 @@ Open **Settings > Library > Duplicates** to compare possible duplicate games acr
 
 ![Duplicate comparison on a phone](../assets/game-duplicates/duplicates-390.png)
 
+## Owned copies
+
+An `owned_copy` relationship groups existing games beneath a selected main game.
+The host supports explicit grouping and separation for any store or plugin import;
+it does not group suggestions automatically. Each copy keeps its game ID, import
+identity, status, notes, protected fields, achievements and files. Imports continue
+updating the original copy. Separation removes only the relationship. DLC and mods
+retain their existing relationship types.
+
 ## Steam imports
 
 Steam library sync saves games and achievements before fetching store details and

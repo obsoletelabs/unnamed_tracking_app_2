@@ -72,3 +72,12 @@ serialize only their short database transactions; retrying a completed or
 interrupted batch retains its identities. Standard host folder allocation and
 creation remain in the existing import service, with identity-specific names for
 plugin-created games. No new tables or migrations are needed.
+
+## Owned copies
+
+Users may explicitly group imported records under a main game using the host's
+`owned_copy` relationship. Grouping retains the original IDs, external identities,
+provider IDs and folders. `games.import` still updates the same store copy and
+does not overwrite the main game's personal tracking. Separation clears the
+relationship without recreating records. Plugins need no new capability or API
+version to remain compatible.
