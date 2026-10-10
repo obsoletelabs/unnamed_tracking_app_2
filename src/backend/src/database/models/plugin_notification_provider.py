@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from uuid import UUID, uuid4
 
-from sqlalchemy import BigInteger, String, UniqueConstraint
+from sqlalchemy import BigInteger, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -22,9 +22,19 @@ class PluginNotificationProviderRegistration(Base):
     provider_id: Mapped[str] = mapped_column(String(128), nullable=False)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     action_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    # Legacy is retained only for existing host-owned providers. New plugin
+    # providers use destination declarations and the plugin action for delivery.
     transport: Mapped[str] = mapped_column(
         String(32), nullable=False, default="legacy", server_default="legacy"
     )
+    destination_kind: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="plugin", server_default="plugin"
+    )
+    channel_context: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="external", server_default="external"
+    )
+    # 0 PUBLIC, 1 PRIVATE. SECURE is never declared by a provider.
+    privacy: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     registered_at: Mapped[int] = mapped_column(
         BigInteger,
         nullable=False,
