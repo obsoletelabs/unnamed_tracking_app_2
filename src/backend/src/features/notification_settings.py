@@ -304,5 +304,5 @@ def _provider_settings(
         )
         if email and smtp.configured and smtp.tls_mode == "none"
         else None,
-        "secure_transport": smtp.allows_sensitive if email else True,
+        "secure_transport": smtp.allows_sensitive if email else not (registration and registration.transport == "discord_bot_dm"),
     }
