@@ -71,7 +71,9 @@ def test_lifecycle_migration_preserves_existing_data_and_adopts_without_replay()
                 "SELECT count(*) FROM notification_lifecycle_outbox"
             ).fetchone() == (0,)
             assert connection.execute("SELECT to_regclass('game_note_details')").fetchone()[0]
-            assert connection.execute("SELECT to_regclass('game_duplicate_dismissals')").fetchone()[0]
+            assert connection.execute("SELECT to_regclass('game_duplicate_dismissals')").fetchone()[
+                0
+            ]
             migrate("stamp", "08cca40cdb7f")
             migrate("upgrade", "0037e34ac954")
             connection.execute(
