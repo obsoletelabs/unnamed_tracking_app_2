@@ -37,6 +37,7 @@ from src.database.models.user import User
 from src.database.session import get_db
 from src.features.metadata.games.psn import PSNClient, PSNError
 from src.features.notification_urls import remember_app_url
+from src.features.profile_pictures import profile_picture_version
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -206,6 +207,7 @@ async def current_user(
         "is_admin": user.is_admin,
         "steamgriddb_api_key": user.steamgriddb_api_key,
         "last_app_url": user.last_app_url,
+        "profile_picture_version": await profile_picture_version(user.id),
     }
 
 
@@ -255,6 +257,7 @@ async def update_current_user(
         "email": user.email,
         "is_admin": user.is_admin,
         "steamgriddb_api_key": user.steamgriddb_api_key,
+        "profile_picture_version": await profile_picture_version(user.id),
     }
 
 

@@ -6,21 +6,25 @@
 // here, not slotted, on purpose: the badge is positioned relative to
 // the avatar alone, and that only stays correct if this component
 // controls the avatar's markup instead of trusting a slot's DOM order.
-import { ref, watch, onMounted, onBeforeUnmount } from "vue";
+import { computed, ref, watch, onMounted, onBeforeUnmount } from "vue";
 import { useRouter } from "vue-router";
 import { openTopbarPopover } from "../state/topbarPopover";
-import { currentUser, avatarVersion } from "../state/auth";
+import { currentUser } from "../state/auth";
 import { logout, profilePictureUrl } from "../services/auth";
 import { useConfirm } from "../state/dialog";
 
 defineProps<{ initials: string }>();
 
-// falls back to the initials when the user has no picture (the request 404s)
-const avatarFailed = ref(false);
-watch(
-  [avatarVersion, () => currentUser.value?.id],
-  () => (avatarFailed.value = false),
+const avatarUrl = computed(() =>
+  currentUser.value?.profile_picture_version
+    ? profilePictureUrl(
+        currentUser.value.id,
+        currentUser.value.profile_picture_version,
+      )
+    : "",
 );
+const avatarFailed = ref(false);
+watch(avatarUrl, () => (avatarFailed.value = false));
 
 const router = useRouter();
 const root = ref<HTMLElement | null>(null);
@@ -147,8 +151,8 @@ onBeforeUnmount(() => {
       <div class="profile-menu-avatar-wrap">
         <div class="profile-menu-avatar">
           <img
-            v-if="currentUser && !avatarFailed"
-            :src="`${profilePictureUrl(currentUser.id)}?t=${avatarVersion}`"
+            v-if="avatarUrl && !avatarFailed"
+            :src="avatarUrl"
             alt=""
             class="profile-menu-avatar-img"
             @error="avatarFailed = true"
