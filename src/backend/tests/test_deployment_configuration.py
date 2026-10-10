@@ -34,6 +34,9 @@ class ConfigurationDb:
     async def scalar(self, statement):
         return self.session.scalar(statement)
 
+    async def scalars(self, statement):
+        return self.session.scalars(statement)
+
     async def execute(self, statement):
         return self.session.execute(statement)
 

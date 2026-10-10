@@ -17,7 +17,7 @@ export type PluginStatus =
 export const PLUGIN_API_CONTRACT_VERSION = "1.1.4";
 export function pluginContributionsActive(plugin: PluginSummary): boolean {
   return (
-    (["1.1.0", "1.1.1", "1.1.2", PLUGIN_API_CONTRACT_VERSION].includes(
+    (["1.1.0", "1.1.1", "1.1.2", "1.1.3", PLUGIN_API_CONTRACT_VERSION].includes(
       plugin.api_contract_version ?? "",
     ) ||
       (plugin.legacy_compatibility === true &&

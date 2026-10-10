@@ -4,7 +4,7 @@ import time
 from collections.abc import Iterable
 from uuid import UUID
 
-from sqlalchemy import delete, func, literal, select
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -48,14 +48,12 @@ async def record_deliveries(db: AsyncSession, delivery_ids: list[UUID]) -> None:
         return
     rows = (
         select(
-            func.gen_random_uuid(),
             Notification.user_id,
             PluginNotificationProviderRegistration.plugin_id,
             NotificationDestination.installation_id,
             Notification.id,
             NotificationDelivery.id,
             NotificationDelivery.status,
-            literal(int(time.time())),
         )
         .join(NotificationDelivery, NotificationDelivery.notification_id == Notification.id)
         .join(
@@ -72,21 +70,20 @@ async def record_deliveries(db: AsyncSession, delivery_ids: list[UUID]) -> None:
         )
         .where(NotificationDelivery.id.in_(delivery_ids))
     )
-    await db.execute(
-        pg_insert(NotificationLifecycleOutbox).from_select(
-            [
-                "id",
-                "user_id",
-                "plugin_id",
-                "installation_id",
-                "notification_id",
-                "delivery_id",
-                "status",
-                "occurred_at",
-            ],
-            rows,
+    for user_id, plugin_id, installation_id, notice_id, delivery_id, status in await db.execute(
+        rows
+    ):
+        db.add(
+            NotificationLifecycleOutbox(
+                user_id=user_id,
+                plugin_id=plugin_id,
+                installation_id=installation_id,
+                notification_id=notice_id,
+                delivery_id=delivery_id,
+                status=status,
+            )
         )
-    )
+    await db.flush()
 
 
 async def change_deliveries(db: AsyncSession, statement) -> None:

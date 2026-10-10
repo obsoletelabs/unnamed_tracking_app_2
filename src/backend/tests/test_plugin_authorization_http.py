@@ -18,7 +18,7 @@ from uuid import uuid4
 import httpx
 import pytest
 from fastapi import FastAPI
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, func, select
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session
@@ -31,6 +31,7 @@ from src.core.geoip import GeoLocation, geoip
 from src.database.models.achievement import Achievement  # noqa: F401
 from src.database.models.auth import UserSession
 from src.database.models.notification import Notification
+from src.database.models.notification_audit import NotificationLifecycleOutbox
 from src.database.models.notification_delivery import NotificationDelivery
 from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_provider_setting import NotificationProviderSetting
@@ -61,6 +62,12 @@ class PersistedDb:
         return self.session.scalars(statement)
 
     def add(self, row):
+        if isinstance(row, NotificationLifecycleOutbox) and row.position is None:
+            # SQLite has no non-primary-key IDENTITY. PostgreSQL replay tests
+            # exercise the real allocation/concurrent-commit semantics.
+            row.position = (
+                self.session.scalar(select(func.max(NotificationLifecycleOutbox.position))) or 0
+            ) + 1
         self.session.add(row)
 
     def get_bind(self):
@@ -92,6 +99,7 @@ def boundary(monkeypatch):
         UserSession,
         PluginNotificationProviderRegistration,
         Notification,
+        NotificationLifecycleOutbox,
         NotificationDestination,
         NotificationReceipt,
         UserPreferences,

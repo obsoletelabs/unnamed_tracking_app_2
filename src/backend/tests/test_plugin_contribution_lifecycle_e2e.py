@@ -129,6 +129,8 @@ async def test_lifecycle_revokes_all_host_execution_boundaries(tmp_path, monkeyp
     ]
 
     async def scalars(statement):
+        if statement.is_update:
+            return []  # This lifecycle fixture has no persisted notification deliveries.
         if "plugin_permission_grants" in str(statement):
             return []
         if "SELECT plugin_notification_provider_registrations.provider_id" in str(statement):

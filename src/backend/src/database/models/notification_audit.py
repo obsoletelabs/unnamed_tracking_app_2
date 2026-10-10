@@ -11,6 +11,7 @@ from src.database.base import Base, unix_timestamp
 
 class _LifecycleMetadata:  # pylint: disable=too-few-public-methods
     """Declarative column mixin shared by the unpublished and retained records."""
+
     user_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
