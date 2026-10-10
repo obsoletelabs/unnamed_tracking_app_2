@@ -26,12 +26,12 @@ def _sequence(cursor: str, user_id: UUID, installation_id: UUID) -> int:
             not isinstance(values, list)
             or len(values) != 4
             or values[:3] != ["notification-lifecycle-v1", str(user_id), str(installation_id)]
-            or not isinstance(values[3], int)
-            or isinstance(values[3], bool)
-            or values[3] < 0
         ):
             raise ValueError("Invalid notification lifecycle cursor")
-        return values[3]
+        sequence = values[3]
+        if not isinstance(sequence, int) or isinstance(sequence, bool) or sequence < 0:
+            raise ValueError("Invalid notification lifecycle cursor")
+        return sequence
     except (RuntimeError, ValueError, TypeError) as exc:
         raise ValueError("Invalid notification lifecycle cursor") from exc
 
