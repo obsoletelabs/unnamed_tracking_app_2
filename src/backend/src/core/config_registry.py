@@ -229,6 +229,14 @@ CONFIG_REGISTRY: tuple[ConfigSpec, ...] = (
         storage="app_integration",
     ),
     ConfigSpec(
+        "NOTIFICATION_AUDIT_RETENTION_DAYS",
+        source=ConfigSource.ENV,
+        visible=False,
+        input_type="integer",
+        default=90,
+        description="Independent metadata-only notification lifecycle history in days.",
+    ),
+    ConfigSpec(
         "NOTIFICATION_RETENTION_DEFAULT_DAYS",
         source=ConfigSource.ENV,
         visible=False,

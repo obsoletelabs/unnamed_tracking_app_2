@@ -1,0 +1,22 @@
+{
+  "backend": "real",
+  "frontend": "compiled-source",
+  "host_source_head": "b712b20fa035368e73c196a9d5320319375426ad",
+  "passed": [
+    "Real API explicit grouping, cancellation/retry, one library entry, child source filter, main/copy navigation, reversible separation and preserved notes: 320",
+    "Real API explicit grouping, cancellation/retry, one library entry, child source filter, main/copy navigation, reversible separation and preserved notes: 390",
+    "Real API explicit grouping, cancellation/retry, one library entry, child source filter, main/copy navigation, reversible separation and preserved notes: 1440"
+  ],
+  "screens": [],
+  "widths": [
+    320,
+    390,
+    430,
+    768,
+    1024,
+    1440,
+    1920,
+    2560
+  ],
+  "library_records": "real owned-game API fixtures in a disposable member account"
+}

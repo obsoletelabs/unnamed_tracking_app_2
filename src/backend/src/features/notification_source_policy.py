@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.database.models.notification import Notification
 from src.database.models.notification_delivery import NotificationDelivery
 from src.database.models.plugin_notification_type import PluginNotificationTypeRegistration
+from src.features.notification_audit import change_deliveries
 from src.features.notification_policy import Trust
 from src.plugin_api.grants import has_capability_grant
 
@@ -62,7 +63,8 @@ async def retire_sources(
     )
     if event_type is not None:
         notices = notices.where(Notification.event_type == event_type)
-    await db.execute(
+    await change_deliveries(
+        db,
         update(NotificationDelivery)
         .where(
             NotificationDelivery.notification_id.in_(notices),
@@ -70,5 +72,5 @@ async def retire_sources(
         )
         .values(
             status="suppressed", last_error="source_revoked", claim_token=None, lease_until=None
-        )
+        ),
     )

@@ -29,6 +29,7 @@ import {
 } from "../utils/achievements";
 import type { AchFilter } from "../composables/useGameAchievements";
 import GameAccountsPanel from "../components/game/GameAccountsPanel.vue";
+import GameOwnedCopiesPanel from "../components/game/GameOwnedCopiesPanel.vue";
 import GameWorldMapPanel from "../components/game/GameWorldMapPanel.vue";
 import { provide } from "vue";
 import { useGameDetail } from "../composables/useGameDetail";
@@ -51,6 +52,7 @@ const {
   parentGameTitle,
   RELATIONSHIP_LABELS,
   variants,
+  ownedCopies,
   profiles,
   onGameSaved,
   resumeNoteDraft,
@@ -475,6 +477,12 @@ const {
     </div>
 
     <section v-if="activeTab === 'Overview'" class="overview">
+      <GameOwnedCopiesPanel
+        :key="game.id"
+        :game="game"
+        :copies="ownedCopies"
+        @changed="onGameSaved"
+      />
       <div v-if="overviewFacts.length" class="meta-block">
         <div v-if="overviewFacts.length" class="meta-grid">
           <div

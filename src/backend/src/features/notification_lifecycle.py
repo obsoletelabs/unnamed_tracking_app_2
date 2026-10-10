@@ -10,6 +10,7 @@ from src.database.models.notification import Notification
 from src.database.models.notification_delivery import NotificationDelivery
 from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_verification import NotificationVerification
+from src.features.notification_audit import change_deliveries, change_notices, record_notices
 
 
 async def retire_destination_work(db: AsyncSession, destination_id: UUID, reason: str) -> None:
@@ -19,13 +20,14 @@ async def retire_destination_work(db: AsyncSession, destination_id: UUID, reason
         .where(NotificationVerification.destination_id == destination_id)
         .values(encrypted_code=None, used_at=int(time.time()))
     )
-    await db.execute(
+    await change_deliveries(
+        db,
         update(NotificationDelivery)
         .where(
             NotificationDelivery.destination_id == destination_id,
             NotificationDelivery.status.in_(("pending", "processing", "retry_wait")),
         )
-        .values(status="suppressed", last_error=reason, claim_token=None, lease_until=None)
+        .values(status="suppressed", last_error=reason, claim_token=None, lease_until=None),
     )
 
 
@@ -43,6 +45,29 @@ async def invalidate_endpoint(
     await retire_destination_work(db, destination.id, reason)
 
 
+async def retire_destination_type_work(
+    db: AsyncSession, destination_id: UUID, event_type: str
+) -> None:
+    """A type opt-out preserves proof and unrelated queued destination work."""
+    await change_deliveries(
+        db,
+        update(NotificationDelivery)
+        .where(
+            NotificationDelivery.destination_id == destination_id,
+            NotificationDelivery.notification_id.in_(
+                select(Notification.id).where(Notification.event_type == event_type)
+            ),
+            NotificationDelivery.status.in_(("pending", "processing", "retry_wait")),
+        )
+        .values(
+            status="suppressed",
+            last_error="email_type_unsubscribed",
+            claim_token=None,
+            lease_until=None,
+        ),
+    )
+
+
 def visible_inbox(user_id: UUID):
     return (
         (Notification.user_id == user_id)
@@ -53,12 +78,14 @@ def visible_inbox(user_id: UUID):
 
 
 async def dismiss(db: AsyncSession, user_id: UUID, notification_id: UUID) -> bool:
-    result = await db.execute(
+    count = await change_notices(
+        db,
         update(Notification)
         .where(Notification.id == notification_id, visible_inbox(user_id))
-        .values(dismissed_at=int(time.time()))
+        .values(dismissed_at=int(time.time())),
+        "dismissed",
     )
-    return bool(result.rowcount)
+    return bool(count)
 
 
 async def delete_notice(db: AsyncSession, user_id: UUID, notification_id: UUID) -> bool:
@@ -69,6 +96,8 @@ async def delete_notice(db: AsyncSession, user_id: UUID, notification_id: UUID) 
     )
     if notification is None:
         return False
+    if notification.deleted_at is None:
+        await record_notices(db, [notification], "deleted")
     notification.deleted_at = int(time.time())
     notification.inbox_visible = False
     notification.title = ""
@@ -76,12 +105,13 @@ async def delete_notice(db: AsyncSession, user_id: UUID, notification_id: UUID) 
     notification.poster_url = None
     notification.public_title = None
     notification.public_body = None
-    await db.execute(
+    await change_deliveries(
+        db,
         update(NotificationDelivery)
         .where(
             NotificationDelivery.notification_id == notification_id,
             NotificationDelivery.status.in_(("pending", "processing", "retry_wait")),
         )
-        .values(status="cancelled", claim_token=None, lease_until=None)
+        .values(status="cancelled", claim_token=None, lease_until=None),
     )
     return True

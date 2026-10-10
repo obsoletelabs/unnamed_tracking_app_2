@@ -16,6 +16,35 @@ Open **Settings > Library > Duplicates** to compare possible duplicate games acr
 
 ![Duplicate comparison on a phone](../assets/game-duplicates/duplicates-390.png)
 
+## Owned copies
+
+Choose **Group owned copies** in duplicate review, select the main entry, then
+confirm. The library and home shelves show one main game by default. Source,
+platform and title filters can find it through its copies; its overall status and
+favorite flag come from the main entry. Library cards and lists link current
+duplicate-review candidates to the review until you group them or keep both.
+Suggestions are bounded; additional candidates appear as earlier ones are reviewed.
+
+The main game's **Owned copies** section lists each store/platform and reported
+playtime. Use the main entry for overall status and notes. Open a copy for its own
+progress, achievements, notes and files. **Add owned copy** can group existing
+entries even when their titles or platforms differ. **Separate** returns a copy
+to the library as its own entry without recreating it. DLC and mods remain in
+**Variants**.
+
+Each copy keeps its game ID, import identity, status, notes, protected fields,
+achievements and files. Imports continue updating the original copy. Grouping
+never automatically overwrites fields or relocates files. Reported playtime is
+shown per copy and summed in this section; provider overlap is not deduplicated.
+Statistics continue to describe the original tracked records. If the main game
+is in Trash, its active copies become visible individually; restoring it restores
+the grouped presentation.
+
+The [phone grouping dialog](../assets/game-ownership/ownership-confirm-390.png)
+and [desktop owned-copy summary](../assets/game-ownership/ownership-main-1440.png)
+show this workflow. [Responsive validation](../assets/game-ownership/conformance.json)
+uses disposable game records and real grouping/separation APIs.
+
 ## Steam imports
 
 Steam library sync saves games and achievements before fetching store details and

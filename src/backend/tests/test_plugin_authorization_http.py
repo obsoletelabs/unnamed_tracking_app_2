@@ -18,7 +18,7 @@ from uuid import uuid4
 import httpx
 import pytest
 from fastapi import FastAPI
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, func, select
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session
@@ -31,6 +31,11 @@ from src.core.geoip import GeoLocation, geoip
 from src.database.models.achievement import Achievement  # noqa: F401
 from src.database.models.auth import UserSession
 from src.database.models.notification import Notification
+from src.database.models.notification_audit import (
+    NotificationLifecycleAudit,
+    NotificationLifecycleOutbox,
+    NotificationLifecycleStream,
+)
 from src.database.models.notification_delivery import NotificationDelivery
 from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_provider_setting import NotificationProviderSetting
@@ -61,6 +66,12 @@ class PersistedDb:
         return self.session.scalars(statement)
 
     def add(self, row):
+        if isinstance(row, NotificationLifecycleOutbox) and row.position is None:
+            # SQLite has no non-primary-key IDENTITY. PostgreSQL replay tests
+            # exercise the real allocation/concurrent-commit semantics.
+            row.position = (
+                self.session.scalar(select(func.max(NotificationLifecycleOutbox.position))) or 0
+            ) + 1
         self.session.add(row)
 
     def get_bind(self):
@@ -92,6 +103,9 @@ def boundary(monkeypatch):
         UserSession,
         PluginNotificationProviderRegistration,
         Notification,
+        NotificationLifecycleOutbox,
+        NotificationLifecycleAudit,
+        NotificationLifecycleStream,
         NotificationDestination,
         NotificationReceipt,
         UserPreferences,
@@ -984,6 +998,55 @@ async def test_notifications_send_requires_grant_before_persisting_notification(
     grant(boundary, "notifications.send", user_id=boundary.users[0].id)
     assert (await request(boundary, **body)).status_code == 200
     assert boundary.session.scalar(select(Notification)).user_id == boundary.users[0].id
+    audit = boundary.session.scalar(select(NotificationLifecycleOutbox))
+    assert audit.user_id == boundary.users[0].id
+    assert audit.installation_id == boundary.installation_id
+    assert audit.status == "created"
+
+
+@pytest.mark.asyncio
+async def test_lifecycle_feed_http_requires_explicit_grant_and_only_returns_owned_metadata(
+    boundary,
+):
+    args = {
+        "method": "notifications.lifecycle.poll",
+        "capability": "notifications.lifecycle.read",
+        "payload": {},
+    }
+    assert (await request(boundary, **args)).status_code == 403
+    grant(boundary, "api.full", user_id=boundary.users[0].id)
+    assert (await request(boundary, **args)).status_code == 403
+    explicit = grant(boundary, "notifications.lifecycle.read", user_id=boundary.users[0].id)
+    boundary.session.add(NotificationLifecycleStream(id=1, published_through=3, expired_through=0))
+    own_event = uuid4()
+    for sequence, owner, installation in (
+        (1, boundary.users[0].id, boundary.installation_id),
+        (2, boundary.users[1].id, boundary.installation_id),
+        (3, boundary.users[0].id, uuid4()),
+    ):
+        boundary.session.add(
+            NotificationLifecycleAudit(
+                sequence=sequence,
+                id=own_event if sequence == 1 else uuid4(),
+                user_id=owner,
+                plugin_id="audit.plugin",
+                installation_id=installation,
+                notification_id=uuid4(),
+                status="deleted",
+                occurred_at=1,
+                published_at=1,
+            )
+        )
+    boundary.session.commit()
+    response = await request(boundary, **args)
+    assert response.status_code == 200, response.text
+    assert response.headers["cache-control"] == "private, no-store"
+    events = response.json()["payload"]["events"]
+    assert len(events) == 1 and events[0]["id"] == str(own_event)
+    assert set(events[0]) == {"id", "notification_id", "delivery_id", "status", "occurred_at"}
+    explicit.revoked_at = 1
+    boundary.session.commit()
+    assert (await request(boundary, **args)).status_code == 403
 
 
 @pytest.mark.asyncio

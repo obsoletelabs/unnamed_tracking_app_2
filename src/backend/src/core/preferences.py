@@ -311,8 +311,13 @@ _VALUE_VALIDATORS: dict[str, Callable[[Any], Any]] = {
 }
 
 
-async def load_preferences(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
-    row = await db.scalar(select(UserPreferences).where(UserPreferences.user_id == user_id))
+async def load_preferences(
+    db: AsyncSession, user_id: UUID, *, lock: bool = False
+) -> dict[str, Any]:
+    query = select(UserPreferences).where(UserPreferences.user_id == user_id)
+    row = await db.scalar(
+        query.with_for_update().execution_options(populate_existing=True) if lock else query
+    )
     data = row.data if row else {}
     # Existing stored choices remain overrides; new accounts inherit the server default.
     if "notification_retention_days" in data and "notification_retention_inherit" not in data:
@@ -321,15 +326,23 @@ async def load_preferences(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
 
 
 async def save_preferences(
-    db: AsyncSession, user_id: UUID, changes: dict[str, Any]
+    db: AsyncSession, user_id: UUID, changes: dict[str, Any], *, commit: bool = True
 ) -> dict[str, Any]:
     clean = {k: validate_preference(k, v) for k, v in changes.items()}
     if "notification_retention_days" in clean:
         clean.setdefault("notification_retention_inherit", False)
-    row = await db.scalar(select(UserPreferences).where(UserPreferences.user_id == user_id))
+    row = await db.scalar(
+        select(UserPreferences)
+        .where(UserPreferences.user_id == user_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
     if row is None:
         row = UserPreferences(user_id=user_id, data={})
         db.add(row)
     row.data = {**row.data, **clean}
-    await db.commit()
+    if commit:
+        await db.commit()
+    else:
+        await db.flush()
     return await load_preferences(db, user_id)

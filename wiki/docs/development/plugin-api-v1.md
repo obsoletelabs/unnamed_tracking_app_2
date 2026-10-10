@@ -1,6 +1,6 @@
 # Plugin API v1
 
-The host advertises **v1.1.3** while retaining the `v1` wire major. Declared
+The host advertises **v1.1.4** while retaining the `v1` wire major. Declared
 v1.1.0, v1.1.1 and v1.1.2 contracts remain supported. See
 [v1.1 migration](plugin-v1.1-migration.md) for the restricted legacy v1.0
 compatibility boundary; omission is treated as v1.0.0.
@@ -178,7 +178,10 @@ access or authorize arbitrary impersonation. The target needs both grants.
 
 `network.request` accepts `{url, headers?}` and performs only HTTP(S) GET. It uses
 normal TLS verification, an 8-second timeout, no redirects and a 4 MiB response
-limit. URLs cannot contain embedded credentials or fragments. Header names are
+limit. Authorization values allow up to 16 KiB for provider tokens with signed
+claims; other header values retain their 2 KiB limit. Header names are matched
+case-insensitively and CR/LF is rejected before transport. URLs cannot contain
+embedded credentials or fragments. Header names are
 restricted to Accept, Authorization and X-Emby-Token; count/length and CRLF bounds
 are enforced. The generic transport treats those headers as opaque strings and
 contains no provider behavior. Responses are `{status: 200, data: <object/array>}`
@@ -302,7 +305,10 @@ optional notification denial must not break sync. No other methods can be delega
 
 `network.request` accepts `{url, headers?, method?: "GET"|"POST", body?: object}`. It uses
 normal TLS verification, an 8-second timeout, no redirects and a 4 MiB response
-limit. URLs cannot contain embedded credentials or fragments. Header names are
+limit. Authorization values allow up to 16 KiB for provider tokens with signed
+claims; other header values retain their 2 KiB limit. Header names are matched
+case-insensitively and CR/LF is rejected before transport. URLs cannot contain
+embedded credentials or fragments. Header names are
 restricted to Accept, Authorization and X-Emby-Token; count/length and CRLF bounds
 are enforced. The generic transport treats those headers as opaque strings and
 contains no provider behavior. POST JSON bodies are bounded to 64 KiB; other methods
@@ -342,3 +348,15 @@ phase separation, scoped credential migration, deadlines and persistence behavio
 ### Notification event sources
 
 Contract 1.1.2 adds `notification_sources.register`, `notification_sources.unregister` and `notifications.emit` through the existing gateway/capability system. Public DTOs `NotificationTypeRegistration` and `NotificationEventEmission` are exported from `src.plugin_api`. Namespaced declarations are host-interpreted, recipient scope comes from the authenticated action/subscribed background user, and providers remain separate. Sensitive content additionally requires the explicit critical `notifications.sensitive` grant, which broad notification/full-API grants do not imply. See [notification core](notification-core.md#registered-plugin-notification-sources-contract-112) for limits, routing and retained lifecycle semantics. Existing `notifications.send` callers remain supported.
+
+## Notification lifecycle replay (1.1.4)
+
+`notifications.lifecycle.poll` requires a separate explicit `notifications.lifecycle.read` grant. Neither `notifications`, `events.subscribe` nor `api.full` implies it. Requests contain only an optional opaque cursor and a page limit (1–200). The host supplies the authenticated user and current installation; caller-selected owners, installations, providers or destinations are rejected.
+
+The feed contains IDs, UTC occurrence timestamps and status changes only. A source receives its own notification creation/read/unread/dismissal/deletion/inbox-expiry changes. A provider receives only its own delivery states: pending, processing, sent, retry_wait, failed_permanent, suppressed and cancelled. Source permission does not expose deliveries to other providers. Entries contain no message text, type facts, destination IDs, addresses, errors, credentials or recovery authority. Current installation identity and the live grant are checked by the existing gateway, so revocation immediately stops reads and reinstall cannot claim an earlier installation's history.
+
+Responses contain `events`, an authenticated encrypted `cursor`, `has_more` and `resync_required`. Persist the returned cursor only after processing the page. Event UUIDs remain stable across replay. A null cursor starts at retained history. When `resync_required` is true, discard stale local lifecycle assumptions and use the returned cursor to restart within retained history; expired history cannot be reconstructed. This is a change feed, not a full current-state snapshot. Invalid, forged or differently scoped cursors fail validation.
+
+Core transitions and metadata outbox writes commit atomically. The existing job loop publishes committed changes in bounded batches, using a transactional counter under a short stream lock. Producers never take that stream lock; allocation order in the unpublished outbox is not a replay cursor. A transaction that commits late receives a later published position, avoiding skipped events. Delivery retries and global state remain core-owned. Polls may lag one job tick; the API makes no transport calls. Failed/rolled-back transactions publish nothing.
+
+`NOTIFICATION_AUDIT_RETENTION_DAYS` configures this independent audit history, default 90 (1–3650). Inbox retention and dedupe receipts remain separate. Audit metadata survives notice deletion and plugin removal, but account deletion removes that account's records. Migration `0037e34ac954` adds only outbox/audit/stream tables after `42bb6ebaa05e`, with no fabricated historical changes. Adoption preserves existing data; downgrade refuses populated history or an advanced cursor stream.

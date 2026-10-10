@@ -82,6 +82,34 @@ async function library() {
 }
 
 describe("game library filtering", () => {
+  it("finds one main game through any owned copy while using main status and favorites", async () => {
+    const view = await library();
+    const main = game("Main", "playing", ["RPG"], true);
+    const copy = game("Epic custom title", "backlog", []);
+    copy.parentGameId = main.id;
+    copy.relationshipType = "owned_copy";
+    copy.source = "Epic Games";
+    copy.platforms = [
+      {
+        platform: "PlayStation 5",
+        playtimeMinutes: 10,
+        completionPercent: null,
+        lastPlayedAt: null,
+      },
+    ];
+    copy.achievementTotal = 5;
+    view.games.value = [main, copy];
+    expect(view.filteredGames.value.map((entry) => entry.id)).toEqual(["Main"]);
+    expect(view.ownedCopyCount(main)).toBe(2);
+    view.metadataProviderFilter.value = "Epic Games";
+    view.statusFilter.value = "playing";
+    view.favoritesOnly.value = true;
+    view.searchQuery.value = "Epic custom";
+    expect(view.filteredGames.value.map((entry) => entry.id)).toEqual(["Main"]);
+    expect(view.statusCounts.value.all).toBe(1);
+    view.statusFilter.value = "backlog";
+    expect(view.filteredGames.value).toEqual([]);
+  });
   it("keeps local filters on a fresh visit but honors shared links on re-entry", async () => {
     const view = await library();
     view.toggleTagFilter("Indie");
