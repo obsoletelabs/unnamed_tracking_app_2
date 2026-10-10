@@ -15,6 +15,14 @@ depends_on: str | None = None
 
 
 def upgrade() -> None:
+    columns = {
+        column["name"]
+        for column in sa.inspect(op.get_bind()).get_columns(
+            "plugin_notification_provider_registrations"
+        )
+    }
+    if "definition" in columns:
+        return
     op.add_column(
         "plugin_notification_provider_registrations",
         sa.Column("definition", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
