@@ -119,5 +119,19 @@ def test_notification_delivery_injects_host_verified_recipient_context(monkeypat
             "user_id": str(user_id),
             "is_admin": False,
         }
+
+        render_action = Mock(return_value={"style": "embed", "fields": ["title"]})
+        registry.action = render_action
+        runtime.PluginRegistry.notification_delivery(
+            registry,
+            "official.discord-bot-notifications",
+            "render",
+            {"delivery": {"title": "Preview", "body": "No context mutation."}},
+            user_id=str(user_id),
+            installation_id=str(installation_id),
+            attempt_id=str(attempt_id),
+            _render_only=True,
+        )
+        assert "_plugin_context" not in render_action.call_args.args[2]
     finally:
         sys.modules.pop(spec.name, None)
