@@ -2940,8 +2940,12 @@ class PluginRegistry:
         self.supervisor._authorize_capability(
             plugin_id, "notification_providers.deliver", user_id=user_id
         )
+        action_values = {
+            **values,
+            "_plugin_context": {"user_id": user_id, "is_admin": False},
+        }
         return self.action(
-            plugin_id, action_id, values, user_id=user_id,
+            plugin_id, action_id, action_values, user_id=user_id,
             _notification_authorized=not _render_only,
         )
 
