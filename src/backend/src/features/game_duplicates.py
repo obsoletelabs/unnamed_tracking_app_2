@@ -1,6 +1,7 @@
 """Conservative duplicate suggestions across host and plugin library imports."""
 
 from collections import defaultdict
+from collections.abc import Iterable
 from itertools import combinations
 from typing import Any
 from unicodedata import normalize
@@ -8,6 +9,7 @@ from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.game import Game
@@ -58,6 +60,22 @@ def compatible(first: dict[str, Any], second: dict[str, Any]) -> bool:
     )
 
 
+def _evidence_groups(
+    games: Iterable[RowMapping],
+) -> dict[tuple[str, ...], list[dict[str, Any]]]:
+    """Group compact rows by title or explicit provider identity, keeping manual titles."""
+    groups: dict[tuple[str, ...], list[dict[str, Any]]] = defaultdict(list)
+    for row in games:
+        game = dict(row)
+        key = match_key(row["title"])
+        if key:
+            groups[("same_title", key)].append(game)
+        for namespace, identity in (row["provider_ids"] or {}).items():
+            if identity:
+                groups[("shared_identity", namespace, identity)].append(game)
+    return groups
+
+
 async def suggestions(db: AsyncSession, user_id: UUID, limit: int = 50) -> dict[str, Any]:
     """Read compact owned rows once; bound the response and avoid provider requests."""
     games = (
@@ -76,19 +94,17 @@ async def suggestions(db: AsyncSession, user_id: UUID, limit: int = 50) -> dict[
             )
         ).all()
     )
-    by_title: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for row in games:
-        key = match_key(row["title"])
-        if key:
-            by_title[key].append(dict(row))
-    pairs: list[dict[str, dict[str, Any]]] = []
-    for group in by_title.values():
+    pairs: list[dict[str, Any]] = []
+    seen: set[tuple[UUID, UUID]] = set()
+    for evidence, group in _evidence_groups(games).items():
         for first, second in combinations(group, 2):
-            if (first["id"], second["id"]) in dismissed or not compatible(first, second):
+            pair = (first["id"], second["id"])
+            if pair in seen or pair in dismissed or not compatible(first, second):
                 continue
+            seen.add(pair)
             if len(pairs) == limit:
                 return {"pairs": pairs, "has_more": True}
-            pairs.append({"first": first, "second": second})
+            pairs.append({"first": first, "second": second, "reason": evidence[0]})
     return {"pairs": pairs, "has_more": False}
 
 

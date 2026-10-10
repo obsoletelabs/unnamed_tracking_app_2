@@ -16,6 +16,7 @@ export interface DuplicateGame {
 export interface DuplicatePair {
   first: DuplicateGame;
   second: DuplicateGame;
+  reason: "same_title" | "shared_identity";
 }
 
 export interface DuplicateSuggestions {

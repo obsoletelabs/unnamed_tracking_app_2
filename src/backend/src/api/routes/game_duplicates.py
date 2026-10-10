@@ -1,7 +1,7 @@
 """User-scoped duplicate review without provider-specific or notification coupling."""
 
 from datetime import date
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -33,6 +33,7 @@ class DuplicateGame(BaseModel):
 class DuplicatePair(BaseModel):
     first: DuplicateGame
     second: DuplicateGame
+    reason: Literal["same_title", "shared_identity"]
 
 
 class DuplicateSuggestions(BaseModel):

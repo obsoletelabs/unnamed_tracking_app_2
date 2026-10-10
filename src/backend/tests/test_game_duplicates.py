@@ -82,6 +82,22 @@ async def test_distinct_ids_in_same_source_remain_distinct(flow):
     assert (await flow.client.get("/api/game-duplicates")).json()["pairs"] == []
 
 
+async def test_shared_identity_finds_manual_titles_and_deduplicates_evidence(flow):
+    async with SessionLocal() as db:
+        original = await db.get(Game, flow.game_id)
+        original.provider_ids = {"steam": "620", "igdb": "72"}
+        original.locked_fields = ["title"]
+        await db.commit()
+    await add_game(flow.user_id, "My personal title", provider_ids={"steam": "620", "igdb": "72"})
+    result = (await flow.client.get("/api/game-duplicates")).json()
+    assert len(result["pairs"]) == 1
+    assert result["pairs"][0]["reason"] == "shared_identity"
+    assert {result["pairs"][0][side]["title"] for side in ("first", "second")} == {
+        "Flow",
+        "My personal title",
+    }
+
+
 async def test_keep_both_is_idempotent_canonical_and_survives_plugin_replays(flow, monkeypatch):
     monkeypatch.setattr("src.features.imports.library_games.create_game_folder", lambda *_: None)
     payload = {

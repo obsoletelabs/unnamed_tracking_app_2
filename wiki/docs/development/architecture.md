@@ -64,7 +64,7 @@ Both caches are disposable. Deleting `.cache/` loses nothing that cannot be rebu
 
 ## Shared building blocks
 
-Game duplicate review is host-owned in `features/game_duplicates.py`. The authenticated `GET /api/game-duplicates` reads compact active entries across all import sources without provider calls, suggests conservative title matches, and bounds each response to at most 100 pairs. Known conflicting years, platforms and identities are excluded. `POST /api/game-duplicates/keep-both` records a canonical, user-owned pair in `game_duplicate_dismissals`; repeat/reversed requests are idempotent and ordinary provider replays retain the decision. Neither endpoint merges or deletes library entries.
+Game duplicate review is host-owned in `features/game_duplicates.py`. The authenticated `GET /api/game-duplicates` reads compact active entries across all import sources without provider calls, suggests conservative title or shared-identity matches, and bounds each response to at most 100 pairs. Known conflicting years, platforms and identities are excluded. `POST /api/game-duplicates/keep-both` records a canonical, user-owned pair in `game_duplicate_dismissals`; repeat/reversed requests are idempotent and ordinary provider replays retain the decision. Neither endpoint merges or deletes library entries.
 
 Movies, TV shows and anime, and game collections and media lists, were near copies of each other. They now share code, and a change to one of these pieces changes all of them:
 

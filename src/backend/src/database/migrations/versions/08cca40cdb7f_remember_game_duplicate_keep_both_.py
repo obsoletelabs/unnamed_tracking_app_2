@@ -11,6 +11,8 @@ tables detected by autogenerate are deliberately preserved.
 import sqlalchemy as sa
 from alembic import op
 
+from src.database import migration_helpers as h
+
 revision: str = "08cca40cdb7f"
 down_revision: str | None = "42bb6ebaa05e"
 branch_labels: str | None = None
@@ -18,7 +20,8 @@ depends_on: str | None = None
 
 
 def upgrade() -> None:
-    op.create_table(
+    # Adopt metadata-created databases using the existing safe-rerun convention.
+    h.create_table_if_missing(
         "game_duplicate_dismissals",
         sa.Column("user_id", sa.UUID(), nullable=False),
         sa.Column("first_game_id", sa.UUID(), nullable=False),

@@ -45,10 +45,25 @@ export async function checkGameDuplicates({ browser, admin, origin, evidenceRoot
         await page.getByText("No possible duplicates to review.", { exact: true }).waitFor();
         await page.reload();
         await page.getByText("No possible duplicates to review.", { exact: true }).waitFor();
+        const renamedIds = [];
+        for (const name of ["My custom game title", "Provider game title"]) {
+          const created = await context.request.post(origin + "/api/game/create", { data: {
+            title: `${name} ${width}`, folder_location: `identity-review-${width}-${Date.now()}`,
+            provider_ids: { igdb: String(width) },
+          } });
+          assert.equal(created.status(), 201);
+          const game = await created.json(); ids.push(game.id); renamedIds.push(game.id);
+        }
+        await page.getByRole("button", { name: "Check again", exact: true }).click();
+        await page.getByText("A provider identity matches.", { exact: false }).waitFor();
+        assert.equal(await page.locator(".duplicate-pair").count(), 1);
+        await page.getByRole("button", { name: "Keep both", exact: true }).click();
+        await page.getByText("No possible duplicates to review.", { exact: true }).waitFor();
+        for (const id of renamedIds) assert.equal((await context.request.delete(origin + `/api/game/delete/${id}`)).status(), 204);
         assert.equal((await context.request.get(origin + "/api/game-duplicates")).status(), 200);
         for (const id of pair) assert.equal((await context.request.get(origin + `/api/game/get/${id}`)).status(), 200);
         assert.deepEqual(errors, []);
-        report.passed.push(`Real API comparison, long Unicode title/identity, retry, persisted Keep both and unchanged games: ${width}`);
+        report.passed.push(`Real API comparison, long Unicode title/identity, retry, persisted Keep both, custom-title identity match and unchanged games: ${width}`);
       } finally { await context.close(); }
       for (const id of pair) assert.equal((await admin.request.delete(origin + `/api/game/delete/${id}`)).status(), 204);
     }

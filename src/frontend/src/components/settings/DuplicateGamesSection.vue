@@ -79,6 +79,14 @@ onBeforeUnmount(() => request.abort());
       No possible duplicates to review.
     </p>
     <article v-for="pair in pairs" :key="pairKey(pair)" class="duplicate-pair">
+      <p class="intro">
+        {{
+          pair.reason === "shared_identity"
+            ? "A provider identity matches."
+            : "These titles match."
+        }}
+        Review both entries before deciding.
+      </p>
       <div class="comparison">
         <div
           v-for="game in [pair.first, pair.second]"
