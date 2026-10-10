@@ -155,27 +155,29 @@ async function sync(row: Row) {
         >
         <span class="info">
           <strong>{{ row.name }}</strong>
-          <span class="detail">{{ row.detail }}</span>
+          <span class="detail" :title="row.detail">{{ row.detail }}</span>
         </span>
         <span class="pill" :class="{ ok: row.connected, bad: row.error }">{{
           row.error ? "Error" : row.connected ? "Connected" : "Not connected"
         }}</span>
-        <button
-          v-if="row.syncable && row.connected"
-          type="button"
-          class="btn"
-          :disabled="syncing !== null"
-          @click="sync(row)"
-        >
-          {{ syncing === row.name ? "Syncing…" : "Sync now" }}
-        </button>
-        <button
-          type="button"
-          class="btn ghost"
-          @click="emit('navigate', 'sources')"
-        >
-          Manage
-        </button>
+        <span class="controls">
+          <button
+            v-if="row.syncable && row.connected"
+            type="button"
+            class="btn"
+            :disabled="syncing !== null"
+            @click="sync(row)"
+          >
+            {{ syncing === row.name ? "Syncing…" : "Sync now" }}
+          </button>
+          <button
+            type="button"
+            class="btn ghost"
+            @click="emit('navigate', 'sources')"
+          >
+            Manage
+          </button>
+        </span>
       </li>
     </ul>
   </section>
@@ -217,7 +219,8 @@ h3 {
   gap: 8px;
 }
 .row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 12px;
   padding: 10px 12px;
@@ -252,6 +255,13 @@ h3 {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.info strong {
+  overflow-wrap: anywhere;
+}
+.controls {
+  display: flex;
+  gap: 8px;
+}
 .pill {
   font-size: 0.72rem;
   font-weight: 700;
@@ -279,6 +289,7 @@ h3 {
   font-size: 0.8rem;
   font-weight: 700;
   cursor: pointer;
+  white-space: nowrap;
 }
 .btn.ghost {
   background: color-mix(in srgb, var(--ui-text) 6%, transparent);
@@ -287,5 +298,15 @@ h3 {
 .btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+@media (max-width: 600px) {
+  .row {
+    grid-template-columns: 34px minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+  .controls {
+    grid-column: 2 / -1;
+    justify-content: flex-end;
+  }
 }
 </style>

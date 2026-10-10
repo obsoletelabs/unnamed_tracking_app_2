@@ -1,4 +1,5 @@
-// Verify the built application against a disposable real backend, with no API mocks.
+// Verify the built application against a disposable real backend. The settings
+// layout stage uses explicit long response fixtures; other stages use real data.
 // Usage: UI_REVIEW_USERNAME=... UI_REVIEW_PASSWORD=... node tools/check_ui_redevelopment.mjs plugins-root evidence-root backend-url
 import assert from "node:assert/strict";
 import { checkTasksUi } from "./check_tasks_ui.mjs";
@@ -30,10 +31,11 @@ import { checkQuickTour } from "./check_quick_tour.mjs";
 import { checkShortcutSettings } from "./check_shortcut_settings.mjs";
 import { checkShortcutPriority } from "./check_shortcut_priority.mjs";
 import { checkPluginUpdateUi } from "./check_plugin_update_ui.mjs";
+import { checkSettingsLayout } from "./check_settings_layout.mjs";
 
 const [pluginsRoot, evidenceRoot, backendUrl] = process.argv.slice(2);
 const reviewStage = process.argv[5] ?? "shell";
-const reviewStages = ["shell", "shortcut-priority", "plugin-updates", "library-layouts", "tasks", "shortcut-settings", "tour", "mobile-navigation", "collections", "library-workflows", "plugin-discovery", "plugin-review", "upload", "welcome", "palette", "palette-editor", "startup", "appearance-settings", "editors", "search", "topbar", "ribbon", "details", "content", "branding", "home"];
+const reviewStages = ["shell", "settings-layout", "shortcut-priority", "plugin-updates", "library-layouts", "tasks", "shortcut-settings", "tour", "mobile-navigation", "collections", "library-workflows", "plugin-discovery", "plugin-review", "upload", "welcome", "palette", "palette-editor", "startup", "appearance-settings", "editors", "search", "topbar", "ribbon", "details", "content", "branding", "home"];
 assert(reviewStages.includes(reviewStage), `Unknown review stage: ${reviewStage}`);
 assert(pluginsRoot && evidenceRoot && backendUrl && process.env.UI_REVIEW_USERNAME && process.env.UI_REVIEW_PASSWORD, "Supply a disposable backend and review credentials.");
 const require = createRequire(path.resolve(pluginsRoot, "package.json"));
@@ -93,10 +95,15 @@ try {
     const id = process.env.PLUGIN_UPDATE_ID ?? "example.ui-api";
     assert(inventory.some(item => item.plugin_id === id));
     assert(inventory.every(item => item.plugin_id === id), "Keep only the harmless update example installed for this evidence stage.");
-  } else {
+  } else if (reviewStage !== "settings-layout") {
     assert.equal(inventory.length, 0, "Run this stage against a clean plugin inventory to exclude embedded-media evidence.");
   }
-  if (reviewStage === "shortcut-priority") {
+  if (reviewStage === "settings-layout") {
+    report.provider_and_stats_responses = "long layout fixtures";
+    await checkSettingsLayout({ browser, admin, origin, evidenceRoot, report });
+    await writeFile(path.join(evidenceRoot, "settings-layout-conformance.json"), JSON.stringify(report, null, 2) + "\n");
+    console.log(JSON.stringify({ passed: report.passed }, null, 2));
+  } else if (reviewStage === "shortcut-priority") {
     await checkShortcutPriority({ browser, admin, origin, evidenceRoot, report, checkOverflow });
     await writeFile(path.join(evidenceRoot, "shortcut-priority-conformance.json"), JSON.stringify(report, null, 2) + "\n");
     console.log(JSON.stringify({ cases: report.screens.length, passed: report.passed }, null, 2));
