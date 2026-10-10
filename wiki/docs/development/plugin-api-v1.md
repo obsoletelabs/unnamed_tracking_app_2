@@ -1,9 +1,13 @@
 # Plugin API v1
 
-The host advertises **v1.1.2** while retaining the `v1` wire major. Declared
-v1.1.0 and v1.1.1 contracts remain supported. See
+The host advertises **v1.1.3** while retaining the `v1` wire major. Declared
+v1.1.0, v1.1.1 and v1.1.2 contracts remain supported. See
 [v1.1 migration](plugin-v1.1-migration.md) for the restricted legacy v1.0
 compatibility boundary; omission is treated as v1.0.0.
+
+v1.1.3 adds [bounded game imports](plugin-game-imports.md) under the existing
+`games.write` grant. Optional integrations can import their own provider identities
+without host-specific code or access to database internals.
 
 v1.1.2 protects notification transport behind core-issued delivery work. Generic
 plugin/UI actions cannot authorize Discord delivery. Notification provider

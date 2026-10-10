@@ -118,15 +118,29 @@ async def get_or_create_game(
     external_id: str | None = None,
     *,
     index: LibraryIndex | None = None,
+    identity: UUID | None = None,
 ) -> tuple[Game, bool]:
-    """Prefer provider identity; adopt a title match only if it has no conflicting ID."""
+    """Prefer provider identity; explicit plugin identities never adopt a title match."""
+    if identity is not None and index is not None:
+        raise ValueError("Explicit identity cannot use a source index")
     if index is not None and (index.user_id != user_id or index.source != source):
         raise ValueError("Library index scope mismatch")
-    existing = (
-        index.find(title, external_id)
-        if index is not None
-        else await _find(db, user_id, title, source, external_id)
-    )
+    if identity is not None:
+        existing = await db.scalar(
+            select(Game)
+            .where(Game.id == identity, Game.user_id == user_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if existing is not None:
+            # The public import handler owns deleted/conflicting identity policy.
+            return existing, False
+    else:
+        existing = (
+            index.find(title, external_id)
+            if index is not None
+            else await _find(db, user_id, title, source, external_id)
+        )
     if existing is not None:
         previous_title = existing.title
         if previous_title != title:
@@ -141,9 +155,14 @@ async def get_or_create_game(
     folder_location = (
         index.claim_folder(title)
         if index is not None
-        else await _unique_folder_location(db, user_id, title)
+        else await _unique_folder_location(
+            db,
+            user_id,
+            f"{title[: FOLDER_NAME_MAX_LENGTH - 33]}-{identity.hex}" if identity else title,
+        )
     )
     game = Game(
+        id=identity,
         user_id=user_id,
         title=title,
         sort_title=title.lower(),
