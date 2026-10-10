@@ -189,7 +189,7 @@ async def resolve_destinations(db: AsyncSession, user_id: UUID) -> list[Notifica
                 .values(
                     user_id=user_id,
                     provider_id=registration.provider_id,
-                    endpoint_key="discord-user",
+                    endpoint_key=f"discord-user:{registration.installation_id}",
                     kind="discord_bot_dm",
                     channel_context="external",
                     privacy=int(Trust.PRIVATE),
