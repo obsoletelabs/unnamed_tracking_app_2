@@ -15,6 +15,12 @@ describe("plugin external navigation", () => {
       }),
     ).toBeNull();
     expect(pluginExternalDestination(action, { ok: false })).toBeNull();
+    expect(
+      pluginExternalDestination(action, {
+        ok: false,
+        redirect_url: "https://media.example",
+      }),
+    ).toBeNull();
   });
   it("rejects executable schemes and embedded credentials", () => {
     for (const redirect_url of [

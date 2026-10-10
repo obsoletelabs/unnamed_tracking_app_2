@@ -76,6 +76,7 @@ nav:
       - Plugin Platform Architecture: development/plugin-platform.md
       - Third-party Plugin Development: development/plugin-development.md
       - Plugin Capability APIs: development/plugin-capabilities.md
+      - Plugin Game Imports: development/plugin-game-imports.md
       - Plugin Backend Routes: development/plugin-backend-routes.md
       - Scoped Document API: development/plugin-documents.md
       - Plugin Manifest & Compatibility: development/plugin-manifest.md

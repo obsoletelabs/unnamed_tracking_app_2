@@ -55,6 +55,7 @@ from src.plugin_api.documents import (
     owned_documents_query,
     read_representation,
 )
+from src.plugin_api.game_import import dispatch_game_import
 from src.plugin_api.game_library import dispatch_game_library
 from src.plugin_api.grants import has_capability_grant
 from src.plugin_api.legacy_library import export_legacy_records
@@ -66,6 +67,7 @@ from src.plugin_api.sessions import dispatch_sessions
 _DATA_ROOT = Path("/data/users")
 _METHOD_CAPABILITIES = {
     "games.list": "games.read",
+    "games.import": "games.write",
     "games.details.list": "games.read",
     "games.get": "games.read",
     "games.media.list": "media.read",
@@ -176,6 +178,9 @@ async def dispatch_gateway_request(
         "network.request": partial(asyncio.to_thread, outbound_json, payload),
         "media.list": partial(_list_media, db, user_id=user_id, payload=payload),
         "games.list": partial(_list_games, db, user_id=user_id, payload=payload),
+        "games.import": partial(
+            dispatch_game_import, db, plugin_id=plugin_id, user_id=user_id, payload=payload
+        ),
         "games.metadata.search": partial(_search_metadata, db, user_id=user_id, payload=payload),
         "documents.list": partial(_list_documents, db, user_id=user_id, payload=payload),
         "documents.read": partial(_read_document, db, user_id=user_id, payload=payload),
