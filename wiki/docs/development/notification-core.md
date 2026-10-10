@@ -176,5 +176,11 @@ codes before core persistence.
 Generic endpoints currently support PUBLIC/PRIVATE standard notifications only.
 Provider declarations cannot assert SECURE or recovery eligibility. Verified
 built-in email and the authenticated inbox retain their existing trust rules.
-The declaration/handoff increment precedes generic enrollment controls and the
-maintained plugin migration; do not migrate deployed credentials automatically.
+Generic enrollment currently exposes
+`POST /api/settings/notification-providers/plugin-destinations` for declared
+destination kinds without per-destination fields. It checks the provider grant
+and installation, invokes the declared configure action as the authenticated
+user, then stores an opaque host endpoint reference. It never accepts or stores
+plugin secrets. Field-driven generic forms and destination retirement/unlink
+synchronization remain follow-up work; do not migrate deployed credentials
+automatically.
