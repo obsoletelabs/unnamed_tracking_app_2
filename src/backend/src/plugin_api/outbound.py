@@ -13,6 +13,8 @@ from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 MAX_BYTES = 4 * 1024 * 1024
+# Provider bearer tokens may contain several KiB of signed claims.
+MAX_AUTHORIZATION_LENGTH = 16 * 1024
 
 
 class NoRedirects(HTTPRedirectHandler):
@@ -53,7 +55,7 @@ def _valid_header(key: object, value: object) -> bool:
         return False
     return (
         len(key) <= 128
-        and len(value) <= 2048
+        and len(value) <= (MAX_AUTHORIZATION_LENGTH if key.lower() == "authorization" else 2048)
         and "\n" not in key + value
         and "\r" not in key + value
         and key.lower()
