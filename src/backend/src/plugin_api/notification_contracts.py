@@ -1,4 +1,4 @@
-"""Bounded public notification source declarations and event facts for Plugin API v1."""
+"""Bounded public notification declarations and event facts for Plugin API v1."""
 
 from string import Formatter
 from typing import Literal, Self
@@ -8,14 +8,35 @@ from pydantic import Field, StrictBool, StrictInt, StrictStr, model_validator
 from .base_contracts import ContractModel
 
 
+class NotificationProviderDeclaration(ContractModel):
+    """A plugin declares its destination contract; the plugin performs delivery."""
+
+    provider_id: str = Field(
+        min_length=3,
+        max_length=128,
+        pattern=r"^[a-z0-9][a-z0-9._-]*$",
+    )
+    name: str = Field(min_length=1, max_length=128)
+    action_id: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[a-z0-9][a-z0-9._-]*$",
+    )
+    destination_kind: str = Field(
+        min_length=1,
+        max_length=32,
+        pattern=r"^[a-z0-9][a-z0-9._-]*$",
+    )
+    channel_context: Literal["external", "internal"] = "external"
+    privacy: Literal["PUBLIC", "PRIVATE"] = "PUBLIC"
+
+
 class NotificationTypeRegistration(ContractModel):
     """Host-interpreted plain-text templates; producers do not choose delivery endpoints."""
 
     event_type: str = Field(min_length=3, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
     label: str = Field(min_length=1, max_length=128)
     description: str = Field(default="", max_length=500)
-    # Generic plugin facts cannot assert that arbitrary user content is public.
-    # Host media interpreters retain their separately approved PUBLIC projection.
     required_trust: Literal["PRIVATE", "SECURE"] = "PRIVATE"
     purpose: Literal["standard", "security", "recovery"] = "standard"
     severity: Literal["info", "warning", "error"] = "info"
