@@ -1,0 +1,28 @@
+[
+  {
+    "width": 390,
+    "first_version": "1791610121547607246-1791610121547607246-1658741-555",
+    "replacement_version": "1791610123575792395-1791610123575792395-1658678-549",
+    "checks": [
+      "actual upload updates both surfaces",
+      "replacement changes version",
+      "reload retains URL",
+      "stale version uncached",
+      "private immutable current version",
+      "no picture failures or page errors"
+    ]
+  },
+  {
+    "width": 1440,
+    "first_version": "1791610127384159657-1791610127384159657-1658932-555",
+    "replacement_version": "1791610128912307733-1791610128912307733-1658867-549",
+    "checks": [
+      "actual upload updates both surfaces",
+      "replacement changes version",
+      "reload retains URL",
+      "stale version uncached",
+      "private immutable current version",
+      "no picture failures or page errors"
+    ]
+  }
+]
