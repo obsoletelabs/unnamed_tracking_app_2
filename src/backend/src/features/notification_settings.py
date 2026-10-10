@@ -287,7 +287,11 @@ def _provider_settings(
         or (smtp.configured if email else bool(registration and registration.revoked_at is None)),
         "configuration_scope": "internal"
         if inbox
-        else ("user" if registration and registration.transport == "discord_webhook" else "server"),
+        else (
+            "user"
+            if registration and registration.transport in {"discord_webhook", "plugin"}
+            else "server"
+        ),
         "destination_kind": "discord_webhook"
         if registration and registration.transport == "discord_webhook"
         else None,
