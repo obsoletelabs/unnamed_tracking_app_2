@@ -36,7 +36,6 @@ from .base_contracts import (
     MediaRepresentation,
     NotificationDeliveryRepresentation,
     NotificationDeliveryResult,
-    NotificationProviderRegistration,
     Page,
     Pagination,
     PermissionDeclaration,
@@ -73,6 +72,7 @@ from .dependency_graph import walk_dependency_graph
 from .notification_contracts import (
     NotificationEventEmission,
     NotificationFieldLayout,
+    NotificationProviderDeclaration as NotificationProviderRegistration,
     NotificationTypeRegistration,
 )
 from .ui_contracts import (
