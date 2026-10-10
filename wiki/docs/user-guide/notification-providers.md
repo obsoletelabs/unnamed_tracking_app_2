@@ -62,7 +62,7 @@ This is confirmation-based header support, not RFC 8058 one-click. `List-Unsubsc
 The maintained companion plugin **Discord Notifications** (`official.discord-notifications`)
 uses protected host delivery. Install and approve its provider permissions, then
 add webhooks under **Account → Notifications → Your providers → Discord**. The
-initial release is a reviewed source preview until signed catalogue promotion;
+signed official 1.0.0 release is available in the companion catalogue;
 use a compatible host implementing the protected Plugin API 1.1.2 contract.
 Administrators must permit Discord egress in the existing plugin runtime.
 

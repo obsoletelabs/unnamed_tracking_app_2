@@ -30,6 +30,7 @@ from src.features.notification_enrollment import (
     update_email,
 )
 from src.features.notification_providers.registry import get_notification_providers
+from src.features.notification_push_config import PushKeyEnvironmentLocked, ensure_vapid_key
 from src.features.notification_settings import routing_settings
 from src.features.notification_tests import queue_destination_test, test_smtp
 from src.features.notification_webhooks import create_webhook, remove_webhook, update_webhook
@@ -39,6 +40,17 @@ _NOTIFICATION_DB = Depends(get_db)
 _NOTIFICATION_USER = Depends(get_current_user)
 
 router = APIRouter(prefix="/api/settings/notification-providers", tags=["settings"])
+
+
+@router.post("/browser-configuration/key")
+async def generate_browser_push_key(
+    db: AsyncSession = _NOTIFICATION_DB,
+    _admin: User = Depends(get_current_admin),
+) -> dict:
+    try:
+        return await ensure_vapid_key(db)
+    except PushKeyEnvironmentLocked as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 
 class ProviderUpdate(BaseModel):

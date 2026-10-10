@@ -42,6 +42,7 @@ from src.database.models.game import Game
 from src.database.models.oidc_settings import OidcSettings
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features.notification_push_config import PUSH_FIELDS, validate_push_value
 from src.features.smtp_configuration import SMTP_FIELDS, validate_smtp_value
 
 _DB_DEFAULT = Depends(get_db)
@@ -82,6 +83,7 @@ _APP_FIELDS = {
     **NGINX_TLS_FIELDS,
     "PUBLIC_APP_URL": "public_app_url",
     **SMTP_FIELDS,
+    **PUSH_FIELDS,
     "STEAMGRIDDB_API_KEY": "steamgriddb_api_key",
     "RETROACHIEVEMENTS_API_KEY": "retroachievements_api_key",
     "GIANTBOMB_API_KEY": "giantbomb_api_key",
@@ -113,6 +115,7 @@ def _persisted_values(app: AppIntegrationSettings, oidc: OidcSettings) -> dict[s
                 *NGINX_TLS_FIELDS,
                 "PUBLIC_APP_URL",
                 *(set(SMTP_FIELDS) - {"SMTP_PASSWORD"}),
+                "WEB_PUSH_VAPID_SUBJECT",
                 "IGDB_CLIENT_ID",
                 "SCREENSCRAPER_DEVID",
                 "SCREENSCRAPER_SSID",
@@ -196,6 +199,11 @@ async def _save_configuration(
         if name in SMTP_FIELDS:
             try:
                 value = validate_smtp_value(attribute, value)
+            except ValueError as exc:
+                raise HTTPException(400, f"Invalid {name} configuration") from exc
+        if name in PUSH_FIELDS:
+            try:
+                value = validate_push_value(attribute, value)
             except ValueError as exc:
                 raise HTTPException(400, f"Invalid {name} configuration") from exc
         if name == "PUBLIC_APP_URL":

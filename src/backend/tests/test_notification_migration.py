@@ -76,6 +76,23 @@ def test_populated_notification_upgrade_preserves_inbox_and_suppresses_unsafe_wo
             )
             migrate("upgrade", "head")
             assert connection.execute(
+                "SELECT column_name FROM information_schema.columns WHERE table_schema = %s "
+                "AND table_name = 'app_integration_settings' AND column_name LIKE 'web_push_%%' "
+                "AND is_nullable = 'YES' ORDER BY column_name",
+                (schema,),
+            ).fetchall() == [("web_push_vapid_private_key",), ("web_push_vapid_subject",)]
+            connection.execute(
+                "INSERT INTO app_integration_settings (id, web_push_vapid_private_key, updated_at) "
+                "VALUES (%s, 'encrypted-test-key', 1)",
+                (uuid4(),),
+            )
+            with pytest.raises(subprocess.CalledProcessError) as failure:
+                migrate("downgrade", "a1a6b04b3606")
+            assert "Clear the browser push private key" in failure.value.stderr
+            connection.execute(
+                "UPDATE app_integration_settings SET web_push_vapid_private_key = NULL"
+            )
+            assert connection.execute(
                 "SELECT transport FROM plugin_notification_provider_registrations"
             ).fetchone() == ("legacy",)
             connection.execute(

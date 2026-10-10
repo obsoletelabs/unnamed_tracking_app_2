@@ -36,6 +36,11 @@ from src.database.models.app_integration_settings import AppIntegrationSettings
 from src.database.models.oidc_settings import OidcSettings
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features.notification_push_config import (
+    PUSH_FIELDS,
+    push_configuration,
+    validate_push_value,
+)
 from src.features.smtp_configuration import SMTP_FIELDS, smtp_configuration, validate_smtp_value
 
 _DB_DEFAULT = Depends(get_db)
@@ -59,6 +64,8 @@ class DeploymentSettingsRequest(BaseModel):
     smtp_password: str | None = Field(default=None, max_length=4096)
     smtp_from_address: str | None = Field(default=None, max_length=254)
     smtp_tls_mode: Literal["starttls", "ssl", "none"] | None = None
+    web_push_vapid_subject: str | None = Field(default=None, max_length=1024)
+    web_push_vapid_private_key: str | None = Field(default=None, max_length=2048)
     steamgriddb_api_key: str | None = None
     retroachievements_api_key: str | None = None
     giantbomb_api_key: str | None = None
@@ -91,6 +98,7 @@ class DeploymentSettingsRequest(BaseModel):
 # pylint: disable=duplicate-code
 _SECRET_FIELDS = {
     "smtp_password",
+    "web_push_vapid_private_key",
     "steamgriddb_api_key",
     "retroachievements_api_key",
     "giantbomb_api_key",
@@ -103,6 +111,7 @@ _SECRET_FIELDS = {
 _SAFE_PROVIDER_FIELDS = {
     "public_app_url",
     *(set(SMTP_FIELDS.values()) - {"smtp_password"}),
+    "web_push_vapid_subject",
     "igdb_client_id",
     "screenscraper_ssid",
     "screenscraper_devid",
@@ -112,6 +121,7 @@ _SAFE_PROVIDER_FIELDS = {
 _PROVIDER_ENV_NAMES = {
     "public_app_url": "PUBLIC_APP_URL",
     **{attribute: name for name, attribute in SMTP_FIELDS.items()},
+    **{attribute: name for name, attribute in PUSH_FIELDS.items()},
     "steamgriddb_api_key": "STEAMGRIDDB_API_KEY",
     "retroachievements_api_key": "RETROACHIEVEMENTS_API_KEY",
     "giantbomb_api_key": "GIANTBOMB_API_KEY",
@@ -157,6 +167,19 @@ def _provider_view(raw):
     return item
 
 
+def _validate_provider_value(field: str, value):
+    try:
+        if field == "public_app_url":
+            return validate_deployment_url(value or "")
+        if field in SMTP_FIELDS.values():
+            return validate_smtp_value(field, value)
+        if field in PUSH_FIELDS.values():
+            return validate_push_value(field, value)
+    except ValueError as exc:
+        raise HTTPException(400, f"Invalid {field} configuration") from exc
+    return value
+
+
 def _provider_rows(row):
     try:
         data = json.loads(row.providers_json or "[]")
@@ -186,6 +209,7 @@ async def get_deployment_settings(db: AsyncSession, admin: User) -> dict:
         app.nginx_realip_trusted_proxies,
     )
     smtp = await smtp_configuration(db)
+    push = await push_configuration(db)
     return {
         "nginx": {
             **effective_nginx_configuration(app, handler).model_dump(
@@ -206,6 +230,11 @@ async def get_deployment_settings(db: AsyncSession, admin: User) -> dict:
             "configured": smtp.configured,
             "tls_mode": smtp.tls_mode,
             "secure_transport": smtp.allows_sensitive,
+        },
+        "browser_push": {
+            "configured": push.configured,
+            "subject": push.subject,
+            "public_key": push.public_key,
         },
         "providers": providers,
         "provider_locks": provider_locks,
@@ -405,22 +434,14 @@ async def update_deployment_settings(
             raise HTTPException(
                 409, f"{field} is managed by the deployment environment and cannot be changed here."
             )
-        if field in SMTP_FIELDS.values() or field == "public_app_url":
-            try:
-                value = (
-                    validate_deployment_url(value or "")
-                    if field == "public_app_url"
-                    else validate_smtp_value(field, value)
-                )
-            except ValueError as exc:
-                raise HTTPException(400, f"Invalid {field} configuration") from exc
+        value = _validate_provider_value(field, value)
         if field == "oidc_providers_json":
             oidc.providers_json = _normalize_oidc_providers(value, oidc, effective_oidc_enabled)
         elif field.startswith("oidc_"):
             _update_oidc_field(oidc, field, value)
         elif field in _SECRET_FIELDS:
-            if field == "smtp_password" and value is None:
-                app.smtp_password = None
+            if field in {"smtp_password", "web_push_vapid_private_key"} and value is None:
+                setattr(app, field, None)
             elif value:
                 setattr(app, field, encrypt_secret(value))
         elif field in _SAFE_PROVIDER_FIELDS:

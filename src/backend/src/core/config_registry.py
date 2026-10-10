@@ -125,12 +125,34 @@ CONFIG_SECTIONS: tuple[ConfigSectionSpec, ...] = (
         "Deployment SMTP transport; users enroll their own recipient addresses.",
         60,
     ),
+    ConfigSectionSpec(
+        "web_push",
+        "Browser notifications",
+        "Host-owned Web Push identity; requires the active PWA contribution.",
+        65,
+    ),
 )
 
 # Add a field here first when introducing a new deployment/setup variable.
 # docs/CONFIGURATION.md contains the complete workflow for wiring that variable
 # through resolution, validation, persistence, and the generated UI.
 CONFIG_REGISTRY: tuple[ConfigSpec, ...] = (
+    ConfigSpec(
+        "WEB_PUSH_VAPID_SUBJECT",
+        "web_push",
+        label="Push service contact",
+        hint="A mailto address or HTTPS contact URL for this server.",
+        storage="app_integration",
+    ),
+    ConfigSpec(
+        "WEB_PUSH_VAPID_PRIVATE_KEY",
+        "web_push",
+        input_type="password",
+        label="VAPID private key",
+        hint="Base64 DER P-256 key material, never a file path. Keep stable across restarts.",
+        secret=True,
+        storage="app_integration",
+    ),
     ConfigSpec(
         "NGINX_TLS_ENABLED",
         "proxy",
