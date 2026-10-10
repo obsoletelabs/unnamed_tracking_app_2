@@ -2,11 +2,11 @@
 
 The authenticated in-app inbox and external deliveries are separate destinations. Marking a notification read or dismissing it changes the inbox; it does not cancel external work. Deleting it cancels unsent work and removes its stored content. A delivery already in progress may finish.
 
-External providers are optional. Plugin providers also need an active installation and permission grant. **Settings → Account → Notifications** starts with your configured providers and personal destinations, followed by notification types and Normal/Critical routing choices. Calendar settings are separate. Only implemented sources appear; price observation controls appear after a connected source emits an observation for your account.
+External providers are optional. Plugin providers also need an active installation and permission grant. **Settings â†’ Account â†’ Notifications** starts with your configured providers and personal destinations, followed by notification types and Normal/Critical routing choices. Calendar settings are separate. Only implemented sources appear; price observation controls appear after a connected source emits an observation for your account.
 
 ## Built-in email
 
-Administrators configure SMTP under **Settings → Administration → Notifications → Email delivery** or through the existing ENV handler. SMTP is built into the host. Password reset and invitation features remain plugins; adding SMTP does not install those features.
+Administrators configure SMTP under **Settings â†’ Administration â†’ Notifications â†’ Email delivery** or through the existing ENV handler. SMTP is built into the host. Password reset and invitation features remain plugins; adding SMTP does not install those features.
 
 | ENV name | Meaning |
 | --- | --- |
@@ -21,7 +21,7 @@ ENV values take precedence and cannot be replaced from the UI. STARTTLS and impl
 
 The port follows transport security until you edit it. A saved custom port stays fixed when security changes. **Use default port**, then save, restores automatic selection. Existing explicitly stored ports are preserved as custom values. ENV-managed ports remain locked.
 
-Add one or more personal email addresses under **Your providers → Email (SMTP)**. The initial address is your configured app email; you can enter another address. Prefilling an address does not enroll or verify it. Addresses start PRIVATE and may receive ordinary notifications. Request a verification email, then either open **Verify this email** and confirm, or enter its eight-digit code in settings. Links and codes share the same ten-minute, single-use challenge. Opening the link does not consume it, sign you into the app, or enable recovery routing. An address change, revoked challenge or successful code/link invalidates the other method. Codes allow five incorrect attempts. Resends are limited to one per minute per destination and ten requests per hour per user. Proof travels only to the selected email, never to another destination. When no usable app URL exists, code entry remains available.
+Add one or more personal email addresses under **Your providers â†’ Email (SMTP)**. The initial address is your configured app email; you can enter another address. Prefilling an address does not enroll or verify it. Addresses start PRIVATE and may receive ordinary notifications. Request a verification email, then either open **Verify this email** and confirm, or enter its eight-digit code in settings. Links and codes share the same ten-minute, single-use challenge. Opening the link does not consume it, sign you into the app, or enable recovery routing. An address change, revoked challenge or successful code/link invalidates the other method. Codes allow five incorrect attempts. Resends are limited to one per minute per destination and ten requests per hour per user. Proof travels only to the selected email, never to another destination. When no usable app URL exists, code entry remains available.
 
 ### Test delivery
 
@@ -35,11 +35,11 @@ Normal is the default urgency. Critical email adds high-priority headers; the ma
 
 ## Email unsubscribe
 
-Notification links follow destination URL preference → personal notification URL → shared public app URL → your last-used app origin. Configure your preferences under **Settings → Notifications → Notification links**; blank overrides inherit the default. Configure the shared URL under **Settings → Administration → Application**, setup, or `PUBLIC_APP_URL` through the existing ENV handler. That shared value must use HTTPS and a public fully qualified domain name. Its public DNS is managed by the administrator. The app remembers each user's origin when they open it while signed in, including a local IP or different domain. API-key/plugin traffic cannot change it. All of these URLs are independent of OIDC sign-in callbacks. Ordinary email receives no unsubscribe link until at least one usable URL exists.
+Notification links follow destination URL preference â†’ personal notification URL â†’ shared public app URL â†’ your last-used app origin. Configure your preferences under **Settings â†’ Notifications â†’ Notification links**; blank overrides inherit the default. Configure the shared URL under **Settings â†’ Administration â†’ Application**, setup, or `PUBLIC_APP_URL` through the existing ENV handler. That shared value must use HTTPS and a public fully qualified domain name. Its public DNS is managed by the administrator. The app remembers each user's origin when they open it while signed in, including a local IP or different domain. API-key/plugin traffic cannot change it. All of these URLs are independent of OIDC sign-in callbacks. Ordinary email receives no unsubscribe link until at least one usable URL exists.
 
 Ordinary notification emails include a `List-Unsubscribe` header and a visible footer link. Mail clients may offer an Unsubscribe command. Opening the link displays a confirmation page without changing settings; click **Stop email notifications** to turn off that concrete email destination, including its security/recovery routes. This requires no login. Your inbox, other addresses and notification history remain available; queued work for this destination is suppressed, while a send already in progress may finish.
 
-Links expire after 90 days. Changing/removing the address invalidates its old links. You can re-enable the same email in Settings → Notifications without repeating possession verification; an old unsubscribe link cannot disable it again after reactivation. Verification, recovery and security emails are transactional and omit the unsubscribe link; an ordinary-email link still disables all types for that destination.
+Links expire after 90 days. Changing/removing the address invalidates its old links. You can re-enable the same email in Settings â†’ Notifications without repeating possession verification; an old unsubscribe link cannot disable it again after reactivation. Verification, recovery and security emails are transactional and omit the unsubscribe link; an ordinary-email link still disables all types for that destination.
 
 This is confirmation-based header support, not RFC 8058 one-click. `List-Unsubscribe-Post` is not advertised. Display of a mail-client unsubscribe button also depends on the client's policies and the SMTP relay's authentication configuration.
 
@@ -61,7 +61,7 @@ This is confirmation-based header support, not RFC 8058 one-click. `List-Unsubsc
 
 The maintained companion plugin **Discord Notifications** (`official.discord-notifications`)
 uses protected host delivery. Install and approve its provider permissions, then
-add webhooks under **Account → Notifications → Your providers → Discord**. The
+add webhooks under **Account â†’ Notifications â†’ Your providers â†’ Discord**. The
 signed official 1.0.0 release is available in the companion catalogue;
 use a compatible host implementing the protected Plugin API 1.1.2 contract.
 Administrators must permit Discord egress in the existing plugin runtime.
@@ -106,4 +106,46 @@ Delivery is best-effort. The core persists attempts and retries transport failur
 
 The inbox defaults to 30 days of history. Retention preferences also support 180 and 365 days, or unlimited retention. Minimal deduplication receipts outlive notification content so old events do not reappear after deletion or retention cleanup.
 
-The [notification centre](notification-centre.md) provides paginated inbox filtering, grouped presentation and explicit retention controls. Browser/PWA push remains separate from the in-app inbox and is still pending implementation.
+The [notification centre](notification-centre.md) provides paginated inbox filtering, grouped presentation and explicit retention controls. Browser/PWA push remains separate from the in-app inbox; configure it as described below.
+
+
+## Browser / PWA push
+
+Administrators enable the existing PWA plugin and its `frontend.pwa` permission,
+then configure **Administration → Notifications → Browser delivery**. Set an explicit
+`mailto:` address or HTTPS server contact and generate a missing application key.
+ENV deployments can instead provide `WEB_PUSH_VAPID_SUBJECT` and
+`WEB_PUSH_VAPID_PRIVATE_KEY` (base64 DER P-256). Saved keys are encrypted and write-only.
+Keep the key stable: replacement/removal disables existing browser destinations and
+requires users to enroll again. ENV-owned configuration stays locked.
+
+Under **Account → Notifications → Your providers → Browser / PWA push**, enable
+account routing, give this browser a label and choose **Enable on this browser**.
+Allow the native browser permission. HTTPS is required outside localhost; on iPhone
+and iPad, install the app on the home screen first. Each browser has its own PRIVATE
+external destination. This never upgrades its trust or enables password resets,
+security-sensitive content or recovery secrets. Push uses Normal urgency.
+
+**Send test** queues a generic example to the selected browser through ordinary delivery
+state and retries. Keep its enrolled session signed in; the existing job tick may take
+a minute. Initial push services supported are Chromium/FCM, Mozilla, Apple and Windows
+notification hosts. Other/self-hosted push endpoints are rejected.
+
+Every preview says **New notification — Open Unnamed Tracking to view your
+notifications.** It contains no media/activity detail. The app must be reachable and
+the enrolled session eligible before a preview is displayed. Clicking opens this
+browser's own-origin notification centre; personal/destination link overrides do not
+change it. Browser permission, operating-system settings and the push service may
+suppress or delay delivery. There is no guarantee that the device displays an alert.
+
+Use the destination toggle to pause future delivery, or **Remove browser** to erase its
+subscription and cancel pending work. Signing out, switching accounts, session expiry,
+PWA disable/permission withdrawal, subscription expiry or key replacement requires fresh
+enrollment. Previous destinations remain inactive history. Re-enabling account delivery
+never replays notices created while it was off. The authenticated inbox remains independent.
+
+![Browser enrollment and private previews](../assets/notification-browser/account-push-dark.png)
+
+![Server browser configuration](../assets/notification-browser/admin-push-dark.png)
+
+![Mobile browser destinations](../assets/notification-browser/account-push-mobile-light.png)

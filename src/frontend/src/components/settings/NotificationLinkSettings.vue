@@ -55,7 +55,8 @@ async function saveDestination(id: string) {
     <p class="hint">
       Choose where notification links open. Leave blank to use the shared public
       app URL or your last-used app URL. These choices do not change sign-in or
-      OIDC redirects.
+      OIDC redirects. Browser push always opens the inbox on the origin where
+      that browser was enrolled.
     </p>
     <form @submit.prevent="emit('change', { notification_url: personal })">
       <label
@@ -83,7 +84,8 @@ async function saveDestination(id: string) {
       </p>
       <form
         v-for="destination in routing.destinations.filter(
-          (d) => d.active && d.context === 'external',
+          (d) =>
+            d.active && d.context === 'external' && d.kind !== 'browser_push',
         )"
         :key="destination.id"
         @submit.prevent="saveDestination(destination.id)"

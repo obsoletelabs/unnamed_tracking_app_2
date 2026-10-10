@@ -145,6 +145,51 @@ export async function refreshPwa() {
   }
 }
 
+export async function browserPushRegistration(): Promise<ServiceWorkerRegistration> {
+  await refreshPwa();
+  if (
+    !pwaState.enabled ||
+    !pwaState.available ||
+    !window.isSecureContext ||
+    !("serviceWorker" in navigator) ||
+    !("PushManager" in window)
+  )
+    throw new Error(
+      "Browser notifications need an enabled PWA provider, HTTPS and a supported browser.",
+    );
+  const current = await navigator.serviceWorker.getRegistration("/");
+  if (current?.active && owned(current.active)) return current;
+  let timeout: number | undefined;
+  try {
+    const ready = await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise<never>((_, reject) => {
+        timeout = window.setTimeout(
+          () =>
+            reject(
+              new Error("The PWA worker is not ready. Try again shortly."),
+            ),
+          5000,
+        );
+      }),
+    ]);
+    if (owned(ready.active)) return ready;
+    throw new Error("The app's PWA worker is unavailable.");
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+export async function unsubscribeBrowserPush(): Promise<void> {
+  if (!("serviceWorker" in navigator)) return;
+  for (const item of await navigator.serviceWorker.getRegistrations()) {
+    if (owned(item.active)) {
+      const subscription = await item.pushManager?.getSubscription();
+      if (subscription) await subscription.unsubscribe();
+    }
+  }
+}
+
 export function startPwa() {
   if (started) return;
   started = true;

@@ -1,0 +1,14 @@
+{
+  "pwa_package": "official.pwa-0.0.6.utp",
+  "signature": "verified by host preview/install",
+  "native_subscription": "owned PushManager fixture",
+  "transport": "captured; actual TLS encryption covered by backend tests",
+  "checks": [
+    "admin contact/key generation and write-only response",
+    "owner consent/enrollment/test/remove",
+    "PRIVATE external/no recovery",
+    "actual composed worker generic native display request (OS visibility is platform-dependent)",
+    "desktop/mobile no overflow",
+    "no page errors"
+  ]
+}

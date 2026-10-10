@@ -285,7 +285,7 @@ export interface NotificationRoutingProvider {
   enabled: boolean;
   available: boolean;
   configuration_scope: "internal" | "server" | "user";
-  destination_kind?: "discord_webhook" | null;
+  destination_kind?: "discord_webhook" | "browser_push" | null;
   critical_supported: boolean;
   critical_description?: string | null;
   transport_warning?: string | null;
@@ -369,7 +369,7 @@ export async function setNotificationProviderEnabled(
 }
 
 async function destinationRequest<T>(
-  kind: "email" | "webhook",
+  kind: "email" | "webhook" | "browser",
   path: string,
   method: string,
   payload?: object,
@@ -472,6 +472,65 @@ export function updateWebhookDestination(
 export function removeWebhookDestination(id: string) {
   return destinationRequest<{ removed: boolean }>(
     "webhook",
+    `/${encodeURIComponent(id)}`,
+    "DELETE",
+  );
+}
+
+export interface BrowserPushConfiguration {
+  enabled: boolean;
+  session_authenticated: boolean;
+  public_key: string;
+  current_destination_id: string | null;
+}
+
+export async function fetchBrowserPushConfiguration(): Promise<BrowserPushConfiguration> {
+  const response = await fetch(
+    "/api/settings/notification-providers/browser-configuration",
+    { credentials: "include", cache: "no-store" },
+  );
+  if (!response.ok) throw await failedRequest(response);
+  return response.json();
+}
+
+export async function generateBrowserPushKey(): Promise<{
+  public_key: string;
+}> {
+  const response = await fetch(
+    "/api/settings/notification-providers/browser-configuration/key",
+    { method: "POST", credentials: "include" },
+  );
+  if (!response.ok) throw await failedRequest(response);
+  return response.json();
+}
+
+export function createBrowserDestination(
+  subscription: PushSubscriptionJSON,
+  publicKey: string,
+  label: string,
+) {
+  return destinationRequest<{ id: string }>("browser", "", "POST", {
+    subscription,
+    public_key: publicKey,
+    label,
+  });
+}
+
+export function updateBrowserDestination(
+  id: string,
+  changes: { label?: string; enabled?: boolean },
+) {
+  return destinationRequest<{ updated: boolean }>(
+    "browser",
+    `/${encodeURIComponent(id)}`,
+    "PATCH",
+    changes,
+  );
+}
+
+export function removeBrowserDestination(id: string) {
+  return destinationRequest<{ removed: boolean }>(
+    "browser",
     `/${encodeURIComponent(id)}`,
     "DELETE",
   );

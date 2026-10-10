@@ -57,6 +57,10 @@ export async function logout(): Promise<void> {
     credentials: "include",
   });
   if (!response.ok) throw new Error("Could not sign out. Please try again.");
+  // Server session revocation is authoritative even if the browser is offline.
+  await import("./pwa")
+    .then((pwa) => pwa.unsubscribeBrowserPush())
+    .catch(() => {});
 }
 
 export async function fetchCurrentUser(): Promise<CurrentUser | null> {
