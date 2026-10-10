@@ -41,6 +41,7 @@ from src.features.notification_enrollment import (
     update_email,
 )
 from src.features.notification_policy import Trust
+from src.features.notification_providers.plugin import PluginNotificationProvider
 from src.features.notification_providers.registry import get_notification_providers
 from src.features.notification_push_config import (
     PUSH_PROVIDER,
@@ -446,14 +447,13 @@ async def create_plugin_destination(
     """Enroll one declared plugin destination without accepting endpoint credentials."""
     providers = await get_notification_providers(db)
     provider = providers.get(payload.provider_id)
-    registration = getattr(provider, "registration", None)
     if (
-        provider is None
-        or registration is None
-        or registration.transport != "plugin"
-        or not registration.definition
+        not isinstance(provider, PluginNotificationProvider)
+        or provider.transport != "plugin"
+        or not provider.registration.definition
     ):
         raise HTTPException(404, "Generic notification provider not found")
+    registration = provider.registration
     try:
         if not await provider.is_authorized(db, current_user.id):
             raise HTTPException(403, "Notification provider is not available to this account")
