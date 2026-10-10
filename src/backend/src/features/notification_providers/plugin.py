@@ -9,15 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_provider_setting import NotificationProviderSetting
-from src.database.models.plugin_notification_provider import (
-    PluginNotificationProviderRegistration,
-)
+from src.database.models.plugin_notification_provider import PluginNotificationProviderRegistration
 from src.database.models.user import User
 from src.features.notification_policy import Trust
-from src.plugin_api.contracts import (
-    NotificationDeliveryRepresentation,
-    NotificationDeliveryResult,
-)
+from src.plugin_api.contracts import NotificationDeliveryRepresentation, NotificationDeliveryResult
 from src.plugin_api.grants import has_capability_grant, installation_is_executable
 from src.plugin_api.runtime_client import (
     PluginRuntimeClient,
@@ -55,9 +50,7 @@ class PluginNotificationProvider:
     ) -> ProviderDestination | None:
         if setting is None or not setting.enabled or setting.user_id != user.id:
             return None
-        if self.is_plugin_owned:
-            return None
-        if self.transport != "legacy":
+        if self.is_plugin_owned or self.transport != "legacy":
             return None
         if not await self.is_authorized(db, user.id):
             return None
@@ -77,13 +70,11 @@ class PluginNotificationProvider:
         if not await self.is_authorized(db, user.id):
             return None
         if self.is_plugin_owned:
+            expected_privacy = (
+                int(Trust.PRIVATE) if self.transport == "plugin_private" else int(Trust.PUBLIC)
+            )
             if endpoint.kind != self.registration.destination_kind:
                 return None
-            expected_privacy = (
-                int(Trust.PRIVATE)
-                if self.transport == "plugin_private"
-                else int(Trust.PUBLIC)
-            )
             if endpoint.privacy != expected_privacy or endpoint.encrypted_configuration:
                 return None
             return ProviderDestination.for_endpoint(endpoint, self.name)
@@ -147,9 +138,7 @@ class PluginNotificationProvider:
         )
         try:
             if not await self.is_authorized(db, destination.user_id):
-                return DeliveryResult(
-                    success=False, error="Plugin provider authorization is unavailable."
-                )
+                return DeliveryResult(success=False, error="Plugin provider authorization is unavailable.")
             if message.attempt_id is None:
                 return DeliveryResult(success=False, error="Core delivery attempt is required.")
             endpoint = None
@@ -169,6 +158,7 @@ class PluginNotificationProvider:
                         "configuration_ref": endpoint.configuration_ref if endpoint is not None else None,
                         "privacy": endpoint.privacy if endpoint is not None else int(Trust.PUBLIC),
                     },
+                    "_plugin_context": {"user_id": str(destination.user_id), "is_admin": False},
                 },
                 user_id=str(destination.user_id),
                 installation_id=str(self.registration.installation_id),
@@ -177,8 +167,4 @@ class PluginNotificationProvider:
             result = NotificationDeliveryResult.model_validate(response)
         except (PluginRuntimeRequestError, PluginRuntimeUnavailable, ValueError) as exc:
             return DeliveryResult(success=False, retryable=True, error=str(exc)[:512])
-        return DeliveryResult(
-            success=result.success,
-            retryable=result.retryable,
-            error=result.error,
-        )
+        return DeliveryResult(success=result.success, retryable=result.retryable, error=result.error)
