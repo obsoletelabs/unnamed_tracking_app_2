@@ -496,6 +496,8 @@ async def create_plugin_destination(
     if not isinstance(result, dict) or result.get("ok") is not True:
         raise HTTPException(400, "Provider rejected destination configuration")
 
+    if endpoint is not None and endpoint.active and endpoint.enabled:
+        return {"id": str(endpoint.id), "kind": endpoint.kind, "existing": True}
     if endpoint is None:
         destination_id = uuid4()
         endpoint = NotificationDestination(
