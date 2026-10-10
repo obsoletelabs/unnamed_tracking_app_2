@@ -30,6 +30,14 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    columns = {
+        column["name"]
+        for column in sa.inspect(op.get_bind()).get_columns(
+            "plugin_notification_provider_registrations"
+        )
+    }
+    if "definition" not in columns:
+        return
     if op.get_bind().scalar(
         sa.text(
             "SELECT count(*) FROM plugin_notification_provider_registrations WHERE transport = 'plugin'"
