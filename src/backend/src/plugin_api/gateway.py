@@ -620,17 +620,28 @@ async def _register_provider(
             name=registration.name,
             action_id=registration.action_id,
             transport=registration.transport,
+            definition=registration.definition.model_dump(mode="json")
+            if registration.definition
+            else None,
         )
         db.add(existing)
     else:
         if existing.transport != registration.transport and existing.revoked_at is None:
             raise ValueError("Unregister the provider before changing its transport contract")
-        if existing.revoked_at is not None:
+        definition = (
+            registration.definition.model_dump(mode="json") if registration.definition else None
+        )
+        if (
+            existing.revoked_at is not None
+            or existing.action_id != registration.action_id
+            or existing.definition != definition
+        ):
             await retire_provider_destinations(db, registration.provider_id)
         existing.installation_id = installation_id
         existing.name = registration.name
         existing.action_id = registration.action_id
         existing.transport = registration.transport
+        existing.definition = definition
         existing.revoked_at = None
     await db.commit()
     return {

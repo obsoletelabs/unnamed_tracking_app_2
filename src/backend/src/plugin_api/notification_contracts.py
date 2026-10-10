@@ -7,29 +7,106 @@ from uuid import UUID
 from pydantic import Field, StrictBool, StrictInt, StrictStr, model_validator
 
 from .base_contracts import ContractModel
+from .ui_contracts import UiField
 
 
-class NotificationProviderDeclaration(ContractModel):
-    """A plugin declares its destination contract; the plugin performs delivery."""
+class NotificationDestinationDeclaration(ContractModel):
+    """Enrollment choices; independent core proof determines concrete endpoint trust."""
+
+    kind: str = Field(min_length=1, max_length=32, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    label: str = Field(min_length=1, max_length=128)
+    privacy: Literal["PUBLIC", "PRIVATE"] = "PUBLIC"
+    fields: tuple[UiField, ...] = Field(default=(), max_length=32)
+
+    @model_validator(mode="after")
+    def bounded_fields(self) -> Self:
+        validate_configuration_fields(self.fields)
+        return self
+
+
+def validate_configuration_fields(fields: tuple[UiField, ...]) -> None:
+    """Reuse field semantics with bounded metadata and no executable regex validation."""
+    if len({field.id for field in fields}) != len(fields):
+        raise ValueError("Configuration fields require unique IDs")
+    for field in fields:
+        if len(field.options) > 64:
+            raise ValueError("Configuration choices exceed their bounds")
+        if field.validation and field.validation.pattern:
+            raise ValueError("Provider configuration supports bounds and choices, not patterns")
+        if isinstance(field.default, str) and len(field.default) > 4096:
+            raise ValueError("Configuration default exceeds its bounds")
+        if isinstance(field.default, tuple) and len(field.default) > 64:
+            raise ValueError("Configuration default exceeds its bounds")
+
+
+class NotificationProviderFeatures(ContractModel):
+    """Supported delivery behavior; declarations never confer grants or verification."""
+
+    critical_supported: StrictBool = False
+    critical_description: str = Field(default="", max_length=500)
+    multiple_destinations: StrictBool = True
+
+    @model_validator(mode="after")
+    def describe_critical(self) -> Self:
+        if self.critical_supported and not str(self.critical_description).strip():
+            raise ValueError("Critical support requires an explanation of its behavior")
+        return self
+
+
+class NotificationProviderDefinition(ContractModel):
+    """Generic plugin-owned configuration and operations, without credential values."""
+
+    destinations: tuple[NotificationDestinationDeclaration, ...] = Field(min_length=1, max_length=8)
+    server_fields: tuple[UiField, ...] = Field(default=(), max_length=32)
+    configure_action: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    retire_action: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    test_action: str | None = Field(
+        default=None, min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$"
+    )
+    features: NotificationProviderFeatures = Field(default_factory=NotificationProviderFeatures)
+
+    @model_validator(mode="after")
+    def validate_definition(self) -> Self:
+        if len({destination.kind for destination in self.destinations}) != len(self.destinations):
+            raise ValueError("Destination kinds require unique IDs")
+        validate_configuration_fields(self.server_fields)
+        return self
+
+
+class NotificationProviderRegistration(ContractModel):
+    """Versioned registration preserving existing transports and adding generic plugin delivery."""
 
     provider_id: str = Field(min_length=3, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
     name: str = Field(min_length=1, max_length=128)
     action_id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
-    destination_kind: str = Field(
-        default="plugin", min_length=1, max_length=32, pattern=r"^[a-z0-9][a-z0-9._-]*$"
-    )
-    channel_context: Literal["external", "internal"] = "external"
-    privacy: Literal["PUBLIC", "PRIVATE"] = "PUBLIC"
-    transport: Literal["legacy", "plugin_public", "plugin_private"] = "plugin_public"
+    transport: Literal["legacy", "discord_webhook", "plugin"] = "legacy"
+    definition: NotificationProviderDefinition | None = None
 
     @model_validator(mode="after")
-    def synchronize_privacy(self) -> Self:
-        if self.transport == "legacy":
-            return self
-        expected = "plugin_private" if self.privacy == "PRIVATE" else "plugin_public"
-        if self.transport != expected:
-            raise ValueError("transport must match the declared provider privacy")
+    def require_generic_definition(self) -> Self:
+        if (self.transport == "plugin") != (self.definition is not None):
+            raise ValueError("Only generic plugin transport requires a provider definition")
         return self
+
+
+class PluginNotificationDestination(ContractModel):
+    """Opaque core-generated endpoint authority; contains no account or credential data."""
+
+    id: UUID
+    revision: StrictInt = Field(ge=1)
+    kind: str = Field(min_length=1, max_length=32, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+
+
+class PluginNotificationContent(ContractModel):
+    """Approved projection, not the canonical notification or user/entity records."""
+
+    notification_id: UUID
+    event_type: str = Field(min_length=1, max_length=128)
+    title: str = Field(min_length=1, max_length=500)
+    body: str = Field(min_length=1, max_length=10_000)
+    event_at: StrictInt = Field(ge=0)
+    urgency: Literal["normal", "critical"] = "normal"
+    link: str | None = Field(default=None, max_length=2048)
 
 
 class NotificationLifecycleQuery(ContractModel):

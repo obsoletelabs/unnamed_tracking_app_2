@@ -75,10 +75,11 @@ from .notification_contracts import (
     NotificationLifecycleEvent,
     NotificationLifecyclePage,
     NotificationLifecycleQuery,
+    NotificationProviderDefinition,
+    NotificationProviderRegistration,
     NotificationTypeRegistration,
-)
-from .notification_contracts import (
-    NotificationProviderDeclaration as NotificationProviderRegistration,
+    PluginNotificationContent,
+    PluginNotificationDestination,
 )
 from .ui_contracts import (
     HostExtensionSlot,
@@ -286,6 +287,9 @@ __all__ = [
     "DocumentContentRepresentation",
     "SessionRepresentation",
     "NotificationProviderRegistration",
+    "NotificationProviderDefinition",
+    "PluginNotificationContent",
+    "PluginNotificationDestination",
     "NotificationFieldLayout",
     "NotificationLifecycleEvent",
     "NotificationLifecyclePage",
