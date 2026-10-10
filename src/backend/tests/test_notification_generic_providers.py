@@ -293,7 +293,7 @@ async def test_generic_link_resolution_cannot_release_stale_authority(
 @pytest.mark.asyncio
 async def test_generic_private_destination_enrollment_is_owner_bound_and_idempotent(
     webhook_provider, monkeypatch
-):
+):  # noqa: F811
     p = webhook_provider
     registration = SimpleNamespace(
         provider_id=p.provider,
