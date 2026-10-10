@@ -6,7 +6,11 @@ from uuid import uuid4
 
 import pytest
 
-from src.features.notification_providers.plugin import PluginNotificationProvider
+from src.features.notification_providers.plugin import (
+    PluginNotificationProvider,
+    _protected_transport_failure,
+)
+from src.plugin_api.runtime_client import PluginRuntimeRequestError, PluginRuntimeUnavailable
 from src.features.notification_settings import _provider_settings
 
 
@@ -74,3 +78,23 @@ async def test_bot_dm_endpoint_requires_owner_provider_and_installation_match() 
         )
         is None
     )
+
+
+
+def test_discord_egress_policy_rejection_is_permanent_and_actionable() -> None:
+    failure = PluginRuntimeRequestError(
+        "runtime rejected protected transport",
+        status_code=422,
+        detail="Discord egress is disabled in this runtime",
+    )
+    result = _protected_transport_failure(failure)
+    assert result.success is False
+    assert result.retryable is False
+    assert result.error == "discord_egress_disabled"
+
+
+def test_runtime_unavailability_remains_retryable() -> None:
+    result = _protected_transport_failure(PluginRuntimeUnavailable("runtime unavailable"))
+    assert result.success is False
+    assert result.retryable is True
+    assert result.error == "provider_transport_unavailable"
