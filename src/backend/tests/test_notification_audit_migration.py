@@ -42,7 +42,7 @@ def test_lifecycle_migration_preserves_existing_data_and_adopts_without_replay()
     with psycopg.connect(url, autocommit=True) as connection:
         connection.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
         try:
-            migrate("upgrade", "42bb6ebaa05e")
+            migrate("upgrade", "08cca40cdb7f")
             connection.execute(sql.SQL("SET search_path TO {}").format(sql.Identifier(schema)))
             owner, notice = uuid4(), uuid4()
             connection.execute(
@@ -71,7 +71,8 @@ def test_lifecycle_migration_preserves_existing_data_and_adopts_without_replay()
                 "SELECT count(*) FROM notification_lifecycle_outbox"
             ).fetchone() == (0,)
             assert connection.execute("SELECT to_regclass('game_note_details')").fetchone()[0]
-            migrate("stamp", "42bb6ebaa05e")
+            assert connection.execute("SELECT to_regclass('game_duplicate_dismissals')").fetchone()[0]
+            migrate("stamp", "08cca40cdb7f")
             migrate("upgrade", "0037e34ac954")
             connection.execute(
                 """INSERT INTO notification_lifecycle_outbox (id, user_id, plugin_id,
@@ -79,13 +80,13 @@ def test_lifecycle_migration_preserves_existing_data_and_adopts_without_replay()
                    VALUES (%s, %s, 'example.retained', %s, %s, 'deleted', 1)""",
                 (uuid4(), owner, uuid4(), notice),
             )
-            blocked = migrate("downgrade", "42bb6ebaa05e", successful=False)
+            blocked = migrate("downgrade", "08cca40cdb7f", successful=False)
             assert "populated notification lifecycle history" in blocked.stderr
             assert connection.execute(
                 "SELECT count(*) FROM notification_lifecycle_outbox"
             ).fetchone() == (1,)
             connection.execute("DELETE FROM notification_lifecycle_outbox")
-            migrate("downgrade", "42bb6ebaa05e")
+            migrate("downgrade", "08cca40cdb7f")
             migrate("upgrade", "0037e34ac954")
         finally:
             connection.execute("SET search_path TO public")

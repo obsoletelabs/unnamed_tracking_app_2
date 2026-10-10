@@ -1,7 +1,7 @@
 """persist scoped notification lifecycle replay
 
 Revision ID: 0037e34ac954
-Revises: 42bb6ebaa05e
+Revises: 08cca40cdb7f
 Create Date: 2026-10-10 06:31:50.654690
 
 """
@@ -13,7 +13,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "0037e34ac954"
-down_revision: Union[str, None] = "42bb6ebaa05e"
+down_revision: Union[str, None] = "08cca40cdb7f"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
