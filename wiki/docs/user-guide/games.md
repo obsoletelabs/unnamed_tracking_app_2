@@ -51,6 +51,9 @@ A game can have:
 
 Uploaded files remain user-scoped. Deleted games, files, screenshots, profiles, and archives move to their corresponding trash views when supported and can be restored until purged or swept by retention policy.
 
+Achievement detail pages retain the Games / Collections navigation while loading
+or reporting a missing achievement. Use Back to return to the achievement's game.
+
 ## Documents and plugins
 
 The core file list allows normal downloads. Plugins with an approved `documents.read` grant can receive only safe document DTOs and supported PDF/plain-text content; they never receive host paths. See [Plugins](plugins.md).
