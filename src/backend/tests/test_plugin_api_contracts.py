@@ -545,3 +545,22 @@ def test_manifest_supports_sandboxed_and_explicit_native_frontends_together() ->
                 "native_frontend": {"entry": "native/index.js"},
             }
         )
+
+
+def test_discord_bot_dm_transport_is_a_supported_private_provider_contract() -> None:
+    provider = NotificationProviderRegistration(
+        provider_id="official.discord-bot-notifications.dm",
+        name="Discord Bot DM",
+        action_id="deliver",
+        transport="discord_bot_dm",
+    )
+    assert provider.transport == "discord_bot_dm"
+    assert provider.model_dump(mode="json")["transport"] == "discord_bot_dm"
+
+    with pytest.raises(ValidationError):
+        NotificationProviderRegistration(
+            provider_id="official.discord-bot-notifications.dm",
+            name="Discord Bot DM",
+            action_id="deliver",
+            transport="discord_username",
+        )
