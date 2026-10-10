@@ -8,6 +8,7 @@ import time
 from dataclasses import dataclass, replace
 from email.message import EmailMessage
 from email.policy import SMTP
+from html import escape
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -53,11 +54,20 @@ def send_mail(
     if message.urgency == "critical":
         mail["Importance"] = "high"
         mail["X-Priority"] = "1"
-    body = message.body
+    mail.set_content(message.body)
     if unsubscribe_url:
         mail["List-Unsubscribe"] = f"<{unsubscribe_url}>"
-        body += f"\n\nStop email notifications to this destination:\n{unsubscribe_url}"
-    mail.set_content(body)
+        # Plain-text clients retain the body; the header supplies opt-out authority.
+        # HTML clients get a short linked footer instead of an exposed bearer URL.
+        body = escape(message.body).replace("\n", "<br>\n")
+        mail.add_alternative(
+            '<!doctype html><html lang="en"><body>'
+            f"<h1>{escape(message.title)}</h1><p>{body}</p>"
+            f"<p>Manage or unsubscribe from these notifications "
+            f'<a href="{escape(unsubscribe_url, quote=True)}">here</a>.</p>'
+            "</body></html>",
+            subtype="html",
+        )
     context = ssl.create_default_context()
     deadline = time.monotonic() + 25
     client = (
@@ -175,6 +185,6 @@ class SmtpNotificationProvider:
         if message.purpose == "standard" and message.kind != "destination_verification":
             endpoint = await db.get(NotificationDestination, destination.endpoint_id)
             origin = await notification_url(db, destination.user_id, endpoint)
-            if origin and endpoint:
-                link = unsubscribe_link(origin, endpoint)
+            if origin and endpoint and message.event_type:
+                link = unsubscribe_link(origin, endpoint, message.event_type)
         return await deliver_mail(destination.configuration, destination.address, message, link)
