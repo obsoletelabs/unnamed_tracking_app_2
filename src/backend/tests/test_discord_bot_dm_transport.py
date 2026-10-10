@@ -30,7 +30,7 @@ def test_bot_dm_is_private_but_not_a_secure_or_recovery_transport() -> None:
         smtp,
     )
     assert result["configuration_scope"] == "user"
-    assert result["destination_kind"] == "discord_bot_dm"
+    assert result["destination_kind"] is None
     assert result["secure_transport"] is False
 
 
