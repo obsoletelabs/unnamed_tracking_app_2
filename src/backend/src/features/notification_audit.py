@@ -157,6 +157,6 @@ async def publish_lifecycle(db: AsyncSession, *, limit: int = 200) -> int:
                 NotificationLifecycleAudit.sequence.in_(expired)
             )
         )
-        stream.expired_through = max(stream.expired_through, max(expired))
+        stream.expired_through = max(stream.expired_through, *expired)
     await db.commit()
     return len(pending)
