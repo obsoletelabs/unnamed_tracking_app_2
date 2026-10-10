@@ -152,7 +152,8 @@ async def get_game_asset_with_fallback(
     return Response(
         content=_default_cover_svg(game.id, game.title),
         media_type="image/svg+xml",
-        headers={"Cache-Control": "private, max-age=3600, must-revalidate"},
+        # Artwork can arrive at this same URL after an upload or metadata refresh.
+        headers={"Cache-Control": "private, no-cache"},
     )
 
 

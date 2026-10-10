@@ -150,8 +150,11 @@ unconfigured providers do not participate. Unavailable providers can be tried
 opportunistically. Search shows friendly failures; settings show classifications
 and the last validation time.
 
-Short-lived search cache entries expire after 30 seconds, are capped at 256 and
+Clean search results expire two minutes after acquisition, are capped at 256 and
 include user, query, media type, options, provider and configuration revision.
+Reopening or repeating a search reuses those results without extending their
+expiry. Every cache hit still rechecks current core credentials or plugin grants
+and lifecycle. Failed responses are retried instead of being cached.
 Persisted library identifiers have a separate lifecycle. Debug diagnostics log
 provider, phase, elapsed time and bounded outcomes without queries or secrets.
 
