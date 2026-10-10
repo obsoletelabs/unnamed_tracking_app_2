@@ -46,7 +46,7 @@ export async function checkAchievementNavigation({ browser, admin, origin, evide
       } finally { await context.close(); }
     }
   } finally {
-    assert.equal((await admin.request.delete(origin + `/api/game/delete/${game.id}`)).status(), 200);
+    assert.equal((await admin.request.delete(origin + `/api/game/delete/${game.id}`)).status(), 204);
     assert.equal((await admin.request.patch(origin + "/api/preferences", { data: { ui_theme: original.ui_theme, ui_welcome_completed: original.ui_welcome_completed } })).status(), 200);
   }
 }

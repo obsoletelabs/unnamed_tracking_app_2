@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 import { checkHomeWidgets } from "./check_home_widgets.mjs";
 import { checkBrandingUi } from "./check_branding_ui.mjs";
 import { checkDetailUi } from "./check_detail_ui.mjs";
+import { checkAchievementNavigation } from "./check_achievement_navigation.mjs";
 import { checkPaletteUi } from "./check_palette_ui.mjs";
 import { checkContentUi } from "./check_content_ui.mjs";
 import { checkCompletionBadges } from "./check_completion_badges.mjs";
@@ -36,6 +37,7 @@ import { checkSettingsLayout } from "./check_settings_layout.mjs";
 const [pluginsRoot, evidenceRoot, backendUrl] = process.argv.slice(2);
 const reviewStage = process.argv[5] ?? "shell";
 const reviewStages = ["shell", "settings-layout", "shortcut-priority", "plugin-updates", "library-layouts", "tasks", "shortcut-settings", "tour", "mobile-navigation", "collections", "library-workflows", "plugin-discovery", "plugin-review", "upload", "welcome", "palette", "palette-editor", "startup", "appearance-settings", "editors", "search", "topbar", "ribbon", "details", "content", "branding", "home"];
+reviewStages.push("achievement-navigation");
 assert(reviewStages.includes(reviewStage), `Unknown review stage: ${reviewStage}`);
 assert(pluginsRoot && evidenceRoot && backendUrl && process.env.UI_REVIEW_USERNAME && process.env.UI_REVIEW_PASSWORD, "Supply a disposable backend and review credentials.");
 const require = createRequire(path.resolve(pluginsRoot, "package.json"));
@@ -95,13 +97,18 @@ try {
     const id = process.env.PLUGIN_UPDATE_ID ?? "example.ui-api";
     assert(inventory.some(item => item.plugin_id === id));
     assert(inventory.every(item => item.plugin_id === id), "Keep only the harmless update example installed for this evidence stage.");
-  } else if (reviewStage !== "settings-layout") {
+  } else if (!["settings-layout", "achievement-navigation"].includes(reviewStage)) {
     assert.equal(inventory.length, 0, "Run this stage against a clean plugin inventory to exclude embedded-media evidence.");
   }
   if (reviewStage === "settings-layout") {
     report.provider_and_stats_responses = "long layout fixtures";
     await checkSettingsLayout({ browser, admin, origin, evidenceRoot, report });
     await writeFile(path.join(evidenceRoot, "settings-layout-conformance.json"), JSON.stringify(report, null, 2) + "\n");
+    console.log(JSON.stringify({ passed: report.passed }, null, 2));
+  } else if (reviewStage === "achievement-navigation") {
+    report.achievement_responses = "provider fixtures over a real disposable game";
+    await checkAchievementNavigation({ browser, admin, origin, evidenceRoot, report });
+    await writeFile(path.join(evidenceRoot, "achievement-navigation-conformance.json"), JSON.stringify(report, null, 2) + "\n");
     console.log(JSON.stringify({ passed: report.passed }, null, 2));
   } else if (reviewStage === "shortcut-priority") {
     await checkShortcutPriority({ browser, admin, origin, evidenceRoot, report, checkOverflow });
