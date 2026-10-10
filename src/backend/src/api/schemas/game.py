@@ -17,7 +17,7 @@ from src.database.models.game import (
 from src.helpers.currency_codes import CURRENCY_CODES
 
 GameRelationshipType = Literal[
-    "mod", "modpack", "expansion", "dlc", "standalone_expansion", "total_conversion"
+    "mod", "modpack", "expansion", "dlc", "standalone_expansion", "total_conversion", "owned_copy"
 ]
 
 

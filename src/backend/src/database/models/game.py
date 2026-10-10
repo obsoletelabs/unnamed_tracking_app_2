@@ -270,7 +270,7 @@ class Game(Base):
         index=True,
     )
     # "mod" | "modpack" | "expansion" | "dlc" | "standalone_expansion" |
-    # "total_conversion" — meaningless (should be NULL) when parent_game_id
+    # "total_conversion" | "owned_copy" — meaningless (should be NULL) when parent_game_id
     # is NULL, i.e. for a base/standalone game
     relationship_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
 

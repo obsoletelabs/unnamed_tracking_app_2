@@ -23,7 +23,8 @@ export type GameRelationshipType =
   | "expansion"
   | "dlc"
   | "standalone_expansion"
-  | "total_conversion";
+  | "total_conversion"
+  | "owned_copy";
 
 // where a game's achievement tracking comes from, 'retroachievements' means
 // synced via retroachievements.org, common for emulated/retro platforms

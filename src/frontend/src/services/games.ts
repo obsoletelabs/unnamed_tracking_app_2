@@ -199,6 +199,14 @@ export function mapBackendGame(raw: BackendGame): Game {
 // library already fetched and refresh quietly behind it.
 const gameCache = createEntityCache<Game>();
 export const peekGame = gameCache.peek;
+export function rememberGameRelationship(
+  id: string,
+  parentGameId: string | null,
+  relationshipType: GameRelationshipType | null,
+): void {
+  const game = gameCache.peek(id);
+  if (game) gameCache.put({ ...game, parentGameId, relationshipType });
+}
 // Every game, if a full list has been fetched this visit, so the library can
 // draw at once and refresh behind it.
 export const peekAllGames = (): Game[] | null =>

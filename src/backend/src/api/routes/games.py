@@ -139,6 +139,7 @@ from src.database.models.game import Game, GameLink, GameStatus
 from src.database.models.game_field_change import GameFieldChange
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features import game_ownership
 from src.features.metadata.locked_fields import apply_updates_with_locking, authorize_title_update
 from src.features.trash.game_trash import move_game_to_trash, restore_game_from_trash
 from src.features.trash.sweep import RETENTION_SECONDS
@@ -314,6 +315,7 @@ async def _validate_game_relationship(
         )
     if parent_game_id is None:
         return
+    await game_ownership.lock_changes(db, user_id)
     if game_id is not None and parent_game_id == game_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="A game cannot be its own parent."
@@ -327,6 +329,10 @@ async def _validate_game_relationship(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="parent_game_id does not exist."
         )
+    try:
+        await game_ownership.validate_relationship(db, user_id, parent, relationship_type, game_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @router.post(
@@ -504,6 +510,8 @@ async def update_game(
     actor: AuthenticatedActor = Depends(get_current_actor),
 ) -> Game:
     """Update a game and keep its derived sort title synchronized."""
+    if payload.model_fields_set & {"parent_game_id", "relationship_type"}:
+        await game_ownership.lock_changes(db, current_user.id)
     game = await _get_game_or_404(game_id, db, current_user.id, for_update=True)
 
     updates = _drop_nulls_for_required_fields(payload.model_dump(exclude_unset=True))
