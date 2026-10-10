@@ -496,9 +496,12 @@ async def create_plugin_destination(
     except PluginRuntimeRequestError as exc:
         if "Link and verify your Discord account" in exc.detail:
             raise HTTPException(
-                409, "Link and verify your Discord account before adding this destination"
+                409,
+                "Link and verify your Discord account before adding this destination",
             ) from exc
-        raise HTTPException(400, "Provider rejected destination configuration") from exc
+        raise HTTPException(
+            400, "Provider rejected destination configuration"
+        ) from exc
     if not isinstance(result, dict) or result.get("ok") is not True:
         raise HTTPException(400, "Provider rejected destination configuration")
 
