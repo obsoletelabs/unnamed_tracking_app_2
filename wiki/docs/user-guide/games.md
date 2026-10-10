@@ -40,6 +40,11 @@ Statistics continue to describe the original tracked records. If the main game
 is in Trash, its active copies become visible individually; restoring it restores
 the grouped presentation.
 
+The [phone grouping dialog](../assets/game-ownership/ownership-confirm-390.png)
+and [desktop owned-copy summary](../assets/game-ownership/ownership-main-1440.png)
+show this workflow. [Responsive validation](../assets/game-ownership/conformance.json)
+uses disposable game records and real grouping/separation APIs.
+
 ## Steam imports
 
 Steam library sync saves games and achievements before fetching store details and
