@@ -283,8 +283,7 @@ def _provider_settings(
         if inbox
         else (
             "user"
-            if registration
-            and registration.transport in {"discord_webhook", "discord_bot_dm"}
+            if registration and registration.transport in {"discord_webhook", "discord_bot_dm"}
             else "server"
         ),
         "destination_kind": (
@@ -304,5 +303,7 @@ def _provider_settings(
         )
         if email and smtp.configured and smtp.tls_mode == "none"
         else None,
-        "secure_transport": smtp.allows_sensitive if email else not (registration and registration.transport == "discord_bot_dm"),
+        "secure_transport": smtp.allows_sensitive
+        if email
+        else not (registration and registration.transport == "discord_bot_dm"),
     }
