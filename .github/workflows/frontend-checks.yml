@@ -34,6 +34,9 @@ jobs:
       - name: Check frontend file size
         run: node tools/check_frontend_size.mjs
 
+      - name: Test host notification worker privacy and retirement
+        run: node --test src/backend/tests/notification_push_worker.test.mjs
+
       - name: Fix formatting
         working-directory: src/frontend
         run: npm run format:fix
