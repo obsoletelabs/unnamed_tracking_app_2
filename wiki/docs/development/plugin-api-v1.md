@@ -178,7 +178,10 @@ access or authorize arbitrary impersonation. The target needs both grants.
 
 `network.request` accepts `{url, headers?}` and performs only HTTP(S) GET. It uses
 normal TLS verification, an 8-second timeout, no redirects and a 4 MiB response
-limit. URLs cannot contain embedded credentials or fragments. Header names are
+limit. Authorization values allow up to 16 KiB for provider tokens with signed
+claims; other header values retain their 2 KiB limit. Header names are matched
+case-insensitively and CR/LF is rejected before transport. URLs cannot contain
+embedded credentials or fragments. Header names are
 restricted to Accept, Authorization and X-Emby-Token; count/length and CRLF bounds
 are enforced. The generic transport treats those headers as opaque strings and
 contains no provider behavior. Responses are `{status: 200, data: <object/array>}`
@@ -302,7 +305,10 @@ optional notification denial must not break sync. No other methods can be delega
 
 `network.request` accepts `{url, headers?, method?: "GET"|"POST", body?: object}`. It uses
 normal TLS verification, an 8-second timeout, no redirects and a 4 MiB response
-limit. URLs cannot contain embedded credentials or fragments. Header names are
+limit. Authorization values allow up to 16 KiB for provider tokens with signed
+claims; other header values retain their 2 KiB limit. Header names are matched
+case-insensitively and CR/LF is rejected before transport. URLs cannot contain
+embedded credentials or fragments. Header names are
 restricted to Accept, Authorization and X-Emby-Token; count/length and CRLF bounds
 are enforced. The generic transport treats those headers as opaque strings and
 contains no provider behavior. POST JSON bodies are bounded to 64 KiB; other methods

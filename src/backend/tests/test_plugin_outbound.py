@@ -64,6 +64,35 @@ def test_server_errors_do_not_echo_remote_secrets(monkeypatch):
     }
 
 
+@pytest.mark.parametrize("header", ["Authorization", "authorization", "AUTHORIZATION"])
+def test_large_bearer_tokens_reach_transport_with_a_finite_limit(monkeypatch, header):
+    token = "bearer " + "x" * 8192
+
+    class Opener:
+        def open(self, request, timeout):
+            assert request.headers["Authorization"] == token
+            assert timeout == 8
+            response = io.BytesIO(b'{"records":[]}')
+            response.status = 200
+            return response
+
+    monkeypatch.setattr(outbound, "build_opener", lambda *_args: Opener())
+    assert outbound.outbound_json({"url": "https://host/Items", "headers": {header: token}})[
+        "data"
+    ] == {"records": []}
+    monkeypatch.setattr(
+        outbound, "build_opener", lambda *_args: pytest.fail("invalid headers reached HTTP")
+    )
+    for headers in (
+        {header: "x" * (16 * 1024 + 1)},
+        {header: token + "\r\nX-Other: injected"},
+        {"Cookie": "x" * 2049},
+        {"X-Emby-Token": "x" * 2049},
+    ):
+        with pytest.raises(ValueError, match="headers"):
+            outbound.outbound_json({"url": "https://host", "headers": headers})
+
+
 @pytest.mark.parametrize(
     "body",
     [b"x" * (outbound.MAX_BYTES + 1), b"invalid", b'"unexpected"'],
