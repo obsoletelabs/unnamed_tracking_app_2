@@ -73,6 +73,9 @@ from .dependency_graph import walk_dependency_graph
 from .notification_contracts import (
     NotificationEventEmission,
     NotificationFieldLayout,
+    NotificationLifecycleEvent,
+    NotificationLifecyclePage,
+    NotificationLifecycleQuery,
     NotificationTypeRegistration,
 )
 from .ui_contracts import (
@@ -282,6 +285,9 @@ __all__ = [
     "SessionRepresentation",
     "NotificationProviderRegistration",
     "NotificationFieldLayout",
+    "NotificationLifecycleEvent",
+    "NotificationLifecyclePage",
+    "NotificationLifecycleQuery",
     "NotificationEventEmission",
     "NotificationTypeRegistration",
     "NotificationDeliveryRepresentation",

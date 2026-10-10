@@ -38,6 +38,7 @@ from src.features.metadata.providers import (
 from src.features.metadata.service import search_games
 from src.features.notification_controller import emit_legacy_rows
 from src.features.notification_destinations import retire_provider_destinations
+from src.features.notification_feed import poll_lifecycle
 from src.features.notification_sources import emit_source, register_source, unregister_source
 from src.plugin_api.capabilities import capability_implies
 from src.plugin_api.contracts import (
@@ -88,6 +89,7 @@ _METHOD_CAPABILITIES = {
     "media.sync": "media.write",
     "network.request": "network.outbound",
     "events.poll": "events.subscribe",
+    "notifications.lifecycle.poll": "notifications.lifecycle.read",
     "notifications.send": "notifications.send",
     "notifications.emit": "notifications.emit",
     "notification_sources.register": "notification_sources.register",
@@ -186,6 +188,9 @@ async def dispatch_gateway_request(
         "documents.read": partial(_read_document, db, user_id=user_id, payload=payload),
         "media.import": partial(_import_media, db, user_id=user_id, payload=payload),
         "events.poll": partial(_poll_events, db, user_id=user_id, payload=payload),
+        "notifications.lifecycle.poll": partial(
+            poll_lifecycle, db, plugin_id, installation_id, user_id, payload
+        ),
         "notifications.send": partial(
             _send_notification,
             db,

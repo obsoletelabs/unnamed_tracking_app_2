@@ -14,6 +14,7 @@ from src.database.models.notification import Notification
 from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_receipt import NotificationReceipt
 from src.database.models.user import User
+from src.features.notification_audit import record_notices
 from src.features.notification_policy import (
     MEDIA_KINDS,
     Trust,
@@ -233,6 +234,7 @@ async def _accept(
         return None
     db.add(notification)
     await db.flush()
+    await record_notices(db, [notification], "created")
     await ensure_deliveries(db, [notification.id], preferences=preferences)
     return notification.id
 

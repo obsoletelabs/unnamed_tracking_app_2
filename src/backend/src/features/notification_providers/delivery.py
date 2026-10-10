@@ -20,6 +20,7 @@ from src.database.models.notification_delivery_attempt import NotificationDelive
 from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_provider_setting import NotificationProviderSetting
 from src.database.models.user import User
+from src.features.notification_audit import change_deliveries, record_deliveries
 from src.features.notification_destinations import resolve_destinations
 from src.features.notification_policy import INBOX_PROVIDER, Trust, route_choice, select_projection
 from src.features.notification_source_policy import source_delivery_allowed
@@ -64,7 +65,7 @@ async def ensure_deliveries(
             if projection is None:
                 continue
             inbox = destination.provider_id == INBOX_PROVIDER
-            await db.execute(
+            delivery_id = await db.scalar(
                 pg_insert(NotificationDelivery)
                 .values(
                     notification_id=notification.id,
@@ -80,7 +81,9 @@ async def ensure_deliveries(
                     next_attempt_at=now,
                 )
                 .on_conflict_do_nothing(index_elements=["notification_id", "destination_id"])
+                .returning(NotificationDelivery.id)
             )
+            await record_deliveries(db, [delivery_id] if delivery_id else [])
             if inbox:
                 notification.inbox_visible = True
     await db.flush()
@@ -120,6 +123,8 @@ async def _claim(db: AsyncSession) -> tuple[UUID, UUID] | None:
     delivery.claim_token = token
     delivery.lease_until = now + LEASE_SECONDS
     identity = (delivery.id, token)
+    await db.flush()
+    await record_deliveries(db, [delivery.id])
     await db.commit()
     return identity
 
@@ -127,7 +132,8 @@ async def _claim(db: AsyncSession) -> tuple[UUID, UUID] | None:
 async def _finish(
     db: AsyncSession, delivery_id: UUID, token: UUID, status: str, error: str | None = None
 ) -> None:
-    await db.execute(
+    await change_deliveries(
+        db,
         update(NotificationDelivery)
         .where(
             NotificationDelivery.id == delivery_id,
@@ -140,7 +146,7 @@ async def _finish(
             claim_token=None,
             lease_until=None,
             next_attempt_at=int(time.time()) + 60,
-        )
+        ),
     )
     await db.commit()
 
@@ -336,7 +342,8 @@ async def _dispatch(db: AsyncSession, delivery_id: UUID, token: UUID) -> bool:
         )
     )
     await db.flush()
-    await db.execute(
+    await change_deliveries(
+        db,
         update(NotificationDelivery)
         .where(
             NotificationDelivery.id == delivery_id,
@@ -349,7 +356,7 @@ async def _dispatch(db: AsyncSession, delivery_id: UUID, token: UUID) -> bool:
             claim_token=None,
             lease_until=None,
             next_attempt_at=int(time.time()) + 60 * (2 ** (delivery.attempts - 1)),
-        )
+        ),
     )
     await db.commit()
     return result.success

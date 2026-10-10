@@ -12,6 +12,7 @@ from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_provider_setting import NotificationProviderSetting
 from src.database.models.plugin_notification_provider import PluginNotificationProviderRegistration
 from src.database.models.plugin_permissions import PluginPermissionGrant
+from src.features.notification_audit import change_deliveries
 from src.features.notification_policy import INBOX_PROVIDER, PUSH_PROVIDER, Trust
 
 
@@ -29,7 +30,8 @@ async def withdraw_provider_work(
     destination_ids = select(NotificationDestination.id).where(
         NotificationDestination.provider_id == provider_id, owner, installation
     )
-    await db.execute(
+    await change_deliveries(
+        db,
         update(NotificationDelivery)
         .where(
             NotificationDelivery.destination_id.in_(destination_ids),
@@ -37,7 +39,7 @@ async def withdraw_provider_work(
         )
         .values(
             status="suppressed", last_error="provider_revoked", claim_token=None, lease_until=None
-        )
+        ),
     )
 
 
@@ -131,7 +133,8 @@ async def invalidate_legacy_configuration(db: AsyncSession, installation_id: UUI
         )
     )
     if destination_ids:
-        await db.execute(
+        await change_deliveries(
+            db,
             update(NotificationDelivery)
             .where(
                 NotificationDelivery.destination_id.in_(destination_ids),
@@ -142,7 +145,7 @@ async def invalidate_legacy_configuration(db: AsyncSession, installation_id: UUI
                 last_error="endpoint_changed",
                 claim_token=None,
                 lease_until=None,
-            )
+            ),
         )
 
 
