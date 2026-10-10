@@ -29,6 +29,8 @@ from .providers import Operation, PluginMetadataProvider
 
 logger = logging.getLogger(__name__)
 PRELOAD_CONCURRENCY = 5
+SEARCH_CACHE_SECONDS = 120
+SEARCH_CACHE_CAPACITY = 256
 
 
 class Provider(Protocol):
@@ -345,12 +347,14 @@ class MetadataHandler:
             candidates.extend(incoming)
             if len(candidates) >= session.request.limit:
                 break
-        self.cache[cache_key] = (
-            time.monotonic() + 30,
-            ProviderResponse(candidates=tuple(candidates)),
-        )
-        while len(self.cache) > 256:
-            self.cache.popitem(last=False)
+        if cached is None:
+            # A cache hit must not keep frequently reused provider data stale forever.
+            self.cache[cache_key] = (
+                time.monotonic() + SEARCH_CACHE_SECONDS,
+                ProviderResponse(candidates=tuple(candidates)),
+            )
+            while len(self.cache) > SEARCH_CACHE_CAPACITY:
+                self.cache.popitem(last=False)
         session.provider_states[provider.id] = "finished"
         session.emit("provider_finished", provider_id=provider.id, name=provider.name)
 

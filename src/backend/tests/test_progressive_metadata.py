@@ -1,13 +1,19 @@
 """Public orchestration behavior with gated provider callbacks, without external API claims."""
 
 import asyncio
+import time
 from dataclasses import dataclass, field
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
 
+from src.features.metadata import handler as handler_module
+from src.features.metadata.core import CoreMetadataProvider
 from src.features.metadata.handler import MetadataHandler
 from src.features.metadata.identity import same_entity
+from src.features.metadata.providers import PluginMetadataProvider
 from src.plugin_api.metadata_contracts import (
     MediaAsset,
     MetadataCandidate,
@@ -436,3 +442,98 @@ async def test_search_cache_is_scoped_to_query_user_and_configuration():
     await session.search_task
     assert len([call for call in provider.calls if call[0] == "search"]) == 4
     handler.cancel(session)
+
+
+@pytest.mark.asyncio
+async def test_repeated_search_hits_do_not_extend_the_two_minute_acquisition_lifetime(monkeypatch):
+    clock = {"now": 1000.0}
+    monkeypatch.setattr(
+        handler_module, "time", SimpleNamespace(time=time.time, monotonic=lambda: clock["now"])
+    )
+    provider = ContractProvider("test.provider", (candidate(),))
+    handler = MetadataHandler()
+    query = request("port")
+    for elapsed in (0, 20, 40, 60, 80, 100, 119):
+        clock["now"] = 1000 + elapsed
+        session = handler.start(query, [provider])
+        await session.search_task
+        assert session.state == "completed" and len(session.candidates) == 1
+        assert provider.calls == [("search", None)]
+        handler.cancel(session)
+    clock["now"] = 1120
+    provider.candidates = (candidate(title="Updated Portal"),)
+    session = handler.start(query, [provider])
+    await session.search_task
+    assert provider.calls == [("search", None), ("search", None)]
+    assert next(iter(session.candidates.values()))["title"] == "Updated Portal"
+    handler.cancel(session)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("code", ["unavailable", "rate_limited", "invalid_configuration"])
+async def test_failed_search_is_retried_instead_of_reused_from_cache(code):
+    provider = ContractProvider("test.provider", failure=ProviderFailure(code=code))
+    handler = MetadataHandler()
+    query = request("port")
+    first = handler.start(query, [provider])
+    await first.search_task
+    assert first.state == "degraded"
+    provider.failure = None
+    provider.candidates = (candidate(),)
+    recovered = handler.start(query, [provider])
+    await recovered.search_task
+    assert recovered.state == "completed" and len(recovered.candidates) == 1
+    assert provider.calls == [("search", None), ("search", None)]
+    for session in (first, recovered):
+        handler.cancel(session)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("adapter", [CoreMetadataProvider, PluginMetadataProvider])
+async def test_search_cache_rechecks_core_and_plugin_authorization(monkeypatch, adapter):
+    query = request("port")
+    declaration = ContractProvider("test.provider").declaration
+    options = {
+        "declaration": declaration,
+        "user_id": query.user_id,
+        "revision": "review-context",
+        "state": ProviderHealth.HEALTHY,
+    }
+    if adapter is CoreMetadataProvider:
+        options["values"] = {}
+    else:
+        options.update(plugin_id="test.plugin", installation_id=uuid4())
+    provider = adapter(**options)
+    invoke = AsyncMock(return_value=ProviderResponse(candidates=(candidate(),)))
+    authorized = AsyncMock(return_value=True)
+    monkeypatch.setattr(adapter, "invoke", invoke)
+    monkeypatch.setattr(adapter, "authorized", authorized)
+    handler = MetadataHandler()
+    first = handler.start(query, [provider])
+    await first.search_task
+    assert len(first.candidates) == 1
+    authorized.return_value = False
+    revoked = handler.start(query, [provider])
+    await revoked.search_task
+    assert revoked.state == "degraded" and not revoked.candidates
+    authorized.assert_awaited_once_with("search")
+    assert invoke.await_count == 1
+    for session in (first, revoked):
+        handler.cancel(session)
+
+
+@pytest.mark.asyncio
+async def test_search_cache_keeps_its_capacity_bound_with_longer_reuse():
+    provider = ContractProvider("test.provider", (candidate(),))
+    handler = MetadataHandler()
+    query = request("query 0")
+    for index in range(257):
+        session = handler.start(query.model_copy(update={"query": f"query {index}"}), [provider])
+        await session.search_task
+        handler.cancel(session)
+    # The oldest acquisition must be fetched again, while the newest is reusable.
+    for text in ("query 0", "query 256"):
+        session = handler.start(query.model_copy(update={"query": text}), [provider])
+        await session.search_task
+        handler.cancel(session)
+    assert sum(operation == "search" for operation, _ in provider.calls) == 258
