@@ -11,15 +11,15 @@ import pytest
 from pydantic import ValidationError
 from sqlalchemy import select
 
+from src.api.routes.notification_providers import PluginDestinationCreate, create_plugin_destination
 from src.database.models.notification_delivery import NotificationDelivery
 from src.database.models.notification_destination import NotificationDestination
-from src.api.routes.notification_providers import PluginDestinationCreate, create_plugin_destination
 from src.database.models.notification_provider_setting import NotificationProviderSetting
-from src.database.models.user import User
 from src.database.models.plugin_notification_provider import PluginNotificationProviderRegistration
+from src.database.models.user import User
 from src.database.session import SessionLocal
-from src.features.notification_policy import Trust
 from src.features.notification_destinations import resolve_destinations
+from src.features.notification_policy import Trust
 from src.features.notification_providers.base import NotificationMessage, ProviderDestination
 from src.features.notification_providers.delivery import process_pending_deliveries
 from src.features.notification_providers.plugin import PluginNotificationProvider
@@ -336,4 +336,3 @@ async def test_generic_private_destination_enrollment_is_owner_bound_and_idempot
         assert repeated == {"id": str(endpoint.id), "kind": "discord_bot_dm", "existing": True}
         assert endpoint.revision == 1
         assert runtime.action.await_count == 2
-

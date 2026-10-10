@@ -40,6 +40,7 @@ from src.features.notification_enrollment import (
     revoke_email,
     update_email,
 )
+from src.features.notification_policy import Trust
 from src.features.notification_providers.registry import get_notification_providers
 from src.features.notification_push_config import (
     PUSH_PROVIDER,
@@ -49,7 +50,6 @@ from src.features.notification_push_config import (
 from src.features.notification_settings import routing_settings
 from src.features.notification_tests import queue_destination_test, test_smtp
 from src.features.notification_webhooks import create_webhook, remove_webhook, update_webhook
-from src.features.notification_policy import Trust
 from src.features.smtp_configuration import SMTP_PROVIDER, normalize_email
 from src.plugin_api.notification_contracts import NotificationProviderDefinition
 from src.plugin_api.runtime_client import PluginRuntimeRequestError, PluginRuntimeUnavailable
@@ -458,7 +458,9 @@ async def create_plugin_destination(
         if not await provider.is_authorized(db, current_user.id):
             raise HTTPException(403, "Notification provider is not available to this account")
     except PluginRuntimeUnavailable as exc:
-        raise HTTPException(503, "Notification provider runtime is temporarily unavailable") from exc
+        raise HTTPException(
+            503, "Notification provider runtime is temporarily unavailable"
+        ) from exc
 
     definition = NotificationProviderDefinition.model_validate(registration.definition)
     choice = next((item for item in definition.destinations if item.kind == payload.kind), None)
@@ -488,10 +490,14 @@ async def create_plugin_destination(
             user_id=str(current_user.id),
         )
     except PluginRuntimeUnavailable as exc:
-        raise HTTPException(503, "Notification provider runtime is temporarily unavailable") from exc
+        raise HTTPException(
+            503, "Notification provider runtime is temporarily unavailable"
+        ) from exc
     except PluginRuntimeRequestError as exc:
         if "Link and verify your Discord account" in exc.detail:
-            raise HTTPException(409, "Link and verify your Discord account before adding this destination") from exc
+            raise HTTPException(
+                409, "Link and verify your Discord account before adding this destination"
+            ) from exc
         raise HTTPException(400, "Provider rejected destination configuration") from exc
     if not isinstance(result, dict) or result.get("ok") is not True:
         raise HTTPException(400, "Provider rejected destination configuration")
