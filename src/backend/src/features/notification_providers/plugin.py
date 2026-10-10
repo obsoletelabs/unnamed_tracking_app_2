@@ -102,9 +102,7 @@ class PluginNotificationProvider:
             return None
         return ProviderDestination.for_endpoint(endpoint, self.name)
 
-    async def run_destination_action(
-        self, action_id: str, user_id: UUID
-    ) -> dict[str, Any]:
+    async def run_destination_action(self, action_id: str, user_id: UUID) -> dict[str, Any]:
         """Run one action declared by the provider's destination definition."""
         return await self._runtime.action(
             self.registration.plugin_id,
