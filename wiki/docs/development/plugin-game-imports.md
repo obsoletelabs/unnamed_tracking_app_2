@@ -39,8 +39,9 @@ The stable game ID includes plugin ID, authenticated user, source scope and
 external ID. Changing a title or display label does not duplicate the game.
 Identically named games, other plugins, other users and other source scopes
 remain separate. Plugins cannot choose a target game ID or user ID, and title
-matches are never adopted automatically. Retain the returned ID to attach artwork
-through the existing public media gateway.
+matches are never adopted automatically. The response includes the saved game ID;
+this operation imports metadata and progress, with artwork enrichment handled
+separately by the host's existing game metadata flow.
 
 Imported metadata respects locked fields, including title and its derived sort
 title. Imported playtime only increases and can also be protected by a field
