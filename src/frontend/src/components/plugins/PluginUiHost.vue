@@ -12,6 +12,7 @@ import {
   dispatchPluginAction,
   downloadPluginDocument,
   PluginActionError,
+  pluginExternalDestination,
   validateField,
   type PluginUiDocument,
   type UiAction,
@@ -187,6 +188,8 @@ async function handleFrontendMessage(event: MessageEvent) {
         undefined,
         Boolean(action.confirmation),
       );
+      const destination = pluginExternalDestination(action, result);
+      if (destination) window.location.assign(destination);
     } else if (method === "plugin.download-document") {
       await downloadPluginDocument(
         props.document.plugin_id,

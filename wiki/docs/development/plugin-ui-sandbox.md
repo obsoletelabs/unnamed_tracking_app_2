@@ -8,6 +8,14 @@ Custom frontend code does not execute inside the core Vue application. The ifram
 
 The bridge supports basic context, ordinary settings, write-only secrets, and declared actions. CSP denies direct network connections and object embedding; PDF viewing is limited to blob-backed frames created from host-approved document bytes. The host does not expose environment values, credentials, DOM access, or a second permission system. Every bridge operation that reaches privileged host data is authorized again at the backend gateway.
 
+A declared action with `external_navigation: true` may return `redirect_url`.
+The host validates the successful result as a credential-free HTTP(S) URL and
+navigates its own browser tab. This works for sandbox bridge actions and regular
+declarative plugin pages, using the same validator as contextual actions. Failed
+or undeclared actions cannot redirect. The iframe retains `allow-scripts` only;
+it does not gain popup, same-origin or top-navigation permission. Users can return
+with browser Back after external sign-in.
+
 Sandboxed and native frontends are distinct declarations and a plugin may declare both. `frontend.entry` remains the ordinary iframe model and does not require native execution. `native_frontend` represents trusted Vue/JavaScript/CSS integration and requires the explicit critical-risk `frontend.native` capability. Native loading is not enabled by merely declaring the bundle.
 
 ## Lifecycle
