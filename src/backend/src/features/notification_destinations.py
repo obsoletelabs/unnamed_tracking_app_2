@@ -180,9 +180,28 @@ async def resolve_destinations(db: AsyncSession, user_id: UUID) -> list[Notifica
         .all()
     )
     for registration in registrations:
+        if registration.transport == "discord_bot_dm":
+            # A bot DM is a per-user private destination. The plugin keeps the
+            # verified Discord identity; the host owns routing/trust and never
+            # receives the bot token.
+            await db.execute(
+                pg_insert(NotificationDestination)
+                .values(
+                    user_id=user_id,
+                    provider_id=registration.provider_id,
+                    endpoint_key="discord-user",
+                    kind="discord_bot_dm",
+                    channel_context="external",
+                    privacy=int(Trust.PRIVATE),
+                    installation_id=registration.installation_id,
+                )
+                .on_conflict_do_nothing(
+                    index_elements=["user_id", "provider_id", "endpoint_key"]
+                )
+            )
+            continue
         if registration.transport != "legacy":
-            # Protected endpoints require explicit owner enrollment; provider
-            # registration or a routing toggle cannot claim anyone's credentials.
+            # Protected webhook endpoints require explicit owner enrollment.
             continue
         await db.execute(
             pg_insert(NotificationDestination)
