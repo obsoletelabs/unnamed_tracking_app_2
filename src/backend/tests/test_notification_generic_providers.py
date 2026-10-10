@@ -298,6 +298,8 @@ async def test_generic_private_destination_enrollment_is_owner_bound_and_idempot
     p = webhook_provider
     registration = SimpleNamespace(
         provider_id=p.provider,
+        name="Discord Bot DM",
+        action_id="deliver",
         plugin_id=p.plugin,
         installation_id=p.installation,
         transport="plugin",
@@ -310,11 +312,8 @@ async def test_generic_private_destination_enrollment_is_owner_bound_and_idempot
         },
     )
     runtime = SimpleNamespace(action=AsyncMock(return_value={"ok": True}))
-    adapter = SimpleNamespace(
-        registration=registration,
-        is_authorized=AsyncMock(return_value=True),
-        _runtime=runtime,
-    )
+    adapter = PluginNotificationProvider(registration, runtime=runtime)
+    adapter.is_authorized = AsyncMock(return_value=True)
     monkeypatch.setattr(
         "src.api.routes.notification_providers.get_notification_providers",
         AsyncMock(return_value={p.provider: adapter}),
