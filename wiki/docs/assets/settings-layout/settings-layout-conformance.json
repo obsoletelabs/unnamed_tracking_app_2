@@ -1,0 +1,22 @@
+{
+  "backend": "real",
+  "frontend": "compiled-source",
+  "host_source_head": null,
+  "passed": [
+    "Settings names/actions, ranked values, tag wrapping, Manage navigation and initial deep links: 320/light",
+    "Settings names/actions, ranked values, tag wrapping, Manage navigation and initial deep links: 390/light",
+    "Settings names/actions, ranked values, tag wrapping, Manage navigation and initial deep links: 1440/dark"
+  ],
+  "screens": [],
+  "widths": [
+    320,
+    390,
+    430,
+    768,
+    1024,
+    1440,
+    1920,
+    2560
+  ],
+  "provider_and_stats_responses": "long layout fixtures"
+}
