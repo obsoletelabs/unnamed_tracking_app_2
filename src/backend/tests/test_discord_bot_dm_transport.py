@@ -79,14 +79,10 @@ async def test_bot_dm_endpoint_requires_owner_provider_and_installation_match() 
     )
 
 
-
-
 def test_notification_delivery_injects_host_verified_recipient_context(monkeypatch) -> None:
     runtime_path = Path(__file__).parents[2] / "plugin-runtime" / "runtime.py"
     monkeypatch.syspath_prepend(str(runtime_path.parent))
-    spec = importlib.util.spec_from_file_location(
-        "discord_bot_runtime_context_test", runtime_path
-    )
+    spec = importlib.util.spec_from_file_location("discord_bot_runtime_context_test", runtime_path)
     assert spec is not None and spec.loader is not None
     runtime = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = runtime

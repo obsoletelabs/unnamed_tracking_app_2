@@ -195,9 +195,7 @@ async def resolve_destinations(db: AsyncSession, user_id: UUID) -> list[Notifica
                     privacy=int(Trust.PRIVATE),
                     installation_id=registration.installation_id,
                 )
-                .on_conflict_do_nothing(
-                    index_elements=["user_id", "provider_id", "endpoint_key"]
-                )
+                .on_conflict_do_nothing(index_elements=["user_id", "provider_id", "endpoint_key"])
             )
             continue
         if registration.transport != "legacy":

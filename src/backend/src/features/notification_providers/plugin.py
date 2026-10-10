@@ -85,9 +85,7 @@ class PluginNotificationProvider:
                 return None
             # Bot DMs are private only after the plugin verifies the user's
             # Discord account link. They are not a secure/recovery transport.
-            return ProviderDestination.for_endpoint(
-                endpoint, self.name, allows_sensitive=False
-            )
+            return ProviderDestination.for_endpoint(endpoint, self.name, allows_sensitive=False)
         if not protected and endpoint.kind != "legacy_webhook":
             return None
         return ProviderDestination.for_endpoint(endpoint, self.name)
