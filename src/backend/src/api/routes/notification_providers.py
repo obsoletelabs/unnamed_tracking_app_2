@@ -503,7 +503,7 @@ async def update_notification_provider_setting(
                 NotificationDestination.provider_id == provider_id,
                 NotificationDestination.installation_id == registration.installation_id,
                 or_(
-                    NotificationDestination.kind == "legacy_webhook",
+                    NotificationDestination.kind.in_(("legacy_webhook", "discord_bot_dm")),
                     NotificationDestination.encrypted_configuration.is_not(None),
                 ),
             )
