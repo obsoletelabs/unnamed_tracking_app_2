@@ -33,6 +33,19 @@ from .eligibility import endpoint_route_enabled, revalidate_delivery_attempt
 from .webhook import discord_payload, normalize_discord_webhook
 
 
+def _protected_transport_failure(
+    error: PluginRuntimeRequestError | PluginRuntimeUnavailable,
+) -> DeliveryResult:
+    """Classify a protected transport failure without retrying permanent policy errors."""
+    if isinstance(error, PluginRuntimeUnavailable):
+        return DeliveryResult(False, retryable=True, error="provider_transport_unavailable")
+    if error.detail == "Discord egress is disabled in this runtime":
+        return DeliveryResult(False, error="discord_egress_disabled")
+    if error.status_code in {408, 425, 429}:
+        return DeliveryResult(False, retryable=True, error="provider_transport_unavailable")
+    return DeliveryResult(False, error="provider_transport_rejected")
+
+
 class PluginNotificationProvider:
     """Core-controlled delivery adapter for one registered plugin provider."""
 
@@ -217,14 +230,8 @@ class PluginNotificationProvider:
                 attempt_id=str(message.attempt_id),
             )
             result = NotificationDeliveryResult.model_validate(response)
-        except PluginRuntimeRequestError as exc:
-            if exc.detail == "Discord egress is disabled in this runtime":
-                return DeliveryResult(False, error="discord_egress_disabled")
-            if exc.status_code in {408, 425, 429}:
-                return DeliveryResult(False, retryable=True, error="provider_transport_unavailable")
-            return DeliveryResult(False, error="provider_transport_rejected")
-        except PluginRuntimeUnavailable:
-            return DeliveryResult(False, retryable=True, error="provider_transport_unavailable")
+        except (PluginRuntimeRequestError, PluginRuntimeUnavailable) as exc:
+            return _protected_transport_failure(exc)
         except (ValueError, KeyError):
             return DeliveryResult(False, error="provider_configuration_invalid")
         return DeliveryResult(result.success, result.retryable, result.error)
