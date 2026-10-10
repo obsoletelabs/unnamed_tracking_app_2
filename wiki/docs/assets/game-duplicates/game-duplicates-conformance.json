@@ -1,0 +1,22 @@
+{
+  "backend": "real",
+  "frontend": "compiled-source",
+  "host_source_head": "d2f35caf6441bf7145cc7fbf138a06befcc64e2e",
+  "passed": [
+    "Real API comparison, long Unicode title/identity, retry, persisted Keep both, custom-title identity match and unchanged games: 320",
+    "Real API comparison, long Unicode title/identity, retry, persisted Keep both, custom-title identity match and unchanged games: 390",
+    "Real API comparison, long Unicode title/identity, retry, persisted Keep both, custom-title identity match and unchanged games: 1440"
+  ],
+  "screens": [],
+  "widths": [
+    320,
+    390,
+    430,
+    768,
+    1024,
+    1440,
+    1920,
+    2560
+  ],
+  "library_records": "real owned-game API review fixtures"
+}

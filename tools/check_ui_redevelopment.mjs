@@ -33,11 +33,13 @@ import { checkShortcutSettings } from "./check_shortcut_settings.mjs";
 import { checkShortcutPriority } from "./check_shortcut_priority.mjs";
 import { checkPluginUpdateUi } from "./check_plugin_update_ui.mjs";
 import { checkSettingsLayout } from "./check_settings_layout.mjs";
+import { checkGameDuplicates } from "./check_game_duplicates.mjs";
 
 const [pluginsRoot, evidenceRoot, backendUrl] = process.argv.slice(2);
 const reviewStage = process.argv[5] ?? "shell";
 const reviewStages = ["shell", "settings-layout", "shortcut-priority", "plugin-updates", "library-layouts", "tasks", "shortcut-settings", "tour", "mobile-navigation", "collections", "library-workflows", "plugin-discovery", "plugin-review", "upload", "welcome", "palette", "palette-editor", "startup", "appearance-settings", "editors", "search", "topbar", "ribbon", "details", "content", "branding", "home"];
 reviewStages.push("achievement-navigation");
+reviewStages.push("game-duplicates");
 assert(reviewStages.includes(reviewStage), `Unknown review stage: ${reviewStage}`);
 assert(pluginsRoot && evidenceRoot && backendUrl && process.env.UI_REVIEW_USERNAME && process.env.UI_REVIEW_PASSWORD, "Supply a disposable backend and review credentials.");
 const require = createRequire(path.resolve(pluginsRoot, "package.json"));
@@ -100,7 +102,12 @@ try {
   } else if (!["settings-layout", "achievement-navigation"].includes(reviewStage)) {
     assert.equal(inventory.length, 0, "Run this stage against a clean plugin inventory to exclude embedded-media evidence.");
   }
-  if (reviewStage === "settings-layout") {
+  if (reviewStage === "game-duplicates") {
+    report.library_records = "real owned-game API review fixtures";
+    await checkGameDuplicates({ browser, admin, origin, evidenceRoot, report });
+    await writeFile(path.join(evidenceRoot, "game-duplicates-conformance.json"), JSON.stringify(report, null, 2) + "\n");
+    console.log(JSON.stringify({ passed: report.passed }, null, 2));
+  } else if (reviewStage === "settings-layout") {
     report.provider_and_stats_responses = "long layout fixtures";
     await checkSettingsLayout({ browser, admin, origin, evidenceRoot, report });
     await writeFile(path.join(evidenceRoot, "settings-layout-conformance.json"), JSON.stringify(report, null, 2) + "\n");
