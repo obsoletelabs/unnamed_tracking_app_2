@@ -9,6 +9,7 @@ from src.database.models.plugin_notification_provider import (
 from src.plugin_api.runtime_client import PluginRuntimeClient
 
 from .base import NotificationProvider
+from .browser import BrowserNotificationProvider
 from .plugin import PluginNotificationProvider
 from .smtp import SmtpNotificationProvider
 
@@ -24,7 +25,8 @@ async def get_notification_providers(
         )
     ).all()
     providers: dict[str, NotificationProvider] = {
-        SmtpNotificationProvider.id: SmtpNotificationProvider()
+        SmtpNotificationProvider.id: SmtpNotificationProvider(),
+        BrowserNotificationProvider.id: BrowserNotificationProvider(),
     }
     if not registrations:
         return providers

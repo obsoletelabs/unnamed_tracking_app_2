@@ -14,9 +14,10 @@ from src.core.crypto import decrypt_secret, encrypt_secret
 from src.core.env_handler import EnvConfigHandler
 from src.core.public_url import normalize_public_url
 from src.database.models.app_integration_settings import AppIntegrationSettings
+from src.features.notification_destinations import retire_provider_destinations
+from src.features.notification_policy import PUSH_PROVIDER
 from src.features.smtp_configuration import normalize_email
 
-PUSH_PROVIDER = "core.browser"
 PUSH_FIELDS = {
     "WEB_PUSH_VAPID_SUBJECT": "web_push_vapid_subject",
     "WEB_PUSH_VAPID_PRIVATE_KEY": "web_push_vapid_private_key",
@@ -124,6 +125,7 @@ async def ensure_vapid_key(db: AsyncSession) -> dict[str, str]:
     )
     assert row is not None
     if not row.web_push_vapid_private_key:
+        await retire_provider_destinations(db, PUSH_PROVIDER)
         row.web_push_vapid_private_key = encrypt_secret(generate_vapid_key())
     await db.commit()
     configuration = await push_configuration(db)

@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.notification import Notification
 from src.database.models.notification_delivery import NotificationDelivery
+from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_verification import NotificationVerification
 
 
@@ -26,6 +27,20 @@ async def retire_destination_work(db: AsyncSession, destination_id: UUID, reason
         )
         .values(status="suppressed", last_error=reason, claim_token=None, lease_until=None)
     )
+
+
+async def invalidate_endpoint(
+    db: AsyncSession, destination: NotificationDestination, reason: str = "endpoint_changed"
+) -> None:
+    """An endpoint revision withdraws proof, consent and all unsent work."""
+    destination.revision += 1
+    destination.verified_revision = None
+    destination.verification_method = None
+    destination.verification_revoked_at = int(time.time())
+    destination.recovery_allowed = False
+    destination.media_consent_revision = None
+    destination.media_consent_at = None
+    await retire_destination_work(db, destination.id, reason)
 
 
 def visible_inbox(user_id: UUID):

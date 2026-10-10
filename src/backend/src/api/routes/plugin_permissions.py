@@ -246,8 +246,9 @@ async def revoke_grant(
         .values(revoked_at=int(time.time()), revoked_by_operation=None)
         .execution_options(synchronize_session="fetch")
     )
-    if row.device_id is None and capability_implies(
-        row.capability, "notification_providers.deliver"
+    if row.device_id is None and (
+        capability_implies(row.capability, "notification_providers.deliver")
+        or capability_implies(row.capability, "frontend.pwa")
     ):
         await retire_plugin_destinations(db, row.plugin_id, row.user_id, row.installation_id)
     await db.commit()

@@ -46,7 +46,20 @@ async def ensure_deliveries(
     )
     for notification in notifications:
         prefs = preferences or await load_preferences(db, notification.user_id)
+        enabled_providers = set(
+            await db.scalars(
+                select(NotificationProviderSetting.provider_id).where(
+                    NotificationProviderSetting.user_id == notification.user_id,
+                    NotificationProviderSetting.enabled.is_(True),
+                )
+            )
+        )
         for destination in await resolve_destinations(db, notification.user_id):
+            if (
+                destination.provider_id != INBOX_PROVIDER
+                and destination.provider_id not in enabled_providers
+            ):
+                continue
             projection = select_projection(notification, destination, prefs)
             if projection is None:
                 continue

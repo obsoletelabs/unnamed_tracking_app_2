@@ -13,12 +13,14 @@ from src.database.models.notification_provider_setting import NotificationProvid
 from src.database.models.notification_receipt import NotificationReceipt
 from src.database.models.plugin_notification_provider import PluginNotificationProviderRegistration
 from src.database.models.plugin_notification_type import PluginNotificationTypeRegistration
+from src.features.notification_browser import bound_subscription, browser_context
 from src.features.notification_controller import EVENT_TYPES
 from src.features.notification_destinations import resolve_destinations
 from src.features.notification_enrollment import endpoint_address
 from src.features.notification_policy import (
     INBOX_PROVIDER,
     MEDIA_KINDS,
+    PUSH_PROVIDER,
     Trust,
     effective_trust,
     select_projection,
@@ -26,6 +28,7 @@ from src.features.notification_policy import (
 from src.features.notification_urls import notification_url
 from src.features.smtp_configuration import SMTP_PROVIDER, SmtpConfiguration, smtp_configuration
 from src.plugin_api.grants import has_capability_grant
+from src.plugin_api.runtime_client import PluginRuntimeUnavailable
 
 _TYPE_LABELS = {
     "episode_aired": ("New episodes", "An episode of a title you follow has aired."),
@@ -149,7 +152,7 @@ async def _type_catalog(db: AsyncSession, user_id: UUID) -> list[dict[str, Any]]
 
 
 async def routing_settings(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
-    """Include inactive owner choices without exposing secrets or performing runtime I/O."""
+    """Include inactive owner choices without exposing endpoint credentials."""
     await resolve_destinations(db, user_id)
     destinations = list(
         await db.scalars(
@@ -171,26 +174,41 @@ async def routing_settings(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
         )
     }
     smtp = await smtp_configuration(db)
+    try:
+        browser = await browser_context(db)
+    except PluginRuntimeUnavailable:
+        browser = None
     provider_ids = (
-        {SMTP_PROVIDER}
+        {SMTP_PROVIDER, PUSH_PROVIDER}
         | {row.provider_id for row in destinations}
         | {row.provider_id for row in registrations.values() if row.revoked_at is None}
     )
-    providers = [
-        _provider_settings(
+    providers = {
+        provider_id: _provider_settings(
             provider_id, registrations.get(provider_id), settings.get(provider_id, False), smtp
         )
         for provider_id in sorted(provider_ids)
-    ]
-    by_provider = {provider["id"]: provider for provider in providers}
+    }
+    providers[PUSH_PROVIDER].update(
+        name="Browser / PWA push",
+        available=browser is not None,
+        configuration_scope="user",
+        destination_kind="browser_push",
+        secure_transport=False,
+    )
     types = await _type_catalog(db, user_id)
     result = []
     for destination in destinations:
-        provider = by_provider[destination.provider_id]
+        provider = providers[destination.provider_id]
         registration = registrations.get(destination.provider_id)
         installation_matches = destination.installation_id is None or bool(
             registration and destination.installation_id == registration.installation_id
         )
+        if destination.provider_id == PUSH_PROVIDER:
+            installation_matches = bool(
+                browser
+                and await bound_subscription(db, destination, browser, require_enabled=False)
+            )
         result.append(
             {
                 "id": str(destination.id),
@@ -231,7 +249,7 @@ async def routing_settings(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
     await db.commit()
     return {
         "default_url": await notification_url(db, user_id),
-        "providers": providers,
+        "providers": list(providers.values()),
         "destinations": result,
         "types": [item for item in types if item["visible"]],
     }

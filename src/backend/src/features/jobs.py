@@ -29,6 +29,7 @@ from src.database.session import SessionLocal
 from src.features.imports.anilist import import_anilist_library
 from src.features.metadata import refresh_job
 from src.features.metadata.refresh import check_airing_episodes
+from src.features.notification_browser import expire_browser_sessions
 from src.features.notification_enrollment import expire_verification_secrets
 from src.features.notification_providers.delivery import process_pending_deliveries
 from src.features.notification_scans import scan_notification_users
@@ -291,6 +292,7 @@ async def run_jobs_loop() -> None:
             await scan_notification_users()
             async with SessionLocal() as db:
                 await expire_verification_secrets(db)
+                await expire_browser_sessions(db)
                 await db.commit()
                 await process_pending_deliveries(db)
                 due = []

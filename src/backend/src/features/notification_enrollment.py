@@ -18,7 +18,7 @@ from src.database.models.notification_provider_setting import NotificationProvid
 from src.database.models.notification_verification import NotificationVerification
 from src.database.models.user import User
 from src.features.notification_controller import emit_verification_request
-from src.features.notification_lifecycle import retire_destination_work
+from src.features.notification_lifecycle import invalidate_endpoint
 from src.features.notification_policy import Trust
 from src.features.smtp_configuration import SMTP_PROVIDER, normalize_email, smtp_configuration
 
@@ -39,20 +39,20 @@ async def _lock_owner(db: AsyncSession, user_id: UUID) -> None:
 
 
 async def owned_destination(
-    db: AsyncSession, user_id: UUID, destination_id: UUID
+    db: AsyncSession, user_id: UUID, destination_id: UUID, *, provider_id: str = SMTP_PROVIDER
 ) -> NotificationDestination:
     row = await db.scalar(
         select(NotificationDestination)
         .where(
             NotificationDestination.id == destination_id,
             NotificationDestination.user_id == user_id,
-            NotificationDestination.provider_id == SMTP_PROVIDER,
+            NotificationDestination.provider_id == provider_id,
             NotificationDestination.active.is_(True),
         )
         .with_for_update()
     )
     if row is None:
-        raise EnrollmentError("Email destination not found", 404)
+        raise EnrollmentError("Notification destination not found", 404)
     return row
 
 
@@ -118,17 +118,6 @@ async def create_email(db: AsyncSession, user_id: UUID, address: str, label: str
         )
     await db.commit()
     return row.id
-
-
-async def invalidate_endpoint(db: AsyncSession, destination: NotificationDestination) -> None:
-    destination.revision += 1
-    destination.verified_revision = None
-    destination.verification_method = None
-    destination.verification_revoked_at = int(time.time())
-    destination.recovery_allowed = False
-    destination.media_consent_revision = None
-    destination.media_consent_at = None
-    await retire_destination_work(db, destination.id, "endpoint_changed")
 
 
 async def update_email(

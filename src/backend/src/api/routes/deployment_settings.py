@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.app_integrations import get_or_create_app_integration_settings, get_public_app_url
 from src.core.auth import get_current_admin
-from src.core.crypto import encrypt_secret
+from src.core.crypto import decrypt_secret, encrypt_secret
 from src.core.env_handler import EnvConfigHandler
 from src.core.nginx_configuration import (
     NGINX_TLS_FIELDS,
@@ -36,8 +36,10 @@ from src.database.models.app_integration_settings import AppIntegrationSettings
 from src.database.models.oidc_settings import OidcSettings
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features.notification_destinations import retire_provider_destinations
 from src.features.notification_push_config import (
     PUSH_FIELDS,
+    PUSH_PROVIDER,
     push_configuration,
     validate_push_value,
 )
@@ -178,6 +180,26 @@ def _validate_provider_value(field: str, value):
     except ValueError as exc:
         raise HTTPException(400, f"Invalid {field} configuration") from exc
     return value
+
+
+async def _save_provider_secret(
+    db: AsyncSession, app: AppIntegrationSettings, field: str, value
+) -> None:
+    if (
+        field == "web_push_vapid_private_key"
+        and value != ""
+        and value
+        != (
+            decrypt_secret(app.web_push_vapid_private_key)
+            if app.web_push_vapid_private_key
+            else None
+        )
+    ):
+        await retire_provider_destinations(db, PUSH_PROVIDER)
+    if field in {"smtp_password", "web_push_vapid_private_key"} and value is None:
+        setattr(app, field, None)
+    elif value:
+        setattr(app, field, encrypt_secret(value))
 
 
 def _provider_rows(row):
@@ -440,10 +462,7 @@ async def update_deployment_settings(
         elif field.startswith("oidc_"):
             _update_oidc_field(oidc, field, value)
         elif field in _SECRET_FIELDS:
-            if field in {"smtp_password", "web_push_vapid_private_key"} and value is None:
-                setattr(app, field, None)
-            elif value:
-                setattr(app, field, encrypt_secret(value))
+            await _save_provider_secret(db, app, field, value)
         elif field in _SAFE_PROVIDER_FIELDS:
             setattr(app, field, value or None)
     try:

@@ -6,20 +6,31 @@ from collections.abc import Awaitable
 from typing import TypeVar
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import get_current_admin, get_current_user
+from src.core.config import settings
+from src.core.preferences import load_preferences
 from src.core.public_url import normalize_public_url
 from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_provider_setting import NotificationProviderSetting
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features.notification_browser import (
+    BrowserSubscription,
+    bound_subscription,
+    browser_context,
+    browser_session,
+)
+from src.features.notification_browser_enrollment import enroll_browser, update_browser
 from src.features.notification_destinations import (
     resolve_destinations,
     retire_provider_destinations,
+    withdraw_provider_work,
 )
 from src.features.notification_enrollment import (
     EnrollmentError,
@@ -30,11 +41,16 @@ from src.features.notification_enrollment import (
     update_email,
 )
 from src.features.notification_providers.registry import get_notification_providers
-from src.features.notification_push_config import PushKeyEnvironmentLocked, ensure_vapid_key
+from src.features.notification_push_config import (
+    PUSH_PROVIDER,
+    PushKeyEnvironmentLocked,
+    ensure_vapid_key,
+)
 from src.features.notification_settings import routing_settings
 from src.features.notification_tests import queue_destination_test, test_smtp
 from src.features.notification_webhooks import create_webhook, remove_webhook, update_webhook
 from src.features.smtp_configuration import SMTP_PROVIDER, normalize_email
+from src.plugin_api.runtime_client import PluginRuntimeUnavailable
 
 _NOTIFICATION_DB = Depends(get_db)
 _NOTIFICATION_USER = Depends(get_current_user)
@@ -61,6 +77,19 @@ class EmailCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     address: str = Field(min_length=3, max_length=254)
     label: str = Field(default="Email", max_length=80)
+
+
+class BrowserCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    subscription: BrowserSubscription
+    public_key: str = Field(min_length=87, max_length=88)
+    label: str = Field(default="This browser", max_length=80)
+
+
+class BrowserUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    label: str | None = Field(default=None, max_length=80)
+    enabled: bool | None = None
 
 
 class EmailUpdate(BaseModel):
@@ -150,6 +179,127 @@ async def _enrollment(db: AsyncSession, operation: Awaitable[_Result]) -> _Resul
         raise HTTPException(
             status_code=400, detail="Enter a valid notification destination"
         ) from exc
+    except PluginRuntimeUnavailable as exc:
+        await db.rollback()
+        raise HTTPException(503, "PWA infrastructure is temporarily unavailable") from exc
+
+
+@router.get("/browser-configuration")
+async def get_browser_push_configuration(
+    request: Request,
+    db: AsyncSession = _NOTIFICATION_DB,
+    current_user: User = _NOTIFICATION_USER,
+) -> JSONResponse:
+    context = await _enrollment(db, browser_context(db))
+    session = await browser_session(db, request, current_user.id)
+    current = await db.scalar(
+        select(NotificationDestination.id).where(
+            NotificationDestination.user_id == current_user.id,
+            NotificationDestination.provider_id == PUSH_PROVIDER,
+            NotificationDestination.configuration_ref == (str(session.id) if session else ""),
+            NotificationDestination.active.is_(True),
+        )
+    )
+    return JSONResponse(
+        {
+            "enabled": context is not None,
+            "session_authenticated": session is not None,
+            "public_key": context.configuration.public_key if context else "",
+            "current_destination_id": str(current) if current else None,
+        },
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@router.post("/browser-destinations", status_code=201)
+async def create_browser_destination(
+    request: Request,
+    payload: BrowserCreate,
+    db: AsyncSession = _NOTIFICATION_DB,
+    current_user: User = _NOTIFICATION_USER,
+) -> dict:
+    identity = await _enrollment(
+        db,
+        enroll_browser(
+            db,
+            request,
+            current_user.id,
+            payload.subscription,
+            public_key=payload.public_key,
+            label=payload.label,
+        ),
+    )
+    return {"id": str(identity)}
+
+
+@router.patch("/browser-destinations/{destination_id}")
+async def update_browser_destination(
+    destination_id: UUID,
+    payload: BrowserUpdate,
+    db: AsyncSession = _NOTIFICATION_DB,
+    current_user: User = _NOTIFICATION_USER,
+) -> dict:
+    await _enrollment(
+        db,
+        update_browser(db, current_user.id, destination_id, payload.model_dump(exclude_none=True)),
+    )
+    return {"updated": True}
+
+
+@router.delete("/browser-destinations/{destination_id}")
+async def remove_browser_destination(
+    destination_id: UUID,
+    db: AsyncSession = _NOTIFICATION_DB,
+    current_user: User = _NOTIFICATION_USER,
+) -> dict:
+    await _enrollment(db, update_browser(db, current_user.id, destination_id, {"remove": True}))
+    return {"removed": True}
+
+
+@router.get("/browser-destinations/{destination_id}/status")
+async def browser_destination_status(
+    request: Request,
+    destination_id: UUID,
+    revision: int = Query(ge=1),
+    db: AsyncSession = _NOTIFICATION_DB,
+    current_user: User = _NOTIFICATION_USER,
+) -> JSONResponse:
+    endpoint = await db.scalar(
+        select(NotificationDestination).where(
+            NotificationDestination.id == destination_id,
+            NotificationDestination.user_id == current_user.id,
+            NotificationDestination.provider_id == PUSH_PROVIDER,
+            NotificationDestination.revision == revision,
+        )
+    )
+    session = await browser_session(db, request, current_user.id)
+    context = await _enrollment(db, browser_context(db))
+    setting = await db.scalar(
+        select(NotificationProviderSetting.enabled).where(
+            NotificationProviderSetting.user_id == current_user.id,
+            NotificationProviderSetting.provider_id == PUSH_PROVIDER,
+        )
+    )
+    preferences = await load_preferences(db, current_user.id)
+    enabled = bool(
+        endpoint
+        and session
+        and context
+        and setting
+        and endpoint.configuration_ref == str(session.id)
+        and preferences.get("notification_destinations", {}).get(str(destination_id)) is not False
+        and PUSH_PROVIDER
+        not in {p.strip() for p in settings.NOTIFICATION_BLOCKED_PROVIDERS.split(",")}
+        and settings.NOTIFICATION_MINIMUM_TRUST < 2
+        and await bound_subscription(db, endpoint, context) is not None
+    )
+    return JSONResponse(
+        {
+            "enabled": enabled,
+            "generation": context.generation if context and enabled else None,
+        },
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @router.post("/webhook-destinations", status_code=201)
@@ -319,7 +469,7 @@ async def list_notification_provider_settings(
                 "id": provider_id,
                 "name": provider.name,
                 "enabled": row.enabled,
-                "kind": "builtin" if provider_id == SMTP_PROVIDER else "plugin",
+                "kind": "builtin" if provider_id in {SMTP_PROVIDER, PUSH_PROVIDER} else "plugin",
             }
         )
     await db.commit()
@@ -341,6 +491,8 @@ async def update_notification_provider_setting(
     row.enabled = payload.enabled
     await resolve_destinations(db, current_user.id)
     registration = getattr(provider, "registration", None)
+    if not payload.enabled and registration is None:
+        await withdraw_provider_work(db, provider_id, current_user.id)
     if registration is not None:
         if not payload.enabled:
             await retire_provider_destinations(db, provider_id, current_user.id)
@@ -362,5 +514,5 @@ async def update_notification_provider_setting(
         "id": provider_id,
         "name": provider.name,
         "enabled": row.enabled,
-        "kind": "builtin" if provider_id == SMTP_PROVIDER else "plugin",
+        "kind": "builtin" if provider_id in {SMTP_PROVIDER, PUSH_PROVIDER} else "plugin",
     }
