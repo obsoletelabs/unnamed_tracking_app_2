@@ -52,7 +52,7 @@ from src.features.notification_settings import routing_settings
 from src.features.notification_tests import queue_destination_test, test_smtp
 from src.features.notification_webhooks import create_webhook, remove_webhook, update_webhook
 from src.features.smtp_configuration import SMTP_PROVIDER, normalize_email
-from src.plugin_api.contracts import NotificationProviderDefinition
+from src.plugin_api.contracts import NotificationDestinationDeclaration, NotificationProviderDefinition
 from src.plugin_api.runtime_client import PluginRuntimeRequestError, PluginRuntimeUnavailable
 
 _NOTIFICATION_DB = Depends(get_db)
@@ -486,16 +486,13 @@ def _save_plugin_destination(
     db: AsyncSession,
     user: User,
     provider: PluginNotificationProvider,
-    *,
     endpoint: NotificationDestination | None,
-    endpoint_key: str,
-    kind: str,
-    label: str,
-    privacy: str,
+    choice: NotificationDestinationDeclaration,
 ) -> NotificationDestination:
     """Create or reactivate an opaque host routing record; never store plugin secrets."""
     registration = provider.registration
-    endpoint_privacy = int(Trust.PRIVATE if privacy == "PRIVATE" else Trust.PUBLIC)
+    endpoint_key = f"plugin:{choice.kind}"
+    endpoint_privacy = int(Trust.PRIVATE if choice.privacy == "PRIVATE" else Trust.PUBLIC)
     if endpoint is None:
         destination_id = uuid4()
         endpoint = NotificationDestination(
@@ -503,14 +500,14 @@ def _save_plugin_destination(
             user_id=user.id,
             provider_id=registration.provider_id,
             endpoint_key=endpoint_key,
-            kind=kind,
+            kind=choice.kind,
             channel_context="external",
             privacy=endpoint_privacy,
             enabled=True,
             active=True,
             installation_id=registration.installation_id,
             configuration_ref=str(destination_id),
-            display_name=label,
+            display_name=choice.label,
         )
         db.add(endpoint)
         return endpoint
@@ -524,10 +521,10 @@ def _save_plugin_destination(
     endpoint.media_consent_at = None
     endpoint.installation_id = registration.installation_id
     endpoint.configuration_ref = str(endpoint.id)
-    endpoint.kind = kind
+    endpoint.kind = choice.kind
     endpoint.channel_context = "external"
     endpoint.privacy = endpoint_privacy
-    endpoint.display_name = label
+    endpoint.display_name = choice.label
     return endpoint
 
 
@@ -562,16 +559,7 @@ async def create_plugin_destination(
     await _run_plugin_destination_configuration(provider, definition, current_user.id)
     if endpoint is not None and endpoint.active and endpoint.enabled:
         return {"id": str(endpoint.id), "kind": endpoint.kind, "existing": True}
-    endpoint = _save_plugin_destination(
-        db,
-        current_user,
-        provider,
-        endpoint=endpoint,
-        endpoint_key=endpoint_key,
-        kind=choice.kind,
-        label=choice.label,
-        privacy=choice.privacy,
-    )
+    endpoint = _save_plugin_destination(db, current_user, provider, endpoint, choice)
     await db.commit()
     return {"id": str(endpoint.id), "kind": endpoint.kind, "existing": False}
 
