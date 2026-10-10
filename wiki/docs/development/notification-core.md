@@ -143,3 +143,44 @@ duplicate-review schema. It creates no historical transitions and refuses a
 downgrade that would erase populated lifecycle history. Provider secrets and
 encrypted cursors use the existing application encryption key; preserve that key
 with the deployment's protected configuration.
+
+
+## Generic provider contract (Plugin API 1.1.5)
+
+`notification_providers.register` accepts `transport: "plugin"` and a bounded
+`definition`. Each destination kind declares its label, PUBLIC/PRIVATE baseline
+and configuration fields using the existing `UiField` schema. Separate server
+fields and configure/retire/test action identifiers describe configuration;
+features describe multiple destinations and optional Critical delivery behavior.
+These declarations confer neither permissions nor independent verification.
+Existing `legacy` and protected `discord_webhook` registrations remain supported.
+
+The host persists the declaration, never plugin credential values. A changed
+configuration contract or delivery action retires affected destinations and
+suppresses unsent work; reinstall does not claim old secrets or consent.
+A routing toggle alone cannot enroll a generic destination. Enrollment is an
+explicit authenticated operation, with a core-generated opaque endpoint handle.
+
+Generic delivery rechecks the attempt lease, projection, preferences, source and
+provider grants, installation and endpoint revision immediately before handoff.
+The plugin receives approved title/body, event type/time, urgency and resolved
+link plus opaque notification/destination IDs. Account IDs, entity IDs, addresses
+and host credentials are excluded. The private runtime creates
+`_notification_context` containing operation, installation, attempt and endpoint
+revision; ordinary UI actions cannot supply this reserved context.
+Plugins own their secrets and transport through existing storage/network grants.
+Core governs disclosure at handoff and tracks delivery outcomes; arbitrary plugin
+code determines its final network payload. Plugin errors are normalized to safe
+codes before core persistence.
+
+Generic endpoints currently support PUBLIC/PRIVATE standard notifications only.
+Provider declarations cannot assert SECURE or recovery eligibility. Verified
+built-in email and the authenticated inbox retain their existing trust rules.
+Generic enrollment currently exposes
+`POST /api/settings/notification-providers/plugin-destinations` for declared
+destination kinds without per-destination fields. It checks the provider grant
+and installation, invokes the declared configure action as the authenticated
+user, then stores an opaque host endpoint reference. It never accepts or stores
+plugin secrets. Field-driven generic forms and destination retirement/unlink
+synchronization remain follow-up work; do not migrate deployed credentials
+automatically.

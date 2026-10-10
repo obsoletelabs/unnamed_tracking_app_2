@@ -6,6 +6,7 @@ import time
 from uuid import UUID, uuid4
 
 from sqlalchemy import BigInteger, String, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -25,6 +26,7 @@ class PluginNotificationProviderRegistration(Base):
     transport: Mapped[str] = mapped_column(
         String(32), nullable=False, default="legacy", server_default="legacy"
     )
+    definition: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
     registered_at: Mapped[int] = mapped_column(
         BigInteger,
         nullable=False,

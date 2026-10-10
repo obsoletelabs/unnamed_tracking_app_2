@@ -28,6 +28,7 @@ from src.features.notification_policy import (
 from src.features.notification_urls import notification_url
 from src.features.smtp_configuration import SMTP_PROVIDER, SmtpConfiguration, smtp_configuration
 from src.plugin_api.grants import has_capability_grant
+from src.plugin_api.notification_contracts import NotificationProviderDefinition
 from src.plugin_api.runtime_client import PluginRuntimeUnavailable
 
 _TYPE_LABELS = {
@@ -271,6 +272,11 @@ def _provider_settings(
 ) -> dict[str, Any]:
     inbox = provider_id == INBOX_PROVIDER
     email = provider_id == SMTP_PROVIDER
+    definition = (
+        NotificationProviderDefinition.model_validate(registration.definition)
+        if registration and registration.definition
+        else None
+    )
     return {
         "id": provider_id,
         "name": "In-app inbox"
@@ -281,16 +287,21 @@ def _provider_settings(
         or (smtp.configured if email else bool(registration and registration.revoked_at is None)),
         "configuration_scope": "internal"
         if inbox
-        else ("user" if registration and registration.transport == "discord_webhook" else "server"),
+        else (
+            "user"
+            if registration and registration.transport in {"discord_webhook", "plugin"}
+            else "server"
+        ),
         "destination_kind": "discord_webhook"
         if registration and registration.transport == "discord_webhook"
         else None,
-        "critical_supported": email,
+        "critical_supported": email or bool(definition and definition.features.critical_supported),
+        "definition": definition.model_dump(mode="json") if definition else None,
         "critical_description": (
             "Adds high-priority email headers; your mail client decides how to alert you."
         )
         if email
-        else None,
+        else (definition.features.critical_description if definition else None),
         "transport_warning": (
             "SMTP does not use TLS. Email contents and credentials travel "
             "without transport encryption."

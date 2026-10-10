@@ -37,13 +37,20 @@ describe("plugin management service", () => {
       effective_capabilities: [],
     };
     expect(pluginContributionsActive(legacy)).toBe(false);
-    for (const version of ["1.1.0", "1.1.1", "1.1.2", "1.1.3", "1.1.4"]) {
+    for (const version of [
+      "1.1.0",
+      "1.1.1",
+      "1.1.2",
+      "1.1.3",
+      "1.1.4",
+      "1.1.5",
+    ]) {
       expect(
         pluginContributionsActive({ ...legacy, api_contract_version: version }),
       ).toBe(true);
     }
     expect(
-      pluginContributionsActive({ ...legacy, api_contract_version: "1.1.5" }),
+      pluginContributionsActive({ ...legacy, api_contract_version: "1.1.6" }),
     ).toBe(false);
     expect(
       pluginContributionsActive({

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable
 from typing import TypeVar
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
@@ -40,6 +40,8 @@ from src.features.notification_enrollment import (
     revoke_email,
     update_email,
 )
+from src.features.notification_policy import Trust
+from src.features.notification_providers.plugin import PluginNotificationProvider
 from src.features.notification_providers.registry import get_notification_providers
 from src.features.notification_push_config import (
     PUSH_PROVIDER,
@@ -50,7 +52,11 @@ from src.features.notification_settings import routing_settings
 from src.features.notification_tests import queue_destination_test, test_smtp
 from src.features.notification_webhooks import create_webhook, remove_webhook, update_webhook
 from src.features.smtp_configuration import SMTP_PROVIDER, normalize_email
-from src.plugin_api.runtime_client import PluginRuntimeUnavailable
+from src.plugin_api.notification_contracts import (
+    NotificationDestinationDeclaration,
+    NotificationProviderDefinition,
+)
+from src.plugin_api.runtime_client import PluginRuntimeRequestError, PluginRuntimeUnavailable
 
 _NOTIFICATION_DB = Depends(get_db)
 _NOTIFICATION_USER = Depends(get_current_user)
@@ -98,6 +104,12 @@ class EmailUpdate(BaseModel):
     label: str | None = Field(default=None, max_length=80)
     enabled: bool | None = None
     recovery_allowed: bool | None = None
+
+
+class PluginDestinationCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    provider_id: str = Field(min_length=3, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    kind: str = Field(min_length=1, max_length=32, pattern=r"^[a-z0-9][a-z0-9._-]*$")
 
 
 class WebhookCreate(BaseModel):
@@ -429,6 +441,132 @@ async def revoke_email_verification(
     return {"revoked": True}
 
 
+async def _authorized_plugin_provider(
+    db: AsyncSession, provider_id: str, user_id: UUID
+) -> tuple[PluginNotificationProvider, NotificationProviderDefinition]:
+    """Resolve a generic provider and re-check its per-user capability grant."""
+    provider = (await get_notification_providers(db)).get(provider_id)
+    if (
+        not isinstance(provider, PluginNotificationProvider)
+        or provider.transport != "plugin"
+        or not provider.registration.definition
+    ):
+        raise HTTPException(404, "Generic notification provider not found")
+    try:
+        if not await provider.is_authorized(db, user_id):
+            raise HTTPException(403, "Notification provider is not available to this account")
+    except (PluginRuntimeRequestError, PluginRuntimeUnavailable) as exc:
+        raise HTTPException(
+            503, "Notification provider runtime is temporarily unavailable"
+        ) from exc
+    return provider, NotificationProviderDefinition.model_validate(provider.registration.definition)
+
+
+async def _run_plugin_destination_configuration(
+    provider: PluginNotificationProvider,
+    definition: NotificationProviderDefinition,
+    user_id: UUID,
+) -> None:
+    """Let the plugin validate its own linked identity before host enrollment."""
+    try:
+        result = await provider.run_destination_action(definition.configure_action, user_id)
+    except PluginRuntimeUnavailable as exc:
+        raise HTTPException(
+            503, "Notification provider runtime is temporarily unavailable"
+        ) from exc
+    except PluginRuntimeRequestError as exc:
+        if "Link and verify your Discord account" in exc.detail:
+            raise HTTPException(
+                409,
+                "Link and verify your Discord account before adding this destination",
+            ) from exc
+        raise HTTPException(400, "Provider rejected destination configuration") from exc
+    if not isinstance(result, dict) or result.get("ok") is not True:
+        raise HTTPException(400, "Provider rejected destination configuration")
+
+
+def _save_plugin_destination(
+    db: AsyncSession,
+    user: User,
+    provider: PluginNotificationProvider,
+    endpoint: NotificationDestination | None,
+    choice: NotificationDestinationDeclaration,
+) -> NotificationDestination:
+    """Create or reactivate an opaque host routing record; never store plugin secrets."""
+    registration = provider.registration
+    endpoint_key = f"plugin:{choice.kind}"
+    endpoint_privacy = int(Trust.PRIVATE if choice.privacy == "PRIVATE" else Trust.PUBLIC)
+    if endpoint is None:
+        destination_id = uuid4()
+        endpoint = NotificationDestination(
+            id=destination_id,
+            user_id=user.id,
+            provider_id=registration.provider_id,
+            endpoint_key=endpoint_key,
+            kind=choice.kind,
+            channel_context="external",
+            privacy=endpoint_privacy,
+            enabled=True,
+            active=True,
+            installation_id=registration.installation_id,
+            configuration_ref=str(destination_id),
+            display_name=choice.label,
+        )
+        db.add(endpoint)
+        return endpoint
+    endpoint.revision += 1
+    endpoint.active = True
+    endpoint.enabled = True
+    endpoint.verified_revision = None
+    endpoint.verification_method = None
+    endpoint.verification_revoked_at = None
+    endpoint.media_consent_revision = None
+    endpoint.media_consent_at = None
+    endpoint.installation_id = registration.installation_id
+    endpoint.configuration_ref = str(endpoint.id)
+    endpoint.kind = choice.kind
+    endpoint.channel_context = "external"
+    endpoint.privacy = endpoint_privacy
+    endpoint.display_name = choice.label
+    return endpoint
+
+
+@router.post("/plugin-destinations", status_code=201)
+async def create_plugin_destination(
+    payload: PluginDestinationCreate,
+    db: AsyncSession = _NOTIFICATION_DB,
+    current_user: User = _NOTIFICATION_USER,
+) -> dict:
+    """Enroll one declared plugin destination without accepting endpoint credentials."""
+    provider, definition = await _authorized_plugin_provider(
+        db, payload.provider_id, current_user.id
+    )
+    choice = next((item for item in definition.destinations if item.kind == payload.kind), None)
+    if choice is None:
+        raise HTTPException(404, "Notification destination type not declared by this provider")
+    if choice.fields:
+        raise HTTPException(
+            422,
+            "This destination requires provider-specific fields; use the provider settings page.",
+        )
+    endpoint_key = f"plugin:{choice.kind}"
+    endpoint = await db.scalar(
+        select(NotificationDestination)
+        .where(
+            NotificationDestination.user_id == current_user.id,
+            NotificationDestination.provider_id == provider.registration.provider_id,
+            NotificationDestination.endpoint_key == endpoint_key,
+        )
+        .with_for_update()
+    )
+    await _run_plugin_destination_configuration(provider, definition, current_user.id)
+    if endpoint is not None and endpoint.active and endpoint.enabled:
+        return {"id": str(endpoint.id), "kind": endpoint.kind, "existing": True}
+    endpoint = _save_plugin_destination(db, current_user, provider, endpoint, choice)
+    await db.commit()
+    return {"id": str(endpoint.id), "kind": endpoint.kind, "existing": False}
+
+
 @router.get("/destinations")
 async def list_notification_destinations(
     db: AsyncSession = _NOTIFICATION_DB,
@@ -505,6 +643,7 @@ async def update_notification_provider_setting(
                 or_(
                     NotificationDestination.kind == "legacy_webhook",
                     NotificationDestination.encrypted_configuration.is_not(None),
+                    NotificationDestination.configuration_ref.is_not(None),
                 ),
             )
             .values(enabled=payload.enabled, active=payload.enabled)

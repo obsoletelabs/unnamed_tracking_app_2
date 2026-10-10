@@ -45,7 +45,7 @@ except ImportError:  # pragma: no cover - Windows development/test fallback
     resource = None  # type: ignore[assignment]
 
 _PLUGIN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
-PLUGIN_API_CONTRACT_VERSION = "1.1.4"
+PLUGIN_API_CONTRACT_VERSION = "1.1.5"
 _ENTRYPOINT = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*(?::[A-Za-z_][A-Za-z0-9_]*)?$")
 # Linux parent-death signals follow the spawning thread. HTTP request threads
 # end after their response, while supervised workers must live until shutdown.
@@ -2822,7 +2822,12 @@ class PluginRegistry:
         *,
         user_id: str | None = None,
         _notification_authorized: bool = False,
+        _notification_context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        if "_notification_context" in values:
+            raise RuntimePolicyError("Notification context is reserved for core provider work")
+        if _notification_context is not None:
+            values = {**values, "_notification_context": _notification_context}
         self._require_active(plugin_id)
         document = self.ui(plugin_id)
         action = next(
@@ -2935,14 +2940,27 @@ class PluginRegistry:
             raise RuntimePolicyError("Plugin does not declare a notification provider")
         if self._item(package).get("installation_id") != str(UUID(installation_id)):
             raise RuntimePolicyError("Notification delivery belongs to another installation")
-        if set(values) != {"delivery"} or not isinstance(values["delivery"], dict):
+        generic = not _render_only and set(values) == {"delivery", "destination"}
+        if (set(values) != {"delivery"} and not generic) or not isinstance(values.get("delivery"), dict):
             raise RuntimePolicyError("Notification delivery work is invalid")
         self.supervisor._authorize_capability(
             plugin_id, "notification_providers.deliver", user_id=user_id
         )
+        context = None
+        if generic:
+            destination = values["destination"]
+            if (not isinstance(destination, dict) or set(destination) != {"id", "revision", "kind"}
+                    or type(destination["revision"]) is not int or destination["revision"] < 1
+                    or not isinstance(destination["kind"], str)
+                    or not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,31}", destination["kind"])):
+                raise RuntimePolicyError("Notification destination work is invalid")
+            UUID(str(destination["id"]))
+            context = {"operation": "deliver", "installation_id": str(UUID(installation_id)),
+                       "attempt_id": str(UUID(attempt_id)), "destination": destination}
+            values = {"delivery": values["delivery"]}
         return self.action(
             plugin_id, action_id, values, user_id=user_id,
-            _notification_authorized=not _render_only,
+            _notification_authorized=not _render_only, _notification_context=context,
         )
 
     def notification_layout(
