@@ -220,7 +220,7 @@ class Game(Base):
     # identity: Steam occasionally reports a different display name for the
     # same appid across calls (e.g. briefly appending "- GOTY Edition"),
     # which was creating duplicate rows for the same real game on re-sync.
-    external_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    external_id: Mapped[str | None] = mapped_column(String(256), nullable=True)
 
     # epoch seconds a library sync (Steam/RetroAchievements/PlayStation)
     # first noticed this game missing from the account's current

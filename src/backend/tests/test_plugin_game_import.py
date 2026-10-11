@@ -48,6 +48,31 @@ async def test_retry_identity_survives_title_label_and_playtime_changes(flow, tm
         assert (tmp_path / str(flow.user_id) / "games" / game.folder_location / "notes").is_dir()
 
 
+@pytest.mark.parametrize("length", [65, 256])
+async def test_long_provider_identities_remain_distinct_and_replay_without_truncation(flow, length):
+    # Epic's namespace:item identity can be 65 characters. Providers may use the
+    # whole public contract limit; two identities with a shared prefix must not merge.
+    first_id = "a" * (length - 1) + "1"
+    second_id = "a" * (length - 1) + "2"
+    first = (await import_games(flow.user_id, payload(external_id=first_id)))["games"][0]
+    second = (await import_games(flow.user_id, payload(external_id=second_id)))["games"][0]
+    assert first["id"] != second["id"]
+    async with SessionLocal() as db:
+        game = await db.get(Game, UUID(first["id"]))
+        assert game.external_id == first_id
+        game.status, game.notes = GameStatus.MASTERED, "Keep local tracking"
+        await db.commit()
+    replay = (await import_games(flow.user_id, payload(external_id=first_id, playtime_seconds=60)))[
+        "games"
+    ][0]
+    assert replay["id"] == first["id"] and not replay["created"]
+    assert replay["status"] == "MASTERED"
+    async with SessionLocal() as db:
+        game = await db.get(Game, UUID(first["id"]))
+        assert game.external_id == first_id and game.notes == "Keep local tracking"
+        assert (await db.get(Game, UUID(second["id"]))).external_id == second_id
+
+
 async def test_title_match_never_adopts_manual_or_other_provider_game(flow):
     first = (await import_games(flow.user_id, payload(title="Flow")))["games"][0]
     second = (await import_games(flow.user_id, payload(title="Flow"), "other.import"))["games"][0]
