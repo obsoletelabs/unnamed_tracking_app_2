@@ -9,8 +9,10 @@ Deleting a movie moves it to trash. Restore returns it to the library; purge per
 ## Where you left off
 
 A movie you haven't finished shows **Left off at** under its status. Type
-the time you stopped at, as minutes (`74`) or hours and minutes (`1:14`),
-and press Enter or click away to save it. With a known runtime, a bar shows
+the time you stopped at, as minutes (`74`), hours and minutes (`1:14` or
+`1h14m`), minutes with a unit (`45m`), or decimal hours (`1.5h`). Decimal
+hours round to the nearest minute. Press Enter or click away to save it.
+With a known runtime, a bar shows
 how far through you are. Leave it blank to clear it.
 
 - Saving a position on a Plan to Watch movie moves it to Watching.
@@ -18,6 +20,12 @@ how far through you are. Leave it blank to clear it.
 - Marking the movie Completed clears the position.
 
 The same value can be set in the movie's **Edit** form.
+
+Positions remain stored as whole minutes and displayed as `h:mm`. Invalid
+times, such as `1h75m`, and values beyond the supported integer range are
+rejected without changing the saved position. Optional library sync plugins
+continue to use the existing public media-sync contract; entering a position
+does not change their permissions or import behavior.
 
 ## Editing
 

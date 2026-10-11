@@ -8,7 +8,12 @@ from pydantic import ValidationError
 
 from src.database.models.movies import MovieStatus
 from src.main import app  # noqa: F401 - register the complete model graph
-from src.plugin_api.media_sync import MediaSyncInput, dispatch_media_sync, media_identity
+from src.plugin_api.media_sync import (
+    MediaSyncInput,
+    ResolvedSync,
+    dispatch_media_sync,
+    media_identity,
+)
 
 
 class Db:
@@ -75,6 +80,39 @@ def test_movie_watched_reversal_partial_progress_and_local_conflict():
         == "local_watch_state_changed"
     )
     assert db.added[0].status == MovieStatus.DROPPED
+
+
+def test_movie_sync_preserves_manual_progress_notes_and_locked_runtime():
+    db, user = Db(), uuid4()
+    first = sync(db, user, data(runtime_minutes=120, in_progress=True))
+    movie = db.added[0]
+    movie.progress_minutes = 72
+    movie.note = "Manual resume note"
+    movie.locked_fields = ["runtime_minutes"]
+    updated = sync(
+        db,
+        user,
+        data(expected_revision=first["revision"], runtime_minutes=99, in_progress=True),
+    )
+    assert updated["id"] == first["id"] and len(db.added) == 1
+    assert movie.progress_minutes == 72
+    assert movie.note == "Manual resume note"
+    assert movie.runtime_minutes == 120
+
+    movie.locked_fields = []
+    enriched = asyncio.run(
+        dispatch_media_sync(
+            db,
+            plugin_id="test.provider",
+            user_id=user,
+            payload=data(expected_revision=updated["revision"], in_progress=True),
+            options=ResolvedSync(enrich=True),
+        )
+    )
+    assert "conflict" not in enriched
+    assert movie.runtime_minutes == 120
+    assert movie.progress_minutes == 72
+    assert movie.note == "Manual resume note"
 
 
 @pytest.mark.parametrize("kind", ["tv_show", "anime"])
