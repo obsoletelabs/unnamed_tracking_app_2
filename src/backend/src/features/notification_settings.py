@@ -17,16 +17,17 @@ from src.features.notification_browser import bound_subscription, browser_contex
 from src.features.notification_controller import EVENT_TYPES
 from src.features.notification_destinations import resolve_destinations
 from src.features.notification_enrollment import endpoint_address
+from src.features.notification_plugin_policy import delivery_projection, plugin_sensitive_allowed
 from src.features.notification_policy import (
     INBOX_PROVIDER,
     MEDIA_KINDS,
     PUSH_PROVIDER,
     Trust,
     effective_trust,
-    select_projection,
 )
 from src.features.notification_providers.plugin import PluginNotificationProvider
 from src.features.notification_urls import notification_url
+from src.features.plugin_auth_flows import active_reset_flow
 from src.features.smtp_configuration import SMTP_PROVIDER, SmtpConfiguration, smtp_configuration
 from src.plugin_api.grants import has_capability_grant
 from src.plugin_api.notification_contracts import NotificationProviderDefinition
@@ -46,8 +47,12 @@ _TYPE_LABELS = {
 }
 
 
-def _eligible_types(
-    destination: NotificationDestination, types: list[dict[str, Any]], *, secure_transport: bool
+async def _eligible_types(
+    db: AsyncSession,
+    destination: NotificationDestination,
+    types: list[dict[str, Any]],
+    *,
+    secure_transport: bool,
 ) -> list[str]:
     # Test disclosure eligibility independently of the user's on/off choices.
     # The real route is still rechecked at creation and immediately before I/O.
@@ -63,6 +68,8 @@ def _eligible_types(
         verification_method=destination.verification_method,
         verification_revoked_at=destination.verification_revoked_at,
         installation_id=destination.installation_id,
+        endpoint_key=destination.endpoint_key,
+        configuration_ref=destination.configuration_ref,
         recovery_allowed=destination.recovery_allowed,
         media_consent_revision=destination.media_consent_revision,
         media_consent_at=destination.media_consent_at,
@@ -84,7 +91,7 @@ def _eligible_types(
             public_title="Release announcement" if kind in MEDIA_KINDS else None,
             public_body="Released" if kind in MEDIA_KINDS else None,
         )
-        if select_projection(notice, candidate, {}):
+        if await delivery_projection(db, notice, candidate, {}):
             eligible.append(event_type)
     return eligible
 
@@ -150,6 +157,21 @@ async def _type_catalog(db: AsyncSession, user_id: UUID) -> list[dict[str, Any]]
                     "visible": True,
                 }
             )
+    reset = await active_reset_flow(db)
+    if reset or "auth.password_reset" in remembered_types:
+        types.append(
+            {
+                "event_type": "auth.password_reset",
+                "preference_key": "",
+                "label": "Password reset",
+                "description": "Requested account recovery links.",
+                "required_trust": "SECURE",
+                "purpose": "recovery",
+                "kind": "password_reset",
+                "available": reset is not None,
+                "visible": True,
+            }
+        )
     return types
 
 
@@ -248,8 +270,8 @@ async def routing_settings(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
                 "provider_enabled": provider["enabled"],
                 "critical_supported": provider["critical_supported"],
                 "critical_description": provider["critical_description"],
-                "eligible_types": _eligible_types(
-                    destination, types, secure_transport=provider["secure_transport"]
+                "eligible_types": await _eligible_types(
+                    db, destination, types, secure_transport=provider["secure_transport"]
                 ),
                 "shared_configuration": destination.kind == "legacy_webhook",
                 "plugin_owned_configuration": bool(
@@ -267,9 +289,14 @@ async def routing_settings(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
                 "media_disclosure_confirmed": destination.media_consent_revision
                 == destination.revision
                 and destination.media_consent_at is not None,
-                "verification_available": destination.provider_id == SMTP_PROVIDER
-                and provider["available"]
-                and provider["secure_transport"],
+                "verification_available": provider["available"]
+                and provider["secure_transport"]
+                and (
+                    destination.provider_id == SMTP_PROVIDER
+                    or await plugin_sensitive_allowed(
+                        db, Notification(purpose="verification"), destination
+                    )
+                ),
             }
         )
     await db.commit()

@@ -19,6 +19,7 @@ from src.core.nginx_configuration import NginxActivationError
 from src.database.models.app_integration_settings import AppIntegrationSettings
 from src.database.models.notification_delivery import NotificationDelivery
 from src.database.models.notification_destination import NotificationDestination
+from src.database.models.notification_verification import NotificationVerification
 from src.database.models.oidc_settings import OidcSettings
 from src.database.models.user import User
 from src.database.session import get_db
@@ -63,6 +64,7 @@ async def configuration(monkeypatch):
     OidcSettings.__table__.create(engine)
     NotificationDestination.__table__.create(engine)
     NotificationDelivery.__table__.create(engine)
+    NotificationVerification.__table__.create(engine)
     environment = {}
     for routes in (deployment_settings, setup):
         monkeypatch.setattr(routes, "EnvConfigHandler", lambda: EnvConfigHandler(environment))

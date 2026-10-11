@@ -618,11 +618,11 @@ function onThumbClick() {
   font-weight: 700;
   color: var(--ui-accent-text);
 }
-.title {
+.tile .title {
   margin: 0;
   font-size: 0.84rem;
   font-weight: 600;
-  color: #e8e8e8;
+  color: var(--ui-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

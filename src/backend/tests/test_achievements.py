@@ -419,6 +419,13 @@ def _creds(scratch_user, **extra):
 
 async def _refresh(user, game_id):
     async with SessionLocal() as db:
+        # Steam now reads and rechecks the persisted connection to reject late
+        # snapshots after a disconnect, rather than trusting a detached object.
+        if hasattr(user, "steam_api_key"):
+            actor = await db.get(User, user.id)
+            actor.steam_id = user.steam_id
+            actor.steam_api_key = user.steam_api_key
+            await db.commit()
         return await library_sync.refresh_game_achievements(game_id, db, user)
 
 

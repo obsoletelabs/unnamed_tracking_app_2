@@ -36,6 +36,9 @@ export interface ConnectionConfig {
   linkUrl?: string;
   // saved but nothing is pulled from the provider yet
   deferred?: boolean;
+  // opens a provider-specific sign-in dialog; the credential fields become
+  // a collapsed fallback
+  signIn?: "steam";
 }
 
 // Accounts you sign in to and pull a library from. Metadata sources (IGDB,
@@ -46,13 +49,14 @@ export const CONNECTIONS: ConnectionConfig[] = [
     label: "Steam",
     summary: "Library & achievements",
     description:
-      "Both fields are required to import your library: your Steam profile link, vanity name or SteamID, and a Web API key. Your profile's game details must be set to Public; a private library leaves saved games unchanged and reports a privacy error.",
+      "Connect Steam with QR or account sign-in for library and private achievement imports. Legacy API credentials remain available for public profiles: both fields are required, and the profile's game details must be Public.",
     kind: "fields",
     fields: [
       { key: "steam_id", label: "Profile ID", type: "text" },
       { key: "api_key", label: "Web API Key", type: "password" },
     ],
     syncProvider: "steam",
+    signIn: "steam",
     linkLabel: "Get a Steam Web API key",
     linkUrl: "https://steamcommunity.com/dev/apikey",
   },

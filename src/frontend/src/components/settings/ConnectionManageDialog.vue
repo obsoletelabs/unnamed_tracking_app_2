@@ -13,7 +13,7 @@ const props = defineProps<{
   connection: ConnectionConfig;
   state: ConnectionsState;
 }>();
-const emit = defineEmits<{ close: [] }>();
+const emit = defineEmits<{ close: []; signIn: [] }>();
 const confirm = useConfirm();
 // local bindings: v-model must not write through the prop object
 const { fieldValues, npssoToken } = props.state;
@@ -128,55 +128,74 @@ async function disconnect() {
         </template>
       </template>
 
-      <form
-        v-else
-        class="connection-form"
-        @submit.prevent="state.saveConnection(connection)"
-      >
-        <label
-          v-for="field in connection.fields"
-          :key="field.key"
-          class="field"
-        >
-          <span>{{ field.label }}</span>
-          <PasswordInput
-            v-if="field.type === 'password'"
-            v-model="fieldValues[key][field.key]"
-            :placeholder="
-              state.passwordPlaceholder(key, field.key, field.label)
-            "
-          />
-          <input
-            v-else
-            v-model="fieldValues[key][field.key]"
-            class="ui-field"
-            type="text"
-            autocomplete="off"
-            :placeholder="`Paste your ${field.label.toLowerCase()}`"
-          />
-        </label>
-        <p v-if="state.cardError[key]" class="form-error" role="alert">
-          {{ state.cardError[key] }}
-        </p>
-        <p v-if="state.cardInfo[key]" class="form-success" role="status">
-          {{ state.cardInfo[key] }}
-        </p>
-        <div class="actions">
+      <template v-else>
+        <div v-if="connection.signIn" class="actions">
           <button
-            type="submit"
+            type="button"
             class="ui-btn ui-btn-primary"
-            :disabled="state.cardSaving[key]"
+            @click="emit('signIn')"
           >
-            {{
-              state.cardSaving[key]
-                ? "Saving…"
-                : connected
-                  ? "Save changes"
-                  : "Connect"
-            }}
+            Manage Steam sign-in
           </button>
         </div>
-      </form>
+        <component
+          :is="connection.signIn ? 'details' : 'div'"
+          v-if="status?.connection_method !== 'account'"
+          class="credential-fields"
+        >
+          <summary v-if="connection.signIn">
+            Legacy API credentials (public profiles)
+          </summary>
+          <form
+            class="connection-form"
+            @submit.prevent="state.saveConnection(connection)"
+          >
+            <label
+              v-for="field in connection.fields"
+              :key="field.key"
+              class="field"
+            >
+              <span>{{ field.label }}</span>
+              <PasswordInput
+                v-if="field.type === 'password'"
+                v-model="fieldValues[key][field.key]"
+                :placeholder="
+                  state.passwordPlaceholder(key, field.key, field.label)
+                "
+              />
+              <input
+                v-else
+                v-model="fieldValues[key][field.key]"
+                class="ui-field"
+                type="text"
+                autocomplete="off"
+                :placeholder="`Paste your ${field.label.toLowerCase()}`"
+              />
+            </label>
+            <p v-if="state.cardError[key]" class="form-error" role="alert">
+              {{ state.cardError[key] }}
+            </p>
+            <p v-if="state.cardInfo[key]" class="form-success" role="status">
+              {{ state.cardInfo[key] }}
+            </p>
+            <div class="actions">
+              <button
+                type="submit"
+                class="ui-btn ui-btn-primary"
+                :disabled="state.cardSaving[key]"
+              >
+                {{
+                  state.cardSaving[key]
+                    ? "Saving…"
+                    : connected
+                      ? "Save changes"
+                      : "Connect"
+                }}
+              </button>
+            </div>
+          </form>
+        </component>
+      </template>
     </div>
 
     <template #footer>
@@ -276,6 +295,12 @@ async function disconnect() {
   margin: 0;
   color: var(--ui-error);
   font-size: 0.85rem;
+}
+.credential-fields summary {
+  cursor: pointer;
+  color: var(--ui-dim);
+  font-size: 0.85rem;
+  margin-bottom: 12px;
 }
 .form-success {
   margin: 0;

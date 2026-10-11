@@ -10,7 +10,6 @@ RUN npm run build
 FROM python:3.12-slim AS runtime
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
-ENV PATH="/opt/java/bin:${PATH}"
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \

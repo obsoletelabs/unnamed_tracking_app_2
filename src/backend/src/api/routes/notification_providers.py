@@ -45,6 +45,12 @@ from src.features.notification_plugin_configuration import (
     configure_server,
     remove_destination,
 )
+from src.features.notification_plugin_verification import (
+    confirm_plugin_verification,
+    request_plugin_verification,
+    revoke_plugin_verification,
+    set_plugin_recovery,
+)
 from src.features.notification_policy import Trust
 from src.features.notification_providers.plugin import PluginNotificationProvider
 from src.features.notification_providers.registry import get_notification_providers
@@ -540,6 +546,62 @@ async def revoke_email_verification(
 ) -> dict:
     await _enrollment(db, revoke_email(db, current_user.id, destination_id))
     return {"revoked": True}
+
+
+@router.post("/plugin-destinations/{destination_id}/verification")
+async def request_plugin_destination_verification(
+    destination_id: UUID,
+    db: AsyncSession = _NOTIFICATION_DB,
+    current_user: User = _NOTIFICATION_USER,
+) -> dict:
+    challenge = await _enrollment(
+        db, request_plugin_verification(db, current_user.id, destination_id)
+    )
+    return {"challenge_id": str(challenge), "expires_in": 600}
+
+
+@router.post("/plugin-destinations/{destination_id}/verification/confirm")
+async def confirm_plugin_destination_verification(
+    destination_id: UUID,
+    payload: VerificationConfirm,
+    db: AsyncSession = _NOTIFICATION_DB,
+    current_user: User = _NOTIFICATION_USER,
+) -> dict:
+    verified = await _enrollment(
+        db,
+        confirm_plugin_verification(
+            db, current_user.id, destination_id, payload.challenge_id, payload.code
+        ),
+    )
+    if not verified:
+        raise HTTPException(status_code=400, detail="The code is invalid, expired or already used")
+    return {"verified": True}
+
+
+@router.post("/plugin-destinations/{destination_id}/verification/revoke")
+async def revoke_plugin_destination_verification(
+    destination_id: UUID,
+    db: AsyncSession = _NOTIFICATION_DB,
+    current_user: User = _NOTIFICATION_USER,
+) -> dict:
+    await _enrollment(db, revoke_plugin_verification(db, current_user.id, destination_id))
+    return {"revoked": True}
+
+
+class PluginRecoveryPreference(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enabled: bool
+
+
+@router.put("/plugin-destinations/{destination_id}/recovery")
+async def update_plugin_recovery_preference(
+    destination_id: UUID,
+    payload: PluginRecoveryPreference,
+    db: AsyncSession = _NOTIFICATION_DB,
+    current_user: User = _NOTIFICATION_USER,
+) -> dict:
+    await _enrollment(db, set_plugin_recovery(db, current_user.id, destination_id, payload.enabled))
+    return {"recovery_allowed": payload.enabled}
 
 
 async def _authorized_plugin_provider(

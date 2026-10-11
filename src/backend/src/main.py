@@ -42,10 +42,12 @@ from src.api.routes import (
     notification_unsubscribe,
     notification_verification,
     notifications,
+    password_recovery,
     preferences,
     session_manager,
     settings,
     stats,
+    steam_connections,
     steam_import_steps,
     steam_tags_refresh,
     tv_shows,
@@ -124,6 +126,7 @@ app.include_router(game_page.router)
 app.include_router(users.router)
 app.include_router(api_keys.router)
 app.include_router(auth.router)
+app.include_router(password_recovery.router)
 app.include_router(auth_oidc_router)
 app.include_router(setup_router)
 app.include_router(settings.router)
@@ -146,6 +149,7 @@ app.include_router(media_provider.router)
 app.include_router(media_images.router)
 app.include_router(achievement_icons.router)
 app.include_router(steam_import_steps.router)
+app.include_router(steam_connections.router)
 app.include_router(steam_tags_refresh.router)
 app.include_router(media_lists.router)
 app.include_router(notifications.router)

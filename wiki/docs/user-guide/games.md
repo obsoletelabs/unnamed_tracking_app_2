@@ -81,7 +81,6 @@ A game can have:
 - notes and checklist items;
 - player profiles, linked Wise Old Man statistics, and stat history;
 - save, config, mod, and world archives with version history;
-- rendered world-map previews for supported archives;
 - related variants and collection/list membership.
 
 Uploaded files remain user-scoped. Deleted games, files, screenshots, profiles, and archives move to their corresponding trash views when supported and can be restored until purged or swept by retention policy.

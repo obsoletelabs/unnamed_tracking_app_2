@@ -15,11 +15,11 @@ from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_receipt import NotificationReceipt
 from src.database.models.user import User
 from src.features.notification_audit import record_notices
+from src.features.notification_plugin_policy import delivery_projection
 from src.features.notification_policy import (
     MEDIA_KINDS,
     Trust,
     preference_enabled,
-    select_projection,
 )
 from src.features.notification_providers.delivery import ensure_deliveries
 
@@ -35,6 +35,34 @@ EVENT_TYPES = {
     "game_sale": "game.sale.started",
     "game_price_hit": "game.price.threshold_hit",
 }
+
+
+async def emit_recovery_request(db: AsyncSession, token) -> UUID:
+    """Reserved interpretation; only final eligible dispatch may resolve the secret."""
+    now = int(time.time())
+    notice = Notification(
+        id=uuid4(),
+        user_id=token.user_id,
+        kind="password_reset",
+        event_type="auth.password_reset",
+        source=token.plugin_id,
+        source_installation_id=token.installation_id,
+        media_type="auth_recovery",
+        media_id=token.id,
+        title="Reset your password",
+        body="A password reset was requested.",
+        event_at=now,
+        dedupe_key=f"recovery:{token.id}",
+        required_trust=int(Trust.SECURE),
+        purpose="recovery",
+        inbox_visible=False,
+        expires_at=token.expires_at,
+    )
+    db.add(notice)
+    await db.flush()
+    await ensure_deliveries(db, [notice.id])
+    await record_notices(db, [notice], "created")
+    return notice.id
 
 
 async def emit_verification_request(
@@ -53,7 +81,9 @@ async def emit_verification_request(
         source="host.verification",
         media_type="notification_destination",
         media_id=destination.id,
-        title="Verify your email destination",
+        title="Verify your email destination"
+        if destination.provider_id == "core.smtp"
+        else "Verify your notification destination",
         body="An expiring verification code was requested.",
         event_at=now,
         dedupe_key=f"verification:{challenge_id}",
@@ -63,7 +93,7 @@ async def emit_verification_request(
         expires_at=expires_at,
     )
     prefs = await load_preferences(db, destination.user_id)
-    if not select_projection(notice, destination, prefs):
+    if not await delivery_projection(db, notice, destination, prefs):
         return None
     db.add(notice)
     db.add(

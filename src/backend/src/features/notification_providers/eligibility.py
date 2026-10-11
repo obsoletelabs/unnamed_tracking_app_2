@@ -12,7 +12,7 @@ from src.database.models.notification_delivery import NotificationDelivery
 from src.database.models.notification_delivery_attempt import NotificationDeliveryAttempt
 from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_provider_setting import NotificationProviderSetting
-from src.features.notification_policy import select_projection
+from src.features.notification_plugin_policy import delivery_projection
 from src.features.notification_source_policy import source_delivery_allowed
 
 from .base import NotificationMessage, ProviderDestination
@@ -76,7 +76,7 @@ async def revalidate_delivery_attempt(
     ):
         return None
     preferences = await load_preferences(db, destination.user_id)
-    if select_projection(notification, endpoint, preferences) != delivery.projection:
+    if await delivery_projection(db, notification, endpoint, preferences) != delivery.projection:
         return None
     setting = await db.scalar(
         select(NotificationProviderSetting).where(

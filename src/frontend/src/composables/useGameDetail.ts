@@ -89,7 +89,7 @@ import DOMPurify from "dompurify";
 import { useConfirm, usePrompt } from "../state/dialog";
 import { matchesShortcut } from "../state/shortcuts";
 import { useGameProfiles } from "./useGameProfiles";
-import { useGameWorldMaps } from "./useGameWorldMaps";
+import { useGameWorlds } from "./useGameWorlds";
 import { useGameAchievements } from "./useGameAchievements";
 export function useGameDetail() {
   const confirm = useConfirm();
@@ -273,12 +273,10 @@ export function useGameDetail() {
     saveArchivesLoaded.value = false;
     saveTrash.value = [];
     showSaveTrash.value = false;
-    stopWorldMapPolling();
-    worldMaps.value = [];
-    worldMapsLoaded.value = false;
+    worlds.value = [];
+    worldsLoaded.value = false;
     worldTrash.value = [];
     showWorldTrash.value = false;
-    activeMapArchiveId.value = null;
     profiles.value = [];
     profilesLoadedFor.value = null;
     activeProfileId.value = null;
@@ -305,10 +303,10 @@ export function useGameDetail() {
       void loadGameFiles("doc");
       void refreshFileTrash("doc");
     }
-    if (activeTab.value === "World Map") {
+    if (activeTab.value === "Worlds") {
       void loadGameFiles("modpack");
       void refreshFileTrash("modpack");
-      void refreshWorldMaps();
+      void refreshWorlds();
       void refreshWorldTrash();
     }
   }
@@ -730,15 +728,15 @@ export function useGameDetail() {
     "Soundtrack",
     "Saves",
     "Docs",
-    "World Map",
+    "Worlds",
     "Notes",
     "Accounts",
     "Stats",
   ] as const;
   const activeTab = ref<(typeof tabs)[number]>("Overview");
 
-  // World Map only makes sense for Minecraft (BlueMap is Minecraft-specific)
-  //, checks this game's own title, and its parent's if it's a mod/modpack
+  // Minecraft worlds appear on Minecraft games and their modpacks.
+  // Checks this game's own title, and its parent's if it's a mod/modpack
   // variant (e.g. "GregTech: New Horizons" has no "Minecraft" in its own
   // title, but its parent breadcrumb does).
   const isMinecraftGame = computed(() => {
@@ -765,7 +763,7 @@ export function useGameDetail() {
   const baseTabs = computed(() =>
     tabs.filter(
       (tab) =>
-        (tab !== "World Map" || isMinecraftGame.value) &&
+        (tab !== "Worlds" || isMinecraftGame.value) &&
         (tab !== "Accounts" || game.value?.profilesEnabled),
     ),
   );
@@ -818,7 +816,9 @@ export function useGameDetail() {
       openedFor = id;
       void refreshCounts();
       const asked = route.query.tab as string | undefined;
-      const wanted = asked ?? pageSettings.value.default_tab;
+      const wanted =
+        (asked === "World Map" ? "Worlds" : asked) ??
+        pageSettings.value.default_tab;
       const hidden =
         (OPTIONAL_TABS as readonly string[]).includes(wanted) &&
         pageSettings.value.tabs[wanted as OptionalTab] === "hide";
@@ -832,7 +832,7 @@ export function useGameDetail() {
     { immediate: true },
   );
 
-  // Screenshots/Clips/Soundtrack/Saves/Docs/World Map all share the same
+  // Screenshots/Clips/Soundtrack/Saves/Docs/Worlds all share the same
   // RomM-style layout: a small View/Upload sidebar instead of the dropzone
   // always sitting at the top. One shared ref is enough since only one of
   // these panels is ever visible at a time, reset to 'view' on every tab
@@ -856,7 +856,7 @@ export function useGameDetail() {
   }
 
   watch(isMinecraftGame, (isMinecraft) => {
-    if (!isMinecraft && activeTab.value === "World Map")
+    if (!isMinecraft && activeTab.value === "Worlds")
       activeTab.value = "Overview";
   });
 
@@ -1244,10 +1244,10 @@ export function useGameDetail() {
       void refreshSaveArchives();
       void refreshSaveTrash();
     }
-    if (tab === "World Map") {
+    if (tab === "Worlds") {
       void loadGameFiles("modpack");
       void refreshFileTrash("modpack");
-      void refreshWorldMaps();
+      void refreshWorlds();
       void refreshWorldTrash();
     }
     if (tab === "Stats") {
@@ -1519,7 +1519,7 @@ export function useGameDetail() {
     const e = editingArchive.value;
     if (!e) return null;
     const list: GameArchiveData[] = e.isWorld
-      ? worldMaps.value
+      ? worlds.value
       : saveArchives.value;
     return list.find((a) => a.id === e.id) ?? null;
   });
@@ -1535,7 +1535,7 @@ export function useGameDetail() {
     if (!game.value) return;
     try {
       await updateArchive(game.value.id, archive.id, patch);
-      if (isWorld) await refreshWorldMaps();
+      if (isWorld) await refreshWorlds();
       else await refreshSaveArchives();
     } catch (err) {
       filesError.value = err instanceof Error ? err.message : "Failed to save";
@@ -1558,7 +1558,7 @@ export function useGameDetail() {
       for (const archive of items)
         await deleteArchive(game.value.id, archive.id);
       if (isWorld) {
-        await refreshWorldMaps();
+        await refreshWorlds();
         await refreshWorldTrash();
       } else {
         await refreshSaveArchives();
@@ -1582,9 +1582,7 @@ export function useGameDetail() {
     try {
       await deleteArchive(game.value.id, archive.id);
       if (isWorld) {
-        worldMaps.value = worldMaps.value.filter((w) => w.id !== archive.id);
-        if (activeMapArchiveId.value === archive.id)
-          activeMapArchiveId.value = null;
+        worlds.value = worlds.value.filter((w) => w.id !== archive.id);
         await refreshWorldTrash();
       } else {
         saveArchives.value = saveArchives.value.filter(
@@ -1628,7 +1626,7 @@ export function useGameDetail() {
     try {
       await restoreArchive(game.value.id, archive.id);
       if (isWorld) {
-        await refreshWorldMaps();
+        await refreshWorlds();
         await refreshWorldTrash();
       } else {
         await refreshSaveArchives();
@@ -1660,7 +1658,7 @@ export function useGameDetail() {
     if (!ok) return;
     try {
       await deleteArchiveVersion(game.value.id, archive.id, version.id);
-      if (isWorld) await refreshWorldMaps();
+      if (isWorld) await refreshWorlds();
       else await refreshSaveArchives();
     } catch (err) {
       filesError.value =
@@ -1669,17 +1667,12 @@ export function useGameDetail() {
   }
 
   const {
-    worldMaps,
-    worldMapsLoaded,
-    worldMapStarting,
-    activeMapArchiveId,
-    stopWorldMapPolling,
-    refreshWorldMaps,
+    worlds,
+    worldsLoaded,
+    refreshWorlds,
     onNewWorldSelected,
     onAddWorldVersion,
-    startWorldMapRender,
-    viewWorldMap,
-  } = useGameWorldMaps(game, saveUploading, filesError, prompt);
+  } = useGameWorlds(game, saveUploading, filesError, prompt);
 
   const {
     descriptionOf,
@@ -1878,14 +1871,10 @@ export function useGameDetail() {
     worldTrash,
     onRestoreArchive,
     onDeleteVersion,
-    worldMaps,
-    worldMapsLoaded,
-    worldMapStarting,
-    activeMapArchiveId,
+    worlds,
+    worldsLoaded,
     onNewWorldSelected,
     onAddWorldVersion,
-    startWorldMapRender,
-    viewWorldMap,
     descriptionOf,
     achFilter,
     achProvider,

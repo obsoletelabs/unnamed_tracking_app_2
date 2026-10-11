@@ -37,7 +37,8 @@ from src.database.models.achievement import Achievement
 from src.database.models.game import Game, GameStatus
 from src.database.models.user import User
 from src.database.session import SessionLocal, get_db
-from src.features.imports.library_games import LibraryIndex
+from src.features.imports import steam_connection
+from src.features.imports.library_games import LibraryIndex, lock_imported_game
 from src.features.imports.library_games import get_or_create_game as _get_or_create_game
 from src.features.imports.steam_achievements import SteamAchievementData, fetch_steam_achievements
 from src.features.metadata.games import steam
@@ -375,7 +376,7 @@ async def refresh_game_achievements(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
     external_id = game.external_id or ""
     if game.source == "Steam":
-        provider, rows = "Steam", await _fetch_steam_rows(current_user, external_id)
+        provider, rows = "Steam", await _fetch_steam_rows(current_user, external_id, db)
     elif game.source == "RetroAchievements":
         provider, rows = "RetroAchievements", await _fetch_retro_rows(current_user, external_id)
     elif game.source == "PlayStation":
@@ -387,6 +388,14 @@ async def refresh_game_achievements(
             detail="Only games that came from Steam, PlayStation or RetroAchievements have "
             "achievements to refresh.",
         )
+    if rows and provider == "Steam":
+        # The selected record may have been deleted or moved while Steam replied.
+        current = await lock_imported_game(db, current_user.id, game_id, "Steam")
+        if current is None or current.external_id != external_id:
+            raise HTTPException(
+                status_code=409,
+                detail="This game changed during the refresh. Saved progress was kept.",
+            )
     if rows:
         await _replace_achievements(db, game.id, provider, rows)
         await db.commit()
@@ -398,41 +407,33 @@ async def refresh_game_achievements(
     }
 
 
-async def _fetch_steam_rows(user: User, external_id: str) -> list[dict]:
-    if not user.steam_id or not user.steam_api_key:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Save your Steam ID and API key first."
-        )
+async def _fetch_steam_rows(user: User, external_id: str, db: AsyncSession) -> list[dict]:
     if not external_id.isdigit():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="This game has no Steam app id."
         )
-    api_key, app_id = user.steam_api_key, int(external_id)
+    app_id = int(external_id)
     try:
-        steam_id = await asyncio.to_thread(steam.resolve_steam_id, user.steam_id, api_key)
-        schema = await asyncio.to_thread(steam.get_schema_for_game, api_key, app_id)
-        if not schema:
-            return []
-        unlocked = await asyncio.to_thread(
-            steam.get_player_achievements, steam_id, api_key, app_id, True
+        steam_id, api_key = await steam_connection.credentials(db, user)
+        schema, unlocked, descriptions = await fetch_steam_achievements(steam_id, api_key, app_id)
+        percentages = (
+            await asyncio.to_thread(steam.get_global_percentages, app_id)
+            if schema and unlocked is not None
+            else None
         )
+        await steam_connection.recheck(db, user.id, steam_id, api_key)
+    except steam_connection.SteamConnectionError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
     except steam.SteamLibraryError as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
-    if not unlocked:
-        # Steam lists every achievement of a game the player owns, locked ones
-        # included, so an empty answer means it gave this account no data at
-        # all, not that nothing is unlocked. Saying so beats showing 0 unlocked.
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from None
+    if unlocked is None:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Steam returned no achievement data for this account on app {app_id} "
-            f"({len(schema)} achievements exist). Check that Game details are public in "
-            "Steam's privacy settings, that the API key and Steam ID belong to the same "
-            "account, and that this entry's Steam app id is the edition you own.",
+            detail="Steam achievement progress was unavailable. Saved progress was kept. "
+            "Reconnect Steam in Connections if its session has expired.",
         )
-    percentages = await asyncio.to_thread(steam.get_global_percentages, app_id)
-    descriptions = None
-    if _needs_community_descriptions(schema):
-        descriptions = await asyncio.to_thread(steam.get_community_descriptions, steam_id, app_id)
+    if not schema:
+        return []
     return _steam_achievement_rows(schema, unlocked, percentages, descriptions)
 
 
@@ -490,18 +491,11 @@ async def sync_steam_library(
     current_user: User = Depends(get_current_user),
     achievements: Literal["now", "later"] = "now",
 ) -> dict:
-    if not current_user.steam_id or not current_user.steam_api_key:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Save your Steam ID and API key first."
-        )
-
-    api_key = current_user.steam_api_key
     try:
-        # cheap no-op once the credentials-save flow has already resolved
-        # this to a numeric SteamID64 — stays here so a sync never breaks
-        # even if the stored value is still a vanity name/profile URL
-        steam_id = await asyncio.to_thread(steam.resolve_steam_id, current_user.steam_id, api_key)
+        steam_id, api_key = await steam_connection.credentials(db, current_user)
         owned_games = await asyncio.to_thread(steam.get_owned_games, steam_id, api_key)
+    except steam_connection.SteamConnectionError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
     except steam.SteamLibraryError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
@@ -527,11 +521,21 @@ async def sync_steam_library(
         )
     )
 
+    try:
+        await steam_connection.recheck(db, current_user.id, steam_id, api_key)
+    except steam_connection.SteamConnectionError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
     index = await LibraryIndex.load(db, current_user.id, "Steam")
+    # Steam's games response can omit demos, refunded apps and other licenses.
+    # Absence cannot establish that a saved game is no longer owned. Repair old
+    # omission-based warnings only after a valid response, scoped to active
+    # Steam records for this user; retain all saved progress and relationships.
+    for existing_games in index.by_title.values():
+        for existing in existing_games:
+            existing.stale_since = None
     games_added = games_updated = achievements_synced = 0
     newly_created: list[tuple[Game, int]] = []
     synced_titles: list[str] = []
-    touched_ids: set[UUID] = set()
     achievement_ids: list[str] = []
     status_ids: list[str] = []
     fetch_index = 0
@@ -545,9 +549,9 @@ async def sync_steam_library(
         game, created = await _get_or_create_game(
             db, current_user.id, title, "Steam", external_id=str(app_id), index=index
         )
-        touched_ids.add(game.id)
         achievement_ids.append(str(game.id))
-        game.playtime_seconds = int(entry.get("playtime_forever", 0)) * 60
+        if "playtime_forever" in entry:
+            game.playtime_seconds = entry["playtime_forever"] * 60
         if entry.get("rtime_last_played"):
             game.last_played_at = int(entry["rtime_last_played"])
         games_added += created
@@ -577,14 +581,13 @@ async def sync_steam_library(
             _add_source_tag_and_collection(game, "Steam")
             newly_created.append((game, app_id))
 
-    games_flagged_stale = await _flag_stale_games(db, current_user.id, "Steam", touched_ids)
     current_user.steam_library_synced_at = int(time.time())
     await db.commit()
     return {
         "games_added": games_added,
         "games_updated": games_updated,
         "achievements_synced": achievements_synced,
-        "games_flagged_stale": games_flagged_stale,
+        "games_flagged_stale": 0,
         "games": synced_titles,
         # the new games still to be enriched (store details, tags, artwork), which
         # is slow, so the app asks for it in batches: see steam_import_steps.py

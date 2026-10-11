@@ -40,6 +40,7 @@ from src.database.models.notification_delivery import NotificationDelivery
 from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_provider_setting import NotificationProviderSetting
 from src.database.models.notification_receipt import NotificationReceipt
+from src.database.models.notification_verification import NotificationVerification
 from src.database.models.plugin_notification_provider import PluginNotificationProviderRegistration
 from src.database.models.plugin_permissions import PluginPermissionGrant, PluginPermissionRequest
 from src.database.models.user import User
@@ -111,6 +112,7 @@ def boundary(monkeypatch):
         UserPreferences,
         NotificationDelivery,
         NotificationProviderSetting,
+        NotificationVerification,
     ):
         model.__table__.create(engine)
     with Session(engine, expire_on_commit=False) as session:

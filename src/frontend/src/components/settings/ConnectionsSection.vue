@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import ConnectionManageDialog from "./ConnectionManageDialog.vue";
 import PluginConnectionDialog from "./PluginConnectionDialog.vue";
+import SteamConnectionDialog from "./SteamConnectionDialog.vue";
 import {
   CONNECTIONS,
   isConnectionConnected,
@@ -18,6 +19,7 @@ import type { PluginConnectionContribution } from "../../state/pluginExtensions"
 const state = useConnections();
 const managing = ref<ConnectionConfig | null>(null);
 const managingPlugin = ref<PluginConnectionContribution | null>(null);
+const steamSignIn = ref(false);
 const pluginStatus = ref<Record<string, PluginConnectionStatus>>({});
 
 const FALLBACK = { bg: "#1f1f1f", fg: "#d1d5db", mark: "•" };
@@ -193,6 +195,15 @@ watch(pluginConnections, () => void loadPluginStatus(), { immediate: true });
       :connection="managing"
       :state="state"
       @close="managing = null"
+      @sign-in="
+        managing = null;
+        steamSignIn = true;
+      "
+    />
+    <SteamConnectionDialog
+      v-if="steamSignIn"
+      @close="steamSignIn = false"
+      @changed="state.loadCredentials()"
     />
     <PluginConnectionDialog
       v-if="managingPlugin"
