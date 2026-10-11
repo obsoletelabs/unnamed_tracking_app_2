@@ -44,6 +44,12 @@ const router = createRouter({
     return { top: 0 };
   },
   routes: [
+    {
+      path: "/reset-password",
+      name: "password-reset",
+      meta: { title: "Password recovery" },
+      component: () => import("../views/PasswordReset.vue"),
+    },
     // Preserve bookmarks and navigation shortcuts when retired native
     // features move into their official plugin. Its page explains installation
     // when the optional plugin is not enabled.
@@ -291,6 +297,7 @@ router.beforeEach(async (to, from) => {
   captureLibraryNavigation(to.path, from.path, window.scrollY);
 
   const entryPage =
+    to.path === "/reset-password" ||
     to.path === "/setup" ||
     to.path === "/login" ||
     to.path.startsWith("/login/");
@@ -387,7 +394,11 @@ router.beforeEach(async (to, from) => {
 
   // This public route deliberately bypasses the normal auth redirect so a
   // bookmark or reverse-proxy login entrypoint can start OIDC immediately.
-  if (to.name === "oidc-start" || to.name === "oidc-provider-start") {
+  if (
+    to.name === "oidc-start" ||
+    to.name === "oidc-provider-start" ||
+    to.name === "password-reset"
+  ) {
     setStartupState("auth-required");
     return;
   }

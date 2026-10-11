@@ -33,6 +33,7 @@ export function safeReturnPath(value: unknown): string | null {
       !pathname ||
       pathname === "/setup" ||
       pathname === "/login" ||
+      pathname === "/reset-password" ||
       pathname.startsWith("/login/")
     )
       return null;
