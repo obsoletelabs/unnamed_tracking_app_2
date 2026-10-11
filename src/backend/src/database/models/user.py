@@ -39,6 +39,13 @@ class User(Base):
     gog_refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)
     steam_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     steam_api_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Owner-session secrets and short-lived sign-in state are Fernet encrypted.
+    steam_access_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    steam_refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    steam_token_expires_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    steam_login_state: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Retained on disconnect so another account cannot overwrite imported progress.
+    steam_library_owner_id: Mapped[str | None] = mapped_column(String(17), nullable=True)
     retroachievements_username: Mapped[str | None] = mapped_column(String(64), nullable=True)
     steam_library_synced_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     retroachievements_library_synced_at: Mapped[int | None] = mapped_column(

@@ -403,7 +403,7 @@ export function useMetadataSources() {
       key: "Steam",
       label: "Steam",
       description:
-        "No account needed for metadata search. Importing your library and achievements requires both fields below: your Steam profile link, vanity name or SteamID, and a Web API key. Your profile's game details must be Public; a private library leaves saved games unchanged and reports a privacy error.",
+        "Metadata search needs no account. Connect Steam with QR or account sign-in for library and private achievement imports. Legacy API credentials remain available for public profiles.",
       fields: [
         { key: "steam_id", label: "Profile ID", type: "text" },
         { key: "api_key", label: "Web API Key", type: "password" },

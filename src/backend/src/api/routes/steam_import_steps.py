@@ -28,7 +28,8 @@ from src.core.preferences import load_preferences
 from src.database.models.game import Game, GameStatus
 from src.database.models.user import User
 from src.database.session import get_db
-from src.features.imports.library_games import LibraryIndex
+from src.features.imports import steam_connection
+from src.features.imports.library_games import LibraryIndex, lock_imported_game
 from src.features.imports.steam_achievements import SteamAchievementData, fetch_steam_achievements
 from src.features.metadata.games import steam, steam_wishlist
 from src.helpers.steam_achievement_rows import steam_achievement_rows
@@ -57,13 +58,10 @@ async def import_achievements(
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Fetch at most 25 owned Steam games, then lock and recheck before saving."""
-    api_key = current_user.steam_api_key
-    if not current_user.steam_id or not api_key:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Save your Steam ID and API key first."
-        )
     try:
-        steam_id = await asyncio.to_thread(steam.resolve_steam_id, current_user.steam_id, api_key)
+        steam_id, api_key = await steam_connection.credentials(db, current_user)
+    except steam_connection.SteamConnectionError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
     except steam.SteamLibraryError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
     scope = (
@@ -86,6 +84,10 @@ async def import_achievements(
         reference.id: (reference.external_id, data)
         for reference, data in zip(references, snapshots, strict=True)
     }
+    try:
+        await steam_connection.recheck(db, current_user.id, steam_id, api_key)
+    except steam_connection.SteamConnectionError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
     return await _save_achievement_batch(db, current_user.id, fetched, body.status_game_ids)
 
 
@@ -150,17 +152,12 @@ async def import_wishlist(
     names come later, from the same enrich step as every other new game."""
     if not (await load_preferences(db, current_user.id))["steam_import_wishlist"]:
         return {"enabled": False, "added": 0, "game_ids": []}
-    if not current_user.steam_id or not current_user.steam_api_key:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Save your Steam ID and API key first."
-        )
     try:
-        steam_id = await asyncio.to_thread(
-            steam.resolve_steam_id, current_user.steam_id, current_user.steam_api_key
-        )
-        app_ids = await asyncio.to_thread(
-            steam_wishlist.get_wishlist_app_ids, steam_id, current_user.steam_api_key
-        )
+        steam_id, api_key = await steam_connection.credentials(db, current_user)
+        app_ids = await asyncio.to_thread(steam_wishlist.get_wishlist_app_ids, steam_id, api_key)
+        await steam_connection.recheck(db, current_user.id, steam_id, api_key)
+    except steam_connection.SteamConnectionError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
     except steam.SteamLibraryError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
@@ -212,16 +209,7 @@ async def enrich_games(
     for game_id in game_ids:
         try:
             async with db.begin_nested():
-                game = await db.scalar(
-                    select(Game)
-                    .where(
-                        Game.id == game_id,
-                        Game.user_id == current_user.id,
-                        Game.source == "Steam",
-                        Game.deleted_at.is_(None),
-                    )
-                    .with_for_update()
-                )
+                game = await lock_imported_game(db, current_user.id, game_id, "Steam")
                 if game is None:
                     continue
                 app_id = int(game.external_id or "")

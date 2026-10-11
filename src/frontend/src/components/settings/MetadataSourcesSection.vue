@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import PasswordInput from "../PasswordInput.vue";
 import MetadataProviderSettings from "../plugins/MetadataProviderSettings.vue";
+import SteamConnectionDialog from "./SteamConnectionDialog.vue";
+import { ref } from "vue";
+import { fetchProviderCredentials } from "../../services/settings";
 import { useMetadataSources } from "../../composables/useMetadataSources";
 const {
   SHORT_DESC,
@@ -31,6 +34,10 @@ const {
   handleSyncLibrary,
   formatLastSynced,
 } = useMetadataSources();
+const manageSteam = ref(false);
+async function refreshSteamStatus() {
+  Object.assign(credentialStatus, await fetchProviderCredentials());
+}
 </script>
 
 <template>
@@ -219,54 +226,65 @@ const {
           @submit.prevent="saveCard(PROVIDER_CARDS.Steam)"
         >
           <p class="tile-hint">
-            Both fields are required to import your library: your Steam profile
-            link, vanity name or SteamID, and a Web API key. Your profile's game
-            details must be set to Public.
+            Sign in with Steam Guard QR or your Steam account. No API key or
+            profile lookup is needed.
           </p>
-          <label
-            v-for="field in PROVIDER_CARDS.Steam.fields"
-            :key="field.key"
-            class="field"
+          <button
+            class="primary-button"
+            type="button"
+            @click="manageSteam = true"
           >
-            <span>{{ field.label }}</span>
-            <PasswordInput
-              v-if="field.type === 'password'"
-              v-model="fieldValues.Steam[field.key]"
-              :placeholder="
-                passwordPlaceholder('Steam', field.key, field.label)
-              "
-            />
-            <input
-              v-else
-              v-model="fieldValues.Steam[field.key]"
-              type="text"
-              autocomplete="off"
-              :placeholder="`Paste your ${field.label.toLowerCase()}`"
-            />
-          </label>
-          <div v-if="cardError.Steam" class="form-error">
-            {{ cardError.Steam }}
-          </div>
-          <div v-if="cardInfo.Steam" class="form-success">
-            {{ cardInfo.Steam }}
-          </div>
-          <div class="card-actions">
-            <button
-              type="submit"
-              class="primary-button"
-              :disabled="cardSaving.Steam"
+            Manage Steam sign-in
+          </button>
+          <details
+            v-if="credentialStatus.Steam?.connection_method !== 'account'"
+          >
+            <summary>Legacy API credentials (public profiles)</summary>
+            <label
+              v-for="field in PROVIDER_CARDS.Steam.fields"
+              :key="field.key"
+              class="field"
             >
-              {{ cardSaving.Steam ? "Connecting…" : "Connect" }}
-            </button>
-            <button
-              v-if="statusClass('Steam') !== 'disconnected'"
-              type="button"
-              class="secondary-button"
-              @click="clearCard(PROVIDER_CARDS.Steam)"
-            >
-              Disconnect
-            </button>
-          </div>
+              <span>{{ field.label }}</span>
+              <PasswordInput
+                v-if="field.type === 'password'"
+                v-model="fieldValues.Steam[field.key]"
+                :placeholder="
+                  passwordPlaceholder('Steam', field.key, field.label)
+                "
+              />
+              <input
+                v-else
+                v-model="fieldValues.Steam[field.key]"
+                type="text"
+                autocomplete="off"
+                :placeholder="`Paste your ${field.label.toLowerCase()}`"
+              />
+            </label>
+            <div v-if="cardError.Steam" class="form-error">
+              {{ cardError.Steam }}
+            </div>
+            <div v-if="cardInfo.Steam" class="form-success">
+              {{ cardInfo.Steam }}
+            </div>
+            <div class="card-actions">
+              <button
+                type="submit"
+                class="primary-button"
+                :disabled="cardSaving.Steam"
+              >
+                {{ cardSaving.Steam ? "Connecting…" : "Connect" }}
+              </button>
+              <button
+                v-if="statusClass('Steam') !== 'disconnected'"
+                type="button"
+                class="secondary-button"
+                @click="clearCard(PROVIDER_CARDS.Steam)"
+              >
+                Disconnect
+              </button>
+            </div>
+          </details>
         </form>
       </div>
 
@@ -694,6 +712,11 @@ const {
         </div>
       </div>
     </div>
+    <SteamConnectionDialog
+      v-if="manageSteam"
+      @close="manageSteam = false"
+      @changed="refreshSteamStatus"
+    />
   </section>
 </template>
 

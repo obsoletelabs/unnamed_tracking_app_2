@@ -4,6 +4,7 @@ import { fetchProviderCredentials } from "../../services/settings";
 import type { ProviderCredentialStatus } from "../../services/settings";
 import { syncLibrary } from "../../services/librarySync";
 import type { LibrarySyncProvider } from "../../services/librarySync";
+import SteamConnectionDialog from "./SteamConnectionDialog.vue";
 
 const emit = defineEmits<{ navigate: [section: string] }>();
 
@@ -16,6 +17,7 @@ const loading = ref(true);
 const error = ref<string | null>(null);
 const syncing = ref<string | null>(null);
 const syncMessage = ref<string | null>(null);
+const manageSteam = ref(false);
 
 const SYNCABLE: Record<string, LibrarySyncProvider> = {
   Steam: "steam",
@@ -136,8 +138,8 @@ async function sync(row: Row) {
   <section class="settings-section">
     <h2>Connections</h2>
     <p class="hint">
-      The accounts your library is linked to. Adding or changing one happens
-      under Library > Metadata.
+      Manage Steam sign-in here. Other account credentials are under Library >
+      Metadata.
     </p>
     <p v-if="error" class="error">{{ error }}</p>
     <p v-if="syncMessage" class="note">{{ syncMessage }}</p>
@@ -173,13 +175,22 @@ async function sync(row: Row) {
           <button
             type="button"
             class="btn ghost"
-            @click="emit('navigate', 'sources')"
+            @click="
+              row.name === 'Steam'
+                ? (manageSteam = true)
+                : emit('navigate', 'sources')
+            "
           >
             Manage
           </button>
         </span>
       </li>
     </ul>
+    <SteamConnectionDialog
+      v-if="manageSteam"
+      @close="manageSteam = false"
+      @changed="load"
+    />
   </section>
 </template>
 

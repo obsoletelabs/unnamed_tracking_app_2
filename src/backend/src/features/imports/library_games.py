@@ -17,6 +17,23 @@ from src.helpers.save_game_asset import create_game_folder
 _SLUG_INVALID = re.compile(r"[^A-Za-z0-9_-]+")
 
 
+async def lock_imported_game(
+    db: AsyncSession, user_id: UUID, game_id: UUID, source: str
+) -> Game | None:
+    """Re-read an active provider record before applying delayed import data."""
+    return await db.scalar(
+        select(Game)
+        .where(
+            Game.id == game_id,
+            Game.user_id == user_id,
+            Game.source == source,
+            Game.deleted_at.is_(None),
+        )
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+
+
 def _folder_candidates(title: str) -> Iterator[str]:
     base = (_SLUG_INVALID.sub("-", title).strip("-") or "game")[:FOLDER_NAME_MAX_LENGTH]
     yield base
