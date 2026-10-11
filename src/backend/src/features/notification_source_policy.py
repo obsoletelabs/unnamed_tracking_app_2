@@ -10,6 +10,7 @@ from src.database.models.notification_delivery import NotificationDelivery
 from src.database.models.plugin_notification_type import PluginNotificationTypeRegistration
 from src.features.notification_audit import change_deliveries
 from src.features.notification_auth_secrets import active_recovery_token
+from src.features.notification_pending import active_invitation
 from src.features.notification_policy import Trust
 from src.plugin_api.grants import has_capability_grant
 
@@ -18,8 +19,10 @@ async def source_delivery_allowed(db: AsyncSession, notice: Notification) -> boo
     """Revocation/reinstall cannot release old source work through a built-in provider."""
     if notice.event_type == "auth.password_reset":
         return await active_recovery_token(db, notice) is not None
-    if notice.source_installation_id is None:
-        return True
+    if notice.pending_recipient_id is not None:
+        return await active_invitation(db, notice) is not None
+    if notice.user_id is None or notice.source_installation_id is None:
+        return notice.user_id is not None
     legacy = notice.kind == "plugin" and notice.event_type == "plugin.notice"
     if not legacy:
         row = await db.scalar(

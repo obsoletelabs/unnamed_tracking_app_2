@@ -31,7 +31,11 @@ import {
   initializeNavigationViewport,
 } from "./state/sidebarMode";
 import { computed, watchEffect } from "vue";
-import { startupError, startupState } from "./state/startup";
+import {
+  publicEntryAllowed,
+  startupError,
+  startupState,
+} from "./state/startup";
 
 import { onUnmounted, watch } from "vue";
 import {
@@ -132,7 +136,8 @@ const sidebarShown = computed(
   () =>
     !route.path.startsWith("/login") &&
     route.path !== "/setup" &&
-    route.path !== "/reset-password",
+    route.path !== "/reset-password" &&
+    route.path !== "/accept-invite",
 );
 // Pinned and rail modes sit in the page's own layout, so content needs to
 // make room for them. Overlay floats above everything and reserves nothing.
@@ -168,13 +173,7 @@ const KEPT_ALIVE = [
         authChecked &&
         currentUser &&
         route.matched.length > 0) ||
-      (startupState === 'setup-required' && route.name === 'setup') ||
-      (startupState === 'auth-required' &&
-        (route.name === 'login' ||
-          route.name === 'password-reset' ||
-          route.name === 'local-login' ||
-          route.name === 'oidc-start' ||
-          route.name === 'oidc-provider-start'))
+      publicEntryAllowed(startupState, route.name)
     "
   >
     <SidebarNav v-if="sidebarShown" />

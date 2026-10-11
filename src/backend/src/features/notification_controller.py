@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.preferences import load_preferences
 from src.database.models.notification import Notification
+from src.database.models.notification_delivery import NotificationDelivery
 from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_receipt import NotificationReceipt
 from src.database.models.user import User
@@ -35,6 +36,44 @@ EVENT_TYPES = {
     "game_sale": "game.sale.started",
     "game_price_hit": "game.price.threshold_hit",
 }
+
+
+async def emit_invitation(db, invitation, endpoint) -> UUID:
+    """Host-reserved bootstrap interpretation using the normal durable delivery queue."""
+    now = int(time.time())
+    notice = Notification(
+        id=uuid4(),
+        pending_recipient_id=invitation.pending_recipient_id,
+        kind="user_invite",
+        event_type="auth.user_invite",
+        source=invitation.plugin_id,
+        source_installation_id=invitation.installation_id,
+        media_type="auth_invitation",
+        media_id=invitation.id,
+        title="You have been invited",
+        body="An account invitation was issued.",
+        event_at=now,
+        dedupe_key=f"invitation:{invitation.id}",
+        required_trust=int(Trust.PRIVATE),
+        purpose="invitation",
+        inbox_visible=False,
+        expires_at=invitation.expires_at,
+    )
+    db.add(notice)
+    invitation.notification_id = notice.id
+    await db.flush()
+    await ensure_deliveries(db, [notice.id])
+    delivery = await db.scalar(
+        select(NotificationDelivery.id).where(
+            NotificationDelivery.notification_id == notice.id,
+            NotificationDelivery.destination_id == endpoint.id,
+        )
+    )
+    if delivery is None:
+        raise ValueError(
+            "Administrative notification policy does not permit invitation email delivery"
+        )
+    return notice.id
 
 
 async def emit_recovery_request(db: AsyncSession, token) -> UUID:
@@ -69,6 +108,8 @@ async def emit_verification_request(
     db: AsyncSession, destination: NotificationDestination, challenge_id: UUID, expires_at: int
 ) -> UUID | None:
     """Reserved host interpretation; the code lives encrypted in the proof record only."""
+    if destination.user_id is None:
+        return None
     user = await db.get(User, destination.user_id)
     if user is None or not user.is_active:
         return None

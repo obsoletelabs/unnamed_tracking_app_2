@@ -69,6 +69,8 @@ def select_projection(
     plugin_sensitive_allowed: bool = False,
 ) -> str | None:
     """Return an approved representation or deny. Provider availability is a separate gate."""
+    if notification.user_id is None or destination.pending_recipient_id is not None:
+        return None
     if (
         not destination.enabled
         or not destination.active

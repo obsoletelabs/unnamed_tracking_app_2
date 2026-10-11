@@ -39,7 +39,7 @@ export function completePasswordReset(
   return submit("complete", { id, token, password });
 }
 
-export function resetCredential(
+export function authLinkCredential(
   fragment: string,
 ): { id: string; token: string } | null {
   const values = new URLSearchParams(fragment.replace(/^#/, ""));
@@ -54,3 +54,5 @@ export function resetCredential(
     return null;
   return { id, token };
 }
+
+export const resetCredential = authLinkCredential;

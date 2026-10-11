@@ -35,6 +35,22 @@ identity provider's recovery flow.
 See the [developer contract](../development/plugin-auth-flows.md) for routing,
 permission and token lifecycle details.
 
+## Optional email invitations
+
+Administrators can install **User Invites**, grant its separate critical global
+permission, and explicitly activate it in **Administration → User invites**. Built-in
+SMTP must be configured; no additional email provider is installed by the plugin.
+Choose the link lifetime, enter an email address, and send the invitation. The page
+shows delivery state and lets administrators revoke outstanding invitations.
+
+The recipient opens the emailed link, chooses a username and password, then signs
+in normally. Opening a link alone creates no account. Acceptance creates a normal
+account without administrator privileges; links expire and work only once. Replacing
+or revoking an invitation, or disabling its plugin, invalidates old links. Invitation
+delivery does not automatically configure or verify a personal notification destination.
+
+![Accept an invitation on mobile](../assets/user-invitations/accept-mobile.png)
+
 ## Password and secret fields
 
 Password and editable secret fields are masked by default. The eye control in the field can reveal the value temporarily and can be used with keyboard focus.

@@ -253,8 +253,17 @@ async def revoke_grant(
         or capability_implies(row.capability, "frontend.pwa")
     ):
         await retire_plugin_destinations(db, row.plugin_id, row.user_id, row.installation_id)
-    if row.device_id is None and row.user_id is None and row.capability == "auth.password_reset":
-        await retire_auth_flows(db, row.plugin_id, row.installation_id)
+    if (
+        row.device_id is None
+        and row.user_id is None
+        and row.capability in {"auth.password_reset", "auth.user_invites"}
+    ):
+        await retire_auth_flows(
+            db,
+            row.plugin_id,
+            row.installation_id,
+            mode="password_reset" if row.capability == "auth.password_reset" else "user_invite",
+        )
     await db.commit()
     return {"id": str(row.id), "status": "revoked"}
 
