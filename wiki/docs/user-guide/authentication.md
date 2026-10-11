@@ -8,6 +8,33 @@ Local accounts use the application's username/password login. A successful login
 
 Passwords are not stored in plaintext. API requests made by the web application normally use the session cookie automatically.
 
+## Optional password recovery
+
+An administrator can install the maintained **Password Reset** plugin, approve its
+separate critical global permission, then activate it under **Administration →
+Password recovery**. SMTP delivery remains built into the application. Installation
+alone does not enable recovery.
+
+In **Account → Notifications**, configure and verify an external destination, then
+enable its separate recovery option. A plugin destination must also support recovery
+and have the required high-risk provider permission. The authenticated inbox and
+browser push cannot receive reset links.
+
+When recovery is active, select **Forgot your password?** on the sign-in page and
+enter your username or configured app email. The response does not disclose whether
+the account has an eligible destination. Open the delivered expiring single-use link,
+enter and confirm a password meeting the server policy, then sign in normally.
+Changing the password signs out existing browser sessions; **API keys stay active**.
+Opening the link alone does not change anything. SSO-linked accounts use their
+identity provider's recovery flow.
+
+![Password recovery request](../assets/password-recovery/request-desktop.png)
+
+![Choose a new password on mobile](../assets/password-recovery/complete-mobile.png)
+
+See the [developer contract](../development/plugin-auth-flows.md) for routing,
+permission and token lifecycle details.
+
 ## Password and secret fields
 
 Password and editable secret fields are masked by default. The eye control in the field can reveal the value temporarily and can be used with keyboard focus.
