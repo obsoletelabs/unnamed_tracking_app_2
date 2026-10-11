@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { currentUser } from "../../state/auth";
+import PluginExtensionSlot from "../plugins/PluginExtensionSlot.vue";
 import {
   fetchPasswordPolicy,
   updatePasswordPolicy,
@@ -114,6 +115,11 @@ async function save() {
       <p v-if="saved" class="success">Password policy saved.</p>
     </template>
     <p v-else-if="error" class="error">{{ error }}</p>
+    <PluginExtensionSlot
+      v-if="canEdit"
+      slot-id="administration.password-policy.after"
+      inline
+    />
   </section>
 </template>
 

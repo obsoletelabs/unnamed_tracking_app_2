@@ -100,7 +100,8 @@ const SETTINGS_SHORTCUTS: {
   { label: "Limits", section: "limits", adminOnly: true },
   { label: "App branding", section: "branding", adminOnly: true },
   { label: "Plugins", section: "plugins", adminOnly: true },
-  { label: "Background tasks", section: "tasks", adminOnly: true },
+  { label: "Background tasks", section: "background-tasks" },
+  { label: "Server background tasks", section: "tasks", adminOnly: true },
 ];
 
 const PAGE_SHORTCUTS: { label: string; to: string }[] = [

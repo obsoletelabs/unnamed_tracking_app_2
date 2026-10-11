@@ -10,6 +10,7 @@ import { currentUser } from "../../state/auth";
 
 const props = defineProps({
   slotId: { type: String, required: true },
+  inline: { type: Boolean, default: false },
   context: {
     type: Object as PropType<Record<string, string | number | boolean>>,
     default: () => ({}),
@@ -17,7 +18,12 @@ const props = defineProps({
 });
 const emit = defineEmits<{ failed: [] }>();
 const matchingContributions = computed(() =>
-  pluginSlots.value.filter((item) => item.slot === props.slotId),
+  pluginSlots.value.filter(
+    (item) =>
+      item.slot === props.slotId &&
+      (!props.slotId.startsWith("administration.") ||
+        currentUser.value?.is_admin),
+  ),
 );
 const contributions = computed(() =>
   props.slotId.endsWith(".replace")
@@ -73,6 +79,7 @@ onMounted(() => void refreshPluginExtensions({ background: true }));
       :context="context"
       :action-context="actionContext"
       embedded
+      :inline="inline"
       @failed="emit('failed')"
     />
   </section>

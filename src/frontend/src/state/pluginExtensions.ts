@@ -72,6 +72,7 @@ export interface PluginConnectionContribution {
   icon?: string;
   order: number;
   statusAction?: UiAction;
+  syncAction?: UiAction;
   document: PluginUiDocument;
 }
 
@@ -206,6 +207,11 @@ function navigationCapability(location: UiNavigationLocation): string {
 }
 
 function extensionCapability(slot: HostExtensionSlot): string {
+  if (
+    slot === "administration.users.settings" ||
+    slot === "administration.password-policy.after"
+  )
+    return "frontend.settings";
   if (slot === "administration.users.actions")
     return "frontend.navigation.admin";
   if (slot === "home.replace") return "frontend.page.replace.home";
@@ -333,6 +339,9 @@ export function derivePluginContributions(
             order: item.order,
             statusAction: document.actions.find(
               (action) => action.id === item.status_action_id,
+            ),
+            syncAction: document.actions.find(
+              (action) => action.id === item.sync_action_id,
             ),
             document,
           },

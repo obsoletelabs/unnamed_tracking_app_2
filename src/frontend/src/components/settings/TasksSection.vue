@@ -3,11 +3,13 @@ import { ref, onMounted, onBeforeUnmount } from "vue";
 import { fetchJobs, updateJob, runJobNow } from "../../services/settings";
 import type { CleanupJob } from "../../services/settings";
 
-type Unit = "minutes" | "hours" | "days";
+const props = defineProps<{ personal?: boolean }>();
+type Unit = "minutes" | "hours" | "days" | "weeks";
 const UNIT_MINUTES: Record<Unit, number> = {
   minutes: 1,
   hours: 60,
   days: 24 * 60,
+  weeks: 7 * 24 * 60,
 };
 
 const jobs = ref<CleanupJob[]>([]);
@@ -23,6 +25,8 @@ const drafts = ref<Record<string, { amount: number; unit: Unit }>>({});
 
 // shows a saved number of minutes in the largest unit that divides it evenly
 function split(minutes: number): { amount: number; unit: Unit } {
+  if (minutes % UNIT_MINUTES.weeks === 0)
+    return { amount: minutes / UNIT_MINUTES.weeks, unit: "weeks" };
   if (minutes % UNIT_MINUTES.days === 0)
     return { amount: minutes / UNIT_MINUTES.days, unit: "days" };
   if (minutes % UNIT_MINUTES.hours === 0)
@@ -39,7 +43,7 @@ async function loadJobs(retainDrafts = false) {
   loading = true;
   try {
     jobError.value = null;
-    jobs.value = await fetchJobs();
+    jobs.value = await fetchJobs(props.personal);
     if (!retainDrafts) resetDrafts();
     else
       jobs.value.forEach((job) => {
@@ -61,7 +65,7 @@ async function changeJob(
   delete errors.value[job.id];
   saving.value[job.id] = true;
   try {
-    const saved = await updateJob(job.id, changes);
+    const saved = await updateJob(job.id, changes, props.personal);
     jobs.value = jobs.value.map((j) => (j.id === saved.id ? saved : j));
     if (isInterval) drafts.value[job.id] = split(saved.intervalMinutes);
   } catch (err) {
@@ -95,7 +99,7 @@ async function runNow(job: CleanupJob) {
   delete actionErrors.value[job.id];
   starting.value[job.id] = true;
   try {
-    await runJobNow(job.id);
+    await runJobNow(job.id, props.personal);
     await loadJobs(true);
   } catch (err) {
     actionErrors.value[job.id] =
@@ -125,14 +129,23 @@ function formatTime(epochSeconds: number | null): string {
 
 <template>
   <section class="settings-section">
-    <h2>Tasks</h2>
-    <p class="section-hint">
+    <h2>{{ personal ? "Background tasks" : "Tasks" }}</h2>
+    <p v-if="personal" class="section-hint">
+      Choose what runs automatically for your account. Autosync starts off and
+      uses your connected accounts and approved plugin permissions. Saved
+      imports resume safely between steps, even when this page is closed.
+    </p>
+    <p v-else class="section-hint">
       Built-in jobs and approved plugin tasks use the app's scheduler. Each one
       can be switched off and given its own schedule. Plugin schedules start
       off.
     </p>
 
     <div v-if="jobError" class="form-error">{{ jobError }}</div>
+    <p v-else-if="personal && !jobs.length" class="section-hint">
+      No personal tasks are available. Connect a service with an approved
+      autosync plugin first.
+    </p>
     <div v-for="job in jobs" :key="job.id" class="tile">
       <div class="tile-head">
         <h3>{{ job.name }}</h3>
@@ -142,8 +155,12 @@ function formatTime(epochSeconds: number | null): string {
       </div>
       <p class="tile-desc">{{ job.description }}</p>
       <p v-if="job.pluginId" class="plugin-source">
-        From {{ job.pluginName }} · Runs with this plugin's approved background
-        access.
+        From {{ job.pluginName }} ·
+        {{
+          personal
+            ? "Uses your account's approved background access."
+            : "Runs with this plugin's approved background access."
+        }}
       </p>
       <p v-if="!job.available" class="unavailable-note" role="status">
         {{ job.unavailableReason }}
@@ -160,7 +177,7 @@ function formatTime(epochSeconds: number | null): string {
               })
             "
           />
-          Run by itself
+          {{ personal ? "Autosync" : "Run by itself" }}
         </label>
         <div v-if="drafts[job.id]" class="interval-field">
           <label class="job-every">
@@ -188,6 +205,7 @@ function formatTime(epochSeconds: number | null): string {
               <option value="minutes">minutes</option>
               <option value="hours">hours</option>
               <option value="days">days</option>
+              <option value="weeks">weeks</option>
             </select>
           </label>
           <p

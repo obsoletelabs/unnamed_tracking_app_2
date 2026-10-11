@@ -33,21 +33,17 @@ onMounted(() => void refreshPluginExtensions({ background: true }));
       v-for="item in actions"
       :key="key(item)"
       type="button"
-      class="ui-button"
+      class="ui-btn ui-btn-ghost"
       @click="selected = key(item)"
     >
       {{ item.page.title }}
     </button>
-    <UiModal
-      v-if="active"
-      :title="active.page.title"
-      size="wide"
-      @close="selected = null"
-    >
+    <UiModal v-if="active" :title="active.page.title" @close="selected = null">
       <PluginContributionHost
         :plugin-id="active.pluginId"
         :document="active.document"
         :page-id="active.page.id"
+        inline
       />
     </UiModal>
   </div>
@@ -58,6 +54,5 @@ onMounted(() => void refreshPluginExtensions({ background: true }));
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
-  margin: 20px 0;
 }
 </style>

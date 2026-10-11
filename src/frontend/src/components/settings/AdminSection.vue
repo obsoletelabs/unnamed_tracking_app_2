@@ -12,6 +12,7 @@ import PasswordInput from "../PasswordInput.vue";
 import type { AdminUser } from "../../services/admin";
 import PasswordRequirements from "./PasswordRequirements.vue";
 import PluginAdminActions from "../plugins/PluginAdminActions.vue";
+import PluginExtensionSlot from "../plugins/PluginExtensionSlot.vue";
 import {
   fetchPasswordPolicy,
   passwordValidationErrors,
@@ -143,7 +144,6 @@ function openCreateForm() {
     <p class="section-hint">
       Manage the accounts on this server, including administrator access.
     </p>
-    <PluginAdminActions />
     <p v-if="loading">Loading…</p>
     <p v-else-if="error" class="form-error">{{ error }}</p>
     <template v-else>
@@ -199,13 +199,16 @@ function openCreateForm() {
           </tr>
         </tbody>
       </table>
-      <button
-        type="button"
-        class="secondary-button"
-        @click="showCreateForm ? (showCreateForm = false) : openCreateForm()"
-      >
-        {{ showCreateForm ? "Cancel" : "+ Create user" }}
-      </button>
+      <div class="user-create-actions">
+        <button
+          type="button"
+          class="secondary-button"
+          @click="showCreateForm ? (showCreateForm = false) : openCreateForm()"
+        >
+          {{ showCreateForm ? "Cancel" : "+ Create user" }}
+        </button>
+        <PluginAdminActions />
+      </div>
       <form
         v-if="showCreateForm"
         class="create-form"
@@ -248,6 +251,7 @@ function openCreateForm() {
         </button>
       </form>
     </template>
+    <PluginExtensionSlot slot-id="administration.users.settings" inline />
     <div
       v-if="deletingUser"
       class="confirm-backdrop"
@@ -279,6 +283,12 @@ function openCreateForm() {
 </template>
 
 <style scoped>
+.user-create-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
 .settings-section h2 {
   margin: 0 0 12px;
   font: var(--ui-weight-heading) var(--ui-font-heading)/1.4

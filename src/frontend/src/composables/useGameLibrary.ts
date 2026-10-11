@@ -1411,6 +1411,7 @@ export function useGameLibrary() {
   }
 
   return {
+    loadGames,
     viewportWidth,
     activePriority,
     priorityLabel,

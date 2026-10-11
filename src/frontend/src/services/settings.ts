@@ -509,10 +509,13 @@ function mapJob(j: BackendJob): CleanupJob {
     unavailableReason: j.unavailable_reason ?? "",
   };
 }
-export async function fetchJobs(): Promise<CleanupJob[]> {
-  const response = await fetch("/api/settings/jobs", {
-    credentials: "include",
-  });
+export async function fetchJobs(personal = false): Promise<CleanupJob[]> {
+  const response = await fetch(
+    `/api/settings/${personal ? "user-jobs" : "jobs"}`,
+    {
+      credentials: "include",
+    },
+  );
   if (!response.ok)
     throw new Error(`Failed to load the jobs: ${response.status}`);
   return ((await response.json()) as BackendJob[]).map(mapJob);
@@ -520,25 +523,32 @@ export async function fetchJobs(): Promise<CleanupJob[]> {
 export async function updateJob(
   id: string,
   changes: { enabled?: boolean; intervalMinutes?: number },
+  personal = false,
 ): Promise<CleanupJob> {
-  const response = await fetch(`/api/settings/jobs/${id}`, {
-    method: "PUT",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      enabled: changes.enabled,
-      interval_minutes: changes.intervalMinutes,
-    }),
-  });
+  const response = await fetch(
+    `/api/settings/${personal ? "user-jobs" : "jobs"}/${id}`,
+    {
+      method: "PUT",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        enabled: changes.enabled,
+        interval_minutes: changes.intervalMinutes,
+      }),
+    },
+  );
   if (!response.ok)
     throw new Error(await jobErrorDetail(response, "Failed to save the job"));
   return mapJob(await response.json());
 }
-export async function runJobNow(id: string): Promise<void> {
-  const response = await fetch(`/api/settings/jobs/${id}/run`, {
-    method: "POST",
-    credentials: "include",
-  });
+export async function runJobNow(id: string, personal = false): Promise<void> {
+  const response = await fetch(
+    `/api/settings/${personal ? "user-jobs" : "jobs"}/${id}/run`,
+    {
+      method: "POST",
+      credentials: "include",
+    },
+  );
   if (!response.ok)
     throw new Error(await jobErrorDetail(response, "Failed to start the job"));
 }
