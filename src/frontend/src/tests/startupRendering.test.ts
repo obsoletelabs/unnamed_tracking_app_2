@@ -4,6 +4,7 @@ import { createSSRApp, defineComponent, h } from "vue";
 import { renderToString } from "vue/server-renderer";
 import { compileTemplate, parse } from "vue/compiler-sfc";
 import appSource from "../App.vue?raw";
+import { publicEntryAllowed } from "../state/startup";
 
 // Render the real shell template without unrelated timers, preferences or
 // plugin requests. RouterView marks whether a destination would be mounted.
@@ -25,6 +26,7 @@ const Shell = defineComponent({
     preferencesLoaded: false,
     preferencesError: null,
     startupError: null,
+    publicEntryAllowed,
   }),
   render: new Function("Vue", code)(Vue),
 });
@@ -87,7 +89,14 @@ describe("startup shell rendering", () => {
       "Destination: setup",
     );
   });
-  it.each(["login", "local-login", "oidc-start", "oidc-provider-start"])(
+  it.each([
+    "login",
+    "local-login",
+    "oidc-start",
+    "oidc-provider-start",
+    "password-reset",
+    "accept-invite",
+  ])(
     "renders the confirmed public entrypoint %s without a signed-in account",
     async (name) => {
       expect(await render("auth-required", name, false)).toContain(

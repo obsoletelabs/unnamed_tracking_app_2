@@ -45,6 +45,12 @@ const router = createRouter({
   },
   routes: [
     {
+      path: "/accept-invite",
+      name: "accept-invite",
+      meta: { title: "Accept invitation" },
+      component: () => import("../views/AcceptInvite.vue"),
+    },
+    {
       path: "/reset-password",
       name: "password-reset",
       meta: { title: "Password recovery" },
@@ -298,6 +304,7 @@ router.beforeEach(async (to, from) => {
 
   const entryPage =
     to.path === "/reset-password" ||
+    to.path === "/accept-invite" ||
     to.path === "/setup" ||
     to.path === "/login" ||
     to.path.startsWith("/login/");
@@ -397,7 +404,8 @@ router.beforeEach(async (to, from) => {
   if (
     to.name === "oidc-start" ||
     to.name === "oidc-provider-start" ||
-    to.name === "password-reset"
+    to.name === "password-reset" ||
+    to.name === "accept-invite"
   ) {
     setStartupState("auth-required");
     return;

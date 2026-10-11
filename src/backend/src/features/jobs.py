@@ -35,6 +35,7 @@ from src.features.notification_enrollment import expire_verification_secrets
 from src.features.notification_providers.delivery import process_pending_deliveries
 from src.features.notification_scans import scan_notification_users
 from src.features.password_recovery import expire_recovery_secrets
+from src.features.user_invitations import expire_invitations
 
 logger = logging.getLogger(__name__)
 TICK_SECONDS = 60
@@ -295,6 +296,7 @@ async def run_jobs_loop() -> None:
             async with SessionLocal() as db:
                 await expire_verification_secrets(db)
                 await expire_recovery_secrets(db)
+                await expire_invitations(db)
                 await expire_browser_sessions(db)
                 await db.commit()
                 await process_pending_deliveries(db)

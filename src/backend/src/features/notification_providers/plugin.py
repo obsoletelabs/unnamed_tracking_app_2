@@ -182,7 +182,11 @@ class PluginNotificationProvider:
             event_at=message.event_at,
         )
         try:
-            if not await self.is_authorized(db, destination.user_id):
+            if (
+                destination.user_id is None
+                or destination.pending_recipient_id is not None
+                or not await self.is_authorized(db, destination.user_id)
+            ):
                 return DeliveryResult(
                     success=False, error="Plugin provider authorization is unavailable."
                 )
@@ -233,7 +237,11 @@ class PluginNotificationProvider:
     async def _deliver_generic(self, db, destination, message) -> DeliveryResult:
         """Revalidate durable authority immediately before disclosing approved content."""
         endpoint = await revalidate_delivery_attempt(db, destination, message)
-        if endpoint is None or not self._generic_endpoint_valid(endpoint):
+        if (
+            endpoint is None
+            or endpoint.user_id is None
+            or not self._generic_endpoint_valid(endpoint)
+        ):
             return DeliveryResult(False, error="provider_routing_changed")
         link = await notification_url(db, endpoint.user_id, endpoint)
         content = PluginNotificationContent(
@@ -344,7 +352,11 @@ class PluginNotificationProvider:
         except ValueError:
             return DeliveryResult(False, error="provider_layout_invalid")
         endpoint = await revalidate_delivery_attempt(db, destination, message)
-        if endpoint is None or not await self.is_authorized(db, destination.user_id):
+        if (
+            endpoint is None
+            or endpoint.user_id is None
+            or not await self.is_authorized(db, destination.user_id)
+        ):
             return DeliveryResult(False, error="provider_routing_changed")
         if (
             endpoint.installation_id != self.registration.installation_id

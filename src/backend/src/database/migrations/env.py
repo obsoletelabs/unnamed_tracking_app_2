@@ -49,6 +49,7 @@ from src.database.models import (
     tv_show,  # noqa: F401
     user,  # noqa: F401
     user_appearance_settings,  # noqa: F401
+    user_invitation,  # noqa: F401
     user_preferences,  # noqa: F401
     user_scan_settings,  # noqa: F401
 )

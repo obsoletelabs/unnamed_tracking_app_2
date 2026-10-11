@@ -1,0 +1,53 @@
+{
+  "compiled_ui": true,
+  "real_save_apis": true,
+  "disposable_database": true,
+  "passed": [
+    {
+      "artwork_failure_preserves_game": true,
+      "retry_creates": 0
+    },
+    {
+      "width": 1440,
+      "compact": true,
+      "deferred_choices": true,
+      "selection_wait": true,
+      "optional_provider_ids": true,
+      "full_form_preserves_edits": true,
+      "concurrent_submit_creates": 1,
+      "overflow": false,
+      "console_errors": 0
+    },
+    {
+      "width": 390,
+      "compact": true,
+      "deferred_choices": true,
+      "selection_wait": true,
+      "optional_provider_ids": true,
+      "full_form_preserves_edits": true,
+      "concurrent_submit_creates": 1,
+      "overflow": false,
+      "console_errors": 0
+    },
+    {
+      "width": 320,
+      "compact": true,
+      "deferred_choices": true,
+      "selection_wait": true,
+      "optional_provider_ids": true,
+      "full_form_preserves_edits": true,
+      "concurrent_submit_creates": 1,
+      "overflow": false,
+      "console_errors": 0
+    },
+    {
+      "manual_compact_save": true,
+      "cancel_restores_focus": true,
+      "pending_save_prevents_dismissal": true,
+      "concurrent_compact_submit_creates": 1,
+      "folder_collision_review": true,
+      "explicit_separate_copy": true,
+      "unicode_folder_review": true
+    }
+  ]
+}

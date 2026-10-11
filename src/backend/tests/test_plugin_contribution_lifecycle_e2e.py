@@ -133,6 +133,8 @@ async def test_lifecycle_revokes_all_host_execution_boundaries(tmp_path, monkeyp
             return []  # This lifecycle fixture has no persisted notification deliveries.
         if "plugin_permission_grants" in str(statement):
             return []
+        if "user_invitations" in str(statement):
+            return []  # This contribution fixture has no issued invitations.
         if "SELECT plugin_notification_provider_registrations.provider_id" in str(statement):
             return [registration.provider_id]
         return SimpleNamespace(all=lambda: [registration])

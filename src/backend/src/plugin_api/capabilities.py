@@ -119,6 +119,7 @@ _CRITICAL = frozenset(
         Capability.NOTIFICATIONS_SENSITIVE,
         Capability.NOTIFICATION_PROVIDERS_SENSITIVE,
         Capability.AUTH_PASSWORD_RESET,
+        Capability.AUTH_USER_INVITES,
         Capability.FRONTEND_NATIVE,
         Capability.FRONTEND_PWA,
         Capability.BACKEND_ROUTES_HOST,
@@ -191,6 +192,7 @@ def _category(capability: Capability) -> str:
 def _title(capability: Capability) -> str:
     placement_titles = {
         Capability.AUTH_PASSWORD_RESET: "Enable host-mediated password reset for local accounts",
+        Capability.AUTH_USER_INVITES: "Issue account invitations and enable public account acceptance",
         Capability.NOTIFICATION_PROVIDERS_SENSITIVE: (
             "Receive verification codes and security/recovery content for eligible destinations"
         ),
