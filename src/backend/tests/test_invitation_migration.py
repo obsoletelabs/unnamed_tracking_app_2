@@ -37,7 +37,7 @@ def test_invitation_upgrade_adoption_and_downgrade_preserve_user_history():
     with psycopg.connect(connection_url, autocommit=True) as connection:
         connection.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
         try:
-            migrate("upgrade", "513bc3715722")
+            migrate("upgrade", "def2e465ec9f")
             connection.execute(sql.SQL("SET search_path TO {}").format(sql.Identifier(schema)))
             user, notice = uuid4(), uuid4()
             connection.execute(
@@ -61,12 +61,12 @@ def test_invitation_upgrade_adoption_and_downgrade_preserve_user_history():
                 ("ck_notifications_recipient_owner",),
             ]
             # Existing partial/adopted current schema must tolerate the upgrade again.
-            migrate("stamp", "513bc3715722")
+            migrate("stamp", "def2e465ec9f")
             migrate("upgrade", "head")
             assert connection.execute(
                 "SELECT count(*) FROM notifications WHERE id=%s", (notice,)
             ).fetchone() == (1,)
-            migrate("downgrade", "513bc3715722")
+            migrate("downgrade", "def2e465ec9f")
             assert connection.execute(
                 "SELECT user_id,title FROM notifications WHERE id=%s", (notice,)
             ).fetchone() == (user, "Existing")

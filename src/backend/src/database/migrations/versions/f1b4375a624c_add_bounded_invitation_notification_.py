@@ -1,7 +1,7 @@
 """add bounded invitation notification recipients
 
 Revision ID: f1b4375a624c
-Revises: 513bc3715722
+Revises: def2e465ec9f
 Create Date: 2026-10-11 04:37:06.663176
 
 """
@@ -15,7 +15,7 @@ from src.database import migration_helpers as h
 
 # revision identifiers, used by Alembic.
 revision: str = "f1b4375a624c"
-down_revision: Union[str, None] = "513bc3715722"
+down_revision: Union[str, None] = "def2e465ec9f"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
