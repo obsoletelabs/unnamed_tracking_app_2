@@ -154,6 +154,12 @@ never replays notices created while it was off. The authenticated inbox remains 
 
 All emails—including delivery tests, verification, password reset and invites—include the same responsive HTML card and a readable plain-text alternative. Security actions use a labeled button rather than showing a long token URL in the HTML paragraph. Text and links are escaped; plugins cannot insert executable markup. The host supplies Date and a Message-ID using the configured sender domain. Transactional emails are not marked as bulk subscriptions.
 
+![Verification email](../assets/notification-mail-auth/email-verification-desktop.png)
+
+![Password recovery email on mobile](../assets/notification-mail-auth/email-recovery-mobile.png)
+
+![Delivery test email on mobile](../assets/notification-mail-auth/email-test-mobile.png)
+
 
 Changing an installed provider's transport/configuration contract retires its old
 destinations, consent, verification and pending work. Configure and activate the

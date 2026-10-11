@@ -11,8 +11,8 @@ Passwords are not stored in plaintext. API requests made by the web application 
 ## Optional password recovery
 
 An administrator can install the maintained **Password Reset** plugin, approve its
-separate critical global permission, then activate it under **Administration →
-Password recovery**. SMTP delivery remains built into the application. Installation
+separate critical global permission, then activate it under **Settings → Administration →
+Account security → Password recovery**. SMTP delivery remains built into the application. Installation
 alone does not enable recovery.
 
 In **Account → Notifications**, configure and verify an external destination, then
@@ -38,10 +38,11 @@ permission and token lifecycle details.
 ## Optional email invitations
 
 Administrators can install **User Invites**, grant its separate critical global
-permission, and explicitly activate it in **Administration → User invites**. Built-in
+permission, and explicitly activate it in **Settings → Administration → Account security → User invitations**. Built-in
 SMTP must be configured; no additional email provider is installed by the plugin.
-Choose the link lifetime, enter an email address, and send the invitation. The page
-shows delivery state and lets administrators revoke outstanding invitations.
+Choose the link lifetime, then use **Invite user** on **Administration → Users** to
+enter an email address and send. The dialog shows delivery state and lets
+administrators revoke outstanding invitations.
 
 The recipient opens the emailed link, chooses a username and password, then signs
 in normally. Opening a link alone creates no account. Acceptance creates a normal
@@ -130,3 +131,7 @@ host availability. User invitation activation/lifetime is alongside it; send and
 review invitations using **Invite user** on Administration → Users. These controls
 come from installed, explicitly granted official plugins. All SMTP purposes use
 the same responsive HTML design and readable plain alternative.
+
+![Invitation dialog on the Users page](../assets/notification-mail-auth/invite-users-dialog-desktop.png)
+
+![Invitation dialog on mobile](../assets/notification-mail-auth/invite-users-dialog-mobile.png)
