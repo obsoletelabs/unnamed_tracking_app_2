@@ -3,6 +3,7 @@
 from unittest.mock import Mock
 
 import pytest
+import requests
 
 from src.features.metadata.games import steam
 
@@ -114,3 +115,48 @@ def test_invalid_library_response_is_a_provider_error(monkeypatch, payload) -> N
     monkeypatch.setattr(steam.SESSION, "get", Mock(return_value=reply))
     with pytest.raises(steam.SteamLibraryError, match="invalid"):
         steam.get_owned_games("76561197960287930", "key")
+
+
+def test_library_request_includes_unvetted_and_free_sub_apps(monkeypatch) -> None:
+    games = [{"appid": 1230410, "name": "Chaos", "playtime_forever": 0}]
+    reply = Mock(status_code=200)
+    reply.json.return_value = {"response": {"games": games, "game_count": 1}}
+    request = Mock(return_value=reply)
+    monkeypatch.setattr(steam.SESSION, "get", request)
+    assert steam.get_owned_games("76561197960287930", "key") == games
+    params = request.call_args.kwargs["params"]
+    assert params["include_free_sub"] == "1"
+    assert params["skip_unvetted_apps"] == "0"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"games": [{"appid": 123}], "game_count": 2},
+        {"games": [{"appid": 123}], "game_count": 0},
+        {"games": [{"appid": 123}], "game_count": True},
+        {"games": [{"appid": 123}, {"appid": 123}], "game_count": 2},
+        {"games": [{"appid": 0}]},
+        {"games": [{"appid": True}]},
+        {"games": [{"appid": "123"}]},
+        {"games": [{"appid": 123, "name": []}]},
+        {"games": [{"appid": 123, "playtime_forever": -1}]},
+        {"games": [{"appid": 123, "playtime_forever": True}]},
+        {"games": [{"appid": 123, "rtime_last_played": "yesterday"}]},
+    ],
+)
+def test_incomplete_or_invalid_inventory_is_rejected(monkeypatch, payload) -> None:
+    reply = Mock(status_code=200)
+    reply.json.return_value = {"response": payload}
+    monkeypatch.setattr(steam.SESSION, "get", Mock(return_value=reply))
+    with pytest.raises(steam.SteamLibraryError, match="invalid"):
+        steam.get_owned_games("76561197960287930", "key")
+
+
+def test_library_request_failure_does_not_expose_the_api_key(monkeypatch) -> None:
+    failure = requests.ConnectionError("https://api.steampowered.com/?key=private-key")
+    monkeypatch.setattr(steam.SESSION, "get", Mock(side_effect=failure))
+    with pytest.raises(steam.SteamLibraryError) as error:
+        steam.get_owned_games("76561197960287930", "private-key")
+    assert "private-key" not in str(error.value)
+    assert "Try again" in str(error.value)

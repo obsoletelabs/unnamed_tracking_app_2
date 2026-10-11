@@ -151,6 +151,14 @@ problem and leaves existing games unchanged. Set **Profile → Privacy Settings 
 Game details** to **Public** and verify the account ID before retrying. An
 explicitly empty public library remains a valid empty library.
 
+Steam imports include free subscriptions and apps that Steam's default request
+filters as unvetted. Steam can still omit demos and other apps from its games
+response, so an omitted app is **not** marked as no longer owned. A successful
+sync clears previous omission-based warnings on your active Steam games without
+removing games or changing their saved progress. Invalid or incomplete responses
+leave the library unchanged. If a reported game has no playtime field, its saved
+playtime is retained.
+
 The application saves owned games and playtime first, then reads achievements in
 small batches before fetching store details. A failed batch leaves the imported
 games available. Unavailable achievement progress keeps the previous snapshot;
