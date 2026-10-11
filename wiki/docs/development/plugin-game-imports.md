@@ -26,7 +26,12 @@ request("games.import", "games.write", {
 
 The payload rejects unknown fields. It contains 1–25 items with distinct external
 IDs. `source_label` is a display label of at most 50 characters; `source_scope`
-and each external ID are nonblank strings of at most 256 characters. Titles are
+and each external ID are nonblank strings of at most 256 characters. The host
+stores the complete external ID, including compound namespace/item identities;
+it never truncates IDs to match or replay imports. Apply migration
+`c696194f78fd` before importing IDs longer than 64 characters. Its downgrade
+refuses to narrow the column while longer IDs exist, preserving those identities.
+Titles are
 nonblank and at most 500 characters. Optional fields are `description` (20,000),
 `developer`/`publisher` (200 each), `tags` (50 strings of at most 128 characters),
 `provider_ids` (32 entries, lowercase namespace keys and nonblank IDs),
