@@ -96,3 +96,32 @@ replacement/removal confirms the enrollment consequence. Account → Notificatio
 browser permission/enrollment, labels, route toggles, tests, removal and retained history.
 Native permission is requested directly from the enrollment click, never automatically.
 No second service worker, plugin framework or authentication mechanism is introduced.
+
+## Scoped destination status (Plugin API 1.1.11)
+
+Plugins may request the independent `notification_destinations.read` grant and call
+`notification_destinations.status`. Registration, delivery, lifecycle-read and full-API
+grants do not imply this permission. The gateway supplies the authenticated action actor
+and current installation; payloads cannot specify either. Optional `provider_id`, UUID
+`after` and integer `limit` (1–100, default 50) bound the query. Results contain only this
+actor's destinations joined to this installation's own provider registrations.
+
+The page returns `installation_id`, `destinations` and nullable `next_after`. Each item
+contains destination/provider IDs, kind, revision, host-computed trust, active/enabled
+state, provider/verification availability, recovery opt-in and `recovery_status`.
+No addresses, labels, configuration, credentials, proof/challenge values or notification
+content are returned. Inactive own history remains visible; a reinstall cannot claim
+an earlier installation's endpoints. The read method cannot verify or enable recovery.
+
+Recovery status distinguishes unsupported, unavailable, disabled, verification-required,
+sensitive-permission-required, not opted in, policy/preference-disabled and eligible
+destinations. `eligible` means the current destination route is ready; the real auth-flow
+plugin must also be active. Actual delivery always rechecks the existing core policy.
+Trust can remain SECURE while routing is disabled. This is a fresh configuration snapshot,
+not a grant to send secrets or a delivery guarantee.
+
+Plugin pages can link to host-owned controls using
+`/settings?area=account&section=notifications&notification_destination=<UUID>` or select
+a provider with `notification_provider=<provider-id>`. The host opens that owner's actual
+provider, reveals the requested retained endpoint and focuses its existing verification
+and recovery controls. Administrator provider links use `area=administration` instead.

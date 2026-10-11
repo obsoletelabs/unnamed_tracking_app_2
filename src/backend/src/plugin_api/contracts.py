@@ -70,6 +70,9 @@ from .compatibility import (
 )
 from .dependency_graph import walk_dependency_graph
 from .notification_contracts import (
+    NotificationDestinationStatus,
+    NotificationDestinationStatusPage,
+    NotificationDestinationStatusQuery,
     NotificationEventEmission,
     NotificationFieldLayout,
     NotificationLifecycleEvent,
@@ -299,6 +302,9 @@ __all__ = [
     "NotificationTypeRegistration",
     "NotificationDeliveryRepresentation",
     "NotificationDeliveryResult",
+    "NotificationDestinationStatus",
+    "NotificationDestinationStatusPage",
+    "NotificationDestinationStatusQuery",
     "Page",
     "Pagination",
     "PluginIdentity",

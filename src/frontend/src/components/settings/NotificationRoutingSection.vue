@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { useRoute } from "vue-router";
 import ToggleButton from "./ToggleButton.vue";
 import EmailDestinationsSection from "./EmailDestinationsSection.vue";
 import WebhookDestinationsSection from "./WebhookDestinationsSection.vue";
@@ -19,6 +20,19 @@ import type {
 import type { Preferences } from "../../services/preferences";
 
 const props = defineProps<{ prefs: Preferences; loaded: boolean }>();
+const route = useRoute();
+const focusedDestination = computed(() => {
+  const value = route?.query.notification_destination;
+  return typeof value === "string" && /^[0-9a-f-]{36}$/i.test(value)
+    ? value
+    : "";
+});
+const focusedProvider = computed(() => {
+  const destination = routing.value?.destinations.find(
+    (item) => item.id === focusedDestination.value,
+  );
+  return destination?.provider_id || route?.query.notification_provider;
+});
 const emit = defineEmits<{ change: [changes: Partial<Preferences>] }>();
 const routing = ref<NotificationRoutingSettings | null>(null);
 const error = ref("");
@@ -44,6 +58,18 @@ async function reload() {
 }
 onMounted(reload);
 watch(() => props.prefs.notification_url, reload);
+watch(
+  [focusedDestination, routing],
+  async () => {
+    await nextTick();
+    const element = document.getElementById(
+      `notification-destination-${focusedDestination.value}`,
+    );
+    element?.scrollIntoView?.({ block: "center" });
+    element?.focus({ preventScroll: true });
+  },
+  { flush: "post" },
+);
 
 const sortedProviders = computed(() =>
   [...(routing.value?.providers ?? [])]
@@ -207,6 +233,7 @@ async function testDestination(destination: NotificationRoutingDestination) {
         <details
           v-for="provider in sortedProviders"
           :key="provider.id"
+          :open="focusedProvider === provider.id"
           class="provider-card"
         >
           <summary>
@@ -305,6 +332,7 @@ async function testDestination(destination: NotificationRoutingDestination) {
             "
             :prefs="prefs"
             :loaded="loaded"
+            :focused-destination="focusedDestination"
             @changed="reload"
             @change="emit('change', $event)"
           />

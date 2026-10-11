@@ -104,7 +104,7 @@ describe("plugin connections", () => {
       validateDocument({ ...document, api_contract_version: "1.1.8" }),
     ).toContain("Plugin connections require API v1.1.9 or later.");
     expect(
-      validateDocument({ ...document, api_contract_version: "1.1.10" }),
+      validateDocument({ ...document, api_contract_version: "1.1.11" }),
     ).toEqual([]);
     expect(
       validateDocument({ ...document, api_contract_version: "1.2.0" }),

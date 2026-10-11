@@ -196,6 +196,9 @@ def _title(capability: Capability) -> str:
         Capability.NOTIFICATION_PROVIDERS_SENSITIVE: (
             "Receive verification codes and security/recovery content for eligible destinations"
         ),
+        Capability.NOTIFICATION_DESTINATIONS_READ: (
+            "Read own user's notification destination trust and recovery status"
+        ),
         Capability.FRONTEND_PLACEMENT_SIDEBAR: "Join built-in sidebar sections",
         Capability.FRONTEND_PLACEMENT_ADMIN: "Join built-in administration settings",
         Capability.FRONTEND_PLACEMENT_ACCOUNT: "Join built-in account settings",

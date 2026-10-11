@@ -11,6 +11,45 @@ from .base_contracts import ContractModel
 from .ui_contracts import UiField
 
 
+class NotificationDestinationStatusQuery(ContractModel):
+    """Actor and installation come exclusively from the authenticated gateway."""
+
+    provider_id: str | None = Field(default=None, min_length=1, max_length=128)
+    after: UUID | None = None
+    limit: StrictInt = Field(default=50, ge=1, le=100)
+
+
+class NotificationDestinationStatus(ContractModel):
+    """No addresses, display labels, configuration, notification content or proof secrets."""
+
+    id: UUID
+    provider_id: str
+    kind: str
+    revision: int
+    trust: Literal["PUBLIC", "PRIVATE", "SECURE"]
+    active: bool
+    enabled: bool
+    provider_available: bool
+    verification_available: bool
+    recovery_allowed: bool
+    recovery_status: Literal[
+        "unsupported",
+        "provider_unavailable",
+        "destination_disabled",
+        "verification_required",
+        "sensitive_permission_required",
+        "recovery_not_allowed",
+        "routing_disabled",
+        "eligible",
+    ]
+
+
+class NotificationDestinationStatusPage(ContractModel):
+    installation_id: UUID
+    destinations: tuple[NotificationDestinationStatus, ...]
+    next_after: UUID | None = None
+
+
 class NotificationDestinationDeclaration(ContractModel):
     """Enrollment choices; independent core proof determines concrete endpoint trust."""
 
