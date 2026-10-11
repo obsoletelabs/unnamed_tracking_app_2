@@ -69,6 +69,116 @@ async def test_private_library_does_not_mark_owned_games_stale(steam_owner, monk
         assert user.steam_library_synced_at is None
 
 
+@pytest.mark.parametrize("returned_apps", [[], [{"appid": 1230410}]])
+@pytest.mark.parametrize("previous_warning", [None, 123456])
+async def test_steam_omissions_repair_warnings_without_changing_saved_games(
+    steam_owner, monkeypatch, returned_apps, previous_warning
+):
+    async with SessionLocal() as db:
+        games = [
+            Game(
+                user_id=steam_owner,
+                title=title,
+                sort_title=title.lower(),
+                folder_location=f"omission-{app_id}",
+                source=source,
+                external_id=str(app_id),
+                status=GameStatus.PLAYING,
+                playtime_seconds=900,
+                stale_since=previous_warning,
+                deleted_at=deleted_at,
+            )
+            for title, app_id, source, deleted_at in [
+                ("Chaos", 1230410, "Steam", None),
+                ("Example demo", 123, "Steam", None),
+                ("Other provider", 456, "Epic Games", None),
+                ("Trashed demo", 789, "Steam", 123456),
+            ]
+        ]
+        db.add_all(games)
+        await db.commit()
+        identities = [game.id for game in games]
+    monkeypatch.setattr(library_sync.steam, "get_owned_games", lambda *_: returned_apps)
+    async with SessionLocal() as db:
+        user = await db.get(User, steam_owner)
+        result = await library_sync.sync_steam_library(db, user, achievements="later")
+        assert result["games_flagged_stale"] == 0
+        assert result["games_added"] == result["games_updated"] == 0
+    async with SessionLocal() as db:
+        for position, identity in enumerate(identities):
+            game = await db.get(Game, identity)
+            assert game.stale_since == (None if position < 2 else previous_warning)
+            assert game.playtime_seconds == 900
+            assert game.status == GameStatus.PLAYING
+        user = await db.get(User, steam_owner)
+        assert user.steam_library_synced_at is not None
+
+
+async def test_steam_warning_repair_is_scoped_to_the_current_user(steam_owner, monkeypatch):
+    async with SessionLocal() as db:
+        other_user = User(
+            username=f"other_steam_{uuid4().hex}",
+            email=f"{uuid4()}@example.test",
+            password_hash="x",
+        )
+        db.add(other_user)
+        await db.flush()
+        other_id = other_user.id
+        game = Game(
+            user_id=other_id,
+            title="Other user's demo",
+            sort_title="other user's demo",
+            folder_location="other-steam-demo",
+            source="Steam",
+            external_id="123",
+            stale_since=123456,
+        )
+        db.add(game)
+        await db.commit()
+        game_id = game.id
+    try:
+        monkeypatch.setattr(library_sync.steam, "get_owned_games", lambda *_: [])
+        async with SessionLocal() as db:
+            user = await db.get(User, steam_owner)
+            await library_sync.sync_steam_library(db, user, achievements="later")
+        async with SessionLocal() as db:
+            game = await db.get(Game, game_id)
+            assert game.stale_since == 123456
+    finally:
+        async with SessionLocal() as db:
+            await db.execute(delete(User).where(User.id == other_id))
+            await db.commit()
+
+
+async def test_steam_missing_playtime_does_not_reset_saved_progress(steam_owner, monkeypatch):
+    async with SessionLocal() as db:
+        game = Game(
+            user_id=steam_owner,
+            title="Chaos",
+            sort_title="chaos",
+            folder_location="chaos-saved-progress",
+            source="Steam",
+            external_id="1230410",
+            status=GameStatus.PLAYING,
+            playtime_seconds=900,
+            last_played_at=123456,
+        )
+        db.add(game)
+        await db.commit()
+        identity = game.id
+    monkeypatch.setattr(
+        library_sync.steam, "get_owned_games", lambda *_: [{"appid": 1230410, "name": "Chaos"}]
+    )
+    async with SessionLocal() as db:
+        user = await db.get(User, steam_owner)
+        await library_sync.sync_steam_library(db, user, achievements="later")
+    async with SessionLocal() as db:
+        game = await db.get(Game, identity)
+        assert game.playtime_seconds == 900
+        assert game.last_played_at == 123456
+        assert game.status == GameStatus.PLAYING
+
+
 async def test_deferred_sync_saves_games_without_achievement_requests(
     steam_owner, monkeypatch, tmp_path
 ):

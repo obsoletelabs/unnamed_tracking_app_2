@@ -129,8 +129,25 @@ def resolve_steam_id(identifier: str, api_key: str) -> str:
     return str(payload["steamid"])
 
 
+def _valid_owned_game(game: object) -> bool:
+    """Validate identity and progress before any library records are changed."""
+    if not isinstance(game, dict):
+        return False
+    app_id = game.get("appid")
+    if type(app_id) is not int or not 0 < app_id <= 0xFFFFFFFF:
+        return False
+    if "name" in game and not isinstance(game["name"], str):
+        return False
+    # Playtime is stored as seconds in a signed integer column.
+    limits = {"playtime_forever": 2147483647 // 60, "rtime_last_played": 0xFFFFFFFF}
+    return all(
+        key not in game or (type(game[key]) is int and 0 <= game[key] <= maximum)
+        for key, maximum in limits.items()
+    )
+
+
 def get_owned_games(steam_id: str, api_key: str) -> list[dict]:
-    """The owned games, distinguishing a public empty library from private data."""
+    """Reported apps, not an authoritative list of every license (e.g. demos)."""
     try:
         resp = SESSION.get(
             f"{_WEB_API_BASE}/IPlayerService/GetOwnedGames/v1/",
@@ -139,11 +156,14 @@ def get_owned_games(steam_id: str, api_key: str) -> list[dict]:
                 "steamid": steam_id,
                 "include_appinfo": "1",
                 "include_played_free_games": "1",
+                "include_free_sub": "1",
+                "skip_unvetted_apps": "0",
             },
             timeout=20,
         )
     except requests.RequestException as exc:
-        raise SteamLibraryError(f"Could not reach Steam: {exc}") from exc
+        # Request exceptions can include the URL and its API key.
+        raise SteamLibraryError("Could not reach Steam. Try again shortly.") from exc
     if resp.status_code in (401, 403):
         raise SteamLibraryError("Steam rejected the API key.")
     if resp.status_code >= 400:
@@ -155,14 +175,19 @@ def get_owned_games(steam_id: str, api_key: str) -> list[dict]:
     if not isinstance(body, dict) or not isinstance(body.get("response", {}), dict):
         raise SteamLibraryError("Steam returned an invalid library response.")
     payload = body.get("response", {})
+    count = payload.get("game_count")
+    if "game_count" in payload and (type(count) is not int or count < 0):
+        raise SteamLibraryError("Steam returned an invalid library response.")
     if "games" not in payload:
-        if payload.get("game_count") == 0:
+        if count == 0:
             return []
         raise SteamLibraryError(_PRIVATE_LIBRARY)
     games = payload["games"]
-    if not isinstance(games, list) or any(not isinstance(game, dict) for game in games):
+    if not isinstance(games, list) or any(not _valid_owned_game(game) for game in games):
         raise SteamLibraryError("Steam returned an invalid library response.")
-    if not games and payload.get("game_count", 0):
+    if count is not None and count != len(games):
+        raise SteamLibraryError("Steam returned an invalid library response.")
+    if len({game["appid"] for game in games}) != len(games):
         raise SteamLibraryError("Steam returned an invalid library response.")
     return games
 

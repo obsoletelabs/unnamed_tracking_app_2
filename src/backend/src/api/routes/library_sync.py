@@ -528,10 +528,16 @@ async def sync_steam_library(
     )
 
     index = await LibraryIndex.load(db, current_user.id, "Steam")
+    # Steam's games response can omit demos, refunded apps and other licenses.
+    # Absence cannot establish that a saved game is no longer owned. Repair old
+    # omission-based warnings only after a valid response, scoped to active
+    # Steam records for this user; retain all saved progress and relationships.
+    for existing_games in index.by_title.values():
+        for existing in existing_games:
+            existing.stale_since = None
     games_added = games_updated = achievements_synced = 0
     newly_created: list[tuple[Game, int]] = []
     synced_titles: list[str] = []
-    touched_ids: set[UUID] = set()
     achievement_ids: list[str] = []
     status_ids: list[str] = []
     fetch_index = 0
@@ -545,9 +551,9 @@ async def sync_steam_library(
         game, created = await _get_or_create_game(
             db, current_user.id, title, "Steam", external_id=str(app_id), index=index
         )
-        touched_ids.add(game.id)
         achievement_ids.append(str(game.id))
-        game.playtime_seconds = int(entry.get("playtime_forever", 0)) * 60
+        if "playtime_forever" in entry:
+            game.playtime_seconds = entry["playtime_forever"] * 60
         if entry.get("rtime_last_played"):
             game.last_played_at = int(entry["rtime_last_played"])
         games_added += created
@@ -577,14 +583,13 @@ async def sync_steam_library(
             _add_source_tag_and_collection(game, "Steam")
             newly_created.append((game, app_id))
 
-    games_flagged_stale = await _flag_stale_games(db, current_user.id, "Steam", touched_ids)
     current_user.steam_library_synced_at = int(time.time())
     await db.commit()
     return {
         "games_added": games_added,
         "games_updated": games_updated,
         "achievements_synced": achievements_synced,
-        "games_flagged_stale": games_flagged_stale,
+        "games_flagged_stale": 0,
         "games": synced_titles,
         # the new games still to be enriched (store details, tags, artwork), which
         # is slow, so the app asks for it in batches: see steam_import_steps.py
