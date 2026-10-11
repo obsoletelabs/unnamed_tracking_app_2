@@ -5,13 +5,13 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 from enum import StrEnum
-from typing import Any, Generic, TypeVar
+from typing import Any, Generic, Literal, TypeVar
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 API_VERSION = "v1"
-PLUGIN_API_CONTRACT_VERSION = "1.1.10"
+PLUGIN_API_CONTRACT_VERSION = "1.1.11"
 Timestamp = datetime
 
 
@@ -667,6 +667,7 @@ class PluginScheduledTask(ContractModel):
     name: str = Field(min_length=1, max_length=128)
     description: str = Field(default="", max_length=2_000)
     action_id: str = Field(min_length=1, max_length=128)
+    scope: Literal["server", "user"] = "server"
     min_interval_minutes: int = Field(default=5, ge=1, le=43_200, strict=True)
     max_interval_minutes: int = Field(default=43_200, ge=1, le=43_200, strict=True)
     default_interval_minutes: int = Field(default=60, ge=1, le=43_200, strict=True)
@@ -775,6 +776,10 @@ class PluginManifest(ContractModel):
             return self
         if parse_semver(self.api_contract_version) < (1, 1, 0):
             raise ValueError("scheduled tasks require Plugin API v1.1")
+        if any(task.scope == "user" for task in self.scheduled_tasks) and parse_semver(
+            self.api_contract_version
+        ) < (1, 1, 11):
+            raise ValueError("personal scheduled tasks require Plugin API v1.1.11")
         if not any(
             permission.capability == CapabilityRef(name=Capability.TASKS_BACKGROUND)
             for permission in self.permissions

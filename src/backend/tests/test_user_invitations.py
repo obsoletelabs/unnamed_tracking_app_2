@@ -37,6 +37,7 @@ from src.features.user_invitations import (
     list_invitations,
     revoke_invitation,
 )
+from src.plugin_api.auth_contracts import UserInviteFlowDefinition
 from src.plugin_api.capabilities import capability_definition, capability_implies
 from src.plugin_api.gateway import dispatch_gateway_request
 from src.plugin_api.runtime_client import PluginRuntimeClient
@@ -196,6 +197,83 @@ async def test_acceptance_creates_normal_account_once_without_auto_login(invitat
             )
         )
         assert delivery.status == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_email_customization_is_snapshotted_without_retiring_existing_invites(invitation):
+    p = invitation
+    presentation = {
+        "mode": "user_invite",
+        "name": "Invites",
+        "sender_name": "Library team",
+        "email_subject": "Your library invitation",
+        "email_heading": "Welcome <Alex>",
+        "welcome_message": "Join our shared library. <script> is text.",
+        "button_label": "Create account",
+        "greeting": "personal",
+        "email_layout": "simple",
+        "accent_color": "#7856ab",
+        "footer_message": "From the team",
+    }
+    async with SessionLocal() as db:
+        await register_invite_flow(db, p.plugin, p.installation, p.admin, presentation)
+    identity, token = await issue(p, recipient_name="Alex")
+    async with SessionLocal() as db:
+        flow = await db.get(PluginAuthFlowRegistration, "user_invite")
+        revision = flow.revision
+        await register_invite_flow(
+            db,
+            p.plugin,
+            p.installation,
+            p.admin,
+            {**presentation, "welcome_message": "New wording"},
+        )
+        assert flow.revision == revision
+        row = await db.get(UserInvitation, identity)
+        assert row.revoked_at is None and decrypt_secret(row.encrypted_token) == token
+        assert await process_pending_deliveries(db) == 1
+    mail = p.messages[0]
+    assert mail["Subject"] == "Your library invitation"
+    assert mail["From"].startswith("Library team <")
+    plain = mail.get_body(preferencelist=("plain",)).get_content()
+    html = mail.get_body(preferencelist=("html",)).get_content()
+    assert "Hi Alex," in plain and "Join our shared library." in plain
+    assert "New wording" not in plain and "<script>" not in html
+    assert "Welcome &lt;Alex&gt;" in html and "Create account" in html and "#7856ab" in html
+
+
+@pytest.mark.asyncio
+async def test_old_flow_definition_restores_with_additive_presentation_defaults(invitation):
+    p = invitation
+    async with SessionLocal() as db:
+        flow = await db.get(PluginAuthFlowRegistration, "user_invite")
+        flow.definition = {
+            "mode": "user_invite",
+            "name": "Invites",
+            "token_lifetime_seconds": 86400,
+        }
+        await db.commit()
+        revision = flow.revision
+        result = await register_invite_flow(
+            db, p.plugin, p.installation, p.admin, flow.definition, restore=True
+        )
+        assert result["registered"] and flow.revision == revision
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"email_subject": " "},
+        {"sender_name": "Team\r\nBcc: anyone"},
+        {"accent_color": '" onmouseover="bad'},
+        {"email_layout": "raw-html"},
+    ],
+)
+def test_invitation_contract_rejects_unsafe_presentation(fields):
+    with pytest.raises(ValueError):
+        UserInviteFlowDefinition.model_validate(
+            {"mode": "user_invite", "name": "Invites", **fields}
+        )
 
 
 @pytest.mark.asyncio

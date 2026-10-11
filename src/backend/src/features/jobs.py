@@ -18,6 +18,7 @@ import logging
 import time
 from dataclasses import dataclass
 from typing import Any, Callable
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -64,6 +65,7 @@ class JobSpec:
     plugin_name: str | None = None
     available: bool = True
     unavailable_reason: str = ""
+    user_id: UUID | None = None
 
 
 def _summarize_refresh(r: dict[str, Any]) -> str:
@@ -198,6 +200,7 @@ async def get_setting(db: AsyncSession, spec: JobSpec) -> JobSetting:
     if row is None:
         row = JobSetting(
             job_id=spec.id,
+            user_id=spec.user_id,
             enabled=spec.default_enabled,
             interval_minutes=spec.default_interval_minutes,
         )
@@ -285,7 +288,7 @@ async def run_jobs_loop() -> None:
     """Run eligible schedules without blocking imports or notification delivery."""
     # Plugin adapters import JobSpec/record_run from this registry; load them after initialization.
     # pylint: disable-next=import-outside-toplevel
-    from src.features.plugin_jobs import get_plugin_jobs
+    from src.features.plugin_jobs import get_plugin_jobs, get_scheduled_user_jobs
 
     while True:
         await asyncio.sleep(TICK_SECONDS)
@@ -302,15 +305,28 @@ async def run_jobs_loop() -> None:
                 await process_pending_deliveries(db)
                 await publish_lifecycle(db)
                 due = []
-                for spec in [*JOBS.values(), *await get_plugin_jobs(db)]:
+                for spec in [
+                    *JOBS.values(),
+                    *await get_plugin_jobs(db),
+                    *await get_scheduled_user_jobs(db),
+                ]:
                     row = await get_setting(db, spec)
+                    continuation = (row.last_result or {}).get("continue_after_seconds")
+                    interval = row.interval_minutes
+                    if (
+                        spec.user_id is not None
+                        and (row.last_result or {}).get("completed") is False
+                        and isinstance(continuation, int)
+                        and not isinstance(continuation, bool)
+                    ):
+                        interval = min(60, max(1, (continuation + 59) // 60))
                     if (
                         spec.available
                         and spec.min_interval_minutes
                         <= row.interval_minutes
                         <= spec.max_interval_minutes
                         and not spec.is_running()
-                        and is_due(row.enabled, row.last_run_at, row.interval_minutes, now)
+                        and is_due(row.enabled, row.last_run_at, interval, now)
                     ):
                         due.append(spec)
                 await db.commit()

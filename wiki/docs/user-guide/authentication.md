@@ -38,10 +38,13 @@ permission and token lifecycle details.
 ## Optional email invitations
 
 Administrators can install **User Invites**, grant its separate critical global
-permission, and explicitly activate it in **Settings → Administration → Account security → User invitations**. Built-in
+permission, and explicitly activate it in **Settings → Administration → Users**. Built-in
 SMTP must be configured; no additional email provider is installed by the plugin.
-Choose the link lifetime, then use **Invite user** on **Administration → Users** to
-enter an email address and send. The dialog shows delivery state and lets
+Choose expiry in minutes, hours, days or weeks (one hour to one week), then save
+settings and enable invitations. Customize the email sender display name, subject,
+heading, welcome message, greeting, button, layout, accent and footer with a preview.
+Use **Invite user** beside **Create user** to enter an email address and optional
+recipient name. The dialog shows delivery state and lets
 administrators revoke outstanding invitations.
 
 The recipient opens the emailed link, chooses a username and password, then signs
@@ -125,10 +128,11 @@ Password confirmation is required when creating a user and when changing the cur
 The backend remains the final security boundary: it enforces the same configured policy even if a client bypasses the frontend validation.
 
 
-Password recovery configuration now lives in Settings → Administration → Account
-security → Password recovery. **Account recovery enabled/disabled** reflects live
-host availability. User invitation activation/lifetime is alongside it; send and
-review invitations using **Invite user** on Administration → Users. These controls
+Password recovery configuration lives on Settings → Administration → Password
+policy. Its enabled/disabled state reflects live host availability. Set expiry in
+minutes or hours (10–60 minutes). Save settings, Enable and Disable are separate
+controls; disabling preserves saved settings. Invitation settings and the
+**Invite user** action are on Administration → Users. These controls
 come from installed, explicitly granted official plugins. All SMTP purposes use
 the same responsive HTML design and readable plain alternative.
 

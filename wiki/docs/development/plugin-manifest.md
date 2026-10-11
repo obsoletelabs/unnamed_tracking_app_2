@@ -87,3 +87,15 @@ the controls. Existing scheduling persistence survives updates within the same
 installation identity. See [Tasks](../administration/tasks.md) for host controls
 and the [companion recipe](https://obsoletelabs.github.io/unnamed_tracking_app_plugins/development/background-tasks/)
 for a bounded action example.
+
+Plugin API 1.1.11 adds `scope: "user"`; the default remains `"server"`.
+Personal tasks appear on Account → Background tasks and use the signed-in user's
+own identity and live grants. Each user has a separate installation-bound schedule,
+disabled by default. Server tasks retain the background administrator identity.
+The additive `job_settings.user_id` migration preserves existing server schedules.
+
+A personal action can return `completed: false` with `continue_after_seconds`
+to resume a checkpoint before its ordinary interval. The host bounds this delay to
+60–3600 seconds and only continues while the user keeps autosync enabled. Completion
+restores the chosen interval; failure without a continuation waits for that interval.
+All steps retain the existing action timeout and no-overlap checks.

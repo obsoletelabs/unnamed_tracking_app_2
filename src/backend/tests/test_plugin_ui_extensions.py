@@ -44,6 +44,21 @@ def test_administrative_user_actions_require_the_admin_navigation_grant():
     )
 
 
+@pytest.mark.parametrize(
+    "slot", ["administration.users.settings", "administration.password-policy.after"]
+)
+def test_administration_settings_slots_require_current_api_and_settings_grant(slot):
+    data = document_data()
+    data["extensions"][0]["slot"] = slot
+    data["api_contract_version"] = "1.1.10"
+    with pytest.raises(ValidationError, match="v1.1.11"):
+        PluginUiDocument.model_validate(data)
+    data["api_contract_version"] = "1.1.11"
+    document = PluginUiDocument.model_validate(data)
+    assert not _filter_ui_document(document, frozenset({"frontend.page.extend"})).extensions
+    assert len(_filter_ui_document(document, frozenset({"frontend.settings"})).extensions) == 1
+
+
 @pytest.mark.parametrize("area", ["account", "preferences", "administration"])
 def test_settings_placement_retains_area_group_and_visibility(area):
     item = UiSettingsContribution.model_validate(
@@ -385,6 +400,18 @@ def test_connection_contribution_rejects_unknown_fields():
     data = connection_document()
     data["connections"][0]["url"] = "https://example.invalid"
     with pytest.raises(ValidationError):
+        PluginUiDocument.model_validate(data)
+
+
+def test_connection_sync_requires_a_declared_action_and_current_contract():
+    data = connection_document()
+    data["connections"][0]["sync_action_id"] = "status"
+    with pytest.raises(ValidationError, match="v1.1.11"):
+        PluginUiDocument.model_validate(data)
+    data["api_contract_version"] = "1.1.11"
+    assert PluginUiDocument.model_validate(data).connections[0].sync_action_id == "status"
+    data["connections"][0]["sync_action_id"] = "missing"
+    with pytest.raises(ValidationError, match="unknown sync action"):
         PluginUiDocument.model_validate(data)
 
 

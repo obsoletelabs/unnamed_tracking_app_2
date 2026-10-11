@@ -322,3 +322,98 @@ async def test_revocation_between_start_and_dispatch_is_rechecked(scheduled):
     spec.start("needed")
     await asyncio.gather(*list(plugin_jobs._running.values()))
     transport.run_scheduled_task.assert_not_awaited()
+
+
+def test_personal_tasks_require_the_additive_contract():
+    declaration = {"id": "summary", "name": "Summary", "action_id": "summarize", "scope": "user"}
+    with pytest.raises(ValidationError, match="v1.1.11"):
+        PluginManifest.model_validate(manifest(scheduled_tasks=[declaration]))
+    parsed = PluginManifest.model_validate(
+        manifest(api_contract_version="1.1.11", scheduled_tasks=[declaration])
+    )
+    assert parsed.scheduled_tasks[0].scope == "user"
+
+
+@pytest.mark.asyncio
+async def test_personal_schedules_use_non_admin_owner_and_cannot_be_managed_by_another_user(
+    scheduled,
+):
+    installed, transport, installation_id, actor_id, other_id = scheduled
+    installed["api_contract_version"] = "1.1.11"
+    installed["scheduled_tasks"][0]["scope"] = "user"
+    transport.plugin_ui.return_value["api_contract_version"] = "1.1.11"
+    transport.run_scheduled_task.return_value = {
+        "completed": False,
+        "summary": "Inventory saved",
+        "continue_after_seconds": 1,
+        "private": "not persisted",
+    }
+    job_id = plugin_jobs.task_job_id(installation_id, "summary", actor_id)
+    assert len(job_id) <= 50
+    assert job_id != plugin_jobs.task_job_id(installation_id, "summary", other_id)
+    async with SessionLocal() as db:
+        actor = await db.get(User, actor_id)
+        actor.is_admin = False
+        await db.commit()
+        personal = await job_routes.list_user_jobs(db, actor)
+        assert len(personal) == 1 and personal[0]["available"] and not personal[0]["enabled"]
+        assert await plugin_jobs.get_plugin_jobs(db) == []
+        other = await db.get(User, other_id)
+        with pytest.raises(HTTPException) as denied:
+            await job_routes.update_user_job(job_id, job_routes.JobUpdate(enabled=True), db, other)
+        assert denied.value.status_code == 404
+        with pytest.raises(HTTPException) as hidden:
+            await job_routes.run_user_job("media_refresh", db, actor)
+        assert hidden.value.status_code == 404
+        await job_routes.update_user_job(
+            job_id, job_routes.JobUpdate(enabled=True, interval_minutes=60), db, actor
+        )
+        assert (await db.get(JobSetting, job_id)).user_id == actor_id
+        assert [spec.id for spec in await plugin_jobs.get_scheduled_user_jobs(db)] == [job_id]
+        assert await job_routes.run_user_job(job_id, db, actor) == {"running": True}
+    await asyncio.gather(*list(plugin_jobs._running.values()))
+    transport.run_scheduled_task.assert_awaited_once_with(
+        "example.tasks", str(installation_id), "summary", "manual", user_id=str(actor_id)
+    )
+    async with SessionLocal() as db:
+        row = await db.get(JobSetting, job_id)
+        assert row.last_result == {
+            "completed": False,
+            "summary": "Inventory saved",
+            "continue_after_seconds": 60,
+        }
+        row.enabled = False
+        await db.commit()
+        assert await plugin_jobs.get_scheduled_user_jobs(db) == []
+
+
+@pytest.mark.asyncio
+async def test_personal_background_access_is_rechecked_for_the_target_account(scheduled):
+    installed, transport, installation_id, actor_id, _ = scheduled
+    installed["scheduled_tasks"][0]["scope"] = "user"
+    installed["api_contract_version"] = "1.1.11"
+    async with SessionLocal() as db:
+        spec = (await plugin_jobs.get_plugin_jobs(db, actor_id))[0]
+        grant = await db.scalar(
+            select(PluginPermissionGrant).where(
+                PluginPermissionGrant.installation_id == installation_id,
+                PluginPermissionGrant.capability == "games.read",
+            )
+        )
+        grant.revoked_at = int(time.time())
+        await db.commit()
+    spec.start("all")
+    await asyncio.gather(*list(plugin_jobs._running.values()))
+    transport.run_scheduled_task.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_disabled_personal_schedule_cannot_start_a_queued_step(scheduled):
+    installed, transport, _, actor_id, _ = scheduled
+    installed["scheduled_tasks"][0]["scope"] = "user"
+    installed["api_contract_version"] = "1.1.11"
+    async with SessionLocal() as db:
+        spec = (await plugin_jobs.get_plugin_jobs(db, actor_id))[0]
+    spec.start("needed")
+    await asyncio.gather(*list(plugin_jobs._running.values()))
+    transport.run_scheduled_task.assert_not_awaited()

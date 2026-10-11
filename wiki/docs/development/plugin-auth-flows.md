@@ -112,6 +112,24 @@ removed after an additional day. Reset API 1.1.7 remains compatible.
 `token_lifetime_seconds`. It requires an active administrator and explicit global
 grant, and reports only this installation's live flow. Disabled, unhealthy or
 ungranted registrations are not enabled; saved plugin preferences are insufficient.
-The official contribution places configuration in Administration → Account security.
-The invitation contribution uses a separate configuration section there and an
-Invite user button/dialog on Administration → Users.
+The official recovery contribution places configuration on Administration → Password
+policy. Invitation configuration and its Invite user button/dialog are on
+Administration → Users. Each contribution separates Save settings from Enable/Disable.
+
+## Invitation presentation (API 1.1.11)
+
+The invite registration accepts optional plain-text `sender_name` (80 characters),
+`email_subject` and `email_heading` (160), `welcome_message` (2000), `button_label`
+(80), and `footer_message` (500). `greeting` is `personal`, `generic` or `none`;
+`email_layout` is `card` or `simple`; `accent_color` is a six-digit hex color.
+Issuing an invitation accepts optional `recipient_name` (80). Empty required labels,
+control characters in labels/names, invalid colors and unsupported choices are rejected.
+
+The host snapshots these values inside the encrypted recipient configuration and
+renders escaped HTML plus a plain-text alternative. SMTP still uses the configured
+sender address; the plugin can customize only its display name. The host always
+supplies the acceptance link and expiry/single-use safety text. Cosmetic edits affect
+future invitations and preserve already issued links. Lifetime changes, withdrawal,
+installation changes and grant revocation retain credential invalidation semantics.
+Older definitions restore with the additive presentation defaults. No database
+migration is needed.

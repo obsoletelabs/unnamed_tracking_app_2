@@ -213,6 +213,8 @@ class HostExtensionSlot(StrEnum):
     APP_GLOBAL = "app.global"
     HOME_REPLACE = "home.replace"
     ADMINISTRATION_USERS_ACTIONS = "administration.users.actions"
+    ADMINISTRATION_USERS_SETTINGS = "administration.users.settings"
+    ADMINISTRATION_PASSWORD_POLICY_AFTER = "administration.password-policy.after"
 
 
 class UiNavigationLocation(StrEnum):
@@ -401,6 +403,9 @@ class UiConnectionContribution(ContractModel):
     description: str = Field(default="", max_length=256)
     page_id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
     status_action_id: str | None = Field(
+        default=None, min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$"
+    )
+    sync_action_id: str | None = Field(
         default=None, min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$"
     )
     icon: str | None = Field(default=None, min_length=1, max_length=64)
@@ -700,6 +705,11 @@ class PluginUiDocument(ContractModel):
                 action_set
             ):
                 raise ValueError(f"connection {connection.id} references an unknown status action")
+            if (
+                connection.sync_action_id is not None
+                and connection.sync_action_id not in action_set
+            ):
+                raise ValueError(f"connection {connection.id} references an unknown sync action")
         for dialog_contribution in self.dialog_contributions:
             if dialog_contribution.dialog_id not in dialog_set:
                 raise ValueError(
@@ -716,6 +726,18 @@ class PluginUiDocument(ContractModel):
         """Connections are the additive v1.1.9 contribution; older documents cannot use them."""
         if self.connections and parse_semver(self.api_contract_version) < (1, 1, 9):
             raise ValueError("connection contributions require Plugin API v1.1.9")
+        if any(connection.sync_action_id for connection in self.connections) and parse_semver(
+            self.api_contract_version
+        ) < (1, 1, 11):
+            raise ValueError("connection sync actions require Plugin API v1.1.11")
+        administration_settings = {
+            HostExtensionSlot.ADMINISTRATION_USERS_SETTINGS,
+            HostExtensionSlot.ADMINISTRATION_PASSWORD_POLICY_AFTER,
+        }
+        if any(item.slot in administration_settings for item in self.extensions) and (
+            parse_semver(self.api_contract_version) < (1, 1, 11)
+        ):
+            raise ValueError("administration settings slots require Plugin API v1.1.11")
         return self
 
     @model_validator(mode="after")

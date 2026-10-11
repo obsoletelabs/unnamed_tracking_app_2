@@ -141,7 +141,7 @@ async def register_auth_flow(db, plugin_id, installation_id, user_id, definition
             row.revoked_at is None,
             row.plugin_id == plugin_id,
             row.installation_id == installation_id,
-            row.definition == values,
+            type(definition).model_validate(row.definition).model_dump(mode="json") == values,
         )
     )
     if restore and not restorable:
@@ -157,11 +157,23 @@ async def register_auth_flow(db, plugin_id, installation_id, user_id, definition
         )
         db.add(row)
     elif row.installation_id != installation_id or row.definition != values or row.revoked_at:
-        await _retire_credentials(db, row.plugin_id, definition.mode)
+        # Email presentation applies to future invitations. Existing credentials
+        # remain valid when only cosmetic values change.
+        credentials_changed = (
+            row.installation_id != installation_id
+            or row.revoked_at is not None
+            or any(
+                row.definition.get(key) != values[key]
+                for key in ("mode", "name", "token_lifetime_seconds")
+            )
+        )
+        if credentials_changed:
+            await _retire_credentials(db, row.plugin_id, definition.mode)
         row.plugin_id = plugin_id
         row.installation_id = installation_id
         row.definition = values
-        row.revision += 1
+        if credentials_changed:
+            row.revision += 1
         row.revoked_at = None
         row.registered_at = int(time.time())
     # Startup can register while its verified worker is becoming ready. Public
