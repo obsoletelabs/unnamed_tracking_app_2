@@ -11,7 +11,7 @@ from collections import Counter
 from contextvars import ContextVar
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-from typing import Any, NamedTuple, TypedDict
+from typing import Any, Literal, NamedTuple, TypedDict
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
@@ -709,6 +709,8 @@ def _overview_section(
         ],
         "media_minutes": media_minutes,
         "game_seconds": sections["game"]["playtime_seconds"],
+        "game_favorites": sections["game"]["favorites"],
+        "achievements_unlocked": sections["game"]["achievements_unlocked"],
         "media_titles": sections["movie"]["titles"]
         + sections["tv"]["titles"]
         + sections["anime"]["titles"],
@@ -775,12 +777,42 @@ def _needs_score(movies: list[Any], tv: list[Any], anime: list[Any]) -> dict[str
 
 @router.get("")
 async def get_media_stats(
-    db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    section: Literal["overview", "games", "movie", "tv", "anime"] | None = None,
 ) -> dict[str, Any]:
     uid = current_user.id
     prefs = await load_preferences(db, uid)
     include_plan = bool(prefs["stats_include_plan"])
     _language.set(str(prefs["title_language"]))
+
+    # A tab needs only its own library. Keep the unfiltered API compatible with
+    # existing clients; Overview still combines exact numbers across all kinds.
+    if section == "games":
+        return {"games": await _games_section(db, uid, include_plan)}
+    if section == "movie":
+        movies = await _library_items(db, Movie, uid, include_plan)
+        return {"movie": _movie_section(movies, await _rewatch_counts(db, uid, "movie"))}
+    if section in {"tv", "anime"}:
+        if section == "tv":
+            shows = await _library_items(db, TVShow, uid, include_plan)
+            episode_stats = await _episode_stats(
+                db, TVShow, TVSeason, TVEpisode, user_id=uid, shows=shows
+            )
+        else:
+            shows = await _library_items(db, Anime, uid, include_plan)
+            episode_stats = await _episode_stats(
+                db, Anime, AnimeSeason, AnimeEpisode, user_id=uid, shows=shows
+            )
+        return {
+            section: _episodic_section(
+                shows,
+                episode_stats,
+                await _rewatch_counts(db, uid, section),
+                "creators" if section == "tv" else "studios",
+                section,
+            )
+        }
 
     movies = await _library_items(db, Movie, uid, include_plan)
     tv = await _library_items(db, TVShow, uid, include_plan)
@@ -815,6 +847,8 @@ async def get_media_stats(
         needs_score=_needs_score(movies, tv, anime),
         activity=await _activity_section(db, uid),
     )
+    if section == "overview":
+        return {"overview": overview}
     return {
         "overview": overview,
         "games": sections["game"],
