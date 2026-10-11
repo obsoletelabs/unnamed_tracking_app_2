@@ -222,9 +222,10 @@ async def test_secure_recovery_requires_proof_opt_in_and_live_grant(private_prov
 @pytest.mark.asyncio
 async def test_owner_api_and_recovery_choice_require_current_host_proof(private_provider):
     p = private_provider
-    async with SessionLocal() as request_db, api(
-        request_db, await request_db.get(User, p.owner)
-    ) as client:
+    async with (
+        SessionLocal() as request_db,
+        api(request_db, await request_db.get(User, p.owner)) as client,
+    ):
         root = f"/api/settings/notification-providers/plugin-destinations/{p.endpoint}"
         denied = await client.put(root + "/recovery", json={"enabled": True})
         assert denied.status_code == 403
