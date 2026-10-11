@@ -48,6 +48,7 @@ import {
   GAME_STATUS_OPTIONS,
   hasGameLibraryQuery,
   normalizeGameTags,
+  readGameLibraryFilterVisibility,
   readGameLibraryQuery,
   writeGameLibraryQuery,
   type GameLibraryFilters,
@@ -218,7 +219,10 @@ export function useGameLibrary() {
     }
   }
   const persisted = hasGameLibraryQuery(route.query)
-    ? { ...readGameLibraryQuery(route.query), showAdvancedFilters: true }
+    ? {
+        ...readGameLibraryQuery(route.query),
+        showAdvancedFilters: readGameLibraryFilterVisibility(route.query),
+      }
     : loadPersistedFilters();
 
   const searchQuery = ref(persisted.searchQuery ?? "");
@@ -554,7 +558,7 @@ export function useGameLibrary() {
       // to the heterogeneous union produced by dynamic indexed assignment.
       Object.assign(filterRefs[key], { value: filters[key] });
     }
-    if (filterCount.value) showAdvancedFilters.value = true;
+    showAdvancedFilters.value = readGameLibraryFilterVisibility(route.query);
   }
   // Kept-alive libraries must also restore links and browser history on re-entry.
   watch(
@@ -572,12 +576,18 @@ export function useGameLibrary() {
     { flush: "sync" },
   );
   watch(
-    () => [route.path, searchQuery.value, currentFilterValues()],
+    () => [
+      route.path,
+      searchQuery.value,
+      currentFilterValues(),
+      showAdvancedFilters.value,
+    ],
     () => {
       if (route.path !== "/games") return;
       const query = writeGameLibraryQuery(
         { ...currentFilterValues(), searchQuery: searchQuery.value },
         route.query,
+        showAdvancedFilters.value,
       );
       const key = queryKey(query);
       if (key === queryKey(route.query)) return;

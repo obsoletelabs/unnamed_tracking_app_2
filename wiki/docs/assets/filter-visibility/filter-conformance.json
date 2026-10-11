@@ -1,0 +1,28 @@
+{
+  "host_revision": "3353206f8ad2b28f8eb97b4ee591020fd1480fe1",
+  "compiled_ui": true,
+  "real_apis": true,
+  "transport_fixtures": [],
+  "passed": [
+    "Empty/active closed reload, tags/hash/unrelated query, no reload/scroll jump, legacy links and history: 320",
+    "Empty/active closed reload, tags/hash/unrelated query, no reload/scroll jump, legacy links and history: 390",
+    "Empty/active closed reload, tags/hash/unrelated query, no reload/scroll jump, legacy links and history: 1440"
+  ],
+  "scroll": [
+    {
+      "width": 320,
+      "before": 1177,
+      "after": 1177
+    },
+    {
+      "width": 390,
+      "before": 1095,
+      "after": 1095
+    },
+    {
+      "width": 1440,
+      "before": 0,
+      "after": 0
+    }
+  ]
+}

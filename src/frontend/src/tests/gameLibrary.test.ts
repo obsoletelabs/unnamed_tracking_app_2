@@ -82,6 +82,49 @@ async function library() {
 }
 
 describe("game library filtering", () => {
+  it("closes the filter panel in the URL while retaining active tags and unrelated parameters", async () => {
+    routing.route.query = { filters: "1", tag: "Indie", campaign: "friends" };
+    routing.route.fullPath = "/games?filters=1&tag=Indie&campaign=friends";
+    const view = await library();
+    expect(view.showAdvancedFilters.value).toBe(true);
+    view.showAdvancedFilters.value = false;
+    await nextTick();
+    expect(routing.route.query).toMatchObject({
+      filters: "0",
+      tag: "Indie",
+      campaign: "friends",
+    });
+    expect(view.tagsFilter.value).toEqual(["Indie"]);
+    expect(view.filteredGames.value.map((g) => g.id)).toEqual([
+      "Alpha",
+      "Beta",
+    ]);
+    view.showAdvancedFilters.value = true;
+    await nextTick();
+    expect(routing.route.query).toMatchObject({ filters: "1", tag: "Indie" });
+  });
+
+  it("honors a closed shared filter link on load and browser history", async () => {
+    localStorage.setItem(
+      "gameLibraryFilters",
+      JSON.stringify({ showAdvancedFilters: true, tagsFilter: ["RPG"] }),
+    );
+    routing.route.query = { filters: "0", tag: "Indie" };
+    routing.route.fullPath = "/games?filters=0&tag=Indie";
+    const view = await library();
+    expect(view.showAdvancedFilters.value).toBe(false);
+    expect(view.tagsFilter.value).toEqual(["Indie"]);
+    routing.route.query = { filters: "1", tag: "RPG" };
+    routing.route.fullPath = "/games?filters=1&tag=RPG";
+    await nextTick();
+    expect(view.showAdvancedFilters.value).toBe(true);
+    routing.route.query = { filters: "0", tag: "Indie" };
+    routing.route.fullPath = "/games?filters=0&tag=Indie";
+    await nextTick();
+    expect(view.showAdvancedFilters.value).toBe(false);
+    expect(view.tagsFilter.value).toEqual(["Indie"]);
+  });
+
   it("finds one main game through any owned copy while using main status and favorites", async () => {
     const view = await library();
     const main = game("Main", "playing", ["RPG"], true);
@@ -154,7 +197,7 @@ describe("game library filtering", () => {
     expect(routing.route.query).toMatchObject({ tag: "RPG" });
     view.clearAllFilters();
     await nextTick();
-    expect(routing.route.query).toEqual({ filters: "1" });
+    expect(routing.route.query).toEqual({ filters: "0" });
     routing.route.query = { tag: "Genre: Indie", status: "backlog" };
     routing.route.fullPath = "/games?tag=Genre%3A+Indie&status=backlog";
     await nextTick();

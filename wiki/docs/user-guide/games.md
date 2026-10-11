@@ -142,6 +142,10 @@ Tabs with no matches show zero.
 
 Copy the browser URL to share the selection, search, status and sort. Multiple tags
 use repeated parameters, for example `/games?filters=1&tag=Indie&tag=RPG&status=backlog`.
+Closing the panel keeps the selected filters and writes `filters=0`, so refreshing
+or reopening that link keeps it closed. `filters=1` opens the panel; older links
+with filter selections and no visibility marker still open it. An explicit empty
+filter link clears saved selections whether its panel is open or closed.
 Opening a shared link replaces saved filters in that browser. Removing a pill or
 clearing filters updates the URL too. Existing `?tag=`, `?genre=`, collection and
 statistics links remain supported; saved genre selections migrate into the picker.

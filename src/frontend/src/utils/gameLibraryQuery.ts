@@ -104,6 +104,12 @@ export function hasGameLibraryQuery(query: LocationQuery): boolean {
   return QUERY_KEYS.some((key) => key in query);
 }
 
+export function readGameLibraryFilterVisibility(query: LocationQuery): boolean {
+  const value = Array.isArray(query.filters) ? query.filters[0] : query.filters;
+  // Legacy shared filter links open the panel unless explicitly closed.
+  return value !== "0" && hasGameLibraryQuery(query);
+}
+
 export function readGameLibraryQuery(query: LocationQuery): GameLibraryFilters {
   const filters: GameLibraryFilters = {
     ...DEFAULT_GAME_FILTERS,
@@ -148,11 +154,12 @@ export function readGameLibraryQuery(query: LocationQuery): GameLibraryFilters {
 export function writeGameLibraryQuery(
   filters: GameLibraryFilters,
   query: LocationQuery = {},
+  showAdvancedFilters = true,
 ): LocationQueryRaw {
   const result: LocationQueryRaw = { ...query };
   for (const key of QUERY_KEYS) delete result[key];
   // An explicit empty filter set must override the recipient's saved filters too.
-  result.filters = "1";
+  result.filters = showAdvancedFilters ? "1" : "0";
   if (filters.searchQuery) result.q = filters.searchQuery;
   if (filters.statusFilter !== "all") result.status = filters.statusFilter;
   if (filters.sortBy !== "name") result.sort = filters.sortBy;

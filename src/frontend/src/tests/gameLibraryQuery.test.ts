@@ -4,12 +4,38 @@ import {
   DEFAULT_GAME_FILTERS,
   hasGameLibraryQuery,
   normalizeGameTags,
+  readGameLibraryFilterVisibility,
   readGameLibraryQuery,
   writeGameLibraryQuery,
   type GameLibraryFilters,
 } from "../utils/gameLibraryQuery";
 
 describe("shared game filters", () => {
+  it("preserves closed filters in the URL without losing selections or unrelated parameters", () => {
+    const filters = { ...DEFAULT_GAME_FILTERS, tagsFilter: ["Puzzle", "RPG"] };
+    const query = parseQuery(
+      stringifyQuery(
+        writeGameLibraryQuery(filters, { campaign: "friends" }, false),
+      ),
+    );
+    expect(query.filters).toBe("0");
+    expect(query.campaign).toBe("friends");
+    expect(readGameLibraryQuery(query)).toEqual(filters);
+    expect(readGameLibraryFilterVisibility(query)).toBe(false);
+    expect(readGameLibraryFilterVisibility({ filters: "1" })).toBe(true);
+    expect(readGameLibraryFilterVisibility({ tag: "Puzzle" })).toBe(true);
+    expect(readGameLibraryFilterVisibility({})).toBe(false);
+  });
+
+  it("treats an explicit closed empty filter link as a reset of saved selections", () => {
+    const query = parseQuery(
+      stringifyQuery(writeGameLibraryQuery(DEFAULT_GAME_FILTERS, {}, false)),
+    );
+    expect(hasGameLibraryQuery(query)).toBe(true);
+    expect(readGameLibraryQuery(query)).toEqual(DEFAULT_GAME_FILTERS);
+    expect(readGameLibraryFilterVisibility(query)).toBe(false);
+  });
+
   it("round trips every filter, including repeated tags and reserved characters", () => {
     const filters: GameLibraryFilters = {
       searchQuery: "Mario & Luigi",
