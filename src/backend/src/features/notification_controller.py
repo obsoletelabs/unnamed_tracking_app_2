@@ -37,6 +37,34 @@ EVENT_TYPES = {
 }
 
 
+async def emit_recovery_request(db: AsyncSession, token) -> UUID:
+    """Reserved interpretation; only final eligible dispatch may resolve the secret."""
+    now = int(time.time())
+    notice = Notification(
+        id=uuid4(),
+        user_id=token.user_id,
+        kind="password_reset",
+        event_type="auth.password_reset",
+        source=token.plugin_id,
+        source_installation_id=token.installation_id,
+        media_type="auth_recovery",
+        media_id=token.id,
+        title="Reset your password",
+        body="A password reset was requested.",
+        event_at=now,
+        dedupe_key=f"recovery:{token.id}",
+        required_trust=int(Trust.SECURE),
+        purpose="recovery",
+        inbox_visible=False,
+        expires_at=token.expires_at,
+    )
+    db.add(notice)
+    await db.flush()
+    await ensure_deliveries(db, [notice.id])
+    await record_notices(db, [notice], "created")
+    return notice.id
+
+
 async def emit_verification_request(
     db: AsyncSession, destination: NotificationDestination, challenge_id: UUID, expires_at: int
 ) -> UUID | None:

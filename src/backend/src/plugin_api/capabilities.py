@@ -118,6 +118,7 @@ _CRITICAL = frozenset(
         # Sensitive notification content always requires its own explicit grant.
         Capability.NOTIFICATIONS_SENSITIVE,
         Capability.NOTIFICATION_PROVIDERS_SENSITIVE,
+        Capability.AUTH_PASSWORD_RESET,
         Capability.FRONTEND_NATIVE,
         Capability.FRONTEND_PWA,
         Capability.BACKEND_ROUTES_HOST,
@@ -179,8 +180,8 @@ def _category(capability: Capability) -> str:
         return "Frontend"
     if value.startswith("backend") or capability is Capability.FULL_API:
         return "Backend"
-    if value.startswith("notification"):
-        return "Notifications"
+    if value.startswith(("notification", "auth")):
+        return "Account security" if value.startswith("auth") else "Notifications"
     if value.startswith("network"):
         return "External"
     return "Plugin runtime"
@@ -188,6 +189,7 @@ def _category(capability: Capability) -> str:
 
 def _title(capability: Capability) -> str:
     placement_titles = {
+        Capability.AUTH_PASSWORD_RESET: "Enable host-mediated password reset for local accounts",
         Capability.NOTIFICATION_PROVIDERS_SENSITIVE: (
             "Receive verification codes and security/recovery content for eligible destinations"
         ),

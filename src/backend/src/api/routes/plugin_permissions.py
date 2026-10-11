@@ -21,6 +21,7 @@ from src.database.models.plugin_permissions import (
 from src.database.models.user import User
 from src.database.session import get_db
 from src.features.notification_destinations import retire_plugin_destinations
+from src.features.plugin_auth_flows import retire_auth_flows
 from src.plugin_api.capabilities import capability_definition, capability_implies
 from src.plugin_api.contracts import Capability
 from src.plugin_api.grants import (
@@ -252,6 +253,8 @@ async def revoke_grant(
         or capability_implies(row.capability, "frontend.pwa")
     ):
         await retire_plugin_destinations(db, row.plugin_id, row.user_id, row.installation_id)
+    if row.device_id is None and row.user_id is None and row.capability == "auth.password_reset":
+        await retire_auth_flows(db, row.plugin_id, row.installation_id)
     await db.commit()
     return {"id": str(row.id), "status": "revoked"}
 

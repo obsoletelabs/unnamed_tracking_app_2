@@ -243,7 +243,7 @@ class PluginNotificationProvider:
             body=message.body,
             event_at=message.event_at,
             urgency=message.urgency if self.critical_supported else "normal",
-            link=link,
+            link=message.action_url or link,
         )
         endpoint = await revalidate_delivery_attempt(db, destination, message)
         if (
