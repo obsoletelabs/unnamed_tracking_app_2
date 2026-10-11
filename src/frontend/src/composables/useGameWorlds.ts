@@ -1,11 +1,10 @@
-import { ref, onUnmounted } from "vue";
+import { ref } from "vue";
 import {
   createArchive,
   addArchiveVersion,
-  fetchWorldMaps,
-  renderWorldMap,
+  fetchArchives,
 } from "../services/gameArchives";
-import type { GameArchiveData, WorldMapEntry } from "../services/gameArchives";
+import type { GameArchiveData } from "../services/gameArchives";
 import {
   startTask,
   updateTask,
@@ -16,46 +15,28 @@ import {
 import type { Game } from "../types/game";
 import { usePrompt } from "../state/dialog";
 import type { Ref } from "vue";
-export function useGameWorldMaps(
+export function useGameWorlds(
   game: Ref<Game | null>,
   saveUploading: Ref<Set<string>>,
   filesError: Ref<string | null>,
   prompt: ReturnType<typeof usePrompt>,
 ) {
-  // --- World Map (BlueMap render of a world_save archive) --------------------
-  // a game (e.g. a modpack) can have several worlds, one card, many worlds,
-  // each named, versioned, rendered, and viewed independently
-  const worldMaps = ref<WorldMapEntry[]>([]);
-  const worldMapsLoaded = ref(false);
-  const worldMapStarting = ref<Set<string>>(new Set());
-  const activeMapArchiveId = ref<string | null>(null);
-  let worldMapPollTimer: ReturnType<typeof setInterval> | null = null;
+  // Named, versioned world-save archives use the same API as Saves.
+  const worlds = ref<GameArchiveData[]>([]);
+  const worldsLoaded = ref(false);
 
-  function stopWorldMapPolling() {
-    if (worldMapPollTimer) {
-      clearInterval(worldMapPollTimer);
-      worldMapPollTimer = null;
-    }
-  }
-
-  async function refreshWorldMaps() {
+  async function refreshWorlds() {
     if (!game.value) return;
+    const gameId = game.value.id;
     try {
-      worldMaps.value = await fetchWorldMaps(game.value.id);
-      worldMapsLoaded.value = true;
-      const anyRendering = worldMaps.value.some(
-        (w) => w.status === "rendering",
-      );
-      if (anyRendering && !worldMapPollTimer) {
-        // no push mechanism for a background render, poll every few
-        // seconds only while at least one world is actually in flight
-        worldMapPollTimer = setInterval(refreshWorldMaps, 4000);
-      } else if (!anyRendering) {
-        stopWorldMapPolling();
-      }
-    } catch {
-      // list just doesn't update this tick, not worth surfacing an error
-      // for a polling request
+      const archives = await fetchArchives(gameId, "world_save");
+      if (game.value?.id !== gameId) return;
+      worlds.value = archives;
+      worldsLoaded.value = true;
+    } catch (err) {
+      if (game.value?.id !== gameId) return;
+      filesError.value =
+        err instanceof Error ? err.message : "Failed to load worlds";
     }
   }
 
@@ -85,7 +66,7 @@ export function useGameWorldMaps(
             updateTask(taskId, Math.round(f * 100), undefined, speedLabel),
         );
         completeTask(taskId, "Saved");
-        await refreshWorldMaps();
+        await refreshWorlds();
       } catch (err) {
         errorTask(taskId, err instanceof Error ? err.message : "Upload failed");
         setTaskRetry(taskId, () => void attempt());
@@ -110,8 +91,8 @@ export function useGameWorldMaps(
         await addArchiveVersion(gameId, archive.id, file, (f, speedLabel) =>
           updateTask(taskId, Math.round(f * 100), undefined, speedLabel),
         );
-        completeTask(taskId, "Saved: render again to update the map");
-        await refreshWorldMaps();
+        completeTask(taskId, "Saved");
+        await refreshWorlds();
       } catch (err) {
         errorTask(taskId, err instanceof Error ? err.message : "Upload failed");
         setTaskRetry(taskId, () => void attempt());
@@ -124,39 +105,11 @@ export function useGameWorldMaps(
     await attempt();
   }
 
-  async function startWorldMapRender(archiveId: string) {
-    if (!game.value) return;
-    worldMapStarting.value = new Set(worldMapStarting.value).add(archiveId);
-    filesError.value = null;
-    try {
-      await renderWorldMap(game.value.id, archiveId);
-      await refreshWorldMaps();
-    } catch (err) {
-      filesError.value =
-        err instanceof Error ? err.message : "Failed to start render";
-    } finally {
-      const next = new Set(worldMapStarting.value);
-      next.delete(archiveId);
-      worldMapStarting.value = next;
-    }
-  }
-
-  function viewWorldMap(archiveId: string) {
-    activeMapArchiveId.value = archiveId;
-  }
-
-  onUnmounted(stopWorldMapPolling);
-
   return {
-    worldMaps,
-    worldMapsLoaded,
-    worldMapStarting,
-    activeMapArchiveId,
-    stopWorldMapPolling,
-    refreshWorldMaps,
+    worlds,
+    worldsLoaded,
+    refreshWorlds,
     onNewWorldSelected,
     onAddWorldVersion,
-    startWorldMapRender,
-    viewWorldMap,
   };
 }

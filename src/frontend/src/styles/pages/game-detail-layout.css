@@ -138,7 +138,7 @@
 .game-detail-page .files-panel,
 .game-detail-page .media-panel,
 .game-detail-page .stats-panel,
-.game-detail-page .world-map-panel {
+.game-detail-page .worlds-panel {
   position: relative;
   z-index: 1;
 }

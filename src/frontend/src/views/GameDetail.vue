@@ -30,7 +30,7 @@ import {
 import type { AchFilter } from "../composables/useGameAchievements";
 import GameAccountsPanel from "../components/game/GameAccountsPanel.vue";
 import GameOwnedCopiesPanel from "../components/game/GameOwnedCopiesPanel.vue";
-import GameWorldMapPanel from "../components/game/GameWorldMapPanel.vue";
+import GameWorldsPanel from "../components/game/GameWorldsPanel.vue";
 import { provide } from "vue";
 import { useGameDetail } from "../composables/useGameDetail";
 import { gameDetailKey } from "../composables/gameDetailContext";
@@ -1279,7 +1279,7 @@ const {
       />
     </section>
 
-    <GameWorldMapPanel v-else-if="activeTab === 'World Map'" />
+    <GameWorldsPanel v-else-if="activeTab === 'Worlds'" />
 
     <section v-else-if="activeTab === 'Stats'" class="stats-panel">
       <GameStatsPanel
