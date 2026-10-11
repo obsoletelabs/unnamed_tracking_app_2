@@ -125,11 +125,15 @@ class SmtpNotificationProvider:
     async def lookup_endpoint(
         self,
         db: AsyncSession,
-        user: User,
+        user: User | None,
         setting: NotificationProviderSetting | None,
         endpoint: NotificationDestination,
     ) -> SmtpDestination | None:
-        if not endpoint_route_enabled(self.id, user.id, setting, endpoint):
+        pending = endpoint.pending_recipient_id is not None and endpoint.user_id is None
+        if pending:
+            if user is not None or setting is not None or endpoint.kind != "invitation_email":
+                return None
+        elif user is None or not endpoint_route_enabled(self.id, user.id, setting, endpoint):
             return None
         if not endpoint.active or not endpoint.enabled or not endpoint.encrypted_configuration:
             return None
@@ -138,13 +142,14 @@ class SmtpNotificationProvider:
             return None
         address = json.loads(decrypt_secret(endpoint.encrypted_configuration))["address"]
         return SmtpDestination(
-            user_id=user.id,
+            user_id=endpoint.user_id,
             display=endpoint.display_name or "Email",
             allows_sensitive=config.allows_sensitive,
             endpoint_id=endpoint.id,
             endpoint_revision=endpoint.revision,
             address=address,
             configuration=config,
+            pending_recipient_id=endpoint.pending_recipient_id,
         )
 
     # Early failures distinguish unsafe transport, expired proof and SMTP outcomes.
@@ -154,11 +159,14 @@ class SmtpNotificationProvider:
     ) -> DeliveryResult:
         if not isinstance(destination, SmtpDestination) or destination.configuration is None:
             return DeliveryResult(False, error="destination_unavailable")
-        if message.event_type == "auth.password_reset" and not await revalidate_delivery_attempt(
-            db, destination, message
-        ):
+        if message.event_type in {
+            "auth.password_reset",
+            "auth.user_invite",
+        } and not await revalidate_delivery_attempt(db, destination, message):
             return DeliveryResult(False, error="recovery_revoked")
         if message.kind == "destination_verification":
+            if destination.user_id is None:
+                return DeliveryResult(False, error="destination_unavailable")
             if not destination.allows_sensitive:
                 return DeliveryResult(False, error="transport_security_required")
             challenge = await db.scalar(
@@ -186,7 +194,11 @@ class SmtpNotificationProvider:
                 ),
             )
         link = None
-        if message.purpose == "standard" and message.kind != "destination_verification":
+        if (
+            message.purpose == "standard"
+            and message.kind != "destination_verification"
+            and destination.user_id is not None
+        ):
             endpoint = await db.get(NotificationDestination, destination.endpoint_id)
             origin = await notification_url(db, destination.user_id, endpoint)
             if origin and endpoint and message.event_type:

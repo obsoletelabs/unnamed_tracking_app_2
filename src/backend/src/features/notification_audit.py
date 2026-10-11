@@ -23,7 +23,7 @@ from src.database.models.plugin_notification_provider import PluginNotificationP
 async def record_notices(db: AsyncSession, notices: Iterable[Notification], status: str) -> None:
     """Capture source ownership before deletion; the caller still owns the transaction."""
     for notice in notices:
-        if notice.source_installation_id is not None:
+        if notice.source_installation_id is not None and notice.user_id is not None:
             db.add(
                 NotificationLifecycleOutbox(
                     user_id=notice.user_id,

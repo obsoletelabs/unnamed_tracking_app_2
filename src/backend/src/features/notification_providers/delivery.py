@@ -23,6 +23,7 @@ from src.database.models.user import User
 from src.features.notification_audit import change_deliveries, record_deliveries
 from src.features.notification_auth_secrets import recovery_message
 from src.features.notification_destinations import resolve_destinations
+from src.features.notification_pending import invitation_message
 from src.features.notification_plugin_policy import delivery_projection
 from src.features.notification_policy import INBOX_PROVIDER, Trust, route_choice
 from src.features.notification_source_policy import source_delivery_allowed
@@ -48,6 +49,11 @@ async def ensure_deliveries(
         select(Notification).where(Notification.id.in_(notification_ids))
     )
     for notification in notifications:
+        if notification.pending_recipient_id is not None:
+            await _ensure_pending_deliveries(db, notification)
+            continue
+        if notification.user_id is None:
+            continue
         prefs = preferences or await load_preferences(db, notification.user_id)
         enabled_providers = set(
             await db.scalars(
@@ -89,6 +95,31 @@ async def ensure_deliveries(
             if inbox:
                 notification.inbox_visible = True
     await db.flush()
+
+
+async def _ensure_pending_deliveries(db, notice):
+    endpoints = await db.scalars(
+        select(NotificationDestination).where(
+            NotificationDestination.pending_recipient_id == notice.pending_recipient_id,
+            NotificationDestination.user_id.is_(None),
+        )
+    )
+    for endpoint in endpoints:
+        projection = await delivery_projection(db, notice, endpoint, {})
+        if projection is not None:
+            await db.execute(
+                pg_insert(NotificationDelivery)
+                .values(
+                    notification_id=notice.id,
+                    provider_id=endpoint.provider_id,
+                    destination_id=endpoint.id,
+                    destination_revision=endpoint.revision,
+                    projection=projection,
+                    status="pending",
+                    next_attempt_at=int(time.time()),
+                )
+                .on_conflict_do_nothing(index_elements=["notification_id", "destination_id"])
+            )
 
 
 async def _claim(db: AsyncSession) -> tuple[UUID, UUID] | None:
@@ -167,6 +198,7 @@ async def _lookup_destination(provider, db, user, setting, endpoint):
         destination = await lookup(db, user, setting, endpoint)
         if destination is not None and (
             destination.user_id != endpoint.user_id
+            or destination.pending_recipient_id != endpoint.pending_recipient_id
             or destination.endpoint_id != endpoint.id
             or destination.endpoint_revision != endpoint.revision
         ):
@@ -178,13 +210,15 @@ async def _lookup_destination(provider, db, user, setting, endpoint):
 def _transport_allowed(notification: Notification, destination: ProviderDestination) -> bool:
     return destination.allows_sensitive or (
         notification.required_trust < Trust.SECURE
-        and notification.purpose not in {"security", "recovery", "verification"}
+        and notification.purpose not in {"security", "recovery", "verification", "invitation"}
     )
 
 
 async def _refresh_destination(db: AsyncSession, work: _DeliveryWork) -> ProviderDestination | None:
     if getattr(work.provider, "lookup_endpoint", None) is None:
         return work.destination
+    if work.notification.pending_recipient_id is not None:
+        return await _lookup_destination(work.provider, db, None, None, work.endpoint)
     user = await db.get(User, work.notification.user_id, populate_existing=True)
     if user is None or not user.is_active:
         return None
@@ -215,7 +249,7 @@ async def _resolve_work(
     if not await source_delivery_allowed(db, notification):
         await _finish(db, delivery_id, token, "suppressed", "source_revoked")
         return None
-    prefs = await load_preferences(db, notification.user_id)
+    prefs = await load_preferences(db, notification.user_id) if notification.user_id else {}
     projection = await delivery_projection(db, notification, endpoint, prefs) if endpoint else None
     if (
         endpoint is None
@@ -234,13 +268,13 @@ async def _resolve_work(
     if registration is not None and registration.installation_id != endpoint.installation_id:
         await _finish(db, delivery_id, token, "suppressed", "installation_changed")
         return None
-    user = await db.get(User, notification.user_id)
-    if user is None or not user.is_active:
+    user = await db.get(User, notification.user_id) if notification.user_id else None
+    if notification.pending_recipient_id is None and (user is None or not user.is_active):
         await _finish(db, delivery_id, token, "suppressed", "user_inactive")
         return None
     setting = await db.scalar(
         select(NotificationProviderSetting).where(
-            NotificationProviderSetting.user_id == user.id,
+            NotificationProviderSetting.user_id == notification.user_id,
             NotificationProviderSetting.provider_id == delivery.provider_id,
         )
     )
@@ -288,7 +322,9 @@ async def _dispatch(db: AsyncSession, delivery_id: UUID, token: UUID) -> bool:
     if not await source_delivery_allowed(db, notification):
         await _finish(db, delivery_id, token, "suppressed", "source_revoked")
         return False
-    current_preferences = await load_preferences(db, notification.user_id)
+    current_preferences = (
+        await load_preferences(db, notification.user_id) if notification.user_id else {}
+    )
     if (
         endpoint.revision != delivery.destination_revision
         or await delivery_projection(db, notification, endpoint, current_preferences)
@@ -327,6 +363,8 @@ async def _dispatch(db: AsyncSession, delivery_id: UUID, token: UUID) -> bool:
     await db.commit()
     try:
         message = await recovery_message(db, notification, endpoint, message)
+        if message is not None:
+            message = await invitation_message(db, notification, endpoint, message)
         if message is None:
             await _finish(db, delivery_id, token, "suppressed", "recovery_expired")
             return False

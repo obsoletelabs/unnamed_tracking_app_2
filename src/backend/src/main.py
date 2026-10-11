@@ -50,6 +50,7 @@ from src.api.routes import (
     steam_import_steps,
     steam_tags_refresh,
     tv_shows,
+    user_invitations,
     users,
 )
 from src.api.routes.auth_oidc import router as auth_oidc_router
@@ -126,6 +127,7 @@ app.include_router(users.router)
 app.include_router(api_keys.router)
 app.include_router(auth.router)
 app.include_router(password_recovery.router)
+app.include_router(user_invitations.router)
 app.include_router(auth_oidc_router)
 app.include_router(setup_router)
 app.include_router(settings.router)

@@ -3,7 +3,16 @@
 import time
 from uuid import UUID, uuid4
 
-from sqlalchemy import BigInteger, Boolean, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -14,11 +23,30 @@ class NotificationDestination(Base):
     __tablename__ = "notification_destinations"
     __table_args__ = (
         UniqueConstraint("user_id", "provider_id", "endpoint_key", name="uq_notification_endpoint"),
+        UniqueConstraint(
+            "pending_recipient_id",
+            "provider_id",
+            "endpoint_key",
+            name="uq_notification_pending_endpoint",
+        ),
+        CheckConstraint(
+            "(user_id IS NULL) <> (pending_recipient_id IS NULL)",
+            name="ck_notification_destination_recipient_owner",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
-    user_id: Mapped[UUID] = mapped_column(
-        PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    user_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True
+    )
+    pending_recipient_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey(
+            "notification_pending_recipients.id",
+            ondelete="CASCADE",
+            name="fk_notification_destinations_pending_recipient",
+        ),
+        nullable=True,
     )
     provider_id: Mapped[str] = mapped_column(String(128), nullable=False)
     endpoint_key: Mapped[str] = mapped_column(String(200), nullable=False)

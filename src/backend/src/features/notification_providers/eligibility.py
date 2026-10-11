@@ -75,9 +75,11 @@ async def revalidate_delivery_attempt(
         or not await source_delivery_allowed(db, notification)
     ):
         return None
-    preferences = await load_preferences(db, destination.user_id)
+    preferences = await load_preferences(db, destination.user_id) if destination.user_id else {}
     if await delivery_projection(db, notification, endpoint, preferences) != delivery.projection:
         return None
+    if endpoint.pending_recipient_id is not None:
+        return endpoint if destination.pending_recipient_id == endpoint.pending_recipient_id else None
     setting = await db.scalar(
         select(NotificationProviderSetting).where(
             NotificationProviderSetting.user_id == destination.user_id,

@@ -74,6 +74,8 @@ def select_projection(
         or not destination.active
         or notification.deleted_at is not None
         or notification.user_id != destination.user_id
+        or notification.user_id is None
+        or destination.pending_recipient_id is not None
         or not preference_enabled(notification, preferences)
     ):
         return None

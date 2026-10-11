@@ -32,11 +32,12 @@ class NotificationMessage:  # pylint: disable=too-many-instance-attributes
 
 @dataclass(frozen=True)
 class ProviderDestination:
-    user_id: UUID
+    user_id: UUID | None
     display: str
     allows_sensitive: bool = True
     endpoint_id: UUID | None = None
     endpoint_revision: int | None = None
+    pending_recipient_id: UUID | None = None
 
     @classmethod
     def for_endpoint(

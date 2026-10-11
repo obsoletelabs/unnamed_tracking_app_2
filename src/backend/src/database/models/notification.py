@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     ForeignKey,
     Index,
     Integer,
@@ -27,11 +28,27 @@ class Notification(Base):
     __table_args__ = (
         UniqueConstraint("user_id", "dedupe_key", name="uq_notifications_user_dedupe"),
         Index("ix_notifications_user_event", "user_id", "event_at"),
+        UniqueConstraint(
+            "pending_recipient_id", "dedupe_key", name="uq_notifications_pending_dedupe"
+        ),
+        CheckConstraint(
+            "(user_id IS NULL) <> (pending_recipient_id IS NULL)",
+            name="ck_notifications_recipient_owner",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
-    user_id: Mapped[UUID] = mapped_column(
-        PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    user_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True
+    )
+    pending_recipient_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey(
+            "notification_pending_recipients.id",
+            ondelete="CASCADE",
+            name="fk_notifications_pending_recipient",
+        ),
+        nullable=True,
     )
     # "episode_aired" | "season_started" | "sequel_announced" | "movie_released"
     kind: Mapped[str] = mapped_column(String(128), nullable=False)

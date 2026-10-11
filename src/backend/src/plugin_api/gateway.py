@@ -40,7 +40,14 @@ from src.features.notification_controller import emit_legacy_rows
 from src.features.notification_destinations import retire_provider_destinations
 from src.features.notification_feed import poll_lifecycle
 from src.features.notification_sources import emit_source, register_source, unregister_source
-from src.features.plugin_auth_flows import register_reset_flow, unregister_reset_flow
+from src.features.plugin_auth_flows import (
+    invite_flow_status,
+    register_invite_flow,
+    register_reset_flow,
+    unregister_invite_flow,
+    unregister_reset_flow,
+)
+from src.features.user_invitations import issue_invitation, list_invitations, revoke_invitation
 from src.plugin_api.capabilities import capability_implies
 from src.plugin_api.contracts import (
     DocumentChunkRepresentation,
@@ -68,6 +75,13 @@ from src.plugin_api.sessions import dispatch_sessions
 
 _DATA_ROOT = Path("/data/users")
 _METHOD_CAPABILITIES = {
+    "auth_flows.user_invites.status": "auth.user_invites",
+    "auth_flows.user_invites.register": "auth.user_invites",
+    "auth_flows.user_invites.restore": "auth.user_invites",
+    "auth_flows.user_invites.unregister": "auth.user_invites",
+    "auth_flows.user_invites.issue": "auth.user_invites",
+    "auth_flows.user_invites.list": "auth.user_invites",
+    "auth_flows.user_invites.revoke": "auth.user_invites",
     "auth_flows.password_reset.register": "auth.password_reset",
     "auth_flows.password_reset.restore": "auth.password_reset",
     "auth_flows.password_reset.unregister": "auth.password_reset",
@@ -165,6 +179,27 @@ async def dispatch_gateway_request(
     ):
         raise PermissionError(f"permission {capability} has not been granted")
     handlers: dict[str, Callable[[], Awaitable[dict[str, Any]]]] = {
+        "auth_flows.user_invites.status": partial(
+            invite_flow_status, db, plugin_id, installation_id, user_id, payload
+        ),
+        "auth_flows.user_invites.register": partial(
+            register_invite_flow, db, plugin_id, installation_id, user_id, payload
+        ),
+        "auth_flows.user_invites.restore": partial(
+            register_invite_flow, db, plugin_id, installation_id, user_id, payload, restore=True
+        ),
+        "auth_flows.user_invites.unregister": partial(
+            unregister_invite_flow, db, plugin_id, installation_id, user_id, payload
+        ),
+        "auth_flows.user_invites.issue": partial(
+            issue_invitation, db, plugin_id, installation_id, user_id, payload
+        ),
+        "auth_flows.user_invites.list": partial(
+            list_invitations, db, plugin_id, installation_id, user_id, payload
+        ),
+        "auth_flows.user_invites.revoke": partial(
+            revoke_invitation, db, plugin_id, installation_id, user_id, payload
+        ),
         "auth_flows.password_reset.register": partial(
             register_reset_flow, db, plugin_id, installation_id, user_id, payload
         ),
