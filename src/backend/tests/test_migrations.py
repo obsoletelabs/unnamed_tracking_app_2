@@ -124,3 +124,61 @@ def test_every_migration_after_the_baseline_is_safe_to_rerun():
     with engine.connect() as conn:
         assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == head
     engine.dispose()
+
+
+def test_replaying_steam_session_migration_preserves_connections_and_owner_binding():
+    from uuid import uuid4
+
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+    from sqlalchemy import create_engine, insert, select
+
+    from src.core.config import settings
+    from src.database.models.game import Game
+    from src.database.models.user import User
+
+    identity = uuid4()
+    engine = create_engine(settings.DATABASE_URL.replace("+asyncpg", "+psycopg"))
+    try:
+        with engine.connect() as conn:
+            transaction = conn.begin()
+            try:
+                values = {
+                    "steam_id": "76561198000000001",
+                    "steam_library_owner_id": "76561198000000002",
+                    "steam_access_token": "encrypted-access-fixture",
+                    "steam_refresh_token": "encrypted-refresh-fixture",
+                    "steam_token_expires_at": 2000000000,
+                    "steam_login_state": "encrypted-pending-fixture",
+                }
+                conn.execute(
+                    insert(User).values(
+                        id=identity,
+                        username=f"migration_{identity.hex}",
+                        email=f"{identity}@example.test",
+                        password_hash="fixture",
+                        **values,
+                    )
+                )
+                conn.execute(
+                    insert(Game).values(
+                        user_id=identity,
+                        source="Steam",
+                        external_id="1230410",
+                        title="Migration fixture",
+                        sort_title="migration fixture",
+                        folder_location=f"migration-{identity.hex}",
+                    )
+                )
+                migration = _script().get_revision("def2e465ec9f")
+                with Operations.context(MigrationContext.configure(conn)):
+                    migration.module.upgrade()
+                    migration.module.upgrade()
+                row = conn.execute(
+                    select(*(getattr(User, name) for name in values)).where(User.id == identity)
+                ).mappings().one()
+                assert dict(row) == values
+            finally:
+                transaction.rollback()
+    finally:
+        engine.dispose()

@@ -17,15 +17,20 @@ depends_on: Sequence[str] | None = None
 
 def upgrade() -> None:
     # Reviewed autogeneration: unrelated note-table drops were discarded.
-    op.add_column("users", sa.Column("steam_access_token", sa.Text(), nullable=True))
-    op.add_column("users", sa.Column("steam_refresh_token", sa.Text(), nullable=True))
-    op.add_column("users", sa.Column("steam_token_expires_at", sa.BigInteger(), nullable=True))
-    op.add_column("users", sa.Column("steam_login_state", sa.Text(), nullable=True))
-    op.add_column("users", sa.Column("steam_library_owner_id", sa.String(17), nullable=True))
+    existing = {column["name"] for column in sa.inspect(op.get_bind()).get_columns("users")}
+    for name, column_type in (
+        ("steam_access_token", sa.Text()),
+        ("steam_refresh_token", sa.Text()),
+        ("steam_token_expires_at", sa.BigInteger()),
+        ("steam_login_state", sa.Text()),
+        ("steam_library_owner_id", sa.String(17)),
+    ):
+        if name not in existing:
+            op.add_column("users", sa.Column(name, column_type, nullable=True))
     op.execute(
         sa.text("""
         UPDATE users SET steam_library_owner_id = steam_id
-        WHERE steam_id ~ '^[0-9]{17}$'
+        WHERE steam_library_owner_id IS NULL AND steam_id ~ '^[0-9]{17}$'
           AND EXISTS (SELECT 1 FROM games WHERE games.user_id = users.id AND source = 'Steam')
     """)
     )
