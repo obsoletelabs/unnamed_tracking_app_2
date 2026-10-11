@@ -183,3 +183,7 @@ messages**, with the bot's sensitive-content permission granted. The administrat
 also enable the password-reset plugin. Channels and legacy grouped profile links cannot
 receive reset secrets. Review the new destination-status permission when updating the bot;
 without it, use Account → Notifications to inspect authoritative status.
+
+The destination link opens and focuses the exact host controls, including the recovery opt-in after successful destination verification.
+
+![Focused verified destination and recovery controls](../assets/notification-destination-status/focused-recovery.jpg)
