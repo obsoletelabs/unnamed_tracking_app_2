@@ -37,6 +37,7 @@ from src.database.models.achievement import Achievement
 from src.database.models.game import Game, GameStatus
 from src.database.models.user import User
 from src.database.session import SessionLocal, get_db
+from src.features.connection_jobs import sync_scope
 from src.features.imports import steam_connection
 from src.features.imports.library_games import LibraryIndex, lock_imported_game
 from src.features.imports.library_games import get_or_create_game as _get_or_create_game
@@ -491,6 +492,14 @@ async def sync_steam_library(
     current_user: User = Depends(get_current_user),
     achievements: Literal["now", "later"] = "now",
 ) -> dict:
+    """Use the same inventory guard for foreground and scheduled imports."""
+    async with sync_scope(current_user.id, "steam"):
+        return await _sync_steam_library(db, current_user, achievements)
+
+
+async def _sync_steam_library(
+    db: AsyncSession, current_user: User, achievements: Literal["now", "later"]
+) -> dict:
     try:
         steam_id, api_key = await steam_connection.credentials(db, current_user)
         owned_games = await asyncio.to_thread(steam.get_owned_games, steam_id, api_key)
@@ -501,7 +510,9 @@ async def sync_steam_library(
 
     # drop playtests/test servers/Valve's delisted-app placeholder before
     # any further work — they're companion apps, not games to track
-    owned_games = [e for e in owned_games if e.get("name") and not _is_junk_title(e["name"])]
+    owned_games = [
+        e for e in owned_games if e.get("appid") and e.get("name") and not _is_junk_title(e["name"])
+    ]
 
     semaphore = asyncio.Semaphore(_SYNC_CONCURRENCY)
 
@@ -536,13 +547,12 @@ async def sync_steam_library(
     games_added = games_updated = achievements_synced = 0
     newly_created: list[tuple[Game, int]] = []
     synced_titles: list[str] = []
+    achievements_unavailable: list[str] = []
     achievement_ids: list[str] = []
     status_ids: list[str] = []
     fetch_index = 0
     for entry in owned_games:
-        title, app_id = entry.get("name"), entry.get("appid")
-        if not title or not app_id:
-            continue
+        title, app_id = entry["name"], entry["appid"]
         schema, unlocked, descriptions = fetches[fetch_index]
         fetch_index += 1
 
@@ -566,6 +576,8 @@ async def sync_steam_library(
             achievements_synced += len(rows)
             total_achievements = len(rows)
             unlocked_count = sum(1 for r in rows if r["unlocked"])
+        elif unlocked is None:
+            achievements_unavailable.append(title)
 
         if created or became_owned:
             _apply_status(
@@ -587,6 +599,7 @@ async def sync_steam_library(
         "games_added": games_added,
         "games_updated": games_updated,
         "achievements_synced": achievements_synced,
+        "achievements_unavailable": achievements_unavailable,
         "games_flagged_stale": 0,
         "games": synced_titles,
         # the new games still to be enriched (store details, tags, artwork), which
@@ -607,6 +620,12 @@ async def sync_retroachievements_library(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> dict:
+    """Serialize this account's manual and scheduled inventory pulls."""
+    async with sync_scope(current_user.id, "retroachievements"):
+        return await _sync_retroachievements_library(db, current_user)
+
+
+async def _sync_retroachievements_library(db: AsyncSession, current_user: User) -> dict:
     if not current_user.retroachievements_username or not current_user.retroachievements_api_key:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -625,12 +644,12 @@ async def sync_retroachievements_library(
 
     semaphore = asyncio.Semaphore(_SYNC_CONCURRENCY)
 
-    async def _fetch_progress(game_id: str) -> dict:
+    async def _fetch_progress(game_id: str) -> dict | None:
         async with semaphore:
             try:
                 return await asyncio.to_thread(client.get_game_progress, username, game_id)
             except RetroAchievementsError:
-                return {}
+                return None
 
     game_ids = [str(entry.get("GameID")) for entry in owned_games if entry.get("GameID")]
     progress_results = await asyncio.gather(*(_fetch_progress(gid) for gid in game_ids))
@@ -639,6 +658,7 @@ async def sync_retroachievements_library(
     games_added = games_updated = achievements_synced = 0
     newly_created: list[Game] = []
     synced_titles: list[str] = []
+    achievements_unavailable: list[str] = []
     touched_ids: set[UUID] = set()
     for entry, progress in zip(owned_games, progress_results, strict=False):
         title = entry.get("Title")
@@ -658,8 +678,11 @@ async def sync_retroachievements_library(
         synced_titles.append(title)
 
         rows = _retro_achievement_rows(progress or {})
-        await _replace_achievements(db, game.id, "RetroAchievements", rows)
-        achievements_synced += len(rows)
+        if progress is None:
+            achievements_unavailable.append(title)
+        else:
+            await _replace_achievements(db, game.id, "RetroAchievements", rows)
+            achievements_synced += len(rows)
 
         if created:
             unlocked_count = sum(1 for r in rows if r["unlocked"])
@@ -685,6 +708,7 @@ async def sync_retroachievements_library(
         "games_added": games_added,
         "games_updated": games_updated,
         "achievements_synced": achievements_synced,
+        "achievements_unavailable": achievements_unavailable,
         "games_flagged_stale": games_flagged_stale,
         "games": synced_titles,
     }
@@ -700,6 +724,12 @@ async def sync_psn_library(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> dict:
+    """Serialize this account's manual and scheduled inventory pulls."""
+    async with sync_scope(current_user.id, "psn"):
+        return await _sync_psn_library(db, current_user)
+
+
+async def _sync_psn_library(db: AsyncSession, current_user: User) -> dict:
     if not current_user.psn_npsso_token:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -716,9 +746,11 @@ async def sync_psn_library(
     except PSNError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
+    # Validate title identities before pairing the fetched trophy snapshots with them.
+    titles = [t for t in titles if t.get("trophyTitleName") and t.get("npCommunicationId")]
     semaphore = asyncio.Semaphore(_SYNC_CONCURRENCY)
 
-    async def _fetch_trophies(np_communication_id: str, platform: str) -> list[dict]:
+    async def _fetch_trophies(np_communication_id: str, platform: str) -> list[dict] | None:
         async with semaphore:
             service_name = "trophy2" if "PS5" in (platform or "") else "trophy"
             try:
@@ -726,7 +758,7 @@ async def sync_psn_library(
                     client.get_trophies_for_title, np_communication_id, service_name
                 )
             except PSNError:
-                return []
+                return None
 
     trophy_results = await asyncio.gather(
         *(
@@ -740,12 +772,11 @@ async def sync_psn_library(
     games_added = games_updated = achievements_synced = 0
     newly_created: list[Game] = []
     synced_titles: list[str] = []
+    achievements_unavailable: list[str] = []
     touched_ids: set[UUID] = set()
     result_index = 0
     for entry in titles:
-        title = entry.get("trophyTitleName")
-        if not title or not entry.get("npCommunicationId"):
-            continue
+        title = entry["trophyTitleName"]
         trophies = trophy_results[result_index]
         result_index += 1
 
@@ -762,9 +793,12 @@ async def sync_psn_library(
         games_updated += not created
         synced_titles.append(title)
 
-        rows = _psn_trophy_rows(trophies)
-        await _replace_achievements(db, game.id, "PlayStation", rows)
-        achievements_synced += len(rows)
+        rows = _psn_trophy_rows(trophies or [])
+        if trophies is None:
+            achievements_unavailable.append(title)
+        else:
+            await _replace_achievements(db, game.id, "PlayStation", rows)
+            achievements_synced += len(rows)
 
         if created:
             unlocked_count = sum(1 for r in rows if r["unlocked"])
@@ -788,6 +822,7 @@ async def sync_psn_library(
         "games_added": games_added,
         "games_updated": games_updated,
         "achievements_synced": achievements_synced,
+        "achievements_unavailable": achievements_unavailable,
         "games_flagged_stale": games_flagged_stale,
         "games": synced_titles,
     }

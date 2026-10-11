@@ -11,8 +11,11 @@ RetroAchievements library, or a plugin connection that supports library sync.
 The Epic Games plugin opens the same compact dialog used on Connections and starts
 or resumes its saved import. Closing the dialog retains its checkpoint.
 
-**Autosync settings** opens Account → Background tasks. Enable Epic Games autosync
-and choose its interval there to continue imports while the page is closed.
+**Autosync settings** opens Account → Background tasks. Configured Steam, PlayStation
+and RetroAchievements connections each have their own task alongside Epic Games and
+other plugins that declare personal tasks. Enable autosync and choose each connection's
+interval there to continue imports while the page is closed. Disconnecting pauses a
+saved task; reconnecting restores its settings and history.
 Autosync starts off, applies only to your account and uses your approved access.
 Notes, ratings and manual status retain the provider import's existing protections.
 

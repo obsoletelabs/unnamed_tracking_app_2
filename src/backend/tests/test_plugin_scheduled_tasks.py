@@ -18,7 +18,7 @@ from src.database.models.job_setting import JobSetting
 from src.database.models.plugin_permissions import PluginPermissionGrant
 from src.database.models.user import User
 from src.database.session import SessionLocal
-from src.features import plugin_jobs
+from src.features import jobs, plugin_jobs
 from src.plugin_api.contracts import PluginManifest, PluginScheduledTask
 from src.plugin_api.runtime_client import PluginRuntimeUnavailable
 from src.plugin_api.updates import (
@@ -369,7 +369,7 @@ async def test_personal_schedules_use_non_admin_owner_and_cannot_be_managed_by_a
             job_id, job_routes.JobUpdate(enabled=True, interval_minutes=60), db, actor
         )
         assert (await db.get(JobSetting, job_id)).user_id == actor_id
-        assert [spec.id for spec in await plugin_jobs.get_scheduled_user_jobs(db)] == [job_id]
+        assert [spec.id for spec in await jobs.get_scheduled_user_jobs(db)] == [job_id]
         assert await job_routes.run_user_job(job_id, db, actor) == {"running": True}
     await asyncio.gather(*list(plugin_jobs._running.values()))
     transport.run_scheduled_task.assert_awaited_once_with(
@@ -384,7 +384,7 @@ async def test_personal_schedules_use_non_admin_owner_and_cannot_be_managed_by_a
         }
         row.enabled = False
         await db.commit()
-        assert await plugin_jobs.get_scheduled_user_jobs(db) == []
+        assert await jobs.get_scheduled_user_jobs(db) == []
 
 
 @pytest.mark.asyncio

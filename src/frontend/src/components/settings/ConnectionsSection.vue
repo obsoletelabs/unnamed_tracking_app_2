@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
+import { RouterLink } from "vue-router";
 import ConnectionManageDialog from "./ConnectionManageDialog.vue";
 import PluginConnectionDialog from "./PluginConnectionDialog.vue";
 import SteamConnectionDialog from "./SteamConnectionDialog.vue";
@@ -137,6 +138,10 @@ watch(pluginConnections, () => void loadPluginStatus(), { immediate: true });
     <p class="hint">
       The accounts your library is linked to. Connect, update or disconnect an
       account here. Metadata sources and API keys are under Library > Metadata.
+      Set up periodic library sync in
+      <RouterLink to="/settings?section=background-tasks"
+        >Background tasks</RouterLink
+      >.
     </p>
     <p v-if="state.loadError.value" class="error" role="alert">
       {{ state.loadError.value }}

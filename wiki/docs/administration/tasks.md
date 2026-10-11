@@ -41,16 +41,35 @@ writes for twelve seconds, then shows a quiet Saved state; a concurrent failed
 write cannot be hidden by another successful response. Native and sandboxed
 scrollbars use the active semantic palette.
 
-## Personal plugin schedules
+## Personal connection and plugin schedules
 
-Account → Background tasks is available to every signed-in user. Plugins can declare
-personal tasks using Plugin API 1.1.11. Each account controls its own autosync switch,
+Account → Background tasks is available to every signed-in user. Configuring Steam,
+PlayStation or RetroAchievements makes a personal autosync task available automatically.
+New tasks start off, with a daily interval. Disconnecting pauses a saved task while
+retaining its switch, interval and history; reconnecting restores availability. A paused,
+enabled task can still be switched off. Xbox and GOG currently store credentials without
+a library-sync workflow, so they do not have an executable autosync task.
+
+![Personal autosync tasks for configured connections](../assets/connection-autosync/all-connections.jpg)
+
+Plugins can declare personal tasks using Plugin API 1.1.11, including Epic Games.
+Each account controls its own autosync switch,
 interval (minutes, hours, days or weeks), manual run and history. Personal schedules
 start off and cannot be edited or run through another account's task URL. Server
 maintenance jobs remain on the administrator's task page.
 
-Each step rechecks the target account and its live permissions. Resumable personal
+Built-in tasks reuse the normal library imports. Steam also runs the existing wishlist
+and new-game metadata steps, respecting the user's import preferences. Scheduled and
+foreground inventory pulls for the same account and provider do not overlap; other
+accounts and providers remain independent. Provider failures are recorded as a failed
+run without exposing credentials, and a later scheduled or manual run can retry.
+Unavailable achievement replies retain previously saved unlocks and are reported in
+the run summary, rather than being treated as an empty snapshot.
+
+Personal plugin steps recheck the target account and its live permissions. Resumable personal
 tasks can request a bounded continuation between 1 and 60 minutes; the ordinary
 interval applies after completion. Disabling autosync stops queued continuations.
 Disconnecting the provider or disabling/revoking the plugin preserves checkpoints
 and makes later work unavailable until access is restored.
+
+![A disconnected account retains its paused schedule](../assets/connection-autosync/disconnected.jpg)
