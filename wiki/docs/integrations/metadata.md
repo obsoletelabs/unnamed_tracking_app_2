@@ -150,7 +150,10 @@ personal Web API key or a profile-ID lookup.
 Passwords are encrypted for Steam with its supplied RSA key, sent once, and
 never saved. Steam Guard codes are also transient. Browser refresh/access
 tokens and pending sign-in state are encrypted at rest with the deployment's
-`SECRET_KEY`. QR codes are rendered locally. Sign-in attempts expire after five
+`SECRET_KEY`. The app binds the Store-issued API token to the account Steam
+verified during its browser-session exchange. A missing or mismatched account,
+failed transfer or rejected Store response cannot establish a connection.
+QR codes are rendered locally. Sign-in attempts expire after five
 minutes; closing or cancelling the dialog invalidates the current attempt.
 The app renews expiring sessions when importing. If Steam rejects or revokes
 a session, reconnect in Connections.

@@ -1,8 +1,8 @@
 """Account-owner Steam sessions; validation and private achievement reads.
 
 Steam OpenID supplies identity only. A Steam Store web API session authorizes
-owner reads. Never infer identity from an unsigned JWT without validating the
-entire token with Steam's GetTokenDetails endpoint.
+owner reads. Bind its token to the owner returned by Steam's authenticated
+browser-session exchange, never to unverified JWT claims alone.
 """
 
 import base64
@@ -43,7 +43,7 @@ def credential_params(credentials: str | SteamSession) -> dict[str, str]:
 
 
 def parse_token(value: str) -> SteamSession:
-    """Claims are provisional until Steam verifies the token and its owner."""
+    """Claims are provisional until bound to Steam's authenticated browser owner."""
     if len(value) > 16384:
         raise SteamLibraryError(_INVALID_SESSION)
     token = value.strip()
@@ -118,10 +118,28 @@ def _read(
     return payload
 
 
-def validate_session(client: requests.Session, value: str) -> SteamSession:
-    provisional = parse_token(value)
-    details = _read(client, provisional, "ISteamUserOAuth/GetTokenDetails/v1/", {})
-    if details.get("steamid") != provisional.steam_id:
+def validate_session(value: str, verified_steam_id: str) -> SteamSession:
+    """Bind a Store-issued token to the authenticated finalizelogin identity.
+
+    The caller must obtain both values directly from Steam over HTTPS, using
+    its own browser cookie jar. The legacy OAuth GetTokenDetails endpoint does
+    not accept Store API JWTs and cannot validate this browser-token audience.
+    """
+    try:
+        body = json.loads(value)
+        if (
+            not isinstance(body, dict)
+            or not isinstance(body.get("data"), dict)
+            or not isinstance(body["data"].get("webapi_token"), str)
+        ):
+            raise ValueError
+        success = body.get("success")
+        if not isinstance(success, int) or isinstance(success, bool) or success != 1:
+            raise ValueError
+    except (ValueError, TypeError):
+        raise SteamLibraryError(_INVALID_SESSION) from None
+    provisional = parse_token(body["data"]["webapi_token"])
+    if verified_steam_id != provisional.steam_id:
         raise SteamLibraryError("Steam could not verify the session's account. Reconnect Steam.")
     return provisional
 

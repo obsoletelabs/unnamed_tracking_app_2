@@ -230,6 +230,13 @@ def exchange_refresh_token(refresh_token: str) -> steam_session.SteamSession:
                 raise steam_session.SteamLibraryError(
                     "Steam could not renew this connection. Reconnect Steam."
                 )
+            # This identity is verified by Steam when it accepts the refresh
+            # token. Never trust its JWT subject without this server binding.
+            verified_steam_id = body.get("steamID")
+            if verified_steam_id != identity.steam_id:
+                raise steam_session.SteamLibraryError(
+                    "Steam could not verify this account. Reconnect Steam."
+                )
             transfer = next(
                 (
                     entry
@@ -256,14 +263,20 @@ def exchange_refresh_token(refresh_token: str) -> steam_session.SteamSession:
                 timeout=20,
                 allow_redirects=False,
             )
-            if result.status_code != 200 or result.json().get("result", 1) != 1:
+            transfer_result = result.json().get("result")
+            if (
+                result.status_code != 200
+                or not isinstance(transfer_result, int)
+                or isinstance(transfer_result, bool)
+                or transfer_result != 1
+            ):
                 raise steam_session.SteamLibraryError(
                     "Steam could not complete the browser-session exchange."
                 )
             response = client.get(steam_session.SESSION_PAGE, timeout=20, allow_redirects=False)
             if response.status_code != 200:
                 raise steam_session.SteamLibraryError("Steam could not provide a library session.")
-            session = steam_session.validate_session(client, response.text)
+            session = steam_session.validate_session(response.text, verified_steam_id)
         except requests.RequestException:
             raise steam_session.SteamLibraryError(
                 "Could not reach Steam. Try again shortly."

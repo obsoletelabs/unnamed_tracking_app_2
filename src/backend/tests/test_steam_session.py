@@ -27,40 +27,40 @@ def reply(body, *, result="1", status=200):
     return response
 
 
-@pytest.mark.parametrize("wrapped", [False, True])
-def test_owner_is_verified_by_steam_not_just_jwt_claims(wrapped):
+def test_store_session_is_bound_to_the_authenticated_browser_owner():
     value = token()
-    client = Mock()
-    client.get.return_value = reply({"response": {"steamid": STEAM_ID}})
     session = steam_session.validate_session(
-        client, json.dumps({"data": {"webapi_token": value}}) if wrapped else value
+        json.dumps({"success": 1, "data": {"webapi_token": value}}), STEAM_ID
     )
     assert session.steam_id == STEAM_ID
     assert value not in repr(session)
-    assert client.get.call_args.args[0].endswith("/ISteamUserOAuth/GetTokenDetails/v1/")
-    assert client.get.call_args.kwargs["params"] == {"access_token": value}
 
 
-@pytest.mark.parametrize(
-    "body",
-    [{"success": 15, "reason": "secret"}, {"response": {"steamid": "76561198000000002"}}, {}],
-)
-def test_rejected_or_mismatched_owner_is_not_authenticated(body):
-    client = Mock()
-    client.get.return_value = reply(body)
+@pytest.mark.parametrize("owner", [None, "76561198000000002", True, "name"])
+def test_missing_or_mismatched_verified_browser_owner_is_not_authenticated(owner):
     with pytest.raises(steam_session.SteamLibraryError):
-        steam_session.validate_session(client, token())
+        steam_session.validate_session(
+            json.dumps({"success": 1, "data": {"webapi_token": token()}}), owner
+        )
+
+
+@pytest.mark.parametrize("success", [None, 0, 15, True, "1"])
+def test_rejected_store_config_is_not_an_authenticated_session(success):
+    with pytest.raises(steam_session.SteamLibraryError):
+        steam_session.validate_session(
+            json.dumps({"success": success, "data": {"webapi_token": token()}}), STEAM_ID
+        )
 
 
 @pytest.mark.parametrize(
     "value",
     ["not-a-session", "x" * 16385, token(expiry=0), token(expiry=True), token(steam_id="name")],
 )
-def test_invalid_and_expired_tokens_do_not_reach_steam(value):
-    client = Mock()
+def test_invalid_and_expired_store_tokens_are_rejected(value):
     with pytest.raises(steam_session.SteamLibraryError):
-        steam_session.validate_session(client, value)
-    client.get.assert_not_called()
+        steam_session.validate_session(
+            json.dumps({"success": 1, "data": {"webapi_token": value}}), STEAM_ID
+        )
 
 
 def test_network_failures_do_not_disclose_token_urls():
@@ -68,7 +68,9 @@ def test_network_failures_do_not_disclose_token_urls():
     value = token()
     client.get.side_effect = requests.ConnectionError(f"secret URL?access_token={value}")
     with pytest.raises(steam_session.SteamLibraryError) as error:
-        steam_session.validate_session(client, value)
+        steam_session.get_achievement_data(
+            client, steam_session.SteamSession(STEAM_ID, int(time.time()) + 3600, value), 123
+        )
     assert value not in str(error.value)
     assert error.value.__suppress_context__
 
