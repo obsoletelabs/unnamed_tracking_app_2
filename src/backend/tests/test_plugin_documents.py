@@ -364,6 +364,31 @@ async def test_invalid_chunk_request_is_explicit(stored, payload):
 
 
 @pytest.mark.asyncio
+async def test_head_download_repeats_get_authorization_and_ownership(stored):
+    boundary, save, _ = stored
+    own, other = save(), save(owner=1)
+    path = f"/api/plugins/audit.plugin/capabilities/documents/{own.id}/download"
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=boundary.app), base_url="http://test"
+    ) as client:
+        assert (await client.head(path)).status_code == 401
+        client.cookies.set(session_cookie_name("test"), boundary.tokens[boundary.users[0].id])
+        assert (await client.head(path)).status_code == 403
+        permission = grant(boundary, "documents.read")
+        response = await client.head(path)
+        assert response.status_code == 200 and response.content == b""
+        assert response.headers["content-length"] == "4"
+        assert response.headers["cache-control"] == "private, no-store"
+        for document_id in (other.id, uuid4()):
+            assert (
+                await client.head(path.replace(str(own.id), str(document_id)))
+            ).status_code == 404
+        permission.revoked_at = 1
+        boundary.session.commit()
+        assert (await client.head(path)).status_code == 403
+
+
+@pytest.mark.asyncio
 async def test_scoped_download_checks_owner_grants_and_safe_attachment(stored):
     boundary, save, _ = stored
     item = save("abcdefgh_active.svg", b"<svg onload='evil()'/>")

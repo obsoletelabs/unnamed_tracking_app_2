@@ -48,6 +48,11 @@ A UI document may declare `document_readers: [{id: "reader", page_id: "documents
 
 `plugin.download-document` accepts `{document_id: UUID}`. The parent verifies the authenticated scoped HEAD endpoint before starting a browser download. GET/HEAD `/api/plugins/{plugin_id}/capabilities/documents/{document_id}/download` repeat installation, live `documents.read`, ownership/kind/deletion and safe stored-path checks. The response streams the original with attachment disposition, `application/octet-stream`, `nosniff` and private/no-store. Preview size/format limits do not prevent original download. Credentials and raw download URLs are never sent to the opaque sandbox.
 
+GET and HEAD are registered separately with method-specific OpenAPI operation IDs.
+Both use the same authorization and delivery handler; HEAD returns headers without
+an attachment body. Generated clients should regenerate their download methods
+when upgrading from a schema with the previous duplicate operation ID.
+
 ## Office/OpenDocument reading previews
 
 DOCX/PPTX/ODT/ODP are additive supported formats, using authoritative Office MIME types. Before any chunk is disclosed, the host validates the complete ZIP: at most 1,024 entries, 20 MiB expanded total, 2 MiB per XML part, 5 MiB per other part, and 100:1 expansion with a 1 KiB floor. Encryption, macros, ActiveX, embedded objects, symlinks, escaping/duplicate paths, invalid CRC/ZIP/XML, XML DTDs/entities and active script/event content are rejected with 415. UTF-16 XML is decoded before declaration checks. The existing 5 MiB input cap applies.
