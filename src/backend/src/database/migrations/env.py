@@ -40,6 +40,7 @@ from src.database.models import (
     notification_verification,  # noqa: F401
     oidc_provider,  # noqa: F401
     oidc_settings,  # noqa: F401
+    plugin_auth_flow,  # noqa: F401
     plugin_metadata_provider,  # noqa: F401
     plugin_notification_provider,  # noqa: F401
     plugin_notification_type,  # noqa: F401

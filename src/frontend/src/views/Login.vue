@@ -2,6 +2,7 @@
 import { onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { login } from "../services/auth";
+import { passwordResetStatus } from "../services/passwordRecovery";
 import {
   oidcLoginStatus,
   oidcButtonStyle,
@@ -47,14 +48,7 @@ const oidcMessages: Record<string, string> = {
 };
 
 onMounted(async () => {
-  const resetStatus = await fetch("/api/auth/password-reset/status")
-    .then(async (response) =>
-      response.ok
-        ? (response.json() as Promise<{ enabled: boolean }>)
-        : { enabled: false },
-    )
-    .catch(() => ({ enabled: false }));
-  passwordResetAvailable.value = resetStatus.enabled;
+  passwordResetAvailable.value = await passwordResetStatus().catch(() => false);
   if (route.query.oidc === "success") {
     await checkAuth();
     await router.replace(destination());

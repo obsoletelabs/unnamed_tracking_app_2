@@ -1,7 +1,7 @@
 """Persist encrypted Steam owner sessions.
 
 Revision ID: def2e465ec9f
-Revises: d3b2af990c5d
+Revises: 513bc3715722
 """
 
 from typing import Sequence
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "def2e465ec9f"
-down_revision: str | None = "d3b2af990c5d"
+down_revision: str | None = "513bc3715722"
 branch_labels: Sequence[str] | None = None
 depends_on: Sequence[str] | None = None
 

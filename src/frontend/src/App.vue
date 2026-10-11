@@ -129,7 +129,10 @@ watch(
   { immediate: true, flush: "sync" },
 );
 const sidebarShown = computed(
-  () => !route.path.startsWith("/login") && route.path !== "/setup",
+  () =>
+    !route.path.startsWith("/login") &&
+    route.path !== "/setup" &&
+    route.path !== "/reset-password",
 );
 // Pinned and rail modes sit in the page's own layout, so content needs to
 // make room for them. Overlay floats above everything and reserves nothing.
@@ -168,6 +171,7 @@ const KEPT_ALIVE = [
       (startupState === 'setup-required' && route.name === 'setup') ||
       (startupState === 'auth-required' &&
         (route.name === 'login' ||
+          route.name === 'password-reset' ||
           route.name === 'local-login' ||
           route.name === 'oidc-start' ||
           route.name === 'oidc-provider-start'))

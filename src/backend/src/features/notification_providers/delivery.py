@@ -21,6 +21,7 @@ from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_provider_setting import NotificationProviderSetting
 from src.database.models.user import User
 from src.features.notification_audit import change_deliveries, record_deliveries
+from src.features.notification_auth_secrets import recovery_message
 from src.features.notification_destinations import resolve_destinations
 from src.features.notification_plugin_policy import delivery_projection
 from src.features.notification_policy import INBOX_PROVIDER, Trust, route_choice
@@ -325,6 +326,10 @@ async def _dispatch(db: AsyncSession, delivery_id: UUID, token: UUID) -> bool:
     )
     await db.commit()
     try:
+        message = await recovery_message(db, notification, endpoint, message)
+        if message is None:
+            await _finish(db, delivery_id, token, "suppressed", "recovery_expired")
+            return False
         result = await asyncio.wait_for(
             work.provider.deliver(db, destination, message), TRANSPORT_TIMEOUT_SECONDS
         )
