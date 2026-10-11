@@ -132,9 +132,8 @@ async def plugin_frontend(
     )
 
 
-@router.api_route(
-    "/{plugin_id}/capabilities/documents/{document_id}/download", methods=["GET", "HEAD"]
-)
+@router.get("/{plugin_id}/capabilities/documents/{document_id}/download")
+@router.head("/{plugin_id}/capabilities/documents/{document_id}/download")
 async def plugin_document_download(
     plugin_id: str,
     document_id: UUID,
