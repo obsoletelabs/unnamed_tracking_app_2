@@ -133,7 +133,9 @@ function formatTime(epochSeconds: number | null): string {
     <p v-if="personal" class="section-hint">
       Choose what runs automatically for your account. Autosync starts off and
       uses your connected accounts and approved plugin permissions. Saved
-      imports resume safely between steps, even when this page is closed.
+      imports run even when this page is closed. Each configured Steam,
+      PlayStation and RetroAchievements connection gets its own task alongside
+      approved plugin tasks. Disconnecting pauses a task and keeps its settings.
     </p>
     <p v-else class="section-hint">
       Built-in jobs and approved plugin tasks use the app's scheduler. Each one
@@ -143,14 +145,25 @@ function formatTime(epochSeconds: number | null): string {
 
     <div v-if="jobError" class="form-error">{{ jobError }}</div>
     <p v-else-if="personal && !jobs.length" class="section-hint">
-      No personal tasks are available. Connect a service with an approved
-      autosync plugin first.
+      No personal tasks are available yet. Configure a sync-capable service in
+      Connections to choose its schedule here.
     </p>
     <div v-for="job in jobs" :key="job.id" class="tile">
       <div class="tile-head">
         <h3>{{ job.name }}</h3>
-        <span class="status-badge" :class="{ on: job.enabled }">
-          {{ job.running ? "Running now" : job.enabled ? "On" : "Off" }}
+        <span
+          class="status-badge"
+          :class="{ on: job.enabled && job.available }"
+        >
+          {{
+            job.running
+              ? "Running now"
+              : job.enabled && !job.available
+                ? "Paused"
+                : job.enabled
+                  ? "On"
+                  : "Off"
+          }}
         </span>
       </div>
       <p class="tile-desc">{{ job.description }}</p>
@@ -170,7 +183,7 @@ function formatTime(epochSeconds: number | null): string {
           <input
             type="checkbox"
             :checked="job.enabled"
-            :disabled="saving[job.id] || !job.available"
+            :disabled="saving[job.id] || (!job.available && !job.enabled)"
             @change="
               changeJob(job, {
                 enabled: ($event.target as HTMLInputElement).checked,

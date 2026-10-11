@@ -12,7 +12,6 @@ from sqlalchemy import or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.database.models.job_setting import JobSetting
 from src.database.models.plugin_permissions import PluginPermissionGrant
 from src.database.models.user import User
 from src.database.session import SessionLocal
@@ -250,18 +249,4 @@ async def get_plugin_jobs(db: AsyncSession, user_id: UUID | None = None) -> list
                 actions.get(declaration.action_id), capabilities
             )
             jobs.append(_job_spec(plugin, installation_id, declaration, reason, user_id))
-    return jobs
-
-
-async def get_scheduled_user_jobs(db: AsyncSession) -> list[JobSpec]:
-    """Resolve only accounts that explicitly enabled a personal schedule."""
-    users = await db.scalars(
-        select(JobSetting.user_id)
-        .where(JobSetting.user_id.is_not(None), JobSetting.enabled.is_(True))
-        .distinct()
-    )
-    jobs = []
-    for user_id in users:
-        if user_id is not None:
-            jobs.extend(await get_plugin_jobs(db, user_id))
     return jobs

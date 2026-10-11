@@ -1,7 +1,7 @@
-"""Cleanup jobs: recurring work an administrator can switch on, schedule and
-run by hand.
+"""Recurring server maintenance and personal account-library imports.
 
-Each job is described once in JOBS. Its schedule is stored in `job_settings`;
+Server jobs are described in JOBS; personal adapters resolve the account's connections.
+Each schedule is stored in `job_settings`;
 a job starts on or off as its spec says (the airing check is on because new
 episodes should appear without anyone asking, the full refresh is off because
 it is heavy). One loop (started in main.py) wakes every minute, and runs any
@@ -195,7 +195,7 @@ def is_due(enabled: bool, last_run_at: int | None, interval_minutes: int, now: i
 
 
 async def get_setting(db: AsyncSession, spec: JobSpec) -> JobSetting:
-    """Seed defaults once while retaining this job's administrator choices."""
+    """Seed defaults once while retaining this job owner's choices."""
     row = await db.get(JobSetting, spec.id)
     if row is None:
         row = JobSetting(
@@ -243,6 +243,30 @@ async def record_run(job_id: str, result: dict[str, Any], *, spec: JobSpec | Non
         await db.commit()
 
 
+async def get_user_jobs(db: AsyncSession, user_id: UUID) -> list[JobSpec]:
+    """Share the personal task registry between account controls and the scheduler."""
+    # Adapters depend on JobSpec; import them after this registry is initialized.
+    # pylint: disable=import-outside-toplevel
+    from src.features.connection_jobs import get_connection_jobs
+    from src.features.plugin_jobs import get_plugin_jobs
+
+    return [*await get_connection_jobs(db, user_id), *await get_plugin_jobs(db, user_id)]
+
+
+async def get_scheduled_user_jobs(db: AsyncSession) -> list[JobSpec]:
+    """Resolve only accounts that explicitly enabled a personal schedule."""
+    users = await db.scalars(
+        select(JobSetting.user_id)
+        .where(JobSetting.user_id.is_not(None), JobSetting.enabled.is_(True))
+        .distinct()
+    )
+    specs = []
+    for user_id in users:
+        if user_id is not None:
+            specs.extend(await get_user_jobs(db, user_id))
+    return specs
+
+
 def _on_media_refresh_finished(progress: dict[str, Any]) -> None:
     asyncio.get_running_loop().create_task(record_run("media_refresh", progress))
 
@@ -288,7 +312,7 @@ async def run_jobs_loop() -> None:
     """Run eligible schedules without blocking imports or notification delivery."""
     # Plugin adapters import JobSpec/record_run from this registry; load them after initialization.
     # pylint: disable-next=import-outside-toplevel
-    from src.features.plugin_jobs import get_plugin_jobs, get_scheduled_user_jobs
+    from src.features.plugin_jobs import get_plugin_jobs
 
     while True:
         await asyncio.sleep(TICK_SECONDS)

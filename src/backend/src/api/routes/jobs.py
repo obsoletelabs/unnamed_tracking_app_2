@@ -1,4 +1,4 @@
-"""The Tasks screen's cleanup jobs: list them, change a schedule, run one now."""
+"""Server and personal task controls: list, change a schedule and run now."""
 
 from typing import Any
 from uuid import UUID
@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.auth import get_current_admin, get_current_user
 from src.database.models.user import User
 from src.database.session import get_db
-from src.features.jobs import JOBS, JobSpec, describe, get_setting
+from src.features.jobs import JOBS, JobSpec, describe, get_setting, get_user_jobs
 from src.features.plugin_jobs import get_plugin_jobs
 
 _JOB_DB = Depends(get_db)
@@ -31,7 +31,8 @@ class JobUpdate(BaseModel):
 async def _spec(job_id: str, db: AsyncSession, user_id: UUID | None = None) -> JobSpec:
     spec = JOBS.get(job_id) if user_id is None else None
     if spec is None:
-        spec = next((job for job in await get_plugin_jobs(db, user_id) if job.id == job_id), None)
+        candidates = await get_user_jobs(db, user_id) if user_id else await get_plugin_jobs(db)
+        spec = next((job for job in candidates if job.id == job_id), None)
     if spec is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such job.")
     return spec
@@ -51,7 +52,7 @@ async def update_job(job_id: str, payload: JobUpdate, db: AsyncSession = _JOB_DB
 
 
 async def _update_schedule(spec: JobSpec, payload: JobUpdate, db: AsyncSession) -> dict[str, Any]:
-    if not spec.available:
+    if not spec.available and not (payload.enabled is False and payload.interval_minutes is None):
         raise HTTPException(status_code=409, detail=spec.unavailable_reason)
     row = await get_setting(db, spec)
     if payload.interval_minutes is not None:
@@ -89,7 +90,7 @@ async def list_user_jobs(
     db: AsyncSession = _JOB_DB, user: User = _JOB_USER
 ) -> list[dict[str, Any]]:
     """Expose only this account's declared personal tasks, including to non-administrators."""
-    out = [await describe(db, spec) for spec in await get_plugin_jobs(db, user.id)]
+    out = [await describe(db, spec) for spec in await get_user_jobs(db, user.id)]
     await db.commit()
     return out
 
