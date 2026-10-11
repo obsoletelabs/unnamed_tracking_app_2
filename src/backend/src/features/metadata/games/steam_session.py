@@ -16,7 +16,7 @@ import requests
 WEB_API_BASE = "https://api.steampowered.com"
 SESSION_PAGE = "https://store.steampowered.com/pointssummary/ajaxgetasyncconfig"
 _RECONNECT = "Your Steam session has expired or was rejected. Reconnect Steam in Connections."
-_INVALID_SESSION = "Paste the connection JSON or webapi_token from the signed-in Steam Store."
+_INVALID_SESSION = "Steam returned an invalid session. Reconnect Steam in Connections."
 
 
 class SteamLibraryError(RuntimeError):
@@ -28,6 +28,7 @@ class SteamSession:
     steam_id: str
     expires_at: int
     access_token: str = field(repr=False)
+    connection_id: str | None = field(default=None, repr=False)
 
     def check_expiry(self) -> None:
         if self.expires_at <= int(time.time()):
@@ -69,8 +70,8 @@ def parse_token(value: str) -> SteamSession:
             or not 0 < expiry < 2**63
         ):
             raise ValueError
-    except (ValueError, TypeError, KeyError, binascii.Error, UnicodeError) as exc:
-        raise SteamLibraryError(_INVALID_SESSION) from exc
+    except (ValueError, TypeError, KeyError, binascii.Error, UnicodeError):
+        raise SteamLibraryError(_INVALID_SESSION) from None
     provisional = SteamSession(steam_id, expiry, token)
     provisional.check_expiry()
     return provisional

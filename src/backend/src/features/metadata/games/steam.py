@@ -177,10 +177,11 @@ def get_owned_games(steam_id: str, api_key: str | SteamSession) -> list[dict]:
                 "skip_unvetted_apps": "0",
             },
             timeout=20,
+            allow_redirects=False,
         )
-    except requests.RequestException as exc:
+    except requests.RequestException:
         # Request exceptions can include the URL and its API key.
-        raise SteamLibraryError("Could not reach Steam. Try again shortly.") from exc
+        raise SteamLibraryError("Could not reach Steam. Try again shortly.") from None
     if resp.status_code in (401, 403):
         if isinstance(api_key, SteamSession):
             raise SteamLibraryError("Steam rejected this session. Reconnect Steam in Connections.")
@@ -195,6 +196,10 @@ def get_owned_games(steam_id: str, api_key: str | SteamSession) -> list[dict]:
         body = resp.json()
     except ValueError as exc:
         raise SteamLibraryError("Steam returned invalid JSON.") from exc
+    if isinstance(api_key, SteamSession) and body in ({}, {"response": {}}):
+        raise SteamLibraryError(
+            "Steam did not provide this account's library. Reconnect Steam in Connections."
+        )
     return _parse_owned_games(body)
 
 
