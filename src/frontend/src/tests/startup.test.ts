@@ -5,6 +5,7 @@ import {
   rememberReturnPath,
   safeReturnPath,
   startupState,
+  publicEntryAllowed,
 } from "../state/startup";
 
 const storage = new Map<string, string>();
@@ -19,6 +20,27 @@ Object.defineProperty(globalThis, "sessionStorage", {
 });
 
 describe("startup state", () => {
+  it("renders public invitation acceptance while guarding authenticated pages", () => {
+    for (const page of [
+      "accept-invite",
+      "password-reset",
+      "login",
+      "local-login",
+      "oidc-start",
+      "oidc-provider-start",
+    ])
+      expect(publicEntryAllowed("auth-required", page)).toBe(true);
+    for (const state of [
+      "checking",
+      "unavailable",
+      "ready",
+      "setup-required",
+    ] as const)
+      expect(publicEntryAllowed(state, "accept-invite")).toBe(false);
+    expect(publicEntryAllowed("auth-required", "games")).toBe(false);
+    expect(publicEntryAllowed("setup-required", "setup")).toBe(true);
+    expect(publicEntryAllowed("auth-required", "setup")).toBe(false);
+  });
   beforeEach(() => {
     sessionStorage.clear();
     startupState.value = "checking";
@@ -55,6 +77,8 @@ describe("startup state", () => {
     "/login/provider",
     "/setup",
     "/setup/",
+    "/accept-invite#id=credential",
+    "/reset-password#token=credential",
     "/setup?return_to=/games",
   ])("does not remember the entry page %s as a destination", (path) => {
     expect(safeReturnPath(path)).toBeNull();

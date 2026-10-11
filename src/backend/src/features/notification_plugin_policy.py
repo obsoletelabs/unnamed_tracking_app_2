@@ -57,7 +57,7 @@ async def plugin_sensitive_allowed(
             notification.purpose != "recovery" or choice.recovery_supported
         )
         supported = supported and destination.verification_method == "plugin.code.v1"
-    if not supported:
+    if not supported or destination.user_id is None:
         return False
     for capability in ("notification_providers.deliver", "notification_providers.sensitive"):
         if not await has_capability_grant(

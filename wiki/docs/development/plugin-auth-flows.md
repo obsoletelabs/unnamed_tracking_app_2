@@ -1,6 +1,7 @@
 # Host-mediated authentication plugins
 
-Plugin API 1.1.7 adds an optional password-reset contribution. It uses the existing
+Plugin API 1.1.7 adds optional password recovery; 1.1.8 adds administrator invitations.
+Both use the existing
 plugin gateway, permission review, installation identity and runtime lifecycle.
 The wire major remains `v1`; earlier supported plugins continue working.
 

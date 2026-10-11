@@ -49,6 +49,8 @@ account without administrator privileges; links expire and work only once. Repla
 or revoking an invitation, or disabling its plugin, invalidates old links. Invitation
 delivery does not automatically configure or verify a personal notification destination.
 
+![Accept an invitation on mobile](../assets/user-invitations/accept-mobile.png)
+
 ## Password and secret fields
 
 Password and editable secret fields are masked by default. The eye control in the field can reveal the value temporarily and can be used with keyboard focus.

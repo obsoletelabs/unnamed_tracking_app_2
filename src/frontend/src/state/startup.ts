@@ -6,6 +6,24 @@ export type StartupState =
 export const startupState = ref<StartupState>("checking");
 export const startupError = ref<string | null>(null);
 
+export function publicEntryAllowed(
+  state: StartupState,
+  routeName: unknown,
+): boolean {
+  if (state === "setup-required") return routeName === "setup";
+  return (
+    state === "auth-required" &&
+    [
+      "login",
+      "local-login",
+      "oidc-start",
+      "oidc-provider-start",
+      "password-reset",
+      "accept-invite",
+    ].includes(typeof routeName === "string" ? routeName : "")
+  );
+}
+
 const RETURN_PATH_KEY = "unnamedTracking.startupReturnPath";
 
 export function setStartupState(
