@@ -153,7 +153,7 @@ async function saveProgress() {
   if (!movie.value || savingProgress.value) return;
   const parsed = parseProgressMinutes(progressInput.value);
   if (parsed !== null && Number.isNaN(parsed)) {
-    progressError.value = "Enter minutes (72) or hours:minutes (1:12).";
+    progressError.value = "Enter a valid time, such as 72, 1:12 or 1h12m.";
     return;
   }
   const runtime = movie.value.runtimeMinutes;
@@ -494,7 +494,7 @@ async function onRatingChange(value: number | null) {
             id="movie-left-off"
             v-model="progressInput"
             class="resume-input"
-            inputmode="numeric"
+            inputmode="text"
             placeholder="h:mm"
             aria-describedby="movie-left-off-hint"
             @keydown.enter.prevent="saveProgress"
@@ -516,7 +516,7 @@ async function onRatingChange(value: number | null) {
           <span id="movie-left-off-hint" class="resume-hint">{{
             savingProgress
               ? "Saving…"
-              : (progressError ?? "Minutes or h:mm; blank clears it.")
+              : (progressError ?? "72, 1:12 or 1h12m; blank clears it.")
           }}</span>
         </div>
       </template>
