@@ -32,6 +32,7 @@ from src.database.models.user import User
 from src.database.models.user_appearance_settings import UserAppearanceSettings
 from src.database.models.user_scan_settings import UserScanSettings
 from src.database.session import get_db
+from src.features.imports import steam_connection
 from src.features.metadata import refresh_job
 from src.features.metadata.games import steam
 from src.features.metadata.games.giant_bomb import GiantBombClient, GiantBombError
@@ -354,6 +355,13 @@ async def get_provider_credentials(
         }
         if saved_fields:
             result[provider]["fields"] = saved_fields
+    if (
+        current_user.steam_refresh_token
+        and current_user.steam_access_token
+        and current_user.steam_id
+    ):
+        result["Steam"]["status"] = "configured"
+        result["Steam"]["connection_method"] = "account"
     app_integrations = resolve_integrations(await get_or_create_app_integration_settings(db))
     result["IGDB"] = {
         "status": "configured" if app_integrations.igdb_configured else "not_configured"
@@ -426,6 +434,42 @@ async def get_provider_credentials(
     return result
 
 
+def _steam_save_state(user: User) -> tuple[str | None, ...]:
+    return (
+        user.steam_id,
+        user.steam_api_key,
+        user.steam_refresh_token,
+        user.steam_library_owner_id,
+        user.steam_login_state,
+    )
+
+
+async def _recheck_steam_save(
+    db: AsyncSession, user_id: UUID, previous: tuple[str | None, ...]
+) -> User:
+    user = await steam_connection.locked_user(db, user_id)
+    if _steam_save_state(user) != previous:
+        raise HTTPException(status_code=409, detail="Steam connection changed during this save.")
+    return user
+
+
+async def _prepare_bound_steam_id(db: AsyncSession, user: User, steam_id: str, key: str) -> str:
+    if not user.steam_library_owner_id:
+        return steam_id
+    # Resolve before changing a bound account; failed edits retain the old connection.
+    previous = _steam_save_state(user)
+    await db.commit()
+    try:
+        resolved = await asyncio.to_thread(steam.resolve_steam_id, steam_id, key)
+        user = await _recheck_steam_save(db, user.id, previous)
+        await steam_connection.check_library_owner(db, user, resolved)
+    except steam_connection.SteamConnectionError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
+    except SteamLibraryError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from None
+    return resolved
+
+
 async def _save_steam_credentials(
     db: AsyncSession, current_user: User, fields: dict[str, str]
 ) -> dict[str, str | None]:
@@ -437,6 +481,13 @@ async def _save_steam_credentials(
     # key in a second pass) must never wipe out the other one that's
     # already saved.
     provider = "Steam"
+    current_user = await steam_connection.locked_user(db, current_user.id)
+    if current_user.steam_refresh_token:
+        raise HTTPException(
+            status_code=409,
+            detail="Manage the signed-in Steam account in Connections. "
+            "Disconnect it before using legacy API credentials.",
+        )
     steam_id_input = (fields.get("steam_id") or "").strip()
     api_key_input = (fields.get("api_key") or "").strip()
     if steam_id_input and api_key_input:
@@ -444,9 +495,13 @@ async def _save_steam_credentials(
             steam_id_input, api_key_input = api_key_input, steam_id_input
 
     if steam_id_input:
+        steam_id_input = await _prepare_bound_steam_id(
+            db, current_user, steam_id_input, api_key_input or current_user.steam_api_key or ""
+        )
         current_user.steam_id = steam_id_input
     if api_key_input:
         current_user.steam_api_key = api_key_input
+    current_user.steam_login_state = None
     await db.commit()
 
     if not current_user.steam_id or not current_user.steam_api_key:
@@ -457,20 +512,28 @@ async def _save_steam_credentials(
             "detail": f"Saved: now add your {missing} to connect.",
         }
 
+    previous = _steam_save_state(current_user)
     try:
         resolved = await asyncio.to_thread(
             steam.resolve_steam_id, current_user.steam_id, current_user.steam_api_key
         )
     except SteamLibraryError as exc:
         return {"provider": provider, "status": "error", "detail": str(exc)}
-    if resolved != current_user.steam_id:
-        current_user.steam_id = resolved
-        await db.commit()
+    current_user = await _recheck_steam_save(db, current_user.id, previous)
+    try:
+        await steam_connection.check_library_owner(db, current_user, resolved)
+    except steam_connection.SteamConnectionError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
+    current_user.steam_id = resolved
+    # Release the account lock before another provider request.
+    await db.commit()
 
+    previous = _steam_save_state(current_user)
     try:
         result = await asyncio.to_thread(_validate_provider, provider, current_user)
     except _ProviderClientError as exc:
         return {"provider": provider, "status": "error", "detail": str(exc)}
+    current_user = await _recheck_steam_save(db, current_user.id, previous)
     connected = result.get("validated", True)
     if connected:
         current_user.steam_persona_name = result.get("persona_name")
@@ -497,7 +560,10 @@ async def save_provider_credentials(
         )
 
     if provider == "Steam":
-        return await _save_steam_credentials(db, current_user, payload.fields)
+        try:
+            return await _save_steam_credentials(db, current_user, payload.fields)
+        except steam_connection.SteamConnectionError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
 
     for payload_field, column, encrypted in field_map:
         value = payload.fields.get(payload_field)
@@ -535,11 +601,11 @@ async def delete_provider_credentials(
             status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown provider: {provider}"
         )
 
+    if provider == "Steam":
+        await steam_connection.disconnect(db, current_user.id)
+        return {"provider": provider, "status": "not_configured"}
     for _, column, _ in field_map:
         setattr(current_user, column, None)
-    if provider == "Steam":
-        current_user.steam_persona_name = None
-        current_user.steam_avatar_url = None
     if provider == "RetroAchievements":
         current_user.retroachievements_avatar_url = None
     await db.commit()

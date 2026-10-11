@@ -211,6 +211,7 @@ export async function fetchSystemInfo(): Promise<SystemInfo> {
 export interface ProviderCredentialStatus {
   status: "not_configured" | "configured" | "connected" | "saved" | "error";
   detail?: string | null;
+  connection_method?: "account";
   app_configured?: boolean;
   // a server-wide key (Server Integrations or the environment) covers this
   // provider for anyone without their own

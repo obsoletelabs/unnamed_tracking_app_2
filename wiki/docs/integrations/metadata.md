@@ -139,14 +139,66 @@ they do not imply that every authenticated provider has been configured or valid
 - Title locks, ownership, personal state and missing-field preservation remain enforced.
 
 
-## Steam account identifiers and privacy
+## Steam sign-in and privacy
+
+Open **Settings → Connections → Steam → Manage**. Choose **Steam Guard QR**
+to scan and approve with the Steam mobile app, or **Account sign-in** to use
+your account name and password. Account sign-in supports Steam Guard email and
+mobile codes as well as approval in Steam. These methods do not require a
+personal Web API key or a profile-ID lookup.
+
+Passwords are encrypted for Steam with its supplied RSA key, sent once, and
+never saved. Steam Guard codes are also transient. Browser refresh/access
+tokens and pending sign-in state are encrypted at rest with the deployment's
+`SECRET_KEY`. The app binds the Store-issued API token to the account Steam
+verified during its browser-session exchange. A missing or mismatched account,
+failed transfer or rejected Store response cannot establish a connection.
+QR codes are rendered locally. Sign-in attempts expire after five
+minutes; closing or cancelling the dialog invalidates the current attempt.
+The app renews expiring sessions when importing. If Steam rejects or revokes
+a session, reconnect in Connections.
+
+Signed-in imports read the account owner's library and achievements through
+Steam's owner endpoints, including private achievement progress when Steam
+provides it. Steam's compact progress omits untouched locked achievements; the
+app expands them only when the returned schema hash matches. Owner achievement
+icon filenames are converted to Steam CDN URLs. Unverified, rejected or
+incompatible responses retain stored achievements. The app does not use Steam
+OpenID as authorization to read private data: OpenID identifies an account only.
+An explicit no-match response for the achievement schema is skipped; it does
+not remove saved achievements or turn a failed player-progress read into zeroes.
+
+Disconnecting keeps imported games, achievements, manual edits and confirmed
+copy groups. The core library supports one Steam account per app user. Its owner
+binding is retained on disconnect to prevent another account overwriting that
+progress; reconnect the original account. Switching accounts requires permanently
+removing the previous account's Steam imports, including any in Trash. Separate
+Steam accounts can use separate app users.
+
+![Steam Guard QR sign-in on a narrow screen](../assets/steam-owner-login/qr-390.png)
+
+![Account and password sign-in in Connections](../assets/steam-owner-login/account-1440.png)
+
+These screenshots use synthetic Steam responses and a disposable app account.
+The QR and credentials are fixtures, not a live Steam authorization. The UI
+acceptance checks also cover Guard-code submission, cancellation, stopped
+polling after closing the dialog, and layout at 390 and 1440 pixels.
+
+### Legacy API credentials
+
+Existing Web API keys continue to work for public-profile imports. The optional
+legacy form remains under **Metadata/API → Steam → Legacy API credentials**.
+Account sign-in replaces this legacy connection; disconnect it in Connections
+before configuring a legacy key again. A legacy credential save rechecks the
+connection after each Steam request; delayed results cannot undo a disconnect
+or overwrite a newer sign-in.
 
 The Steam connection accepts a full `steamcommunity.com/id/...` or
 `steamcommunity.com/profiles/...` link, a vanity name, SteamID64, SteamID2
 (`STEAM_0:0:11101`) or SteamID3 (`[U:1:22202]`). Numeric identifiers are converted
 locally; vanity names use Steam's profile lookup.
 
-If Steam does not share the library, the connection or sync reports the privacy
+If Steam does not share the library with a legacy API connection, sync reports the privacy
 problem and leaves existing games unchanged. Set **Profile → Privacy Settings →
 Game details** to **Public** and verify the account ID before retrying. An
 explicitly empty public library remains a valid empty library.

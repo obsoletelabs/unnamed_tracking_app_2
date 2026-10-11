@@ -47,6 +47,7 @@ from src.api.routes import (
     session_manager,
     settings,
     stats,
+    steam_connections,
     steam_import_steps,
     steam_tags_refresh,
     tv_shows,
@@ -148,6 +149,7 @@ app.include_router(media_provider.router)
 app.include_router(media_images.router)
 app.include_router(achievement_icons.router)
 app.include_router(steam_import_steps.router)
+app.include_router(steam_connections.router)
 app.include_router(steam_tags_refresh.router)
 app.include_router(media_lists.router)
 app.include_router(notifications.router)

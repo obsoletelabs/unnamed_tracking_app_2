@@ -20,6 +20,11 @@ from urllib.parse import urlsplit
 
 import requests
 
+from src.features.metadata.games.steam_session import (
+    SteamLibraryError,
+    SteamSession,
+    credential_params,
+)
 from src.helpers.save_game_asset import AssetKind
 
 # a Steam Web API key is always exactly 32 hex characters — distinct enough
@@ -41,10 +46,6 @@ SESSION.headers.update({"User-Agent": "Mozilla/5.0 (compatible; SteamDataFetcher
 # (developer.steamcommunity.com/apikey), separate from the unauthenticated
 # Storefront endpoints above
 _WEB_API_BASE = "https://api.steampowered.com"
-
-
-class SteamLibraryError(RuntimeError):
-    """Raised when the Steam Web API rejects a library-sync call."""
 
 
 _STEAMID64_BASE = 76561197960265728
@@ -101,11 +102,18 @@ def parse_steam_identifier(identifier: str) -> str:
     return str(_STEAMID64_BASE + account)
 
 
-def resolve_steam_id(identifier: str, api_key: str) -> str:
+def resolve_steam_id(identifier: str, api_key: str | SteamSession) -> str:
     """Every Steam Web API library call needs a numeric SteamID64 — the API
     key alone only identifies the calling app, not whose library to fetch.
     Takes a profile link, vanity name or SteamID2/3/64."""
     vanity = parse_steam_identifier(identifier)
+    if isinstance(api_key, SteamSession):
+        api_key.check_expiry()
+        if vanity != api_key.steam_id:
+            raise SteamLibraryError(
+                "The Steam session belongs to a different account. Reconnect Steam."
+            )
+        return api_key.steam_id
     if vanity.isdigit() and len(vanity) == 17:
         return vanity
     if not vanity:
@@ -151,13 +159,17 @@ def _valid_owned_game(game: object) -> bool:
     )
 
 
-def get_owned_games(steam_id: str, api_key: str) -> list[dict]:
+def get_owned_games(steam_id: str, api_key: str | SteamSession) -> list[dict]:
     """Reported apps, not an authoritative list of every license (e.g. demos)."""
+    if isinstance(api_key, SteamSession) and steam_id != api_key.steam_id:
+        raise SteamLibraryError(
+            "The Steam session belongs to a different account. Reconnect Steam."
+        )
     try:
         resp = SESSION.get(
             f"{_WEB_API_BASE}/IPlayerService/GetOwnedGames/v1/",
             params={
-                "key": api_key,
+                **credential_params(api_key),
                 "steamid": steam_id,
                 "include_appinfo": "1",
                 "include_played_free_games": "1",
@@ -165,18 +177,34 @@ def get_owned_games(steam_id: str, api_key: str) -> list[dict]:
                 "skip_unvetted_apps": "0",
             },
             timeout=20,
+            allow_redirects=False,
         )
-    except requests.RequestException as exc:
+    except requests.RequestException:
         # Request exceptions can include the URL and its API key.
-        raise SteamLibraryError("Could not reach Steam. Try again shortly.") from exc
+        raise SteamLibraryError("Could not reach Steam. Try again shortly.") from None
     if resp.status_code in (401, 403):
+        if isinstance(api_key, SteamSession):
+            raise SteamLibraryError("Steam rejected this session. Reconnect Steam in Connections.")
         raise SteamLibraryError("Steam rejected the API key.")
     if resp.status_code >= 400:
         raise SteamLibraryError(f"Steam library request failed ({resp.status_code}).")
+    if isinstance(api_key, SteamSession):
+        result = resp.headers.get("x-eresult")
+        if result is not None and result != "1":
+            raise SteamLibraryError("Steam rejected this session. Reconnect Steam in Connections.")
     try:
         body = resp.json()
     except ValueError as exc:
         raise SteamLibraryError("Steam returned invalid JSON.") from exc
+    if isinstance(api_key, SteamSession) and body in ({}, {"response": {}}):
+        raise SteamLibraryError(
+            "Steam did not provide this account's library. Reconnect Steam in Connections."
+        )
+    return _parse_owned_games(body)
+
+
+def _parse_owned_games(body: object) -> list[dict]:
+    """Validate the complete provider response before applying any records."""
     if not isinstance(body, dict) or not isinstance(body.get("response", {}), dict):
         raise SteamLibraryError("Steam returned an invalid library response.")
     payload = body.get("response", {})
@@ -199,14 +227,14 @@ def get_owned_games(steam_id: str, api_key: str) -> list[dict]:
     return games
 
 
-def get_player_summary(steam_id: str, api_key: str) -> dict:
+def get_player_summary(steam_id: str, api_key: str | SteamSession) -> dict:
     """The account's public persona name + avatar, shown in Settings so a
     connected Steam account reads as "who", not just a green dot. Best-effort
     — a private profile can return an empty player list rather than erroring."""
     try:
         resp = SESSION.get(
             f"{_WEB_API_BASE}/ISteamUser/GetPlayerSummaries/v2/",
-            params={"key": api_key, "steamids": steam_id},
+            params={**credential_params(api_key), "steamids": steam_id},
             timeout=15,
         )
     except requests.RequestException:
