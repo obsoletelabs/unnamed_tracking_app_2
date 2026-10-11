@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { useRoute } from "vue-router";
 import SmtpSettingsSection from "./SmtpSettingsSection.vue";
 import BrowserPushSettingsSection from "./BrowserPushSettingsSection.vue";
 import PluginProviderConfigurationForm from "./PluginProviderConfigurationForm.vue";
@@ -19,6 +20,7 @@ const error = ref("");
 const status = ref("");
 const busy = ref(false);
 const providers = ref<NotificationRoutingProvider[]>([]);
+const route = useRoute();
 const serverProviders = computed(() =>
   providers.value
     .filter(
@@ -91,6 +93,7 @@ async function configure(
       <details
         v-for="provider in serverProviders"
         :key="provider.id"
+        :open="route?.query.notification_provider === provider.id"
         class="provider"
       >
         <summary>

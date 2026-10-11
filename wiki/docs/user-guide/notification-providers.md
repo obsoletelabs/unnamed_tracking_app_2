@@ -174,3 +174,16 @@ Gateway permission/contract failures are distinguished from temporary outages.
 For Discord bot recovery use a separate **Discord account DM** with host proof,
 recovery opt-in and the provider high-risk grant. Legacy grouped profile links
 remain PRIVATE, including profiles previously verified inside the plugin.
+
+Updated Discord bot settings show actual notification destinations separately from
+compatibility profile links. A host-verified DM shows **SECURE**; an ordinary unverified
+DM shows **PRIVATE**. Each card explains password-reset routing readiness and links to
+that destination's host controls. Verify the DM there, then enable **Allow recovery
+messages**, with the bot's sensitive-content permission granted. The administrator must
+also enable the password-reset plugin. Channels and legacy grouped profile links cannot
+receive reset secrets. Review the new destination-status permission when updating the bot;
+without it, use Account → Notifications to inspect authoritative status.
+
+The destination link opens and focuses the exact host controls, including the recovery opt-in after successful destination verification.
+
+![Focused verified destination and recovery controls](../assets/notification-destination-status/focused-recovery.jpg)

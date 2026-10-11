@@ -51,6 +51,7 @@ class Capability(StrEnum):
     NOTIFICATION_SOURCES_REGISTER = "notification_sources.register"
     NOTIFICATIONS_SENSITIVE = "notifications.sensitive"
     NOTIFICATIONS_LIFECYCLE_READ = "notifications.lifecycle.read"
+    NOTIFICATION_DESTINATIONS_READ = "notification_destinations.read"
     NOTIFICATIONS = "notifications"
     NOTIFICATION_PROVIDERS = "notification_providers"
     NOTIFICATION_PROVIDERS_REGISTER = "notification_providers.register"

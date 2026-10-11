@@ -23,6 +23,7 @@ const props = defineProps<{
   destinations: NotificationRoutingDestination[];
   prefs: Preferences;
   loaded: boolean;
+  focusedDestination?: string;
 }>();
 const emit = defineEmits<{
   changed: [];
@@ -103,7 +104,10 @@ const inactiveCount = computed(
 );
 const listed = computed(() =>
   props.destinations
-    .filter((d) => d.active || showInactive.value)
+    .filter(
+      (d) =>
+        d.active || showInactive.value || d.id === props.focusedDestination,
+    )
     .sort((a, b) => Number(b.active) - Number(a.active)),
 );
 const canAdd = computed(
@@ -189,6 +193,8 @@ async function remove(destination: NotificationRoutingDestination) {
     <article
       v-for="destination in listed"
       :key="destination.id"
+      :id="`notification-destination-${destination.id}`"
+      tabindex="-1"
       class="destination"
     >
       <h5>{{ destination.label || destination.kind }}</h5>
