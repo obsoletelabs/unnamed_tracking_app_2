@@ -263,5 +263,13 @@ account must enroll its own core UUID and revision. Routing metadata reports
 verification availability and eligible types using the same live grant/purpose
 policy as dispatch. SECURE recovery additionally requires external context and
 explicit destination opt-in. Existing SMTP possession proof remains supported.
-The current bot still uses its PRIVATE compatibility endpoint; its per-account
-consumer and generic verification UI are separate follow-up work.
+Account notification settings provide request/code confirmation, revocation and
+separate recovery opt-in controls for declared plugin destinations. Controls use
+the owner-only core APIs; configuration changes discard stale local challenges.
+The paired bot consumer declares a separate per-account provider while retaining
+its working grouped PRIVATE compatibility route. Users explicitly configure and
+verify each new account; no legacy proof or credentials are automatically copied.
+
+![A verified account alongside a PRIVATE account](../assets/notification-verification/secure-desktop-dark.png)
+
+![Host possession-proof controls on a phone](../assets/notification-verification/private-mobile-dark.png)

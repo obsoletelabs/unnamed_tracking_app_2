@@ -34,7 +34,8 @@ def export(destination: Path) -> None:
         schema = model.model_json_schema()
         schema["$schema"] = "https://json-schema.org/draft/2020-12/schema"
         schema["x-api-contract-version"] = (
-            "1.1.5" if name in {"notification-provider-v1", "notification-content-v1", "notification-destination-v1"}
+            "1.1.6" if name == "notification-provider-v1"
+            else "1.1.5" if name in {"notification-content-v1", "notification-destination-v1"}
             else "1.1.4" if "lifecycle" in name else "1.1.2"
         )
         (destination / f"{name}.schema.json").write_text(
