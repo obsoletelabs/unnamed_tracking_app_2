@@ -6,7 +6,24 @@ Fresh navigation to Games starts at the top. Returning from a game detail preser
 
 ## Adding and editing
 
-Create a game from the library, optionally search configured metadata providers, then review the fields before saving. Editing supports title and sort title, platform, status, dates, rating, genres/tags/features, description, time-to-beat data, and artwork. Field-change history records supported metadata changes.
+**Add Game** in the library opens Quick Add: search the existing metadata providers
+or enter a title, choose a status and platform, then save. Metadata results retain
+their provider identities, including optional plugin providers. Duplicate and
+owned-copy review remains a separate confirmation step.
+
+Choose **Full form** for folders, relationships, ownership, artwork and other
+fields. Your search selection and edits carry over. Titles that cannot generate
+a folder name open the full form so you can supply one; folder collisions remain
+visible errors rather than silently creating another copy. The compact dialog
+loads parent-game and currency choices only when you open the full form.
+
+A failed artwork transfer leaves the game saved. Its task offers **Retry** for the
+remaining artwork on that same game; it never retries game creation. Artwork can
+also be changed later in the editor.
+
+Editing supports title and sort title, platform, status, dates, rating,
+genres/tags/features, description, time-to-beat data, and artwork. Field-change
+history records supported metadata changes.
 
 Bulk edit changes selected records only. Locked fields are not overwritten by refresh operations.
 

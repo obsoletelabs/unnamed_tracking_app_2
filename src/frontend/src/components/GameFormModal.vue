@@ -40,10 +40,20 @@ import { RETRO_PLATFORM_OPTIONS } from "../utils/platforms";
 import { useMetadataSearch } from "../composables/useMetadataSearch";
 import { gameMetadataResult } from "../utils/metadataCandidate";
 import { useTitleProtection } from "../utils/titleProtection";
+import {
+  startTask,
+  updateTask,
+  completeTask,
+  errorTask,
+  setTaskRetry,
+} from "../state/taskProgress";
 
 const props = defineProps<{
   game?: Game | null;
+  quickAdd?: boolean;
 }>();
+
+const compact = ref(!!props.quickAdd && !props.game);
 
 // for the "parent game" picker, fetched here rather than threaded as a
 // prop through every place this modal is opened from (GameLibrary,
@@ -52,7 +62,7 @@ const props = defineProps<{
 const availableParentGames = ref<Game[]>([]);
 // the ISO 4217 codes the API accepts (#11), so a typo can't fail the save
 const currencyCodes = ref<string[]>([]);
-onMounted(async () => {
+async function loadFullFormChoices() {
   try {
     availableParentGames.value = (await fetchGames()).filter(
       (g) => g.id !== props.game?.id,
@@ -61,16 +71,6 @@ onMounted(async () => {
     // parent picker just stays empty, not worth failing the whole form
   }
   if (import.meta.env.VITE_USE_MOCK_DATA === "true") return;
-  fetchMetadataProviders()
-    .then((providers) => {
-      metadataProviders.value = providers;
-    })
-    .catch(() => {
-      // the hint just stays visible
-    })
-    .finally(() => {
-      metadataProvidersLoaded.value = true;
-    });
   try {
     const response = await fetch("/api/currency-codes", {
       credentials: "include",
@@ -82,7 +82,28 @@ onMounted(async () => {
   } catch {
     // falls back to the free-text currency field
   }
+}
+onMounted(() => {
+  if (!compact.value) void loadFullFormChoices();
+  if (import.meta.env.VITE_USE_MOCK_DATA === "true") return;
+  fetchMetadataProviders()
+    .then((providers) => {
+      metadataProviders.value = providers;
+    })
+    .catch(() => {
+      // the hint just stays visible
+    })
+    .finally(() => {
+      metadataProvidersLoaded.value = true;
+    });
 });
+
+function openFullForm() {
+  if (!compact.value) return;
+  compact.value = false;
+  activeTab.value = title.value.trim() ? "General" : "Find";
+  void loadFullFormChoices();
+}
 
 // suggestions only: any other system can still be typed in
 const PLATFORM_SUGGESTIONS = [
@@ -165,6 +186,7 @@ function validateGeneral(): boolean {
   }
   if (!isEditing.value && !folderLocation.value.trim()) {
     error.value = "Folder name is required.";
+    openFullForm();
     activeTab.value = "General";
     return false;
   }
@@ -182,7 +204,7 @@ function goToStep(offset: number) {
 // field can't create a half-filled game early; if a submit does arrive
 // before the last step it moves on instead
 function onFormSubmit() {
-  if (!isEditing.value && !isLastStep.value) {
+  if (!compact.value && !isEditing.value && !isLastStep.value) {
     goToStep(1);
     return;
   }
@@ -284,6 +306,9 @@ const saving = ref(false);
 const error = ref<string | null>(null);
 const metadataQuery = ref("");
 const progressiveSearch = useMetadataSearch(metadataQuery, "game");
+const selectingMetadata = ref(false);
+const selectedProviderIds = ref<Record<string, string> | undefined>();
+let selectionGeneration = 0;
 const metadataResults = computed(() =>
   progressiveSearch.selected.value
     ? []
@@ -508,6 +533,7 @@ function applyAvailableMetadata(result: MetadataSearchResult, initial = false) {
 }
 watch(progressiveSearch.selected, (candidate) => {
   if (!candidate) return;
+  selectedProviderIds.value = { ...candidate.provider_ids };
   const result = gameMetadataResult(candidate);
   applyAvailableMetadata(result);
   if (result.key_art_urls.length) keyArtCandidates.value = result.key_art_urls;
@@ -515,7 +541,18 @@ watch(progressiveSearch.selected, (candidate) => {
   if (!pickedKeyArtUrl.value) pickedKeyArtUrl.value = result.key_art_url;
   if (!pickedBannerUrl.value) pickedBannerUrl.value = result.banner_url;
 });
-function applyMetadata(result: MetadataSearchResult) {
+async function applyMetadata(result: MetadataSearchResult) {
+  if (saving.value) return;
+  const candidate = progressiveSearch.results.value.find(
+    (item) => item.id === result.candidate_id,
+  );
+  if (!candidate) {
+    metadataMessage.value = "Search for this title again before selecting it.";
+    return;
+  }
+  const currentSelection = ++selectionGeneration;
+  selectingMetadata.value = true;
+  selectedProviderIds.value = { ...candidate.provider_ids };
   appliedProviderFields.clear();
   applyAvailableMetadata(result, true);
   sortTitle.value = "";
@@ -532,11 +569,15 @@ function applyMetadata(result: MetadataSearchResult) {
   mediaSearchResults.value = [];
   metadataMessage.value = `Prefilled from ${result.provider}. Review the fields before saving.`;
   metadataApplied.value = true;
-  const candidate = progressiveSearch.results.value.find(
-    (item) => item.id === result.candidate_id,
-  );
-  if (candidate) void progressiveSearch.select(candidate).catch(() => {});
-  if (!isEditing.value) activeTab.value = "General";
+  if (!compact.value && !isEditing.value) activeTab.value = "General";
+  try {
+    await progressiveSearch.select(candidate);
+  } catch {
+    // The chosen identity and available fields remain usable if enrichment fails.
+  } finally {
+    if (currentSelection === selectionGeneration)
+      selectingMetadata.value = false;
+  }
 }
 
 // when editing, the folder name is already real data, don't let the
@@ -566,6 +607,8 @@ function onBannerFileChange(e: Event) {
 }
 
 async function submit() {
+  if (saving.value || selectingMetadata.value) return;
+  if (compact.value) suggestFolderFromTitle();
   if (!validateGeneral()) return;
 
   saving.value = true;
@@ -593,8 +636,7 @@ async function submit() {
         : null,
     completionDate: completionDate.value || null,
     source: source.value.trim() || null,
-    providerIds:
-      progressiveSearch.selected.value?.provider_ids ?? props.game?.providerIds,
+    providerIds: selectedProviderIds.value ?? props.game?.providerIds,
     platform: platform.value.trim() || null,
     priority: priority.value || null,
     ageRating: ageRating.value.trim() || null,
@@ -634,31 +676,57 @@ async function submit() {
     osrsStatsEnabled: osrsStatsEnabled.value,
   };
 
+  // Capture artwork before awaiting the save. Retries only attach remaining assets
+  // to this saved game, even after the dialog has closed or another one is opened.
+  const artwork = [
+    {
+      kind: "key_art" as const,
+      file: coverFile.value,
+      url: pickedKeyArtUrl.value,
+    },
+    {
+      kind: "banner" as const,
+      file: bannerFile.value,
+      url: pickedBannerUrl.value,
+    },
+  ].filter((asset) => asset.file || asset.url);
   try {
     const savedGame = isEditing.value
       ? await updateGame(props.game!.id, input)
       : await createGame(input);
 
-    if (import.meta.env.VITE_USE_MOCK_DATA !== "true") {
-      // an explicitly-chosen file always wins over the metadata-suggested art
-      if (coverFile.value) {
-        await uploadGameAsset(savedGame.id, "key_art", coverFile.value);
-      } else if (pickedKeyArtUrl.value) {
-        await attachGameAssetFromUrl(
-          savedGame.id,
-          "key_art",
-          pickedKeyArtUrl.value,
-        );
-      }
-      if (bannerFile.value) {
-        await uploadGameAsset(savedGame.id, "banner", bannerFile.value);
-      } else if (pickedBannerUrl.value) {
-        await attachGameAssetFromUrl(
-          savedGame.id,
-          "banner",
-          pickedBannerUrl.value,
-        );
-      }
+    if (import.meta.env.VITE_USE_MOCK_DATA !== "true" && artwork.length) {
+      const taskId = startTask(
+        `Artwork for ${savedGame.title}`,
+        artwork.length,
+      );
+      let done = 0;
+      let running = false;
+      const attempt = async () => {
+        if (running || done === artwork.length) return;
+        running = true;
+        try {
+          while (done < artwork.length) {
+            const asset = artwork[done];
+            if (asset.file) {
+              await uploadGameAsset(savedGame.id, asset.kind, asset.file);
+            } else if (asset.url) {
+              await attachGameAssetFromUrl(savedGame.id, asset.kind, asset.url);
+            }
+            updateTask(taskId, ++done);
+          }
+          completeTask(taskId, "Artwork saved.");
+        } catch {
+          errorTask(
+            taskId,
+            "Game saved. Artwork could not be attached. Retry artwork or edit it later.",
+          );
+          setTaskRetry(taskId, () => void attempt());
+        } finally {
+          running = false;
+        }
+      };
+      await attempt();
     }
 
     emit("saved", savedGame.id);
@@ -672,12 +740,13 @@ async function submit() {
 
 <template>
   <UiModal
-    :title="isEditing ? 'Edit Game' : 'Add Game'"
-    size="wide"
+    :title="isEditing ? 'Edit Game' : compact ? 'Quick Add Game' : 'Add Game'"
+    :size="compact ? 'standard' : 'wide'"
+    :dismissible="!saving"
     @close="emit('close')"
   >
-    <div class="game-editor">
-      <nav ref="tabsEl" class="modal-tabs">
+    <div class="game-editor" :class="{ 'quick-add': compact }">
+      <nav v-if="!compact" ref="tabsEl" class="modal-tabs">
         <button
           v-for="tab in tabs"
           :key="tab"
@@ -693,11 +762,11 @@ async function submit() {
       <form class="modal-form" @submit.prevent="onFormSubmit">
         <div class="editor-body">
           <div
-            v-if="activeTab === 'General' || activeTab === 'Find'"
+            v-if="compact || activeTab === 'General' || activeTab === 'Find'"
             class="tab-panel"
           >
             <div
-              v-if="activeTab === 'Find' || isEditing"
+              v-if="compact || activeTab === 'Find' || isEditing"
               class="metadata-search"
             >
               <div class="search-heading">
@@ -759,13 +828,55 @@ async function submit() {
                   {{ warning }}
                 </li>
               </ul>
-              <p v-if="activeTab === 'Find'" class="hint">
+              <p v-if="!compact && activeTab === 'Find'" class="hint">
                 Pick a match to fill in the next steps for you, or skip this and
                 enter everything by hand.
               </p>
             </div>
 
-            <template v-if="activeTab === 'General'">
+            <template v-if="compact">
+              <label class="field">
+                <span>Title</span>
+                <input
+                  v-model="title"
+                  type="text"
+                  required
+                  @blur="suggestFolderFromTitle"
+                />
+              </label>
+              <div class="field-row">
+                <label class="field">
+                  <span>Status</span>
+                  <select v-model="status">
+                    <option v-for="s in statuses" :key="s" :value="s">
+                      {{ s }}
+                    </option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Platform</span>
+                  <input
+                    v-model="platform"
+                    type="text"
+                    list="quick-game-platforms"
+                    placeholder="PC, Switch..."
+                  />
+                  <datalist id="quick-game-platforms">
+                    <option
+                      v-for="option in PLATFORM_SUGGESTIONS"
+                      :key="option"
+                      :value="option"
+                    />
+                  </datalist>
+                </label>
+              </div>
+              <p class="hint">
+                Choose a search result or enter a title. Use the full form for
+                artwork, ownership and more fields.
+              </p>
+            </template>
+
+            <template v-if="!compact && activeTab === 'General'">
               <div class="field-row">
                 <label class="field">
                   <span>Title</span>
@@ -1311,14 +1422,28 @@ async function submit() {
           >
             Delete Game
           </button>
-          <span v-if="!isEditing" class="step-count">
+          <button
+            v-if="compact"
+            type="button"
+            class="secondary-button"
+            :disabled="saving"
+            @click="openFullForm"
+          >
+            Full form
+          </button>
+          <span v-if="!compact && !isEditing" class="step-count">
             Step {{ stepIndex + 1 }} of {{ tabs.length }}
           </span>
           <div class="modal-actions-spacer"></div>
-          <button type="button" class="secondary-button" @click="emit('close')">
+          <button
+            type="button"
+            class="secondary-button"
+            :disabled="saving"
+            @click="emit('close')"
+          >
             Cancel
           </button>
-          <template v-if="!isEditing">
+          <template v-if="!compact && !isEditing">
             <button
               v-if="stepIndex > 0"
               type="button"
@@ -1337,10 +1462,12 @@ async function submit() {
             </button>
           </template>
           <button
-            v-if="isEditing || isLastStep"
+            v-if="compact || isEditing || isLastStep"
             type="submit"
             class="primary-button"
-            :disabled="saving"
+            :disabled="
+              saving || selectingMetadata || (compact && !title.trim())
+            "
           >
             {{ saving ? "Saving…" : isEditing ? "Save Changes" : "Add Game" }}
           </button>
@@ -1354,6 +1481,9 @@ async function submit() {
 .game-editor {
   width: 100%;
   min-width: 0;
+}
+.quick-add .tab-panel {
+  min-height: 0;
 }
 .modal-tabs {
   display: flex;

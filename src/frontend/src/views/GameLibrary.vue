@@ -1093,6 +1093,7 @@ const compactPreview = computed(
       <GameFormModal
         v-if="showFormModal"
         :game="editingGame"
+        :quick-add="!editingGame"
         @close="showFormModal = false"
         @saved="onGameSaved"
         @delete="onDeleteFromModal"
