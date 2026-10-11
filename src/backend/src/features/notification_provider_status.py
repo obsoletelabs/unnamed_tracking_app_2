@@ -50,14 +50,15 @@ async def destination_status(
     if query.after is not None:
         statement = statement.where(NotificationDestination.id > query.after)
     rows = (await db.execute(statement)).all()
-    settings = {
-        row.provider_id: row.enabled
-        for row in await db.scalars(
-            select(NotificationProviderSetting).where(
-                NotificationProviderSetting.user_id == user_id
+    settings = dict(
+        (
+            await db.execute(
+                select(
+                    NotificationProviderSetting.provider_id, NotificationProviderSetting.enabled
+                ).where(NotificationProviderSetting.user_id == user_id)
             )
-        )
-    }
+        ).all()
+    )
     preferences = await load_preferences(db, user_id)
     availability: dict[str, bool] = {}
     result = []
