@@ -86,13 +86,15 @@ async def register_reset_flow(
     )
     row = await db.get(PluginAuthFlowRegistration, definition.mode)
     values = definition.model_dump(mode="json")
-    if restore and (
-        row is None
-        or row.revoked_at is not None
-        or row.plugin_id != plugin_id
-        or row.installation_id != installation_id
-        or row.definition != values
-    ):
+    restorable = row is not None and all(
+        (
+            row.revoked_at is None,
+            row.plugin_id == plugin_id,
+            row.installation_id == installation_id,
+            row.definition == values,
+        )
+    )
+    if restore and not restorable:
         return {"registered": False, **values}
     if row is not None and row.revoked_at is None and row.plugin_id != plugin_id:
         raise PermissionError("Another active password-reset flow is already configured")

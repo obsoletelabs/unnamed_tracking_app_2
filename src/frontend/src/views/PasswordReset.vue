@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import AppBrand from "../components/AppBrand.vue";
 import PasswordInput from "../components/PasswordInput.vue";
@@ -12,7 +12,7 @@ import {
 
 const route = useRoute();
 const router = useRouter();
-const credential = resetCredential(route.hash);
+const credential = ref(resetCredential(route.hash));
 const identifier = ref("");
 const password = ref("");
 const confirmation = ref("");
@@ -22,9 +22,26 @@ const message = ref("");
 const error = ref("");
 const finished = ref(false);
 
+watch(
+  () => route.hash,
+  async (fragment) => {
+    if (!fragment) return;
+    // Vue reuses this view when the emailed link opens in the request tab.
+    credential.value = resetCredential(fragment);
+    finished.value = false;
+    message.value = "";
+    error.value = credential.value
+      ? ""
+      : "This reset link is invalid. Request a new link.";
+    password.value = "";
+    confirmation.value = "";
+    // Keep bearer material in page memory, out of navigation/return-path state.
+    await router.replace({ path: route.path, hash: "" });
+  },
+  { immediate: true },
+);
+
 onMounted(async () => {
-  // Keep bearer material in this page's memory, out of navigation/return-path state.
-  if (route.hash) await router.replace({ path: route.path, hash: "" });
   try {
     available.value = await passwordResetStatus();
   } catch {
@@ -34,20 +51,21 @@ onMounted(async () => {
 
 async function submit() {
   error.value = "";
-  if (credential && password.value !== confirmation.value) {
+  if (credential.value && password.value !== confirmation.value) {
     error.value = "The passwords do not match.";
     return;
   }
   busy.value = true;
   try {
-    message.value = credential
+    message.value = credential.value
       ? await completePasswordReset(
-          credential.id,
-          credential.token,
+          credential.value.id,
+          credential.value.token,
           password.value,
         )
       : await requestPasswordReset(identifier.value.trim());
     finished.value = true;
+    credential.value = null;
     password.value = "";
     confirmation.value = "";
   } catch (err) {
@@ -123,13 +141,18 @@ async function submit() {
 
 <style scoped>
 .reset-page {
+  box-sizing: border-box;
+  min-width: 0;
   min-height: 100vh;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   place-items: center;
   padding: 24px 16px;
   background: var(--ui-bg);
 }
 .reset-card {
+  box-sizing: border-box;
+  min-width: 0;
   width: min(100%, 420px);
   display: flex;
   flex-direction: column;
@@ -150,6 +173,7 @@ p {
   line-height: 1.6;
 }
 .field {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
