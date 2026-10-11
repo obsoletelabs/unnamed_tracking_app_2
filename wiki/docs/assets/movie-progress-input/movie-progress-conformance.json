@@ -1,0 +1,11 @@
+{
+  "host_revision": "7d10e8bc271916ac8f2123d9ace3c92e94edc48a",
+  "compiled_ui": true,
+  "real_apis": true,
+  "disposable_account": true,
+  "passed": [
+    "Real API detail/edit time text, status, range rejection, clamping, clearing and preserved fields: 320",
+    "Real API detail/edit time text, status, range rejection, clamping, clearing and preserved fields: 390",
+    "Real API detail/edit time text, status, range rejection, clamping, clearing and preserved fields: 1440"
+  ]
+}

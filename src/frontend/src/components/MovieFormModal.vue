@@ -174,7 +174,7 @@ async function submit() {
   }
   const progressMinutes = parseProgressMinutes(fields.value.progressInput);
   if (progressMinutes !== null && Number.isNaN(progressMinutes)) {
-    error.value = "Left off at: enter minutes (72) or hours:minutes (1:12).";
+    error.value = "Left off at: enter a valid time, such as 72, 1:12 or 1h12m.";
     return;
   }
   // a position in a movie you hadn't started means you're watching it
@@ -305,12 +305,12 @@ async function remove() {
         />
       </label>
       <label class="field">
-        <span>Left off at (h:mm)</span>
+        <span>Left off at</span>
         <input
           v-model="fields.progressInput"
           type="text"
-          inputmode="numeric"
-          placeholder="not started"
+          inputmode="text"
+          placeholder="72, 1:12 or 1h12m"
           class="text-input"
         />
       </label>
