@@ -103,3 +103,15 @@ changed activation invalidate outstanding invitations and cancel unsent deliveri
 Reinstallation requires explicit activation and cannot restore old credentials.
 Expired encrypted material is cleared by the existing job loop; bounded records are
 removed after an additional day. Reset API 1.1.7 remains compatible.
+
+
+## Live recovery configuration status (API 1.1.10)
+
+`auth_flows.password_reset.status`, guarded by the existing critical
+`auth.password_reset` grant, takes `{}` and returns `registered` plus
+`token_lifetime_seconds`. It requires an active administrator and explicit global
+grant, and reports only this installation's live flow. Disabled, unhealthy or
+ungranted registrations are not enabled; saved plugin preferences are insufficient.
+The official contribution places configuration in Administration → Account security.
+The invitation contribution uses a separate configuration section there and an
+Invite user button/dialog on Administration → Users.

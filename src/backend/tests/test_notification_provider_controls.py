@@ -86,9 +86,12 @@ async def test_admin_smtp_uses_saved_configuration_and_never_enrolls_address(own
             assert response.json() == {"sent": True, "error": None, "retryable": False}
             assert mailbox[-1]["To"] == "recipient@example.test"
             assert mailbox[-1]["Subject"] == "Test notification"
-            assert "delivery test" in mailbox[-1].get_payload()
+            assert "delivery test" in mailbox[-1].get_body(preferencelist=("plain",)).get_content()
             assert mailbox[-1]["List-Unsubscribe"] is None
-            assert "account@example.test" not in mailbox[-1].get_payload()
+            assert (
+                "account@example.test"
+                not in mailbox[-1].get_body(preferencelist=("plain",)).get_content()
+            )
             assert (
                 await db.scalar(
                     select(NotificationDestination.id).where(
@@ -168,7 +171,7 @@ async def test_verification_link_uses_same_single_use_challenge_without_get_side
         await db.commit()
         challenge_id = await request_verification(db, owner, endpoint)
         assert await process_pending_deliveries(db) == 1
-        body = mailbox[-1].get_payload()
+        body = mailbox[-1].get_body(preferencelist=("plain",)).get_content()
         link = re.search(
             r"https://app.example.test/api/notifications/email-verify\?token=\S+", body
         ).group()

@@ -44,6 +44,7 @@ from src.features.plugin_auth_flows import (
     invite_flow_status,
     register_invite_flow,
     register_reset_flow,
+    reset_flow_status,
     unregister_invite_flow,
     unregister_reset_flow,
 )
@@ -85,6 +86,7 @@ _METHOD_CAPABILITIES = {
     "auth_flows.password_reset.register": "auth.password_reset",
     "auth_flows.password_reset.restore": "auth.password_reset",
     "auth_flows.password_reset.unregister": "auth.password_reset",
+    "auth_flows.password_reset.status": "auth.password_reset",
     "games.list": "games.read",
     "games.import": "games.write",
     "games.details.list": "games.read",
@@ -202,6 +204,9 @@ async def dispatch_gateway_request(
         ),
         "auth_flows.password_reset.register": partial(
             register_reset_flow, db, plugin_id, installation_id, user_id, payload
+        ),
+        "auth_flows.password_reset.status": partial(
+            reset_flow_status, db, plugin_id, installation_id, user_id, payload
         ),
         "auth_flows.password_reset.restore": partial(
             register_reset_flow, db, plugin_id, installation_id, user_id, payload, restore=True
@@ -674,13 +679,12 @@ async def _register_provider(
         )
         db.add(existing)
     else:
-        if existing.transport != registration.transport and existing.revoked_at is None:
-            raise ValueError("Unregister the provider before changing its transport contract")
         definition = (
             registration.definition.model_dump(mode="json") if registration.definition else None
         )
         if (
             existing.revoked_at is not None
+            or existing.transport != registration.transport
             or existing.action_id != registration.action_id
             or existing.definition != definition
         ):

@@ -175,6 +175,7 @@ export interface UiShortcut {
   visibility: UiVisibility;
 }
 export const HOST_EXTENSION_SLOTS = [
+  "administration.users.actions",
   "home.after-widgets",
   "game.overview.after-header",
   "game.documents.actions",

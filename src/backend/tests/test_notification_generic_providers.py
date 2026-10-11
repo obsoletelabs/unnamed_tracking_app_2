@@ -24,9 +24,10 @@ from src.features.notification_policy import Trust
 from src.features.notification_providers.base import NotificationMessage, ProviderDestination
 from src.features.notification_providers.delivery import process_pending_deliveries
 from src.features.notification_providers.plugin import PluginNotificationProvider
+from src.features.notification_webhooks import create_webhook
 from src.plugin_api.contracts import NotificationProviderRegistration
 from src.plugin_api.gateway import _register_provider, _unregister_provider
-from tests.test_notification_webhooks import release, webhook_provider  # noqa: F401
+from tests.test_notification_webhooks import WEBHOOK, release, webhook_provider  # noqa: F401
 
 DEFINITION = {
     "destinations": [
@@ -220,6 +221,55 @@ async def test_descriptor_changes_deactivate_existing_endpoints_and_queued_work(
         )
         assert work.status == "suppressed"
         await process_pending_deliveries(db, limit=5)
+        provider.runtime.notification_delivery.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_provider_transport_upgrade_retires_authority_and_restarts_idempotently(
+    webhook_provider,  # noqa: F811
+):
+    provider = webhook_provider
+    async with SessionLocal() as db:
+        endpoint = await create_webhook(db, provider.owner, provider.provider, WEBHOOK, "Channel")
+        await release(db, provider)
+        replacement = registration(provider_id=provider.provider)
+        await _register_provider(
+            db,
+            plugin_id=provider.plugin,
+            installation_id=provider.installation,
+            payload=replacement,
+        )
+        endpoint = await db.get(NotificationDestination, endpoint, populate_existing=True)
+        assert not endpoint.active and not endpoint.enabled
+        assert endpoint.verified_revision is None and not endpoint.recovery_allowed
+        assert endpoint.media_consent_revision is None
+        work = await db.scalar(
+            select(NotificationDelivery).where(NotificationDelivery.destination_id == endpoint.id)
+        )
+        assert work.status == "suppressed"
+        row = await db.scalar(
+            select(PluginNotificationProviderRegistration).where(
+                PluginNotificationProviderRegistration.provider_id == provider.provider
+            )
+        )
+        assert row.transport == "plugin" and not row.server_configured
+        revision = row.server_revision
+        await _register_provider(
+            db,
+            plugin_id=provider.plugin,
+            installation_id=provider.installation,
+            payload=replacement,
+        )
+        assert row.server_revision == revision
+        with pytest.raises(ValueError, match="already registered"):
+            await _register_provider(
+                db,
+                plugin_id=provider.plugin,
+                installation_id=uuid4(),
+                payload=replacement,
+            )
+        await process_pending_deliveries(db, limit=5)
+        provider.runtime.notification_transport.assert_not_awaited()
         provider.runtime.notification_delivery.assert_not_awaited()
 
 

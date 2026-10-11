@@ -188,6 +188,27 @@ def test_gateway_retains_permission_error_and_correlation_across_http(
     assert response["request_id"] == request_id
 
 
+@pytest.mark.parametrize(
+    "status, code",
+    [(400, "invalid_request"), (403, "forbidden"), (409, "conflict"), (503, "unavailable")],
+)
+def test_gateway_plain_http_errors_do_not_turn_permanent_denials_into_retries(
+    supervisor, monkeypatch, status, code
+):
+    def transport(request, **kwargs):
+        raise HTTPError(
+            request.full_url, status, "Rejected", {}, io.BytesIO(b'{"detail":"private value"}')
+        )
+
+    monkeypatch.setattr("runtime.urlopen", transport)
+    request = {"method": "notification_providers.register", "capability": "notification_providers.deliver"}
+    with pytest.raises(RuntimeGatewayError) as failure:
+        supervisor._handle_gateway_request("contract", request)
+    assert failure.value.envelope["code"] == code
+    assert failure.value.envelope["request_id"] == request["request_id"]
+    assert "private value" not in str(failure.value)
+
+
 def test_gateway_version_rejection_precedes_storage_and_http(supervisor, monkeypatch):
     def forbidden(*args, **kwargs):
         pytest.fail("Incompatible protocol must not reach host or storage")

@@ -2,11 +2,11 @@
 
 The authenticated in-app inbox and external deliveries are separate destinations. Marking a notification read or dismissing it changes the inbox; it does not cancel external work. Deleting it cancels unsent work and removes its stored content. A delivery already in progress may finish.
 
-External providers are optional. Plugin providers also need an active installation and permission grant. **Settings â†’ Account â†’ Notifications** starts with your configured providers and personal destinations, followed by notification types and Normal/Critical routing choices. Calendar settings are separate. Only implemented sources appear; price observation controls appear after a connected source emits an observation for your account.
+External providers are optional. Plugin providers also need an active installation and permission grant. **Settings → Account → Notifications** starts with your configured providers and personal destinations, followed by notification types and Normal/Critical routing choices. Calendar settings are separate. Only implemented sources appear; price observation controls appear after a connected source emits an observation for your account.
 
 ## Built-in email
 
-Administrators configure SMTP under **Settings â†’ Administration â†’ Notifications â†’ Email delivery** or through the existing ENV handler. SMTP is built into the host. Password reset and invitation features remain plugins; adding SMTP does not install those features.
+Administrators configure SMTP under **Settings → Administration → Notifications → Email delivery** or through the existing ENV handler. SMTP is built into the host. Password reset and invitation features remain plugins; adding SMTP does not install those features.
 
 | ENV name | Meaning |
 | --- | --- |
@@ -21,7 +21,7 @@ ENV values take precedence and cannot be replaced from the UI. STARTTLS and impl
 
 The port follows transport security until you edit it. A saved custom port stays fixed when security changes. **Use default port**, then save, restores automatic selection. Existing explicitly stored ports are preserved as custom values. ENV-managed ports remain locked.
 
-Add one or more personal email addresses under **Your providers â†’ Email (SMTP)**. The initial address is your configured app email; you can enter another address. Prefilling an address does not enroll or verify it. Addresses start PRIVATE and may receive ordinary notifications. Request a verification email, then either open **Verify this email** and confirm, or enter its eight-digit code in settings. Links and codes share the same ten-minute, single-use challenge. Opening the link does not consume it, sign you into the app, or enable recovery routing. An address change, revoked challenge or successful code/link invalidates the other method. Codes allow five incorrect attempts. Resends are limited to one per minute per destination and ten requests per hour per user. Proof travels only to the selected email, never to another destination. When no usable app URL exists, code entry remains available.
+Add one or more personal email addresses under **Your providers → Email (SMTP)**. The initial address is your configured app email; you can enter another address. Prefilling an address does not enroll or verify it. Addresses start PRIVATE and may receive ordinary notifications. Request a verification email, then either open **Verify this email** and confirm, or enter its eight-digit code in settings. Links and codes share the same ten-minute, single-use challenge. Opening the link does not consume it, sign you into the app, or enable recovery routing. An address change, revoked challenge or successful code/link invalidates the other method. Codes allow five incorrect attempts. Resends are limited to one per minute per destination and ten requests per hour per user. Proof travels only to the selected email, never to another destination. When no usable app URL exists, code entry remains available.
 
 ### Test delivery
 
@@ -35,7 +35,7 @@ Normal is the default urgency. Critical email adds high-priority headers; the ma
 
 ## Email unsubscribe
 
-Notification links follow destination URL preference â†’ personal notification URL â†’ shared public app URL â†’ your last-used app origin. Configure your preferences under **Settings â†’ Notifications â†’ Notification links**; blank overrides inherit the default. Configure the shared URL under **Settings â†’ Administration â†’ Application**, setup, or `PUBLIC_APP_URL` through the existing ENV handler. That shared value must use HTTPS and a public fully qualified domain name. Its public DNS is managed by the administrator. The app remembers each user's origin when they open it while signed in, including a local IP or different domain. API-key/plugin traffic cannot change it. All of these URLs are independent of OIDC sign-in callbacks. Ordinary email receives no unsubscribe link until at least one usable URL exists.
+Notification links follow destination URL preference → personal notification URL → shared public app URL → your last-used app origin. Configure your preferences under **Settings → Notifications → Notification links**; blank overrides inherit the default. Configure the shared URL under **Settings → Administration → Application**, setup, or `PUBLIC_APP_URL` through the existing ENV handler. That shared value must use HTTPS and a public fully qualified domain name. Its public DNS is managed by the administrator. The app remembers each user's origin when they open it while signed in, including a local IP or different domain. API-key/plugin traffic cannot change it. All of these URLs are independent of OIDC sign-in callbacks. Ordinary email receives no unsubscribe link until at least one usable URL exists.
 
 Ordinary notification emails include a `List-Unsubscribe` header and a short linked footer in the HTML version. The plain-text version keeps the original notification body; the header retains the complete opt-out URL. Mail clients may offer an Unsubscribe command. Opening the link displays a confirmation page without changing settings. Click **Unsubscribe from this type** to stop only the notification type named on that page for this email destination. Other notification types, security/recovery routes, your inbox, other addresses and history stay active. Matching queued work is suppressed; a send already in progress may finish.
 
@@ -43,7 +43,7 @@ The separate **Stop all email notifications to this destination** button also st
 
 Links expire after 90 days. Changing/removing the address invalidates its old links. Type-only unsubscribe keeps the address active, its verification proof and your Normal/Critical choice. All-email unsubscribe preserves same-address verification; reactivating the destination in Settings invalidates its old links. Verification, recovery and security emails are transactional and omit subscription headers and footers.
 
-This is confirmation-based header support, not RFC 8058 one-click. `List-Unsubscribe-Post` is not advertised. Display of a mail-client unsubscribe button also depends on the client's policies and the SMTP relay's authentication configuration.
+HTTPS subscription links also advertise `List-Unsubscribe-Post: List-Unsubscribe=One-Click` and a stable per-type `List-ID`, with `Precedence: bulk`. A mailbox client can POST the standard one-click form without a session or redirect; it stops only that notification type at that email destination. GET remains read-only. The SMTP relay must DKIM-sign both `List-Unsubscribe` and `List-Unsubscribe-Post`; client policy and sender reputation also affect whether a button appears. No mailto opt-out is advertised because the app does not process replies. See [RFC 8058](https://www.rfc-editor.org/rfc/rfc8058.html).
 
 ![Unsubscribe confirmation](../assets/notification-email/unsubscribe-confirmation-light.png)
 
@@ -62,18 +62,24 @@ This is confirmation-based header support, not RFC 8058 one-click. `List-Unsubsc
 ## Discord webhooks
 
 The maintained companion plugin **Discord Notifications** (`official.discord-notifications`)
-uses protected host delivery. Install and approve its provider permissions, then
-add webhooks under **Account â†’ Notifications â†’ Your providers â†’ Discord**. The
-signed official 1.0.0 release is available in the companion catalogue;
-use a compatible host implementing the protected Plugin API 1.1.2 contract.
-Administrators must permit Discord egress in the existing plugin runtime.
+declares its configuration and delivery actions through the generic plugin API.
+Install its current compatible catalogue release and approve its provider/storage/network
+permissions, then add webhooks under **Account → Notifications → Your providers → Discord**.
+The plugin owns webhook secrets and transport; the core routes and minimizes content
+before handing it over. Settings never return the saved token. Multiple PUBLIC
+webhooks have independent preferences and explicit media disclosure consent.
+Use **Send test notification** to queue a generic example. Forum threads are not supported.
 
-Add a label and an ordinary Discord HTTPS webhook. Each concrete webhook is
-PUBLIC, and its token is encrypted by the app; plugins and settings responses
-never receive it. Multiple webhooks have independent preferences and consent.
-Configured destinations appear first; inactive history can be expanded separately.
-Use **Send test notification** to queue a generic example to that destination.
-Forum threads and Discord DMs are not supported in this increment.
+The separate **Discord Bot Notifications** plugin supports PRIVATE username DMs before
+verification and PUBLIC destinations addressed by allowed channel ID. Administrators
+configure its generic server fields in **Administration → Notifications** and allow
+text/announcement channels in its Discord settings directory. Users can select a
+default allowed channel in Discord account settings, add a channel destination in
+Notifications and choose its per-type routes. Channel destinations remain PUBLIC.
+SECURE account DMs require the host challenge; recovery also requires explicit
+recovery opt-in and the provider's high-risk grant. A verified Discord profile alone
+does not satisfy host destination verification. See the companion plugin's README
+for channel permissions and paginated server-member lookup.
 
 The default is a generic release announcement, including the release title and
 public release facts. **Choose richer media sharing** presents an explicit
@@ -151,3 +157,20 @@ never replays notices created while it was off. The authenticated inbox remains 
 ![Server browser configuration](../assets/notification-browser/admin-push-dark.png)
 
 ![Mobile browser destinations](../assets/notification-browser/account-push-mobile-light.png)
+
+All emails—including delivery tests, verification, password reset and invites—include the same responsive HTML card and a readable plain-text alternative. Security actions use a labeled button rather than showing a long token URL in the HTML paragraph. Text and links are escaped; plugins cannot insert executable markup. The host supplies Date and a Message-ID using the configured sender domain. Transactional emails are not marked as bulk subscriptions.
+
+![Verification email](../assets/notification-mail-auth/email-verification-desktop.png)
+
+![Password recovery email on mobile](../assets/notification-mail-auth/email-recovery-mobile.png)
+
+![Delivery test email on mobile](../assets/notification-mail-auth/email-test-mobile.png)
+
+
+Changing an installed provider's transport/configuration contract retires its old
+destinations, consent, verification and pending work. Configure and activate the
+new destination explicitly; upgrading does not transfer old webhook credentials.
+Gateway permission/contract failures are distinguished from temporary outages.
+For Discord bot recovery use a separate **Discord account DM** with host proof,
+recovery opt-in and the provider high-risk grant. Legacy grouped profile links
+remain PRIVATE, including profiles previously verified inside the plugin.

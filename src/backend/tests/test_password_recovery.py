@@ -38,6 +38,7 @@ from src.features.password_recovery import (
 from src.features.plugin_auth_flows import (
     active_reset_flow,
     register_reset_flow,
+    reset_flow_status,
     unregister_reset_flow,
 )
 from src.plugin_api.capabilities import capability_definition, capability_implies
@@ -109,6 +110,26 @@ async def recovery(mailbox, monkeypatch):
         await db.commit()
 
 
+@pytest.mark.asyncio
+async def test_recovery_configuration_status_uses_live_authority(recovery):
+    r = recovery
+    async with SessionLocal() as db:
+        assert await reset_flow_status(db, r.plugin, r.installation, r.user, {}) == {
+            "registered": True,
+            "token_lifetime_seconds": 1200,
+        }
+        r.state[0]["enabled"] = False
+        assert not (await reset_flow_status(db, r.plugin, r.installation, r.user, {}))["registered"]
+        r.state[0]["enabled"] = True
+        with pytest.raises(ValueError, match="no parameters"):
+            await reset_flow_status(db, r.plugin, r.installation, r.user, {"user_id": str(r.user)})
+        user = await db.get(User, r.user)
+        user.is_admin = False
+        await db.commit()
+        with pytest.raises(PermissionError, match="administrator"):
+            await reset_flow_status(db, r.plugin, r.installation, r.user, {})
+
+
 async def issue(p):
     async with SessionLocal() as db:
         await request_password_reset(db, f"{p.user}@example.test", "test-caller")
@@ -137,7 +158,7 @@ async def test_real_smtp_handoff_fragment_link_and_atomic_session_only_revocatio
         assert secret not in notice.body and secret not in token.token_hash
         assert token.encrypted_token != secret
         assert await process_pending_deliveries(db) == 1
-    body = p.messages[-1].get_content()
+    body = p.messages[-1].get_body(preferencelist=("plain",)).get_content()
     link = next(line for line in body.splitlines() if line.startswith("https://"))
     parsed = urlsplit(link)
     assert parsed.netloc == "library.example.test" and parsed.path == "/reset-password"

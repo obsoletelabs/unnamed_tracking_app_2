@@ -89,14 +89,26 @@ async def register_invite_flow(db, plugin_id, installation_id, user_id, payload,
 
 
 async def invite_flow_status(db, plugin_id, installation_id, user_id, payload):
+    return await auth_flow_status(
+        db, plugin_id, installation_id, user_id, payload, mode="user_invite"
+    )
+
+
+async def reset_flow_status(db, plugin_id, installation_id, user_id, payload):
+    return await auth_flow_status(
+        db, plugin_id, installation_id, user_id, payload, mode="password_reset"
+    )
+
+
+async def auth_flow_status(db, plugin_id, installation_id, user_id, payload, *, mode):
     if payload:
-        raise ValueError("Invitation status accepts no parameters")
+        raise ValueError("Auth flow status accepts no parameters")
     admin = await db.get(User, user_id)
     if admin is None or not admin.is_active or not admin.is_admin:
-        raise PermissionError("Invitation configuration requires an administrator")
-    if not await _global_grant(db, plugin_id, installation_id, "user_invite"):
-        raise PermissionError("Invitation configuration requires an explicit global grant")
-    flow = await active_auth_flow(db, "user_invite")
+        raise PermissionError("Auth flow configuration requires an administrator")
+    if not await _global_grant(db, plugin_id, installation_id, mode):
+        raise PermissionError("Auth flow configuration requires an explicit global grant")
+    flow = await active_auth_flow(db, mode)
     registered = bool(
         flow and flow.plugin_id == plugin_id and flow.installation_id == installation_id
     )
@@ -104,7 +116,7 @@ async def invite_flow_status(db, plugin_id, installation_id, user_id, payload):
         "registered": registered,
         "token_lifetime_seconds": flow.definition["token_lifetime_seconds"]
         if registered
-        else 86400,
+        else (1200 if mode == "password_reset" else 86400),
     }
 
 

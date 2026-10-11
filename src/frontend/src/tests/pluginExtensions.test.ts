@@ -171,6 +171,27 @@ const document: PluginUiDocument = {
 };
 
 describe("plugin extension registry", () => {
+  it("requires administrative navigation permission for user action dialogs", () => {
+    const withAction: PluginUiDocument = {
+      ...document,
+      extensions: [
+        {
+          id: "invite",
+          slot: "administration.users.actions",
+          page_id: "dashboard",
+          order: 0,
+        },
+      ],
+    };
+    const withoutGrant = {
+      ...plugin,
+      effective_capabilities: ["frontend.page.extend"],
+    };
+    expect(
+      derivePluginContributions(withoutGrant, withAction).slots,
+    ).toHaveLength(0);
+    expect(derivePluginContributions(plugin, withAction).slots).toHaveLength(1);
+  });
   it("requires the specific placement scope to join each built-in settings area", () => {
     for (const [area, group, scope] of [
       ["account", "Account", "frontend.placement.settings.account"],

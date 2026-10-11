@@ -257,8 +257,11 @@ async function sendTest() {
         <p class="hint">
           Notification links use each user's URL preferences, the shared app
           URL, or their last-used app URL. Configure the shared URL under
-          Application. Unsubscribe links ask for confirmation; verification and
-          recovery emails do not include them.
+          Application. Email links ask for confirmation; mailbox unsubscribe
+          buttons can stop that notification type directly. Your relay must
+          DKIM-sign List-Unsubscribe and List-Unsubscribe-Post for one-click
+          support. Verification and recovery emails do not include opt-out
+          links.
         </p>
         <p v-if="saved" class="success" role="status">SMTP settings saved.</p>
         <button :disabled="busy">

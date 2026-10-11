@@ -206,6 +206,8 @@ function navigationCapability(location: UiNavigationLocation): string {
 }
 
 function extensionCapability(slot: HostExtensionSlot): string {
+  if (slot === "administration.users.actions")
+    return "frontend.navigation.admin";
   if (slot === "home.replace") return "frontend.page.replace.home";
   if (slot === "app.global") return "frontend.overlay";
   return "frontend.page.extend";

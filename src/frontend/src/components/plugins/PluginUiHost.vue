@@ -43,7 +43,7 @@ const frontend = computed(() =>
 );
 const frontendUrl = computed(() =>
   frontend.value
-    ? `/api/plugins/${encodeURIComponent(props.document.plugin_id)}/frontend/${frontend.value.entry.split("/").map(encodeURIComponent).join("/")}`
+    ? `/api/plugins/${encodeURIComponent(props.document.plugin_id)}/frontend/${frontend.value.entry.split("/").map(encodeURIComponent).join("/")}?page=${encodeURIComponent(activePage.value)}`
     : "",
 );
 const pages = computed(() => props.document.pages);
