@@ -262,16 +262,6 @@ async function copy() {
   cursor: pointer;
   overflow: hidden;
 }
-.ac-thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-  transition: transform 0.25s ease;
-}
-.ac:hover .ac-thumb img {
-  transform: scale(1.03);
-}
 .ac-art {
   position: absolute;
   inset: 0;
@@ -391,7 +381,7 @@ async function copy() {
   margin: 0;
   font-size: 0.84rem;
   font-weight: 600;
-  color: #e8e8e8;
+  color: var(--ui-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

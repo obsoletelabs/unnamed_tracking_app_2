@@ -1,0 +1,46 @@
+{
+  "compiled_ui": true,
+  "real_apis": true,
+  "disposable_database": true,
+  "passed": [
+    {
+      "width": 1440,
+      "on_demand": true,
+      "upload": true,
+      "versions_and_downloads": true,
+      "note_persisted": true,
+      "legacy_tab_link": true,
+      "trash_restore": true,
+      "modpack_visible": true,
+      "renderer_requests": 0,
+      "overflow": false,
+      "console_errors": 0
+    },
+    {
+      "width": 390,
+      "on_demand": true,
+      "upload": true,
+      "versions_and_downloads": true,
+      "note_persisted": true,
+      "legacy_tab_link": true,
+      "trash_restore": true,
+      "modpack_visible": true,
+      "renderer_requests": 0,
+      "overflow": false,
+      "console_errors": 0
+    },
+    {
+      "width": 320,
+      "on_demand": true,
+      "upload": true,
+      "versions_and_downloads": true,
+      "note_persisted": true,
+      "legacy_tab_link": true,
+      "trash_restore": true,
+      "modpack_visible": true,
+      "renderer_requests": 0,
+      "overflow": false,
+      "console_errors": 0
+    }
+  ]
+}

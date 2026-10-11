@@ -394,7 +394,7 @@ function onKey(e: KeyboardEvent) {
 }
 .aed-v-main strong {
   font-size: 0.82rem;
-  color: #f0f0f0;
+  color: var(--ui-text);
 }
 .aed-v-main span {
   font-size: 0.74rem;
@@ -421,5 +421,13 @@ function onKey(e: KeyboardEvent) {
 }
 .aed-spacer {
   flex: 1;
+}
+@media (max-width: 540px) {
+  .aed-versions li {
+    flex-wrap: wrap;
+  }
+  .aed-v-main {
+    flex-basis: 100%;
+  }
 }
 </style>
