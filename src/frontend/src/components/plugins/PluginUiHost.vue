@@ -12,6 +12,7 @@ import {
   dispatchPluginAction,
   downloadPluginDocument,
   PluginActionError,
+  openPluginExternalDestination,
   pluginExternalDestination,
   validateField,
   type PluginUiDocument,
@@ -25,6 +26,9 @@ const props = defineProps<{
   tableData?: Record<string, Record<string, string | number | boolean>[]>;
   pageId?: string;
   embedded?: boolean;
+  // shown inside a host dialog that already has its own title: no heading,
+  // frame border or fixed minimum height around a sandboxed page
+  chromeless?: boolean;
   context?: Record<string, string | number | boolean>;
   widgetConfig?: UiValues;
 }>();
@@ -37,7 +41,7 @@ const activePage = ref(props.pageId ?? props.document.pages[0]?.id ?? "");
 const values = ref<UiValues>(buildInitialValues(props.document));
 const submitted = ref(false);
 const iframe = ref<HTMLIFrameElement | null>(null);
-const iframeHeight = ref(520);
+const iframeHeight = ref(props.chromeless ? 160 : 520);
 const frontend = computed(() =>
   props.embedded ? undefined : props.document.frontend,
 );
@@ -189,7 +193,7 @@ async function handleFrontendMessage(event: MessageEvent) {
         Boolean(action.confirmation),
       );
       const destination = pluginExternalDestination(action, result);
-      if (destination) window.location.assign(destination);
+      if (destination) openPluginExternalDestination(destination);
     } else if (method === "plugin.download-document") {
       await downloadPluginDocument(
         props.document.plugin_id,
@@ -201,7 +205,7 @@ async function handleFrontendMessage(event: MessageEvent) {
         throw new Error("Plugin frame height must be a finite number.");
       iframeHeight.value = Math.min(
         2400,
-        Math.max(320, Math.ceil(data.height)),
+        Math.max(props.chromeless ? 120 : 320, Math.ceil(data.height)),
       );
       result = { height: iframeHeight.value };
     } else if (method === "plugin.shortcut") {
@@ -278,7 +282,7 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="plugin-ui-host" :aria-label="document.title">
-    <header>
+    <header v-if="!(chromeless && frontend)">
       <h2>{{ embedded ? page?.title : document.title }}</h2>
       <nav
         v-if="
@@ -315,9 +319,10 @@ onBeforeUnmount(() => {
         {{ page.description }}
       </p>
     </header>
-    <div v-if="frontend" class="frontend-shell">
+    <div v-if="frontend" class="frontend-shell" :class="{ chromeless }">
       <iframe
         ref="iframe"
+        :class="{ chromeless }"
         :style="{ height: `${iframeHeight}px` }"
         :src="frontendUrl"
         :title="document.title + ' frontend'"
@@ -473,6 +478,15 @@ td {
 }
 .frontend-shell {
   min-height: 520px;
+}
+.frontend-shell.chromeless {
+  min-height: 0;
+}
+.frontend-shell iframe.chromeless {
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 .frontend-shell iframe {
   display: block;

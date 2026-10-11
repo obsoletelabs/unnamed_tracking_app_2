@@ -19,6 +19,7 @@ const emit = defineEmits<{ close: [] }>();
       :document="connection.document"
       :page-id="connection.pageId"
       :context="{ host_page: 'connections' }"
+      chromeless
     />
     <template #footer>
       <button type="button" class="ui-btn ui-btn-ghost" @click="emit('close')">

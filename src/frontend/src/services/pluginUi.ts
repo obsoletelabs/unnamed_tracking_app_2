@@ -123,6 +123,7 @@ export interface UiConnectionContribution {
   description: string;
   page_id: string;
   status_action_id?: string | null;
+  sync_action_id?: string | null;
   icon?: string | null;
   order: number;
 }
@@ -608,7 +609,21 @@ export function validateDocument(document: PluginUiDocument): string[] {
     )
   )
     errors.push("Plugin connections require API v1.1.9 or later.");
+  if (
+    connections.some((item) => item.sync_action_id) &&
+    !/^1\.1\.(1\d|[2-9]\d|\d{3,})$|^1\.([2-9]|\d{2,})\./.test(
+      document.api_contract_version ?? "",
+    )
+  )
+    errors.push("Plugin connection sync requires API v1.1.10 or later.");
   for (const contribution of connections) {
+    if (
+      contribution.sync_action_id &&
+      !actions.has(contribution.sync_action_id)
+    )
+      errors.push(
+        `Connection ${contribution.id} references an unknown sync action.`,
+      );
     if (!pages.has(contribution.page_id))
       errors.push(`Connection ${contribution.id} references an unknown page.`);
     if (
@@ -685,6 +700,15 @@ export function buildInitialValues(document: PluginUiDocument): UiValues {
     }
   }
   return values;
+}
+
+/**
+ * Open a validated external destination in a new tab. The app, and any dialog
+ * the action came from, stays where it is; the plugin's sandbox gains no
+ * popup permission because the host opens the tab itself.
+ */
+export function openPluginExternalDestination(destination: string): void {
+  window.open(destination, "_blank", "noopener,noreferrer");
 }
 
 /** Honor only declared external navigation and credential-free HTTP(S) targets. */

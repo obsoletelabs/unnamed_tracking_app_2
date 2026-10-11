@@ -11,15 +11,25 @@ import {
 import type { ConnectionConfig } from "../../composables/useConnections";
 import { SOURCE_VISUALS } from "../../composables/useMetadataSources";
 import { dispatchPluginAction } from "../../services/pluginUi";
-import { pluginConnectionStatus } from "../../services/pluginConnections";
+import {
+  pluginConnectionStatus,
+  runPluginSync,
+} from "../../services/pluginConnections";
 import type { PluginConnectionStatus } from "../../services/pluginConnections";
 import { pluginConnections } from "../../state/pluginExtensions";
+import {
+  addFeedItem,
+  completeTask,
+  errorTask,
+  startTask,
+} from "../../state/taskProgress";
 import type { PluginConnectionContribution } from "../../state/pluginExtensions";
 
 const state = useConnections();
 const managing = ref<ConnectionConfig | null>(null);
 const managingPlugin = ref<PluginConnectionContribution | null>(null);
 const steamSignIn = ref(false);
+const syncingPlugin = ref<string | null>(null);
 const pluginStatus = ref<Record<string, PluginConnectionStatus>>({});
 
 const FALLBACK = { bg: "#1f1f1f", fg: "#d1d5db", mark: "•" };
@@ -121,6 +131,25 @@ async function loadPluginStatus() {
   );
 }
 
+async function syncPlugin(item: PluginConnectionContribution) {
+  const action = item.syncAction;
+  if (!action || syncingPlugin.value) return;
+  syncingPlugin.value = pluginKey(item);
+  const taskId = startTask(`Syncing ${item.label}`, 1, { indeterminate: true });
+  try {
+    const message = await runPluginSync(
+      () => dispatchPluginAction(item.pluginId, action.id),
+      (progress) => addFeedItem(taskId, progress),
+    );
+    completeTask(taskId, message ?? "Sync complete.");
+  } catch (cause) {
+    errorTask(taskId, cause instanceof Error ? cause.message : "Sync failed.");
+  } finally {
+    syncingPlugin.value = null;
+    void loadPluginStatus();
+  }
+}
+
 function closePlugin() {
   managingPlugin.value = null;
   // the popup may have connected or disconnected the account
@@ -173,6 +202,15 @@ watch(pluginConnections, () => void loadPluginStatus(), { immediate: true });
                 ? "Syncing…"
                 : "Sync now"
             }}
+          </button>
+          <button
+            v-if="row.plugin?.syncAction && row.connected"
+            type="button"
+            class="btn"
+            :disabled="syncingPlugin !== null"
+            @click="syncPlugin(row.plugin)"
+          >
+            {{ syncingPlugin === row.key ? "Syncing…" : "Sync now" }}
           </button>
           <button
             type="button"

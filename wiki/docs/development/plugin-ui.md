@@ -80,6 +80,7 @@ disconnecting stay on the Connections page instead of a separate sidebar entry.
 | `description` | Optional row text, at most 256 characters, shown until the plugin reports an account name. |
 | `page_id` | A declared page opened in the popup. |
 | `status_action_id` | Optional declared action the host runs for the signed-in user when the page loads and when the popup closes. |
+| `sync_action_id` | Optional declared action (API 1.1.10 or later) that gives a connected row a **Sync now** button. |
 | `icon`, `order` | Optional presentation hints. |
 
 The status action returns an object. The host accepts only a literal boolean
@@ -88,6 +89,15 @@ most); anything else is treated as not connected, and `ok: false` or a failed ac
 shows the row as unavailable. The action needs its own declared capability and grant,
 for example `plugin.storage`. Without a status action the row shows its description
 and no connection state.
+
+The sync action performs one bounded step per call and returns an object with a
+boolean `complete` and an optional short `message` (160 characters at most). The
+host calls it again until `complete` is `true`, shows the distinct messages in the
+task progress panel, and stops with an error if a result is malformed, reports
+`ok: false`, or the action has not completed after 5000 calls; running it again
+resumes from the plugin's own checkpoint. The host never runs two syncs for one
+account at the same time from the Connections page. A sync action needs its own
+declared capability and grant, such as `games.write` for an import.
 
 Registration requires the `frontend.connections` capability, which is low risk and
 independent of `frontend.settings` and `frontend.navigation.*`. Without the grant

@@ -72,6 +72,7 @@ export interface PluginConnectionContribution {
   icon?: string;
   order: number;
   statusAction?: UiAction;
+  syncAction?: UiAction;
   document: PluginUiDocument;
 }
 
@@ -331,6 +332,9 @@ export function derivePluginContributions(
             order: item.order,
             statusAction: document.actions.find(
               (action) => action.id === item.status_action_id,
+            ),
+            syncAction: document.actions.find(
+              (action) => action.id === item.sync_action_id,
             ),
             document,
           },

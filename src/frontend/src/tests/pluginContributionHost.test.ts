@@ -133,8 +133,8 @@ afterEach(() => {
 it.each(["declared", "undeclared", "failed"])(
   "handles %s external navigation from a declarative plugin action",
   async (mode) => {
-    const assign = vi.fn();
-    vi.stubGlobal("window", { location: { assign } });
+    const open = vi.fn();
+    vi.stubGlobal("window", { open });
     vi.mocked(dispatchPluginAction).mockResolvedValueOnce({
       redirect_url: "https://www.epicgames.com/id/login",
       ...(mode === "failed" ? { ok: false } : {}),
@@ -172,10 +172,12 @@ it.each(["declared", "undeclared", "failed"])(
       await nextTick();
       expect(dispatchPluginAction).toHaveBeenCalledOnce();
       if (mode === "declared")
-        expect(assign).toHaveBeenCalledExactlyOnceWith(
+        expect(open).toHaveBeenCalledExactlyOnceWith(
           "https://www.epicgames.com/id/login",
+          "_blank",
+          "noopener,noreferrer",
         );
-      else expect(assign).not.toHaveBeenCalled();
+      else expect(open).not.toHaveBeenCalled();
     } finally {
       app.unmount();
     }

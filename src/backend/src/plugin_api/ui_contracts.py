@@ -393,6 +393,10 @@ class UiConnectionContribution(ContractModel):
     disconnect lifecycle stays on the Connections page. ``status_action_id`` is an
     optional declared action the host calls for the signed-in user; it returns a
     bounded object with a boolean ``connected`` and an optional ``display_name`` string.
+
+    ``sync_action_id`` (v1.1.10) is an optional declared action that gives a connected row a
+    **Sync now** button. The host runs it repeatedly, one bounded step per call, until it
+    returns ``complete: true``; each result may carry a short ``message`` describing progress.
     """
 
     id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
@@ -400,6 +404,9 @@ class UiConnectionContribution(ContractModel):
     description: str = Field(default="", max_length=256)
     page_id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
     status_action_id: str | None = Field(
+        default=None, min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$"
+    )
+    sync_action_id: str | None = Field(
         default=None, min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$"
     )
     icon: str | None = Field(default=None, min_length=1, max_length=64)
@@ -699,6 +706,10 @@ class PluginUiDocument(ContractModel):
                 action_set
             ):
                 raise ValueError(f"connection {connection.id} references an unknown status action")
+            if connection.sync_action_id is not None and connection.sync_action_id not in (
+                action_set
+            ):
+                raise ValueError(f"connection {connection.id} references an unknown sync action")
         for dialog_contribution in self.dialog_contributions:
             if dialog_contribution.dialog_id not in dialog_set:
                 raise ValueError(
@@ -715,6 +726,10 @@ class PluginUiDocument(ContractModel):
         """Connections are the additive v1.1.9 contribution; older documents cannot use them."""
         if self.connections and parse_semver(self.api_contract_version) < (1, 1, 9):
             raise ValueError("connection contributions require Plugin API v1.1.9")
+        if any(item.sync_action_id for item in self.connections) and parse_semver(
+            self.api_contract_version
+        ) < (1, 1, 10):
+            raise ValueError("connection sync actions require Plugin API v1.1.10")
         return self
 
     @model_validator(mode="after")

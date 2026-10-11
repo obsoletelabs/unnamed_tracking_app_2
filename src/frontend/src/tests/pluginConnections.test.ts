@@ -1,9 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { derivePluginContributions } from "../state/pluginExtensions";
 import { validateDocument } from "../services/pluginUi";
 import type { PluginUiDocument } from "../services/pluginUi";
 import type { PluginSummary } from "../services/plugins";
-import { pluginConnectionStatus } from "../services/pluginConnections";
+import {
+  pluginConnectionStatus,
+  runPluginSync,
+} from "../services/pluginConnections";
 
 const plugin: PluginSummary = {
   api_contract_version: "1.1.9",
@@ -137,5 +140,77 @@ describe("pluginConnectionStatus", () => {
       connected: false,
       error: true,
     });
+  });
+});
+
+describe("plugin connection sync", () => {
+  const syncDocument: PluginUiDocument = {
+    ...document,
+    api_contract_version: "1.1.10",
+    actions: [...document.actions, { id: "sync", label: "Sync" }],
+    connections: [{ ...document.connections![0], sync_action_id: "sync" }],
+  };
+
+  it("derives the sync action next to the status action", () => {
+    const current = { ...plugin, api_contract_version: "1.1.10" };
+    const [connection] = derivePluginContributions(
+      current,
+      syncDocument,
+    ).connections;
+    expect(connection.syncAction).toMatchObject({ id: "sync" });
+    expect(connection.statusAction).toMatchObject({ id: "status" });
+  });
+
+  it("requires a declared action and API 1.1.10", () => {
+    expect(validateDocument(syncDocument)).toEqual([]);
+    expect(
+      validateDocument({ ...syncDocument, api_contract_version: "1.1.9" }),
+    ).toContain("Plugin connection sync requires API v1.1.10 or later.");
+    expect(
+      validateDocument({ ...syncDocument, api_contract_version: "1.2.0" }),
+    ).toEqual([]);
+    expect(
+      validateDocument({
+        ...syncDocument,
+        connections: [
+          { ...syncDocument.connections![0], sync_action_id: "missing" },
+        ],
+      }),
+    ).toContain("Connection account references an unknown sync action.");
+  });
+
+  it("repeats the step until the plugin reports completion", async () => {
+    const step = vi
+      .fn()
+      .mockResolvedValueOnce({ complete: false, message: "Reading inventory" })
+      .mockResolvedValueOnce({ complete: false, message: "Reading inventory" })
+      .mockResolvedValueOnce({ complete: false, message: "Saving games" })
+      .mockResolvedValueOnce({ complete: true, message: "Import complete." });
+    const seen: string[] = [];
+    const message = await runPluginSync(step, (text) => seen.push(text));
+    expect(step).toHaveBeenCalledTimes(4);
+    expect(seen).toEqual([
+      "Reading inventory",
+      "Saving games",
+      "Import complete.",
+    ]);
+    expect(message).toBe("Import complete.");
+  });
+
+  it("stops on a failed or malformed step", async () => {
+    await expect(
+      runPluginSync(async () => ({ ok: false, error: "Epic is unavailable." })),
+    ).rejects.toThrow("Epic is unavailable.");
+    await expect(
+      runPluginSync(async () => ({ complete: "yes" })),
+    ).rejects.toThrow("unexpected sync result");
+  });
+
+  it("does not call a plugin that never completes without bound", async () => {
+    const step = vi.fn(async () => ({ complete: false }));
+    await expect(runPluginSync(step, () => {}, 3)).rejects.toThrow(
+      "Run it again to resume",
+    );
+    expect(step).toHaveBeenCalledTimes(3);
   });
 });

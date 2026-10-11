@@ -388,3 +388,29 @@ def test_connections_require_their_own_low_risk_grant():
     definition = capability_definition(Capability.FRONTEND_CONNECTIONS)
     assert definition.risk.value == "low"
     assert not definition.highly_privileged
+
+
+def sync_document(**overrides) -> dict:
+    data = connection_document(api_contract_version="1.1.10")
+    data["actions"] = [
+        *data["actions"],
+        {"id": "sync", "label": "Sync", "handler": "plugin:sync"},
+    ]
+    data["connections"][0]["sync_action_id"] = "sync"
+    data.update(overrides)
+    return data
+
+
+def test_connection_sync_action_is_validated():
+    document = PluginUiDocument.model_validate(sync_document())
+    assert document.connections[0].sync_action_id == "sync"
+
+    unknown = sync_document()
+    unknown["connections"][0]["sync_action_id"] = "missing"
+    with pytest.raises(ValidationError, match="unknown sync action"):
+        PluginUiDocument.model_validate(unknown)
+
+
+def test_connection_sync_action_requires_contract_1_1_10():
+    with pytest.raises(ValidationError, match="sync actions require Plugin API v1.1.10"):
+        PluginUiDocument.model_validate(sync_document(api_contract_version="1.1.9"))

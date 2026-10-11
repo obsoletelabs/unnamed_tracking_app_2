@@ -4,6 +4,7 @@ import { useRouter } from "vue-router";
 import {
   approvePluginAction,
   dispatchPluginAction,
+  openPluginExternalDestination,
   pluginExternalDestination,
   type PluginActionContext,
 } from "../../services/pluginUi";
@@ -53,7 +54,7 @@ async function run(index: number) {
       return;
     }
     const destination = pluginExternalDestination(contribution.action, result);
-    if (destination) window.location.assign(destination);
+    if (destination) openPluginExternalDestination(destination);
   } catch (cause) {
     error.value =
       cause instanceof Error

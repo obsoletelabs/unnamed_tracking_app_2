@@ -1,7 +1,7 @@
 # Plugin API v1
 
-The host advertises **v1.1.9** while retaining the `v1` wire major. Declared
-v1.1.0 through v1.1.8 contracts remain supported. See
+The host advertises **v1.1.10** while retaining the `v1` wire major. Declared
+v1.1.0 through v1.1.9 contracts remain supported. See
 [v1.1 migration](plugin-v1.1-migration.md) for the restricted legacy v1.0
 compatibility boundary; omission is treated as v1.0.0.
 
@@ -371,6 +371,16 @@ host opens the plugin's declared page in a popup so connecting, importing and
 disconnecting never leave that page. See
 [Connections in plugin UI](plugin-ui.md#connections). Existing 1.1.0 through 1.1.8
 packages are unchanged and cannot declare connections.
+
+### Connection sync in 1.1.10
+
+v1.1.10 adds the optional `sync_action_id` to a connection contribution. A
+connected row gets the same **Sync now** button as the built-in accounts, and the
+host runs the declared action until it reports completion. Sign-in actions that
+declare `external_navigation` now open in a new tab rather than replacing the
+app's tab; this is a host behavior refinement and needs no manifest change.
+Connections declared at 1.1.9 are unchanged. See
+[Connections in plugin UI](plugin-ui.md#connections).
 
 ### Notification provider descriptors in 1.1.5
 

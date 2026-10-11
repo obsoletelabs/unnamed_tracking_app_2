@@ -8,6 +8,7 @@ import type {
 } from "../../services/pluginUi";
 import {
   dispatchPluginAction,
+  openPluginExternalDestination,
   pluginExternalDestination,
 } from "../../services/pluginUi";
 import { pluginRequestError } from "../../services/apiError";
@@ -25,6 +26,7 @@ const props = defineProps<{
   pageId: string;
   context?: Record<string, string | number | boolean>;
   embedded?: boolean;
+  chromeless?: boolean;
   actionContext?: PluginActionContext;
   widgetConfig?: UiValues;
 }>();
@@ -78,7 +80,7 @@ async function run(action: UiAction, values: UiValues) {
     Boolean(action.confirmation),
   );
   const destination = pluginExternalDestination(action, result);
-  if (destination) window.location.assign(destination);
+  if (destination) openPluginExternalDestination(destination);
 }
 
 const nativeHost = computed(() => ({
@@ -122,6 +124,7 @@ const nativeHost = computed(() => ({
     :page-id="pageId"
     :context="context"
     :embedded="embedded"
+    :chromeless="chromeless"
     :widget-config="widgetConfig"
     @save="save"
     @action="run"
