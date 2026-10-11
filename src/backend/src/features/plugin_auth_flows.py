@@ -89,14 +89,18 @@ async def register_invite_flow(db, plugin_id, installation_id, user_id, payload,
 
 
 async def invite_flow_status(db, plugin_id, installation_id, user_id, payload):
-    return await auth_flow_status(db, plugin_id, installation_id, user_id, payload, "user_invite")
+    return await auth_flow_status(
+        db, plugin_id, installation_id, user_id, payload, mode="user_invite"
+    )
 
 
 async def reset_flow_status(db, plugin_id, installation_id, user_id, payload):
-    return await auth_flow_status(db, plugin_id, installation_id, user_id, payload, "password_reset")
+    return await auth_flow_status(
+        db, plugin_id, installation_id, user_id, payload, mode="password_reset"
+    )
 
 
-async def auth_flow_status(db, plugin_id, installation_id, user_id, payload, mode):
+async def auth_flow_status(db, plugin_id, installation_id, user_id, payload, *, mode):
     if payload:
         raise ValueError("Auth flow status accepts no parameters")
     admin = await db.get(User, user_id)
