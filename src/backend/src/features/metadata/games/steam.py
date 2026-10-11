@@ -134,14 +134,19 @@ def _valid_owned_game(game: object) -> bool:
     if not isinstance(game, dict):
         return False
     app_id = game.get("appid")
-    if type(app_id) is not int or not 0 < app_id <= 0xFFFFFFFF:
+    if not isinstance(app_id, int) or isinstance(app_id, bool) or not 0 < app_id <= 0xFFFFFFFF:
         return False
     if "name" in game and not isinstance(game["name"], str):
         return False
     # Playtime is stored as seconds in a signed integer column.
     limits = {"playtime_forever": 2147483647 // 60, "rtime_last_played": 0xFFFFFFFF}
     return all(
-        key not in game or (type(game[key]) is int and 0 <= game[key] <= maximum)
+        key not in game
+        or (
+            isinstance(game[key], int)
+            and not isinstance(game[key], bool)
+            and 0 <= game[key] <= maximum
+        )
         for key, maximum in limits.items()
     )
 
@@ -176,7 +181,9 @@ def get_owned_games(steam_id: str, api_key: str) -> list[dict]:
         raise SteamLibraryError("Steam returned an invalid library response.")
     payload = body.get("response", {})
     count = payload.get("game_count")
-    if "game_count" in payload and (type(count) is not int or count < 0):
+    if "game_count" in payload and (
+        not isinstance(count, int) or isinstance(count, bool) or count < 0
+    ):
         raise SteamLibraryError("Steam returned an invalid library response.")
     if "games" not in payload:
         if count == 0:
