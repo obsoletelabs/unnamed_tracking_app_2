@@ -174,9 +174,13 @@ def test_replaying_steam_session_migration_preserves_connections_and_owner_bindi
                 with Operations.context(MigrationContext.configure(conn)):
                     migration.module.upgrade()
                     migration.module.upgrade()
-                row = conn.execute(
-                    select(*(getattr(User, name) for name in values)).where(User.id == identity)
-                ).mappings().one()
+                row = (
+                    conn.execute(
+                        select(*(getattr(User, name) for name in values)).where(User.id == identity)
+                    )
+                    .mappings()
+                    .one()
+                )
                 assert dict(row) == values
             finally:
                 transaction.rollback()
