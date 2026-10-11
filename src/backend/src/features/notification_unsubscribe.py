@@ -143,3 +143,11 @@ async def unsubscribe_email(
     await retire_destination_work(db, destination.id, "email_unsubscribed")
     await db.commit()
     return None
+
+
+async def unsubscribe_one_click(db: AsyncSession, opaque: str) -> None:
+    """RFC8058 authority removes only the subscription named in a current v2 token."""
+    token = _read_token(opaque)
+    if token.event_type is None:
+        raise UnsubscribeError("One-click unsubscribe requires a notification-type subscription.")
+    await unsubscribe_email(db, opaque, "type")

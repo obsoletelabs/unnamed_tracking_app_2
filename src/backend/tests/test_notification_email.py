@@ -133,7 +133,9 @@ def draft(kind="plugin"):
 async def verify(db, account, endpoint, mailbox):
     challenge = await request_verification(db, account, endpoint)
     assert await process_pending_deliveries(db) == 1
-    code = re.search(r"code is ([0-9]{8})", mailbox[-1].get_payload()).group(1)
+    code = re.search(
+        r"code is ([0-9]{8})", mailbox[-1].get_body(preferencelist=("plain",)).get_content()
+    ).group(1)
     assert await confirm_verification(db, account, endpoint, challenge, code)
     return challenge, code
 
@@ -263,7 +265,9 @@ async def test_codes_never_enter_inbox_and_proof_is_single_use(email_account, ma
         await emit_legacy_rows(db, email_account, [draft("session_anomaly")])
         await db.commit()
         assert await process_pending_deliveries(db) == 1
-        assert "User-private content" in mailbox[-1].get_payload()
+        assert (
+            "User-private content" in mailbox[-1].get_body(preferencelist=("plain",)).get_content()
+        )
 
 
 @pytest.mark.parametrize("mutation", ["address", "revoke", "remove"])
@@ -568,7 +572,7 @@ async def test_unsubscribe_header_and_get_post_destination_isolation(
         link = received["List-Unsubscribe"].strip("<>")
         assert link.startswith("https://app.example.test" + UNSUBSCRIBE_PATH)
         assert "first@example.test" not in link and "Private label" not in link
-        assert "List-Unsubscribe-Post" not in received
+        assert received["List-Unsubscribe-Post"] == "List-Unsubscribe=One-Click"
         assert link not in received.get_body(preferencelist=("plain",)).get_content()
         html = received.get_body(preferencelist=("html",)).get_content()
         assert f'href="{link}"' in html and ">here</a>" in html
@@ -707,7 +711,9 @@ async def test_transactional_messages_do_not_advertise_unsubscribe(
         )
         assert (await SmtpNotificationProvider().deliver(db, destination, message)).success
         assert "List-Unsubscribe" not in mailbox[-1]
-        assert "email-unsubscribe" not in mailbox[-1].get_payload()
+        assert (
+            "email-unsubscribe" not in mailbox[-1].get_body(preferencelist=("plain",)).get_content()
+        )
 
 
 def test_subscription_email_html_escapes_content_without_exposing_link_in_plain_text(monkeypatch):

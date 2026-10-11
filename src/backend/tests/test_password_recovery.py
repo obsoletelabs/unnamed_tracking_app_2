@@ -137,7 +137,7 @@ async def test_real_smtp_handoff_fragment_link_and_atomic_session_only_revocatio
         assert secret not in notice.body and secret not in token.token_hash
         assert token.encrypted_token != secret
         assert await process_pending_deliveries(db) == 1
-    body = p.messages[-1].get_content()
+    body = p.messages[-1].get_body(preferencelist=("plain",)).get_content()
     link = next(line for line in body.splitlines() if line.startswith("https://"))
     parsed = urlsplit(link)
     assert parsed.netloc == "library.example.test" and parsed.path == "/reset-password"

@@ -6,9 +6,11 @@ import smtplib
 import ssl
 import time
 from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 from email.message import EmailMessage
 from email.policy import SMTP
-from html import escape
+from email.utils import format_datetime
+from urllib.parse import urlsplit
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,6 +32,7 @@ from src.features.smtp_configuration import (
 
 from .base import DeliveryResult, NotificationMessage, ProviderDestination
 from .eligibility import endpoint_route_enabled, revalidate_delivery_attempt
+from .email_rendering import render_email
 
 
 @dataclass(frozen=True)
@@ -50,24 +53,23 @@ def send_mail(
     mail["Subject"] = " ".join(message.title.splitlines())
     mail["From"] = normalize_email(config.from_address)
     mail["To"] = normalize_email(address)
-    mail["Message-ID"] = f"<{message.id}@notifications.invalid>"
+    sender_domain = config.from_address.rsplit("@", 1)[1]
+    mail["Date"] = format_datetime(datetime.now(UTC))
+    mail["Message-ID"] = f"<{message.id}@{sender_domain}>"
     if message.urgency == "critical":
         mail["Importance"] = "high"
         mail["X-Priority"] = "1"
     mail.set_content(message.body)
     if unsubscribe_url:
         mail["List-Unsubscribe"] = f"<{unsubscribe_url}>"
-        # Plain-text clients retain the body; the header supplies opt-out authority.
-        # HTML clients get a short linked footer instead of an exposed bearer URL.
-        body = escape(message.body).replace("\n", "<br>\n")
-        mail.add_alternative(
-            '<!doctype html><html lang="en"><body>'
-            f"<h1>{escape(message.title)}</h1><p>{body}</p>"
-            f"<p>Manage or unsubscribe from these notifications "
-            f'<a href="{escape(unsubscribe_url, quote=True)}">here</a>.</p>'
-            "</body></html>",
-            subtype="html",
+        mail["Precedence"] = "bulk"
+        mail["List-ID"] = (
+            f"Tracking app notifications <{message.event_type or 'updates'}.{sender_domain}>"
         )
+        if urlsplit(unsubscribe_url).scheme == "https":
+            # The SMTP relay must DKIM-sign both unsubscribe headers (RFC 8058).
+            mail["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
+    mail.add_alternative(render_email(message, unsubscribe_url), subtype="html")
     context = ssl.create_default_context()
     deadline = time.monotonic() + 25
     client = (
@@ -187,6 +189,7 @@ class SmtpNotificationProvider:
             link = verification_link(origin, challenge) if origin else None
             message = replace(
                 message,
+                action_url=link,
                 body=(
                     f"Your verification code is {code}.\nIt expires in 10 minutes.\n"
                     + (f"Or open this link and confirm to verify:\n{link}\n" if link else "")

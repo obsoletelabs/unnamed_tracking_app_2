@@ -457,7 +457,7 @@ async def test_recovery_source_reaches_only_verified_opted_in_email(source, mail
         result = await call(db, source, "notifications.emit", event(plugin, dedupe_key="eligible"))
         assert await process_pending_deliveries(db) == 1
         assert mailbox[-1]["To"] == "recovery-demo@example.test"
-        assert "Released 3 items." in mailbox[-1].get_payload()
+        assert "Released 3 items." in mailbox[-1].get_body(preferencelist=("plain",)).get_content()
         assert not mailbox[-1]["List-Unsubscribe"]
         notice = await db.get(Notification, UUID(result["notification_id"]))
         assert not notice.inbox_visible

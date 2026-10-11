@@ -43,7 +43,7 @@ The separate **Stop all email notifications to this destination** button also st
 
 Links expire after 90 days. Changing/removing the address invalidates its old links. Type-only unsubscribe keeps the address active, its verification proof and your Normal/Critical choice. All-email unsubscribe preserves same-address verification; reactivating the destination in Settings invalidates its old links. Verification, recovery and security emails are transactional and omit subscription headers and footers.
 
-This is confirmation-based header support, not RFC 8058 one-click. `List-Unsubscribe-Post` is not advertised. Display of a mail-client unsubscribe button also depends on the client's policies and the SMTP relay's authentication configuration.
+HTTPS subscription links also advertise `List-Unsubscribe-Post: List-Unsubscribe=One-Click` and a stable per-type `List-ID`, with `Precedence: bulk`. A mailbox client can POST the standard one-click form without a session or redirect; it stops only that notification type at that email destination. GET remains read-only. The SMTP relay must DKIM-sign both `List-Unsubscribe` and `List-Unsubscribe-Post`; client policy and sender reputation also affect whether a button appears. No mailto opt-out is advertised because the app does not process replies. See [RFC 8058](https://www.rfc-editor.org/rfc/rfc8058.html).
 
 ![Unsubscribe confirmation](../assets/notification-email/unsubscribe-confirmation-light.png)
 
@@ -151,3 +151,5 @@ never replays notices created while it was off. The authenticated inbox remains 
 ![Server browser configuration](../assets/notification-browser/admin-push-dark.png)
 
 ![Mobile browser destinations](../assets/notification-browser/account-push-mobile-light.png)
+
+All emails—including delivery tests, verification, password reset and invites—include the same responsive HTML card and a readable plain-text alternative. Security actions use a labeled button rather than showing a long token URL in the HTML paragraph. Text and links are escaped; plugins cannot insert executable markup. The host supplies Date and a Message-ID using the configured sender domain. Transactional emails are not marked as bulk subscriptions.
