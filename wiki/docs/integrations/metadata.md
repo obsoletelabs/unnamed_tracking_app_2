@@ -165,6 +165,8 @@ app expands them only when the returned schema hash matches. Owner achievement
 icon filenames are converted to Steam CDN URLs. Unverified, rejected or
 incompatible responses retain stored achievements. The app does not use Steam
 OpenID as authorization to read private data: OpenID identifies an account only.
+An explicit no-match response for the achievement schema is skipped; it does
+not remove saved achievements or turn a failed player-progress read into zeroes.
 
 Disconnecting keeps imported games, achievements, manual edits and confirmed
 copy groups. The core library supports one Steam account per app user. Its owner

@@ -103,7 +103,8 @@ def _read(
     result = response.headers.get("x-eresult")
     if result in {"5", "15", "25", "27"}:
         raise SteamLibraryError(_RECONNECT)
-    if result is not None and result != "1":
+    no_schema = result == "42" and method == "IPlayerService/GetGameAchievements/v1/"
+    if result is not None and result != "1" and not no_schema:
         raise SteamLibraryError("Steam could not provide this account's data. Try again shortly.")
     try:
         body = response.json()
@@ -116,6 +117,13 @@ def _read(
     payload = body.get("response", body)
     if not isinstance(payload, dict):
         raise SteamLibraryError("Steam returned an invalid response.")
+    if no_schema:
+        # NoMatch on the schema endpoint means no definition was found, not a
+        # failed owner-progress read. Existing imports retain saved rows when
+        # the schema is empty; this must never turn a player error into zeroes.
+        if payload:
+            raise SteamLibraryError("Steam returned an invalid achievement schema.")
+        return {"achievements": []}
     return payload
 
 

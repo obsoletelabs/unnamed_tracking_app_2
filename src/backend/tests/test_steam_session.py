@@ -214,6 +214,29 @@ def test_games_without_achievements_do_not_request_player_progress():
     client.get.assert_called_once()
 
 
+def test_nomatch_achievement_schema_is_empty_without_a_failed_progress_read():
+    client = Mock()
+    client.get.return_value = reply({"response": {}}, result="42")
+    session = steam_session.SteamSession(STEAM_ID, int(time.time()) + 3600, token())
+    assert steam_session.get_achievement_data(client, session, 123) == ({}, [])
+    client.get.assert_called_once()
+
+
+def test_nomatch_with_a_nonempty_schema_is_rejected():
+    client = Mock()
+    client.get.return_value = reply(definitions(), result="42")
+    session = steam_session.SteamSession(STEAM_ID, int(time.time()) + 3600, token())
+    with pytest.raises(steam_session.SteamLibraryError):
+        steam_session.get_achievement_data(client, session, 123)
+
+
+async def test_nomatch_player_progress_remains_unavailable(monkeypatch):
+    request = Mock(side_effect=[reply(definitions()), reply({"response": {}}, result="42")])
+    monkeypatch.setattr(steam.SESSION, "get", request)
+    session = steam.SteamSession(STEAM_ID, int(time.time()) + 3600, token())
+    assert await fetch_steam_achievements(STEAM_ID, session, 123) == ({}, None, None)
+
+
 def test_owned_games_use_the_verified_session_without_a_personal_api_key(monkeypatch):
     request = Mock(
         return_value=reply(
