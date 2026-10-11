@@ -47,6 +47,7 @@ describe("plugin management service", () => {
       "1.1.6",
       "1.1.7",
       "1.1.8",
+      "1.1.9",
     ]) {
       expect(
         pluginContributionsActive({ ...legacy, api_contract_version: version }),

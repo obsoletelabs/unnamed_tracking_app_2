@@ -324,3 +324,67 @@ def test_themes_require_both_modes_and_unique_ids():
     data["themes"] = [theme]
     with pytest.raises(ValidationError):
         PluginUiDocument.model_validate(data)
+
+
+def connection_document(**overrides) -> dict:
+    data = document_data()
+    data["api_contract_version"] = "1.1.9"
+    data["actions"] = [
+        {"id": "status", "label": "Connection status", "handler": "plugin:status"},
+    ]
+    data["connections"] = [
+        {
+            "id": "library",
+            "label": "Example Library",
+            "description": "Import a personal library.",
+            "page_id": "dashboard",
+            "status_action_id": "status",
+        }
+    ]
+    data.update(overrides)
+    return data
+
+
+def test_connection_contribution_is_validated_against_declared_page_and_action():
+    document = PluginUiDocument.model_validate(connection_document())
+    assert document.connections[0].page_id == "dashboard"
+    assert document.connections[0].status_action_id == "status"
+
+    unknown_page = connection_document()
+    unknown_page["connections"][0]["page_id"] = "missing"
+    with pytest.raises(ValidationError, match="unknown page"):
+        PluginUiDocument.model_validate(unknown_page)
+
+    unknown_action = connection_document()
+    unknown_action["connections"][0]["status_action_id"] = "missing"
+    with pytest.raises(ValidationError, match="unknown status action"):
+        PluginUiDocument.model_validate(unknown_action)
+
+    duplicate = connection_document()
+    duplicate["connections"] = duplicate["connections"] * 2
+    with pytest.raises(ValidationError, match="duplicate connection contribution"):
+        PluginUiDocument.model_validate(duplicate)
+
+
+def test_connection_contribution_requires_contract_1_1_8():
+    with pytest.raises(ValidationError, match="require Plugin API v1.1.9"):
+        PluginUiDocument.model_validate(connection_document(api_contract_version="1.1.8"))
+
+
+def test_connection_contribution_rejects_unknown_fields():
+    data = connection_document()
+    data["connections"][0]["url"] = "https://example.invalid"
+    with pytest.raises(ValidationError):
+        PluginUiDocument.model_validate(data)
+
+
+def test_connections_require_their_own_low_risk_grant():
+    from src.plugin_api.capabilities import capability_definition
+
+    document = PluginUiDocument.model_validate(connection_document())
+    granted_elsewhere = frozenset({"frontend.settings", "frontend.navigation.main"})
+    assert _filter_ui_document(document, granted_elsewhere).connections == ()
+    assert len(_filter_ui_document(document, frozenset({"frontend.connections"})).connections) == 1
+    definition = capability_definition(Capability.FRONTEND_CONNECTIONS)
+    assert definition.risk.value == "low"
+    assert not definition.highly_privileged

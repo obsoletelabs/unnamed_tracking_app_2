@@ -11,7 +11,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 API_VERSION = "v1"
-PLUGIN_API_CONTRACT_VERSION = "1.1.8"
+PLUGIN_API_CONTRACT_VERSION = "1.1.9"
 Timestamp = datetime
 
 
@@ -81,6 +81,7 @@ class Capability(StrEnum):
     FRONTEND_CONTEXT_MEDIA = "frontend.context.media"
     FRONTEND_CONTEXT_DOCUMENTS = "frontend.context.documents"
     FRONTEND_SETTINGS = "frontend.settings"
+    FRONTEND_CONNECTIONS = "frontend.connections"
     FRONTEND_PLACEMENT_SIDEBAR = "frontend.placement.sidebar"
     FRONTEND_PLACEMENT_ADMIN = "frontend.placement.settings.admin"
     FRONTEND_PLACEMENT_ACCOUNT = "frontend.placement.settings.account"

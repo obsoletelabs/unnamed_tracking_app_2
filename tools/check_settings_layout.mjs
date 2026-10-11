@@ -40,9 +40,12 @@ export async function checkSettingsLayout({ browser, admin, origin, evidenceRoot
         }
         await deepLinkHeading("Connections");
         await page.screenshot({ path: path.join(evidenceRoot, `connections-${width}.png`), fullPage: true });
-        await page.getByRole("button", { name: "Manage", exact: true }).first().click();
-        await page.waitForURL("**/settings?**section=metadata**");
-        await page.getByRole("heading", { name: "Metadata", exact: true, level: 1 }).waitFor();
+        await page.getByRole("button", { name: /^Manage /i }).first().click();
+        await page.getByRole("dialog").waitFor();
+        assert(page.url().includes("section=connections"), "Manage opens a popup without leaving Connections");
+        await page.screenshot({ path: path.join(evidenceRoot, `connections-manage-${width}.png`) });
+        await page.keyboard.press("Escape");
+        await page.getByRole("dialog").waitFor({ state: "detached" });
         await page.goto(origin + "/settings?area=administration&section=stats");
         await page.locator(".ranked-list li").waitFor();
         await deepLinkHeading("Server Stats");
@@ -54,7 +57,7 @@ export async function checkSettingsLayout({ browser, admin, origin, evidenceRoot
         await page.locator(".ranked-list").scrollIntoViewIfNeeded();
         await page.screenshot({ path: path.join(evidenceRoot, `stats-${width}.png`), fullPage: true });
         assert.deepEqual(errors, []);
-        report.passed.push(`Settings names/actions, ranked values, tag wrapping, Manage navigation and initial deep links: ${width}/${theme}`);
+        report.passed.push(`Settings names/actions, ranked values, tag wrapping, Manage popups and initial deep links: ${width}/${theme}`);
       } finally { await context.close(); }
     }
   } finally {
