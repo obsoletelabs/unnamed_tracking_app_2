@@ -273,3 +273,160 @@ it("does not carry cached text across conflicting provider identities", async ()
   );
   expect(search.results.value[0]?.year).toBeNull();
 });
+
+it("retains selection identities when a completion event arrives before the response", async () => {
+  const { search, fetch } = setup();
+  await search.search();
+  const chosen = {
+    ...candidate("Caramel", "same"),
+    provider_ids: { steam: "123" },
+  };
+  add(Stream.instances[0]!, chosen, 1);
+  let respond!: (value: Response) => void;
+  fetch.mockImplementationOnce(
+    () =>
+      new Promise<Response>((resolve) => {
+        respond = resolve;
+      }),
+  );
+  const pending = search.select(chosen);
+  Stream.instances[1]!.emit({
+    id: 2,
+    session_id: "car",
+    event: "selection_enrichment_completed",
+  });
+  respond(
+    new Response(
+      JSON.stringify({
+        ...chosen,
+        provider_ids: { steam: "123", "optional.provider": "456" },
+        metadata: { description: "Selection response" },
+      }),
+    ),
+  );
+  await pending;
+  expect(search.selected.value?.provider_ids).toEqual({
+    steam: "123",
+    "optional.provider": "456",
+  });
+  expect(search.selected.value?.metadata.description).toBe(
+    "Selection response",
+  );
+});
+
+it("adds response identities without replacing newer selection patches", async () => {
+  const { search, fetch } = setup();
+  await search.search();
+  const chosen = {
+    ...candidate("Caramel", "same"),
+    provider_ids: { steam: "123" },
+  };
+  add(Stream.instances[0]!, chosen, 1);
+  let respond!: (value: Response) => void;
+  fetch.mockImplementationOnce(
+    () =>
+      new Promise<Response>((resolve) => {
+        respond = resolve;
+      }),
+  );
+  const pending = search.select(chosen);
+  const patch = {
+    ...chosen,
+    provider_ids: { steam: "123", epic: "epic-id" },
+    metadata: { description: "Newest streamed text" },
+    assets: [
+      {
+        kind: "key_art" as const,
+        url: "https://images.example/new",
+        width: null,
+        height: null,
+      },
+    ],
+  };
+  Stream.instances[1]!.emit({
+    id: 2,
+    session_id: "car",
+    event: "result_updated",
+    result: patch,
+  });
+  respond(
+    new Response(
+      JSON.stringify({
+        ...chosen,
+        provider_ids: { steam: "123", igdb: "456" },
+        metadata: { description: "Older response" },
+      }),
+    ),
+  );
+  await pending;
+  expect(search.selected.value?.provider_ids).toEqual({
+    steam: "123",
+    igdb: "456",
+    epic: "epic-id",
+  });
+  expect(search.selected.value?.metadata.description).toBe(
+    "Newest streamed text",
+  );
+  expect(search.selected.value?.assets).toEqual(patch.assets);
+});
+
+it("does not revive a selection after the query changes while its response is pending", async () => {
+  const { query, search, fetch } = setup();
+  await search.search();
+  const chosen = candidate("Caramel", "same");
+  add(Stream.instances[0]!, chosen, 1);
+  let respond!: (value: Response) => void;
+  const original = fetch.getMockImplementation()!;
+  fetch.mockImplementation((url, options) =>
+    url.endsWith("/selection")
+      ? new Promise<Response>((resolve) => {
+          respond = resolve;
+        })
+      : original(url, options),
+  );
+  const pending = search.select(chosen);
+  query.value = "new query";
+  respond(new Response(JSON.stringify(chosen)));
+  await pending;
+  expect(search.selected.value).toBeNull();
+});
+
+it("does not merge response identities into a conflicting newer selection", async () => {
+  const { search, fetch } = setup();
+  await search.search();
+  const chosen = {
+    ...candidate("Caramel", "same"),
+    provider_ids: { steam: "123" },
+  };
+  add(Stream.instances[0]!, chosen, 1);
+  let respond!: (value: Response) => void;
+  fetch.mockImplementationOnce(
+    () =>
+      new Promise<Response>((resolve) => {
+        respond = resolve;
+      }),
+  );
+  const pending = search.select(chosen);
+  const patch = {
+    ...chosen,
+    provider_ids: { steam: "different-edition" },
+    metadata: { description: "Current edition" },
+  };
+  Stream.instances[1]!.emit({
+    id: 2,
+    session_id: "car",
+    event: "result_updated",
+    result: patch,
+  });
+  respond(
+    new Response(
+      JSON.stringify({
+        ...chosen,
+        provider_ids: { steam: "123", igdb: "456" },
+      }),
+    ),
+  );
+  await pending;
+  expect(search.selected.value?.provider_ids).toEqual(patch.provider_ids);
+  expect(search.selected.value?.metadata.description).toBe("Current edition");
+});

@@ -56,6 +56,7 @@ function retainMetadata(
   const year = incoming.year ?? incoming.metadata.year ?? previous.year;
   return {
     ...incoming,
+    provider_ids: { ...previous.provider_ids, ...incoming.provider_ids },
     year,
     metadata: {
       ...previous.metadata,
@@ -247,9 +248,21 @@ export function useMetadataSearch(
         candidate.id,
       );
       const result = retainMetadata(known.value.get(response.id), response);
-      // The selection response may arrive after a newer enrichment event.
-      if (generation === expectedGeneration && lastEventId === origin.eventId)
-        selected.value = result;
+      if (generation === expectedGeneration) {
+        // A completion/ranking event cannot invalidate useful response fields.
+        // Only a newer patch for this selected identity takes precedence.
+        const current = selected.value;
+        const patchedAt = current
+          ? origins.get(current.id)?.eventId
+          : undefined;
+        selected.value =
+          current && patchedAt !== undefined && patchedAt > origin.eventId
+            ? retainMetadata(result, current)
+            : result;
+        const next = new Map(known.value);
+        next.set(selected.value.id, selected.value);
+        known.value = next;
+      }
       return result;
     } catch (failure) {
       if (generation === expectedGeneration) {

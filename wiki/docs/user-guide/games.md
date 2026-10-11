@@ -21,6 +21,13 @@ A failed artwork transfer leaves the game saved. Its task offers **Retry** for t
 remaining artwork on that same game; it never retries game creation. Artwork can
 also be changed later in the editor.
 
+![Quick Add on a phone](../assets/game-quick-add/quick-add-390.png)
+
+[Responsive validation](../assets/game-quick-add/conformance.json) uses disposable
+records, real game saves and synthetic provider responses. The
+[full form](../assets/game-quick-add/full-form-390.png) retains the selected identity
+and tracking edits.
+
 Editing supports title and sort title, platform, status, dates, rating,
 genres/tags/features, description, time-to-beat data, and artwork. Field-change
 history records supported metadata changes.
