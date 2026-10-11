@@ -63,7 +63,7 @@ export async function checkGameFilterVisibility({ browser, member, origin, evide
         assert.deepEqual(url().searchParams.getAll("tag"), ["Puzzle", "RPG"]);
         assert.equal((await page.locator(".page-head .sub").innerText()).trim(), "20 games");
         assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
-        await page.screenshot({ path: path.join(evidenceRoot, "filters-closed-" + width + ".png"), fullPage: true });
+        await page.screenshot({ path: path.join(evidenceRoot, "filters-closed-" + width + ".png"), fullPage: false });
         // Legacy links still open; browser history restores closed/open markers.
         await page.goto(origin + "/games?tag=Puzzle");
         await showControls();
@@ -74,7 +74,9 @@ export async function checkGameFilterVisibility({ browser, member, origin, evide
         assert.equal(url().searchParams.get("filters"), "0");
         await page.goForward(); await showControls(); await panel.waitFor();
         assert.equal(await panel.getByRole("button", { name: "Puzzle", exact: true }).getAttribute("aria-pressed"), "true");
-        await page.screenshot({ path: path.join(evidenceRoot, "filters-legacy-open-" + width + ".png"), fullPage: true });
+        await page.locator(".game-card-wrap").first().waitFor();
+        assert.equal((await page.locator(".page-head .sub").innerText()).trim(), "20 games");
+        await page.screenshot({ path: path.join(evidenceRoot, "filters-legacy-open-" + width + ".png"), fullPage: false });
         // An explicit empty closed URL overrides saved tags rather than restoring them.
         await page.goto(origin + "/games?filters=0");
         await page.locator(".game-card-wrap").first().waitFor();
