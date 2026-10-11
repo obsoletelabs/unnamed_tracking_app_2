@@ -166,6 +166,8 @@ export interface OverviewStats {
   }[];
   media_minutes: number;
   game_seconds: number;
+  game_favorites: number;
+  achievements_unlocked: number;
   media_titles: number;
   media_completed: number;
   media_favorites: number;
@@ -219,30 +221,65 @@ export interface MediaStats {
   anime: EpisodicStats;
 }
 
-// Kept in memory so opening the page again shows the last numbers at once
-// while fresh ones load behind them.
-let cached: MediaStats | null = null;
+export type MediaStatsSection = keyof MediaStats;
 
-export function peekMediaStats(): MediaStats | null {
-  return cached;
+// At most five sections for the current actor. Returning to Statistics refreshes
+// the visible section; moving between already-loaded tabs reuses their numbers.
+let cachedActor: string | null = null;
+let cached: Partial<MediaStats> = {};
+let generation = 0;
+
+export function peekMediaStats(actor: string | null): Partial<MediaStats> {
+  if (actor !== cachedActor || actor === null) {
+    cachedActor = actor;
+    cached = {};
+    generation++;
+  }
+  return { ...cached };
 }
 
-export async function fetchMediaStats(): Promise<MediaStats> {
-  const response = await fetch("/api/media-stats", { credentials: "include" });
+export function readMediaStatsSection(value: string | null): MediaStatsSection {
+  return value === "games" ||
+    value === "movie" ||
+    value === "tv" ||
+    value === "anime"
+    ? value
+    : "overview";
+}
+
+export async function fetchMediaStats(
+  section: MediaStatsSection,
+  actor: string,
+  signal: AbortSignal,
+): Promise<Partial<MediaStats>> {
+  peekMediaStats(actor);
+  const requestGeneration = generation;
+  const response = await fetch(`/api/media-stats?section=${section}`, {
+    credentials: "include",
+    signal,
+  });
   if (!response.ok)
     throw new Error(`Failed to load statistics: ${response.status}`);
-  const raw = (await response.json()) as MediaStats;
+  const raw = (await response.json()) as Partial<MediaStats>;
+  const selected = raw[section];
+  if (!selected)
+    throw new Error("The requested statistics section is missing.");
   // the server names it poster_url; the rest of the app says posterUrl
   const fix = (
     list: { poster_url?: string | null; posterUrl?: string | null }[],
   ) => list.forEach((t) => (t.posterUrl = t.posterUrl ?? t.poster_url ?? null));
-  fix(raw.overview.top_rated);
-  fix(raw.overview.in_progress);
-  fix(raw.overview.needs_score.items);
-  fix(raw.games.top_rated);
-  fix(raw.movie.top_rated);
-  fix(raw.tv.top_rated);
-  fix(raw.anime.top_rated);
-  cached = raw;
-  return cached;
+  fix(selected.top_rated);
+  if (section === "overview" && raw.overview) {
+    fix(raw.overview.in_progress);
+    fix(raw.overview.needs_score.items);
+  }
+  if (
+    signal.aborted ||
+    requestGeneration !== generation ||
+    cachedActor !== actor
+  )
+    throw new DOMException("Statistics request was superseded.", "AbortError");
+  const result: Partial<MediaStats> = { [section]: selected };
+  cached = { ...cached, ...result };
+  return result;
 }

@@ -97,3 +97,19 @@ through one shared metadata handler. Core search does not require the plugin run
 Provider configuration and health appear in the host's metadata settings.
 See [the progressive metadata contract](../development/metadata-providers.md) for
 phase separation, scoped credential migration, deadlines and persistence behavior.
+
+## Statistics requests
+
+Statistics loads the selected tab first and reuses tabs already visited on that
+page visit. Returning to the page shows the last loaded numbers while refreshing
+the visible tab; other cached tabs refresh when selected. **Refresh** retries a
+failed request or updates the current tab without discarding its previous numbers.
+Cached statistics are cleared when the signed-in user changes.
+
+The authenticated `/api/media-stats` endpoint accepts an optional `section`:
+`overview`, `games`, `movie`, `tv` or `anime`. A selected library returns only
+that section and does not calculate unrelated libraries or the activity summary.
+Overview combines all libraries and includes game favorites and unlocked
+achievements. Omitting `section` retains the complete response for existing clients.
+Watch time, rewatches, title-language preferences and active-library filtering use
+the same calculations in both response forms.
