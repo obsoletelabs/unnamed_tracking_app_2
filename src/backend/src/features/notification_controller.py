@@ -42,23 +42,37 @@ async def emit_invitation(db, invitation, endpoint) -> UUID:
     """Host-reserved bootstrap interpretation using the normal durable delivery queue."""
     now = int(time.time())
     notice = Notification(
-        id=uuid4(), pending_recipient_id=invitation.pending_recipient_id,
-        kind="user_invite", event_type="auth.user_invite", source=invitation.plugin_id,
-        source_installation_id=invitation.installation_id, media_type="auth_invitation",
-        media_id=invitation.id, title="You have been invited", body="An account invitation was issued.",
-        event_at=now, dedupe_key=f"invitation:{invitation.id}", required_trust=int(Trust.PRIVATE),
-        purpose="invitation", inbox_visible=False, expires_at=invitation.expires_at,
+        id=uuid4(),
+        pending_recipient_id=invitation.pending_recipient_id,
+        kind="user_invite",
+        event_type="auth.user_invite",
+        source=invitation.plugin_id,
+        source_installation_id=invitation.installation_id,
+        media_type="auth_invitation",
+        media_id=invitation.id,
+        title="You have been invited",
+        body="An account invitation was issued.",
+        event_at=now,
+        dedupe_key=f"invitation:{invitation.id}",
+        required_trust=int(Trust.PRIVATE),
+        purpose="invitation",
+        inbox_visible=False,
+        expires_at=invitation.expires_at,
     )
     db.add(notice)
     invitation.notification_id = notice.id
     await db.flush()
     await ensure_deliveries(db, [notice.id])
-    delivery = await db.scalar(select(NotificationDelivery.id).where(
-        NotificationDelivery.notification_id == notice.id,
-        NotificationDelivery.destination_id == endpoint.id,
-    ))
+    delivery = await db.scalar(
+        select(NotificationDelivery.id).where(
+            NotificationDelivery.notification_id == notice.id,
+            NotificationDelivery.destination_id == endpoint.id,
+        )
+    )
     if delivery is None:
-        raise ValueError("Administrative notification policy does not permit invitation email delivery")
+        raise ValueError(
+            "Administrative notification policy does not permit invitation email delivery"
+        )
     return notice.id
 
 
