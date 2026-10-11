@@ -112,6 +112,12 @@ connections) are not metadata sources: connect, update, import and disconnect th
 from **Settings > Account > Connections**, where **Manage** opens a popup rather
 than leaving the page.
 
+![Connections lists built-in accounts and plugin connections](../assets/connections-popups/connections-1280.png)
+
+![Manage opens a popup with the connect, import and disconnect lifecycle](../assets/connections-popups/xbox-connected-1280.png)
+
+![A plugin connection opens the plugin's own page in the popup](../assets/connections-popups/epic-popup-1280.png)
+
 ![Built-in core providers in the original tile layout](../assets/plugin-metadata/provider-tiles.jpg)
 
 ![SteamGridDB system configuration with the stored secret hidden](../assets/plugin-metadata/provider-configuration.jpg)
