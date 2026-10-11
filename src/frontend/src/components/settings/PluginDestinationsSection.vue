@@ -1,11 +1,15 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 import ToggleButton from "./ToggleButton.vue";
 import PluginProviderConfigurationForm from "./PluginProviderConfigurationForm.vue";
 import {
   configurePluginDestination,
   removePluginDestination,
   sendDestinationTest,
+  requestPluginVerification,
+  confirmPluginVerification,
+  revokePluginVerification,
+  setPluginRecovery,
 } from "../../services/notifications";
 import type {
   NotificationRoutingDestination,
@@ -33,7 +37,64 @@ const error = ref("");
 const status = ref("");
 const showInactive = ref(false);
 const removing = ref<string | null>(null);
+const challenges = reactive<Record<string, { id: string; revision: number }>>(
+  {},
+);
+const codes = reactive<Record<string, string>>({});
 const kinds = computed(() => props.provider.definition?.destinations ?? []);
+function clearChallenge(id: string) {
+  delete challenges[id];
+  delete codes[id];
+}
+watch(
+  () => props.destinations,
+  (destinations) => {
+    for (const id of Object.keys(challenges)) {
+      const destination = destinations.find((item) => item.id === id);
+      if (
+        !destination?.active ||
+        destination.trust === "SECURE" ||
+        destination.revision !== challenges[id]?.revision
+      ) {
+        clearChallenge(id);
+      }
+    }
+  },
+);
+function supportsRecovery(destination: NotificationRoutingDestination) {
+  return kinds.value.some(
+    (item) => item.kind === destination.kind && item.recovery_supported,
+  );
+}
+async function sendCode(destination: NotificationRoutingDestination) {
+  await perform(async () => {
+    if (typeof destination.revision !== "number") {
+      throw new Error(
+        "Reload destination settings before requesting verification.",
+      );
+    }
+    const result = await requestPluginVerification(destination.id);
+    challenges[destination.id] = {
+      id: result.challenge_id,
+      revision: destination.revision,
+    };
+    codes[destination.id] = "";
+    return "Verification code queued for this destination. Enter it here within 10 minutes.";
+  });
+}
+async function verify(destination: NotificationRoutingDestination) {
+  const challenge = challenges[destination.id];
+  if (!challenge) return;
+  await perform(async () => {
+    await confirmPluginVerification(
+      destination.id,
+      challenge.id,
+      codes[destination.id] ?? "",
+    );
+    clearChallenge(destination.id);
+    return "Destination verified. Security delivery still requires its declared features and permission grant.";
+  });
+}
 const declaration = computed(() =>
   kinds.value.find((item) => item.kind === kind.value),
 );
@@ -202,6 +263,90 @@ async function remove(destination: NotificationRoutingDestination) {
           Remove
         </button>
       </div>
+      <template
+        v-if="
+          destination.active &&
+          destination.plugin_owned_configuration &&
+          (destination.verification_available || destination.trust === 'SECURE')
+        "
+      >
+        <p class="hint">
+          PRIVATE notifications work before verification. Prove access to this
+          specific destination to make it SECURE. The plugin receives
+          verification codes only with its separate high-risk permission.
+        </p>
+        <div class="actions">
+          <button
+            :disabled="
+              busy ||
+              !destination.verification_available ||
+              !destination.enabled ||
+              !destination.provider_enabled ||
+              prefs.notification_destinations[destination.id] === false
+            "
+            @click="sendCode(destination)"
+          >
+            {{
+              challenges[destination.id]
+                ? "Resend verification code"
+                : "Send verification code"
+            }}
+          </button>
+          <button
+            v-if="destination.trust === 'SECURE'"
+            :disabled="busy"
+            @click="
+              perform(async () => {
+                await revokePluginVerification(destination.id);
+                clearChallenge(destination.id);
+                return 'Verification revoked; recovery disabled and pending deliveries cancelled. Ordinary PRIVATE routing remains available.';
+              })
+            "
+          >
+            Revoke verification
+          </button>
+        </div>
+        <form
+          v-if="challenges[destination.id]"
+          @submit.prevent="verify(destination)"
+        >
+          <label
+            >Verification code<input
+              v-model="codes[destination.id]"
+              inputmode="numeric"
+              autocomplete="one-time-code"
+              pattern="[0-9]{8}"
+              maxlength="8"
+              required
+              :disabled="busy"
+          /></label>
+          <button :disabled="busy">Verify destination</button>
+        </form>
+        <ToggleButton
+          v-if="supportsRecovery(destination)"
+          :model-value="destination.recovery_allowed ?? false"
+          :label="`Allow recovery messages to ${destination.label || destination.kind}`"
+          :aria-label="`Allow recovery messages to ${destination.label || destination.kind}`"
+          :disabled="
+            busy ||
+            (!destination.recovery_allowed &&
+              (destination.trust !== 'SECURE' ||
+                !destination.verification_available))
+          "
+          @update:model-value="
+            perform(async () => {
+              await setPluginRecovery(destination.id, $event);
+              return 'Recovery-purpose choice saved.';
+            })
+          "
+          >Allow recovery messages</ToggleButton
+        >
+        <p v-if="supportsRecovery(destination)" class="hint">
+          Recovery messages can contain reset secrets. Allow them only after
+          verifying this external destination and reviewing the plugin's
+          sensitive-content permission.
+        </p>
+      </template>
       <div v-if="removing === destination.id" class="confirmation">
         <p>
           Remove {{ destination.label || destination.kind }}? Queued deliveries

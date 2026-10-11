@@ -286,6 +286,9 @@ export interface NotificationProviderDefinition {
     label: string;
     privacy: "PUBLIC" | "PRIVATE";
     fields: import("./pluginUi").UiField[];
+    verification_supported?: boolean;
+    sensitive_supported?: boolean;
+    recovery_supported?: boolean;
   }[];
   server_fields: import("./pluginUi").UiField[];
   configure_action: string;
@@ -454,6 +457,44 @@ export function removePluginDestination(id: string) {
     removed: boolean;
     plugin_cleanup_complete: boolean;
   }>("plugin", `/${encodeURIComponent(id)}`, "DELETE");
+}
+
+export function requestPluginVerification(id: string) {
+  return destinationRequest<{ challenge_id: string; expires_in: number }>(
+    "plugin",
+    `/${encodeURIComponent(id)}/verification`,
+    "POST",
+  );
+}
+
+export function confirmPluginVerification(
+  id: string,
+  challengeId: string,
+  code: string,
+) {
+  return destinationRequest<{ verified: boolean }>(
+    "plugin",
+    `/${encodeURIComponent(id)}/verification/confirm`,
+    "POST",
+    { challenge_id: challengeId, code },
+  );
+}
+
+export function revokePluginVerification(id: string) {
+  return destinationRequest<{ revoked: boolean }>(
+    "plugin",
+    `/${encodeURIComponent(id)}/verification/revoke`,
+    "POST",
+  );
+}
+
+export function setPluginRecovery(id: string, enabled: boolean) {
+  return destinationRequest<{ recovery_allowed: boolean }>(
+    "plugin",
+    `/${encodeURIComponent(id)}/recovery`,
+    "PUT",
+    { enabled },
+  );
 }
 
 export async function configurePluginNotificationServer(

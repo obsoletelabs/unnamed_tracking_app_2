@@ -7,7 +7,7 @@ import secrets
 import time
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, update
+from sqlalchemy import select, true, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.functions import count as sql_count
 
@@ -39,17 +39,26 @@ async def _lock_owner(db: AsyncSession, user_id: UUID) -> None:
 
 
 async def owned_destination(
-    db: AsyncSession, user_id: UUID, destination_id: UUID, *, provider_id: str = SMTP_PROVIDER
+    db: AsyncSession,
+    user_id: UUID,
+    destination_id: UUID,
+    *,
+    provider_id: str | None = SMTP_PROVIDER,
+    active_only: bool = True,
 ) -> NotificationDestination:
+    """Lock an owned endpoint; revocation may include inactive plugin records."""
     row = await db.scalar(
         select(NotificationDestination)
         .where(
             NotificationDestination.id == destination_id,
             NotificationDestination.user_id == user_id,
-            NotificationDestination.provider_id == provider_id,
-            NotificationDestination.active.is_(True),
+            NotificationDestination.provider_id == provider_id
+            if provider_id is not None
+            else true(),
+            NotificationDestination.active.is_(True) if active_only else true(),
         )
         .with_for_update()
+        .execution_options(populate_existing=True)
     )
     if row is None:
         raise EnrollmentError("Notification destination not found", 404)
@@ -193,6 +202,14 @@ async def request_verification(db: AsyncSession, user_id: UUID, destination_id: 
         raise EnrollmentError(
             "Verification requires configured SMTP and an eligible secure transport"
         )
+    return await create_verification_challenge(db, destination)
+
+
+async def create_verification_challenge(
+    db: AsyncSession, destination: NotificationDestination
+) -> UUID:
+    """Shared core challenge issuance; callers lock and authorize the concrete endpoint."""
+    user_id, destination_id = destination.user_id, destination.id
     now = int(time.time())
     recent = list(
         await db.scalars(
@@ -210,7 +227,7 @@ async def request_verification(db: AsyncSession, user_id: UUID, destination_id: 
     setting = await db.scalar(
         select(NotificationProviderSetting).where(
             NotificationProviderSetting.user_id == user_id,
-            NotificationProviderSetting.provider_id == SMTP_PROVIDER,
+            NotificationProviderSetting.provider_id == destination.provider_id,
         )
     )
     if not setting or not setting.enabled:
@@ -250,6 +267,19 @@ async def confirm_verification(
 ) -> bool:
     await _lock_owner(db, user_id)
     destination = await owned_destination(db, user_id, destination_id)
+    return await confirm_destination_challenge(db, destination, challenge_id, code)
+
+
+async def confirm_destination_challenge(
+    db: AsyncSession,
+    destination: NotificationDestination,
+    challenge_id: UUID,
+    code: str,
+    *,
+    method: str = "email.code.v1",
+) -> bool:
+    """Shared atomic proof consumer; provider callbacks never confirm their own challenges."""
+    user_id, destination_id = destination.user_id, destination.id
     challenge = await db.scalar(
         select(NotificationVerification)
         .where(
@@ -274,7 +304,7 @@ async def confirm_verification(
     valid = hmac.compare_digest(challenge.code_digest, _digest(challenge, code))
     if valid and challenge.failures <= MAX_FAILURES:
         destination.verified_revision = destination.revision
-        destination.verification_method = "email.code.v1"
+        destination.verification_method = method
         destination.verification_revoked_at = None
         challenge.used_at = now
         challenge.encrypted_code = None

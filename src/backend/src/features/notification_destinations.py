@@ -1,5 +1,6 @@
 """Host-owned endpoint resolution without network calls or credential disclosure."""
 
+import time
 from uuid import UUID
 
 from sqlalchemy import select, true, update
@@ -10,6 +11,7 @@ from sqlalchemy.sql.elements import ColumnElement
 from src.database.models.notification_delivery import NotificationDelivery
 from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_provider_setting import NotificationProviderSetting
+from src.database.models.notification_verification import NotificationVerification
 from src.database.models.plugin_notification_provider import PluginNotificationProviderRegistration
 from src.database.models.plugin_permissions import PluginPermissionGrant
 from src.features.notification_audit import change_deliveries
@@ -29,6 +31,14 @@ async def withdraw_provider_work(
     )
     destination_ids = select(NotificationDestination.id).where(
         NotificationDestination.provider_id == provider_id, owner, installation
+    )
+    await db.execute(
+        update(NotificationVerification)
+        .where(
+            NotificationVerification.destination_id.in_(destination_ids),
+            NotificationVerification.used_at.is_(None),
+        )
+        .values(used_at=int(time.time()), encrypted_code=None)
     )
     await change_deliveries(
         db,
@@ -63,6 +73,9 @@ async def retire_provider_destinations(
             enabled=False,
             media_consent_revision=None,
             media_consent_at=None,
+            verified_revision=None,
+            verification_method=None,
+            recovery_allowed=False,
             **(
                 {"encrypted_configuration": None, "revision": NotificationDestination.revision + 1}
                 if provider_id == PUSH_PROVIDER

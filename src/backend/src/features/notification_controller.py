@@ -15,11 +15,11 @@ from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_receipt import NotificationReceipt
 from src.database.models.user import User
 from src.features.notification_audit import record_notices
+from src.features.notification_plugin_policy import delivery_projection
 from src.features.notification_policy import (
     MEDIA_KINDS,
     Trust,
     preference_enabled,
-    select_projection,
 )
 from src.features.notification_providers.delivery import ensure_deliveries
 
@@ -53,7 +53,9 @@ async def emit_verification_request(
         source="host.verification",
         media_type="notification_destination",
         media_id=destination.id,
-        title="Verify your email destination",
+        title="Verify your email destination"
+        if destination.provider_id == "core.smtp"
+        else "Verify your notification destination",
         body="An expiring verification code was requested.",
         event_at=now,
         dedupe_key=f"verification:{challenge_id}",
@@ -63,7 +65,7 @@ async def emit_verification_request(
         expires_at=expires_at,
     )
     prefs = await load_preferences(db, destination.user_id)
-    if not select_projection(notice, destination, prefs):
+    if not await delivery_projection(db, notice, destination, prefs):
         return None
     db.add(notice)
     db.add(
