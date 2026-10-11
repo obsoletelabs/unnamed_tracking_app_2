@@ -7,7 +7,7 @@ import secrets
 import time
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, update
+from sqlalchemy import select, true, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.functions import count as sql_count
 
@@ -39,17 +39,26 @@ async def _lock_owner(db: AsyncSession, user_id: UUID) -> None:
 
 
 async def owned_destination(
-    db: AsyncSession, user_id: UUID, destination_id: UUID, *, provider_id: str = SMTP_PROVIDER
+    db: AsyncSession,
+    user_id: UUID,
+    destination_id: UUID,
+    *,
+    provider_id: str | None = SMTP_PROVIDER,
+    active_only: bool = True,
 ) -> NotificationDestination:
+    """Lock an owned endpoint; revocation may include inactive plugin records."""
     row = await db.scalar(
         select(NotificationDestination)
         .where(
             NotificationDestination.id == destination_id,
             NotificationDestination.user_id == user_id,
-            NotificationDestination.provider_id == provider_id,
-            NotificationDestination.active.is_(True),
+            NotificationDestination.provider_id == provider_id
+            if provider_id is not None
+            else true(),
+            NotificationDestination.active.is_(True) if active_only else true(),
         )
         .with_for_update()
+        .execution_options(populate_existing=True)
     )
     if row is None:
         raise EnrollmentError("Notification destination not found", 404)

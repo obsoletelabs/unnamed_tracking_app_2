@@ -7,12 +7,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.notification import Notification
-from src.database.models.notification_destination import NotificationDestination
 from src.database.models.user import User
 from src.features.notification_enrollment import (
     EnrollmentError,
     confirm_destination_challenge,
     create_verification_challenge,
+    owned_destination,
 )
 from src.features.notification_lifecycle import retire_destination_work
 from src.features.notification_plugin_policy import plugin_sensitive_allowed
@@ -23,17 +23,10 @@ from src.plugin_api.runtime_client import PluginRuntimeUnavailable
 
 async def _owned(db, user_id, destination_id):
     await db.scalar(select(User.id).where(User.id == user_id).with_for_update())
-    endpoint = await db.scalar(
-        select(NotificationDestination)
-        .where(
-            NotificationDestination.id == destination_id,
-            NotificationDestination.user_id == user_id,
-            NotificationDestination.installation_id.is_not(None),
-        )
-        .with_for_update()
-        .execution_options(populate_existing=True)
+    endpoint = await owned_destination(
+        db, user_id, destination_id, provider_id=None, active_only=False
     )
-    if endpoint is None:
+    if endpoint.installation_id is None:
         raise EnrollmentError("Notification destination not found", 404)
     return endpoint
 
