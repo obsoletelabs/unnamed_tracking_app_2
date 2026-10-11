@@ -21,7 +21,7 @@ Disabled, incompatible or uninstalled plugins do not contribute navigation. Plug
 ## Settings areas
 
 - **Preferences** contains a combined Appearance & interface page, notifications, calendar, shortcuts and library settings.
-- **Account** contains profile/password, connections and API keys.
+- **Account** contains profile/password, connections (connect, import and disconnect accounts in a popup; plugins can add their own) and API keys.
 - **Administration** contains server management, [app branding](../administration/branding.md), plugins, background tasks and storage/usage. Only administrators see this area. Its banner explains that changes affect everyone on the server.
 
 Settings starts with grouped links. On desktop a section keeps its area navigation beside the form; on a phone it opens as a separate screen, with a back link to its area. Existing `/settings?section=…` links continue to work, including the older aliases for library, metadata and administration tabs. The unfinished Logs entry is not offered.

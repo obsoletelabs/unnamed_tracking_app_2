@@ -1,51 +1,21 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
-import { fetchProviderCredentials } from "../../services/settings";
-import type { ProviderCredentialStatus } from "../../services/settings";
-import { syncLibrary } from "../../services/librarySync";
-import type { LibrarySyncProvider } from "../../services/librarySync";
+import { computed, onMounted, ref } from "vue";
+import ConnectionManageDialog from "./ConnectionManageDialog.vue";
+import {
+  CONNECTIONS,
+  isConnectionConnected,
+  useConnections,
+} from "../../composables/useConnections";
+import type { ConnectionConfig } from "../../composables/useConnections";
+import { SOURCE_VISUALS } from "../../composables/useMetadataSources";
 
-const emit = defineEmits<{ navigate: [section: string] }>();
+const state = useConnections();
+const managing = ref<ConnectionConfig | null>(null);
 
-// Only providers you sign in to and pull a library from. Metadata sources
-// (TMDB, IGDB, SteamGridDB...) live under Library > Metadata.
-const ACCOUNT_PROVIDERS = ["Steam", "PlayStation", "RetroAchievements", "Xbox"];
-
-const credentials = ref<Record<string, ProviderCredentialStatus>>({});
-const loading = ref(true);
-const error = ref<string | null>(null);
-const syncing = ref<string | null>(null);
-const syncMessage = ref<string | null>(null);
-
-const SYNCABLE: Record<string, LibrarySyncProvider> = {
-  Steam: "steam",
-  PlayStation: "psn",
-  RetroAchievements: "retroachievements",
-};
-
-const MARKS: Record<string, { bg: string; fg: string; mark: string }> = {
-  Steam: { bg: "#12202e", fg: "#66c0f4", mark: "S" },
-  SteamGridDB: { bg: "#0e3b3b", fg: "#2dd4bf", mark: "Gr" },
-  IGDB: { bg: "#2b1c4a", fg: "#a78bfa", mark: "IG" },
-  TMDB: { bg: "#01283d", fg: "#5dd9c1", mark: "TM" },
-  OMDb: { bg: "#2a2205", fg: "#f5c518", mark: "OM" },
-  TVDB: { bg: "#1a2a3d", fg: "#7ba7d9", mark: "TV" },
-  RetroAchievements: { bg: "#3b0a0a", fg: "#f87171", mark: "RA" },
-  PlayStation: { bg: "#0a1a3d", fg: "#60a5fa", mark: "PS" },
-  GOG: { bg: "#2a1a3d", fg: "#c084fc", mark: "GOG" },
-};
 const FALLBACK = { bg: "#1f1f1f", fg: "#d1d5db", mark: "•" };
 
 function markFor(name: string) {
-  return MARKS[name] ?? { ...FALLBACK, mark: name.slice(0, 2) };
-}
-
-function isConnected(s: ProviderCredentialStatus): boolean {
-  return (
-    s.status === "connected" ||
-    s.status === "configured" ||
-    s.status === "saved"
-  );
+  return SOURCE_VISUALS[name] ?? { ...FALLBACK, mark: name.slice(0, 2) };
 }
 
 function timeAgo(unix: number | null | undefined): string {
@@ -58,103 +28,67 @@ function timeAgo(unix: number | null | undefined): string {
 }
 
 interface Row {
-  name: string;
+  connection: ConnectionConfig;
   connected: boolean;
   error: boolean;
   detail: string;
-  syncable: LibrarySyncProvider | null;
 }
 
-const accountRows = computed<Row[]>(() =>
-  Object.entries(credentials.value)
-    .filter(([name]) => ACCOUNT_PROVIDERS.includes(name))
-    .map(([name, s]) => {
-      const connected = isConnected(s);
-      const bits: string[] = [];
-      // The server reports a game count of 0 for providers that were never
-      // set up; only a connected account has a real count to show.
-      if (connected) {
-        if (s.display_name) bits.push(s.display_name);
-        if (s.library_games != null)
-          bits.push(
-            `${s.library_games} ${s.library_games === 1 ? "Game" : "Games"}`,
-          );
-        if (SYNCABLE[name]) bits.push(timeAgo(s.last_synced_at));
-      }
-      return {
-        name,
-        connected,
-        error: s.status === "error",
-        detail:
-          bits.join(" · ") ||
-          (s.status === "error"
-            ? (s.detail ?? "Connection error")
-            : "Not connected"),
-        syncable: SYNCABLE[name] ?? null,
-      };
-    })
-    .sort((a, b) => Number(b.connected) - Number(a.connected)),
+const rows = computed<Row[]>(() =>
+  CONNECTIONS.map((connection) => {
+    const s = state.credentialStatus[connection.key];
+    const connected = isConnectionConnected(s);
+    const bits: string[] = [];
+    // The server reports a game count of 0 for providers that were never
+    // set up; only a connected account has a real count to show.
+    if (connected) {
+      if (s?.display_name) bits.push(s.display_name);
+      if (s?.library_games != null)
+        bits.push(
+          `${s.library_games} ${s.library_games === 1 ? "Game" : "Games"}`,
+        );
+      if (connection.syncProvider) bits.push(timeAgo(s?.last_synced_at));
+    }
+    return {
+      connection,
+      connected,
+      error: s?.status === "error",
+      detail:
+        bits.join(" · ") ||
+        (s?.status === "error"
+          ? (s.detail ?? "Connection error")
+          : connection.summary),
+    };
+  }).sort((a, b) => Number(b.connected) - Number(a.connected)),
 );
 
-async function load() {
-  loading.value = true;
-  try {
-    credentials.value = await fetchProviderCredentials();
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : "Couldn't load connections.";
-  }
-  loading.value = false;
-}
-onMounted(load);
-
-async function sync(row: Row) {
-  if (!row.syncable) return;
-  syncing.value = row.name;
-  syncMessage.value = null;
-  try {
-    const r = await syncLibrary(row.syncable);
-    const wishlist = r.wishlist_added ? `, ${r.wishlist_added} wishlisted` : "";
-    syncMessage.value = `${row.name}: ${r.games_added} added, ${r.games_updated} updated${wishlist}.`;
-    if (r.enrich_failed)
-      syncMessage.value += ` Details could not be fetched for ${r.enrich_failed} games.`;
-    if (r.wishlist_failed)
-      syncMessage.value += " Wishlist import failed; owned games were saved.";
-    const unavailable =
-      (r.achievements_unavailable?.length ?? 0) + (r.achievements_failed ?? 0);
-    if (unavailable)
-      syncMessage.value += ` Achievement progress was unavailable for ${unavailable} games; stored progress was kept.`;
-    await load();
-  } catch (e) {
-    syncMessage.value = e instanceof Error ? e.message : "Sync failed.";
-  } finally {
-    syncing.value = null;
-  }
-}
+onMounted(() => void state.loadCredentials());
 </script>
 
 <template>
   <section class="settings-section">
     <h2>Connections</h2>
     <p class="hint">
-      The accounts your library is linked to. Adding or changing one happens
-      under Library > Metadata.
+      The accounts your library is linked to. Connect, update or disconnect an
+      account here. Metadata sources and API keys are under Library > Metadata.
     </p>
-    <p v-if="error" class="error">{{ error }}</p>
-    <p v-if="syncMessage" class="note">{{ syncMessage }}</p>
+    <p v-if="state.loadError.value" class="error" role="alert">
+      {{ state.loadError.value }}
+    </p>
 
-    <p v-if="loading" class="hint">Loading…</p>
+    <p v-if="state.credentialsLoading.value" class="hint">Loading…</p>
     <ul v-else class="rows">
-      <li v-for="row in accountRows" :key="row.name" class="row">
+      <li v-for="row in rows" :key="row.connection.key" class="row">
         <span
           class="mark"
           :style="{
-            background: markFor(row.name).bg,
-            color: markFor(row.name).fg,
+            background: markFor(row.connection.key).bg,
+            color: markFor(row.connection.key).fg,
           }"
-          >{{ markFor(row.name).mark }}</span
+          >{{ markFor(row.connection.key).mark }}</span
         >
         <span class="info">
-          <strong>{{ row.name }}</strong>
+          <strong>{{ row.connection.label }}</strong>
           <span class="detail" :title="row.detail">{{ row.detail }}</span>
         </span>
         <span class="pill" :class="{ ok: row.connected, bad: row.error }">{{
@@ -162,24 +96,36 @@ async function sync(row: Row) {
         }}</span>
         <span class="controls">
           <button
-            v-if="row.syncable && row.connected"
+            v-if="row.connection.syncProvider && row.connected"
             type="button"
             class="btn"
-            :disabled="syncing !== null"
-            @click="sync(row)"
+            :disabled="state.librarySyncing[row.connection.syncProvider]"
+            @click="state.handleSyncLibrary(row.connection.syncProvider)"
           >
-            {{ syncing === row.name ? "Syncing…" : "Sync now" }}
+            {{
+              state.librarySyncing[row.connection.syncProvider]
+                ? "Syncing…"
+                : "Sync now"
+            }}
           </button>
           <button
             type="button"
             class="btn ghost"
-            @click="emit('navigate', 'sources')"
+            :aria-label="`${row.connected ? 'Manage' : 'Connect'} ${row.connection.label}`"
+            @click="managing = row.connection"
           >
-            Manage
+            {{ row.connected ? "Manage" : "Connect" }}
           </button>
         </span>
       </li>
     </ul>
+
+    <ConnectionManageDialog
+      v-if="managing"
+      :connection="managing"
+      :state="state"
+      @close="managing = null"
+    />
   </section>
 </template>
 
@@ -190,13 +136,6 @@ async function sync(row: Row) {
     var(--ui-font-family);
   color: var(--ui-text);
 }
-h3 {
-  margin: 24px 0 10px;
-  font-size: 0.85rem;
-  color: var(--ui-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
 .hint {
   color: var(--ui-faint);
   font-size: 0.85rem;
@@ -204,10 +143,6 @@ h3 {
 }
 .error {
   color: var(--ui-error);
-  font-size: 0.85rem;
-}
-.note {
-  color: var(--ui-good);
   font-size: 0.85rem;
 }
 .rows {
