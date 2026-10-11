@@ -161,6 +161,7 @@ _LOW = frozenset(
         Capability.FRONTEND_CONTEXT_MEDIA,
         Capability.FRONTEND_CONTEXT_DOCUMENTS,
         Capability.FRONTEND_SETTINGS,
+        Capability.FRONTEND_CONNECTIONS,
         Capability.FRONTEND_PAGE_EXTEND,
         Capability.FRONTEND_HOME_WIDGETS,
         Capability.FRONTEND_THEMES,

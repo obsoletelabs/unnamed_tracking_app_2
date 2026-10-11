@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import ConnectionManageDialog from "./ConnectionManageDialog.vue";
+import PluginConnectionDialog from "./PluginConnectionDialog.vue";
 import {
   CONNECTIONS,
   isConnectionConnected,
@@ -8,9 +9,16 @@ import {
 } from "../../composables/useConnections";
 import type { ConnectionConfig } from "../../composables/useConnections";
 import { SOURCE_VISUALS } from "../../composables/useMetadataSources";
+import { dispatchPluginAction } from "../../services/pluginUi";
+import { pluginConnectionStatus } from "../../services/pluginConnections";
+import type { PluginConnectionStatus } from "../../services/pluginConnections";
+import { pluginConnections } from "../../state/pluginExtensions";
+import type { PluginConnectionContribution } from "../../state/pluginExtensions";
 
 const state = useConnections();
 const managing = ref<ConnectionConfig | null>(null);
+const managingPlugin = ref<PluginConnectionContribution | null>(null);
+const pluginStatus = ref<Record<string, PluginConnectionStatus>>({});
 
 const FALLBACK = { bg: "#1f1f1f", fg: "#d1d5db", mark: "•" };
 
@@ -28,13 +36,20 @@ function timeAgo(unix: number | null | undefined): string {
 }
 
 interface Row {
-  connection: ConnectionConfig;
+  key: string;
+  label: string;
   connected: boolean;
   error: boolean;
   detail: string;
+  connection?: ConnectionConfig;
+  plugin?: PluginConnectionContribution;
 }
 
-const rows = computed<Row[]>(() =>
+function pluginKey(item: PluginConnectionContribution): string {
+  return `${item.pluginId}:${item.contributionId}`;
+}
+
+const builtInRows = computed<Row[]>(() =>
   CONNECTIONS.map((connection) => {
     const s = state.credentialStatus[connection.key];
     const connected = isConnectionConnected(s);
@@ -50,6 +65,8 @@ const rows = computed<Row[]>(() =>
       if (connection.syncProvider) bits.push(timeAgo(s?.last_synced_at));
     }
     return {
+      key: connection.key,
+      label: connection.label,
       connection,
       connected,
       error: s?.status === "error",
@@ -59,10 +76,57 @@ const rows = computed<Row[]>(() =>
           ? (s.detail ?? "Connection error")
           : connection.summary),
     };
-  }).sort((a, b) => Number(b.connected) - Number(a.connected)),
+  }),
 );
 
+const pluginRows = computed<Row[]>(() =>
+  pluginConnections.value.map((plugin) => {
+    const status = pluginStatus.value[pluginKey(plugin)];
+    return {
+      key: pluginKey(plugin),
+      label: plugin.label,
+      plugin,
+      connected: status?.connected ?? false,
+      error: status?.error ?? false,
+      detail:
+        status?.display_name ||
+        (status?.error ? "Status unavailable" : plugin.description) ||
+        plugin.document.title,
+    };
+  }),
+);
+
+const rows = computed<Row[]>(() =>
+  [...builtInRows.value, ...pluginRows.value].sort(
+    (a, b) => Number(b.connected) - Number(a.connected),
+  ),
+);
+
+async function loadPluginStatus() {
+  await Promise.all(
+    pluginConnections.value.map(async (item) => {
+      if (!item.statusAction) return;
+      let status: PluginConnectionStatus;
+      try {
+        status = pluginConnectionStatus(
+          await dispatchPluginAction(item.pluginId, item.statusAction.id),
+        );
+      } catch {
+        status = { connected: false, error: true };
+      }
+      pluginStatus.value = { ...pluginStatus.value, [pluginKey(item)]: status };
+    }),
+  );
+}
+
+function closePlugin() {
+  managingPlugin.value = null;
+  // the popup may have connected or disconnected the account
+  void loadPluginStatus();
+}
+
 onMounted(() => void state.loadCredentials());
+watch(pluginConnections, () => void loadPluginStatus(), { immediate: true });
 </script>
 
 <template>
@@ -78,17 +142,17 @@ onMounted(() => void state.loadCredentials());
 
     <p v-if="state.credentialsLoading.value" class="hint">Loading…</p>
     <ul v-else class="rows">
-      <li v-for="row in rows" :key="row.connection.key" class="row">
+      <li v-for="row in rows" :key="row.key" class="row">
         <span
           class="mark"
           :style="{
-            background: markFor(row.connection.key).bg,
-            color: markFor(row.connection.key).fg,
+            background: markFor(row.label).bg,
+            color: markFor(row.label).fg,
           }"
-          >{{ markFor(row.connection.key).mark }}</span
+          >{{ markFor(row.label).mark }}</span
         >
         <span class="info">
-          <strong>{{ row.connection.label }}</strong>
+          <strong>{{ row.label }}</strong>
           <span class="detail" :title="row.detail">{{ row.detail }}</span>
         </span>
         <span class="pill" :class="{ ok: row.connected, bad: row.error }">{{
@@ -96,7 +160,7 @@ onMounted(() => void state.loadCredentials());
         }}</span>
         <span class="controls">
           <button
-            v-if="row.connection.syncProvider && row.connected"
+            v-if="row.connection?.syncProvider && row.connected"
             type="button"
             class="btn"
             :disabled="state.librarySyncing[row.connection.syncProvider]"
@@ -111,8 +175,12 @@ onMounted(() => void state.loadCredentials());
           <button
             type="button"
             class="btn ghost"
-            :aria-label="`${row.connected ? 'Manage' : 'Connect'} ${row.connection.label}`"
-            @click="managing = row.connection"
+            :aria-label="`${row.connected ? 'Manage' : 'Connect'} ${row.label}`"
+            @click="
+              row.plugin
+                ? (managingPlugin = row.plugin)
+                : (managing = row.connection ?? null)
+            "
           >
             {{ row.connected ? "Manage" : "Connect" }}
           </button>
@@ -125,6 +193,11 @@ onMounted(() => void state.loadCredentials());
       :connection="managing"
       :state="state"
       @close="managing = null"
+    />
+    <PluginConnectionDialog
+      v-if="managingPlugin"
+      :connection="managingPlugin"
+      @close="closePlugin"
     />
   </section>
 </template>

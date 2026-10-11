@@ -53,6 +53,9 @@ def filter_ui_document(
                 )
             ),
             "settings_sections": authorized_settings,
+            "connections": (
+                document.connections if permitted(Capability.FRONTEND_CONNECTIONS) else ()
+            ),
             "extensions": tuple(
                 item
                 for item in document.extensions

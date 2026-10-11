@@ -60,6 +60,41 @@ Navigation contributions accept `group` and `folders` too. Settings navigation a
 {"id":"reader-settings","label":"Document reader","page_id":"reader-settings","area":"administration","group":"Documents","visibility":{"admin_only":true}}
 ```
 
+## Connections
+
+A plugin that links a personal account can declare a `connections` contribution
+(Plugin API 1.1.6 or later, 16 at most). The host lists it on **Settings > Account >
+Connections** beside the built-in accounts, shows its name, description and status,
+and opens the declared page in a popup from **Connect** or **Manage**. The popup is
+the plugin's own page, rendered exactly as it is elsewhere, so sign-in, imports and
+disconnecting stay on the Connections page instead of a separate sidebar entry.
+
+```json
+{"id":"account","label":"Example account","description":"Import a personal library.","page_id":"library","status_action_id":"status"}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `id` | Unique within the plugin. |
+| `label` | Row name, 1-64 characters. |
+| `description` | Optional row text, at most 256 characters, shown until the plugin reports an account name. |
+| `page_id` | A declared page opened in the popup. |
+| `status_action_id` | Optional declared action the host runs for the signed-in user when the page loads and when the popup closes. |
+| `icon`, `order` | Optional presentation hints. |
+
+The status action returns an object. The host accepts only a literal boolean
+`connected` and an optional plain-text `display_name` (trimmed, 80 characters at
+most); anything else is treated as not connected, and `ok: false` or a failed action
+shows the row as unavailable. The action needs its own declared capability and grant,
+for example `plugin.storage`. Without a status action the row shows its description
+and no connection state.
+
+Registration requires the `frontend.connections` capability, which is low risk and
+independent of `frontend.settings` and `frontend.navigation.*`. Without the grant
+the contribution is removed from the API document and ignored by the frontend.
+Connections never receive a page-replacement or Settings placement. A document
+declaring `connections` below API 1.1.6 is rejected.
+
 ## Navigation and host extensions
 
 The first-class contribution contract supports navigation in the main sidebar, Settings sidebar, administration, game context, and media context. Contributions include an ID, label, icon, ordering, target, and optional visibility conditions. The host only exposes a contribution when the installation has the matching navigation capability.
