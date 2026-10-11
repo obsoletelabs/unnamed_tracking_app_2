@@ -39,9 +39,9 @@ def test_administrative_user_actions_require_the_admin_navigation_grant():
     data["extensions"][0]["slot"] = "administration.users.actions"
     document = PluginUiDocument.model_validate(data)
     assert not _filter_ui_document(document, frozenset({"frontend.page.extend"})).extensions
-    assert len(
-        _filter_ui_document(document, frozenset({"frontend.navigation.admin"})).extensions
-    ) == 1
+    assert (
+        len(_filter_ui_document(document, frozenset({"frontend.navigation.admin"})).extensions) == 1
+    )
 
 
 @pytest.mark.parametrize("area", ["account", "preferences", "administration"])
