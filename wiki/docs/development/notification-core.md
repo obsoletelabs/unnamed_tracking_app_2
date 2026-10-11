@@ -165,7 +165,10 @@ Generic delivery rechecks the attempt lease, projection, preferences, source and
 provider grants, installation and endpoint revision immediately before handoff.
 The plugin receives approved title/body, event type/time, urgency and resolved
 link plus opaque notification/destination IDs. Account IDs, entity IDs, addresses
-and host credentials are excluded. The private runtime creates
+and host credentials are excluded from this content and routing envelope.
+The existing authenticated `_plugin_context` separately identifies the current
+actor for authorized per-user plugin storage; server configuration identifies an
+authenticated administrator. Plugins cannot select that identity. The private runtime creates
 `_notification_context` containing operation, installation, attempt and endpoint
 revision; ordinary UI actions cannot supply this reserved context.
 Plugins own their secrets and transport through existing storage/network grants.
@@ -227,3 +230,9 @@ return `ok: true`; declared-field configuration uses the revision-bound private
 configure/retire context and returns `configured: true` / `retired: true`.
 Provider toggles may restore linked-account routing within the same installation;
 they cannot activate a failed or invalidated declared-field configuration.
+Enrollment rechecks installation, registration and grants after the configure
+callback, so a result cannot activate routing after its authority has changed.
+
+![Configured plugin providers](../assets/notification-generic/providers-desktop-dark.png)
+
+![Destination configuration on a phone](../assets/notification-generic/configuration-mobile-dark.png)

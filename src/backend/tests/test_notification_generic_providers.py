@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
 import pytest
+from fastapi import HTTPException
 from pydantic import ValidationError
 from sqlalchemy import select
 
@@ -351,8 +352,69 @@ async def test_generic_private_destination_enrollment_is_owner_bound_and_idempot
         assert endpoint.privacy == int(Trust.PRIVATE)
         assert endpoint.encrypted_configuration is None
         assert runtime.action.await_args.kwargs == {"user_id": str(p.owner)}
+        assert runtime.action.await_args.args[2] == {
+            "_plugin_context": {"user_id": str(p.owner), "is_admin": False}
+        }
 
         repeated = await create_plugin_destination(payload, db, owner)
         assert repeated == {"id": str(endpoint.id), "kind": "discord_bot_dm", "existing": True}
         assert endpoint.revision == 1
         assert runtime.action.await_count == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change", ["installation", "action", "definition", "grant"])
+async def test_linked_enrollment_rechecks_authority_after_plugin_callback(
+    webhook_provider,  # noqa: F811
+    monkeypatch,
+    change,
+):
+    p = webhook_provider
+    registration_row = SimpleNamespace(
+        provider_id=p.provider,
+        name="Linked account",
+        action_id="deliver",
+        plugin_id=p.plugin,
+        installation_id=p.installation,
+        transport="plugin",
+        definition={
+            "destinations": [{"kind": "dm", "label": "DM", "privacy": "PRIVATE"}],
+            "configure_action": "configure",
+            "retire_action": "retire",
+        },
+    )
+    runtime = SimpleNamespace(action=AsyncMock())
+    adapter = PluginNotificationProvider(registration_row, runtime=runtime)
+    adapter.is_authorized = AsyncMock(return_value=True)
+
+    async def configure(*_args, **_kwargs):
+        if change == "installation":
+            registration_row.installation_id = uuid4()
+        elif change == "action":
+            registration_row.action_id = "replacement"
+        elif change == "definition":
+            registration_row.definition["destinations"][0]["label"] = "Replacement DM"
+        else:
+            adapter.is_authorized.return_value = False
+        return {"ok": True}
+
+    runtime.action.side_effect = configure
+    monkeypatch.setattr(
+        "src.api.routes.notification_providers.get_notification_providers",
+        AsyncMock(return_value={p.provider: adapter}),
+    )
+    async with SessionLocal() as db:
+        owner = await db.get(User, p.owner)
+        payload = PluginDestinationCreate(provider_id=p.provider, kind="dm")
+        with pytest.raises(HTTPException) as caught:
+            await create_plugin_destination(payload, db, owner)
+        assert caught.value.status_code == (403 if change == "grant" else 409)
+        assert (
+            await db.scalar(
+                select(NotificationDestination.id).where(
+                    NotificationDestination.user_id == p.owner,
+                    NotificationDestination.provider_id == p.provider,
+                )
+            )
+            is None
+        )

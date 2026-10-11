@@ -32,7 +32,7 @@ def provider(tmp_path, monkeypatch, activate_registry):
     return registry, registry._item(package)["installation_id"], calls
 
 
-def test_private_delivery_context_contains_bound_endpoint_and_not_owner(provider):
+def test_private_delivery_has_bound_endpoint_and_authenticated_actor_separately(provider):
     registry, installation, calls = provider
     destination = {"id": str(uuid4()), "revision": 2, "kind": "webhook"}
     owner, attempt = str(uuid4()), str(uuid4())
@@ -41,8 +41,10 @@ def test_private_delivery_context_contains_bound_endpoint_and_not_owner(provider
         user_id=owner, installation_id=installation, attempt_id=attempt, server_revision=1) == {"success": True}
     assert calls == [{"delivery": {"title": "Approved"}, "_notification_context": {
         "operation": "deliver", "scope": "destination", "server_revision": 1, "installation_id": installation, "attempt_id": attempt,
-        "destination": destination}}]
-    assert owner not in json.dumps(calls)
+        "destination": destination},
+        "_plugin_context": {"user_id": owner, "is_admin": False}}]
+    assert owner not in json.dumps(calls[0]["_notification_context"])
+    assert owner not in json.dumps(calls[0]["delivery"])
 
 
 def test_public_action_cannot_forge_private_context(provider):
@@ -57,9 +59,11 @@ def test_configuration_receives_only_core_context_and_transient_values(provider)
     destination = {"id": str(uuid4()), "revision": 2, "kind": "webhook"}
     context = {"operation": "configure", "scope": "destination", "provider_id": "contract.provider.webhook",
                "destination": destination}
+    owner = str(uuid4())
     registry.notification_provider_action("contract.provider", "deliver", {"url": "own-secret"},
-        user_id=str(uuid4()), installation_id=installation, context=context)
+        user_id=owner, installation_id=installation, context=context)
     assert calls == [{"configuration": {"url": "own-secret"},
+                     "_plugin_context": {"user_id": owner, "is_admin": False},
                      "_notification_context": {**context, "installation_id": installation}}]
 
 

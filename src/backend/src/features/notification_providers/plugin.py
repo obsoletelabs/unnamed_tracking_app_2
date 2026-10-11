@@ -107,7 +107,7 @@ class PluginNotificationProvider:
         return await self._runtime.action(
             self.registration.plugin_id,
             action_id,
-            {},
+            {"_plugin_context": {"user_id": str(user_id), "is_admin": False}},
             user_id=str(user_id),
         )
 

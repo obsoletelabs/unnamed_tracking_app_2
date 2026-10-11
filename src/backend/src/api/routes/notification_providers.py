@@ -649,6 +649,27 @@ async def _create_linked_plugin_destination(
             422,
             "This destination requires provider-specific fields; use the provider settings page.",
         )
+    expected = (
+        provider.registration.plugin_id,
+        provider.registration.installation_id,
+        provider.registration.action_id,
+        definition.model_dump(mode="json"),
+    )
+    await _run_plugin_destination_configuration(provider, definition, current_user.id)
+    await db.scalar(select(User.id).where(User.id == current_user.id).with_for_update())
+    provider, definition = await _authorized_plugin_provider(
+        db, payload.provider_id, current_user.id
+    )
+    current = (
+        provider.registration.plugin_id,
+        provider.registration.installation_id,
+        provider.registration.action_id,
+        definition.model_dump(mode="json"),
+    )
+    if current != expected:
+        raise HTTPException(
+            409, "Provider configuration changed; enroll the current destination again"
+        )
     endpoint_key = f"plugin:{choice.kind}"
     endpoint = await db.scalar(
         select(NotificationDestination)
@@ -659,7 +680,6 @@ async def _create_linked_plugin_destination(
         )
         .with_for_update()
     )
-    await _run_plugin_destination_configuration(provider, definition, current_user.id)
     if endpoint is not None and endpoint.active and endpoint.enabled:
         return {"id": str(endpoint.id), "kind": endpoint.kind, "existing": True}
     endpoint = _save_plugin_destination(db, current_user, provider, endpoint, choice)

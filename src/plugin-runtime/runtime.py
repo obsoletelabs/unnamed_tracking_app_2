@@ -2961,7 +2961,9 @@ class PluginRegistry:
                        "attempt_id": str(UUID(attempt_id)), "destination": destination}
             values = {"delivery": values["delivery"]}
         return self.action(
-            plugin_id, action_id, values, user_id=user_id,
+            plugin_id, action_id,
+            {**values, "_plugin_context": {"user_id": str(UUID(user_id)), "is_admin": False}},
+            user_id=user_id,
             _notification_authorized=not _render_only, _notification_context=context,
         )
 
@@ -2999,7 +3001,10 @@ class PluginRegistry:
             raise RuntimePolicyError("Provider server context is invalid")
         self.supervisor._authorize_capability(plugin_id, "notification_providers.deliver", user_id=user_id)
         return self.action(
-            plugin_id, action_id, {"configuration": configuration}, user_id=user_id,
+            plugin_id, action_id,
+            {"configuration": configuration,
+             "_plugin_context": {"user_id": str(UUID(user_id)), "is_admin": context["scope"] == "server"}},
+            user_id=user_id,
             _notification_context={**context, "installation_id": str(UUID(installation_id))},
         )
 
