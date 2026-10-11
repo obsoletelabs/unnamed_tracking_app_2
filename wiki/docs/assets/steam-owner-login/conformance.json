@@ -1,0 +1,10 @@
+{
+  "compiled_ui": true,
+  "disposable_database": "steam_owner_validation",
+  "provider_responses": "synthetic fixtures",
+  "live_steam_account": false,
+  "passed": [
+    "Steam QR/account/Guard, late-response cancellation, secret storage and responsive dialog at 1440px",
+    "Steam QR/account/Guard, late-response cancellation, secret storage and responsive dialog at 390px"
+  ]
+}

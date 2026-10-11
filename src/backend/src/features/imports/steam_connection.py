@@ -198,7 +198,8 @@ async def check_library_owner(db: AsyncSession, user: User, steam_id: str) -> No
         if existing is not None:
             raise SteamConnectionError(
                 "These Steam imports belong to another account. Reconnect the original account "
-                "to preserve its progress, or remove those imports before changing accounts.",
+                "to preserve its progress. Changing accounts requires permanently removing "
+                "those Steam imports, including any in Trash.",
                 409,
             )
     user.steam_library_owner_id = steam_id
