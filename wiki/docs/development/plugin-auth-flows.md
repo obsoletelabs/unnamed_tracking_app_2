@@ -105,7 +105,7 @@ Expired encrypted material is cleared by the existing job loop; bounded records 
 removed after an additional day. Reset API 1.1.7 remains compatible.
 
 
-## Live recovery configuration status (API 1.1.9)
+## Live recovery configuration status (API 1.1.10)
 
 `auth_flows.password_reset.status`, guarded by the existing critical
 `auth.password_reset` grant, takes `{}` and returns `registered` plus

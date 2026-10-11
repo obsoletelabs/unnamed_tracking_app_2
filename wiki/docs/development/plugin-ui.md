@@ -251,7 +251,7 @@ An opt-in `frontend.inline_assets: true` manifest flag lets a verified package u
 Game Docs reader declarations, document context and the original-download bridge are described in [Scoped document API](plugin-documents.md).
 
 
-## Administrative user actions (API 1.1.9)
+## Administrative user actions (API 1.1.10)
 
 `administration.users.actions` is a generic page contribution rendered as a button
 on Administration → Users. Its page title labels the button; clicking opens a
