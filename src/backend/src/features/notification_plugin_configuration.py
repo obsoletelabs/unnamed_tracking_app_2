@@ -6,7 +6,7 @@ import time
 from dataclasses import dataclass
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.notification_destination import NotificationDestination
@@ -14,7 +14,11 @@ from src.database.models.notification_provider_setting import NotificationProvid
 from src.database.models.plugin_notification_provider import PluginNotificationProviderRegistration
 from src.database.models.user import User
 from src.features.notification_destinations import retire_provider_destinations
-from src.features.notification_enrollment import EnrollmentError, invalidate_endpoint
+from src.features.notification_enrollment import (
+    EnrollmentError,
+    enforce_destination_limit,
+    invalidate_endpoint,
+)
 from src.features.notification_providers.plugin import PluginNotificationProvider
 from src.plugin_api.notification_contracts import NotificationProviderDefinition
 from src.plugin_api.runtime_client import (
@@ -32,6 +36,22 @@ class _ConfigurationAuthority:
     definition: dict
     delivery_action: str
     server_revision: int
+
+
+def _validate_bounds(field: UiField, value) -> None:
+    bounds = field.validation
+    if bounds is None:
+        return
+    if isinstance(value, str):
+        too_short = bounds.min_length is not None and len(value) < bounds.min_length
+        too_long = bounds.max_length is not None and len(value) > bounds.max_length
+        if too_short or too_long:
+            raise EnrollmentError("Provider configuration text does not meet its bounds")
+    elif isinstance(value, (int, float)) and not isinstance(value, bool):
+        too_small = bounds.minimum is not None and value < bounds.minimum
+        too_large = bounds.maximum is not None and value > bounds.maximum
+        if too_small or too_large:
+            raise EnrollmentError("Provider configuration number does not meet its bounds")
 
 
 def validate_values(fields: tuple[UiField, ...], values: dict, *, partial: bool) -> dict:
@@ -66,26 +86,7 @@ def validate_values(fields: tuple[UiField, ...], values: dict, *, partial: bool)
             and (abs(value) > 2**53 - 1 or not math.isfinite(value))
         ):
             raise EnrollmentError("Provider configuration requires finite numbers")
-        bounds = field.validation
-        if (
-            bounds
-            and isinstance(value, str)
-            and (
-                (bounds.min_length is not None and len(value) < bounds.min_length)
-                or (bounds.max_length is not None and len(value) > bounds.max_length)
-            )
-        ):
-            raise EnrollmentError("Provider configuration text does not meet its bounds")
-        if (
-            bounds
-            and isinstance(value, (int, float))
-            and not isinstance(value, bool)
-            and (
-                (bounds.minimum is not None and value < bounds.minimum)
-                or (bounds.maximum is not None and value > bounds.maximum)
-            )
-        ):
-            raise EnrollmentError("Provider configuration number does not meet its bounds")
+        _validate_bounds(field, value)
         result[field.id] = value
     return result
 
@@ -118,10 +119,7 @@ async def _registration(db: AsyncSession, user_id: UUID, provider_id: str):
 async def _owned(db: AsyncSession, user_id: UUID, destination_id: UUID):
     row = await db.scalar(
         select(NotificationDestination)
-        .where(
-            NotificationDestination.id == destination_id,
-            NotificationDestination.user_id == user_id,
-        )
+        .filter_by(id=destination_id, user_id=user_id)
         .with_for_update()
         .execution_options(populate_existing=True)
     )
@@ -130,7 +128,7 @@ async def _owned(db: AsyncSession, user_id: UUID, destination_id: UUID):
     return row
 
 
-async def _invoke(row, authority, definition, user_id, values, context):
+async def _invoke(row, authority, definition, *, user_id, values, context):
     action = (
         definition.retire_action
         if context["operation"] == "retire"
@@ -176,39 +174,21 @@ def _destination_context(endpoint, operation="configure"):
     }
 
 
-async def configure_destination(
-    db: AsyncSession,
-    user_id: UUID,
-    provider_id: str,
-    kind: str,
-    values: dict,
-    label: str,
-    *,
-    destination_id: UUID | None = None,
-    enabled: bool = True,
-    share_followed_media: bool = False,
-) -> UUID:
-    """Commit invalidation first; a callback can activate only its unchanged authority."""
-    row, definition, authority = await _registration(db, user_id, provider_id)
+async def _prepare_endpoint(
+    db, user_id, provider_id, definition, authority, *, kind, values, destination_id
+):
     choice = next((item for item in definition.destinations if item.kind == kind), None)
     if choice is None:
         raise EnrollmentError("This destination kind is not supported")
-    if share_followed_media and choice.privacy != "PUBLIC":
-        raise EnrollmentError("Media disclosure consent applies only to PUBLIC destinations")
     configuration = validate_values(choice.fields, values, partial=destination_id is not None)
     if destination_id is None:
-        count = await db.scalar(
-            select(func.count())
-            .select_from(NotificationDestination)
-            .where(
-                NotificationDestination.user_id == user_id,
-                NotificationDestination.provider_id == provider_id,
-                NotificationDestination.endpoint_key.not_like("retired:%"),
-            )
+        await enforce_destination_limit(
+            db,
+            user_id,
+            provider_id,
+            include_inactive=True,
+            maximum=20 if definition.features.multiple_destinations else 1,
         )
-        limit = 20 if definition.features.multiple_destinations else 1
-        if count and count >= limit:
-            raise EnrollmentError("Remove a configured destination before adding another", 409)
         identity = uuid4()
         endpoint = NotificationDestination(
             id=identity,
@@ -235,31 +215,69 @@ async def configure_destination(
             raise EnrollmentError("Enroll a new destination after reinstalling this provider", 409)
         await invalidate_endpoint(db, endpoint)
         endpoint.active = endpoint.enabled = False
-    endpoint.display_name = label.strip() or choice.label
+    return endpoint, configuration
+
+
+async def _ensure_provider_opt_in(db, user_id, provider_id):
     setting = await db.scalar(
-        select(NotificationProviderSetting).where(
-            NotificationProviderSetting.user_id == user_id,
-            NotificationProviderSetting.provider_id == provider_id,
-        )
+        select(NotificationProviderSetting).filter_by(user_id=user_id, provider_id=provider_id)
     )
     if setting is None:
         db.add(NotificationProviderSetting(user_id=user_id, provider_id=provider_id, enabled=True))
-    identity, revision = endpoint.id, endpoint.revision
-    context = _destination_context(endpoint)
+
+
+async def configure_destination(
+    db: AsyncSession,
+    user_id: UUID,
+    provider_id: str,
+    kind: str,
+    values: dict,
+    *,
+    label: str,
+    destination_id: UUID | None = None,
+    enabled: bool = True,
+    share_followed_media: bool = False,
+) -> UUID:
+    """Commit invalidation first; a callback can activate only its unchanged authority."""
+    row, definition, authority = await _registration(db, user_id, provider_id)
+    endpoint, configuration = await _prepare_endpoint(
+        db,
+        user_id,
+        provider_id,
+        definition,
+        authority,
+        kind=kind,
+        values=values,
+        destination_id=destination_id,
+    )
+    if share_followed_media and endpoint.privacy != 0:
+        raise EnrollmentError("Media disclosure consent applies only to PUBLIC destinations")
+    endpoint.display_name = label.strip() or next(
+        item.label for item in definition.destinations if item.kind == kind
+    )
+    await _ensure_provider_opt_in(db, user_id, provider_id)
+    expected = (endpoint.id, endpoint.revision)
     await db.commit()
-    await _invoke(row, authority, definition, user_id, configuration, context)
+    await _invoke(
+        row,
+        authority,
+        definition,
+        user_id=user_id,
+        values=configuration,
+        context=_destination_context(endpoint),
+    )
     await _current_registration(db, user_id, authority)
-    endpoint = await _owned(db, user_id, identity)
-    if endpoint.revision != revision or endpoint.installation_id != authority.installation_id:
+    endpoint = await _owned(db, user_id, expected[0])
+    if endpoint.revision != expected[1] or endpoint.installation_id != authority.installation_id:
         raise EnrollmentError(
             "Destination configuration changed; retry the current configuration", 409
         )
     endpoint.active, endpoint.enabled = True, enabled
     if share_followed_media:
-        endpoint.media_consent_revision = revision
+        endpoint.media_consent_revision = expected[1]
         endpoint.media_consent_at = int(time.time())
     await db.commit()
-    return identity
+    return expected[0]
 
 
 async def remove_destination(db: AsyncSession, user_id: UUID, destination_id: UUID) -> bool:
@@ -295,7 +313,7 @@ async def remove_destination(db: AsyncSession, user_id: UUID, destination_id: UU
         )
         if not await PluginNotificationProvider(row).is_authorized(db, user_id):
             return False
-        await _invoke(row, authority, definition, user_id, {}, context)
+        await _invoke(row, authority, definition, user_id=user_id, values={}, context=context)
     except (EnrollmentError, PluginRuntimeUnavailable, PluginRuntimeRequestError):
         return False
     return True
@@ -333,7 +351,9 @@ async def configure_server(db: AsyncSession, user_id: UUID, provider_id: str, va
         "revision": authority.server_revision,
     }
     await db.commit()
-    await _invoke(row, authority, definition, user_id, configuration, context)
+    await _invoke(
+        row, authority, definition, user_id=user_id, values=configuration, context=context
+    )
     row, _definition = await _current_registration(db, user_id, authority)
     await _require_admin(db, user_id)
     row.server_configured = True

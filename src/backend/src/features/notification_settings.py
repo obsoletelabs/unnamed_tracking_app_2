@@ -153,6 +153,21 @@ async def _type_catalog(db: AsyncSession, user_id: UUID) -> list[dict[str, Any]]
     return types
 
 
+async def _generic_availability(db, user_id, registrations, providers) -> None:
+    for provider_id, registration in registrations.items():
+        if registration.transport != "plugin" or provider_id not in providers:
+            continue
+        try:
+            configurable = await PluginNotificationProvider(registration).is_authorized(db, user_id)
+        except PluginRuntimeUnavailable:
+            configurable = False
+        definition = NotificationProviderDefinition.model_validate(registration.definition)
+        providers[provider_id]["configuration_available"] = configurable
+        providers[provider_id]["available"] = configurable and (
+            not definition.server_fields or registration.server_configured
+        )
+
+
 async def routing_settings(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
     """Include inactive owner choices without exposing endpoint credentials."""
     await resolve_destinations(db, user_id)
@@ -191,18 +206,7 @@ async def routing_settings(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
         )
         for provider_id in sorted(provider_ids)
     }
-    for provider_id, registration in registrations.items():
-        if registration.transport != "plugin" or provider_id not in providers:
-            continue
-        try:
-            configurable = await PluginNotificationProvider(registration).is_authorized(db, user_id)
-        except PluginRuntimeUnavailable:
-            configurable = False
-        definition = NotificationProviderDefinition.model_validate(registration.definition)
-        providers[provider_id]["configuration_available"] = configurable
-        providers[provider_id]["available"] = configurable and (
-            not definition.server_fields or registration.server_configured
-        )
+    await _generic_availability(db, user_id, registrations, providers)
     providers[PUSH_PROVIDER].update(
         name="Browser / PWA push",
         available=browser is not None,
@@ -249,7 +253,10 @@ async def routing_settings(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
                 ),
                 "shared_configuration": destination.kind == "legacy_webhook",
                 "plugin_owned_configuration": bool(
-                    destination_registration and destination_registration.transport == "plugin"
+                    destination_registration
+                    and destination_registration.transport == "plugin"
+                    and destination.configuration_ref == str(destination.id)
+                    and not destination.encrypted_configuration
                 ),
                 "configuration_retired": destination.endpoint_key.startswith("retired:"),
                 "label": destination.display_name,

@@ -47,7 +47,7 @@ async def test_configuration_is_write_only_and_owner_bound(generic_provider, con
     p = generic_provider
     async with SessionLocal() as db:
         identity = await configure_destination(
-            db, p.owner, p.provider, "webhook", {"url": "user-secret-value"}, "My channel"
+            db, p.owner, p.provider, "webhook", {"url": "user-secret-value"}, label="My channel"
         )
         endpoint = await db.get(NotificationDestination, identity)
         assert endpoint.active and endpoint.enabled and endpoint.privacy == 0
@@ -93,7 +93,7 @@ async def test_secret_change_withdraws_old_work_before_callback(
             p.provider,
             "webhook",
             {"url": "replacement-secret"},
-            "Changed",
+            label="Changed",
             destination_id=p.endpoint,
         )
         endpoint = await db.get(NotificationDestination, p.endpoint)
@@ -137,7 +137,7 @@ async def test_callback_cannot_reactivate_failed_or_stale_configuration(
                 p.provider,
                 "webhook",
                 {"url": "secret-never-show"},
-                "Channel",
+                label="Channel",
                 destination_id=p.endpoint,
             )
         assert "secret-never-show" not in str(rejected.value)
