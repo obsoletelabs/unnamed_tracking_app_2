@@ -65,5 +65,40 @@ material; expired token records are removed after one day.
 The schema is exported by `tools/export_auth_contract.py`; companion contract checks
 compare its snapshot and actual packaged consumers against the paired host.
 
-Email invitations are a separate implementation increment; this contract does not
-create accounts or implement the synthetic invite demonstration as production auth.
+## Administrator email invitations (API 1.1.8)
+
+`auth.user_invites` is a separate critical grant. An administrator explicitly
+activates one installed contribution through `auth_flows.user_invites.register`.
+Its narrow `status`, `issue`, `list`, `revoke`, `restore`, and `unregister` methods
+manage only that installation's invitations. Listing exposes pending invite email
+addresses and delivery metadata to the authorized administrator, never bearer tokens,
+passwords, or SMTP credentials. `api.full` does not substitute for this grant.
+
+The maintained consumer is `official.user-invites` in the companion repository.
+The plugin supplies administrator controls; the host owns invitation credentials,
+expiry, account policy, delivery routing, and atomic acceptance. Link lifetime is
+one hour to seven days, with a one-day default. Issuance is limited to 100 per
+administrator and five per email per day, with a bounded pending-recipient store.
+
+An invitation targets a temporary recipient, not a fake user or the administrator's
+own notification destination. Notifications and destinations have exactly one owner:
+an existing user or a bounded pending recipient. The host-reserved `auth.user_invite`
+source can route only its matching invitation to a PRIVATE external SMTP endpoint.
+This endpoint cannot receive ordinary notifications or recovery secrets. Existing
+delivery leases, retry state, administrator restrictions, and SMTP sensitive-transport
+checks apply. The encrypted fragment link is resolved only at final handoff; generic
+notification content contains no email address or secret. Invitation messages carry
+no marketing unsubscribe header.
+
+`GET /api/auth/user-invites/status` returns availability only. Opening the link does
+not consume it. `POST /api/auth/user-invites/accept` accepts `id`, `token`, `username`,
+and `password`; email and administrator privileges cannot be supplied. Acceptance
+checks the live issuer, installation, configuration, expiry, and single-use token,
+then creates a normal account and retires the temporary destination. Sign-in remains
+explicit. No SECURE notification destination is automatically created.
+
+Revocation, replacement, expiry, permission withdrawal, disable, uninstall, or a
+changed activation invalidate outstanding invitations and cancel unsent deliveries.
+Reinstallation requires explicit activation and cannot restore old credentials.
+Expired encrypted material is cleared by the existing job loop; bounded records are
+removed after an additional day. Reset API 1.1.7 remains compatible.

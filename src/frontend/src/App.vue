@@ -132,7 +132,8 @@ const sidebarShown = computed(
   () =>
     !route.path.startsWith("/login") &&
     route.path !== "/setup" &&
-    route.path !== "/reset-password",
+    route.path !== "/reset-password" &&
+    route.path !== "/accept-invite",
 );
 // Pinned and rail modes sit in the page's own layout, so content needs to
 // make room for them. Overlay floats above everything and reserves nothing.
