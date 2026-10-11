@@ -32,8 +32,8 @@ def _folder_size_bytes(folder_location: str | None) -> int:
         return 0
     total = 0
     for path in game_dir.iterdir():
-        # world_map is BlueMap's rendered tile cache (see features/world_map/
-        # bluemap.py) — thousands of small regenerable files per world, not
+        # Retain the exclusion for legacy world_map render caches left on disk
+        # after renderer retirement — thousands of small files per world, not
         # content the user actually uploaded. One heavily-rendered world was
         # enough to push this endpoint's total walk time past 80 seconds by
         # itself (12k+ files in one folder vs. ~1.2k across the other 181
