@@ -21,10 +21,8 @@ async def source_delivery_allowed(db: AsyncSession, notice: Notification) -> boo
         return await active_recovery_token(db, notice) is not None
     if notice.pending_recipient_id is not None:
         return await active_invitation(db, notice) is not None
-    if notice.user_id is None:
-        return False
-    if notice.source_installation_id is None:
-        return True
+    if notice.user_id is None or notice.source_installation_id is None:
+        return notice.user_id is not None
     legacy = notice.kind == "plugin" and notice.event_type == "plugin.notice"
     if not legacy:
         row = await db.scalar(

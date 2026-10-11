@@ -17,9 +17,9 @@ async def plugin_sensitive_allowed(
     db: AsyncSession, notification: Notification, destination: NotificationDestination
 ) -> bool:
     """Declarations never grant access; legacy and grouped endpoints cannot gain proof."""
-    if destination.user_id is None or destination.pending_recipient_id is not None:
-        return False
     concrete_private_endpoint = (
+        destination.user_id is not None,
+        destination.pending_recipient_id is None,
         destination.installation_id is not None,
         destination.privacy == Trust.PRIVATE,
         destination.channel_context == "external",

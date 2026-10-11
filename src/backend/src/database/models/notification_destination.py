@@ -40,12 +40,12 @@ class NotificationDestination(Base):
         PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True
     )
     pending_recipient_id: Mapped[UUID | None] = mapped_column(
-        PG_UUID(as_uuid=True),
         ForeignKey(
             "notification_pending_recipients.id",
             ondelete="CASCADE",
             name="fk_notification_destinations_pending_recipient",
         ),
+        type_=PG_UUID(as_uuid=True),
         nullable=True,
     )
     provider_id: Mapped[str] = mapped_column(String(128), nullable=False)
