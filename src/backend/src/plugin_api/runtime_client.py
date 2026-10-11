@@ -283,6 +283,7 @@ class PluginRuntimeClient:
         user_id: str,
         installation_id: str,
         attempt_id: str,
+        server_revision: int | None = None,
     ) -> dict[str, Any]:
         """Private host transport; authority is outside plugin/UI action values."""
         return await self._request(
@@ -293,6 +294,30 @@ class PluginRuntimeClient:
                 "user_id": user_id,
                 "installation_id": installation_id,
                 "attempt_id": attempt_id,
+                **({"server_revision": server_revision} if server_revision is not None else {}),
+            },
+            timeout=_ACTION_REQUEST_TIMEOUT,
+        )
+
+    async def notification_provider_action(
+        self,
+        plugin_id: str,
+        action_id: str,
+        configuration: dict[str, Any],
+        *,
+        user_id: str,
+        installation_id: str,
+        context: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Private enrollment authority; no caller-selected context reaches public actions."""
+        return await self._request(
+            "POST",
+            f"/plugins/{quote(plugin_id, safe='')}/notification-provider-actions/{quote(action_id, safe='')}",
+            json={
+                "configuration": configuration,
+                "user_id": user_id,
+                "installation_id": installation_id,
+                "context": context,
             },
             timeout=_ACTION_REQUEST_TIMEOUT,
         )

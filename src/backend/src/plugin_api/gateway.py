@@ -637,6 +637,8 @@ async def _register_provider(
             or existing.definition != definition
         ):
             await retire_provider_destinations(db, registration.provider_id)
+            existing.server_configured = False
+            existing.server_revision += 1
         existing.installation_id = installation_id
         existing.name = registration.name
         existing.action_id = registration.action_id

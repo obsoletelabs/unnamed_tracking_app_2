@@ -175,6 +175,26 @@ async def test_generic_public_handoff_is_minimized_and_core_tracks_deliveries(ge
 
 
 @pytest.mark.asyncio
+async def test_generic_test_uses_declared_action_and_same_delivery_lifecycle(generic_provider):
+    from src.features.notification_tests import queue_destination_test
+
+    p = generic_provider
+    async with SessionLocal() as db:
+        result = await queue_destination_test(db, p.owner, p.endpoint)
+        assert result["status"] == "pending"
+        assert await process_pending_deliveries(db, limit=5) == 1
+        call = p.runtime.notification_delivery.await_args
+        assert call.args[1] == DEFINITION["test_action"]
+        registration_row = await db.scalar(
+            select(PluginNotificationProviderRegistration).where(
+                PluginNotificationProviderRegistration.provider_id == p.provider
+            )
+        )
+        assert call.kwargs["server_revision"] == registration_row.server_revision
+        assert call.args[2]["destination"]["id"] == str(p.endpoint)
+
+
+@pytest.mark.asyncio
 async def test_descriptor_changes_deactivate_existing_endpoints_and_queued_work(generic_provider):
     provider = generic_provider
     async with SessionLocal() as db:

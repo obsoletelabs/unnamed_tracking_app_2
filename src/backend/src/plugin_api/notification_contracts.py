@@ -1,5 +1,6 @@
 """Bounded public notification declarations and event facts for Plugin API v1."""
 
+import math
 from string import Formatter
 from typing import Literal, Self
 from uuid import UUID
@@ -33,6 +34,16 @@ def validate_configuration_fields(fields: tuple[UiField, ...]) -> None:
             raise ValueError("Configuration choices exceed their bounds")
         if field.validation and field.validation.pattern:
             raise ValueError("Provider configuration supports bounds and choices, not patterns")
+        numbers = [field.default]
+        if field.validation:
+            numbers.extend([field.validation.minimum, field.validation.maximum])
+        if any(
+            isinstance(value, (float, int))
+            and not isinstance(value, bool)
+            and (abs(value) > 2**53 - 1 or not math.isfinite(value))
+            for value in numbers
+        ):
+            raise ValueError("Configuration numeric metadata exceeds its bounds")
         if isinstance(field.default, str) and len(field.default) > 4096:
             raise ValueError("Configuration default exceeds its bounds")
         if isinstance(field.default, tuple) and len(field.default) > 64:

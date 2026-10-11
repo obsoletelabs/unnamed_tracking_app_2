@@ -2927,7 +2927,7 @@ class PluginRegistry:
     def notification_delivery(
         self, plugin_id: str, action_id: str, values: dict[str, Any], *,
         user_id: str, installation_id: str, attempt_id: str,
-        _render_only: bool = False,
+        _render_only: bool = False, server_revision: int | None = None,
     ) -> dict[str, Any]:
         """Host-authenticated work; generic action payloads cannot confer authority."""
         UUID(user_id)
@@ -2948,6 +2948,8 @@ class PluginRegistry:
         )
         context = None
         if generic:
+            if type(server_revision) is not int or server_revision < 1:
+                raise RuntimePolicyError("Notification server revision is invalid")
             destination = values["destination"]
             if (not isinstance(destination, dict) or set(destination) != {"id", "revision", "kind"}
                     or type(destination["revision"]) is not int or destination["revision"] < 1
@@ -2955,12 +2957,50 @@ class PluginRegistry:
                     or not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,31}", destination["kind"])):
                 raise RuntimePolicyError("Notification destination work is invalid")
             UUID(str(destination["id"]))
-            context = {"operation": "deliver", "installation_id": str(UUID(installation_id)),
+            context = {"operation": "deliver", "scope": "destination", "server_revision": server_revision, "installation_id": str(UUID(installation_id)),
                        "attempt_id": str(UUID(attempt_id)), "destination": destination}
             values = {"delivery": values["delivery"]}
         return self.action(
             plugin_id, action_id, values, user_id=user_id,
             _notification_authorized=not _render_only, _notification_context=context,
+        )
+
+    def notification_provider_action(
+        self, plugin_id: str, action_id: str, configuration: dict[str, Any], *,
+        user_id: str, installation_id: str, context: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Core-authorized configuration; secrets belong only to the owning plugin worker."""
+        UUID(user_id)
+        package, manifest = self.package(plugin_id)
+        if self._item(package).get("installation_id") != str(UUID(installation_id)):
+            raise RuntimePolicyError("Provider configuration belongs to another installation")
+        if not any(item.get("name") == "notification_providers.deliver"
+                   for item in manifest.get("capabilities", [])):
+            raise RuntimePolicyError("Plugin does not declare a notification provider")
+        if (not isinstance(configuration, dict) or not isinstance(context, dict)
+                or context.get("operation") not in {"configure", "retire"}
+                or context.get("scope") not in {"destination", "server"}
+                or not isinstance(context.get("provider_id"), str)
+                or not context["provider_id"].startswith(plugin_id + ".")):
+            raise RuntimePolicyError("Provider configuration work is invalid")
+        if context["scope"] == "destination":
+            if set(context) != {"operation", "scope", "provider_id", "destination"}:
+                raise RuntimePolicyError("Provider destination context is invalid")
+            destination = context["destination"]
+            if (not isinstance(destination, dict) or set(destination) != {"id", "revision", "kind"}
+                    or type(destination["revision"]) is not int or destination["revision"] < 1
+                    or not isinstance(destination["kind"], str)
+                    or not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,31}", destination["kind"])):
+                raise RuntimePolicyError("Provider destination context is invalid")
+            UUID(str(destination["id"]))
+        elif (set(context) != {"operation", "scope", "provider_id", "revision"}
+              or type(context["revision"]) is not int or context["revision"] < 1
+              or context["operation"] != "configure"):
+            raise RuntimePolicyError("Provider server context is invalid")
+        self.supervisor._authorize_capability(plugin_id, "notification_providers.deliver", user_id=user_id)
+        return self.action(
+            plugin_id, action_id, {"configuration": configuration}, user_id=user_id,
+            _notification_context={**context, "installation_id": str(UUID(installation_id))},
         )
 
     def notification_layout(
@@ -3253,6 +3293,19 @@ class RuntimeHandler(BaseHTTPRequestHandler):
                 )  # type: ignore[attr-defined]
                 self._json(200, result)
                 return
+            if len(parts) == 4 and parts[0] == "plugins" and parts[2] == "notification-provider-actions":
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 1 <= length <= 65536:
+                    raise RuntimePolicyError("Provider configuration exceeds its bounds")
+                payload = json.loads(self.rfile.read(length))
+                result = self.server.registry.notification_provider_action(
+                    parts[1], parts[3], payload.get("configuration", {}),
+                    user_id=str(payload.get("user_id", "")),
+                    installation_id=str(payload.get("installation_id", "")),
+                    context=payload.get("context", {}),
+                )
+                self._json(200, result)
+                return
             if len(parts) == 4 and parts[0] == "plugins" and parts[2] in {"notification-deliveries", "notification-layouts"}:
                 length = int(self.headers.get("Content-Length", "0"))
                 # Up to 10,000 Unicode body characters plus bounded delivery metadata.
@@ -3267,6 +3320,8 @@ class RuntimeHandler(BaseHTTPRequestHandler):
                     user_id=str(payload.get("user_id", "")),
                     installation_id=str(payload.get("installation_id", "")),
                     attempt_id=str(payload.get("attempt_id", "")),
+                    **({"server_revision": payload.get("server_revision")}
+                       if parts[2] == "notification-deliveries" else {}),
                 )
                 self._json(200, result)
                 return

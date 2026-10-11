@@ -176,5 +176,37 @@ codes before core persistence.
 Generic endpoints currently support PUBLIC/PRIVATE standard notifications only.
 Provider declarations cannot assert SECURE or recovery eligibility. Verified
 built-in email and the authenticated inbox retain their existing trust rules.
-The declaration/handoff increment precedes generic enrollment controls and the
-maintained plugin migration; do not migrate deployed credentials automatically.
+Do not migrate deployed credentials automatically.
+
+### Plugin-owned configuration and enrollment
+
+The authenticated notification settings API accepts declared fields only. A
+new destination receives a core-generated UUID and revision; callers cannot
+choose its owner, installation, trust or credential reference. Configuration
+values are passed transiently to the plugin's declared action through the
+existing private runtime boundary. The plugin stores and validates its own
+credentials using its existing storage/network grants. Responses never echo
+those values. The host retains only labels, routing metadata and declarations.
+
+`POST /api/settings/notification-providers/plugin-destinations` creates an
+endpoint; `PUT` on its UUID updates it. Omitted fields on updates mean retain the
+plugin's stored value. `DELETE` immediately retires core routing and attempts
+plugin secret cleanup. `plugin_cleanup_complete: false` means that cleanup could
+not be confirmed (for example after uninstall); routing remains retired. Never
+hand an earlier installation's credential handles to a replacement installation.
+
+Administrator-only `PUT .../plugin-server-configuration/{provider_id}` configures
+declared server fields. Server changes invalidate affected destinations; users
+must explicitly configure them again. Invalidation is committed before invoking
+plugin code. Failures, changed grants, registration revisions, endpoint revisions
+or lost admin access cannot activate the stale result. Existing history and
+preferences remain; no old messages are replayed.
+
+The private `_notification_context` identifies configure/retire scope and the
+current installation and destination/server revision. Delivery also carries the
+server revision and core attempt UUID. Plugins must store these revisions beside
+their own configuration, reject stale updates, and require matching revisions at
+delivery. This avoids an out-of-order callback replacing credentials used by a
+newer delivery. A descriptor or successful callback is never proof of SECURE
+ownership. Generic destination management UI and the maintained plugin migration
+are a separate increment following this API.

@@ -126,6 +126,10 @@ class PluginNotificationProvider:
                 PluginNotificationProviderRegistration.revoked_at.is_(None),
                 PluginNotificationProviderRegistration.action_id == self.registration.action_id,
                 PluginNotificationProviderRegistration.transport == self.transport,
+                PluginNotificationProviderRegistration.server_revision
+                == self.registration.server_revision
+                if self.transport == "plugin"
+                else PluginNotificationProviderRegistration.id.is_not(None),
                 PluginNotificationProviderRegistration.definition == self.registration.definition
                 if self.transport == "plugin"
                 else PluginNotificationProviderRegistration.definition.is_(None),
@@ -190,7 +194,11 @@ class PluginNotificationProvider:
 
     def _generic_endpoint_valid(self, endpoint: NotificationDestination) -> bool:
         """A provider kind cannot promote a destination or claim a host secret."""
-        if not self.definition or endpoint.installation_id != self.registration.installation_id:
+        if (
+            not self.definition
+            or endpoint.installation_id != self.registration.installation_id
+            or (self.definition.server_fields and not self.registration.server_configured)
+        ):
             return False
         choice = next(
             (item for item in self.definition.destinations if item.kind == endpoint.kind), None
@@ -230,10 +238,15 @@ class PluginNotificationProvider:
         reference = PluginNotificationDestination(
             id=endpoint.id, revision=endpoint.revision, kind=endpoint.kind
         )
+        test_action = self.definition.test_action if self.definition else None
         try:
             response = await self._runtime.notification_delivery(
                 self.registration.plugin_id,
-                self.registration.action_id,
+                (
+                    test_action or self.registration.action_id
+                    if message.purpose == "test"
+                    else self.registration.action_id
+                ),
                 {
                     "delivery": content.model_dump(mode="json"),
                     "destination": reference.model_dump(mode="json"),
@@ -241,6 +254,7 @@ class PluginNotificationProvider:
                 user_id=str(destination.user_id),
                 installation_id=str(self.registration.installation_id),
                 attempt_id=str(message.attempt_id),
+                server_revision=self.registration.server_revision,
             )
             result = NotificationDeliveryResult.model_validate(response)
         except (PluginRuntimeRequestError, PluginRuntimeUnavailable):

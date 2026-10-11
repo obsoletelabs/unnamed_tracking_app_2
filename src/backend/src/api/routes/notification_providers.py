@@ -8,7 +8,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator
 from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -39,6 +39,11 @@ from src.features.notification_enrollment import (
     request_verification,
     revoke_email,
     update_email,
+)
+from src.features.notification_plugin_configuration import (
+    configure_destination,
+    configure_server,
+    remove_destination,
 )
 from src.features.notification_providers.registry import get_notification_providers
 from src.features.notification_push_config import (
@@ -122,6 +127,86 @@ class SmtpTestRequest(BaseModel):
     @classmethod
     def validate_address(cls, value: str) -> str:
         return normalize_email(value)
+
+
+class PluginConfiguration(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    values: dict[str, JsonValue] = Field(default_factory=dict, max_length=32)
+
+
+class PluginDestinationConfiguration(PluginConfiguration):
+    provider_id: str = Field(min_length=3, max_length=128)
+    kind: str = Field(min_length=1, max_length=32)
+    label: str = Field(default="", max_length=80)
+    enabled: bool = True
+    share_followed_media: bool = False
+
+
+@router.post("/plugin-destinations", status_code=201)
+async def create_plugin_destination(
+    payload: PluginDestinationConfiguration,
+    db: AsyncSession = _NOTIFICATION_DB,
+    current_user: User = _NOTIFICATION_USER,
+) -> dict:
+    identity = await _enrollment(
+        db,
+        configure_destination(
+            db,
+            current_user.id,
+            payload.provider_id,
+            payload.kind,
+            payload.values,
+            payload.label,
+            enabled=payload.enabled,
+            share_followed_media=payload.share_followed_media,
+        ),
+    )
+    return {"id": str(identity)}
+
+
+@router.put("/plugin-destinations/{destination_id}")
+async def configure_plugin_destination(
+    destination_id: UUID,
+    payload: PluginDestinationConfiguration,
+    db: AsyncSession = _NOTIFICATION_DB,
+    current_user: User = _NOTIFICATION_USER,
+) -> dict:
+    await _enrollment(
+        db,
+        configure_destination(
+            db,
+            current_user.id,
+            payload.provider_id,
+            payload.kind,
+            payload.values,
+            payload.label,
+            destination_id=destination_id,
+            enabled=payload.enabled,
+            share_followed_media=payload.share_followed_media,
+        ),
+    )
+    return {"configured": True}
+
+
+@router.delete("/plugin-destinations/{destination_id}")
+async def remove_plugin_destination(
+    destination_id: UUID,
+    db: AsyncSession = _NOTIFICATION_DB,
+    current_user: User = _NOTIFICATION_USER,
+) -> dict:
+    cleanup = await _enrollment(db, remove_destination(db, current_user.id, destination_id))
+    return {"removed": True, "plugin_cleanup_complete": cleanup}
+
+
+@router.put("/plugin-server-configuration/{provider_id}")
+async def configure_plugin_notification_server(
+    provider_id: str,
+    payload: PluginConfiguration,
+    db: AsyncSession = _NOTIFICATION_DB,
+    admin: User = Depends(get_current_admin),
+) -> dict:
+    await _enrollment(db, configure_server(db, admin.id, provider_id, payload.values))
+    return {"configured": True}
 
 
 class VerificationConfirm(BaseModel):
