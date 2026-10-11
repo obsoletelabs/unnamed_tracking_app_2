@@ -1,0 +1,22 @@
+{
+  "host_revision": "0379408fe5026c3d463478b65433a317849dd9eb",
+  "compiled_ui": true,
+  "real_apis": true,
+  "transport_fixtures": [
+    "delayed response",
+    "503"
+  ],
+  "passed": [
+    "Compiled real API, selected tabs, cache, delayed/error refresh, retry and navigation: 320",
+    "Compiled real API, selected tabs, cache, delayed/error refresh, retry and navigation: 390",
+    "Compiled real API, selected tabs, cache, delayed/error refresh, retry and navigation: 1440"
+  ],
+  "payload_bytes": {
+    "full": 5938,
+    "overview": 1542,
+    "games": 1718,
+    "movie": 835,
+    "tv": 922,
+    "anime": 925
+  }
+}
