@@ -22,7 +22,12 @@ def upgrade() -> None:
     foreign_keys = sa.inspect(op.get_bind()).get_foreign_keys("job_settings")
     if not any(key["name"] == "fk_job_settings_user_id" for key in foreign_keys):
         op.create_foreign_key(
-            "fk_job_settings_user_id", "job_settings", "users", ["user_id"], ["id"], ondelete="CASCADE"
+            "fk_job_settings_user_id",
+            "job_settings",
+            "users",
+            ["user_id"],
+            ["id"],
+            ondelete="CASCADE",
         )
 
 

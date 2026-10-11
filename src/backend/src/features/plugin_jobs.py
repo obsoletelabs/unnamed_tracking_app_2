@@ -124,9 +124,11 @@ async def _execute_task(spec: JobSpec, installation_id: UUID, task_id: str, mode
                     if current
                     else "This plugin task is no longer installed."
                 )
-            elif mode == "needed" and spec.user_id is not None and not (
-                await get_setting(db, current)
-            ).enabled:
+            elif (
+                mode == "needed"
+                and spec.user_id is not None
+                and not (await get_setting(db, current)).enabled
+            ):
                 result["summary"] = "Autosync was disabled before this step started."
             else:
                 response = await client.run_scheduled_task(
