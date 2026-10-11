@@ -93,7 +93,9 @@ async def invite_flow_status(db, plugin_id, installation_id, user_id, payload):
 
 
 async def reset_flow_status(db, plugin_id, installation_id, user_id, payload):
-    return await auth_flow_status(db, plugin_id, installation_id, user_id, payload, "password_reset")
+    return await auth_flow_status(
+        db, plugin_id, installation_id, user_id, payload, "password_reset"
+    )
 
 
 async def auth_flow_status(db, plugin_id, installation_id, user_id, payload, mode):
