@@ -63,6 +63,18 @@ export interface PluginSettingsContribution {
   document: PluginUiDocument;
 }
 
+export interface PluginConnectionContribution {
+  pluginId: string;
+  contributionId: string;
+  pageId: string;
+  label: string;
+  description: string;
+  icon?: string;
+  order: number;
+  statusAction?: UiAction;
+  document: PluginUiDocument;
+}
+
 export interface PluginSlotContribution {
   pluginId: string;
   extensionId: string;
@@ -128,6 +140,7 @@ export interface PluginThemeContribution {
 export interface PluginContributions {
   navigation: PluginNavigationContribution[];
   settings: PluginSettingsContribution[];
+  connections: PluginConnectionContribution[];
   slots: PluginSlotContribution[];
   overlays: PluginOverlayContribution[];
   dialogs: PluginDialogContribution[];
@@ -155,6 +168,7 @@ export interface PluginDocumentReaderContribution {
 const emptyContributions = (): PluginContributions => ({
   navigation: [],
   settings: [],
+  connections: [],
   slots: [],
   overlays: [],
   dialogs: [],
@@ -305,6 +319,26 @@ export function derivePluginContributions(
         document,
       }))
     : [];
+  const connections = hasCapability(plugin, "frontend.connections")
+    ? (document.connections ?? []).flatMap((item) => {
+        if (!document.pages.some((page) => page.id === item.page_id)) return [];
+        return [
+          {
+            pluginId: plugin.plugin_id,
+            contributionId: item.id,
+            pageId: item.page_id,
+            label: item.label,
+            description: item.description,
+            icon: item.icon ?? undefined,
+            order: item.order,
+            statusAction: document.actions.find(
+              (action) => action.id === item.status_action_id,
+            ),
+            document,
+          },
+        ];
+      })
+    : [];
   const slots: PluginSlotContribution[] = (document.extensions ?? []).flatMap(
     (extension) => {
       if (!hasCapability(plugin, extensionCapability(extension.slot)))
@@ -451,6 +485,7 @@ export function derivePluginContributions(
       : [],
     navigation,
     settings,
+    connections,
     slots,
     overlays,
     dialogs,
@@ -492,6 +527,7 @@ export function derivePluginContributions(
 const themeState = ref<PluginThemeContribution[]>([]);
 const navigationState = ref<PluginNavigationContribution[]>([]);
 const settingsState = ref<PluginSettingsContribution[]>([]);
+const connectionState = ref<PluginConnectionContribution[]>([]);
 const slotState = ref<PluginSlotContribution[]>([]);
 const overlayState = ref<PluginOverlayContribution[]>([]);
 const dialogState = ref<PluginDialogContribution[]>([]);
@@ -513,6 +549,9 @@ function retainContributions(pluginIds: ReadonlySet<string>): void {
     pluginIds.has(item.pluginId),
   );
   settingsState.value = settingsState.value.filter((item) =>
+    pluginIds.has(item.pluginId),
+  );
+  connectionState.value = connectionState.value.filter((item) =>
     pluginIds.has(item.pluginId),
   );
   slotState.value = slotState.value.filter((item) =>
@@ -560,6 +599,7 @@ function compareIds(first: string, second: string): number {
 export const pluginThemes = shallowReadonly(themeState);
 export const pluginNavigation = shallowReadonly(navigationState);
 export const pluginSettingsSections = shallowReadonly(settingsState);
+export const pluginConnections = shallowReadonly(connectionState);
 export const pluginSlots = shallowReadonly(slotState);
 export const pluginOverlays = shallowReadonly(overlayState);
 export const pluginDialogs = shallowReadonly(dialogState);
@@ -669,6 +709,9 @@ async function loadPluginExtensions(): Promise<void> {
       .sort(comparePluginContributions);
     settingsState.value = contributions
       .flatMap((item) => item.settings)
+      .sort(comparePluginContributions);
+    connectionState.value = contributions
+      .flatMap((item) => item.connections)
       .sort(comparePluginContributions);
     const replacementSlots = contributions
       .flatMap((item) => item.replacements)

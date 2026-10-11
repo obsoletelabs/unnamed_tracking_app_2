@@ -2,32 +2,18 @@ import { ref, reactive, onMounted } from "vue";
 
 import { currentUser, checkAuth } from "../state/auth";
 import { updateProfile } from "../services/auth";
-import { fetchPsnStatus, connectPsn, disconnectPsn } from "../services/psn";
-import type { PsnStatus } from "../services/psn";
 import {
-  fetchProviderCredentials,
-  saveProviderCredentials,
-  deleteProviderCredentials,
   fetchScanSettings,
   updateScanSettings,
   fetchAppIntegrations,
   updateAppIntegrations,
 } from "../services/settings";
-import type { ProviderCredentialStatus } from "../services/settings";
-import { syncLibrary } from "../services/librarySync";
-import type { LibrarySyncProvider } from "../services/librarySync";
-import {
-  startTask,
-  completeTask,
-  errorTask,
-  addFeedItem,
-} from "../state/taskProgress";
 interface CardVisual {
   bg: string;
   fg: string;
   mark: string;
 }
-// Reuse the original colored monogram badges in account and provider tiles.
+// Colored monogram badges shared by the metadata, connection and plugin tiles.
 export const SOURCE_VISUALS: Record<string, CardVisual> = {
   Steam: { bg: "#12202e", fg: "#66c0f4", mark: "S" },
   SteamGridDB: { bg: "#0e3b3b", fg: "#2dd4bf", mark: "Gr" },
@@ -147,15 +133,6 @@ export function useMetadataSources() {
       tmdbConfigured.value = result.tmdb_configured;
       omdbConfigured.value = result.omdb_configured;
       tvdbConfigured.value = result.tvdb_configured;
-      credentialStatus.TMDB = {
-        status: tmdbConfigured.value ? "configured" : "not_configured",
-      };
-      credentialStatus.OMDb = {
-        status: omdbConfigured.value ? "configured" : "not_configured",
-      };
-      credentialStatus.TVDB = {
-        status: tvdbConfigured.value ? "configured" : "not_configured",
-      };
     } finally {
       igdbLoading.value = false;
     }
@@ -175,9 +152,6 @@ export function useMetadataSources() {
       igdbClientId.value = result.igdb_client_id ?? "";
       igdbConfigured.value = result.igdb_configured;
       igdbClientSecret.value = "";
-      credentialStatus.IGDB = {
-        status: igdbConfigured.value ? "configured" : "not_configured",
-      };
     } catch (err) {
       igdbError.value =
         err instanceof Error ? err.message : "Failed to save IGDB credentials";
@@ -198,9 +172,6 @@ export function useMetadataSources() {
       igdbClientId.value = result.igdb_client_id ?? "";
       igdbClientSecret.value = "";
       igdbConfigured.value = result.igdb_configured;
-      credentialStatus.IGDB = {
-        status: igdbConfigured.value ? "configured" : "not_configured",
-      };
     } catch (err) {
       igdbError.value =
         err instanceof Error ? err.message : "Failed to clear IGDB credentials";
@@ -223,9 +194,6 @@ export function useMetadataSources() {
       });
       tmdbConfigured.value = result.tmdb_configured;
       tmdbApiKey.value = "";
-      credentialStatus.TMDB = {
-        status: tmdbConfigured.value ? "configured" : "not_configured",
-      };
     } catch (err) {
       tmdbError.value =
         err instanceof Error ? err.message : "Failed to save TMDB key";
@@ -242,9 +210,6 @@ export function useMetadataSources() {
       tmdbApiKey.value = "";
       keySources.value = result.sources ?? {};
       tmdbConfigured.value = result.tmdb_configured;
-      credentialStatus.TMDB = {
-        status: tmdbConfigured.value ? "configured" : "not_configured",
-      };
     } catch (err) {
       tmdbError.value =
         err instanceof Error ? err.message : "Failed to clear TMDB key";
@@ -262,9 +227,6 @@ export function useMetadataSources() {
       });
       omdbConfigured.value = result.omdb_configured;
       omdbApiKey.value = "";
-      credentialStatus.OMDb = {
-        status: omdbConfigured.value ? "configured" : "not_configured",
-      };
     } catch (err) {
       omdbError.value =
         err instanceof Error ? err.message : "Failed to save OMDb key";
@@ -281,9 +243,6 @@ export function useMetadataSources() {
       omdbApiKey.value = "";
       keySources.value = result.sources ?? {};
       omdbConfigured.value = result.omdb_configured;
-      credentialStatus.OMDb = {
-        status: omdbConfigured.value ? "configured" : "not_configured",
-      };
     } catch (err) {
       omdbError.value =
         err instanceof Error ? err.message : "Failed to clear OMDb key";
@@ -301,9 +260,6 @@ export function useMetadataSources() {
       });
       tvdbConfigured.value = result.tvdb_configured;
       tvdbApiKey.value = "";
-      credentialStatus.TVDB = {
-        status: tvdbConfigured.value ? "configured" : "not_configured",
-      };
     } catch (err) {
       tvdbError.value =
         err instanceof Error ? err.message : "Failed to save TVDB key";
@@ -320,366 +276,12 @@ export function useMetadataSources() {
       tvdbApiKey.value = "";
       keySources.value = result.sources ?? {};
       tvdbConfigured.value = result.tvdb_configured;
-      credentialStatus.TVDB = {
-        status: tvdbConfigured.value ? "configured" : "not_configured",
-      };
     } catch (err) {
       tvdbError.value =
         err instanceof Error ? err.message : "Failed to clear TVDB key";
     } finally {
       tvdbSaving.value = false;
     }
-  }
-
-  const psnStatus = ref<PsnStatus>({ connected: false, validated_at: null });
-  const psnLoading = ref(true);
-  const npssoToken = ref("");
-  const psnConnecting = ref(false);
-  const psnError = ref<string | null>(null);
-  const showDisconnectConfirm = ref(false);
-
-  onMounted(async () => {
-    try {
-      psnStatus.value = await fetchPsnStatus();
-    } finally {
-      psnLoading.value = false;
-    }
-  });
-
-  async function handleConnectPsn() {
-    if (!npssoToken.value.trim()) {
-      psnError.value = "Paste your npsso token first.";
-      return;
-    }
-    psnConnecting.value = true;
-    psnError.value = null;
-    try {
-      psnStatus.value = await connectPsn(npssoToken.value.trim());
-      npssoToken.value = "";
-    } catch (err) {
-      psnError.value =
-        err instanceof Error
-          ? err.message
-          : "Failed to connect PlayStation account";
-    } finally {
-      psnConnecting.value = false;
-    }
-  }
-
-  async function confirmDisconnectPsn() {
-    showDisconnectConfirm.value = false;
-    psnError.value = null;
-    try {
-      await disconnectPsn();
-      psnStatus.value = { connected: false, validated_at: null };
-    } catch (err) {
-      psnError.value =
-        err instanceof Error
-          ? err.message
-          : "Failed to disconnect PlayStation account";
-    }
-  }
-
-  // --- data-driven providers ---------------------------------------------
-
-  interface ProviderFieldConfig {
-    key: string;
-    label: string;
-    type: "text" | "password";
-  }
-
-  interface ProviderCardConfig {
-    key: string;
-    label: string;
-    description: string;
-    fields: ProviderFieldConfig[];
-    kind: "wired" | "deferred";
-    linkLabel?: string;
-    linkUrl?: string;
-  }
-
-  const PROVIDER_CARDS: Record<string, ProviderCardConfig> = {
-    Steam: {
-      key: "Steam",
-      label: "Steam",
-      description:
-        "Metadata search needs no account. Connect Steam with QR or account sign-in for library and private achievement imports. Legacy API credentials remain available for public profiles.",
-      fields: [
-        { key: "steam_id", label: "Profile ID", type: "text" },
-        { key: "api_key", label: "Web API Key", type: "password" },
-      ],
-      kind: "wired",
-      linkLabel: "Get a Steam Web API key",
-      linkUrl: "https://steamcommunity.com/dev/apikey",
-    },
-    IGDB: {
-      key: "IGDB",
-      label: "IGDB",
-      description:
-        "General game metadata and cover art. Uses one deployment-wide developer credential, managed by a server administrator here rather than per-user.",
-      fields: [],
-      kind: "wired",
-    },
-    TMDB: {
-      key: "TMDB",
-      label: "TMDB",
-      description:
-        "Movie metadata and poster art. Uses one deployment-wide API key, managed by a server administrator here rather than per-user.",
-      fields: [],
-      kind: "wired",
-    },
-    OMDb: {
-      key: "OMDb",
-      label: "OMDb",
-      description:
-        "IMDb-backed movie metadata, used alongside TMDB so a search still returns results if one source is down or missing a title. Uses one deployment-wide API key, managed by a server administrator here rather than per-user.",
-      fields: [],
-      kind: "wired",
-    },
-    TVDB: {
-      key: "TVDB",
-      label: "TheTVDB",
-      description:
-        "The only real franchise/relations source for TV shows (TMDB has no collection concept outside of movies). It powers the Related tab on a show's page. Uses one deployment-wide API key, managed by a server administrator here rather than per-user.",
-      fields: [],
-      kind: "wired",
-    },
-    RetroAchievements: {
-      key: "RetroAchievements",
-      label: "RetroAchievements",
-      description:
-        "Retro/console game metadata, plus your username to pull your library and unlocked achievements: powers all three from one key.",
-      fields: [
-        { key: "username", label: "Username", type: "text" },
-        { key: "api_key", label: "API Key", type: "password" },
-      ],
-      kind: "wired",
-      linkLabel: "Get a free key from RetroAchievements",
-      linkUrl: "https://retroachievements.org/controlpanel.php",
-    },
-    GiantBomb: {
-      key: "GiantBomb",
-      label: "Giant Bomb",
-      description: "General game metadata and cover art.",
-      fields: [{ key: "api_key", label: "API Key", type: "password" }],
-      kind: "wired",
-      linkLabel: "Get a free key from Giant Bomb",
-      linkUrl: "https://www.giantbomb.com/api/",
-    },
-    ScreenScraper: {
-      key: "ScreenScraper",
-      label: "ScreenScraper",
-      description:
-        "Retro box art and screenshots. Needs your personal screenscraper.fr account on top of the app-wide developer credentials your server administrator configures.",
-      fields: [
-        { key: "ssid", label: "Username", type: "text" },
-        { key: "sspassword", label: "Password", type: "password" },
-      ],
-      kind: "wired",
-      linkLabel: "Create a free ScreenScraper account",
-      linkUrl: "https://www.screenscraper.fr/membreinscription.php",
-    },
-    Xbox: {
-      key: "Xbox",
-      label: "Xbox",
-      description:
-        "Unofficial: Xbox's real API needs a full sign-in flow this page can't host yet. Saving your Azure app credentials here just gets them ready for that; nothing is pulled from Xbox yet.",
-      fields: [
-        { key: "client_id", label: "Application (client) ID", type: "text" },
-        { key: "client_secret", label: "Client secret", type: "password" },
-      ],
-      kind: "deferred",
-    },
-    GOG: {
-      key: "GOG",
-      label: "GOG",
-      description:
-        "Metadata search uses GOG's public store catalog: no key needed. The refresh token below is only for a future library import, not search.",
-      fields: [
-        {
-          key: "refresh_token",
-          label: "Refresh token (library import only)",
-          type: "password",
-        },
-      ],
-      kind: "wired",
-    },
-  };
-
-  const credentialStatus = reactive<Record<string, ProviderCredentialStatus>>(
-    {},
-  );
-  const fieldValues = reactive<Record<string, Record<string, string>>>({});
-  const cardSaving = reactive<Record<string, boolean>>({});
-  const cardError = reactive<Record<string, string | null>>({});
-  const cardInfo = reactive<Record<string, string | null>>({});
-  const credentialsLoading = ref(true);
-
-  // must be ready before first render, the template binds
-  // fieldValues[card.key][field.key] immediately, not just after mount
-  for (const key of Object.keys(PROVIDER_CARDS)) {
-    fieldValues[key] = {};
-  }
-
-  onMounted(async () => {
-    try {
-      const result = await fetchProviderCredentials();
-      Object.assign(credentialStatus, result);
-      // prefill non-secret fields (profile IDs, usernames) that are already
-      // saved, so the form shows them filled instead of misleadingly blank
-      for (const [key, status] of Object.entries(result)) {
-        if (status.fields)
-          Object.assign(
-            fieldValues[key] ?? (fieldValues[key] = {}),
-            status.fields,
-          );
-      }
-    } finally {
-      credentialsLoading.value = false;
-    }
-  });
-
-  // a password-type field that's already saved gets a placeholder instead of
-  // its real value (never echoed back), still communicates "this is filled"
-  function passwordPlaceholder(
-    key: string,
-    fieldKey: string,
-    label: string,
-  ): string {
-    const status = credentialStatus[key]?.status;
-    const alreadySaved =
-      status === "connected" || status === "saved" || status === "configured";
-    if (alreadySaved && !fieldValues[key]?.[fieldKey])
-      return "Already saved: paste a new value to replace it";
-    return `Paste your ${label.toLowerCase()}`;
-  }
-
-  // no personal key, but the server's own key covers searches (#234)
-  function usesServerKey(key: string): boolean {
-    const entry = credentialStatus[key];
-    return entry?.status === "not_configured" && !!entry.server_configured;
-  }
-
-  function statusLabel(key: string): string {
-    const status = credentialStatus[key]?.status;
-    if (status === "connected") return "Connected";
-    if (status === "saved" || status === "configured") return "Saved";
-    if (status === "error") return "Error";
-    if (usesServerKey(key)) return "Using server key";
-    return "Not configured";
-  }
-  function statusClass(key: string): string {
-    const status = credentialStatus[key]?.status;
-    if (status === "connected") return "connected";
-    if (status === "saved" || status === "configured") return "saved";
-    if (status === "error") return "error";
-    if (usesServerKey(key)) return "saved";
-    return "disconnected";
-  }
-
-  async function saveCard(card: ProviderCardConfig) {
-    cardSaving[card.key] = true;
-    cardError[card.key] = null;
-    cardInfo[card.key] = null;
-    try {
-      const result = await saveProviderCredentials(
-        card.key,
-        fieldValues[card.key],
-      );
-      credentialStatus[card.key] = result;
-      if (result.status === "error") {
-        cardError[card.key] =
-          result.detail ?? "Could not verify these credentials.";
-      } else if (result.status === "saved" && result.detail) {
-        cardInfo[card.key] = result.detail;
-      }
-    } catch (err) {
-      cardError[card.key] =
-        err instanceof Error ? err.message : "Failed to save";
-    } finally {
-      cardSaving[card.key] = false;
-    }
-  }
-
-  async function clearCard(card: ProviderCardConfig) {
-    try {
-      await deleteProviderCredentials(card.key);
-      credentialStatus[card.key] = { status: "not_configured" };
-      cardError[card.key] = null;
-      fieldValues[card.key] = {};
-    } catch (err) {
-      cardError[card.key] =
-        err instanceof Error ? err.message : "Failed to disconnect";
-    }
-  }
-
-  // --- library sync (real owned-games + achievements pull) ---------------
-
-  const librarySyncing = reactive<Record<LibrarySyncProvider, boolean>>({
-    steam: false,
-    psn: false,
-    retroachievements: false,
-  });
-  const LIBRARY_SYNC_LABELS: Record<LibrarySyncProvider, string> = {
-    steam: "Steam",
-    psn: "PlayStation",
-    retroachievements: "RetroAchievements",
-  };
-
-  async function handleSyncLibrary(provider: LibrarySyncProvider) {
-    librarySyncing[provider] = true;
-    // indeterminate, the backend is one all-at-once request with no
-    // per-game signal until it resolves, so there's nothing real to show as
-    // a fraction while it's in flight
-    const taskId = startTask(
-      `Syncing ${LIBRARY_SYNC_LABELS[provider]} library`,
-      1,
-      { indeterminate: true },
-    );
-    try {
-      const result = await syncLibrary(provider);
-      const unavailable =
-        (result.achievements_unavailable?.length ?? 0) +
-        (result.achievements_failed ?? 0);
-      const warning = unavailable
-        ? `; achievement progress unavailable for ${unavailable} games (stored progress kept)`
-        : "";
-      completeTask(
-        taskId,
-        `${result.games_added} added, ${result.games_updated} updated, ${result.achievements_synced} achievements${warning}`,
-      );
-      // the request itself wasn't live, but revealing the touched titles one
-      // at a time still reads as a real "feed" once the result is in
-      for (const [i, title] of result.games.entries()) {
-        setTimeout(() => addFeedItem(taskId, title), i * 90);
-      }
-      // refresh the persistent "N games, last synced ..." line so it reflects
-      // this run immediately instead of only on the next page load
-      Object.assign(credentialStatus, await fetchProviderCredentials());
-    } catch (err) {
-      errorTask(taskId, err instanceof Error ? err.message : "Sync failed");
-    } finally {
-      librarySyncing[provider] = false;
-    }
-  }
-
-  // only claims "synced" once a library sync has actually run, a game
-  // count alone (e.g. from manually-added Steam games) doesn't mean that
-  function formatLastSynced(
-    status: ProviderCredentialStatus | undefined,
-  ): string | null {
-    if (!status?.last_synced_at) return null;
-    const when = new Date(status.last_synced_at * 1000).toLocaleString(
-      undefined,
-      {
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-      },
-    );
-    const count = status.library_games ?? 0;
-    return `${count} game${count === 1 ? "" : "s"} · synced ${when}`;
   }
 
   // HowLongToBeat, a real toggle now, not just informational. "Enabled"
@@ -758,29 +360,6 @@ export function useMetadataSources() {
     clearOmdbKey,
     saveTvdbKey,
     clearTvdbKey,
-    psnStatus,
-    psnLoading,
-    npssoToken,
-    psnConnecting,
-    psnError,
-    showDisconnectConfirm,
-    handleConnectPsn,
-    confirmDisconnectPsn,
-    PROVIDER_CARDS,
-    credentialStatus,
-    fieldValues,
-    cardSaving,
-    cardError,
-    cardInfo,
-    credentialsLoading,
-    passwordPlaceholder,
-    statusLabel,
-    statusClass,
-    saveCard,
-    clearCard,
-    librarySyncing,
-    handleSyncLibrary,
-    formatLastSynced,
     hltbEnabled,
     hltbLoading,
     hltbSaving,

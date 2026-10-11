@@ -106,8 +106,17 @@ buttons and expandable credential forms. The seven built-in tiles are always
 available; installed optional plugins add their own tiles. Each shows its current health; expand a tile for the last validation time
 and saved-value presence. Administrators choose **System default** for shared
 credentials or **My account** for a personal override. Changing scope clears
-unsaved input so it cannot be saved accidentally to the other scope. The original
-account-import connections remain below the metadata tiles.
+unsaved input so it cannot be saved accidentally to the other scope. Accounts you
+import a library from (Steam, PlayStation, RetroAchievements, Xbox, GOG and plugin
+connections) are not metadata sources: connect, update, import and disconnect them
+from **Settings > Account > Connections**, where **Manage** opens a popup rather
+than leaving the page.
+
+![Connections lists built-in accounts and plugin connections](../assets/connections-popups/connections-1280.png)
+
+![Manage opens a popup with the connect, import and disconnect lifecycle](../assets/connections-popups/xbox-connected-1280.png)
+
+![A plugin connection opens the plugin's own page in the popup](../assets/connections-popups/epic-popup-1280.png)
 
 ![Built-in core providers in the original tile layout](../assets/plugin-metadata/provider-tiles.jpg)
 

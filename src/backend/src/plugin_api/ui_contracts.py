@@ -386,6 +386,27 @@ class UiSettingsContribution(UiPlacement):
         return self
 
 
+class UiConnectionContribution(ContractModel):
+    """A plugin-owned account connection listed on Settings > Account > Connections.
+
+    The host renders the row (name, description, status) and opens ``page_id`` in a
+    popup when the user manages the connection, so the full connect, import and
+    disconnect lifecycle stays on the Connections page. ``status_action_id`` is an
+    optional declared action the host calls for the signed-in user; it returns a
+    bounded object with a boolean ``connected`` and an optional ``display_name`` string.
+    """
+
+    id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    label: str = Field(min_length=1, max_length=64)
+    description: str = Field(default="", max_length=256)
+    page_id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    status_action_id: str | None = Field(
+        default=None, min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$"
+    )
+    icon: str | None = Field(default=None, min_length=1, max_length=64)
+    order: int = Field(default=0, ge=-1_000, le=1_000)
+
+
 class UiOverlayContribution(ContractModel):
     """A host-level overlay rendered from a declared plugin page."""
 
@@ -549,6 +570,7 @@ class PluginUiDocument(ContractModel):
     themes: tuple[UiTheme, ...] = Field(default=(), max_length=32)
     navigation: tuple[UiNavigationContribution, ...] = ()
     settings_sections: tuple[UiSettingsContribution, ...] = ()
+    connections: tuple[UiConnectionContribution, ...] = Field(default=(), max_length=16)
     overlays: tuple[UiOverlayContribution, ...] = ()
     dialog_contributions: tuple[UiDialogContribution, ...] = ()
     contextual_actions: tuple[UiContextualAction, ...] = ()
@@ -593,6 +615,7 @@ class PluginUiDocument(ContractModel):
         for values, kind in (
             ((item.id for item in self.navigation), "navigation contribution"),
             ((item.id for item in self.settings_sections), "settings contribution"),
+            ((item.id for item in self.connections), "connection contribution"),
             ((item.id for item in self.overlays), "overlay contribution"),
             ((item.id for item in self.dialog_contributions), "dialog contribution"),
             ((item.id for item in self.contextual_actions), "contextual action"),
@@ -671,6 +694,12 @@ class PluginUiDocument(ContractModel):
         ):
             for contribution in contributions:
                 _require_page(contribution.id, contribution.page_id, page_set)
+        for connection in self.connections:
+            _require_page(connection.id, connection.page_id, page_set)
+            if connection.status_action_id is not None and connection.status_action_id not in (
+                action_set
+            ):
+                raise ValueError(f"connection {connection.id} references an unknown status action")
         for dialog_contribution in self.dialog_contributions:
             if dialog_contribution.dialog_id not in dialog_set:
                 raise ValueError(
@@ -681,6 +710,13 @@ class PluginUiDocument(ContractModel):
                 raise ValueError(
                     f"contextual action {contextual_action.id} references an unknown action"
                 )
+
+    @model_validator(mode="after")
+    def validate_connection_version(self) -> "PluginUiDocument":
+        """Connections are the additive v1.1.9 contribution; older documents cannot use them."""
+        if self.connections and parse_semver(self.api_contract_version) < (1, 1, 9):
+            raise ValueError("connection contributions require Plugin API v1.1.9")
+        return self
 
     @model_validator(mode="after")
     def validate_shortcut_references(self) -> "PluginUiDocument":

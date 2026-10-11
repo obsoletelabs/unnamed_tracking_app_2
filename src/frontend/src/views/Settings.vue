@@ -532,10 +532,7 @@ function backToArea() {
           />
           <CalendarSettingsSection v-else-if="activeSection === 'calendar'" />
           <KeyboardShortcutsSection v-else-if="activeSection === 'shortcuts'" />
-          <ConnectionsSection
-            v-else-if="activeSection === 'connections'"
-            @navigate="openSection"
-          />
+          <ConnectionsSection v-else-if="activeSection === 'connections'" />
           <ApiKeysSection v-else-if="activeSection === 'api-keys'" />
           <template
             v-else-if="

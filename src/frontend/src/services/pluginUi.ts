@@ -117,6 +117,15 @@ export interface UiSettingsContribution {
   folders?: string[];
   visibility: UiVisibility;
 }
+export interface UiConnectionContribution {
+  id: string;
+  label: string;
+  description: string;
+  page_id: string;
+  status_action_id?: string | null;
+  icon?: string | null;
+  order: number;
+}
 export interface UiOverlayContribution {
   id: string;
   page_id: string;
@@ -219,6 +228,7 @@ export interface PluginUiDocument {
   themes?: UiTheme[];
   navigation?: UiNavigationContribution[];
   settings_sections?: UiSettingsContribution[];
+  connections?: UiConnectionContribution[];
   overlays?: UiOverlayContribution[];
   dialog_contributions?: UiDialogContribution[];
   contextual_actions?: UiContextualAction[];
@@ -407,6 +417,7 @@ export function validateDocument(document: PluginUiDocument): string[] {
   const homeWidgets = document.home_widgets ?? [];
   const navigation = document.navigation ?? [];
   const settingsSections = document.settings_sections ?? [];
+  const connections = document.connections ?? [];
   const overlays = document.overlays ?? [];
   const dialogContributions = document.dialog_contributions ?? [];
   const contextualActions = document.contextual_actions ?? [];
@@ -437,6 +448,7 @@ export function validateDocument(document: PluginUiDocument): string[] {
     ["Home widget", homeWidgets],
     ["Navigation", navigation],
     ["Settings contribution", settingsSections],
+    ["Connection", connections],
     ["Overlay", overlays],
     ["Dialog contribution", dialogContributions],
     ["Contextual action", contextualActions],
@@ -588,6 +600,24 @@ export function validateDocument(document: PluginUiDocument): string[] {
     if (contribution.action_id && !actions.has(contribution.action_id))
       errors.push(
         `Navigation ${contribution.id} references an unknown action.`,
+      );
+  }
+  if (
+    connections.length &&
+    !/^1\.1\.(9|[1-9]\d+)$|^1\.([2-9]|[1-9]\d+)\./.test(
+      document.api_contract_version ?? "",
+    )
+  )
+    errors.push("Plugin connections require API v1.1.9 or later.");
+  for (const contribution of connections) {
+    if (!pages.has(contribution.page_id))
+      errors.push(`Connection ${contribution.id} references an unknown page.`);
+    if (
+      contribution.status_action_id &&
+      !actions.has(contribution.status_action_id)
+    )
+      errors.push(
+        `Connection ${contribution.id} references an unknown status action.`,
       );
   }
   for (const contribution of dialogContributions) {
