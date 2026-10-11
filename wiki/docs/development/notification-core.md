@@ -208,8 +208,16 @@ server revision and core attempt UUID. Plugins must store these revisions beside
 their own configuration, reject stale updates, and require matching revisions at
 delivery. This avoids an out-of-order callback replacing credentials used by a
 newer delivery. A descriptor or successful callback is never proof of SECURE
-ownership. Generic destination management UI and the maintained plugin migration
-are a separate increment following this API.
+ownership.
+
+Notification settings render the provider's existing `UiField` declarations with
+the shared plugin field controls. Configured providers appear first; inactive
+destinations and unavailable notification types remain accessible through explicit
+history controls. Users can add, configure, remove and test their destinations.
+Administrator notification settings render declared server fields separately.
+Saved credentials are write-only: editing omits untouched values, and changing a
+destination requires renewed disclosure consent. Server configuration changes
+disable existing routes until users explicitly configure them again.
 
 
 Fieldless linked-account providers retain their authenticated configure-action

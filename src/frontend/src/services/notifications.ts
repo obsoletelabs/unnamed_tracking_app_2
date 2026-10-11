@@ -305,19 +305,6 @@ export interface NotificationRoutingProvider {
   available: boolean;
   configuration_scope: "internal" | "server" | "user";
   destination_kind?: "discord_webhook" | "browser_push" | null;
-  definition?: {
-    destinations: Array<{
-      kind: string;
-      label: string;
-      privacy: "PUBLIC" | "PRIVATE";
-      fields?: Array<{ id: string; label: string; required?: boolean; secret?: boolean }>;
-    }>;
-    server_fields?: Array<{ id: string; label: string; required?: boolean; secret?: boolean }>;
-    configure_action: string;
-    retire_action: string;
-    test_action?: string | null;
-    features?: { critical_supported?: boolean; critical_description?: string; multiple_destinations?: boolean };
-  } | null;
   critical_supported: boolean;
   critical_description?: string | null;
   transport_warning?: string | null;
@@ -377,7 +364,6 @@ export async function setDestinationNotificationUrl(
   );
   if (!response.ok) throw await failedRequest(response);
 }
-
 
 export async function createPluginDestination(
   providerId: string,
