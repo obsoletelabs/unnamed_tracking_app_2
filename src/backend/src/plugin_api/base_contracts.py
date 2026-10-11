@@ -5,13 +5,13 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 from enum import StrEnum
-from typing import Any, Generic, Literal, TypeVar
+from typing import Any, Generic, TypeVar
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 API_VERSION = "v1"
-PLUGIN_API_CONTRACT_VERSION = "1.1.4"
+PLUGIN_API_CONTRACT_VERSION = "1.1.5"
 Timestamp = datetime
 
 
@@ -207,25 +207,6 @@ class SessionRepresentation(ContractModel):
     is_current: bool = False
     location: dict[str, str | int | float | None] = Field(default_factory=dict)
     anomaly: dict[str, str | None] = Field(default_factory=dict)
-
-
-class NotificationProviderRegistration(ContractModel):
-    """A plugin-owned provider registered with the core delivery coordinator."""
-
-    provider_id: str = Field(
-        min_length=3,
-        max_length=128,
-        pattern=r"^[a-z0-9][a-z0-9._-]*$",
-    )
-    name: str = Field(min_length=1, max_length=128)
-    action_id: str = Field(
-        min_length=1,
-        max_length=128,
-        pattern=r"^[a-z0-9][a-z0-9._-]*$",
-    )
-    # Existing registrations keep the restricted shared-secret compatibility path.
-    # Protected transport selects a mechanism, never a destination trust level.
-    transport: Literal["legacy", "discord_webhook"] = "legacy"
 
 
 class NotificationDeliveryRepresentation(ContractModel):

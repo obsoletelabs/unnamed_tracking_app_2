@@ -1,4 +1,4 @@
-"""Owner-only routing metadata; endpoint addresses and configuration remain host-owned."""
+"""Owner-only routing metadata; built-in addresses and plugin secrets are never disclosed."""
 
 from typing import Any
 from uuid import UUID
@@ -25,9 +25,11 @@ from src.features.notification_policy import (
     effective_trust,
     select_projection,
 )
+from src.features.notification_providers.plugin import PluginNotificationProvider
 from src.features.notification_urls import notification_url
 from src.features.smtp_configuration import SMTP_PROVIDER, SmtpConfiguration, smtp_configuration
 from src.plugin_api.grants import has_capability_grant
+from src.plugin_api.notification_contracts import NotificationProviderDefinition
 from src.plugin_api.runtime_client import PluginRuntimeUnavailable
 
 _TYPE_LABELS = {
@@ -151,6 +153,21 @@ async def _type_catalog(db: AsyncSession, user_id: UUID) -> list[dict[str, Any]]
     return types
 
 
+async def _generic_availability(db, user_id, registrations, providers) -> None:
+    for provider_id, registration in registrations.items():
+        if registration.transport != "plugin" or provider_id not in providers:
+            continue
+        try:
+            configurable = await PluginNotificationProvider(registration).is_authorized(db, user_id)
+        except PluginRuntimeUnavailable:
+            configurable = False
+        definition = NotificationProviderDefinition.model_validate(registration.definition)
+        providers[provider_id]["configuration_available"] = configurable
+        providers[provider_id]["available"] = configurable and (
+            not definition.server_fields or registration.server_configured
+        )
+
+
 async def routing_settings(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
     """Include inactive owner choices without exposing endpoint credentials."""
     await resolve_destinations(db, user_id)
@@ -189,6 +206,7 @@ async def routing_settings(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
         )
         for provider_id in sorted(provider_ids)
     }
+    await _generic_availability(db, user_id, registrations, providers)
     providers[PUSH_PROVIDER].update(
         name="Browser / PWA push",
         available=browser is not None,
@@ -200,9 +218,10 @@ async def routing_settings(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
     result = []
     for destination in destinations:
         provider = providers[destination.provider_id]
-        registration = registrations.get(destination.provider_id)
+        destination_registration = registrations.get(destination.provider_id)
         installation_matches = destination.installation_id is None or bool(
-            registration and destination.installation_id == registration.installation_id
+            destination_registration
+            and destination.installation_id == destination_registration.installation_id
         )
         if destination.provider_id == PUSH_PROVIDER:
             installation_matches = bool(
@@ -233,6 +252,13 @@ async def routing_settings(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
                     destination, types, secure_transport=provider["secure_transport"]
                 ),
                 "shared_configuration": destination.kind == "legacy_webhook",
+                "plugin_owned_configuration": bool(
+                    destination_registration
+                    and destination_registration.transport == "plugin"
+                    and destination.configuration_ref == str(destination.id)
+                    and not destination.encrypted_configuration
+                ),
+                "configuration_retired": destination.endpoint_key.startswith("retired:"),
                 "label": destination.display_name,
                 "notification_url": destination.notification_url,
                 "masked_address": _masked_address(destination),
@@ -271,6 +297,11 @@ def _provider_settings(
 ) -> dict[str, Any]:
     inbox = provider_id == INBOX_PROVIDER
     email = provider_id == SMTP_PROVIDER
+    definition = (
+        NotificationProviderDefinition.model_validate(registration.definition)
+        if registration and registration.definition
+        else None
+    )
     return {
         "id": provider_id,
         "name": "In-app inbox"
@@ -281,16 +312,23 @@ def _provider_settings(
         or (smtp.configured if email else bool(registration and registration.revoked_at is None)),
         "configuration_scope": "internal"
         if inbox
-        else ("user" if registration and registration.transport == "discord_webhook" else "server"),
+        else (
+            "user"
+            if definition or registration and registration.transport == "discord_webhook"
+            else "server"
+        ),
         "destination_kind": "discord_webhook"
         if registration and registration.transport == "discord_webhook"
         else None,
-        "critical_supported": email,
+        "critical_supported": email or bool(definition and definition.features.critical_supported),
+        "definition": definition.model_dump(mode="json") if definition else None,
+        "server_configured": bool(registration and registration.server_configured),
+        "server_revision": registration.server_revision if registration else None,
         "critical_description": (
             "Adds high-priority email headers; your mail client decides how to alert you."
         )
         if email
-        else None,
+        else (definition.features.critical_description if definition else None),
         "transport_warning": (
             "SMTP does not use TLS. Email contents and credentials travel "
             "without transport encryption."

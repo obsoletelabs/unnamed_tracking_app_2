@@ -99,11 +99,12 @@ class UiField(ContractModel):
         if self.secret and self.default is not None:
             raise ValueError("secret fields cannot expose default values")
         if self.default is not None:
-            self._validate_default(self.default, option_values)
+            self.validate_value(self.default)
         return self
 
-    def _validate_default(self, default: object, option_values: list[str]) -> None:
+    def validate_value(self, default: object) -> None:
         """Validate a default's type and declared options independently of field metadata."""
+        option_values = [option.value for option in self.options]
         expected = {
             UiFieldType.TEXT: (str,),
             UiFieldType.TEXTAREA: (str,),

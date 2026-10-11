@@ -143,3 +143,96 @@ duplicate-review schema. It creates no historical transitions and refuses a
 downgrade that would erase populated lifecycle history. Provider secrets and
 encrypted cursors use the existing application encryption key; preserve that key
 with the deployment's protected configuration.
+
+
+## Generic provider contract (Plugin API 1.1.5)
+
+`notification_providers.register` accepts `transport: "plugin"` and a bounded
+`definition`. Each destination kind declares its label, PUBLIC/PRIVATE baseline
+and configuration fields using the existing `UiField` schema. Separate server
+fields and configure/retire/test action identifiers describe configuration;
+features describe multiple destinations and optional Critical delivery behavior.
+These declarations confer neither permissions nor independent verification.
+Existing `legacy` and protected `discord_webhook` registrations remain supported.
+
+The host persists the declaration, never plugin credential values. A changed
+configuration contract or delivery action retires affected destinations and
+suppresses unsent work; reinstall does not claim old secrets or consent.
+A routing toggle alone cannot enroll a generic destination. Enrollment is an
+explicit authenticated operation, with a core-generated opaque endpoint handle.
+
+Generic delivery rechecks the attempt lease, projection, preferences, source and
+provider grants, installation and endpoint revision immediately before handoff.
+The plugin receives approved title/body, event type/time, urgency and resolved
+link plus opaque notification/destination IDs. Account IDs, entity IDs, addresses
+and host credentials are excluded from this content and routing envelope.
+The existing authenticated `_plugin_context` separately identifies the current
+actor for authorized per-user plugin storage; server configuration identifies an
+authenticated administrator. Plugins cannot select that identity. The private runtime creates
+`_notification_context` containing operation, installation, attempt and endpoint
+revision; ordinary UI actions cannot supply this reserved context.
+Plugins own their secrets and transport through existing storage/network grants.
+Core governs disclosure at handoff and tracks delivery outcomes; arbitrary plugin
+code determines its final network payload. Plugin errors are normalized to safe
+codes before core persistence.
+
+Generic endpoints currently support PUBLIC/PRIVATE standard notifications only.
+Provider declarations cannot assert SECURE or recovery eligibility. Verified
+built-in email and the authenticated inbox retain their existing trust rules.
+Do not migrate deployed credentials automatically.
+
+### Plugin-owned configuration and enrollment
+
+The authenticated notification settings API accepts declared fields only. A
+new destination receives a core-generated UUID and revision; callers cannot
+choose its owner, installation, trust or credential reference. Configuration
+values are passed transiently to the plugin's declared action through the
+existing private runtime boundary. The plugin stores and validates its own
+credentials using its existing storage/network grants. Responses never echo
+those values. The host retains only labels, routing metadata and declarations.
+
+`POST /api/settings/notification-providers/plugin-destinations` creates an
+endpoint; `PUT` on its UUID updates it. Omitted fields on updates mean retain the
+plugin's stored value. `DELETE` immediately retires core routing and attempts
+plugin secret cleanup. `plugin_cleanup_complete: false` means that cleanup could
+not be confirmed (for example after uninstall); routing remains retired. Never
+hand an earlier installation's credential handles to a replacement installation.
+
+Administrator-only `PUT .../plugin-server-configuration/{provider_id}` configures
+declared server fields. Server changes invalidate affected destinations; users
+must explicitly configure them again. Invalidation is committed before invoking
+plugin code. Failures, changed grants, registration revisions, endpoint revisions
+or lost admin access cannot activate the stale result. Existing history and
+preferences remain; no old messages are replayed.
+
+The private `_notification_context` identifies configure/retire scope and the
+current installation and destination/server revision. Delivery also carries the
+server revision and core attempt UUID. Plugins must store these revisions beside
+their own configuration, reject stale updates, and require matching revisions at
+delivery. This avoids an out-of-order callback replacing credentials used by a
+newer delivery. A descriptor or successful callback is never proof of SECURE
+ownership.
+
+Notification settings render the provider's existing `UiField` declarations with
+the shared plugin field controls. Configured providers appear first; inactive
+destinations and unavailable notification types remain accessible through explicit
+history controls. Users can add, configure, remove and test their destinations.
+Administrator notification settings render declared server fields separately.
+Saved credentials are write-only: editing omits untouched values, and changing a
+destination requires renewed disclosure consent. Server configuration changes
+disable existing routes until users explicitly configure them again.
+
+
+Fieldless linked-account providers retain their authenticated configure-action
+enrollment and idempotent per-user/per-kind routing record. This supports existing
+Discord Bot DM linking without moving its credentials into the host. Such providers
+return `ok: true`; declared-field configuration uses the revision-bound private
+configure/retire context and returns `configured: true` / `retired: true`.
+Provider toggles may restore linked-account routing within the same installation;
+they cannot activate a failed or invalidated declared-field configuration.
+Enrollment rechecks installation, registration and grants after the configure
+callback, so a result cannot activate routing after its authority has changed.
+
+![Configured plugin providers](../assets/notification-generic/providers-desktop-dark.png)
+
+![Destination configuration on a phone](../assets/notification-generic/configuration-mobile-dark.png)

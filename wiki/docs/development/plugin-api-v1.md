@@ -360,3 +360,13 @@ Responses contain `events`, an authenticated encrypted `cursor`, `has_more` and 
 Core transitions and metadata outbox writes commit atomically. The existing job loop publishes committed changes in bounded batches, using a transactional counter under a short stream lock. Producers never take that stream lock; allocation order in the unpublished outbox is not a replay cursor. A transaction that commits late receives a later published position, avoiding skipped events. Delivery retries and global state remain core-owned. Polls may lag one job tick; the API makes no transport calls. Failed/rolled-back transactions publish nothing.
 
 `NOTIFICATION_AUDIT_RETENTION_DAYS` configures this independent audit history, default 90 (1–3650). Inbox retention and dedupe receipts remain separate. Audit metadata survives notice deletion and plugin removal, but account deletion removes that account's records. Migration `0037e34ac954` adds only outbox/audit/stream tables after `42bb6ebaa05e`, with no fabricated historical changes. Adoption preserves existing data; downgrade refuses populated history or an advanced cursor stream.
+
+
+### Notification provider descriptors in 1.1.5
+
+The additive generic provider mode reuses the existing gateway, capabilities,
+`UiField` definitions and authenticated runtime actions. Providers describe
+configuration and supported delivery features without host provider-specific
+transport code. See [notification core](notification-core.md#generic-provider-contract-plugin-api-115)
+for the descriptor, minimized handoff, reserved runtime context and compatibility
+rules. Existing 1.1.0 through 1.1.4 packages remain supported.

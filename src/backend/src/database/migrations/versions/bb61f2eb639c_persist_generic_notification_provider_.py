@@ -1,0 +1,41 @@
+"""Persist generic notification provider definitions without changing existing destinations.
+
+Revision ID: bb61f2eb639c
+Revises: c696194f78fd
+"""
+
+import sqlalchemy as sa
+from alembic import op
+from sqlalchemy.dialects import postgresql
+
+from src.database import migration_helpers as h
+
+revision: str = "bb61f2eb639c"
+down_revision: str | None = "c696194f78fd"
+branch_labels: str | None = None
+depends_on: str | None = None
+
+
+def upgrade() -> None:
+    h.add_column_if_missing(
+        "plugin_notification_provider_registrations",
+        sa.Column("definition", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+    )
+
+
+def downgrade() -> None:
+    columns = {
+        column["name"]
+        for column in sa.inspect(op.get_bind()).get_columns(
+            "plugin_notification_provider_registrations"
+        )
+    }
+    if "definition" not in columns:
+        return
+    if op.get_bind().scalar(
+        sa.text(
+            "SELECT count(*) FROM plugin_notification_provider_registrations WHERE transport = 'plugin'"
+        )
+    ):
+        raise RuntimeError("Cannot discard generic notification provider definitions")
+    op.drop_column("plugin_notification_provider_registrations", "definition")

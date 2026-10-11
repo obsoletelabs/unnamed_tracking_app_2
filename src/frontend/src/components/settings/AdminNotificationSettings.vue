@@ -1,15 +1,44 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import SmtpSettingsSection from "./SmtpSettingsSection.vue";
 import BrowserPushSettingsSection from "./BrowserPushSettingsSection.vue";
-import { fetchInboxRetentionPolicy } from "../../services/notifications";
-import type { InboxRetentionPolicy } from "../../services/notifications";
+import PluginProviderConfigurationForm from "./PluginProviderConfigurationForm.vue";
+import {
+  fetchInboxRetentionPolicy,
+  fetchNotificationRouting,
+  configurePluginNotificationServer,
+} from "../../services/notifications";
+import type {
+  InboxRetentionPolicy,
+  NotificationRoutingProvider,
+} from "../../services/notifications";
+import type { UiValue } from "../../services/pluginUi";
 
 const policy = ref<InboxRetentionPolicy | null>(null);
 const error = ref("");
+const status = ref("");
+const busy = ref(false);
+const providers = ref<NotificationRoutingProvider[]>([]);
+const serverProviders = computed(() =>
+  providers.value
+    .filter(
+      (p) => p.configuration_available && p.definition?.server_fields.length,
+    )
+    .sort(
+      (a, b) =>
+        Number(b.server_configured) - Number(a.server_configured) ||
+        a.name.localeCompare(b.name),
+    ),
+);
+async function reloadProviders() {
+  providers.value = (await fetchNotificationRouting()).providers;
+}
 onMounted(async () => {
   try {
-    policy.value = await fetchInboxRetentionPolicy();
+    [policy.value] = await Promise.all([
+      fetchInboxRetentionPolicy(),
+      reloadProviders(),
+    ]);
   } catch (reason) {
     error.value =
       reason instanceof Error
@@ -17,6 +46,25 @@ onMounted(async () => {
         : "Could not load notification policy.";
   }
 });
+async function configure(
+  provider: NotificationRoutingProvider,
+  values: Record<string, UiValue>,
+) {
+  busy.value = true;
+  error.value = status.value = "";
+  try {
+    await configurePluginNotificationServer(provider.id, values);
+    status.value = `${provider.name} server configuration saved. Users must explicitly configure their destinations again.`;
+  } catch (reason) {
+    error.value =
+      reason instanceof Error
+        ? reason.message
+        : "Could not save provider configuration.";
+  } finally {
+    await reloadProviders().catch(() => {});
+    busy.value = false;
+  }
+}
 </script>
 
 <template>
@@ -39,6 +87,28 @@ onMounted(async () => {
         configuration appears when installed. Plugins cannot lower destination
         trust requirements.
       </p>
+      <p v-if="status" class="hint" role="status">{{ status }}</p>
+      <details
+        v-for="provider in serverProviders"
+        :key="provider.id"
+        class="provider"
+      >
+        <summary>
+          {{ provider.name }} ·
+          {{ provider.server_configured ? "Configured" : "Set up" }}
+        </summary>
+        <p class="hint">
+          The plugin stores these credentials. Saving changes disables its
+          existing destinations until users configure them again. Host SMTP
+          credentials are never shared.
+        </p>
+        <PluginProviderConfigurationForm
+          :fields="provider.definition!.server_fields"
+          :editing="provider.server_configured"
+          :busy="busy"
+          @save="configure(provider, $event)"
+        />
+      </details>
     </section>
     <section>
       <h3>Inbox retention</h3>
@@ -62,6 +132,17 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+.provider {
+  padding: 12px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-control);
+  margin-block: 12px;
+  min-width: 0;
+}
+summary {
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
 .admin-notifications {
   display: flex;
   flex-direction: column;
