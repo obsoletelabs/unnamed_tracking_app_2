@@ -65,6 +65,8 @@ def select_projection(
     notification: Notification,
     destination: NotificationDestination,
     preferences: dict[str, Any],
+    *,
+    plugin_sensitive_allowed: bool = False,
 ) -> str | None:
     """Return an approved representation or deny. Provider availability is a separate gate."""
     if (
@@ -99,9 +101,12 @@ def select_projection(
         or trust != Trust.SECURE
     ):
         return None
-    # Phase 1 legacy renderers cannot receive sensitive content. A separate
-    # high-risk grant and protected provider contract will be added in Phase 4A.
-    if destination.installation_id is not None and required_trust == Trust.SECURE:
+    # Async callers must supply the separately checked grant and per-kind capability.
+    if (
+        destination.installation_id is not None
+        and (required_trust == Trust.SECURE or notification.purpose == "verification")
+        and not plugin_sensitive_allowed
+    ):
         return None
     if trust >= required_trust:
         return "canonical"

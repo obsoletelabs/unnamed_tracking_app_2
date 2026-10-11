@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Any
 from uuid import UUID
 
@@ -12,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.crypto import decrypt_secret
 from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_provider_setting import NotificationProviderSetting
+from src.database.models.notification_verification import NotificationVerification
 from src.database.models.plugin_notification_provider import (
     PluginNotificationProviderRegistration,
 )
@@ -88,8 +90,15 @@ class PluginNotificationProvider:
         if not await self.is_authorized(db, user.id):
             return None
         if self.transport == "plugin":
+            sensitive = await has_capability_grant(
+                db,
+                plugin_id=self.registration.plugin_id,
+                installation_id=self.registration.installation_id,
+                capability="notification_providers.sensitive",
+                user_id=user.id,
+            )
             return (
-                ProviderDestination.for_endpoint(endpoint, self.name)
+                ProviderDestination.for_endpoint(endpoint, self.name, allows_sensitive=sensitive)
                 if self._generic_endpoint_valid(endpoint)
                 else None
             )
@@ -226,8 +235,6 @@ class PluginNotificationProvider:
         endpoint = await revalidate_delivery_attempt(db, destination, message)
         if endpoint is None or not self._generic_endpoint_valid(endpoint):
             return DeliveryResult(False, error="provider_routing_changed")
-        if message.purpose not in {"standard", "test"}:
-            return DeliveryResult(False, error="provider_secure_proof_required")
         link = await notification_url(db, endpoint.user_id, endpoint)
         content = PluginNotificationContent(
             notification_id=message.id,
@@ -245,6 +252,27 @@ class PluginNotificationProvider:
             or not await self.is_authorized(db, destination.user_id)
         ):
             return DeliveryResult(False, error="provider_routing_changed")
+        if message.purpose == "verification":
+            challenge = await db.scalar(
+                select(NotificationVerification).where(
+                    NotificationVerification.notification_id == message.id,
+                    NotificationVerification.destination_id == endpoint.id,
+                    NotificationVerification.destination_revision == endpoint.revision,
+                    NotificationVerification.user_id == endpoint.user_id,
+                    NotificationVerification.expires_at > int(time.time()),
+                    NotificationVerification.used_at.is_(None),
+                )
+            )
+            if challenge is None or not challenge.encrypted_code:
+                return DeliveryResult(False, error="verification_expired")
+            content = content.model_copy(
+                update={
+                    "body": f"Your verification code is {decrypt_secret(challenge.encrypted_code)}. "
+                    "It expires in 10 minutes. Enter it in your account notification settings. "
+                    "If you did not request this code, ignore this message.",
+                    "link": None,
+                }
+            )
         reference = PluginNotificationDestination(
             id=endpoint.id, revision=endpoint.revision, kind=endpoint.kind
         )

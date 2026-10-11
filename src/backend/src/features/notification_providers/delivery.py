@@ -22,7 +22,8 @@ from src.database.models.notification_provider_setting import NotificationProvid
 from src.database.models.user import User
 from src.features.notification_audit import change_deliveries, record_deliveries
 from src.features.notification_destinations import resolve_destinations
-from src.features.notification_policy import INBOX_PROVIDER, Trust, route_choice, select_projection
+from src.features.notification_plugin_policy import delivery_projection
+from src.features.notification_policy import INBOX_PROVIDER, Trust, route_choice
 from src.features.notification_source_policy import source_delivery_allowed
 from src.plugin_api.runtime_client import PluginRuntimeUnavailable
 
@@ -61,7 +62,7 @@ async def ensure_deliveries(
                 and destination.provider_id not in enabled_providers
             ):
                 continue
-            projection = select_projection(notification, destination, prefs)
+            projection = await delivery_projection(db, notification, destination, prefs)
             if projection is None:
                 continue
             inbox = destination.provider_id == INBOX_PROVIDER
@@ -214,7 +215,7 @@ async def _resolve_work(
         await _finish(db, delivery_id, token, "suppressed", "source_revoked")
         return None
     prefs = await load_preferences(db, notification.user_id)
-    projection = select_projection(notification, endpoint, prefs) if endpoint else None
+    projection = await delivery_projection(db, notification, endpoint, prefs) if endpoint else None
     if (
         endpoint is None
         or endpoint.revision != delivery.destination_revision
@@ -289,7 +290,8 @@ async def _dispatch(db: AsyncSession, delivery_id: UUID, token: UUID) -> bool:
     current_preferences = await load_preferences(db, notification.user_id)
     if (
         endpoint.revision != delivery.destination_revision
-        or select_projection(notification, endpoint, current_preferences) != delivery.projection
+        or await delivery_projection(db, notification, endpoint, current_preferences)
+        != delivery.projection
     ):
         await _finish(db, delivery_id, token, "suppressed", "routing_changed")
         return False

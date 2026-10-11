@@ -117,6 +117,7 @@ _CRITICAL = frozenset(
         Capability.FULL_API,
         # Sensitive notification content always requires its own explicit grant.
         Capability.NOTIFICATIONS_SENSITIVE,
+        Capability.NOTIFICATION_PROVIDERS_SENSITIVE,
         Capability.FRONTEND_NATIVE,
         Capability.FRONTEND_PWA,
         Capability.BACKEND_ROUTES_HOST,
@@ -187,6 +188,9 @@ def _category(capability: Capability) -> str:
 
 def _title(capability: Capability) -> str:
     placement_titles = {
+        Capability.NOTIFICATION_PROVIDERS_SENSITIVE: (
+            "Receive verification codes and security/recovery content for eligible destinations"
+        ),
         Capability.FRONTEND_PLACEMENT_SIDEBAR: "Join built-in sidebar sections",
         Capability.FRONTEND_PLACEMENT_ADMIN: "Join built-in administration settings",
         Capability.FRONTEND_PLACEMENT_ACCOUNT: "Join built-in account settings",

@@ -286,6 +286,9 @@ export interface NotificationProviderDefinition {
     label: string;
     privacy: "PUBLIC" | "PRIVATE";
     fields: import("./pluginUi").UiField[];
+    verification_supported?: boolean;
+    sensitive_supported?: boolean;
+    recovery_supported?: boolean;
   }[];
   server_fields: import("./pluginUi").UiField[];
   configure_action: string;

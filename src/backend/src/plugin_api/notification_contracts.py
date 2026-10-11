@@ -18,10 +18,21 @@ class NotificationDestinationDeclaration(ContractModel):
     label: str = Field(min_length=1, max_length=128)
     privacy: Literal["PUBLIC", "PRIVATE"] = "PUBLIC"
     fields: tuple[UiField, ...] = Field(default=(), max_length=32)
+    verification_supported: StrictBool = False
+    sensitive_supported: StrictBool = False
+    recovery_supported: StrictBool = False
 
     @model_validator(mode="after")
     def bounded_fields(self) -> Self:
         validate_configuration_fields(self.fields)
+        if self.privacy == "PUBLIC" and (
+            self.verification_supported or self.sensitive_supported or self.recovery_supported
+        ):
+            raise ValueError("PUBLIC destinations cannot handle verification or sensitive content")
+        if self.recovery_supported and not (
+            self.verification_supported and self.sensitive_supported
+        ):
+            raise ValueError("Recovery support requires verification and sensitive delivery")
         return self
 
 

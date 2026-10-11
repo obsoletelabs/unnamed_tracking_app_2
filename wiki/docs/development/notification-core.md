@@ -236,3 +236,32 @@ callback, so a result cannot activate routing after its authority has changed.
 ![Configured plugin providers](../assets/notification-generic/providers-desktop-dark.png)
 
 ![Destination configuration on a phone](../assets/notification-generic/configuration-mobile-dark.png)
+
+### Host possession proof for plugin destinations (1.1.6)
+
+A PRIVATE destination kind may declare `verification_supported`,
+`sensitive_supported` and `recovery_supported`. PUBLIC kinds cannot declare these
+features; recovery requires the other two. Declarations confer no trust or grant.
+The independent critical `notification_providers.sensitive` grant explicitly
+permits verification codes and approved security/recovery content at handoff.
+Neither broad notification/full-API grants nor the event-source sensitive grant
+implies it. The plugin owns transport and can read that handed-over content;
+permission review must account for this access.
+
+Owner-only `POST .../plugin-destinations/{id}/verification` queues a host-created
+challenge for that exact endpoint revision. The corresponding `/confirm` accepts
+the challenge UUID and code; `/revoke` removes proof without changing ordinary
+PRIVATE configuration. `PUT .../{id}/recovery` accepts `enabled` only after current
+proof and declared recovery capability. These endpoints use the existing challenge
+table, HMAC-bound codes, ten-minute expiry, five attempts and per-owner resend/hour
+limits. Codes stay encrypted outside notification/inbox/lifecycle content and are
+resolved only during permitted delivery. Successful proof is revision-bound;
+target changes, withdrawal or grant revocation prevent further sensitive routing.
+
+Grouped fieldless compatibility records cannot receive this proof. Each concrete
+account must enroll its own core UUID and revision. Routing metadata reports
+verification availability and eligible types using the same live grant/purpose
+policy as dispatch. SECURE recovery additionally requires external context and
+explicit destination opt-in. Existing SMTP possession proof remains supported.
+The current bot still uses its PRIVATE compatibility endpoint; its per-account
+consumer and generic verification UI are separate follow-up work.

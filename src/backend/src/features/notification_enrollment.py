@@ -193,6 +193,14 @@ async def request_verification(db: AsyncSession, user_id: UUID, destination_id: 
         raise EnrollmentError(
             "Verification requires configured SMTP and an eligible secure transport"
         )
+    return await create_verification_challenge(db, destination)
+
+
+async def create_verification_challenge(
+    db: AsyncSession, destination: NotificationDestination
+) -> UUID:
+    """Shared core challenge issuance; callers lock and authorize the concrete endpoint."""
+    user_id, destination_id = destination.user_id, destination.id
     now = int(time.time())
     recent = list(
         await db.scalars(
@@ -210,7 +218,7 @@ async def request_verification(db: AsyncSession, user_id: UUID, destination_id: 
     setting = await db.scalar(
         select(NotificationProviderSetting).where(
             NotificationProviderSetting.user_id == user_id,
-            NotificationProviderSetting.provider_id == SMTP_PROVIDER,
+            NotificationProviderSetting.provider_id == destination.provider_id,
         )
     )
     if not setting or not setting.enabled:
@@ -250,6 +258,19 @@ async def confirm_verification(
 ) -> bool:
     await _lock_owner(db, user_id)
     destination = await owned_destination(db, user_id, destination_id)
+    return await confirm_destination_challenge(db, destination, challenge_id, code)
+
+
+async def confirm_destination_challenge(
+    db: AsyncSession,
+    destination: NotificationDestination,
+    challenge_id: UUID,
+    code: str,
+    *,
+    method: str = "email.code.v1",
+) -> bool:
+    """Shared atomic proof consumer; provider callbacks never confirm their own challenges."""
+    user_id, destination_id = destination.user_id, destination.id
     challenge = await db.scalar(
         select(NotificationVerification)
         .where(
@@ -274,7 +295,7 @@ async def confirm_verification(
     valid = hmac.compare_digest(challenge.code_digest, _digest(challenge, code))
     if valid and challenge.failures <= MAX_FAILURES:
         destination.verified_revision = destination.revision
-        destination.verification_method = "email.code.v1"
+        destination.verification_method = method
         destination.verification_revoked_at = None
         challenge.used_at = now
         challenge.encrypted_code = None

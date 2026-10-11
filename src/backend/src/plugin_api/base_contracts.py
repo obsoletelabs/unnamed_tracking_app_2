@@ -11,7 +11,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 API_VERSION = "v1"
-PLUGIN_API_CONTRACT_VERSION = "1.1.5"
+PLUGIN_API_CONTRACT_VERSION = "1.1.6"
 Timestamp = datetime
 
 
@@ -55,6 +55,7 @@ class Capability(StrEnum):
     NOTIFICATION_PROVIDERS = "notification_providers"
     NOTIFICATION_PROVIDERS_REGISTER = "notification_providers.register"
     NOTIFICATION_PROVIDERS_DELIVER = "notification_providers.deliver"
+    NOTIFICATION_PROVIDERS_SENSITIVE = "notification_providers.sensitive"
     METADATA_PROVIDERS_REGISTER = "metadata_providers.register"
     METADATA_PROVIDERS_SEARCH = "metadata_providers.search"
     METADATA_PROVIDERS_METADATA = "metadata_providers.metadata"
