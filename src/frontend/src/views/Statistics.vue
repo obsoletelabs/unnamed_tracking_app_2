@@ -8,7 +8,7 @@
 // counter), plus one more pass through those for each logged rewatch; a season counts as completed only when every one of
 // its episodes is watched. Anything with no runtime on record is reported
 // in a note, never given a guessed length.
-import { ref, computed, onMounted } from "vue";
+import { ref, computed } from "vue";
 import { useRouter } from "vue-router";
 import AppTopBar from "../components/AppTopBar.vue";
 import SegmentedTabs from "../components/SegmentedTabs.vue";
@@ -18,14 +18,14 @@ import ActivityHeatmap from "../components/stats/ActivityHeatmap.vue";
 import DonutChart from "../components/stats/DonutChart.vue";
 import StatCard from "../components/stats/StatCard.vue";
 import TopRatedRow from "../components/stats/TopRatedRow.vue";
-import { fetchMediaStats, peekMediaStats } from "../services/mediaStats";
+import { readMediaStatsSection } from "../services/mediaStats";
+import { useMediaStats } from "../composables/useMediaStats";
+import { currentUser } from "../state/auth";
 import type {
   EpisodicStats,
-  MediaStats,
   StatusCounts,
   TopTitle,
 } from "../services/mediaStats";
-import { useKeptAlive } from "../utils/useKeptAlive";
 
 type Tab = "overview" | "games" | "movie" | "tv" | "anime";
 const TABS: { value: Tab; label: string }[] = [
@@ -37,23 +37,17 @@ const TABS: { value: Tab; label: string }[] = [
 ];
 
 const router = useRouter();
-const stats = ref<MediaStats | null>(peekMediaStats());
-const loading = ref(!stats.value);
-const error = ref<string | null>(null);
-const tab = ref<Tab>((localStorage.getItem("statsTab") as Tab) || "overview");
-
-async function load() {
-  error.value = null;
-  try {
-    stats.value = await fetchMediaStats();
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : "Failed to load statistics.";
-  } finally {
-    loading.value = false;
-  }
+let savedTab: string | null = null;
+try {
+  savedTab = localStorage.getItem("statsTab");
+} catch {
+  /* remembering the tab is optional */
 }
-onMounted(load);
-useKeptAlive(load);
+const tab = ref<Tab>(readMediaStatsSection(savedTab));
+const { stats, hasData, loading, error, load } = useMediaStats(
+  tab,
+  computed(() => currentUser.value?.id ?? null),
+);
 
 function setTab(t: Tab) {
   tab.value = t;
@@ -118,7 +112,7 @@ function scoreColumns(d: Record<string, number>) {
 }
 // "151 episodes", "3 achievements", or both, from the exact split for the day
 const busiestDayText = computed(() => {
-  const day = stats.value?.overview.activity.busiest_day;
+  const day = stats.value.overview?.activity.busiest_day;
   if (!day) return "";
   const parts: string[] = [];
   if (day.episodes)
@@ -187,28 +181,28 @@ function openTitle(t: TopTitle) {
 }
 
 const totalMinutes = computed(() =>
-  stats.value
+  stats.value.overview
     ? stats.value.overview.media_minutes +
       Math.floor(stats.value.overview.game_seconds / 60)
     : 0,
 );
 const totalTitles = computed(() =>
-  stats.value
+  stats.value.overview
     ? stats.value.overview.kinds.reduce((n, k) => n + k.titles, 0)
     : 0,
 );
 const totalCompleted = computed(() =>
-  stats.value
+  stats.value.overview
     ? stats.value.overview.kinds.reduce((n, k) => n + k.completed, 0)
     : 0,
 );
 const totalFavorites = computed(() =>
-  stats.value
-    ? stats.value.overview.media_favorites + stats.value.games.favorites
+  stats.value.overview
+    ? stats.value.overview.media_favorites + stats.value.overview.game_favorites
     : 0,
 );
 const unplayedSub = computed(() => {
-  const u = stats.value?.games.insights.unplayed;
+  const u = stats.value.games?.insights.unplayed;
   if (!u) return "";
   const spent = u.spent
     .map((s) => `${s.amount.toLocaleString()} ${s.currency}`)
@@ -216,13 +210,13 @@ const unplayedSub = computed(() => {
   return spent ? `owned games, ${spent} spent on them` : "owned games";
 });
 const backlogHours = computed(() => {
-  const b = stats.value?.games.insights.backlog;
+  const b = stats.value.games?.insights.backlog;
   if (!b || b.count === b.without_estimate) return "–";
   return `${b.hours} hours`;
 });
 // backlog hours only add games that have a time-to-beat; the rest are named
 const backlogSub = computed(() => {
-  const b = stats.value?.games.insights.backlog;
+  const b = stats.value.games?.insights.backlog;
   if (!b) return "";
   const missing = b.without_estimate
     ? `, ${b.without_estimate} without a time-to-beat`
@@ -254,11 +248,10 @@ function fmtDate(epoch: number): string {
 
 // the TV and Anime tabs share one layout
 const episodic = computed<EpisodicStats | null>(() => {
-  if (!stats.value) return null;
   return tab.value === "tv"
-    ? stats.value.tv
+    ? (stats.value.tv ?? null)
     : tab.value === "anime"
-      ? stats.value.anime
+      ? (stats.value.anime ?? null)
       : null;
 });
 </script>
@@ -277,13 +270,28 @@ const episodic = computed<EpisodicStats | null>(() => {
     <div class="ui-content">
       <div class="ui-head">
         <h1>Statistics</h1>
+        <button
+          class="ui-btn ui-btn-secondary"
+          type="button"
+          :disabled="loading"
+          @click="load()"
+        >
+          {{ loading && hasData ? "Refreshing…" : "Refresh" }}
+        </button>
       </div>
-      <p v-if="loading" class="ui-state">Loading…</p>
-      <p v-else-if="error && !stats" class="ui-state error">{{ error }}</p>
+      <p v-if="loading && !hasData" class="ui-state" role="status">Loading…</p>
+      <p v-if="error" class="ui-state error" role="alert">
+        {{ error }}
+        {{
+          hasData
+            ? "Showing the last loaded numbers."
+            : "Choose Refresh to retry."
+        }}
+      </p>
 
-      <template v-else-if="stats">
+      <template v-if="hasData">
         <!-- ================= OVERVIEW ================= -->
-        <template v-if="tab === 'overview'">
+        <template v-if="tab === 'overview' && stats.overview">
           <div class="stats-summary">
             <StatCard
               icon="clock"
@@ -307,7 +315,7 @@ const episodic = computed<EpisodicStats | null>(() => {
               icon="trophy"
               label="Games finished this year"
               :value="stats.overview.games_finished_this_year"
-              :sub="`${stats.games.achievements_unlocked} achievements unlocked overall`"
+              :sub="`${stats.overview.achievements_unlocked} achievements unlocked overall`"
             />
             <StatCard
               icon="flame"
@@ -463,7 +471,7 @@ const episodic = computed<EpisodicStats | null>(() => {
         </template>
 
         <!-- ================= GAMES ================= -->
-        <template v-else-if="tab === 'games'">
+        <template v-else-if="tab === 'games' && stats.games">
           <div class="stats-summary">
             <StatCard
               icon="grid"
@@ -738,7 +746,7 @@ const episodic = computed<EpisodicStats | null>(() => {
         </template>
 
         <!-- ================= MOVIES ================= -->
-        <template v-else-if="tab === 'movie'">
+        <template v-else-if="tab === 'movie' && stats.movie">
           <div class="stats-summary">
             <StatCard
               icon="grid"

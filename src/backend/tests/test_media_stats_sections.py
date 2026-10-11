@@ -90,6 +90,7 @@ async def stats_library():
             ]
         )
         await db.flush()
+        db.expunge_all()
         yield db, user
         await db.rollback()
 
@@ -136,6 +137,8 @@ async def test_selected_section_matches_full_response_and_skips_other_libraries(
             f"from {table} " in sql or f"join {table} " in sql or f"from {table}\n" in sql
             for sql in statements
         ), table
+    for field in ("description", "note", "provider_ids"):
+        assert not any(f".{field}" in sql for sql in statements), field
     assert len(statements) < 10
 
 

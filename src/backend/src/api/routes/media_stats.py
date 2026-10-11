@@ -16,6 +16,7 @@ from typing import Any, Literal, NamedTuple, TypedDict
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import defer, raiseload
 from sqlalchemy.sql.functions import coalesce as sql_coalesce
 from sqlalchemy.sql.functions import count as sql_count
 from sqlalchemy.sql.functions import sum as sql_sum
@@ -54,6 +55,10 @@ _BUCKET = {
     "MASTERED": "completed",
 }
 _BUCKETS = ("plan", "hold", "watching", "completed", "dropped")
+# Detail text and provider maps can be large and are not statistics inputs.
+# Raise if a later calculation accidentally tries to load them implicitly.
+_GAME_DETAIL_FIELDS = ("description", "notes", "provider_ids")
+_MEDIA_DETAIL_FIELDS = ("description", "note", "provider_ids")
 
 
 # the viewer's title language for the request being built, so the many row
@@ -440,7 +445,16 @@ async def _games_section(
     db: AsyncSession, user_id: Any, include_plan: bool = True
 ) -> dict[str, Any]:
     games = list(
-        (await db.execute(select(Game).where(Game.user_id == user_id, Game.deleted_at.is_(None))))
+        (
+            await db.execute(
+                select(Game)
+                .options(
+                    *(defer(getattr(Game, field), raiseload=True) for field in _GAME_DETAIL_FIELDS),
+                    raiseload("*"),
+                )
+                .where(Game.user_id == user_id, Game.deleted_at.is_(None))
+            )
+        )
         .scalars()
         .all()
     )
@@ -633,6 +647,10 @@ async def _playing_rows(db: AsyncSession, user_id: Any) -> list[dict[str, Any]]:
         (
             await db.execute(
                 select(Game)
+                .options(
+                    *(defer(getattr(Game, field), raiseload=True) for field in _GAME_DETAIL_FIELDS),
+                    raiseload("*"),
+                )
                 .where(
                     Game.user_id == user_id,
                     Game.deleted_at.is_(None),
@@ -755,7 +773,15 @@ async def _library_items(
     items = list(
         (
             await db.execute(
-                select(model).where(model.user_id == user_id, model.deleted_at.is_(None))
+                select(model)
+                .options(
+                    *(
+                        defer(getattr(model, field), raiseload=True)
+                        for field in _MEDIA_DETAIL_FIELDS
+                    ),
+                    raiseload("*"),
+                )
+                .where(model.user_id == user_id, model.deleted_at.is_(None))
             )
         )
         .scalars()
@@ -773,6 +799,28 @@ def _needs_score(movies: list[Any], tv: list[Any], anime: list[Any]) -> dict[str
         + _unrated_completed(anime, "anime")
     )
     return {"count": len(items), "items": items[:8]}
+
+
+async def _selected_episodic_section(
+    db: AsyncSession, user_id: Any, section: str, include_plan: bool
+) -> dict[str, Any]:
+    models: tuple[
+        type[TVShow] | type[Anime],
+        type[TVSeason] | type[AnimeSeason],
+        type[TVEpisode] | type[AnimeEpisode],
+    ]
+    if section == "tv":
+        models = (TVShow, TVSeason, TVEpisode)
+    else:
+        models = (Anime, AnimeSeason, AnimeEpisode)
+    shows = await _library_items(db, models[0], user_id, include_plan)
+    return _episodic_section(
+        shows,
+        await _episode_stats(db, *models, user_id=user_id, shows=shows),
+        await _rewatch_counts(db, user_id, section),
+        "creators" if section == "tv" else "studios",
+        section,
+    )
 
 
 @router.get("")
@@ -794,25 +842,7 @@ async def get_media_stats(
         movies = await _library_items(db, Movie, uid, include_plan)
         return {"movie": _movie_section(movies, await _rewatch_counts(db, uid, "movie"))}
     if section in {"tv", "anime"}:
-        if section == "tv":
-            shows = await _library_items(db, TVShow, uid, include_plan)
-            episode_stats = await _episode_stats(
-                db, TVShow, TVSeason, TVEpisode, user_id=uid, shows=shows
-            )
-        else:
-            shows = await _library_items(db, Anime, uid, include_plan)
-            episode_stats = await _episode_stats(
-                db, Anime, AnimeSeason, AnimeEpisode, user_id=uid, shows=shows
-            )
-        return {
-            section: _episodic_section(
-                shows,
-                episode_stats,
-                await _rewatch_counts(db, uid, section),
-                "creators" if section == "tv" else "studios",
-                section,
-            )
-        }
+        return {section: await _selected_episodic_section(db, uid, section, include_plan)}
 
     movies = await _library_items(db, Movie, uid, include_plan)
     tv = await _library_items(db, TVShow, uid, include_plan)

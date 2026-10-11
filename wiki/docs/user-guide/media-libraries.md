@@ -100,6 +100,12 @@ phase separation, scoped credential migration, deadlines and persistence behavio
 
 ## Statistics requests
 
+Statistics loads the selected tab first and reuses tabs already visited on that
+page visit. Returning to the page shows the last loaded numbers while refreshing
+the visible tab; other cached tabs refresh when selected. **Refresh** retries a
+failed request or updates the current tab without discarding its previous numbers.
+Cached statistics are cleared when the signed-in user changes.
+
 The authenticated `/api/media-stats` endpoint accepts an optional `section`:
 `overview`, `games`, `movie`, `tv` or `anime`. A selected library returns only
 that section and does not calculate unrelated libraries or the activity summary.
