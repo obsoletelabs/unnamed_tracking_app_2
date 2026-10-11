@@ -27,6 +27,7 @@ from src.features.notification_policy import (
 )
 from src.features.notification_providers.plugin import PluginNotificationProvider
 from src.features.notification_urls import notification_url
+from src.features.plugin_auth_flows import active_reset_flow
 from src.features.smtp_configuration import SMTP_PROVIDER, SmtpConfiguration, smtp_configuration
 from src.plugin_api.grants import has_capability_grant
 from src.plugin_api.notification_contracts import NotificationProviderDefinition
@@ -156,6 +157,21 @@ async def _type_catalog(db: AsyncSession, user_id: UUID) -> list[dict[str, Any]]
                     "visible": True,
                 }
             )
+    reset = await active_reset_flow(db)
+    if reset or "auth.password_reset" in remembered_types:
+        types.append(
+            {
+                "event_type": "auth.password_reset",
+                "preference_key": "",
+                "label": "Password reset",
+                "description": "Requested account recovery links.",
+                "required_trust": "SECURE",
+                "purpose": "recovery",
+                "kind": "password_reset",
+                "available": reset is not None,
+                "visible": True,
+            }
+        )
     return types
 
 

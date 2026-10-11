@@ -34,6 +34,7 @@ from src.database.models.user import User
 from src.database.session import get_db
 from src.features.notification_destinations import retire_plugin_destinations
 from src.features.notification_source_policy import retire_sources
+from src.features.plugin_auth_flows import retire_auth_flows
 from src.plugin_api.capabilities import calculate_permission_delta
 from src.plugin_api.contracts import CapabilityRef, PermissionDeclaration
 from src.plugin_api.grants import (
@@ -330,6 +331,7 @@ async def revoke_management_token(
 
 
 async def _purge_plugin_database(db: AsyncSession, plugin_id: str) -> None:
+    await retire_auth_flows(db, plugin_id)
     await retire_sources(db, plugin_id)
     await retire_plugin_destinations(db, plugin_id)
 
@@ -667,6 +669,7 @@ async def disable_plugin(
     del admin
     with runtime.runtime_errors():
         await runtime.client.stop(quote(plugin_id, safe=""))
+    await retire_auth_flows(db, plugin_id)
     await retire_sources(db, plugin_id)
     await retire_plugin_destinations(db, plugin_id)
     await db.commit()
@@ -695,6 +698,7 @@ async def revoke_plugin_permissions(
     admin: User = _PLUGIN_ADMIN,
 ) -> dict:
     del admin
+    await retire_auth_flows(db, plugin_id)
     await retire_sources(db, plugin_id)
     await retire_plugin_destinations(db, plugin_id)
     rows = await db.scalars(

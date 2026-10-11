@@ -29,7 +29,7 @@ from src.features.smtp_configuration import (
 )
 
 from .base import DeliveryResult, NotificationMessage, ProviderDestination
-from .eligibility import endpoint_route_enabled
+from .eligibility import endpoint_route_enabled, revalidate_delivery_attempt
 
 
 @dataclass(frozen=True)
@@ -154,6 +154,10 @@ class SmtpNotificationProvider:
     ) -> DeliveryResult:
         if not isinstance(destination, SmtpDestination) or destination.configuration is None:
             return DeliveryResult(False, error="destination_unavailable")
+        if message.event_type == "auth.password_reset" and not await revalidate_delivery_attempt(
+            db, destination, message
+        ):
+            return DeliveryResult(False, error="recovery_revoked")
         if message.kind == "destination_verification":
             if not destination.allows_sensitive:
                 return DeliveryResult(False, error="transport_security_required")

@@ -27,6 +27,7 @@ class NotificationMessage:  # pylint: disable=too-many-instance-attributes
     urgency: str = "normal"
     purpose: str = "standard"
     event_type: str = ""
+    action_url: str | None = None
 
 
 @dataclass(frozen=True)
