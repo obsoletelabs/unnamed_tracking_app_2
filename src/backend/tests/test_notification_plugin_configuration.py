@@ -296,3 +296,64 @@ async def test_server_callback_cannot_restore_withdrawn_authority(
             .execution_options(populate_existing=True)
         )
         assert not row.server_configured
+
+
+@pytest.mark.asyncio
+async def test_linked_account_configuration_and_retirement_keep_existing_action_result(
+    generic_provider, configuration_runtime
+):
+    """Fieldless linked-account providers keep their authenticated, non-secret API."""
+    p = generic_provider
+    definition = copy.deepcopy(DEFINITION)
+    definition["destinations"][0]["fields"] = []
+    configuration_runtime.notification_provider_action.return_value = {"ok": True}
+    async with SessionLocal() as db:
+        await _register_provider(
+            db,
+            plugin_id=p.plugin,
+            installation_id=p.installation,
+            payload=registration(definition, provider_id=p.provider),
+        )
+        endpoint = await db.get(NotificationDestination, p.endpoint, populate_existing=True)
+        endpoint.endpoint_key = "plugin:webhook"
+        await db.commit()
+        await configure_destination(
+            db,
+            p.owner,
+            p.provider,
+            "webhook",
+            {},
+            label="Linked account",
+            destination_id=p.endpoint,
+        )
+        endpoint = await db.get(NotificationDestination, p.endpoint, populate_existing=True)
+        assert endpoint.active and endpoint.privacy == 0
+        assert endpoint.verified_revision is None
+        call = configuration_runtime.notification_provider_action.await_args
+        assert call.kwargs["user_id"] == str(p.owner)
+        assert call.kwargs["context"]["destination"]["id"] == str(p.endpoint)
+        assert await remove_destination(db, p.owner, p.endpoint)
+        await db.refresh(endpoint)
+        assert not endpoint.active and endpoint.endpoint_key.startswith("retired:")
+
+
+@pytest.mark.asyncio
+async def test_linked_account_success_cannot_confirm_declared_secret_configuration(
+    generic_provider, configuration_runtime
+):
+    p = generic_provider
+    configuration_runtime.notification_provider_action.return_value = {"ok": True}
+    async with SessionLocal() as db:
+        with pytest.raises(EnrollmentError, match="remains inactive"):
+            await configure_destination(
+                db, p.owner, p.provider, "webhook", {"url": "secret"}, label="Channel"
+            )
+        rows = (
+            await db.scalars(
+                select(NotificationDestination).where(
+                    NotificationDestination.provider_id == p.provider,
+                    NotificationDestination.id != p.endpoint,
+                )
+            )
+        ).all()
+        assert len(rows) == 1 and not rows[0].active

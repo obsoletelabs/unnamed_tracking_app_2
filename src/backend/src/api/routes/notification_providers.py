@@ -162,7 +162,7 @@ async def create_plugin_destination(
 ) -> dict:
     if isinstance(payload, PluginDestinationCreate):
         payload = PluginDestinationConfiguration(**payload.model_dump())
-    provider, definition = await _authorized_plugin_provider(
+    _provider, definition = await _authorized_plugin_provider(
         db, payload.provider_id, current_user.id
     )
     choice = next((item for item in definition.destinations if item.kind == payload.kind), None)

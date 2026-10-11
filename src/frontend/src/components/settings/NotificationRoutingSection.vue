@@ -5,11 +5,11 @@ import EmailDestinationsSection from "./EmailDestinationsSection.vue";
 import WebhookDestinationsSection from "./WebhookDestinationsSection.vue";
 import BrowserDestinationsSection from "./BrowserDestinationsSection.vue";
 import NotificationLinkSettings from "./NotificationLinkSettings.vue";
+import PluginDestinationsSection from "./PluginDestinationsSection.vue";
 import {
   fetchNotificationRouting,
   setNotificationProviderEnabled,
   sendDestinationTest,
-  createPluginDestination,
 } from "../../services/notifications";
 import type {
   NotificationRoutingSettings,
@@ -25,6 +25,8 @@ const error = ref("");
 const expanded = ref<Record<string, boolean>>({});
 const busy = ref(false);
 const testStatus = ref("");
+const showInactiveTypes = ref(false);
+const showInactiveRoutes = ref<Record<string, boolean>>({});
 let mounted = true;
 onUnmounted(() => {
   mounted = false;
@@ -44,17 +46,26 @@ onMounted(reload);
 watch(() => props.prefs.notification_url, reload);
 
 const sortedProviders = computed(() =>
-  [...(routing.value?.providers ?? [])].sort((a, b) => {
-    const configured = (id: string) =>
-      routing.value?.destinations.some((d) => d.provider_id === id && d.active)
-        ? 1
-        : 0;
-    return (
-      configured(b.id) - configured(a.id) ||
-      Number(b.available) - Number(a.available) ||
-      a.name.localeCompare(b.name)
-    );
-  }),
+  [...(routing.value?.providers ?? [])]
+    .filter(
+      (provider) =>
+        provider.available ||
+        provider.configuration_available ||
+        routing.value?.destinations.some((d) => d.provider_id === provider.id),
+    )
+    .sort((a, b) => {
+      const configured = (id: string) =>
+        routing.value?.destinations.some(
+          (d) => d.provider_id === id && d.active,
+        )
+          ? 1
+          : 0;
+      return (
+        configured(b.id) - configured(a.id) ||
+        Number(b.available) - Number(a.available) ||
+        a.name.localeCompare(b.name)
+      );
+    }),
 );
 
 function typeEnabled(type: NotificationRoutingType) {
@@ -158,30 +169,6 @@ function destinationName(destination: NotificationRoutingDestination) {
     : destination.provider_name;
   return destination.active ? name : `${name} · Inactive`;
 }
-async function addPluginDestination(providerId: string, kind: string) {
-  busy.value = true;
-  error.value = "";
-  try {
-    await createPluginDestination(providerId, kind);
-    if (mounted) await reload();
-  } catch (reason) {
-    if (mounted)
-      error.value =
-        reason instanceof Error
-          ? reason.message
-          : "Could not add this notification destination.";
-  } finally {
-    if (mounted) busy.value = false;
-  }
-}
-function hasPluginDestination(providerId: string, kind: string) {
-  return routing.value?.destinations.some(
-    (destination) =>
-      destination.provider_id === providerId &&
-      destination.kind === kind &&
-      destination.active,
-  ) ?? false;
-}
 async function testDestination(destination: NotificationRoutingDestination) {
   busy.value = true;
   error.value = "";
@@ -217,12 +204,21 @@ async function testDestination(destination: NotificationRoutingDestination) {
           Enable external providers for your account here. Per-type choices
           below apply within these settings.
         </p>
-        <article
+        <details
           v-for="provider in sortedProviders"
           :key="provider.id"
           class="provider-card"
         >
-          <h4>{{ provider.name }}</h4>
+          <summary>
+            {{ provider.name }}
+            <span class="hint">{{
+              routing.destinations.some(
+                (d) => d.provider_id === provider.id && d.active,
+              )
+                ? "Configured"
+                : "Set up"
+            }}</span>
+          </summary>
           <p v-if="provider.configuration_scope === 'internal'" class="hint">
             Your authenticated, secure inbox. Choose its notification types
             below.
@@ -244,9 +240,11 @@ async function testDestination(destination: NotificationRoutingDestination) {
                     ? "Uses server SMTP settings and your own addresses below."
                     : provider.destination_kind === "browser_push"
                       ? "Enroll each browser below. Delivery follows your signed-in session and the PWA lifecycle."
-                      : provider.configuration_scope === "user"
-                        ? "Add separate webhooks for your account below. Credentials stay protected by the app."
-                        : "Uses administrator-configured delivery. Configure an available destination below."
+                      : provider.definition
+                        ? "The plugin manages credentials for its declared destinations."
+                        : provider.configuration_scope === "user"
+                          ? "Add separate webhooks for your account below. Credentials stay protected by the app."
+                          : "Uses administrator-configured delivery. Configure an available destination below."
                   : "Provider unavailable. Your choices are retained; reinstall does not reactivate old destinations."
               }}
             </p>
@@ -282,11 +280,13 @@ async function testDestination(destination: NotificationRoutingDestination) {
           />
           <WebhookDestinationsSection
             v-if="
-              provider.destination_kind === 'discord_webhook' ||
-              routing.destinations.some(
-                (d) =>
-                  d.provider_id === provider.id && d.kind === 'discord_webhook',
-              )
+              !provider.definition &&
+              (provider.destination_kind === 'discord_webhook' ||
+                routing.destinations.some(
+                  (d) =>
+                    d.provider_id === provider.id &&
+                    d.kind === 'discord_webhook',
+                ))
             "
             :provider="provider"
             :destinations="
@@ -297,43 +297,22 @@ async function testDestination(destination: NotificationRoutingDestination) {
             @changed="reload"
             @change="emit('change', $event)"
           />
-          <section
-            v-if="provider.definition?.destinations?.length"
-            class="plugin-destination-list"
-            aria-label="Available plugin destinations"
-          >
-            <h5>Available destinations</h5>
-            <div
-              v-for="choice in provider.definition.destinations"
-              :key="choice.kind"
-              class="plugin-destination-choice"
-            >
-              <div>
-                <strong>{{ choice.label }}</strong>
-                <p class="hint">{{ choice.privacy }} destination</p>
-                <p v-if="choice.fields?.length" class="hint">
-                  This destination requires provider-specific fields; configure it
-                  in the provider's own settings before adding it here.
-                </p>
-              </div>
-              <button
-                v-if="!hasPluginDestination(provider.id, choice.kind) && !choice.fields?.length"
-                type="button"
-                class="expand"
-                :disabled="busy || !loaded || !provider.available"
-                @click="addPluginDestination(provider.id, choice.kind)"
-              >
-                Add destination
-              </button>
-              <span v-else-if="hasPluginDestination(provider.id, choice.kind)" class="hint">
-                Added below
-              </span>
-            </div>
-          </section>
+          <PluginDestinationsSection
+            v-if="provider.definition"
+            :provider="provider"
+            :destinations="
+              routing.destinations.filter((d) => d.provider_id === provider.id)
+            "
+            :prefs="prefs"
+            :loaded="loaded"
+            @changed="reload"
+            @change="emit('change', $event)"
+          />
           <div
             v-for="destination in routing.destinations.filter(
               (d) =>
                 d.provider_id === provider.id &&
+                !d.plugin_owned_configuration &&
                 !['email', 'discord_webhook', 'browser_push'].includes(d.kind),
             )"
             :key="destination.id"
@@ -382,7 +361,7 @@ async function testDestination(destination: NotificationRoutingDestination) {
               consent for a concrete webhook.
             </p>
           </div>
-        </article>
+        </details>
         <p v-if="routing.providers.length === 1" class="hint">
           No external providers are configured.
         </p>
@@ -400,7 +379,9 @@ async function testDestination(destination: NotificationRoutingDestination) {
         it off keeps your routing choices.
       </p>
       <article
-        v-for="type in routing.types"
+        v-for="type in routing.types.filter(
+          (t) => t.available !== false || showInactiveTypes,
+        )"
         :key="type.event_type"
         class="type-card"
       >
@@ -482,7 +463,11 @@ async function testDestination(destination: NotificationRoutingDestination) {
             </template>
           </fieldset>
           <div
-            v-for="destination in routing.destinations"
+            v-for="destination in routing.destinations.filter(
+              (d) =>
+                (d.active && d.available) ||
+                showInactiveRoutes[type.event_type],
+            )"
             :key="destination.id"
             class="destination-row"
           >
@@ -549,9 +534,25 @@ async function testDestination(destination: NotificationRoutingDestination) {
               }}</span>
             </label>
           </div>
+          <button
+            v-if="routing.destinations.some((d) => !d.active || !d.available)"
+            class="expand"
+            :aria-expanded="!!showInactiveRoutes[type.event_type]"
+            @click="
+              showInactiveRoutes[type.event_type] =
+                !showInactiveRoutes[type.event_type]
+            "
+          >
+            {{ showInactiveRoutes[type.event_type] ? "Hide" : "Show" }} inactive
+            routing choices
+          </button>
           <p
             v-for="provider in routing.providers.filter(
-              (p) => !routing?.destinations.some((d) => d.provider_id === p.id),
+              (p) =>
+                p.available &&
+                !routing?.destinations.some(
+                  (d) => d.provider_id === p.id && d.active,
+                ),
             )"
             :key="provider.id"
             class="hint"
@@ -570,11 +571,27 @@ async function testDestination(destination: NotificationRoutingDestination) {
           </p>
         </div>
       </article>
+      <button
+        v-if="routing.types.some((t) => t.available === false)"
+        class="expand"
+        :aria-expanded="showInactiveTypes"
+        @click="showInactiveTypes = !showInactiveTypes"
+      >
+        {{ showInactiveTypes ? "Hide" : "Show" }} inactive notification types
+      </button>
     </template>
   </div>
 </template>
 
 <style scoped>
+.provider-card summary {
+  cursor: pointer;
+  font-weight: var(--ui-weight-heading);
+  overflow-wrap: anywhere;
+}
+.provider-card[open] summary {
+  margin-bottom: 12px;
+}
 .media-selection {
   border: 1px solid var(--ui-border);
   border-radius: var(--ui-radius-control);
@@ -670,27 +687,6 @@ h4 {
   padding: 7px;
   width: 100%;
   font: inherit;
-}
-.plugin-destination-list {
-  display: grid;
-  gap: 10px;
-  margin: 12px 0;
-  padding: 12px;
-  border: 1px solid var(--ui-border);
-  border-radius: 8px;
-}
-.plugin-destination-list h5 {
-  margin: 0;
-  font-size: 0.85rem;
-}
-.plugin-destination-choice {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-.plugin-destination-choice p {
-  margin: 4px 0 0;
 }
 .personal-destination {
   margin-top: 12px;

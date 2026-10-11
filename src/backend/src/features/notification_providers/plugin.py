@@ -266,6 +266,28 @@ class PluginNotificationProvider:
                 attempt_id=str(message.attempt_id),
                 server_revision=self.registration.server_revision,
             )
+            # Existing fieldless linked-account test actions return the UI action result.
+            choice = (
+                next(
+                    (item for item in self.definition.destinations if item.kind == endpoint.kind),
+                    None,
+                )
+                if self.definition
+                else None
+            )
+            linked_account_test = bool(
+                choice
+                and not choice.fields
+                and self.definition
+                and not self.definition.server_fields
+            )
+            accepted_test = (
+                isinstance(response, dict)
+                and response.get("ok") is True
+                and "success" not in response
+            )
+            if message.purpose == "test" and test_action and linked_account_test and accepted_test:
+                response = {"success": True, "retryable": False}
             result = NotificationDeliveryResult.model_validate(response)
         except (PluginRuntimeRequestError, PluginRuntimeUnavailable):
             return DeliveryResult(False, retryable=True, error="provider_transport_unavailable")

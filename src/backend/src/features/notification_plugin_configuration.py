@@ -123,7 +123,11 @@ async def _owned(db: AsyncSession, user_id: UUID, destination_id: UUID):
         .with_for_update()
         .execution_options(populate_existing=True)
     )
-    if row is None or row.configuration_ref != str(row.id) or row.endpoint_key != str(row.id):
+    if (
+        row is None
+        or row.configuration_ref != str(row.id)
+        or row.endpoint_key not in {str(row.id), f"plugin:{row.kind}"}
+    ):
         raise EnrollmentError("Plugin notification destination not found", 404)
     return row
 
@@ -148,7 +152,19 @@ async def _invoke(row, authority, definition, *, user_id, values, context):
             "Plugin configuration is unavailable; the destination remains inactive", 503
         ) from exc
     expected = "retired" if context["operation"] == "retire" else "configured"
-    if not isinstance(result, dict) or result.get(expected) is not True:
+    choice = next(
+        (
+            item
+            for item in definition.destinations
+            if item.kind == context.get("destination", {}).get("kind")
+        ),
+        None,
+    )
+    linked_account = choice is not None and not choice.fields and not definition.server_fields
+    accepted = isinstance(result, dict) and (
+        result.get(expected) is True or linked_account and result.get("ok") is True
+    )
+    if not accepted:
         raise EnrollmentError("Plugin configuration failed; the destination remains inactive", 400)
 
 

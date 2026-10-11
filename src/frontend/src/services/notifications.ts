@@ -276,7 +276,26 @@ export interface NotificationRoutingType {
   preference_key: string;
   label: string;
   description: string;
-  required_trust: "PRIVATE" | "SECURE";
+  required_trust: "PUBLIC" | "PRIVATE" | "SECURE";
+  available?: boolean;
+}
+
+export interface NotificationProviderDefinition {
+  destinations: {
+    kind: string;
+    label: string;
+    privacy: "PUBLIC" | "PRIVATE";
+    fields: import("./pluginUi").UiField[];
+  }[];
+  server_fields: import("./pluginUi").UiField[];
+  configure_action: string;
+  retire_action: string;
+  test_action?: string | null;
+  features: {
+    multiple_destinations: boolean;
+    critical_supported: boolean;
+    critical_description?: string | null;
+  };
 }
 
 export interface NotificationRoutingProvider {
@@ -303,6 +322,10 @@ export interface NotificationRoutingProvider {
   critical_description?: string | null;
   transport_warning?: string | null;
   secure_transport?: boolean;
+  definition?: NotificationProviderDefinition | null;
+  configuration_available?: boolean;
+  server_configured?: boolean;
+  server_revision?: number;
 }
 
 export interface NotificationRoutingDestination {
@@ -328,6 +351,8 @@ export interface NotificationRoutingDestination {
   verification_available?: boolean;
   media_disclosure_confirmed?: boolean;
   reactivation_available?: boolean;
+  plugin_owned_configuration?: boolean;
+  configuration_retired?: boolean;
 }
 
 export interface NotificationRoutingSettings {
@@ -400,7 +425,7 @@ export async function setNotificationProviderEnabled(
 }
 
 async function destinationRequest<T>(
-  kind: "email" | "webhook" | "browser",
+  kind: "email" | "webhook" | "browser" | "plugin",
   path: string,
   method: string,
   payload?: object,
@@ -416,6 +441,49 @@ async function destinationRequest<T>(
   );
   if (!response.ok) throw await failedRequest(response);
   return response.json();
+}
+
+export interface PluginDestinationConfiguration {
+  provider_id: string;
+  kind: string;
+  label: string;
+  values: Record<string, import("./pluginUi").UiValue>;
+  share_followed_media?: boolean;
+}
+
+export function configurePluginDestination(
+  configuration: PluginDestinationConfiguration,
+  id?: string,
+) {
+  return destinationRequest<{ id?: string; configured?: boolean }>(
+    "plugin",
+    id ? `/${encodeURIComponent(id)}` : "",
+    id ? "PUT" : "POST",
+    configuration,
+  );
+}
+
+export function removePluginDestination(id: string) {
+  return destinationRequest<{
+    removed: boolean;
+    plugin_cleanup_complete: boolean;
+  }>("plugin", `/${encodeURIComponent(id)}`, "DELETE");
+}
+
+export async function configurePluginNotificationServer(
+  providerId: string,
+  values: Record<string, import("./pluginUi").UiValue>,
+): Promise<void> {
+  const response = await fetch(
+    `/api/settings/notification-providers/plugin-server-configuration/${encodeURIComponent(providerId)}`,
+    {
+      method: "PUT",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ values }),
+    },
+  );
+  if (!response.ok) throw await failedRequest(response);
 }
 
 export function createEmailDestination(address: string, label: string) {

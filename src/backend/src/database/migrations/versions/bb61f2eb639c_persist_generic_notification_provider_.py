@@ -1,7 +1,7 @@
 """Persist generic notification provider definitions without changing existing destinations.
 
 Revision ID: bb61f2eb639c
-Revises: 0037e34ac954
+Revises: c696194f78fd
 """
 
 import sqlalchemy as sa
@@ -11,7 +11,7 @@ from sqlalchemy.dialects import postgresql
 from src.database import migration_helpers as h
 
 revision: str = "bb61f2eb639c"
-down_revision: str | None = "0037e34ac954"
+down_revision: str | None = "c696194f78fd"
 branch_labels: str | None = None
 depends_on: str | None = None
 
