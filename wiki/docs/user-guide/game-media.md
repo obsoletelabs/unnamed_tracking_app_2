@@ -12,7 +12,7 @@ differs.
 | Soundtrack | Audio. A track plays right on its card. |
 | Saves | Named save files, each with a history of versions. |
 | Docs | Manuals, guides and any other file. |
-| World Map | Minecraft worlds, shown on Minecraft games. Zip the world folder (the one with `level.dat`) and add it. |
+| Worlds | Minecraft worlds, shown on Minecraft games. Zip the world folder (the one with `level.dat`) and add it. |
 
 ## Adding files
 
@@ -80,7 +80,15 @@ achievement's unlock date as the file's date (**Tying also sets the date**).
 
 Every card can copy a link to its file or download it. Saves download their
 latest version, and the edit dialog lists every version so you can download an
-older one, add a new one, or delete one you no longer want.
+older one, add a new one, or delete one you no longer want. Worlds keep the
+same named archives, notes, tags and version downloads.
+
+BlueMap rendering and its map viewer have been retired. Existing uploaded
+worlds and versions remain available in **Worlds**; the old `World Map` tab
+links open that tab. Legacy render files are left on disk, including through
+archive Trash/restore, but are no longer served. The former
+`/api/game/{game_id}/world-map/…` rendering, status, thumbnail and viewer
+endpoints return 404. No Java runtime or BlueMap download is required.
 
 ## Deleting
 

@@ -212,9 +212,10 @@ async def test_docs_upload_edit_delete_and_restore(flow) -> None:
     assert again[guide["id"]]["title"] == "Elden Ring boss guide"
 
 
-async def test_saves_are_named_archives_with_versions(flow) -> None:
+@pytest.mark.parametrize("kind", ["save", "world_save"])
+async def test_saves_are_named_archives_with_versions(flow, kind) -> None:
     created = await flow.client.post(
-        f"{flow.game}/archives/save",
+        f"{flow.game}/archives/{kind}",
         data={"name": "Main character"},
         files={"file": ("slot1.sav", b"v1" * 10, "application/octet-stream")},
     )
@@ -228,24 +229,62 @@ async def test_saves_are_named_archives_with_versions(flow) -> None:
     )
     assert more.status_code == 200, more.text
     assert len(more.json()["versions"]) == 2
+    for version in more.json()["versions"]:
+        download = await flow.client.get(version["url"])
+        assert download.status_code == 200
+        assert download.content in (b"v1" * 10, b"v2" * 20)
+
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=uuid.uuid4())
+    try:
+        assert (await flow.client.get(f"{flow.game}/archives/{kind}")).status_code == 404
+        assert (await flow.client.get(archive["versions"][0]["url"])).status_code == 404
+        assert (
+            await flow.client.post(f"{flow.game}/archives/{archive['id']}/restore")
+        ).status_code == 404
+    finally:
+        app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=flow.user_id)
+
+    # Retiring the renderer must not purge old output during an upgrade or
+    # change the archive's existing Trash/restore handling of that output.
+    legacy_render = flow.tmp / str(flow.user_id) / "games" / "Flow" / "world_map" / archive["id"]
+    if kind == "world_save":
+        legacy_render.mkdir(parents=True)
+        (legacy_render / "index.html").write_text("legacy render", encoding="utf-8")
 
     renamed = await flow.client.patch(
         f"{flow.game}/archives/{archive['id']}", json={"name": "Before the final boss"}
     )
     assert renamed.json()["name"] == "Before the final boss"
 
-    listed = (await flow.client.get(f"{flow.game}/archives/save")).json()
+    listed = (await flow.client.get(f"{flow.game}/archives/{kind}")).json()
     assert [a["name"] for a in listed] == ["Before the final boss"]
 
     assert (await flow.client.delete(f"{flow.game}/archives/{archive['id']}")).status_code in (
         200,
         204,
     )
-    trash = (await flow.client.get(f"{flow.game}/archives/save/trash")).json()
+    trash = (await flow.client.get(f"{flow.game}/archives/{kind}/trash")).json()
     assert [t["name"] for t in trash] == ["Before the final boss"]
     restored = await flow.client.post(f"{flow.game}/archives/{archive['id']}/restore")
     assert restored.status_code == 200, restored.text
-    assert len((await flow.client.get(f"{flow.game}/archives/save")).json()) == 1
+    assert len((await flow.client.get(f"{flow.game}/archives/{kind}")).json()) == 1
+    if kind == "world_save":
+        assert (legacy_render / "index.html").read_text(encoding="utf-8") == "legacy render"
+
+
+async def test_world_render_endpoints_are_retired(flow) -> None:
+    assert not any("/world-map/" in path for path in app.openapi()["paths"])
+    archive_id = uuid.uuid4()
+    for suffix in (
+        "worlds",
+        f"{archive_id}/status",
+        f"{archive_id}/thumbnail",
+        f"{archive_id}/view/index.html",
+    ):
+        response = await flow.client.get(f"{flow.game}/world-map/{suffix}")
+        assert response.status_code == 404
+    response = await flow.client.post(f"{flow.game}/world-map/{archive_id}/render")
+    assert response.status_code == 404
 
 
 async def test_a_clip_keeps_its_thumbnail_and_length(flow) -> None:
