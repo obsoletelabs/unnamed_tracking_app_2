@@ -103,6 +103,7 @@ const coreSectionIds = new Set([
   "themes",
   "stats",
   "tasks",
+  "background-tasks",
   "logs",
 ]);
 const visiblePluginSettings = computed(() => {
@@ -183,6 +184,7 @@ const groups = computed<SettingsGroup[]>(() => {
       sections: [
         { id: "profile", label: "Profile" },
         { id: "connections", label: "Connections" },
+        { id: "background-tasks", label: "Background tasks" },
         { id: "notifications", label: "Notifications" },
         { id: "api-keys", label: "API Keys" },
         { id: "sessions", label: "Sessions" },
@@ -616,6 +618,10 @@ function backToArea() {
           />
           <TasksSection
             v-else-if="activeSection === 'tasks' && currentUser?.is_admin"
+          />
+          <TasksSection
+            v-else-if="activeSection === 'background-tasks'"
+            personal
           />
           <PluginContributionHost
             v-else-if="activePluginSettings"

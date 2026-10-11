@@ -46,7 +46,8 @@ async def _owned_flow(db, plugin_id, installation_id, user_id):
 
 
 async def issue_invitation(db, plugin_id, installation_id, user_id, payload):
-    email = normalize_email(UserInviteIssue.model_validate(payload).email)
+    invitation = UserInviteIssue.model_validate(payload)
+    email = normalize_email(invitation.email)
     # Serialize issuance/configuration and the pending cap across host workers.
     await db.execute(select(func.pg_advisory_xact_lock(731856417203)))
     flow, admin = await _owned_flow(db, plugin_id, installation_id, user_id)
@@ -84,10 +85,12 @@ async def issue_invitation(db, plugin_id, installation_id, user_id, payload):
     if count is not None and count >= 1000:
         await db.commit()
         raise ValueError("Pending invitation capacity reached; allow cleanup before issuing more")
-    return await _create_invitation(db, flow, admin, email, origin)
+    return await _create_invitation(
+        db, flow, admin, email, origin, recipient_name=invitation.recipient_name
+    )
 
 
-async def _create_invitation(db, flow, admin, email, origin):
+async def _create_invitation(db, flow, admin, email, origin, *, recipient_name=""):
     digest = hmac.new(settings.SECRET_KEY.encode(), email.encode(), hashlib.sha256).hexdigest()
     # A new link replaces older outstanding invitations to exactly this address.
     older = list(
@@ -132,7 +135,11 @@ async def _create_invitation(db, flow, admin, email, origin):
         endpoint_key=str(row.id),
         kind="invitation_email",
         privacy=1,
-        encrypted_configuration=encrypt_secret(json.dumps({"address": email})),
+        encrypted_configuration=encrypt_secret(
+            json.dumps(
+                {"address": email, "recipient_name": recipient_name, "invitation": flow.definition}
+            )
+        ),
         notification_url=origin,
         display_name="Invitation email",
     )

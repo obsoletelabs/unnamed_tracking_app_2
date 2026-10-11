@@ -9,12 +9,14 @@ import RandomGamePicker from "../components/RandomGamePicker.vue";
 import FilterCombobox from "../components/FilterCombobox.vue";
 import CollectionPickerModal from "../components/CollectionPickerModal.vue";
 import GameTopBar from "../components/GameTopBar.vue";
+import LibrarySyncMenu from "../components/LibrarySyncMenu.vue";
 import SegmentedTabs from "../components/SegmentedTabs.vue";
 import type { ViewMode, CardDensity } from "../composables/useGameLibrary";
 import { useGameLibrary } from "../composables/useGameLibrary";
 import { computed, ref } from "vue";
 import { quickTourActive } from "../state/quickTour";
 const {
+  loadGames,
   viewportWidth,
   activePriority,
   priorityLabel,
@@ -177,6 +179,7 @@ const compactPreview = computed(
           {{ compactControls ? "Controls" : "Hide controls" }}
         </button>
         <div class="head-actions">
+          <LibrarySyncMenu @synced="loadGames" />
           <div class="select-button-wrap">
             <button
               type="button"

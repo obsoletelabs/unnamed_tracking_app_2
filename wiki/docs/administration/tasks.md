@@ -40,3 +40,17 @@ or refreshing run status preserves other drafts. Settings confirms successful
 writes for twelve seconds, then shows a quiet Saved state; a concurrent failed
 write cannot be hidden by another successful response. Native and sandboxed
 scrollbars use the active semantic palette.
+
+## Personal plugin schedules
+
+Account → Background tasks is available to every signed-in user. Plugins can declare
+personal tasks using Plugin API 1.1.11. Each account controls its own autosync switch,
+interval (minutes, hours, days or weeks), manual run and history. Personal schedules
+start off and cannot be edited or run through another account's task URL. Server
+maintenance jobs remain on the administrator's task page.
+
+Each step rechecks the target account and its live permissions. Resumable personal
+tasks can request a bounded continuation between 1 and 60 minutes; the ordinary
+interval applies after completion. Disabling autosync stops queued continuations.
+Disconnecting the provider or disabling/revoking the plugin preserves checkpoints
+and makes later work unavailable until access is restored.

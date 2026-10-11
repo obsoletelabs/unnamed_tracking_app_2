@@ -1,6 +1,7 @@
 """Host-only invitation bootstrap policy; pending identities are never normal user routes."""
 
 import hmac
+import json
 import time
 from dataclasses import replace
 from urllib.parse import urlencode
@@ -12,8 +13,10 @@ from src.core.config import settings
 from src.core.crypto import decrypt_secret
 from src.database.models.user import User
 from src.database.models.user_invitation import NotificationPendingRecipient, UserInvitation
+from src.features.notification_providers.base import EmailPresentation
 from src.features.plugin_auth_flows import active_auth_flow
 from src.features.smtp_configuration import SMTP_PROVIDER
+from src.plugin_api.auth_contracts import UserInviteFlowDefinition
 
 
 async def active_invitation(db, notice):
@@ -106,13 +109,41 @@ async def invitation_message(db, notice, endpoint, message):
         + "/accept-invite#"
         + urlencode({"id": str(row.id), "token": decrypt_secret(row.encrypted_token)})
     )
+    # Snapshot presentation with the encrypted recipient endpoint at issuance.
+    # Later cosmetic changes do not rewrite an already queued invitation.
+    config = json.loads(decrypt_secret(endpoint.encrypted_configuration))
+    definition = UserInviteFlowDefinition.model_validate(
+        config.get("invitation") or {"mode": "user_invite", "name": "User Invites"}
+    )
+    recipient_name = config.get("recipient_name", "").strip()
+    greeting = (
+        f"Hi {recipient_name},"
+        if definition.greeting == "personal" and recipient_name
+        else "Hello,"
+        if definition.greeting != "none"
+        else ""
+    )
     return replace(
         message,
         action_url=link,
-        body=(
-            "You have been invited to create an account. Open this link to choose a username and password:\n"
-            + link
-            + "\nThis link expires and can be used once. If you did not expect it, ignore this email."
+        title=definition.email_subject,
+        body="\n\n".join(
+            part
+            for part in (
+                greeting,
+                definition.welcome_message,
+                "Open this link to choose a username and password:\n" + link,
+                "This link expires and can be used once. If you did not expect it, ignore this email.",
+            )
+            if part
+        ),
+        email_presentation=EmailPresentation(
+            sender_name=definition.sender_name,
+            heading=definition.email_heading,
+            action_label=definition.button_label,
+            accent_color=definition.accent_color,
+            layout=definition.email_layout,
+            footer=definition.footer_message,
         ),
     )
 

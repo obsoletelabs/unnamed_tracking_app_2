@@ -15,6 +15,18 @@ from src.database.models.user import User
 
 
 @dataclass(frozen=True)
+class EmailPresentation:
+    """Host-validated invitation appearance, never arbitrary HTML or sender addresses."""
+
+    sender_name: str = ""
+    heading: str = ""
+    action_label: str = "Accept invitation"
+    accent_color: str = "#3458d4"
+    layout: str = "card"
+    footer: str = "Sent by your tracking app."
+
+
+@dataclass(frozen=True)
 class NotificationMessage:  # pylint: disable=too-many-instance-attributes
     id: UUID
     kind: str
@@ -28,6 +40,7 @@ class NotificationMessage:  # pylint: disable=too-many-instance-attributes
     purpose: str = "standard"
     event_type: str = ""
     action_url: str | None = None
+    email_presentation: EmailPresentation | None = None
 
 
 @dataclass(frozen=True)

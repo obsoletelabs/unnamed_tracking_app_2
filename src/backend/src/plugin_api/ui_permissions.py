@@ -29,6 +29,8 @@ def filter_ui_document(
         "app.global": Capability.FRONTEND_OVERLAY,
         "home.replace": Capability.FRONTEND_PAGE_REPLACE_HOME,
         "administration.users.actions": Capability.FRONTEND_NAVIGATION_ADMIN,
+        "administration.users.settings": Capability.FRONTEND_SETTINGS,
+        "administration.password-policy.after": Capability.FRONTEND_SETTINGS,
     }
     authorized_routes = document.routes if permitted(Capability.FRONTEND_ROUTES) else ()
     authorized_settings = (

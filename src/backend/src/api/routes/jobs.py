@@ -1,12 +1,14 @@
 """The Tasks screen's cleanup jobs: list them, change a schedule, run one now."""
 
 from typing import Any
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.auth import get_current_admin
+from src.core.auth import get_current_admin, get_current_user
+from src.database.models.user import User
 from src.database.session import get_db
 from src.features.jobs import JOBS, JobSpec, describe, get_setting
 from src.features.plugin_jobs import get_plugin_jobs
@@ -17,6 +19,8 @@ _JOB_MODE = Query(default=None, pattern="^(needed|all)$")
 router = APIRouter(
     prefix="/api/settings/jobs", tags=["settings"], dependencies=[Depends(get_current_admin)]
 )
+user_router = APIRouter(prefix="/api/settings/user-jobs", tags=["settings"])
+_JOB_USER = Depends(get_current_user)
 
 
 class JobUpdate(BaseModel):
@@ -24,10 +28,10 @@ class JobUpdate(BaseModel):
     interval_minutes: int | None = None
 
 
-async def _spec(job_id: str, db: AsyncSession) -> JobSpec:
-    spec = JOBS.get(job_id)
+async def _spec(job_id: str, db: AsyncSession, user_id: UUID | None = None) -> JobSpec:
+    spec = JOBS.get(job_id) if user_id is None else None
     if spec is None:
-        spec = next((job for job in await get_plugin_jobs(db) if job.id == job_id), None)
+        spec = next((job for job in await get_plugin_jobs(db, user_id) if job.id == job_id), None)
     if spec is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such job.")
     return spec
@@ -43,6 +47,10 @@ async def list_jobs(db: AsyncSession = _JOB_DB) -> list[dict[str, Any]]:
 @router.put("/{job_id}")
 async def update_job(job_id: str, payload: JobUpdate, db: AsyncSession = _JOB_DB) -> dict[str, Any]:
     spec = await _spec(job_id, db)
+    return await _update_schedule(spec, payload, db)
+
+
+async def _update_schedule(spec: JobSpec, payload: JobUpdate, db: AsyncSession) -> dict[str, Any]:
     if not spec.available:
         raise HTTPException(status_code=409, detail=spec.unavailable_reason)
     row = await get_setting(db, spec)
@@ -74,3 +82,31 @@ async def run_job(
     if not spec.available:
         raise HTTPException(status_code=409, detail=spec.unavailable_reason)
     return spec.start(mode or spec.manual_mode)
+
+
+@user_router.get("")
+async def list_user_jobs(
+    db: AsyncSession = _JOB_DB, user: User = _JOB_USER
+) -> list[dict[str, Any]]:
+    """Expose only this account's declared personal tasks, including to non-administrators."""
+    out = [await describe(db, spec) for spec in await get_plugin_jobs(db, user.id)]
+    await db.commit()
+    return out
+
+
+@user_router.put("/{job_id}")
+async def update_user_job(
+    job_id: str, payload: JobUpdate, db: AsyncSession = _JOB_DB, user: User = _JOB_USER
+) -> dict[str, Any]:
+    spec = await _spec(job_id, db, user.id)
+    return await _update_schedule(spec, payload, db)
+
+
+@user_router.post("/{job_id}/run")
+async def run_user_job(
+    job_id: str, db: AsyncSession = _JOB_DB, user: User = _JOB_USER
+) -> dict[str, Any]:
+    spec = await _spec(job_id, db, user.id)
+    if not spec.available:
+        raise HTTPException(status_code=409, detail=spec.unavailable_reason)
+    return spec.start(spec.manual_mode)

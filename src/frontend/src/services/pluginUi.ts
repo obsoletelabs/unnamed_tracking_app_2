@@ -123,6 +123,7 @@ export interface UiConnectionContribution {
   description: string;
   page_id: string;
   status_action_id?: string | null;
+  sync_action_id?: string | null;
   icon?: string | null;
   order: number;
 }
@@ -176,6 +177,8 @@ export interface UiShortcut {
 }
 export const HOST_EXTENSION_SLOTS = [
   "administration.users.actions",
+  "administration.users.settings",
+  "administration.password-policy.after",
   "home.after-widgets",
   "game.overview.after-header",
   "game.documents.actions",
@@ -609,7 +612,33 @@ export function validateDocument(document: PluginUiDocument): string[] {
     )
   )
     errors.push("Plugin connections require API v1.1.9 or later.");
+  if (
+    (document.extensions ?? []).some((extension) =>
+      [
+        "administration.users.settings",
+        "administration.password-policy.after",
+      ].includes(extension.slot),
+    ) &&
+    !/^1\.1\.(1[1-9]|[2-9]\d|[1-9]\d{2,})$|^1\.([2-9]|[1-9]\d+)\./.test(
+      document.api_contract_version ?? "",
+    )
+  )
+    errors.push("Administration settings slots require API v1.1.11 or later.");
   for (const contribution of connections) {
+    if (
+      contribution.sync_action_id &&
+      !actions.has(contribution.sync_action_id)
+    )
+      errors.push(
+        `Connection ${contribution.id} references an unknown sync action.`,
+      );
+    if (
+      contribution.sync_action_id &&
+      !/^1\.1\.(1[1-9]|[2-9]\d|[1-9]\d{2,})$|^1\.([2-9]|[1-9]\d+)\./.test(
+        document.api_contract_version ?? "",
+      )
+    )
+      errors.push("Connection sync actions require API v1.1.11 or later.");
     if (!pages.has(contribution.page_id))
       errors.push(`Connection ${contribution.id} references an unknown page.`);
     if (

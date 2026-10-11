@@ -7,7 +7,6 @@ import PluginField from "./PluginField.vue";
 import { pluginShortcutEvent } from "../../services/pluginShortcutBridge";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
-  approvePluginAction,
   buildInitialValues,
   dispatchPluginAction,
   downloadPluginDocument,
@@ -19,12 +18,14 @@ import {
   type UiField,
   type UiValues,
 } from "../../services/pluginUi";
+import { useConfirm } from "../../state/dialog";
 
 const props = defineProps<{
   document: PluginUiDocument;
   tableData?: Record<string, Record<string, string | number | boolean>[]>;
   pageId?: string;
   embedded?: boolean;
+  inline?: boolean;
   context?: Record<string, string | number | boolean>;
   widgetConfig?: UiValues;
 }>();
@@ -38,8 +39,19 @@ const values = ref<UiValues>(buildInitialValues(props.document));
 const submitted = ref(false);
 const iframe = ref<HTMLIFrameElement | null>(null);
 const iframeHeight = ref(520);
+const confirm = useConfirm();
+async function approveAction(action: UiAction) {
+  return (
+    !action.confirmation ||
+    (await confirm({
+      title: action.label,
+      message: action.confirmation,
+      confirmLabel: action.label,
+    }))
+  );
+}
 const frontend = computed(() =>
-  props.embedded ? undefined : props.document.frontend,
+  props.embedded && !props.inline ? undefined : props.document.frontend,
 );
 const frontendUrl = computed(() =>
   frontend.value
@@ -99,8 +111,8 @@ function submit() {
     emit("save", saved);
   }
 }
-function runAction(action: UiAction) {
-  if (!approvePluginAction(action, window.confirm)) return;
+async function runAction(action: UiAction) {
+  if (!(await approveAction(action))) return;
   emit("action", action, {
     ...values.value,
     ...(props.widgetConfig
@@ -171,7 +183,7 @@ async function handleFrontendMessage(event: MessageEvent) {
         (item) => item.id === String(data.actionId),
       );
       if (!action) throw new Error("Plugin action not found.");
-      if (!approvePluginAction(action, window.confirm)) {
+      if (!(await approveAction(action))) {
         result = { cancelled: true };
         iframe.value?.contentWindow?.postMessage(
           { type: "plugin-api-response", requestId, result },
@@ -201,7 +213,7 @@ async function handleFrontendMessage(event: MessageEvent) {
         throw new Error("Plugin frame height must be a finite number.");
       iframeHeight.value = Math.min(
         2400,
-        Math.max(320, Math.ceil(data.height)),
+        Math.max(props.inline ? 120 : 320, Math.ceil(data.height)),
       );
       result = { height: iframeHeight.value };
     } else if (method === "plugin.shortcut") {
@@ -277,8 +289,12 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="plugin-ui-host" :aria-label="document.title">
-    <header>
+  <section
+    class="plugin-ui-host"
+    :class="{ inline }"
+    :aria-label="document.title"
+  >
+    <header v-if="!inline">
       <h2>{{ embedded ? page?.title : document.title }}</h2>
       <nav
         v-if="
@@ -481,5 +497,14 @@ td {
   border: 1px solid var(--ui-border);
   border-radius: var(--ui-radius-row);
   background: var(--ui-surface-2);
+}
+.inline .frontend-shell {
+  min-height: 120px;
+}
+.inline .frontend-shell iframe {
+  min-height: 120px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 </style>

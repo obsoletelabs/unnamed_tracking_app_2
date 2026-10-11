@@ -96,13 +96,23 @@ class PluginRuntimeClient:
         return await self._request("GET", "/health")
 
     async def run_scheduled_task(
-        self, plugin_id: str, installation_id: str, task_id: str, trigger: str
+        self,
+        plugin_id: str,
+        installation_id: str,
+        task_id: str,
+        trigger: str,
+        *,
+        user_id: str | None = None,
     ) -> dict[str, Any]:
         """Dispatch an installation-bound task without accepting arbitrary actions or users."""
         result = await self._request(
             "POST",
             f"/plugins/{quote(plugin_id, safe='')}/tasks/{quote(task_id, safe='')}",
-            json={"installation_id": installation_id, "trigger": trigger},
+            json={
+                "installation_id": installation_id,
+                "trigger": trigger,
+                **({"user_id": user_id} if user_id is not None else {}),
+            },
             timeout=_ACTION_REQUEST_TIMEOUT,
         )
         if not isinstance(result, dict):

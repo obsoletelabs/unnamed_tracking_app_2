@@ -1,5 +1,6 @@
 """Host-owned email presentation; notification text is never executable markup."""
 
+import re
 from html import escape
 from urllib.parse import urlsplit
 
@@ -19,12 +20,21 @@ def _safe_link(value: str | None) -> str | None:
 def render_email(message: NotificationMessage, unsubscribe_url: str | None = None) -> str:
     """Render all mail purposes consistently without changing routing or disclosure."""
     action = _safe_link(message.action_url)
+    presentation = message.email_presentation
+    accent = presentation.accent_color if presentation else "#3458d4"
+    if not re.fullmatch(r"#[0-9a-fA-F]{6}", accent):
+        accent = "#3458d4"
+    heading = presentation.heading if presentation else message.title
+    footer_text = presentation.footer if presentation else "Sent by your tracking app."
+    simple = presentation is not None and presentation.layout == "simple"
     action_label = {
         "auth.password_reset": "Reset password",
         "auth.user_invite": "Accept invitation",
     }.get(message.event_type, "Open notification")
     if message.kind == "destination_verification":
         action_label = "Verify email address"
+    if presentation:
+        action_label = presentation.action_label
     category = {
         "recovery": "Account security",
         "invitation": "You are invited",
@@ -42,7 +52,7 @@ def render_email(message: NotificationMessage, unsubscribe_url: str | None = Non
         if paragraph.strip()
     )
     button = (
-        '<p style="margin:28px 0"><a style="display:inline-block;background:#3458d4;'
+        f'<p style="margin:28px 0"><a style="display:inline-block;background:{accent};'
         'color:#fff;text-decoration:none;padding:14px 22px;border-radius:10px;font-weight:600" '
         f'href="{escape(action, quote=True)}">{escape(action_label)}</a></p>'
         if action
@@ -59,17 +69,18 @@ def render_email(message: NotificationMessage, unsubscribe_url: str | None = Non
         '<!doctype html><html lang="en"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
         f"<title>{escape(message.title)}</title></head>"
-        '<body style="margin:0;background:#eef2f8;color:#17213b;font-family:Arial,sans-serif">'
+        f'<body style="margin:0;background:{"#fff" if simple else "#eef2f8"};'
+        'color:#17213b;font-family:Arial,sans-serif">'
         '<table role="presentation" style="width:100%;border-collapse:collapse"><tr>'
         '<td style="padding:28px 12px"><table role="presentation" style="width:100%;'
         "max-width:600px;margin:0 auto;border-collapse:collapse;background:#fff;"
-        'border:1px solid #dbe2ef;border-radius:16px"><tr><td style="padding:32px">'
+        f'border:{"0" if simple else "1px solid #dbe2ef"};border-radius:16px"><tr><td style="padding:32px">'
         '<p style="margin:0 0 16px;color:#536584;font-size:12px;font-weight:700;'
         f'letter-spacing:1px;text-transform:uppercase">{escape(category)}</p>'
-        f'<h1 style="margin:0 0 24px;font-size:26px;line-height:1.3">{escape(message.title)}</h1>'
+        f'<h1 style="margin:0 0 24px;font-size:26px;line-height:1.3">{escape(heading)}</h1>'
         f"{paragraphs}{button}"
         '<div style="border-top:1px solid #e1e7f0;margin-top:28px;padding-top:20px;'
         'color:#536584;font-size:12px;line-height:1.6">'
-        f'<p style="margin:0">Sent by your tracking app.</p>{footer}'
+        f'<p style="margin:0">{escape(footer_text)}</p>{footer}'
         "</div></td></tr></table></td></tr></table></body></html>"
     )

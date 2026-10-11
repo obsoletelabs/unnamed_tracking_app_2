@@ -9,7 +9,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from email.message import EmailMessage
 from email.policy import SMTP
-from email.utils import format_datetime
+from email.utils import format_datetime, formataddr
 from urllib.parse import urlsplit
 
 from sqlalchemy import select
@@ -51,7 +51,8 @@ def send_mail(
     # Keep opaque List-Unsubscribe URLs intact instead of RFC2047-folding them.
     mail = EmailMessage(policy=SMTP.clone(max_line_length=998))
     mail["Subject"] = " ".join(message.title.splitlines())
-    mail["From"] = normalize_email(config.from_address)
+    sender_name = message.email_presentation.sender_name if message.email_presentation else ""
+    mail["From"] = formataddr((sender_name, normalize_email(config.from_address)))
     mail["To"] = normalize_email(address)
     sender_domain = config.from_address.rsplit("@", 1)[1]
     mail["Date"] = format_datetime(datetime.now(UTC))

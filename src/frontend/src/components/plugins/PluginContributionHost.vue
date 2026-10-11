@@ -25,6 +25,7 @@ const props = defineProps<{
   pageId: string;
   context?: Record<string, string | number | boolean>;
   embedded?: boolean;
+  inline?: boolean;
   actionContext?: PluginActionContext;
   widgetConfig?: UiValues;
 }>();
@@ -122,6 +123,7 @@ const nativeHost = computed(() => ({
     :page-id="pageId"
     :context="context"
     :embedded="embedded"
+    :inline="inline"
     :widget-config="widgetConfig"
     @save="save"
     @action="run"

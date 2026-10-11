@@ -45,7 +45,7 @@ except ImportError:  # pragma: no cover - Windows development/test fallback
     resource = None  # type: ignore[assignment]
 
 _PLUGIN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
-PLUGIN_API_CONTRACT_VERSION = "1.1.10"
+PLUGIN_API_CONTRACT_VERSION = "1.1.11"
 _ENTRYPOINT = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*(?::[A-Za-z_][A-Za-z0-9_]*)?$")
 # Linux parent-death signals follow the spawning thread. HTTP request threads
 # end after their response, while supervised workers must live until shutdown.
@@ -2770,9 +2770,10 @@ class PluginRegistry:
             raise RuntimePolicyError("Discord webhook delivery failed") from exc
 
     def scheduled_task(
-        self, plugin_id: str, task_id: str, *, installation_id: str, trigger: str
+        self, plugin_id: str, task_id: str, *, installation_id: str, trigger: str,
+        user_id: str | None = None,
     ) -> dict[str, Any]:
-        """Run only a signed declaration using its existing background identity."""
+        """Run a declared task using its approved server identity or personal owner."""
         self._require_active(plugin_id)
         package, manifest = self.package(plugin_id)
         installed = self._item(package)
@@ -2796,7 +2797,13 @@ class PluginRegistry:
         )
         if declaration is None:
             raise KeyError(task_id)
-        user_id = installed.get("background_user_id")
+        if declaration.get("scope", "server") == "user":
+            if tuple(map(int, manifest.get("api_contract_version", "0.0.0").split("."))) < (1, 1, 11) or user_id is None:
+                raise RuntimePolicyError("personal tasks require a target account and API v1.1.11")
+        elif user_id is not None:
+            raise RuntimePolicyError("server tasks cannot override their background identity")
+        else:
+            user_id = installed.get("background_user_id")
         if not user_id:
             raise RuntimePolicyError(
                 "plugin background identity is unavailable; enable the plugin again"
@@ -2822,7 +2829,11 @@ class PluginRegistry:
         return self.action(
             plugin_id,
             action_id,
-            {"_scheduled_task": {"id": task_id, "trigger": trigger}},
+            {
+                "_scheduled_task": {"id": task_id, "trigger": trigger},
+                **({"_plugin_context": {"user_id": user_id, "is_admin": False}}
+                   if declaration.get("scope", "server") == "user" else {}),
+            },
             user_id=user_id,
         )
 
@@ -3357,16 +3368,16 @@ class RuntimeHandler(BaseHTTPRequestHandler):
                         "plugin task request must be between 1 byte and 1 KiB"
                     )
                 payload = json.loads(self.rfile.read(length))
-                if not isinstance(payload, dict) or set(payload) != {
-                    "installation_id",
-                    "trigger",
-                }:
+                if not isinstance(payload, dict) or set(payload) not in (
+                    {"installation_id", "trigger"}, {"installation_id", "trigger", "user_id"}
+                ):
                     raise RuntimePolicyError("plugin task request is invalid")
                 result = self.server.registry.scheduled_task(
                     parts[1],
                     parts[3],
                     installation_id=str(payload["installation_id"]),
                     trigger=payload["trigger"],
+                    user_id=payload.get("user_id"),
                 )
                 self._json(200, result)
                 return

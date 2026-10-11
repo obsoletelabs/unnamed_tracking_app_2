@@ -6,6 +6,16 @@ Fresh navigation to Games starts at the top. Returning from a game detail preser
 
 ## Adding and editing
 
+Use **Sync / import** on Games to sync a connected Steam, PlayStation or
+RetroAchievements library, or a plugin connection that supports library sync.
+The Epic Games plugin opens the same compact dialog used on Connections and starts
+or resumes its saved import. Closing the dialog retains its checkpoint.
+
+**Autosync settings** opens Account → Background tasks. Enable Epic Games autosync
+and choose its interval there to continue imports while the page is closed.
+Autosync starts off, applies only to your account and uses your approved access.
+Notes, ratings and manual status retain the provider import's existing protections.
+
 **Add Game** in the library opens Quick Add: search the existing metadata providers
 or enter a title, choose a status and platform, then save. Metadata results retain
 their provider identities, including optional plugin providers. Duplicate and

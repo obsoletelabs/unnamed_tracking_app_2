@@ -49,6 +49,26 @@ const document: PluginUiDocument = {
 };
 
 describe("plugin UI host contract", () => {
+  it("requires API v1.1.11 for administration settings slots", () => {
+    for (const slot of [
+      "administration.users.settings",
+      "administration.password-policy.after",
+    ] as const) {
+      const candidate = {
+        ...document,
+        api_contract_version: "1.1.10",
+        extensions: [
+          { id: "configuration", slot, page_id: "settings", order: 0 },
+        ],
+      };
+      expect(validateDocument(candidate)).toContain(
+        "Administration settings slots require API v1.1.11 or later.",
+      );
+      expect(
+        validateDocument({ ...candidate, api_contract_version: "1.1.11" }),
+      ).toEqual([]);
+    }
+  });
   it("rejects duplicate navigation IDs, extension IDs and route paths in either order", () => {
     const first = { ...document.pages[0]!, id: "first" };
     const second = { ...document.pages[0]!, id: "second" };
@@ -213,5 +233,30 @@ describe("plugin UI host contract", () => {
     expect(resolvePluginPageId(routed, "sessions")).toBe("settings");
     expect(pluginPathForPage(routed, "settings")).toBe("sessions");
     expect(routed.settings_sections?.[0].id).toBe("sessions");
+  });
+
+  it("requires the current contract and a declared action for connection menu sync", () => {
+    const connected: PluginUiDocument = {
+      ...document,
+      api_contract_version: "1.1.11",
+      actions: [{ id: "sync", label: "Sync", handler: "plugin:sync" }],
+      connections: [
+        {
+          id: "account",
+          label: "Example",
+          description: "",
+          page_id: "settings",
+          sync_action_id: "sync",
+          order: 0,
+        },
+      ],
+    };
+    expect(validateDocument(connected)).toEqual([]);
+    expect(
+      validateDocument({ ...connected, api_contract_version: "1.1.10" }),
+    ).toContain("Connection sync actions require API v1.1.11 or later.");
+    expect(validateDocument({ ...connected, actions: [] })).toContain(
+      "Connection account references an unknown sync action.",
+    );
   });
 });

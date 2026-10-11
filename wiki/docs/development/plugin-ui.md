@@ -95,6 +95,13 @@ the contribution is removed from the API document and ignored by the frontend.
 Connections never receive a page-replacement or Settings placement. A document
 declaring `connections` below API 1.1.9 is rejected.
 
+API 1.1.11 adds an optional `sync_action_id`, which must reference a declared action.
+Such connections appear in the Games page's Sync / import menu. Choosing one opens
+the same host dialog and provides the action ID as `plugin.context.initial_action_id`;
+the bundled/native frontend starts its existing sync flow through the action bridge.
+Ordinary Connections dialogs provide an empty initial action. The menu also retains
+the built-in library providers and links to personal Background tasks.
+
 ## Navigation and host extensions
 
 The first-class contribution contract supports navigation in the main sidebar, Settings sidebar, administration, game context, and media context. Contributions include an ID, label, icon, ordering, target, and optional visibility conditions. The host only exposes a contribution when the installation has the matching navigation capability.
@@ -260,9 +267,18 @@ for an administrator. Existing contribution/runtime withdrawal removes the butto
 and closes the active dialog. Domain permissions still apply to every action.
 
 This dialog and dedicated plugin Settings sections can render a bundled frontend
-inside the existing opaque-origin sandbox. Other inline extension slots continue
-to use declarative/native content. The host supplies the declared page ID as the
+inside the existing opaque-origin sandbox. The host supplies the declared page ID as the
 frontend URI's `page` query parameter for presentation only; it grants no authority.
 Settings need `frontend.settings`, and joining Administration needs the existing
 `frontend.placement.settings.admin` grant. Plugins can provide their own group,
 such as Account security, without host-specific plugin IDs.
+
+## Integrated administration settings (API 1.1.11)
+
+`administration.users.settings` places configuration below the Users controls;
+`administration.password-policy.after` places it below Password policy. Both require
+`frontend.settings`, API 1.1.11 and an administrator. They render a plugin's bundled
+frontend inline without another plugin title or frame border. The existing sandbox,
+CSP, appearance bridge, resize bounds and per-action capability checks still apply.
+They also support existing declarative/native pages. No plugin-specific IDs are built
+into the host. Users action buttons sit beside Create user and use host button styling.

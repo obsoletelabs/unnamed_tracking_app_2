@@ -137,3 +137,38 @@ def test_task_rejects_missing_background_identity_and_grant(scheduled_registry, 
             "example.tasks", "daily-summary", installation_id=identity, trigger="manual"
         )
     assert not calls
+
+
+def test_server_task_cannot_override_worker_identity(scheduled_registry):
+    registry, _, identity, calls, _, _ = scheduled_registry
+    with pytest.raises(RuntimePolicyError, match="cannot override"):
+        registry.scheduled_task(
+            "example.tasks", "daily-summary", installation_id=identity,
+            trigger="manual", user_id=str(uuid4()),
+        )
+    assert not calls
+
+
+def test_personal_task_requires_explicit_target_and_uses_its_own_live_grants(scheduled_registry):
+    registry, actor, identity, calls, authorizations, package = scheduled_registry
+    manifest = json.loads((package / "manifest.json").read_text())
+    manifest["api_contract_version"] = "1.1.11"
+    manifest["scheduled_tasks"][0]["scope"] = "user"
+    document = json.loads((package / "ui.json").read_text())
+    document["api_contract_version"] = "1.1.11"
+    (package / "ui.json").write_text(json.dumps(document), encoding="utf-8")
+    manifest["integrity"]["sha256"] = registry.digest(package)
+    (package / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(RuntimePolicyError, match="target account"):
+        registry.scheduled_task(
+            "example.tasks", "daily-summary", installation_id=identity, trigger="scheduled"
+        )
+    target = str(uuid4())
+    assert target != actor
+    registry.scheduled_task(
+        "example.tasks", "daily-summary", installation_id=identity,
+        trigger="scheduled", user_id=target,
+    )
+    assert calls[0][1] == {"user_id": target}
+    assert calls[0][0]["_plugin_context"] == {"user_id": target, "is_admin": False}
+    assert all(call[2]["user_id"] == target for call in authorizations)
