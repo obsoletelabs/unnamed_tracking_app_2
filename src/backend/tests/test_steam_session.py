@@ -126,19 +126,81 @@ def test_private_achievements_use_owner_endpoints_and_existing_row_names():
     assert "key" not in calls[1].kwargs["params"]
 
 
+def test_owner_achievement_icon_filenames_become_public_cdn_urls():
+    definition = definitions()
+    filename = "a" * 40 + ".jpg"
+    gray_filename = "b" * 40 + ".png"
+    definition["response"]["achievements"][0].update(icon=filename, icon_gray=gray_filename)
+    client = Mock()
+    client.get.side_effect = [
+        reply(definition),
+        reply({"response": {"schema_hash": 123, "schema_version": 1}}),
+    ]
+    session = steam_session.SteamSession(STEAM_ID, int(time.time()) + 3600, token())
+    schema, _rows = steam_session.get_achievement_data(client, session, 123)
+    base = "https://shared.fastly.steamstatic.com/community_assets/images/apps/123/"
+    assert schema["WIN"]["icon"] == base + filename
+    assert schema["WIN"]["icongray"] == base + gray_filename
+
+
+@pytest.mark.parametrize("invalid_icon", [None, "", "../secret.jpg", "https://localhost/a", 1])
+def test_invalid_owner_icon_paths_are_not_saved(invalid_icon):
+    definition = definitions()
+    definition["response"]["achievements"][0]["icon"] = invalid_icon
+    client = Mock()
+    client.get.side_effect = [
+        reply(definition),
+        reply({"response": {"schema_hash": 123, "schema_version": 1}}),
+    ]
+    session = steam_session.SteamSession(STEAM_ID, int(time.time()) + 3600, token())
+    schema, _rows = steam_session.get_achievement_data(client, session, 123)
+    assert schema["WIN"]["icon"] is None
+
+
 @pytest.mark.parametrize(
     "progress",
     [
         {},
         {"achievements": []},
         {"schema_hash": 124, "schema_version": 1, "achievements": []},
-        {"schema_hash": 123, "schema_version": 1, "achievements": [{"internal_key": 7}]},
+        {"schema_version": 1, "achievements": [{"internal_key": 7}]},
         {"schema_hash": 123, "schema_version": 1, "achievements": [{"internal_key": 999}]},
     ],
 )
 def test_partial_or_changed_achievement_data_is_unavailable(progress):
     client = Mock()
     client.get.side_effect = [reply(definitions()), reply({"response": progress})]
+    session = steam_session.SteamSession(STEAM_ID, int(time.time()) + 3600, token())
+    with pytest.raises(steam_session.SteamLibraryError):
+        steam_session.get_achievement_data(client, session, 123)
+
+
+@pytest.mark.parametrize("entries", [None, [], [{"internal_key": 7, "unlocked": True}]])
+def test_compact_owner_progress_expands_locked_rows_only_with_matching_schema(entries):
+    progress = {"schema_hash": 123, "schema_version": 1}
+    if entries is not None:
+        progress["achievements"] = entries
+    client = Mock()
+    client.get.side_effect = [reply(definitions()), reply({"response": progress})]
+    session = steam_session.SteamSession(STEAM_ID, int(time.time()) + 3600, token())
+    schema, rows = steam_session.get_achievement_data(client, session, 123)
+    assert set(schema) == {"WIN", "EXTRA"}
+    assert {row["apiname"]: row["achieved"] for row in rows} == {
+        "WIN": 1 if entries else 0,
+        "EXTRA": 0,
+    }
+    assert all(row["unlocktime"] == 0 for row in rows)
+
+
+@pytest.mark.parametrize("invalid_hash", [True, "123", 0, -1, 2**32])
+def test_compact_progress_requires_a_valid_nonzero_schema_hash(invalid_hash):
+    definition = definitions()
+    definition["response"]["schema_hash"] = invalid_hash
+    client = Mock()
+    client.get.side_effect = [
+        reply(definition),
+        reply({"response": {"schema_hash": invalid_hash, "schema_version": 1}}),
+    ]
     session = steam_session.SteamSession(STEAM_ID, int(time.time()) + 3600, token())
     with pytest.raises(steam_session.SteamLibraryError):
         steam_session.get_achievement_data(client, session, 123)

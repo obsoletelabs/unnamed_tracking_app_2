@@ -8,6 +8,7 @@ browser-session exchange, never to unverified JWT claims alone.
 import base64
 import binascii
 import json
+import re
 import time
 from dataclasses import dataclass, field
 
@@ -144,7 +145,14 @@ def validate_session(value: str, verified_steam_id: str) -> SteamSession:
     return provisional
 
 
-def _achievement_schema(entries: object) -> tuple[dict[str, dict], dict[int, str]]:
+def _achievement_icon(value: object, app_id: int) -> str | None:
+    """Owner schemas contain CDN filenames rather than legacy full URLs."""
+    if not isinstance(value, str) or not re.fullmatch(r"[a-fA-F0-9]{40}\.(?:jpg|jpeg|png)", value):
+        return None
+    return f"https://shared.fastly.steamstatic.com/community_assets/images/apps/{app_id}/{value}"
+
+
+def _achievement_schema(entries: object, app_id: int) -> tuple[dict[str, dict], dict[int, str]]:
     if not isinstance(entries, list):
         raise SteamLibraryError("Steam did not provide an achievement schema.")
     schema: dict[str, dict] = {}
@@ -169,14 +177,16 @@ def _achievement_schema(entries: object) -> tuple[dict[str, dict], dict[int, str
         schema[name] = {
             "displayName": entry.get("localized_name") or name,
             "description": entry.get("localized_desc"),
-            "icon": entry.get("icon"),
-            "icongray": entry.get("icon_gray"),
+            "icon": _achievement_icon(entry.get("icon"), app_id),
+            "icongray": _achievement_icon(entry.get("icon_gray"), app_id),
             "hidden": entry.get("hidden", False),
         }
     return schema, names
 
 
-def _player_achievements(player_entries: object, names: dict[int, str]) -> list[dict]:
+def _player_achievements(
+    player_entries: object, names: dict[int, str], *, allow_sparse: bool = False
+) -> list[dict]:
     if not isinstance(player_entries, list):
         raise SteamLibraryError("Steam did not provide this account's achievement progress.")
     unlocked: list[dict] = []
@@ -197,9 +207,17 @@ def _player_achievements(player_entries: object, names: dict[int, str]) -> list[
             raise SteamLibraryError("Steam returned invalid achievement progress.")
         seen.add(key)
         unlocked.append({"apiname": names[key], "achieved": int(achieved), "unlocktime": when})
-    if seen != set(names):
+    if seen != set(names) and not allow_sparse:
         raise SteamLibraryError(
             "Steam returned incomplete achievement progress. Stored progress was kept."
+        )
+    if allow_sparse:
+        # Steam omits untouched protobuf rows. A matching schema hash permits
+        # expansion to the complete existing import contract, with locked defaults.
+        unlocked.extend(
+            {"apiname": name, "achieved": 0, "unlocktime": 0}
+            for key, name in names.items()
+            if key not in seen
         )
     return unlocked
 
@@ -209,8 +227,9 @@ def get_achievement_data(
 ) -> tuple[dict[str, dict], list[dict]]:
     """Normalize owner API rows to the existing Steam achievement contract.
 
-    Match internal keys and schema versions; incomplete or mismatched progress
-    must not overwrite a previously saved achievement snapshot.
+    Match internal keys and schema versions. Steam's compact progress omits
+    untouched rows; expand those only with a verified matching schema hash.
+    Unverified or mismatched progress must not overwrite the saved snapshot.
     """
     definitions = _read(
         client,
@@ -218,7 +237,7 @@ def get_achievement_data(
         "IPlayerService/GetGameAchievements/v1/",
         {"appid": str(app_id), "language": "english"},
     )
-    schema, names = _achievement_schema(definitions.get("achievements"))
+    schema, names = _achievement_schema(definitions.get("achievements"), app_id)
     if not schema:
         return {}, []
     progress = _read(
@@ -227,8 +246,21 @@ def get_achievement_data(
         "IPlayerService/GetUserAchievements/v1/",
         {"appid": str(app_id), "steamid": session.steam_id},
     )
+    verified_schema = False
     for field_name in ("schema_hash", "schema_version"):
         if field_name in definitions or field_name in progress:
-            if definitions.get(field_name) != progress.get(field_name):
+            values = (definitions.get(field_name), progress.get(field_name))
+            if (
+                any(
+                    not isinstance(value, int)
+                    or isinstance(value, bool)
+                    or not 0 <= value <= 0xFFFFFFFF
+                    for value in values
+                )
+                or values[0] != values[1]
+            ):
                 raise SteamLibraryError("Steam's achievement schema changed. Try again shortly.")
-    return schema, _player_achievements(progress.get("achievements"), names)
+            if field_name == "schema_hash" and values[0] != 0:
+                verified_schema = True
+    entries = progress.get("achievements", [] if verified_schema else None)
+    return schema, _player_achievements(entries, names, allow_sparse=verified_schema)

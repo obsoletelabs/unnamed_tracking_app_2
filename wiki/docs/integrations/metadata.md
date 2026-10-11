@@ -160,9 +160,11 @@ a session, reconnect in Connections.
 
 Signed-in imports read the account owner's library and achievements through
 Steam's owner endpoints, including private achievement progress when Steam
-provides it. Incomplete, rejected or incompatible progress responses retain
-stored achievements. The app does not use Steam OpenID as authorization to
-read private data: OpenID identifies an account only.
+provides it. Steam's compact progress omits untouched locked achievements; the
+app expands them only when the returned schema hash matches. Owner achievement
+icon filenames are converted to Steam CDN URLs. Unverified, rejected or
+incompatible responses retain stored achievements. The app does not use Steam
+OpenID as authorization to read private data: OpenID identifies an account only.
 
 Disconnecting keeps imported games, achievements, manual edits and confirmed
 copy groups. The core library supports one Steam account per app user. Its owner
