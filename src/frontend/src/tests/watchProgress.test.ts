@@ -46,6 +46,8 @@ describe("movie left-off point (#191)", () => {
     "35791394h8m",
     "999999999999999999999h",
     "9".repeat(400),
+    "0".repeat(65) + "72",
+    "1" + " ".repeat(1000) + "h",
   ])("rejects invalid or unrepresentable time %s", (text) => {
     expect(parseProgressMinutes(text)).toBeNaN();
   });

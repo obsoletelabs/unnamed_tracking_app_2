@@ -4,6 +4,7 @@
 export function parseProgressMinutes(value: string): number | null {
   const text = value.trim().toLowerCase();
   if (!text) return null;
+  if (text.length > 64) return Number.NaN;
   const clock = /^(\d+):([0-5]?\d)$/.exec(text);
   const hours = /^(\d+(?:\.\d+)?)\s*h(?:ours?|rs?)?$/.exec(text);
   let minutes: number;
