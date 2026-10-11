@@ -187,7 +187,9 @@ polling after closing the dialog, and layout at 390 and 1440 pixels.
 Existing Web API keys continue to work for public-profile imports. The optional
 legacy form remains under **Metadata/API → Steam → Legacy API credentials**.
 Account sign-in replaces this legacy connection; disconnect it in Connections
-before configuring a legacy key again.
+before configuring a legacy key again. A legacy credential save rechecks the
+connection after each Steam request; delayed results cannot undo a disconnect
+or overwrite a newer sign-in.
 
 The Steam connection accepts a full `steamcommunity.com/id/...` or
 `steamcommunity.com/profiles/...` link, a vanity name, SteamID64, SteamID2

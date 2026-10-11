@@ -24,6 +24,9 @@ async def credentials():
         id=uuid4(), username="credentials", email="credentials@example.test", password_hash="x"
     )
     db = AsyncMock(spec=AsyncSession)
+    db.scalar.side_effect = (
+        lambda statement: user if statement.column_descriptions[0]["entity"] is User else None
+    )
 
     async def database():
         yield db

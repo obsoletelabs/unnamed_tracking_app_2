@@ -6,9 +6,11 @@ from uuid import uuid4
 
 import httpx
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import delete
 
 from src.api.routes import library_sync, steam_import_steps
+from src.api.routes import settings as settings_routes
 from src.core.auth import get_current_user
 from src.core.crypto import decrypt_secret
 from src.database.models.game import Game, GameStatus
@@ -235,6 +237,59 @@ async def test_renewal_cannot_persist_after_disconnect(actors, monkeypatch):
             await connection.credentials(db, await db.get(User, identities[0]))
     async with SessionLocal() as db:
         assert (await db.get(User, identities[0])).steam_access_token is None
+
+
+@pytest.mark.parametrize("phase", ["bound", "resolve", "validate"])
+async def test_late_legacy_save_cannot_restore_disconnected_credentials(actors, monkeypatch, phase):
+    identities, _clock = actors
+    resolver = Mock(return_value=OWNER)
+    validator = Mock(return_value={"validated": True, "persona_name": "Stale result"})
+    monkeypatch.setattr(settings_routes.steam, "resolve_steam_id", resolver)
+    monkeypatch.setattr(settings_routes, "_validate_provider", validator)
+
+    async def delayed(function, *args):
+        if function is (validator if phase == "validate" else resolver):
+            async with SessionLocal() as other_db:
+                await connection.disconnect(other_db, identities[0])
+        return function(*args)
+
+    monkeypatch.setattr(settings_routes, "asyncio", SimpleNamespace(to_thread=delayed))
+    async with SessionLocal() as db:
+        user = await db.get(User, identities[0])
+        user.steam_id, user.steam_api_key = OWNER, "a" * 32
+        user.steam_library_owner_id = OWNER if phase == "bound" else None
+        await db.commit()
+        with pytest.raises(HTTPException) as error:
+            await settings_routes._save_steam_credentials(
+                db, user, {"steam_id": "profile", "api_key": "a" * 32}
+            )
+        assert error.value.status_code == 409
+    async with SessionLocal() as db:
+        user = await db.get(User, identities[0])
+        assert user.steam_id is None and user.steam_api_key is None
+        assert user.steam_persona_name is None
+
+
+async def test_legacy_save_reloads_actor_before_overwriting_a_new_owner_session(
+    actors, monkeypatch
+):
+    identities, clock = actors
+    monkeypatch.setattr(settings_routes.steam, "resolve_steam_id", Mock(return_value=OWNER))
+    monkeypatch.setattr(
+        settings_routes, "_validate_provider", Mock(return_value={"validated": True})
+    )
+    async with SessionLocal() as db:
+        stale_user = await db.get(User, identities[0])
+        await connect_account(identities[0], clock, monkeypatch)
+        with pytest.raises(HTTPException) as error:
+            await settings_routes._save_steam_credentials(
+                db, stale_user, {"steam_id": OWNER, "api_key": "a" * 32}
+            )
+        assert error.value.status_code == 409
+    async with SessionLocal() as db:
+        user = await db.get(User, identities[0])
+        assert user.steam_api_key is None
+        assert decrypt_secret(user.steam_refresh_token) == "private-refresh"
 
 
 async def test_steam_validation_errors_do_not_echo_secrets(actors):
