@@ -45,7 +45,7 @@ except ImportError:  # pragma: no cover - Windows development/test fallback
     resource = None  # type: ignore[assignment]
 
 _PLUGIN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
-PLUGIN_API_CONTRACT_VERSION = "1.1.8"
+PLUGIN_API_CONTRACT_VERSION = "1.1.9"
 _ENTRYPOINT = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*(?::[A-Za-z_][A-Za-z0-9_]*)?$")
 # Linux parent-death signals follow the spawning thread. HTTP request threads
 # end after their response, while supervised workers must live until shutdown.
@@ -147,6 +147,7 @@ class RuntimeGatewayError(RuntimePolicyError):
             "forbidden": 403,
             "not_found": 404,
             "conflict": 409,
+            "rate_limited": 429,
             "unavailable": 503,
         }.get(code, 422)
 
@@ -747,8 +748,19 @@ class PluginSupervisor:
                 {
                     "api_version": "v1",
                     "request_id": request["request_id"],
-                    "code": "unavailable",
-                    "message": "Plugin gateway rejected the request.",
+                    "code": {
+                        400: "invalid_request",
+                        401: "forbidden",
+                        403: "forbidden",
+                        404: "not_found",
+                        409: "conflict",
+                        422: "invalid_request",
+                        429: "rate_limited",
+                    }.get(exc.code, "unavailable" if exc.code >= 500 else "invalid_request"),
+                    "message": (
+                        "Plugin gateway rejected the request (HTTP "
+                        f"{exc.code}). Check the installation grants and host API compatibility."
+                    ),
                 }
             ) from exc
         except Exception as exc:

@@ -122,3 +122,11 @@ Deployments can customise these rules with the environment variables `PASSWORD_M
 Password confirmation is required when creating a user and when changing the current user's password. Confirmation is checked in the frontend and is not sent as a second password to the backend.
 
 The backend remains the final security boundary: it enforces the same configured policy even if a client bypasses the frontend validation.
+
+
+Password recovery configuration now lives in Settings → Administration → Account
+security → Password recovery. **Account recovery enabled/disabled** reflects live
+host availability. User invitation activation/lifetime is alongside it; send and
+review invitations using **Invite user** on Administration → Users. These controls
+come from installed, explicitly granted official plugins. All SMTP purposes use
+the same responsive HTML design and readable plain alternative.

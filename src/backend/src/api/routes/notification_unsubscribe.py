@@ -115,27 +115,35 @@ async def confirmation(
     )
 
 
+async def _one_click_response(request: Request, db: AsyncSession) -> Response | None:
+    form = await request.form()
+    if form.get("List-Unsubscribe") != "One-Click":
+        return None
+    # Mailbox clients post to the exact header URI without login/cookies.
+    # Reject mixed authority; this action cannot request all-email opt-out.
+    opaque = request.query_params.get("token", "")
+    if not opaque or len(opaque) > 2048 or set(form) != {"List-Unsubscribe"}:
+        return Response(status_code=400, headers={"Cache-Control": "no-store"})
+    try:
+        await unsubscribe_one_click(db, opaque)
+    except UnsubscribeError:
+        await db.rollback()
+        return Response(status_code=400, headers={"Cache-Control": "no-store"})
+    return Response(status_code=204, headers={"Cache-Control": "no-store"})
+
+
 @router.post(UNSUBSCRIBE_PATH, response_class=HTMLResponse)
 async def confirm_unsubscribe(
     request: Request,
+    *,
     token: Annotated[str | None, Form(min_length=1, max_length=2048)] = None,
     confirm: Annotated[str, Form(max_length=32)] = "",
     scope: Annotated[Literal["type", "all"] | None, Form()] = None,
-    one_click: Annotated[str, Form(alias="List-Unsubscribe", max_length=32)] = "",
     db: AsyncSession = _DB,
 ) -> Response:
-    if one_click == "One-Click":
-        # A mailbox provider posts to the exact HTTPS header URI, without login
-        # or cookies. GET/scanner visits and manual confirmation stay unchanged.
-        opaque = request.query_params.get("token", "")
-        if not opaque or len(opaque) > 2048 or token or confirm or scope:
-            return Response(status_code=400, headers={"Cache-Control": "no-store"})
-        try:
-            await unsubscribe_one_click(db, opaque)
-        except UnsubscribeError:
-            await db.rollback()
-            return Response(status_code=400, headers={"Cache-Control": "no-store"})
-        return Response(status_code=204, headers={"Cache-Control": "no-store"})
+    one_click = await _one_click_response(request, db)
+    if one_click is not None:
+        return one_click
     if token is None:
         return _page("Confirmation required", "Use the unsubscribe link in your email.", status=400)
     if confirm != "unsubscribe" or request.headers.get("sec-fetch-site") == "cross-site":

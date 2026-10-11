@@ -214,3 +214,20 @@ Cards, Sets and Bounties shortcuts; they are absent from the core help page.
 An opt-in `frontend.inline_assets: true` manifest flag lets a verified package use classic scripts and CSS in a cookie-isolated iframe. The authenticated entry response resolves only relative package assets within `frontend/`, embeds them with a fresh CSP nonce, and escapes raw-text closing tags. Limits are 32 assets and 8 MiB combined content. External URLs, traversal, query/fragment sources and module scripts are rejected. Asset endpoints remain authenticated; no origin/native privilege or unsafe-eval grant is added. The default remains false for existing frontends.
 
 Game Docs reader declarations, document context and the original-download bridge are described in [Scoped document API](plugin-documents.md).
+
+
+## Administrative user actions (API 1.1.9)
+
+`administration.users.actions` is a generic page contribution rendered as a button
+on Administration → Users. Its page title labels the button; clicking opens a
+host-owned dialog. The slot requires `frontend.navigation.admin`, and mounts only
+for an administrator. Existing contribution/runtime withdrawal removes the button
+and closes the active dialog. Domain permissions still apply to every action.
+
+This dialog and dedicated plugin Settings sections can render a bundled frontend
+inside the existing opaque-origin sandbox. Other inline extension slots continue
+to use declarative/native content. The host supplies the declared page ID as the
+frontend URI's `page` query parameter for presentation only; it grants no authority.
+Settings need `frontend.settings`, and joining Administration needs the existing
+`frontend.placement.settings.admin` grant. Plugins can provide their own group,
+such as Account security, without host-specific plugin IDs.

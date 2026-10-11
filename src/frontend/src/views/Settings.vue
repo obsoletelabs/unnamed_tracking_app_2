@@ -625,7 +625,6 @@ function backToArea() {
             :plugin-id="activePluginSettings.pluginId"
             :document="activePluginSettings.document"
             :page-id="activePluginSettings.pageId"
-            embedded
           />
           <PluginContributionHost
             v-else-if="activePluginSettingsNavigation?.pageId"
@@ -633,7 +632,6 @@ function backToArea() {
             :document="activePluginSettingsNavigation.document"
             :page-id="activePluginSettingsNavigation.pageId"
             :context="{ host_page: 'settings' }"
-            embedded
           />
         </div>
       </div>

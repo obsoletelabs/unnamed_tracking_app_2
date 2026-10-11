@@ -260,7 +260,8 @@ async function sendTest() {
           Application. Email links ask for confirmation; mailbox unsubscribe
           buttons can stop that notification type directly. Your relay must
           DKIM-sign List-Unsubscribe and List-Unsubscribe-Post for one-click
-          support. Verification and recovery emails do not include opt-out links.
+          support. Verification and recovery emails do not include opt-out
+          links.
         </p>
         <p v-if="saved" class="success" role="status">SMTP settings saved.</p>
         <button :disabled="busy">

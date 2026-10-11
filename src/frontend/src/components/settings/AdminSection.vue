@@ -11,6 +11,7 @@ import ToggleButton from "./ToggleButton.vue";
 import PasswordInput from "../PasswordInput.vue";
 import type { AdminUser } from "../../services/admin";
 import PasswordRequirements from "./PasswordRequirements.vue";
+import PluginAdminActions from "../plugins/PluginAdminActions.vue";
 import {
   fetchPasswordPolicy,
   passwordValidationErrors,
@@ -142,6 +143,7 @@ function openCreateForm() {
     <p class="section-hint">
       Manage the accounts on this server, including administrator access.
     </p>
+    <PluginAdminActions />
     <p v-if="loading">Loading…</p>
     <p v-else-if="error" class="form-error">{{ error }}</p>
     <template v-else>

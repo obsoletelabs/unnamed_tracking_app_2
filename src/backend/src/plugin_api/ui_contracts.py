@@ -212,6 +212,7 @@ class HostExtensionSlot(StrEnum):
     MEDIA_DETAIL_AFTER_HEADER = "media.detail.after-header"
     APP_GLOBAL = "app.global"
     HOME_REPLACE = "home.replace"
+    ADMINISTRATION_USERS_ACTIONS = "administration.users.actions"
 
 
 class UiNavigationLocation(StrEnum):

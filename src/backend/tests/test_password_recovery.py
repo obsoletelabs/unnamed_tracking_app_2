@@ -38,6 +38,7 @@ from src.features.password_recovery import (
 from src.features.plugin_auth_flows import (
     active_reset_flow,
     register_reset_flow,
+    reset_flow_status,
     unregister_reset_flow,
 )
 from src.plugin_api.capabilities import capability_definition, capability_implies
@@ -107,6 +108,26 @@ async def recovery(mailbox, monkeypatch):
         await db.execute(delete(PluginPermissionGrant).where(PluginPermissionGrant.id == grant))
         await db.execute(delete(User).where(User.id == user_id))
         await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_recovery_configuration_status_uses_live_authority(recovery):
+    r = recovery
+    async with SessionLocal() as db:
+        assert await reset_flow_status(db, r.plugin, r.installation, r.user, {}) == {
+            "registered": True,
+            "token_lifetime_seconds": 1200,
+        }
+        r.state[0]["enabled"] = False
+        assert not (await reset_flow_status(db, r.plugin, r.installation, r.user, {}))["registered"]
+        r.state[0]["enabled"] = True
+        with pytest.raises(ValueError, match="no parameters"):
+            await reset_flow_status(db, r.plugin, r.installation, r.user, {"user_id": str(r.user)})
+        user = await db.get(User, r.user)
+        user.is_admin = False
+        await db.commit()
+        with pytest.raises(PermissionError, match="administrator"):
+            await reset_flow_status(db, r.plugin, r.installation, r.user, {})
 
 
 async def issue(p):

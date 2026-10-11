@@ -153,3 +153,12 @@ never replays notices created while it was off. The authenticated inbox remains 
 ![Mobile browser destinations](../assets/notification-browser/account-push-mobile-light.png)
 
 All emails—including delivery tests, verification, password reset and invites—include the same responsive HTML card and a readable plain-text alternative. Security actions use a labeled button rather than showing a long token URL in the HTML paragraph. Text and links are escaped; plugins cannot insert executable markup. The host supplies Date and a Message-ID using the configured sender domain. Transactional emails are not marked as bulk subscriptions.
+
+
+Changing an installed provider's transport/configuration contract retires its old
+destinations, consent, verification and pending work. Configure and activate the
+new destination explicitly; upgrading does not transfer old webhook credentials.
+Gateway permission/contract failures are distinguished from temporary outages.
+For Discord bot recovery use a separate **Discord account DM** with host proof,
+recovery opt-in and the provider high-risk grant. Legacy grouped profile links
+remain PRIVATE, including profiles previously verified inside the plugin.
