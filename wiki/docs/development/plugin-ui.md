@@ -63,7 +63,7 @@ Navigation contributions accept `group` and `folders` too. Settings navigation a
 ## Connections
 
 A plugin that links a personal account can declare a `connections` contribution
-(Plugin API 1.1.8 or later, 16 at most). The host lists it on **Settings > Account >
+(Plugin API 1.1.9 or later, 16 at most). The host lists it on **Settings > Account >
 Connections** beside the built-in accounts, shows its name, description and status,
 and opens the declared page in a popup from **Connect** or **Manage**. The popup is
 the plugin's own page, rendered exactly as it is elsewhere, so sign-in, imports and
@@ -93,7 +93,7 @@ Registration requires the `frontend.connections` capability, which is low risk a
 independent of `frontend.settings` and `frontend.navigation.*`. Without the grant
 the contribution is removed from the API document and ignored by the frontend.
 Connections never receive a page-replacement or Settings placement. A document
-declaring `connections` below API 1.1.8 is rejected.
+declaring `connections` below API 1.1.9 is rejected.
 
 ## Navigation and host extensions
 

@@ -6,7 +6,7 @@ import type { PluginSummary } from "../services/plugins";
 import { pluginConnectionStatus } from "../services/pluginConnections";
 
 const plugin: PluginSummary = {
-  api_contract_version: "1.1.8",
+  api_contract_version: "1.1.9",
   plugin_id: "example.library",
   name: "Example Library",
   version: "1.0.0",
@@ -21,7 +21,7 @@ const plugin: PluginSummary = {
 };
 
 const document: PluginUiDocument = {
-  api_contract_version: "1.1.8",
+  api_contract_version: "1.1.9",
   schema_version: "v1",
   plugin_id: plugin.plugin_id,
   title: "Example Library",
@@ -75,7 +75,7 @@ describe("plugin connections", () => {
   });
 
   it("are ignored when the document and installation contracts disagree", () => {
-    const stale = { ...plugin, api_contract_version: "1.1.7" };
+    const stale = { ...plugin, api_contract_version: "1.1.8" };
     expect(derivePluginContributions(stale, document).connections).toEqual([]);
   });
 
@@ -99,10 +99,10 @@ describe("plugin connections", () => {
     );
   });
 
-  it("require API 1.1.8 or later", () => {
+  it("require API 1.1.9 or later", () => {
     expect(
-      validateDocument({ ...document, api_contract_version: "1.1.7" }),
-    ).toContain("Plugin connections require API v1.1.8 or later.");
+      validateDocument({ ...document, api_contract_version: "1.1.8" }),
+    ).toContain("Plugin connections require API v1.1.9 or later.");
     expect(
       validateDocument({ ...document, api_contract_version: "1.1.10" }),
     ).toEqual([]);

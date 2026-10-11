@@ -328,7 +328,7 @@ def test_themes_require_both_modes_and_unique_ids():
 
 def connection_document(**overrides) -> dict:
     data = document_data()
-    data["api_contract_version"] = "1.1.8"
+    data["api_contract_version"] = "1.1.9"
     data["actions"] = [
         {"id": "status", "label": "Connection status", "handler": "plugin:status"},
     ]
@@ -367,8 +367,8 @@ def test_connection_contribution_is_validated_against_declared_page_and_action()
 
 
 def test_connection_contribution_requires_contract_1_1_8():
-    with pytest.raises(ValidationError, match="require Plugin API v1.1.8"):
-        PluginUiDocument.model_validate(connection_document(api_contract_version="1.1.7"))
+    with pytest.raises(ValidationError, match="require Plugin API v1.1.9"):
+        PluginUiDocument.model_validate(connection_document(api_contract_version="1.1.8"))
 
 
 def test_connection_contribution_rejects_unknown_fields():

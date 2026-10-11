@@ -712,9 +712,9 @@ class PluginUiDocument(ContractModel):
 
     @model_validator(mode="after")
     def validate_connection_version(self) -> "PluginUiDocument":
-        """Connections are the additive v1.1.8 contribution; older documents cannot use them."""
-        if self.connections and parse_semver(self.api_contract_version) < (1, 1, 8):
-            raise ValueError("connection contributions require Plugin API v1.1.8")
+        """Connections are the additive v1.1.9 contribution; older documents cannot use them."""
+        if self.connections and parse_semver(self.api_contract_version) < (1, 1, 9):
+            raise ValueError("connection contributions require Plugin API v1.1.9")
         return self
 
     @model_validator(mode="after")

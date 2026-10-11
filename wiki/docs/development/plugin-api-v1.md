@@ -1,7 +1,7 @@
 # Plugin API v1
 
-The host advertises **v1.1.8** while retaining the `v1` wire major. Declared
-v1.1.0 through v1.1.7 contracts remain supported. See
+The host advertises **v1.1.9** while retaining the `v1` wire major. Declared
+v1.1.0 through v1.1.8 contracts remain supported. See
 [v1.1 migration](plugin-v1.1-migration.md) for the restricted legacy v1.0
 compatibility boundary; omission is treated as v1.0.0.
 
@@ -362,14 +362,14 @@ Core transitions and metadata outbox writes commit atomically. The existing job 
 `NOTIFICATION_AUDIT_RETENTION_DAYS` configures this independent audit history, default 90 (1–3650). Inbox retention and dedupe receipts remain separate. Audit metadata survives notice deletion and plugin removal, but account deletion removes that account's records. Migration `0037e34ac954` adds only outbox/audit/stream tables after `42bb6ebaa05e`, with no fabricated historical changes. Adoption preserves existing data; downgrade refuses populated history or an advanced cursor stream.
 
 
-### Plugin connections in 1.1.8
+### Plugin connections in 1.1.9
 
-v1.1.8 adds the declarative `connections` UI contribution and the low-risk
+v1.1.9 adds the declarative `connections` UI contribution and the low-risk
 `frontend.connections` capability. A plugin that links a personal account (for
 example a game store library) appears on **Settings > Account > Connections**; the
 host opens the plugin's declared page in a popup so connecting, importing and
 disconnecting never leave that page. See
-[Connections in plugin UI](plugin-ui.md#connections). Existing 1.1.0 through 1.1.7
+[Connections in plugin UI](plugin-ui.md#connections). Existing 1.1.0 through 1.1.8
 packages are unchanged and cannot declare connections.
 
 ### Notification provider descriptors in 1.1.5

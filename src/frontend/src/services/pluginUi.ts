@@ -603,11 +603,11 @@ export function validateDocument(document: PluginUiDocument): string[] {
   }
   if (
     connections.length &&
-    !/^1\.1\.([8-9]|[1-9]\d+)$|^1\.([2-9]|[1-9]\d+)\./.test(
+    !/^1\.1\.(9|[1-9]\d+)$|^1\.([2-9]|[1-9]\d+)\./.test(
       document.api_contract_version ?? "",
     )
   )
-    errors.push("Plugin connections require API v1.1.8 or later.");
+    errors.push("Plugin connections require API v1.1.9 or later.");
   for (const contribution of connections) {
     if (!pages.has(contribution.page_id))
       errors.push(`Connection ${contribution.id} references an unknown page.`);
