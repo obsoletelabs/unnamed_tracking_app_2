@@ -97,6 +97,8 @@ async def _create_invitation(db, flow, admin, email, origin):
                 UserInvitation.email_digest == digest,
                 UserInvitation.used_at.is_(None),
                 UserInvitation.revoked_at.is_(None),
+                UserInvitation.expires_at > int(time.time()),
+                UserInvitation.encrypted_token.is_not(None),
             )
             .with_for_update()
         )
@@ -290,6 +292,7 @@ async def retire_invitations(db, plugin_id, installation_id=None):
         UserInvitation.plugin_id == plugin_id,
         UserInvitation.used_at.is_(None),
         UserInvitation.revoked_at.is_(None),
+        UserInvitation.encrypted_token.is_not(None),
     )
     if installation_id is not None:
         query = query.where(UserInvitation.installation_id == installation_id)
@@ -311,7 +314,7 @@ async def expire_invitations(db):
         )
     )
     for row in rows:
-        await _retire(db, row, revoked=True)
+        await _retire(db, row)
     expired = (
         select(NotificationPendingRecipient.id)
         .where(

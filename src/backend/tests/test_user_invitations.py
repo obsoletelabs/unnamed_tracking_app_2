@@ -282,6 +282,32 @@ async def test_replacement_revocation_and_limits(invitation):
 
 
 @pytest.mark.asyncio
+async def test_expiry_clears_credentials_without_relabeling_history_as_revoked(invitation):
+    p = invitation
+    identity, token = await issue(p)
+    async with SessionLocal() as db:
+        row = await db.get(UserInvitation, identity)
+        pending = await db.get(NotificationPendingRecipient, row.pending_recipient_id)
+        row.expires_at = pending.expires_at = int(time.time()) - 1
+        await db.commit()
+        await expire_invitations(db)
+        assert row.encrypted_token is None
+        listed = await list_invitations(db, p.plugin, p.installation, p.admin, {})
+        assert listed["invitations"][0]["status"] == "expired"
+        assert listed["invitations"][0]["delivery_status"] == "cancelled"
+        assert not await accept_invitation(
+            db, identity, token, "expired-" + p.installation.hex, "New-Password-789!"
+        )
+    await issue(p)
+    async with SessionLocal() as db:
+        listed = await list_invitations(db, p.plugin, p.installation, p.admin, {})
+        previous = next(row for row in listed["invitations"] if row["id"] == str(identity))
+        assert previous["status"] == "expired"
+        await unregister_invite_flow(db, p.plugin, p.installation, p.admin, {})
+        assert (await db.get(UserInvitation, identity)).revoked_at is None
+
+
+@pytest.mark.asyncio
 async def test_withdrawal_restore_and_expired_cleanup(invitation):
     p = invitation
     identity, token = await issue(p)
