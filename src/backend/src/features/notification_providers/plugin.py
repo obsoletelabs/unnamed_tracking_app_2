@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
@@ -100,6 +101,15 @@ class PluginNotificationProvider:
         if not protected and endpoint.kind != "legacy_webhook":
             return None
         return ProviderDestination.for_endpoint(endpoint, self.name)
+
+    async def run_destination_action(self, action_id: str, user_id: UUID) -> dict[str, Any]:
+        """Run one action declared by the provider's destination definition."""
+        return await self._runtime.action(
+            self.registration.plugin_id,
+            action_id,
+            {},
+            user_id=str(user_id),
+        )
 
     async def is_authorized(self, db: AsyncSession, user_id: UUID) -> bool:
         """Recheck durable registration, grants and live installation at delivery."""

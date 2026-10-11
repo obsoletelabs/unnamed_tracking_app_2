@@ -210,3 +210,12 @@ delivery. This avoids an out-of-order callback replacing credentials used by a
 newer delivery. A descriptor or successful callback is never proof of SECURE
 ownership. Generic destination management UI and the maintained plugin migration
 are a separate increment following this API.
+
+
+Fieldless linked-account providers retain their authenticated configure-action
+enrollment and idempotent per-user/per-kind routing record. This supports existing
+Discord Bot DM linking without moving its credentials into the host. Such providers
+return `ok: true`; declared-field configuration uses the revision-bound private
+configure/retire context and returns `configured: true` / `retired: true`.
+Provider toggles may restore linked-account routing within the same installation;
+they cannot activate a failed or invalidated declared-field configuration.

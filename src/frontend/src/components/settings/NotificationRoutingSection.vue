@@ -9,6 +9,7 @@ import {
   fetchNotificationRouting,
   setNotificationProviderEnabled,
   sendDestinationTest,
+  createPluginDestination,
 } from "../../services/notifications";
 import type {
   NotificationRoutingSettings,
@@ -157,6 +158,30 @@ function destinationName(destination: NotificationRoutingDestination) {
     : destination.provider_name;
   return destination.active ? name : `${name} · Inactive`;
 }
+async function addPluginDestination(providerId: string, kind: string) {
+  busy.value = true;
+  error.value = "";
+  try {
+    await createPluginDestination(providerId, kind);
+    if (mounted) await reload();
+  } catch (reason) {
+    if (mounted)
+      error.value =
+        reason instanceof Error
+          ? reason.message
+          : "Could not add this notification destination.";
+  } finally {
+    if (mounted) busy.value = false;
+  }
+}
+function hasPluginDestination(providerId: string, kind: string) {
+  return routing.value?.destinations.some(
+    (destination) =>
+      destination.provider_id === providerId &&
+      destination.kind === kind &&
+      destination.active,
+  ) ?? false;
+}
 async function testDestination(destination: NotificationRoutingDestination) {
   busy.value = true;
   error.value = "";
@@ -272,6 +297,39 @@ async function testDestination(destination: NotificationRoutingDestination) {
             @changed="reload"
             @change="emit('change', $event)"
           />
+          <section
+            v-if="provider.definition?.destinations?.length"
+            class="plugin-destination-list"
+            aria-label="Available plugin destinations"
+          >
+            <h5>Available destinations</h5>
+            <div
+              v-for="choice in provider.definition.destinations"
+              :key="choice.kind"
+              class="plugin-destination-choice"
+            >
+              <div>
+                <strong>{{ choice.label }}</strong>
+                <p class="hint">{{ choice.privacy }} destination</p>
+                <p v-if="choice.fields?.length" class="hint">
+                  This destination requires provider-specific fields; configure it
+                  in the provider's own settings before adding it here.
+                </p>
+              </div>
+              <button
+                v-if="!hasPluginDestination(provider.id, choice.kind) && !choice.fields?.length"
+                type="button"
+                class="expand"
+                :disabled="busy || !loaded || !provider.available"
+                @click="addPluginDestination(provider.id, choice.kind)"
+              >
+                Add destination
+              </button>
+              <span v-else-if="hasPluginDestination(provider.id, choice.kind)" class="hint">
+                Added below
+              </span>
+            </div>
+          </section>
           <div
             v-for="destination in routing.destinations.filter(
               (d) =>
@@ -612,6 +670,27 @@ h4 {
   padding: 7px;
   width: 100%;
   font: inherit;
+}
+.plugin-destination-list {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+}
+.plugin-destination-list h5 {
+  margin: 0;
+  font-size: 0.85rem;
+}
+.plugin-destination-choice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.plugin-destination-choice p {
+  margin: 4px 0 0;
 }
 .personal-destination {
   margin-top: 12px;
