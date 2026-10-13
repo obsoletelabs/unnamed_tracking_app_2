@@ -5,6 +5,14 @@ integration's exact HTTPS origin. This allows it to request access, but grants n
 user data. Each user signs in to their own instance to review the integration,
 capabilities and expiry. Write permissions start unchecked.
 
+Owners can optionally enable **Allow consent requests from any HTTPS integration
+origin**. An integration may then register its requester identity using
+`POST /api/delegation/v1/clients/register` with its name and exact HTTPS origin.
+This does not issue a credential or approve access. Individually disabled origins
+remain blocked; registration cannot rename or re-enable them. Registration is
+bounded to 1,000 clients per instance. Leave this option off to approve each
+requester yourself.
+
 Users can choose **Until revoked** for ongoing integration access. Timed access
 is selected by default and respects the owner's maximum timed duration. Ongoing
 grants have `expires_at: null`; revocation, disabled clients, disabled integrations
@@ -71,8 +79,25 @@ verification. Provider names and descriptions cannot be changed by an override.
 
 ## Operations
 
-Apply migrations through `03402febb5ae` through the normal deployment migration process.
+Apply migrations through `da9e271523e2` through the normal deployment migration process.
 The policy starts disabled. Database backups include grant hashes and local
 reports. Audit records contain event metadata, never credentials or library
 contents. Integration operators should delete their copies of credentials when
 participants disconnect.
+
+The new migrations use the existing adoption helpers so replay on an already
+migrated database preserves clients, grants and game data. This repairs the
+unreleased integration migrations' replay behavior without changing their schema
+or introducing a competing migration head. Downgrading beyond ongoing-access
+support expires ongoing grants, and downgrading beyond legacy support removes
+legacy connections because the older schema cannot represent them safely.
+
+An Activity operator may separately enable unsafe legacy API-key connections to
+older instances. Participants must acknowledge the broad key. The broker uses
+only fixed identity and library GET paths; it cannot perform legacy tracking or
+achievement writes. The key remains encrypted at the operator and is never sent
+to plugin code. Disconnecting removes the broker copy; revoke the key at the old
+source instance to invalidate it there.
+
+See [public-app hosting](../development/plugin-public-apps.md) for external
+principals, host-held source connections and the scoped route enforcement matrix.
