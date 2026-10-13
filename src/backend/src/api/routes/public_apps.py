@@ -12,7 +12,13 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.schemas.delegation import AchievementReportWrite, TrackingWrite, integration_origin
+from src.api.schemas.delegation import (
+    SCOPE_DESCRIPTIONS,
+    AchievementReportWrite,
+    TrackingWrite,
+    integration_origin,
+    integration_scopes,
+)
 from src.database.models.public_app import PublicAppActor, PublicAppSession, PublicAppSource
 from src.database.session import get_db
 from src.features import public_app_sources as sources
@@ -52,6 +58,16 @@ class SourceInput(PublicInput):
     origin: str = Field(max_length=512)
 
     _origin = field_validator("origin")(integration_origin)
+
+
+class DelegatedSourceInput(SourceInput):
+    scopes: list[str] = Field(
+        default_factory=lambda: list(sources.LIBRARY_SCOPES),
+        min_length=2,
+        max_length=len(SCOPE_DESCRIPTIONS),
+    )
+
+    _scopes = field_validator("scopes")(integration_scopes)
 
 
 class LegacySourceInput(SourceInput):
@@ -246,10 +262,10 @@ async def avatar(
 
 @router.post("/{plugin_id}/sources", status_code=201)
 async def connect_source(
-    plugin_id: str, payload: SourceInput, request: Request, db: AsyncSession = _DB
+    plugin_id: str, payload: DelegatedSourceInput, request: Request, db: AsyncSession = _DB
 ) -> dict:
     _app, actor, _session = await apps.authenticated(db, plugin_id, request)
-    return await sources.connect_source(db, actor, integration_origin(payload.origin))
+    return await sources.connect_source(db, actor, payload.origin, payload.scopes)
 
 
 @router.post("/{plugin_id}/sources/{source_id}/poll")

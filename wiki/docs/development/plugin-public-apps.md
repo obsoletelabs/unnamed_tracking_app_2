@@ -131,6 +131,12 @@ installation grants. Source IDs are checked against that actor before consent
 polling, refresh, disconnect, own-game artwork, tracking or achievement operations.
 Remote source ownership and write scopes are enforced again by delegation routes.
 
+`POST /sources` accepts an optional unique `scopes` list. It defaults to
+`profile.read` and `games.read`, which the library broker requires. Additional
+capabilities must be requested deliberately and remain subject to source-side
+consent; requesting them never grants them. No unused media/list/history access
+is added to a default library connection.
+
 Frontend responses include a Discord-compatible frame-ancestor policy. A reverse
 proxy must not add `X-Frame-Options: SAMEORIGIN` to the public Activity asset route.
 Keep the ordinary application's frame protections. Set the deployment's public

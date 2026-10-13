@@ -16,7 +16,7 @@ from src.database.models.delegation import IntegrationPolicy
 from src.database.models.plugin_permissions import PluginPermissionGrant
 from src.database.models.public_app import PublicAppActor, PublicAppSession, PublicAppSource
 from src.database.session import SessionLocal
-from src.features import legacy_integrations
+from src.features import legacy_integrations, public_app_sources
 from src.features.delegation import integration_policy
 from src.main import app
 from src.plugin_api import outbound, public_apps
@@ -133,6 +133,71 @@ async def sign_in(flow):
     assert response.status_code == 200, response.text
     result = response.json()
     return {"Authorization": "Bearer " + result["session_token"]}, UUID(result["participant"]["id"])
+
+
+@pytest.mark.parametrize(
+    "extra_scopes",
+    [[], ["achievements.read", "tracking.write", "achievements.write"]],
+)
+async def test_source_consent_requests_only_chosen_capabilities(
+    public_flow, monkeypatch, extra_scopes
+):
+    flow = public_flow
+    headers, _actor = await sign_in(flow)
+    origin, operator = "https://source.example", "https://operator.example"
+    monkeypatch.setattr(public_app_sources.settings, "PUBLIC_APP_URL", operator)
+    requests = []
+
+    def remote(_origin, path, **options):
+        if path.endswith("/instance"):
+            return {
+                "status": 200,
+                "data": {
+                    "enabled": True,
+                    "protocol_version": "1.0",
+                    "instance_id": str(uuid4()),
+                    "clients": [{"id": str(uuid4()), "origin": operator}],
+                },
+            }
+        requests.append(options["body"])
+        return {
+            "status": 201,
+            "data": {"request_id": str(uuid4()), "expires_at": int(time.time()) + 600},
+        }
+
+    monkeypatch.setattr(public_app_sources, "public_instance_request", remote)
+    payload = {"origin": origin}
+    if extra_scopes:
+        payload["scopes"] = [*public_app_sources.LIBRARY_SCOPES, *extra_scopes]
+    response = await flow.client.post(flow.base + "/sources", headers=headers, json=payload)
+    assert response.status_code == 201, response.text
+    assert requests[0]["scopes"] == sorted([*public_app_sources.LIBRARY_SCOPES, *extra_scopes])
+    assert response.json()["scopes"] == []  # A request is not a grant.
+
+
+@pytest.mark.parametrize(
+    "scopes",
+    [
+        [],
+        ["profile.read", "api.full"],
+        ["games.read", "games.read"],
+        ["games.read", "tracking.write"],
+    ],
+)
+async def test_source_rejects_invalid_or_incomplete_capabilities(public_flow, monkeypatch, scopes):
+    flow = public_flow
+    headers, _actor = await sign_in(flow)
+    calls = []
+    monkeypatch.setattr(
+        public_app_sources, "public_instance_request", lambda *args, **kwargs: calls.append(args)
+    )
+    response = await flow.client.post(
+        flow.base + "/sources",
+        headers=headers,
+        json={"origin": "https://source.example", "scopes": scopes},
+    )
+    assert response.status_code == 422, response.text
+    assert calls == []
 
 
 @pytest.mark.parametrize(

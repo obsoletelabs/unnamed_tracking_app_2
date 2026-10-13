@@ -10,7 +10,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.schemas.delegation import SCOPE_DESCRIPTIONS, integration_origin
+from src.api.schemas.delegation import integration_origin, integration_scopes
 from src.core.auth import hash_token
 from src.core.config import settings
 from src.core.crypto import decrypt_secret, encrypt_secret
@@ -18,6 +18,8 @@ from src.database.models.public_app import PublicAppActor, PublicAppSource
 from src.features import legacy_integrations
 from src.features.delegation import integration_policy
 from src.plugin_api.outbound import public_instance_request
+
+LIBRARY_SCOPES = ("profile.read", "games.read")
 
 
 async def remote(source: PublicAppSource, path: str, **options) -> dict:
@@ -58,7 +60,12 @@ async def owned_source(db: AsyncSession, actor: PublicAppActor, source_id: UUID)
     return row
 
 
-async def connect_source(db: AsyncSession, actor: PublicAppActor, origin: str) -> dict:
+async def connect_source(
+    db: AsyncSession, actor: PublicAppActor, origin: str, scopes: list[str] | None = None
+) -> dict:
+    scopes = integration_scopes(list(LIBRARY_SCOPES) if scopes is None else scopes)
+    if not set(LIBRARY_SCOPES).issubset(scopes):
+        raise HTTPException(422, "A library connection requires profile.read and games.read.")
     origin = integration_origin(origin)
     existing = list(
         await db.scalars(select(PublicAppSource).where(PublicAppSource.actor_id == actor.id))
@@ -118,7 +125,7 @@ async def connect_source(db: AsyncSession, actor: PublicAppActor, origin: str) -
         method="POST",
         body={
             "client_id": client["id"],
-            "scopes": sorted(SCOPE_DESCRIPTIONS),
+            "scopes": scopes,
             "code_challenge": hash_token(verifier),
         },
     )

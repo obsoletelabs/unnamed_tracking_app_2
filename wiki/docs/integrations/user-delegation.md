@@ -5,6 +5,10 @@ integration's exact HTTPS origin. This allows it to request access, but grants n
 user data. Each user signs in to their own instance to review the integration,
 capabilities and expiry. Write permissions start unchecked.
 
+Hosted library connections request only identity and game reads by default.
+Optional progress features request achievement reads and tracking/achievement
+writes separately, with the writes still unchecked on the source consent screen.
+
 Owners can optionally enable **Allow consent requests from any HTTPS integration
 origin**. An integration may then register its requester identity using
 `POST /api/delegation/v1/clients/register` with its name and exact HTTPS origin.
