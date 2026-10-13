@@ -30,6 +30,7 @@ from src.database.models.movies import Movie, MovieStatus
 from src.database.models.plugin_notification_provider import (
     PluginNotificationProviderRegistration,
 )
+from src.database.models.public_app import PublicAppActor
 from src.features.metadata.providers import (
     provider_configuration,
     register_provider,
@@ -162,6 +163,15 @@ async def dispatch_gateway_request(
     payload: dict[str, Any],
     capability_version: int = 1,
 ) -> dict[str, Any]:
+    external = await db.get(PublicAppActor, user_id)
+    if external is not None and (
+        external.plugin_id != plugin_id
+        or external.installation_id != installation_id
+        or external.expires_at <= int(time.time())
+        or method != "capabilities.check"
+        or capability not in {"plugin.storage", "integrations.public_app"}
+    ):
+        raise PermissionError("External app principals cannot access application account APIs")
     required_capability = (
         capability if method == "capabilities.check" else _METHOD_CAPABILITIES.get(method)
     )

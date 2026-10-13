@@ -33,8 +33,10 @@ from starlette.responses import FileResponse, JSONResponse
 from src.api.routes.session_manager import upload_geoip
 from src.core.auth import get_current_user, hash_token, session_cookie_name
 from src.database.models.auth import UserSession
+from src.database.models.public_app import PublicAppActor, PublicAppSession
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features.delegation import integration_policy
 from src.features.notification_destinations import invalidate_legacy_configuration
 from src.plugin_api.compatibility import is_legacy_contract
 from src.plugin_api.contracts import (
@@ -526,7 +528,7 @@ async def _gateway_user_context(
     db: AsyncSession,
     payload: models.PluginGatewayIn,
     failure: Callable[[int, ErrorCode, str], JSONResponse],
-) -> User | JSONResponse:
+) -> User | PublicAppActor | JSONResponse:
     try:
         plugin = await runtime.live_plugin(
             payload.plugin_id, require_enabled=False, single_installation=True
@@ -548,7 +550,38 @@ async def _gateway_user_context(
         return failure(409, ErrorCode.CONFLICT, "Plugin installation identity does not match.")
     user = await db.scalar(select(User).where(User.id == payload.user_id, User.is_active.is_(True)))
     if user is None:
-        return failure(403, ErrorCode.FORBIDDEN, "Active user context is required.")
+        actor = await db.scalar(
+            select(PublicAppActor).where(
+                PublicAppActor.id == payload.user_id,
+                PublicAppActor.plugin_id == payload.plugin_id,
+                PublicAppActor.installation_id == payload.installation_id,
+                PublicAppActor.expires_at > int(time.time()),
+            )
+        )
+        session = await db.scalar(
+            select(PublicAppSession.id).where(
+                PublicAppSession.actor_id == payload.user_id,
+                PublicAppSession.expires_at > int(time.time()),
+            )
+        )
+        policy = await integration_policy(db)
+        if (
+            actor is None
+            or session is None
+            or not policy.enabled
+            or not plugin.get("public_app")
+            or not await has_capability_grant(
+                db,
+                plugin_id=payload.plugin_id,
+                installation_id=payload.installation_id,
+                capability="integrations.public_app",
+                user_id=payload.user_id,
+            )
+        ):
+            return failure(
+                403, ErrorCode.FORBIDDEN, "Active user or external app context is required."
+            )
+        return actor
     return user
 
 

@@ -20,6 +20,7 @@ from src.api.routes import (
     calendar_events,
     calendar_feed,
     default_game_assets,
+    delegation,
     export_import,
     game_archives,
     game_duplicates,
@@ -44,6 +45,7 @@ from src.api.routes import (
     notifications,
     password_recovery,
     preferences,
+    public_apps,
     session_manager,
     settings,
     stats,
@@ -77,6 +79,7 @@ from src.features.notification_logging import protect_notification_link_logs
 from src.features.trash.sweep import run_sweep_loop
 from src.helpers import image_prefetch
 from src.plugin_api.backend_routes import reserve_host_routes
+from src.plugin_api.public_apps import purge_expired_data
 from src.plugin_api.pwa import router as pwa_router
 from src.plugin_api.recovery import recover_transactions
 from src.plugin_api.runtime_client import PluginRuntimeClient, PluginRuntimeUnavailable
@@ -127,6 +130,8 @@ app.include_router(game_page.router)
 app.include_router(users.router)
 app.include_router(api_keys.router)
 app.include_router(auth.router)
+app.include_router(delegation.router)
+app.include_router(public_apps.router)
 app.include_router(password_recovery.router)
 app.include_router(user_invitations.router)
 app.include_router(auth_oidc_router)
@@ -234,11 +239,15 @@ async def start_backup_loop() -> None:
 @app.on_event("startup")
 async def start_session_retention_loop() -> None:
     async def loop() -> None:
+        next_session_cleanup = asyncio.get_running_loop().time() + 24 * 60 * 60
         while True:
-            await asyncio.sleep(24 * 60 * 60)
+            await asyncio.sleep(300)
             try:
                 async with SessionLocal() as db:
-                    await purge_old_sessions(db)
+                    await purge_expired_data(db)
+                    if asyncio.get_running_loop().time() >= next_session_cleanup:
+                        await purge_old_sessions(db)
+                        next_session_cleanup = asyncio.get_running_loop().time() + 24 * 60 * 60
             # A cleanup failure is reported without stopping future retention passes.
             except Exception:  # pylint: disable=broad-exception-caught
                 logging.getLogger(__name__).exception("Session retention cleanup failed")

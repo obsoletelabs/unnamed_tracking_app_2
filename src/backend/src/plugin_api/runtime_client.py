@@ -284,6 +284,28 @@ class PluginRuntimeClient:
             raise PluginRuntimeRequestError("plugin backend route returned an invalid response")
         return result
 
+    async def public_app_action(
+        self,
+        plugin_id: str,
+        values: dict[str, Any],
+        *,
+        installation_id: str,
+        actor_id: str,
+        context: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Send verified external context through the protected runtime transport."""
+        return await self._request(
+            "POST",
+            f"/plugins/{quote(plugin_id, safe='')}/public-app-actions",
+            json={
+                "values": values,
+                "installation_id": installation_id,
+                "actor_id": actor_id,
+                "context": context,
+            },
+            timeout=_ACTION_REQUEST_TIMEOUT,
+        )
+
     async def notification_delivery(
         self,
         plugin_id: str,

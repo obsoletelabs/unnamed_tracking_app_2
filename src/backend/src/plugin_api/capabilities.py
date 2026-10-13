@@ -116,6 +116,8 @@ _CRITICAL = frozenset(
     {
         Capability.FULL_API,
         # Sensitive notification content always requires its own explicit grant.
+        Capability.INTEGRATIONS_PUBLIC_APP,
+        Capability.INTEGRATIONS_IDENTITY_PROVIDER,
         Capability.NOTIFICATIONS_SENSITIVE,
         Capability.NOTIFICATION_PROVIDERS_SENSITIVE,
         Capability.AUTH_PASSWORD_RESET,
@@ -191,6 +193,8 @@ def _category(capability: Capability) -> str:
 
 def _title(capability: Capability) -> str:
     placement_titles = {
+        Capability.INTEGRATIONS_PUBLIC_APP: "Host a public app with isolated participant identities",
+        Capability.INTEGRATIONS_IDENTITY_PROVIDER: "Verify external public-app participants",
         Capability.AUTH_PASSWORD_RESET: "Enable host-mediated password reset for local accounts",
         Capability.AUTH_USER_INVITES: "Issue account invitations and enable public account acceptance",
         Capability.NOTIFICATION_PROVIDERS_SENSITIVE: (

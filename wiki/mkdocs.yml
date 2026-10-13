@@ -47,6 +47,7 @@ nav:
   - Integrations:
       - Overview: integrations/index.md
       - Playnite: integrations/playnite.md
+      - User-approved Access: integrations/user-delegation.md
       - Metadata Providers: integrations/metadata.md
   - Administration:
       - Overview: administration/index.md

@@ -1,0 +1,78 @@
+# User-approved integration access
+
+Instance owners enable **Administration → Integration access** and approve an
+integration's exact HTTPS origin. This allows it to request access, but grants no
+user data. Each user signs in to their own instance to review the integration,
+capabilities and expiry. Write permissions start unchecked.
+
+Users can choose **Until revoked** for ongoing integration access. Timed access
+is selected by default and respects the owner's maximum timed duration. Ongoing
+grants have `expires_at: null`; revocation, disabled clients, disabled integrations
+and account deactivation still block every subsequent request. Guest retention
+and Activity sessions remain bounded independently of the user's access grant.
+
+**Account → Connected apps** shows issued grants. Users can remove capabilities
+or revoke a grant. New capabilities require a new consent flow. Disabling the
+integration origin, disabling integrations, deactivating an account, revoking a
+grant or reaching its expiry blocks subsequent requests.
+
+The integration retains an opaque credential, rather than a password, app
+session or unrestricted API key. Credentials are restricted to the consenting
+user, and never provide administration access, even for an administrator.
+
+## Protocol v1.0
+
+All paths below are under `/api/delegation/v1`. Responses are not cacheable.
+
+1. Read `GET /instance` for the stable instance ID, enabled policy, approved
+   integration clients and supported capabilities.
+2. Create `POST /requests` with `client_id`, `scopes` and `code_challenge`, the
+   hexadecimal SHA-256 of a random 43–128 character verifier held by the backend.
+3. Open the returned `verification_path` in the participant's normal browser.
+   Signed-in users approve a subset and an expiry, or deny the request. Send
+   `expires_in_hours: null` in the decision to explicitly approve Until revoked;
+   omitting it defaults to 24 hours. Existing grants keep their original expiry.
+4. Poll `POST /requests/{id}/exchange` using `{"verifier": "..."}` no faster
+   than the returned interval. Approval can be exchanged once. The request
+   expires after ten minutes. Keep credentials and verifiers out of URLs.
+5. Use `Authorization: Bearer utd_...` on the scoped resource paths.
+   `POST /credential/rotate` replaces the credential without increasing access
+   or extending the expiry. A lost rotation response requires fresh consent.
+
+| Capability | Paths and limits |
+| --- | --- |
+| `profile.read` | `GET /profile`: own ID and display name |
+| `games.read` | `GET /games`, `/games/{id}`, `/games/{id}/artwork/{kind}`: own library and artwork |
+| `achievements.read` | `GET /games/{id}/achievements`: own stored provider data and local reports |
+| `history.read` | `GET /games/{id}/history`: own game's field history |
+| `lists.read` | `GET /lists`, `/lists/{id}`: own lists and contents |
+| `media.read` | `GET /media?kind=movie\|tv\|anime`: own tracked media |
+| `tracking.write` | `PATCH /games/{id}/tracking`: status, favorite, playtime, completion and ratings only |
+| `achievements.write` | `POST /games/{id}/achievement-reports`, `DELETE /games/{id}/achievement-reports/{report_id}`: local self reports only |
+
+Resource IDs never permit cross-user reads or writes. These credentials are
+rejected on ordinary app, API-key management, authentication, plugin-management
+and administration routes. Existing `utk_` API keys retain their legacy behavior;
+they are not accepted as delegated credentials. Browser sessions are required
+to manage consent and grants.
+
+## Data provenance
+
+A wishlist entry is not ownership. Library ownership is reported as
+`instance_library`; it does not imply a fresh provider check. Unknown provider
+check times stay null. Purchase history is not a current offer. Offer data is
+currently unavailable, so integrations cannot infer a current price or discount.
+
+Provider achievement rows retain their imported state. A self-reported override
+is stored separately by game, provider and provider achievement ID, and survives
+provider resynchronization. It is labeled `self_reported_override`, with
+`verified: false`. Manual reports are labeled `manual`. Neither is provider
+verification. Provider names and descriptions cannot be changed by an override.
+
+## Operations
+
+Apply migrations through `03402febb5ae` through the normal deployment migration process.
+The policy starts disabled. Database backups include grant hashes and local
+reports. Audit records contain event metadata, never credentials or library
+contents. Integration operators should delete their copies of credentials when
+participants disconnect.

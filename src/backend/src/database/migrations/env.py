@@ -12,16 +12,19 @@ from src.database.base import Base
 # Base.metadata before autogenerate compares it against the database.
 from src.database.models import (
     achievement,  # noqa: F401
+    achievement_override,  # noqa: F401
     anime,  # noqa: F401
     app_integration_settings,  # noqa: F401
     auth,  # noqa: F401
     calendar_event,  # noqa: F401
+    delegation,  # noqa: F401
     game,  # noqa: F401
     game_archive,  # noqa: F401
     game_checklist_item,  # noqa: F401
     game_duplicate_dismissal,  # noqa: F401
     game_field_change,  # noqa: F401
     game_file_item,  # noqa: F401
+    game_note_detail,  # noqa: F401
     game_profile,  # noqa: F401
     game_profile_stat_snapshot,  # noqa: F401
     inbox_item,  # noqa: F401
@@ -46,6 +49,7 @@ from src.database.models import (
     plugin_notification_type,  # noqa: F401
     plugin_permission_audit,  # noqa: F401
     plugin_permissions,  # noqa: F401
+    public_app,  # noqa: F401
     tv_show,  # noqa: F401
     user,  # noqa: F401
     user_appearance_settings,  # noqa: F401

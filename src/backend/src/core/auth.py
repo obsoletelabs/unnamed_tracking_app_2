@@ -166,6 +166,11 @@ async def get_current_user(
                 headers={"WWW-Authenticate": "Bearer"},
             )
         api_key = authorization[7:].strip()
+        if api_key.startswith(("utd_", "utp_")):
+            raise HTTPException(
+                status_code=403,
+                detail="Integration credentials can only access their scoped integration APIs.",
+            )
         if api_key.startswith("utpm_"):
             raise HTTPException(
                 status_code=403, detail="Plugin management tokens cannot access application APIs."

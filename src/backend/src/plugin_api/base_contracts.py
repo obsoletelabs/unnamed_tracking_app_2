@@ -11,7 +11,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 API_VERSION = "v1"
-PLUGIN_API_CONTRACT_VERSION = "1.1.11"
+PLUGIN_API_CONTRACT_VERSION = "1.1.12"
 Timestamp = datetime
 
 
@@ -105,6 +105,8 @@ class Capability(StrEnum):
     BACKEND_ROUTES_HOST = "backend.routes.host"
     NETWORK_OUTBOUND = "network.outbound"
     FULL_API = "api.full"
+    INTEGRATIONS_PUBLIC_APP = "integrations.public_app"
+    INTEGRATIONS_IDENTITY_PROVIDER = "integrations.identity_provider"
 
 
 class CapabilityRef(ContractModel):
@@ -718,6 +720,29 @@ def _validate_backend_route_declarations(
             route_owners.append((route.scope, route.path, method))
 
 
+class PluginPublicAppDeclaration(ContractModel):
+    """Public assets and one action executed as a separate external principal."""
+
+    entry: str = Field(pattern=r"^frontend/[A-Za-z0-9_./-]+\.html$", max_length=255)
+    action_id: str = Field(min_length=1, max_length=128)
+    identity_provider_plugin_id: str = Field(pattern=r"^[a-z0-9][a-z0-9._-]*$", max_length=128)
+
+    @field_validator("entry")
+    @classmethod
+    def validate_entry(cls, value: str) -> str:
+        if any(part in {".", "..", ""} for part in value.split("/")):
+            raise ValueError("public app entry must remain under frontend/")
+        return value
+
+
+class PluginIdentityProviderDeclaration(ContractModel):
+    """Explicit trusted adapter actions; no arbitrary provider action forwarding."""
+
+    config_action_id: str = Field(min_length=1, max_length=128)
+    authenticate_action_id: str = Field(min_length=1, max_length=128)
+    revalidate_action_id: str = Field(min_length=1, max_length=128)
+
+
 class PluginManifest(ContractModel):
     """Static plugin manifest validated without importing or executing the plugin."""
 
@@ -749,6 +774,8 @@ class PluginManifest(ContractModel):
     backend_routes: tuple[PluginBackendRoute, ...] = ()
     pwa: PluginPwaDeclaration | None = None
     scheduled_tasks: tuple[PluginScheduledTask, ...] = Field(default=(), max_length=32)
+    public_app: PluginPublicAppDeclaration | None = None
+    identity_provider: PluginIdentityProviderDeclaration | None = None
 
     @field_validator("version", "api_contract_version")
     @classmethod
@@ -819,5 +846,26 @@ class PluginManifest(ContractModel):
             for permission in self.permissions
         ):
             raise ValueError("pwa requires an explicit frontend.pwa v1 permission")
+        for declaration, capability in (
+            (self.public_app, Capability.INTEGRATIONS_PUBLIC_APP),
+            (self.identity_provider, Capability.INTEGRATIONS_IDENTITY_PROVIDER),
+        ):
+            if declaration is not None and (
+                parse_semver(self.api_contract_version) < (1, 1, 12)
+                or not any(
+                    permission.capability == CapabilityRef(name=capability)
+                    for permission in self.permissions
+                )
+            ):
+                raise ValueError(f"{capability} requires explicit permission and API v1.1.12")
+        if self.public_app is not None:
+            if self.frontend is None or self.public_app.action_id not in self.ui.actions:
+                raise ValueError("public app requires frontend assets and a declared action")
+            if self.public_app.identity_provider_plugin_id not in dependency_ids:
+                raise ValueError("public app identity provider must be a declared dependency")
+        if self.identity_provider is not None and not set(
+            self.identity_provider.model_dump().values()
+        ).issubset(self.ui.actions):
+            raise ValueError("identity provider must reference declared actions")
         _validate_backend_route_declarations(self.backend_routes, capability_names)
         return self

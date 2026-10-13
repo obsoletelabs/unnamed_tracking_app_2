@@ -45,7 +45,7 @@ except ImportError:  # pragma: no cover - Windows development/test fallback
     resource = None  # type: ignore[assignment]
 
 _PLUGIN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
-PLUGIN_API_CONTRACT_VERSION = "1.1.11"
+PLUGIN_API_CONTRACT_VERSION = "1.1.12"
 _ENTRYPOINT = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*(?::[A-Za-z_][A-Za-z0-9_]*)?$")
 # Linux parent-death signals follow the spawning thread. HTTP request threads
 # end after their response, while supervised workers must live until shutdown.
@@ -995,11 +995,13 @@ class PluginSupervisor:
         timeout: float = 30.0,
         *,
         user_id: str | None = None,
+        public_app_work: bool = False,
     ) -> bytes:
         """Run a bounded action while mediating its Plugin API requests."""
         spec.validate()
-        if len(payload) > 64 * 1024:
-            raise RuntimePolicyError("plugin action payload exceeds 64 KiB")
+        work_limit = 4 * 1024 * 1024 if public_app_work else 64 * 1024
+        if len(payload) > work_limit:
+            raise RuntimePolicyError("public app work exceeds 4 MiB" if public_app_work else "plugin action payload exceeds 64 KiB")
         workdir = (
             self.root / f"{spec.plugin_id}.action-{os.getpid()}-{threading.get_ident()}"
         )
@@ -1169,8 +1171,8 @@ class PluginSupervisor:
                     self._action_processes.get(spec.plugin_id, set()).discard(process)
             shutil.rmtree(workdir, ignore_errors=True)
         assert output is not None
-        if len(output) > 64 * 1024:
-            raise RuntimePolicyError("plugin action output exceeds 64 KiB")
+        if len(output) > work_limit:
+            raise RuntimePolicyError("public app output exceeds 4 MiB" if public_app_work else "plugin action output exceeds 64 KiB")
         self._log(
             spec.plugin_id,
             "Plugin action completed.",
@@ -1779,6 +1781,8 @@ class PluginRegistry:
             if isinstance(raw_state, dict)
             else None,
             "pwa": data.get("pwa"),
+            "public_app": data.get("public_app"),
+            "identity_provider": data.get("identity_provider"),
             "dependencies": [
                 dependency
                 for dependency in data.get("dependencies", [])
@@ -2045,6 +2049,32 @@ class PluginRegistry:
                 raise RuntimePolicyError(
                     "plugin frontend entry is missing from the package payload"
                 )
+        for key, required in (("public_app", "integrations.public_app"),
+                              ("identity_provider", "integrations.identity_provider")):
+            declaration = manifest.get(key)
+            if declaration is None:
+                continue
+            if (not isinstance(declaration, dict) or required not in capabilities
+                    or not any(item.get("capability") == {"name": required, "version": 1}
+                               for item in manifest.get("permissions", []))
+                    or tuple(map(int, manifest.get("api_contract_version", "0.0.0").split("."))) < (1, 1, 12)):
+                raise RuntimePolicyError("Public apps require explicit API v1.1.12 permissions")
+            actions = set(manifest.get("ui", {}).get("actions", []))
+            if key == "public_app":
+                if (set(declaration) != {"entry", "action_id", "identity_provider_plugin_id"}
+                        or not isinstance(frontend, dict)
+                        or declaration.get("action_id") not in actions
+                        or not any(item.get("plugin_id") == declaration.get("identity_provider_plugin_id")
+                                   for item in manifest.get("dependencies", []))):
+                    raise RuntimePolicyError("Invalid public app declaration")
+                entry = declaration.get("entry")
+                if (not isinstance(entry, str) or not entry.startswith("frontend/")
+                        or not entry.endswith(".html") or any(part in {".", "..", ""} for part in entry.split("/"))
+                        or not any(name == entry for name, _ in payload)):
+                    raise RuntimePolicyError("Invalid public app entry")
+            elif (set(declaration) != {"config_action_id", "authenticate_action_id", "revalidate_action_id"}
+                  or not all(isinstance(value, str) and value in actions for value in declaration.values())):
+                raise RuntimePolicyError("Invalid identity provider declaration")
         native_frontend = manifest.get("native_frontend")
         if native_frontend is not None:
             if not isinstance(native_frontend, dict) or not isinstance(
@@ -2846,7 +2876,12 @@ class PluginRegistry:
         user_id: str | None = None,
         _notification_authorized: bool = False,
         _notification_context: dict[str, Any] | None = None,
+        _public_app_context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        if "_public_app_context" in values:
+            raise RuntimePolicyError("Public-app context is reserved for host work")
+        if _public_app_context is not None:
+            values = {**values, "_public_app_context": _public_app_context}
         if "_notification_context" in values:
             raise RuntimePolicyError("Notification context is reserved for core provider work")
         if _notification_context is not None:
@@ -2890,6 +2925,7 @@ class PluginRegistry:
             package,
             payload,
             user_id=user_id,
+            **({"public_app_work": True} if _public_app_context is not None else {}),
         )
         result: dict[str, Any] = {"completed": True}
         if output:
@@ -2946,6 +2982,26 @@ class PluginRegistry:
                     else {"completed": True}
                 )
         return result
+
+    def public_app_action(
+        self, plugin_id: str, values: dict[str, Any], *, installation_id: str,
+        actor_id: str, context: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Private host transport never inherits the activation account's authority."""
+        self._require_active(plugin_id)
+        package, manifest = self.package(plugin_id)
+        if self._item(package).get("installation_id") != str(UUID(installation_id)):
+            raise RuntimePolicyError("Public-app installation changed")
+        declaration = manifest.get("public_app")
+        if not isinstance(declaration, dict) or not isinstance(context, dict):
+            raise RuntimePolicyError("Public-app declaration or context is invalid")
+        if context.get("actor_id") != str(UUID(actor_id)) or not isinstance(context.get("room"), str):
+            raise RuntimePolicyError("Public-app participant context is invalid")
+        if any(key.startswith("_") for key in values):
+            raise RuntimePolicyError("Public-app values cannot replace host context")
+        self.supervisor._authorize_capability(plugin_id, "integrations.public_app", user_id=actor_id)
+        return self.action(plugin_id, declaration["action_id"], values, user_id=actor_id,
+                           _public_app_context=context)
 
     def notification_delivery(
         self, plugin_id: str, action_id: str, values: dict[str, Any], *,
@@ -3319,6 +3375,18 @@ class RuntimeHandler(BaseHTTPRequestHandler):
                     payload.get("values", {}),
                     user_id=payload.get("user_id"),
                 )  # type: ignore[attr-defined]
+                self._json(200, result)
+                return
+            if len(parts) == 3 and parts[0] == "plugins" and parts[2] == "public-app-actions":
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 1 <= length <= 4 * 1024 * 1024:
+                    raise RuntimePolicyError("Public-app work exceeds its bounds")
+                payload = json.loads(self.rfile.read(length))
+                result = self.server.registry.public_app_action(
+                    parts[1], payload.get("values", {}),
+                    installation_id=str(payload.get("installation_id", "")),
+                    actor_id=str(payload.get("actor_id", "")), context=payload.get("context", {}),
+                )
                 self._json(200, result)
                 return
             if len(parts) == 4 and parts[0] == "plugins" and parts[2] == "notification-provider-actions":
