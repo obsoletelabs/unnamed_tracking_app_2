@@ -220,6 +220,15 @@ const { titleProtected, titleLockOverride } = useTitleProtection(
 // the saved custom sorting name, blank when the library sorts by the title
 const sortTitle = ref(props.game?.sortTitle ?? "");
 const platform = ref(props.game?.platform ?? "");
+const playCompatibilityEnabled = ref(Boolean(props.game?.playCompatibility));
+const minimumPlayers = ref(props.game?.playCompatibility?.minPlayers ?? 1);
+const maximumPlayers = ref(props.game?.playCompatibility?.maxPlayers ?? 4);
+const sessionMinutes = ref<number | null>(
+  props.game?.playCompatibility?.durationMinutes ?? null,
+);
+const supportsCrossplay = ref(
+  props.game?.playCompatibility?.crossplay ?? false,
+);
 const priority = ref(props.game?.priority ?? "");
 const folderLocation = ref(props.game?.folderLocation ?? "");
 const status = ref<GameStatus>(props.game?.status ?? "backlog");
@@ -638,6 +647,14 @@ async function submit() {
     source: source.value.trim() || null,
     providerIds: selectedProviderIds.value ?? props.game?.providerIds,
     platform: platform.value.trim() || null,
+    playCompatibility: playCompatibilityEnabled.value
+      ? {
+          minPlayers: minimumPlayers.value,
+          maxPlayers: maximumPlayers.value,
+          durationMinutes: sessionMinutes.value || null,
+          crossplay: supportsCrossplay.value,
+        }
+      : null,
     priority: priority.value || null,
     ageRating: ageRating.value.trim() || null,
     timeToBeatHours: String(timeToBeatHours.value).trim()
@@ -1168,6 +1185,56 @@ async function submit() {
                 placeholder="Achievements, Cloud Saves"
               />
             </label>
+            <div class="metadata-refresh-panel">
+              <div>
+                <strong>Group play details</strong>
+                <p class="hint">
+                  Save the player count and typical session length for
+                  Activities. These details are confirmed by you.
+                </p>
+              </div>
+            </div>
+            <label class="field"
+              ><span
+                ><input v-model="playCompatibilityEnabled" type="checkbox" />
+                Save group play compatibility</span
+              ></label
+            >
+            <div v-if="playCompatibilityEnabled" class="form-grid">
+              <label class="field"
+                ><span>Minimum players</span
+                ><input
+                  v-model.number="minimumPlayers"
+                  type="number"
+                  min="1"
+                  max="32"
+                  required
+              /></label>
+              <label class="field"
+                ><span>Maximum players</span
+                ><input
+                  v-model.number="maximumPlayers"
+                  type="number"
+                  :min="minimumPlayers"
+                  max="32"
+                  required
+              /></label>
+              <label class="field"
+                ><span>Typical session (minutes)</span
+                ><input
+                  v-model.number="sessionMinutes"
+                  type="number"
+                  min="1"
+                  max="1440"
+                  placeholder="Unknown"
+              /></label>
+              <label class="field"
+                ><span
+                  ><input v-model="supportsCrossplay" type="checkbox" />
+                  Cross-platform play confirmed</span
+                ></label
+              >
+            </div>
           </div>
 
           <div v-else-if="activeTab === 'Media'" class="tab-panel">

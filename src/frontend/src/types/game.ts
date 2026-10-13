@@ -61,7 +61,15 @@ export interface GamePlatform {
   lastPlayedAt: string | null;
 }
 
+export interface GamePlayCompatibility {
+  minPlayers: number;
+  maxPlayers: number;
+  durationMinutes: number | null;
+  crossplay: boolean;
+}
+
 export interface Game {
+  playCompatibility?: GamePlayCompatibility | null;
   lockedFields?: string[];
   providerIds?: Record<string, string>;
   id: string;
