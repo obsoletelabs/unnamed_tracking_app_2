@@ -9,6 +9,7 @@ import httpx
 import pytest
 from sqlalchemy import delete, select
 
+from src.api.routes import public_apps as public_routes
 from src.api.routes.plugin_manager import contributions
 from src.core.auth import hash_token
 from src.database.models.delegation import IntegrationPolicy
@@ -132,6 +133,135 @@ async def sign_in(flow):
     assert response.status_code == 200, response.text
     result = response.json()
     return {"Authorization": "Bearer " + result["session_token"]}, UUID(result["participant"]["id"])
+
+
+@pytest.mark.parametrize(
+    "avatar",
+    [
+        "https://[malformed",
+        "https://example.test:bad/avatar.png",
+        "https://user:pass@example.test/a",
+        "http://example.test/a",
+        "https:///missing-host",
+        "https://example.test/a#fragment",
+        123,
+    ],
+)
+async def test_bad_provider_avatar_does_not_break_sign_in(public_flow, monkeypatch, avatar):
+    flow = public_flow
+
+    async def verified(*_args, **_kwargs):
+        return {
+            "verified": True,
+            "subject": "avatar-test",
+            "room": "verified-room",
+            "display_name": "Participant",
+            "avatar_url": avatar,
+        }
+
+    monkeypatch.setattr(public_apps.client, "action", verified)
+    _headers, actor_id = await sign_in(flow)
+    async with SessionLocal() as db:
+        assert (await db.get(PublicAppActor, actor_id)).avatar_url is None
+
+
+async def test_avatars_require_a_live_session_in_the_same_room(public_flow, monkeypatch):
+    flow = public_flow
+    headers, actor_id = await sign_in(flow)
+    avatar_url = "https://cdn.example.test/avatar.png"
+    async with SessionLocal() as db:
+        actor = await db.get(PublicAppActor, actor_id)
+        actor.avatar_url = avatar_url
+        await db.commit()
+    calls = []
+
+    def image(url):
+        calls.append(url)
+        return {"content": b"\x89PNG\r\n\x1a\nfixture", "media_type": "image/png"}
+
+    monkeypatch.setattr(public_routes, "public_image_request", image)
+    path = flow.base + f"/participants/{actor_id}/avatar"
+    assert (await flow.client.get(path)).status_code == 401
+    result = await flow.client.get(path, headers=headers)
+    assert result.status_code == 200 and result.headers["content-type"] == "image/png"
+    assert result.headers["cache-control"] == "no-store"
+    async with SessionLocal() as db:
+        other = PublicAppActor(
+            plugin_id=flow.plugin_id,
+            installation_id=flow.installation_id,
+            provider_installation_id=flow.provider_installation,
+            subject="other",
+            display_name="Other",
+            avatar_url=avatar_url,
+            expires_at=int(time.time()) + 600,
+        )
+        db.add(other)
+        await db.flush()
+        db.add(
+            PublicAppSession(
+                actor_id=other.id,
+                token_hash=hash_token(uuid4().hex),
+                room="other-room",
+                expires_at=int(time.time()) + 600,
+            )
+        )
+        await db.commit()
+        other_id = other.id
+    assert (
+        await flow.client.get(flow.base + f"/participants/{other_id}/avatar", headers=headers)
+    ).status_code == 404
+    assert calls == [avatar_url]
+
+
+@pytest.mark.parametrize(
+    "status,content,expected",
+    [
+        (200, b"\x89PNG\r\n\x1a\nfixture", "image/png"),
+        (200, b"\xff\xd8\xfffixture", "image/jpeg"),
+        (200, b"RIFF0000WEBPfixture", "image/webp"),
+        (200, b"<svg>active content</svg>", None),
+        (302, b"redirect", None),
+        (200, b"x" * (2 * 1024 * 1024 + 1), None),
+    ],
+)
+def test_public_images_are_bounded_raster_only_without_redirects(
+    monkeypatch, status, content, expected
+):
+    class Connection:
+        closed = False
+
+        def request(self, method, path, headers):
+            assert method == "GET" and path == "/cover.png?size=128"
+            assert set(headers) == {"Accept"}
+
+        def getresponse(self):
+            return SimpleNamespace(status=status, read=lambda maximum: content[:maximum])
+
+        def close(self):
+            self.closed = True
+
+    connection = Connection()
+    monkeypatch.setattr(outbound, "_public_connection", lambda origin: connection)
+    if expected:
+        assert outbound.public_image_request("https://public.example/cover.png?size=128") == {
+            "content": content,
+            "media_type": expected,
+        }
+    else:
+        with pytest.raises(ValueError):
+            outbound.public_image_request("https://public.example/cover.png?size=128")
+    assert connection.closed
+
+
+@pytest.mark.parametrize("address", ["127.0.0.1", "192.168.0.1", "::1"])
+def test_public_images_reject_private_networks(monkeypatch, address):
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        lambda *args, **kwargs: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (address, 443))],
+    )
+    with pytest.raises(ValueError, match="public"):
+        outbound.public_image_request("https://image.example/cover.png")
 
 
 async def test_external_context_is_host_owned_and_not_an_app_account(public_flow):

@@ -44,6 +44,10 @@ class FakeDb:
     async def scalar(self, _statement):
         return self.scalar_results.pop(0)
 
+    async def get(self, _model, _identity):
+        # These account-domain fixtures contain no external app principals.
+        return None
+
     async def execute(self, _statement):
         return self.execute_results.pop(0)
 

@@ -79,7 +79,9 @@ def public_instance_request(
         if len(data) > 48 * 1024:
             raise ValueError("Delegated request is too large.")
         headers["Content-Type"] = "application/json"
-    return _instance_response(integration_origin(origin), path, method, headers, data, binary)
+    return _instance_response(
+        integration_origin(origin), path, method, headers=headers, data=data, binary=binary
+    )
 
 
 def legacy_instance_request(origin: str, path: str, *, credential: str) -> dict[str, Any]:
@@ -96,9 +98,9 @@ def legacy_instance_request(origin: str, path: str, *, credential: str) -> dict[
         integration_origin(origin),
         path,
         "GET",
-        {"Accept": "application/json", "Authorization": "Bearer " + credential},
-        None,
-        False,
+        headers={"Accept": "application/json", "Authorization": "Bearer " + credential},
+        data=None,
+        binary=False,
     )
 
 
@@ -135,6 +137,7 @@ def _instance_response(
     normalized: str,
     path: str,
     method: str,
+    *,
     headers: dict[str, str],
     data: bytes | None,
     binary: bool,

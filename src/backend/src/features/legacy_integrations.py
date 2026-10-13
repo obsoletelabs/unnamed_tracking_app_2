@@ -1,5 +1,9 @@
 """Opt-in read-only adapter for older instances with unrestricted API keys."""
 
+# Credential failures deliberately use the same state transitions as the scoped
+# broker, while legacy identity checks and allowed operations remain separate.
+# pylint: disable=duplicate-code
+
 import asyncio
 import time
 from uuid import UUID

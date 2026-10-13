@@ -58,6 +58,38 @@ async def _count_games(user_id) -> int:
         )
 
 
+async def test_group_play_details_roundtrip_and_clear(scratch_user):
+    preset = {"min_players": 2, "max_players": 4, "duration_minutes": 45, "crossplay": True}
+    async with SessionLocal() as db:
+        created = await games.create_game(
+            _create("Group_Play", play_compatibility=preset), Response(), db, scratch_user
+        )
+        game_id = created.id
+    async with SessionLocal() as db:
+        row = await db.get(Game, game_id)
+        assert row.play_compatibility == preset
+        await games.update_game(game_id, GameUpdate(play_compatibility=None), db, scratch_user)
+    async with SessionLocal() as db:
+        assert (await db.get(Game, game_id)).play_compatibility is None
+
+
+@pytest.mark.parametrize(
+    "preset",
+    [
+        {"min_players": 5, "max_players": 2},
+        {"min_players": 1, "max_players": 33},
+        {"min_players": True, "max_players": 4},
+        {"min_players": 1, "max_players": 4, "duration_minutes": 0},
+        {"min_players": 1, "max_players": 4, "crossplay": "yes"},
+    ],
+)
+def test_group_play_details_reject_unconfirmed_or_invalid_counts(preset):
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        _create("Invalid_Preset", play_compatibility=preset)
+
+
 async def test_repeated_playnite_create_returns_the_existing_game(scratch_user):
     guid = uuid.uuid4()
     async with SessionLocal() as db:

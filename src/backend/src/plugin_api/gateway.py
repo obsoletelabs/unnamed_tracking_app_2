@@ -164,12 +164,14 @@ async def dispatch_gateway_request(
     capability_version: int = 1,
 ) -> dict[str, Any]:
     external = await db.get(PublicAppActor, user_id)
-    if external is not None and (
-        external.plugin_id != plugin_id
-        or external.installation_id != installation_id
-        or external.expires_at <= int(time.time())
-        or method != "capabilities.check"
-        or capability not in {"plugin.storage", "integrations.public_app"}
+    if external is not None and any(
+        (
+            external.plugin_id != plugin_id,
+            external.installation_id != installation_id,
+            external.expires_at <= int(time.time()),
+            method != "capabilities.check",
+            capability not in {"plugin.storage", "integrations.public_app"},
+        )
     ):
         raise PermissionError("External app principals cannot access application account APIs")
     required_capability = (

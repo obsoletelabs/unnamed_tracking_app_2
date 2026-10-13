@@ -30,6 +30,7 @@ from src.core.auth import hash_token, session_cookie_name
 from src.core.geoip import GeoLocation, geoip
 from src.database.models.achievement import Achievement  # noqa: F401
 from src.database.models.auth import UserSession
+from src.database.models.delegation import IntegrationPolicy
 from src.database.models.notification import Notification
 from src.database.models.notification_audit import (
     NotificationLifecycleAudit,
@@ -43,6 +44,7 @@ from src.database.models.notification_receipt import NotificationReceipt
 from src.database.models.notification_verification import NotificationVerification
 from src.database.models.plugin_notification_provider import PluginNotificationProviderRegistration
 from src.database.models.plugin_permissions import PluginPermissionGrant, PluginPermissionRequest
+from src.database.models.public_app import PublicAppActor, PublicAppSession
 from src.database.models.user import User
 from src.database.models.user_preferences import UserPreferences
 from src.database.session import get_db
@@ -62,6 +64,9 @@ class PersistedDb:
 
     async def scalar(self, statement):
         return self.session.scalar(statement)
+
+    async def get(self, model, identity):
+        return self.session.get(model, identity)
 
     async def scalars(self, statement):
         return self.session.scalars(statement)
@@ -99,6 +104,9 @@ def boundary(monkeypatch):
     engine = create_engine("sqlite://")
     for model in (
         User,
+        PublicAppActor,
+        PublicAppSession,
+        IntegrationPolicy,
         PluginPermissionGrant,
         PluginPermissionRequest,
         UserSession,

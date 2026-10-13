@@ -29,6 +29,29 @@ client = PluginRuntimeClient()
 SESSION_TTL = 1800
 
 
+def _avatar_url(value: Any) -> str | None:
+    if not isinstance(value, str) or len(value) > 2048:
+        return None
+    try:
+        parts = urlsplit(value)
+        _ = parts.port
+    except ValueError:
+        return None
+    if parts.scheme != "https" or not parts.hostname:
+        return None
+    if any(
+        (
+            parts.username,
+            parts.password,
+            parts.fragment,
+            "\\" in value,
+            any(char.isspace() for char in value),
+        )
+    ):
+        return None
+    return value
+
+
 async def purge_expired_data(db: AsyncSession) -> None:
     """Forget external identity and credentials; keep only inert principal IDs."""
     now = int(time.time())
@@ -153,15 +176,7 @@ async def bootstrap(db: AsyncSession, plugin_id: str, proof: dict) -> dict:
         raise HTTPException(401, "The identity provider returned no verified participant.")
     now = int(time.time())
     policy = await integration_policy(db)
-    avatar_url = verified.get("avatar_url")
-    if avatar_url is not None and (
-        not isinstance(avatar_url, str)
-        or len(avatar_url) > 2048
-        or urlsplit(avatar_url).scheme != "https"
-        or urlsplit(avatar_url).username
-        or urlsplit(avatar_url).password
-    ):
-        avatar_url = None
+    avatar_url = _avatar_url(verified.get("avatar_url"))
     await purge_expired_data(db)
     await db.execute(
         insert(PublicAppActor)

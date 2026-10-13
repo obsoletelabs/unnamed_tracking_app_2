@@ -114,6 +114,54 @@ async def grant_access(flow, scopes, *, hours=1):
     return {"Authorization": "Bearer " + result["access_token"]}, UUID(result["grant_id"])
 
 
+async def test_open_registration_still_requires_owner_policy_and_user_consent(delegation_flow):
+    flow = delegation_flow
+    payload = {"name": "External client", "origin": f"https://{uuid4().hex}.example.test"}
+    async with SessionLocal() as db:
+        policy = await integration_policy(db)
+        previous = policy.allow_any_origin
+        policy.allow_any_origin = False
+        await db.commit()
+    try:
+        assert (await flow.client.post(BASE + "/clients/register", json=payload)).status_code == 403
+        async with SessionLocal() as db:
+            policy = await integration_policy(db)
+            policy.allow_any_origin = True
+            await db.commit()
+        response = await flow.client.post(BASE + "/clients/register", json=payload)
+        assert response.status_code == 201
+        registered = response.json()
+        assert set(registered) == {"id", "name", "origin"}
+        assert (await flow.client.get(BASE + "/games")).status_code == 401
+        # Registration cannot rename or re-enable an individually disabled origin.
+        async with SessionLocal() as db:
+            client = await db.get(IntegrationClient, UUID(registered["id"]))
+            client.enabled = False
+            await db.commit()
+        response = await flow.client.post(
+            BASE + "/clients/register", json={**payload, "name": "Replacement"}
+        )
+        assert response.status_code == 403
+        for origin in (
+            "http://example.com",
+            "https://user:pass@example.com",
+            "https://example.com/path",
+        ):
+            assert (
+                await flow.client.post(
+                    BASE + "/clients/register", json={**payload, "origin": origin}
+                )
+            ).status_code == 422
+    finally:
+        async with SessionLocal() as db:
+            await db.execute(
+                delete(IntegrationClient).where(IntegrationClient.origin == payload["origin"])
+            )
+            policy = await integration_policy(db)
+            policy.allow_any_origin = previous
+            await db.commit()
+
+
 async def test_exchange_is_verifier_bound_and_one_use(delegation_flow):
     flow = delegation_flow
     request_id, verifier = await request_access(flow, ["games.read"])

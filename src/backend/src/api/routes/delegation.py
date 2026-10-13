@@ -7,9 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.sql.functions import count
 
 from src.api.routes.game_assets import AssetKind, get_game_asset
 from src.api.routes.games import list_field_changes, update_game
@@ -143,29 +141,7 @@ async def create_request(payload: AccessRequest, db: AsyncSession = _DB) -> dict
 
 @router.post("/clients/register", status_code=201)
 async def register_client(payload: ClientWrite, db: AsyncSession = _DB) -> dict:
-    policy = await delegation.integration_policy(db)
-    await db.scalar(select(type(policy).id).where(type(policy).id == 1).with_for_update())
-    client = await db.scalar(
-        select(IntegrationClient).where(IntegrationClient.origin == payload.origin)
-    )
-    if not policy.enabled or not policy.allow_any_origin:
-        raise HTTPException(403, "The instance owner must approve this integration origin.")
-    if client is None:
-        total = await db.scalar(select(count()).select_from(IntegrationClient))
-        if total is not None and total >= 1000:
-            raise HTTPException(429, "The instance has reached its registered integration limit.")
-        await db.execute(
-            insert(IntegrationClient)
-            .values(origin=payload.origin, name=payload.name, enabled=True)
-            .on_conflict_do_nothing(index_elements=["origin"])
-        )
-        client = await db.scalar(
-            select(IntegrationClient).where(IntegrationClient.origin == payload.origin)
-        )
-    if client is None or not client.enabled:
-        raise HTTPException(403, "The owner has disabled this integration origin.")
-    await db.commit()
-    return {"id": str(client.id), "name": client.name, "origin": client.origin}
+    return await delegation.register_client(db, payload)
 
 
 @router.get("/requests/{request_id}")
@@ -357,7 +333,9 @@ async def artwork(
     game_id: UUID, kind: AssetKind, actor: DelegatedActor = _ACTOR, db: AsyncSession = _DB
 ) -> Response:
     actor.require("games.read")
-    return await get_game_asset(game_id=game_id, asset_kind=kind, db=db, current_user=actor.user)
+    result = await get_game_asset(game_id=game_id, asset_kind=kind, db=db, current_user=actor.user)
+    result.headers["Cache-Control"] = "no-store"
+    return result
 
 
 @router.get("/lists")

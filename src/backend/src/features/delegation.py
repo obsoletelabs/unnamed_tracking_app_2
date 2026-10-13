@@ -10,7 +10,12 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.functions import count
 
-from src.api.schemas.delegation import SCOPE_DESCRIPTIONS, AccessDecision, AccessRequest
+from src.api.schemas.delegation import (
+    SCOPE_DESCRIPTIONS,
+    AccessDecision,
+    AccessRequest,
+    ClientWrite,
+)
 from src.core.auth import hash_token
 from src.database.models.delegation import (
     DelegatedGrant,
@@ -44,6 +49,35 @@ async def enabled_client(db: AsyncSession, client_id: UUID) -> IntegrationClient
     if not policy.enabled or client is None:
         raise HTTPException(403, "The instance owner has not enabled this integration.")
     return client
+
+
+async def register_client(db: AsyncSession, payload: ClientWrite) -> dict:
+    """Register a consent requester only under the owner's explicit open policy."""
+    await integration_policy(db)
+    # Serialize the registration bound and read the current policy after waiting.
+    policy = await db.scalar(
+        select(IntegrationPolicy)
+        .where(IntegrationPolicy.id == 1)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    assert policy is not None
+    if not policy.enabled or not policy.allow_any_origin:
+        raise HTTPException(403, "The instance owner must approve this integration origin.")
+    client = await db.scalar(
+        select(IntegrationClient).where(IntegrationClient.origin == payload.origin)
+    )
+    if client is None:
+        total = await db.scalar(select(count()).select_from(IntegrationClient))
+        if total is not None and total >= 1000:
+            raise HTTPException(429, "The instance has reached its registered integration limit.")
+        client = IntegrationClient(origin=payload.origin, name=payload.name, enabled=True)
+        db.add(client)
+        await db.flush()
+    if not client.enabled:
+        raise HTTPException(403, "The owner has disabled this integration origin.")
+    await db.commit()
+    return {"id": str(client.id), "name": client.name, "origin": client.origin}
 
 
 def record_audit(

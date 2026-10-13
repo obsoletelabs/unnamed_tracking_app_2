@@ -846,6 +846,12 @@ class PluginManifest(ContractModel):
             for permission in self.permissions
         ):
             raise ValueError("pwa requires an explicit frontend.pwa v1 permission")
+        _validate_backend_route_declarations(self.backend_routes, capability_names)
+        return self
+
+    @model_validator(mode="after")
+    def validate_public_apps(self) -> "PluginManifest":
+        """Public entry points require exact declarations and critical permissions."""
         for declaration, capability in (
             (self.public_app, Capability.INTEGRATIONS_PUBLIC_APP),
             (self.identity_provider, Capability.INTEGRATIONS_IDENTITY_PROVIDER),
@@ -861,11 +867,12 @@ class PluginManifest(ContractModel):
         if self.public_app is not None:
             if self.frontend is None or self.public_app.action_id not in self.ui.actions:
                 raise ValueError("public app requires frontend assets and a declared action")
-            if self.public_app.identity_provider_plugin_id not in dependency_ids:
+            if self.public_app.identity_provider_plugin_id not in {
+                dependency.plugin_id for dependency in self.dependencies
+            }:
                 raise ValueError("public app identity provider must be a declared dependency")
         if self.identity_provider is not None and not set(
             self.identity_provider.model_dump().values()
         ).issubset(self.ui.actions):
             raise ValueError("identity provider must reference declared actions")
-        _validate_backend_route_declarations(self.backend_routes, capability_names)
         return self

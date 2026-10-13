@@ -22,10 +22,11 @@ from src.plugin_api import public_apps as apps
 from src.plugin_api.outbound import public_image_request
 from src.plugin_api.runtime_client import PluginRuntimeRequestError, PluginRuntimeUnavailable
 
+_PRIVATE_HEADERS = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"}
+
 
 def private_response(response: Response) -> None:
-    response.headers["Cache-Control"] = "no-store"
-    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers.update(_PRIVATE_HEADERS)
 
 
 router = APIRouter(
@@ -143,11 +144,13 @@ async def action(
     limit = asyncio.Semaphore(8)
 
     async def check(source: PublicAppSource) -> None:
-        if source.credential and (
+        must_revalidate = (
             payload.refresh_sources
             or payload.values.get("operation") in {"roll", "finalize"}
-            or source.credential_kind == "legacy_api_key"
-            and not policy.allow_legacy_api_keys
+            or (source.credential_kind == "legacy_api_key" and not policy.allow_legacy_api_keys)
+        )
+        if source.credential and (
+            must_revalidate
             or not source.last_checked_at
             or source.last_checked_at + 5 <= int(time.time())
         ):
@@ -207,7 +210,7 @@ async def catalogue_artwork(
         raise HTTPException(404, "Artwork unavailable.")
     await apps.authenticated(db, plugin_id, request)
     result = await public_catalogue.artwork(app_id)
-    return Response(result["content"], media_type=result["media_type"])
+    return Response(result["content"], media_type=result["media_type"], headers=_PRIVATE_HEADERS)
 
 
 @router.get("/{plugin_id}/participants/{participant_id}/avatar")
@@ -238,7 +241,7 @@ async def avatar(
         result = await asyncio.to_thread(public_image_request, participant.avatar_url)
     except (OSError, ValueError, TimeoutError) as exc:
         raise HTTPException(404, "Avatar unavailable.") from exc
-    return Response(result["content"], media_type=result["media_type"])
+    return Response(result["content"], media_type=result["media_type"], headers=_PRIVATE_HEADERS)
 
 
 @router.post("/{plugin_id}/sources", status_code=201)
@@ -313,7 +316,7 @@ async def artwork(
     result = await sources.source_request(
         source, f"/api/delegation/v1/games/{game_id}/artwork/{kind}", binary=True
     )
-    return Response(result["content"], media_type="image/png")
+    return Response(result["content"], media_type="image/png", headers=_PRIVATE_HEADERS)
 
 
 @router.get("/{plugin_id}/sources/{source_id}/games/{game_id}/achievements")
