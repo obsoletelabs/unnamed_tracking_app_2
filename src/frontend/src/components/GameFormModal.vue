@@ -1194,13 +1194,11 @@ async function submit() {
                 </p>
               </div>
             </div>
-            <label class="field"
-              ><span
-                ><input v-model="playCompatibilityEnabled" type="checkbox" />
-                Save group play compatibility</span
-              ></label
-            >
-            <div v-if="playCompatibilityEnabled" class="form-grid">
+            <label class="checkbox-field">
+              <input v-model="playCompatibilityEnabled" type="checkbox" />
+              <span>Save group play compatibility</span>
+            </label>
+            <div v-if="playCompatibilityEnabled" class="field-row">
               <label class="field"
                 ><span>Minimum players</span
                 ><input
@@ -1228,12 +1226,10 @@ async function submit() {
                   max="1440"
                   placeholder="Unknown"
               /></label>
-              <label class="field"
-                ><span
-                  ><input v-model="supportsCrossplay" type="checkbox" />
-                  Cross-platform play confirmed</span
-                ></label
-              >
+              <label class="checkbox-field">
+                <input v-model="supportsCrossplay" type="checkbox" />
+                <span>Cross-platform play confirmed</span>
+              </label>
             </div>
           </div>
 

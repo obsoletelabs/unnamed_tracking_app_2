@@ -113,6 +113,14 @@ onMounted(load);
             max="720"
             required
         /></label>
+        <label
+          ><input v-model="policy.allow_any_origin" type="checkbox" /> Allow
+          consent requests from any HTTPS integration origin</label
+        >
+        <p>
+          Each user must still approve access. Individually disabled origins
+          stay blocked.
+        </p>
         <button :disabled="busy">Save instance policy</button>
       </form>
       <p>
@@ -121,14 +129,6 @@ onMounted(load);
         creates an account.
       </p>
       <h3>Approved integration origins</h3>
-      <label class="origin-policy"
-        ><input v-model="policy.allow_any_origin" type="checkbox" /> Allow
-        consent requests from any HTTPS integration origin</label
-      >
-      <p>
-        Save the instance policy after changing this option. Each user must
-        still approve access. Individually disabled origins stay blocked.
-      </p>
       <article v-for="client in policy.clients" :key="client.id" class="client">
         <strong>{{ client.name }}</strong
         ><span>{{ client.origin }}</span
@@ -208,11 +208,6 @@ button {
 button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
-}
-.origin-policy {
-  display: flex;
-  align-items: center;
-  gap: 10px;
 }
 .policy {
   display: grid;
