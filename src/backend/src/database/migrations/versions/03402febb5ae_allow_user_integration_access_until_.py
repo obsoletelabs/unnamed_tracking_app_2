@@ -31,7 +31,7 @@ def downgrade() -> None:
     for table in ("public_app_sources", "delegated_grants"):
         op.execute(
             sa.text(
-                f"UPDATE {table} SET expires_at = EXTRACT(EPOCH FROM now())::bigint "
+                f"UPDATE {table} SET expires_at = FLOOR(EXTRACT(EPOCH FROM now()))::bigint "
                 "WHERE expires_at IS NULL"
             )
         )

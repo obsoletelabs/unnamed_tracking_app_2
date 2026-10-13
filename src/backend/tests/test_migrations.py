@@ -190,12 +190,11 @@ def test_replaying_steam_session_migration_preserves_connections_and_owner_bindi
 
 def test_integration_adoption_preserves_ongoing_grants_sources_and_saved_details():
     """Replay the actual revisions over populated new tables, then exercise rollback."""
-    import time
     from uuid import uuid4
 
     from alembic.migration import MigrationContext
     from alembic.operations import Operations
-    from sqlalchemy import create_engine, insert, select
+    from sqlalchemy import create_engine, insert, select, text
 
     from src.core.config import settings
     from src.database.models.delegation import DelegatedGrant, DelegationRequest, IntegrationClient
@@ -319,15 +318,23 @@ def test_integration_adoption_preserves_ongoing_grants_sources_and_saved_details
                     expiry = conn.execute(
                         select(DelegatedGrant.expires_at).where(DelegatedGrant.id == grant_id)
                     ).scalar_one()
-                    assert expiry <= int(time.time())
+                    # BIGINT casts round numeric epoch fractions; an expiry must
+                    # never round into the next second. Use this transaction's
+                    # database clock so host clock drift cannot affect the test.
+                    expected_expiry = int(
+                        conn.execute(text("SELECT EXTRACT(EPOCH FROM now())")).scalar_one()
+                    )
+                    assert expiry == expected_expiry
                     remaining_sources = (
                         conn.execute(
-                            select(PublicAppSource.id).where(PublicAppSource.actor_id == actor_id)
+                            select(PublicAppSource.expires_at).where(
+                                PublicAppSource.actor_id == actor_id
+                            )
                         )
                         .scalars()
                         .all()
                     )
-                    assert len(remaining_sources) == 1
+                    assert remaining_sources == [expected_expiry]
             finally:
                 transaction.rollback()
     finally:
