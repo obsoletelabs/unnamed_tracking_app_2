@@ -186,3 +186,149 @@ def test_replaying_steam_session_migration_preserves_connections_and_owner_bindi
                 transaction.rollback()
     finally:
         engine.dispose()
+
+
+def test_integration_adoption_preserves_ongoing_grants_sources_and_saved_details():
+    """Replay the actual revisions over populated new tables, then exercise rollback."""
+    import time
+    from uuid import uuid4
+
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+    from sqlalchemy import create_engine, insert, select
+
+    from src.core.config import settings
+    from src.database.models.delegation import DelegatedGrant, DelegationRequest, IntegrationClient
+    from src.database.models.game import Game
+    from src.database.models.public_app import PublicAppActor, PublicAppSource
+    from src.database.models.user import User
+
+    engine = create_engine(settings.DATABASE_URL.replace("+asyncpg", "+psycopg"))
+    user_id, client_id, request_id, grant_id, actor_id, game_id = [uuid4() for _ in range(6)]
+    preset = {"min_players": 2, "max_players": 4, "crossplay": True}
+    try:
+        with engine.connect() as conn:
+            transaction = conn.begin()
+            try:
+                conn.execute(
+                    insert(User).values(
+                        id=user_id,
+                        username=user_id.hex,
+                        email=f"{user_id}@example.test",
+                        password_hash="fixture",
+                    )
+                )
+                conn.execute(
+                    insert(Game).values(
+                        id=game_id,
+                        user_id=user_id,
+                        title="Together",
+                        sort_title="together",
+                        folder_location=game_id.hex,
+                        play_compatibility=preset,
+                    )
+                )
+                conn.execute(
+                    insert(IntegrationClient).values(
+                        id=client_id,
+                        name="Existing client",
+                        origin=f"https://{client_id.hex}.example.test",
+                        enabled=True,
+                    )
+                )
+                conn.execute(
+                    insert(DelegationRequest).values(
+                        id=request_id,
+                        client_id=client_id,
+                        requested_scopes=["games.read"],
+                        code_challenge="a" * 64,
+                        expires_at=2**40,
+                    )
+                )
+                conn.execute(
+                    insert(DelegatedGrant).values(
+                        id=grant_id,
+                        user_id=user_id,
+                        client_id=client_id,
+                        request_id=request_id,
+                        scopes=["games.read"],
+                        token_hash=grant_id.hex * 2,
+                        expires_at=None,
+                    )
+                )
+                conn.execute(
+                    insert(PublicAppActor).values(
+                        id=actor_id,
+                        plugin_id="test.migration",
+                        installation_id=uuid4(),
+                        provider_installation_id=uuid4(),
+                        subject="subject",
+                        display_name="Existing actor",
+                        expires_at=2**40,
+                        avatar_url="https://example.test/avatar.png",
+                    )
+                )
+                for kind in ("delegated", "legacy_api_key"):
+                    conn.execute(
+                        insert(PublicAppSource).values(
+                            actor_id=actor_id,
+                            origin=f"https://{kind}.example.test",
+                            instance_id=kind,
+                            credential_kind=kind,
+                            request_id=request_id if kind == "delegated" else None,
+                            credential="encrypted-fixture",
+                            expires_at=None,
+                            state="connected",
+                            library=[{"title": "Existing library"}],
+                        )
+                    )
+                script = _script()
+                with Operations.context(MigrationContext.configure(conn)):
+                    for revision in (
+                        "150faa21e2c0",
+                        "f28e1f724191",
+                        "03402febb5ae",
+                        "3acc697f5448",
+                        "2f741285768c",
+                        "da9e271523e2",
+                    ):
+                        script.get_revision(revision).module.upgrade()
+                    assert conn.execute(
+                        select(DelegatedGrant.expires_at).where(DelegatedGrant.id == grant_id)
+                    ).one() == (None,)
+                    assert (
+                        conn.execute(
+                            select(Game.play_compatibility).where(Game.id == game_id)
+                        ).scalar_one()
+                        == preset
+                    )
+                    sources = (
+                        conn.execute(
+                            select(PublicAppSource.library).where(
+                                PublicAppSource.actor_id == actor_id
+                            )
+                        )
+                        .scalars()
+                        .all()
+                    )
+                    assert sources == [[{"title": "Existing library"}]] * 2
+                    # Rollback forgets unsupported legacy credentials and expires
+                    # ongoing access rather than inventing a new access duration.
+                    script.get_revision("3acc697f5448").module.downgrade()
+                    script.get_revision("03402febb5ae").module.downgrade()
+                    expiry = conn.execute(
+                        select(DelegatedGrant.expires_at).where(DelegatedGrant.id == grant_id)
+                    ).scalar_one()
+                    assert expiry <= int(time.time())
+                    remaining_sources = (
+                        conn.execute(
+                            select(PublicAppSource.id).where(PublicAppSource.actor_id == actor_id)
+                        )
+                        .scalars()
+                        .all()
+                    )
+                    assert len(remaining_sources) == 1
+            finally:
+                transaction.rollback()
+    finally:
+        engine.dispose()
