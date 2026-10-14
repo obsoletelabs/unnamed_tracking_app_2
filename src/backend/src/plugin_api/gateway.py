@@ -50,6 +50,7 @@ from src.features.plugin_auth_flows import (
     unregister_invite_flow,
     unregister_reset_flow,
 )
+from src.features.public_app_admin import manage_participants
 from src.features.user_invitations import issue_invitation, list_invitations, revoke_invitation
 from src.plugin_api.capabilities import capability_implies
 from src.plugin_api.contracts import (
@@ -78,6 +79,9 @@ from src.plugin_api.sessions import dispatch_sessions
 
 _DATA_ROOT = Path("/data/users")
 _METHOD_CAPABILITIES = {
+    "public_apps.admin.list": "integrations.public_app.admin",
+    "public_apps.admin.unlink": "integrations.public_app.admin",
+    "public_apps.admin.purge": "integrations.public_app.admin",
     "auth_flows.user_invites.status": "auth.user_invites",
     "auth_flows.user_invites.register": "auth.user_invites",
     "auth_flows.user_invites.restore": "auth.user_invites",
@@ -296,6 +300,20 @@ async def dispatch_gateway_request(
     for library_method in ("games.details.list", "games.get", "games.media.list"):
         handlers[library_method] = partial(
             dispatch_game_library, db, user_id=user_id, method=library_method, payload=payload
+        )
+    for admin_method in (
+        "public_apps.admin.list",
+        "public_apps.admin.unlink",
+        "public_apps.admin.purge",
+    ):
+        handlers[admin_method] = partial(
+            manage_participants,
+            db,
+            plugin_id=plugin_id,
+            installation_id=installation_id,
+            user_id=user_id,
+            method=admin_method,
+            payload=payload,
         )
     handler: Callable[[], Awaitable[dict[str, Any]]] | None
     if method.startswith("sessions."):

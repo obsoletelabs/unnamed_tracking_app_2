@@ -3,7 +3,7 @@
 from uuid import UUID, uuid4
 
 from sqlalchemy import BigInteger, Boolean, ForeignKey, Integer, String
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -46,6 +46,7 @@ class DelegationRequest(Base):
     )
     requested_scopes: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False)
     code_challenge: Mapped[str] = mapped_column(String(64), nullable=False)
+    external_account: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     state: Mapped[str] = mapped_column(String(16), default="pending", nullable=False)
     expires_at: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     created_at: Mapped[int] = mapped_column(BigInteger, default=unix_timestamp, nullable=False)

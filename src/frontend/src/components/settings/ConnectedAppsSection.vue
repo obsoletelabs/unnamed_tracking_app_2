@@ -70,6 +70,15 @@ onMounted(load);
     <article v-for="grant in grants" :key="grant.id" class="grant">
       <h3>{{ grant.name }}</h3>
       <p class="origin">{{ grant.origin }}</p>
+      <p v-if="grant.external_account">
+        <strong>Linked account: {{ grant.external_account.username }}</strong
+        ><br />Account ID: {{ grant.external_account.subject }} · Reported by
+        {{ grant.name }}.
+      </p>
+      <p v-else>
+        Linked account label unavailable for this older grant. Reconnect to
+        include it.
+      </p>
       <p>
         {{
           grant.revoked_at

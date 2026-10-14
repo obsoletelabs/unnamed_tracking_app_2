@@ -6,6 +6,11 @@ export interface AccessCapability {
   write: boolean;
 }
 export interface AccessRequestSummary {
+  external_account?: {
+    provider: string;
+    subject: string;
+    username: string;
+  } | null;
   id: string;
   name: string;
   origin: string;
@@ -16,6 +21,11 @@ export interface AccessRequestSummary {
   capabilities: AccessCapability[];
 }
 export interface IntegrationGrant {
+  external_account?: {
+    provider: string;
+    subject: string;
+    username: string;
+  } | null;
   id: string;
   name: string;
   origin: string;

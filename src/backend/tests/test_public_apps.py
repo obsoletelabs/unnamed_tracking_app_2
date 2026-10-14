@@ -15,6 +15,7 @@ from src.core.auth import hash_token
 from src.database.models.delegation import IntegrationPolicy
 from src.database.models.plugin_permissions import PluginPermissionGrant
 from src.database.models.public_app import PublicAppActor, PublicAppSession, PublicAppSource
+from src.database.models.user import User
 from src.database.session import SessionLocal
 from src.features import legacy_integrations, public_app_sources
 from src.features.delegation import integration_policy
@@ -133,6 +134,95 @@ async def sign_in(flow):
     assert response.status_code == 200, response.text
     result = response.json()
     return {"Authorization": "Bearer " + result["session_token"]}, UUID(result["participant"]["id"])
+
+
+async def test_admin_management_requires_explicit_capability_admin_and_installation(public_flow):
+    flow = public_flow
+    headers, actor_id = await sign_in(flow)
+    async with SessionLocal() as db:
+        admin = User(
+            username="admin_" + uuid4().hex,
+            email=f"{uuid4()}@example.test",
+            password_hash="x",
+            is_admin=True,
+            is_active=True,
+        )
+        db.add(admin)
+        await db.flush()
+        admin_id = admin.id
+        source = PublicAppSource(
+            actor_id=actor_id,
+            origin="https://source.example",
+            instance_id=str(uuid4()),
+            credential="never-return-this",
+            library=[{"title": "private"}],
+        )
+        db.add(source)
+        foreign = PublicAppActor(
+            plugin_id=flow.plugin_id,
+            installation_id=uuid4(),
+            provider_installation_id=flow.provider_installation,
+            subject="other-installation",
+            display_name="Other installation",
+            expires_at=int(time.time()) + 3600,
+        )
+        db.add(foreign)
+        await db.commit()
+        args = dict(
+            plugin_id=flow.plugin_id,
+            installation_id=flow.installation_id,
+            user_id=admin_id,
+            capability="integrations.public_app.admin",
+            method="public_apps.admin.list",
+            payload={},
+        )
+        with pytest.raises(PermissionError):
+            await dispatch_gateway_request(db, **args)
+        db.add(
+            PluginPermissionGrant(
+                plugin_id=flow.plugin_id,
+                installation_id=flow.installation_id,
+                capability="integrations.public_app.admin",
+                capability_version=1,
+            )
+        )
+        await db.commit()
+        result = await dispatch_gateway_request(db, **args)
+        assert result["participants"][0]["id"] == str(actor_id)
+        assert "never-return-this" not in str(result) and "private" not in str(result)
+        admin.is_admin = False
+        await db.commit()
+        with pytest.raises(PermissionError):
+            await dispatch_gateway_request(db, **args)
+        admin.is_admin = True
+        await db.commit()
+        args.update(
+            method="public_apps.admin.purge",
+            payload={"actor_id": str(foreign.id), "confirmed": True},
+        )
+        assert (await dispatch_gateway_request(db, **args))["affected"] == 0
+        assert await db.get(PublicAppActor, foreign.id) is not None
+        args.update(
+            method="public_apps.admin.unlink",
+            payload={"actor_id": str(actor_id), "source_id": str(source.id), "confirmed": True},
+        )
+        assert (await dispatch_gateway_request(db, **args))["affected"] == 1
+        assert await db.get(PublicAppSource, source.id, populate_existing=True) is None
+        args.update(method="public_apps.admin.purge", payload={"actor_id": str(actor_id)})
+        with pytest.raises(ValueError):
+            await dispatch_gateway_request(db, **args)
+        args["payload"] = {"actor_id": str(actor_id), "confirmed": True}
+        assert (await dispatch_gateway_request(db, **args))["affected"] == 1
+        assert await db.get(PublicAppActor, actor_id) is None
+        assert await db.get(PublicAppSource, source.id, populate_existing=True) is None
+        args["payload"] = {"all": True, "confirmed": True}
+        assert (await dispatch_gateway_request(db, **args))["affected"] == 0
+        assert await db.get(PublicAppActor, foreign.id) is not None
+        await db.execute(delete(User).where(User.id == admin_id))
+        await db.commit()
+    assert (await flow.client.get(flow.base + "/sources", headers=headers)).status_code == 401
+    assert not capability_implies("api.full", "integrations.public_app.admin")
+    assert not capability_implies("integrations.public_app", "integrations.public_app.admin")
 
 
 @pytest.mark.parametrize(

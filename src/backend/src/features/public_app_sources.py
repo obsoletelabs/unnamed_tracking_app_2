@@ -127,6 +127,11 @@ async def connect_source(
             "client_id": client["id"],
             "scopes": scopes,
             "code_challenge": hash_token(verifier),
+            "external_account": {
+                "provider": actor.plugin_id,
+                "subject": actor.subject,
+                "username": actor.account_name or actor.display_name,
+            },
         },
     )
     if request_result["status"] != 201:

@@ -290,6 +290,7 @@ def test_integration_adoption_preserves_ongoing_grants_sources_and_saved_details
                         "3acc697f5448",
                         "2f741285768c",
                         "da9e271523e2",
+                        "e8c64dd34f5c",
                     ):
                         script.get_revision(revision).module.upgrade()
                     assert conn.execute(
@@ -311,8 +312,23 @@ def test_integration_adoption_preserves_ongoing_grants_sources_and_saved_details
                         .all()
                     )
                     assert sources == [[{"title": "Existing library"}]] * 2
+                    assert (
+                        conn.execute(
+                            select(PublicAppActor.account_name).where(PublicAppActor.id == actor_id)
+                        ).scalar_one()
+                        is None
+                    )
+                    assert (
+                        conn.execute(
+                            select(DelegationRequest.external_account).where(
+                                DelegationRequest.id == request_id
+                            )
+                        ).scalar_one()
+                        is None
+                    )
                     # Rollback forgets unsupported legacy credentials and expires
                     # ongoing access rather than inventing a new access duration.
+                    script.get_revision("e8c64dd34f5c").module.downgrade()
                     script.get_revision("3acc697f5448").module.downgrade()
                     script.get_revision("03402febb5ae").module.downgrade()
                     expiry = conn.execute(

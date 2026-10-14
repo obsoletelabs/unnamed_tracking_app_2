@@ -78,6 +78,12 @@ onMounted(async () => {
       <div class="identity">
         <h2>{{ access.name }}</h2>
         <p>{{ access.origin }}</p>
+        <p v-if="access.external_account">
+          External account:
+          <strong>{{ access.external_account.username }}</strong> ·
+          {{ access.external_account.subject }}<br />Reported by
+          {{ access.name }}. Check this is the account you intend to link.
+        </p>
         <p>
           Requests access to <strong>{{ instanceOrigin }}</strong> as
           <strong>{{ currentUser?.username }}</strong

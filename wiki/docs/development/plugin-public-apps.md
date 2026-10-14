@@ -121,6 +121,32 @@ revocation, provider-local reports, source isolation, malformed avatars and imag
 transport. The matrix documents the integration boundary; it is not a claim of an
 unrelated whole-application penetration test.
 
+## Saved participant administration
+
+The separate explicit `integrations.public_app.admin` capability enables
+`public_apps.admin.list`, `.unlink` and `.purge`. Every call also requires an
+active host administrator and is restricted to that plugin installation. Neither
+`api.full` nor `integrations.public_app` implies this grant. External participants
+cannot invoke it. List pages contain at most 100 credential-free identity/source
+summaries and a cursor. Mutations require `confirmed: true` and either `actor_id`
+or, for an installation-wide purge, `all: true`. Unlink optionally accepts one
+`source_id`; it forgets broker credentials and invalidates external sessions.
+Purge removes actors and their sessions/connections. The plugin owns cleanup of
+its room records and must clear cached identity/library results as well. Upstream
+source grants and users' tracking libraries are outside this local purge.
+
+Consent requests may include bounded `external_account` display context:
+`provider`, `subject` and `username`. This is a requester-reported label, shown
+before approval and in Connected apps; it is never authentication proof or an
+account-claim instruction. The Discord adapter supplies its verified username to
+the local broker. Older remote grants need fresh consent for this label; local
+broker grants can be identified by their exact request ID, never matching names.
+Migration `e8c64dd34f5c` adds nullable fields without changing existing grants.
+
+Guest/room retention accepts 1–8760 hours (365 days). Timed grant limits remain
+separate, and Until revoked remains an explicit user choice. Changing room
+retention affects new rooms; it does not resurrect expired data.
+
 ## Public-app HTTP routes
 
 Under `/api/public-apps/{plugin_id}`, `/config` and `/app/...` expose only the

@@ -71,14 +71,23 @@ class PolicyWrite(DelegationSchema):
     allow_guests: bool = False
     allow_any_origin: bool = False
     allow_legacy_api_keys: bool = False
-    guest_retention_hours: int = Field(default=48, ge=1, le=720)
+    guest_retention_hours: int = Field(default=48, ge=1, le=8760)
     maximum_grant_hours: int = Field(default=336, ge=1, le=720)
+
+
+class ExternalAccount(DelegationSchema):
+    """Display context reported by the requester, never source-side identity proof."""
+
+    provider: str = Field(min_length=1, max_length=128)
+    subject: str = Field(min_length=1, max_length=255)
+    username: str = Field(min_length=1, max_length=100)
 
 
 class AccessRequest(DelegationSchema):
     client_id: UUID
     scopes: list[str] = Field(min_length=1, max_length=len(SCOPE_DESCRIPTIONS))
     code_challenge: str = Field(pattern=r"^[a-f0-9]{64}$")
+    external_account: ExternalAccount | None = None
 
     _scopes = field_validator("scopes")(integration_scopes)
 

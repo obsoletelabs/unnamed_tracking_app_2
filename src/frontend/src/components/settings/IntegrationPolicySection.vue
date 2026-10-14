@@ -92,9 +92,15 @@ onMounted(load);
             v-model.number="policy.guest_retention_hours"
             type="number"
             min="1"
-            max="720"
+            max="8760"
             required
         /></label>
+        <p>
+          Guest means no connected tracking library, even though the participant
+          signs in through Discord. Keep guest/room data for up to 365 days
+          (8760 hours). Saved account grants have their own expiry or Until
+          revoked setting.
+        </p>
         <label
           ><input v-model="policy.allow_legacy_api_keys" type="checkbox" />
           Allow unsafe legacy API-key connections from older instances</label

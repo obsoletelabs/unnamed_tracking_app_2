@@ -106,6 +106,7 @@ class Capability(StrEnum):
     NETWORK_OUTBOUND = "network.outbound"
     FULL_API = "api.full"
     INTEGRATIONS_PUBLIC_APP = "integrations.public_app"
+    INTEGRATIONS_PUBLIC_APP_ADMIN = "integrations.public_app.admin"
     INTEGRATIONS_IDENTITY_PROVIDER = "integrations.identity_provider"
 
 

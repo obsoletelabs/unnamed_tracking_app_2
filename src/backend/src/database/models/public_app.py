@@ -20,6 +20,7 @@ class PublicAppActor(Base):
     provider_installation_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
     subject: Mapped[str] = mapped_column(String(255), nullable=False)
     display_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    account_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     expires_at: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
 

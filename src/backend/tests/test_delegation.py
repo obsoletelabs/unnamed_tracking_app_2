@@ -114,6 +114,45 @@ async def grant_access(flow, scopes, *, hours=1):
     return {"Authorization": "Bearer " + result["access_token"]}, UUID(result["grant_id"])
 
 
+async def test_external_account_label_is_visible_before_and_after_consent(delegation_flow):
+    flow = delegation_flow
+    label = {"provider": "game-night", "subject": "discord-id", "username": "iceman2018"}
+    verifier = secrets.token_urlsafe(48)
+    result = await flow.client.post(
+        BASE + "/requests",
+        json={
+            "client_id": str(flow.integration_id),
+            "scopes": ["games.read"],
+            "code_challenge": hash_token(verifier),
+            "external_account": label,
+        },
+    )
+    request_id = result.json()["request_id"]
+    assert (await flow.client.get(f"{BASE}/requests/{request_id}")).json()[
+        "external_account"
+    ] == label
+    assert (
+        await flow.client.post(
+            f"{BASE}/requests/{request_id}/decision",
+            json={
+                "approve": True,
+                "scopes": ["games.read"],
+            },
+        )
+    ).status_code == 200
+    grants = (await flow.client.get(BASE + "/grants")).json()
+    assert grants[0]["external_account"] == label
+    assert grants[0]["scopes"] == ["games.read"]  # A label confers no authority.
+
+
+async def test_guest_retention_can_exceed_thirty_days_without_changing_grants():
+    from src.api.schemas.delegation import PolicyWrite
+
+    assert PolicyWrite(enabled=True, guest_retention_hours=8760).maximum_grant_hours == 336
+    with pytest.raises(ValueError):
+        PolicyWrite(enabled=True, guest_retention_hours=8761)
+
+
 async def test_open_registration_still_requires_owner_policy_and_user_consent(delegation_flow):
     flow = delegation_flow
     payload = {"name": "External client", "origin": f"https://{uuid4().hex}.example.test"}

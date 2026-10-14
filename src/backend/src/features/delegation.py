@@ -113,6 +113,9 @@ async def create_request(db: AsyncSession, payload: AccessRequest) -> dict:
         client_id=client.id,
         requested_scopes=payload.scopes,
         code_challenge=payload.code_challenge,
+        external_account=payload.external_account.model_dump()
+        if payload.external_account
+        else None,
         expires_at=now + REQUEST_TTL_SECONDS,
     )
     db.add(row)
@@ -152,6 +155,7 @@ async def request_summary(db: AsyncSession, request_id: UUID) -> dict:
         "state": row.state,
         "expires_at": row.expires_at,
         "maximum_grant_hours": policy.maximum_grant_hours,
+        "external_account": row.external_account,
         "capabilities": [
             {
                 "scope": scope,

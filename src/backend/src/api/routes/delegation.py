@@ -32,10 +32,12 @@ from src.core.auth import (
     get_current_user,
     hash_token,
 )
+from src.core.config import settings
 from src.core.delegation import DelegatedActor, delegated_actor
 from src.database.models.anime import Anime
-from src.database.models.delegation import DelegatedGrant, IntegrationClient
+from src.database.models.delegation import DelegatedGrant, DelegationRequest, IntegrationClient
 from src.database.models.movies import Movie
+from src.database.models.public_app import PublicAppActor, PublicAppSource
 from src.database.models.tv_show import TVShow
 from src.database.models.user import User
 from src.database.session import get_db
@@ -171,13 +173,33 @@ async def exchange_request(
 async def grants(user: User = _BROWSER_USER, db: AsyncSession = _DB) -> list[dict]:
     rows = (
         await db.execute(
-            select(DelegatedGrant, IntegrationClient)
+            select(DelegatedGrant, IntegrationClient, DelegationRequest.external_account)
             .join(IntegrationClient, DelegatedGrant.client_id == IntegrationClient.id)
+            .join(DelegationRequest, DelegatedGrant.request_id == DelegationRequest.id)
             .where(DelegatedGrant.user_id == user.id)
             .order_by(DelegatedGrant.created_at.desc())
             .limit(200)
         )
     ).all()
+    # Match an older local grant by its exact verifier-bound request, never name.
+    local_links = (
+        await db.execute(
+            select(PublicAppSource.request_id, PublicAppActor)
+            .join(PublicAppActor, PublicAppSource.actor_id == PublicAppActor.id)
+            .where(
+                PublicAppSource.request_id.in_([grant.request_id for grant, _, _ in rows]),
+                PublicAppSource.origin == settings.PUBLIC_APP_URL.rstrip("/"),
+            )
+        )
+    ).all()
+    labels = {
+        request_id: {
+            "provider": actor.plugin_id,
+            "subject": actor.subject,
+            "username": actor.account_name or actor.display_name,
+        }
+        for request_id, actor in local_links
+    }
     return [
         {
             "id": str(grant.id),
@@ -188,8 +210,9 @@ async def grants(user: User = _BROWSER_USER, db: AsyncSession = _DB) -> list[dic
             "created_at": grant.created_at,
             "expires_at": grant.expires_at,
             "revoked_at": grant.revoked_at,
+            "external_account": external_account or labels.get(grant.request_id),
         }
-        for grant, client in rows
+        for grant, client, external_account in rows
     ]
 
 

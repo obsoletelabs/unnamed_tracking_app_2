@@ -77,6 +77,7 @@ async def purge_expired_data(db: AsyncSession) -> None:
         .values(
             subject="expired:" + cast(PublicAppActor.id, String),
             display_name="",
+            account_name=None,
             avatar_url=None,
         )
     )
@@ -162,6 +163,7 @@ async def bootstrap(db: AsyncSession, plugin_id: str, proof: dict) -> dict:
         verified.get("room"),
         verified.get("display_name"),
     )
+    account_name = verified.get("account_name") or display_name
     if (
         any(
             not isinstance(value, str) or not value or len(value) > maximum
@@ -169,6 +171,7 @@ async def bootstrap(db: AsyncSession, plugin_id: str, proof: dict) -> dict:
                 (subject, 255),
                 (room, 255),
                 (display_name, 100),
+                (account_name, 100),
             )
         )
         or verified.get("verified") is not True
@@ -186,6 +189,7 @@ async def bootstrap(db: AsyncSession, plugin_id: str, proof: dict) -> dict:
             provider_installation_id=UUID(provider["installation_id"]),
             subject=subject,
             display_name=display_name,
+            account_name=account_name,
             avatar_url=avatar_url,
             expires_at=now + policy.guest_retention_hours * 3600,
         )
@@ -193,6 +197,7 @@ async def bootstrap(db: AsyncSession, plugin_id: str, proof: dict) -> dict:
             index_elements=["installation_id", "subject"],
             set_={
                 "display_name": display_name,
+                "account_name": account_name,
                 "avatar_url": avatar_url,
                 "provider_installation_id": UUID(provider["installation_id"]),
                 "expires_at": now + policy.guest_retention_hours * 3600,

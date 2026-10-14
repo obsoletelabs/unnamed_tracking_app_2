@@ -28,6 +28,20 @@ or revoke a grant. New capabilities require a new consent flow. Disabling the
 integration origin, disabling integrations, deactivating an account, revoking a
 grant or reaching its expiry blocks subsequent requests.
 
+When supplied by the integration, the consent screen and Connected apps show the
+linked external username and stable account ID. This label is reported by the
+requester; check that it is the account you intended to connect. It never proves
+ownership or merges accounts. Older remote grants may require reconnecting to
+show a label; local broker grants use their exact consent request ID.
+
+Administrators can set guest/room retention from 1 to 8760 hours (365 days).
+This is separate from timed or Until revoked account grants. A Discord guest is
+an externally signed-in participant without a connected tracking library, not a
+new application user. Plugins may expose an administrator page for saved external
+participants, guarded by the separate `integrations.public_app.admin` permission.
+Unlink/purge there forgets local integration data; source-side grants remain
+revocable in the source instance's Connected apps.
+
 The integration retains an opaque credential, rather than a password, app
 session or unrestricted API key. Credentials are restricted to the consenting
 user, and never provide administration access, even for an administrator.
@@ -84,7 +98,7 @@ verification. Provider names and descriptions cannot be changed by an override.
 
 ## Operations
 
-Apply migrations through `da9e271523e2` through the normal deployment migration process.
+Apply migrations through `e8c64dd34f5c` through the normal deployment migration process.
 The policy starts disabled. Database backups include grant hashes and local
 reports. Audit records contain event metadata, never credentials or library
 contents. Integration operators should delete their copies of credentials when
