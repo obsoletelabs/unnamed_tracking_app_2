@@ -72,6 +72,7 @@ function deployment(port: number | null, mode = "starttls", locked = false) {
       default_login_method: null,
       login_button_text: null,
       allow_new_users: false,
+      require_verified_email: false,
       client_secret_configured: false,
       named_providers: [],
       locked_fields: {},

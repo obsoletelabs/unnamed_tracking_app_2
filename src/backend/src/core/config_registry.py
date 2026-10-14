@@ -591,6 +591,15 @@ CONFIG_REGISTRY: tuple[ConfigSpec, ...] = (
         storage="oidc",
     ),
     ConfigSpec(
+        "OIDC_REQUIRE_VERIFIED_EMAIL",
+        "oidc",
+        label="Require verified email",
+        input_type="boolean",
+        default=False,
+        storage="oidc",
+        hint="When enabled, require an explicit email_verified=true claim. Missing or false claims are rejected.",
+    ),
+    ConfigSpec(
         "OIDC_DEFAULT_LOGIN_METHOD",
         "oidc",
         label="Default login method",

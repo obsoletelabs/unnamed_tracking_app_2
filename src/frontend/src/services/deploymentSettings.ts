@@ -10,6 +10,7 @@ export interface OidcProviderSetting {
   admin_group: string | null;
   user_match_field: string;
   allow_new_users: boolean;
+  require_verified_email: boolean;
   button_text: string;
   button_colour: string;
   button_image_url: string | null;
@@ -64,6 +65,7 @@ export interface DeploymentSettings {
     default_login_method: string | null;
     login_button_text: string | null;
     allow_new_users: boolean;
+    require_verified_email: boolean;
     client_secret_configured: boolean;
     named_providers: OidcProviderSetting[];
     locked_fields: Record<string, boolean>;

@@ -138,6 +138,7 @@ Secret fields are not returned as plaintext by the setup configuration API.
 | `OIDC_ADMIN_GROUP` | — | Optional group whose members receive administrator access. |
 | `OIDC_USER_MATCH_FIELD` | `email` | Match an OIDC identity by `email` or `username`. |
 | `OIDC_ALLOW_NEW_USERS` | `true` | Allow unmatched OIDC identities to create local accounts. |
+| `OIDC_REQUIRE_VERIFIED_EMAIL` | `false` | Require an explicit boolean `email_verified=true` for the matching bootstrap/environment provider and its callback aliases. False, missing or malformed claims are rejected when enabled. Named providers can enable this independently. |
 | `OIDC_DEFAULT_LOGIN_METHOD` | `local` | Default login choice: `local` or `sso`. |
 | `OIDC_LOGIN_BUTTON_TEXT` | `Continue with SSO` | Text used for the SSO login button. |
 

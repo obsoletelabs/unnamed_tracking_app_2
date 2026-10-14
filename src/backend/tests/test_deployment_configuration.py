@@ -368,6 +368,72 @@ async def test_setup_resolves_complete_oidc_credentials_and_generated_callback(
     provider = json.loads(configuration.oidc.providers_json)[0]
     assert provider["issuer_url"] == "https://issuer.test"
     assert provider["autostart_enabled"] is True
+    assert provider["require_verified_email"] is False
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+async def test_setup_persists_verified_email_in_legacy_and_named_configuration(
+    configuration, enabled
+):
+    response = await configuration.http.put(
+        "/api/setup/configuration",
+        json={
+            "sections": ["oidc"],
+            "configuration": {
+                "OIDC_ISSUER_URL": "https://issuer.test",
+                "OIDC_CLIENT_ID": "client",
+                "OIDC_CLIENT_SECRET": "secret",
+                "OIDC_REQUIRE_VERIFIED_EMAIL": enabled,
+            },
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert configuration.oidc.require_verified_email is enabled
+    assert json.loads(configuration.oidc.providers_json)[0]["require_verified_email"] is enabled
+
+
+async def test_verified_email_environment_setting_is_authoritative(configuration):
+    configuration.env["OIDC_REQUIRE_VERIFIED_EMAIL"] = "true"
+    response = await configuration.http.get("/api/settings/deployment")
+    assert response.json()["oidc"]["require_verified_email"] is True
+    assert response.json()["oidc"]["locked_fields"]["oidc_require_verified_email"] is True
+    response = await configuration.http.put(
+        "/api/settings/deployment", json={"oidc_require_verified_email": False}
+    )
+    assert response.status_code == 409
+
+
+@pytest.mark.parametrize("required", [False, True, None, "true", 1])
+async def test_named_verified_email_setting_requires_a_boolean_and_persists(
+    configuration, required
+):
+    response = await configuration.http.put(
+        "/api/settings/deployment",
+        json={
+            "oidc_providers_json": json.dumps(
+                [{"name": "Example", "slug": "example", "require_verified_email": required}]
+            )
+        },
+    )
+    if type(required) is bool:
+        assert response.status_code == 200, response.text
+        assert response.json()["oidc"]["named_providers"][0]["require_verified_email"] is required
+    else:
+        assert response.status_code == 400
+        configuration.session.refresh(configuration.oidc)
+        assert configuration.oidc.providers_json is None
+
+
+async def test_older_named_provider_payload_does_not_clear_a_saved_requirement(configuration):
+    provider = {"name": "Example", "slug": "example", "require_verified_email": True}
+    configuration.oidc.providers_json = json.dumps([provider])
+    configuration.session.commit()
+    provider.pop("require_verified_email")
+    response = await configuration.http.put(
+        "/api/settings/deployment", json={"oidc_providers_json": json.dumps([provider])}
+    )
+    assert response.status_code == 200
+    assert response.json()["oidc"]["named_providers"][0]["require_verified_email"] is True
 
 
 @pytest.mark.parametrize("minimum", [0, 1025, "invalid"])

@@ -162,6 +162,7 @@ def _persisted_values(app: AppIntegrationSettings, oidc: OidcSettings) -> dict[s
             "OIDC_ADMIN_GROUP": oidc.admin_group,
             "OIDC_USER_MATCH_FIELD": oidc.user_match_field,
             "OIDC_ALLOW_NEW_USERS": oidc.allow_new_users,
+            "OIDC_REQUIRE_VERIFIED_EMAIL": oidc.require_verified_email,
             "OIDC_DEFAULT_LOGIN_METHOD": oidc.default_login_method,
             "OIDC_LOGIN_BUTTON_TEXT": oidc.login_button_text,
         }
@@ -305,6 +306,7 @@ def _save_oidc_configuration(
         "OIDC_ADMIN_GROUP": "admin_group",
         "OIDC_USER_MATCH_FIELD": "user_match_field",
         "OIDC_ALLOW_NEW_USERS": "allow_new_users",
+        "OIDC_REQUIRE_VERIFIED_EMAIL": "require_verified_email",
         "OIDC_DEFAULT_LOGIN_METHOD": "default_login_method",
         "OIDC_LOGIN_BUTTON_TEXT": "login_button_text",
     }
@@ -351,12 +353,18 @@ def _save_oidc_configuration(
         providers = json.loads(oidc.providers_json or "[]")
     except (TypeError, ValueError):
         providers = []
-    providers = [
-        item
-        for item in providers
-        if isinstance(item, dict)
-        and item.get("slug") != (values.get("OIDC_PROVIDER_SLUG") or "provider-1")
-    ]
+    slug = values.get("OIDC_PROVIDER_SLUG") or "provider-1"
+    if (
+        not handler.has("OIDC_REQUIRE_VERIFIED_EMAIL")
+        and "OIDC_REQUIRE_VERIFIED_EMAIL" not in values
+    ):
+        oidc.require_verified_email = oidc.require_verified_email or any(
+            isinstance(item, dict)
+            and item.get("slug") == slug
+            and item.get("require_verified_email", False) is True
+            for item in providers
+        )
+    providers = [item for item in providers if isinstance(item, dict) and item.get("slug") != slug]
     providers.insert(
         0,
         {
@@ -370,6 +378,7 @@ def _save_oidc_configuration(
             "admin_group": oidc.admin_group,
             "user_match_field": oidc.user_match_field or "email",
             "allow_new_users": oidc.allow_new_users,
+            "require_verified_email": oidc.require_verified_email,
             "button_text": oidc.login_button_text or "Continue with SSO",
             "enabled": True,
             "show_on_login": True,

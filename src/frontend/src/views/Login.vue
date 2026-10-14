@@ -43,6 +43,8 @@ const oidcMessages: Record<string, string> = {
   identity_missing:
     "Your SSO account did not provide the identity field required for account matching.",
   identity_conflict: "This SSO identity is already linked to another account.",
+  email_conflict:
+    "The email supplied by your SSO provider belongs to another account. Contact an administrator.",
   user_creation_disabled:
     "Your SSO account is not registered and automatic account creation is disabled.",
 };

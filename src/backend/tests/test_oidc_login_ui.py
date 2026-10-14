@@ -54,6 +54,7 @@ def boundary(monkeypatch):
         enabled=True,
         providers_json=json.dumps(providers),
         issuer_url=None,
+        require_verified_email=False,
         client_id=None,
         client_secret=None,
         default_login_method="sso",
@@ -62,6 +63,7 @@ def boundary(monkeypatch):
     db = SimpleNamespace(scalar=AsyncMock(return_value=row))
     for name in ("OIDC_ISSUER_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET"):
         monkeypatch.setattr(settings, name, None)
+    monkeypatch.setattr(settings, "OIDC_REQUIRE_VERIFIED_EMAIL", False)
     monkeypatch.setattr(auth_oidc, "decrypt_secret", lambda value: "test-secret")
     launch = AsyncMock(return_value=RedirectResponse("https://issuer.invalid/authorize", 302))
     monkeypatch.setattr(auth_oidc, "begin_oidc", launch)
@@ -98,6 +100,51 @@ async def test_manual_button_can_launch_provider_with_autostart_disabled(boundar
     config = launch.await_args.args[1]
     assert config.slug == "branded"
     assert config.client_id == "test-client"
+
+
+@pytest.mark.parametrize("source", ["named", "legacy", "environment"])
+async def test_requirement_cannot_be_bypassed_through_a_callback_alias(
+    boundary, monkeypatch, source
+):
+    app, row, launch = boundary
+    row.issuer_url = "https://issuer.invalid/.well-known/openid-configuration"
+    row.client_id = "test-client"
+    row.client_secret = "encrypted"
+    row.scopes = "openid profile email"
+    row.groups_claim = "groups"
+    row.admin_group = None
+    row.user_match_field = "email"
+    row.allow_new_users = True
+    providers = json.loads(row.providers_json)
+    providers[0]["require_verified_email"] = source == "named"
+    row.providers_json = json.dumps(providers)
+    row.require_verified_email = source == "legacy"
+    if source == "environment":
+        for name, value in {
+            "OIDC_ISSUER_URL": "https://issuer.invalid",
+            "OIDC_CLIENT_ID": "test-client",
+            "OIDC_CLIENT_SECRET": "test-secret",
+            "OIDC_REQUIRE_VERIFIED_EMAIL": True,
+        }.items():
+            monkeypatch.setattr(settings, name, value)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        for path in ("/api/auth/oidc/login", "/api/auth/oidc/login/branded?autostart=false"):
+            assert (await client.get(path)).status_code == 302
+            assert launch.await_args.args[1].require_verified_email is True
+
+
+async def test_environment_requirement_does_not_restrict_a_different_client(boundary, monkeypatch):
+    app, _, launch = boundary
+    for name, value in {
+        "OIDC_ISSUER_URL": "https://issuer.invalid",
+        "OIDC_CLIENT_ID": "different-client",
+        "OIDC_CLIENT_SECRET": "secret",
+        "OIDC_REQUIRE_VERIFIED_EMAIL": True,
+    }.items():
+        monkeypatch.setattr(settings, name, value)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        await client.get("/api/auth/oidc/login/branded?autostart=false")
+    assert launch.await_args.args[1].require_verified_email is False
 
 
 @pytest.mark.asyncio

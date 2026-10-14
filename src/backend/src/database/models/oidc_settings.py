@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from uuid import UUID, uuid4
 
-from sqlalchemy import BigInteger, Boolean, String, Text
+from sqlalchemy import BigInteger, Boolean, String, Text, false
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -32,6 +32,9 @@ class OidcSettings(Base):
         String(100), nullable=False, default="Continue with SSO"
     )
     allow_new_users: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    require_verified_email: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false()
+    )
     providers_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     updated_at: Mapped[int] = mapped_column(
         BigInteger,
