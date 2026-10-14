@@ -67,6 +67,7 @@ nav:
       - Architecture: development/architecture.md
       - UI Redevelopment Checkpoint: development/ui-redevelopment.md
       - Rosefall 469 Review Choices: development/rosefall-469-reconciliation.md
+      - Rosefall 469 Implementation Plan: development/rosefall-469-implementation.md
       - Rosefall 469 Source Ledger: development/rosefall-469-files.md
       - UI PR Integration Review: development/ui-pr-integration-review.md
       - Final Main UI Integration: development/final-main-ui-integration.md

@@ -3,8 +3,10 @@
 This review compares Rosefall #469 at `2785649b061f59bf6b567b5cb17a0bded74a56e9`
 with Obsolete Labs `main` at `2246df175fbb556b76d5a600c32ae33ae524a567`, including
 the completed #121 host work. The repositories remain separate. No Rosefall
-commit has been merged or cherry-picked, and no feature below has been selected
-for implementation yet.
+commit has been merged or cherry-picked. The owner approved the recommendations
+on 14 October 2026 with the recorded exceptions below; implementation follows the
+[approved concrete plan](rosefall-469-implementation.md). No feature ports are
+claimed complete by this review document.
 
 The independently authorized Classic/Automatic Search work is in [#123](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/123).
 CI changes are in [#122](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/122).
@@ -15,7 +17,9 @@ Those requests do not constitute approval of the feature ports below.
 For each number, choose **PORT**, **DO NOT PORT**, **ALREADY COVERED / LEAVE ALONE**,
 or **DECIDE LATER**. PORT means implement the capability in the current host
 architecture; it does not mean copy the source implementation. Recommendations
-are proposals, not decisions. Dependencies are named by feature number.
+below record the original proposals; the accepted decisions and exact adaptations
+are in the [implementation plan](rosefall-469-implementation.md). Dependencies are
+named by feature number.
 
 Statuses describe availability and implementation together: MISSING or PARTIALLY
 PRESENT can require a COMPATIBLE PORT or ARCHITECTURAL PORT. SUPERSEDED means retain
@@ -53,7 +57,7 @@ Complexity is Low/Medium/High, rather than an elapsed-time promise.
 | 20 | Light game edit for status/platform/rating/art, with Edit more opening the full editor. | Quick add exists; library edit opens the current full editor. | MISSING / shared quick edit. | Medium | 14, 18; use existing update/asset APIs and form validation; preserve protected fields and saved data. |
 | 21 | Artwork picker labels an existing cover “Current” versus a search cover “Search”. | Existing picker/current cover behavior is available; source adds clearer labeling for edit contexts. | COMPATIBLE PORT / small labeling adaptation. | Low | 18, 20; preserve selected-entity artwork provenance. |
 | 22 | Rank exact titles, then prefix matches, then all query words; use stable provider/result tie breaks. | Current progressive identity/ranking pipeline already has exact/prefix/token scoring, merging and authority ordering. | SUPERSEDED / retain current ranking. | Low | Add only a demonstrated ranking regression; source synchronous result sorting would discard progressive identity behavior. |
-| 23 | Default Steam before GOG, retaining user provider order. | Default provider order still has GOG before Steam; host adapters use that order for authority. | COMPATIBLE PORT / change new/default ordering only if selected. | Low | Preserve explicit saved order; do not migrate everyone's provider preferences silently. Independent of 22. |
+| 23 | Default Steam before GOG, retaining user provider order. | Default provider order still has GOG before Steam; host adapters use that order for authority. | COMPATIBLE PORT / change unsaved default order; also implement the approved account opt-out extension for any metadata provider, including server credentials. | Low | Preserve explicit saved order; do not migrate everyone's provider preferences silently. Independent of 22. |
 | 24 | HLTB initialization token, browser headers and bounded retry after 403. | Active optional HLTB plugin uses a best-effort POST without the new handshake; the legacy host HLTB module is not the active optional provider. | MISSING / ARCHITECTURAL PORT in the plugin repository. | High | Public HTTP gateway permissions, throttling/health, retry bounds and actual provider smoke tests. Do not copy HLTB into host core. |
 | 25 | IGDB play_times fallback if HLTB is unavailable or supplies no useful time. | Current builtin IGDB/public metadata handler does not implement this source fallback. | MISSING / ADAPT builtin enrichment and authority. | Medium | 8 for all categories; preserve independent provider failures and user authority/locks. Avoid serial cross-provider calls inside IGDB. |
 
@@ -100,10 +104,10 @@ Complexity is Low/Medium/High, rather than an elapsed-time promise.
 | # | Feature / Rosefall behavior | Obsolete main behavior | Status / recommendation | Complexity | Dependencies and risks |
 | --- | --- | --- | --- | --- | --- |
 | 54 | Exact username lookup before lowercase email fallback prevents ambiguous login matching. | Login still queries username OR email in one scalar lookup. | MISSING / adapt authentication lookup. | Medium | 55, legacy collision regression; preserve disabled-account, password and session semantics. |
-| 55 | Reject new/changed usernames containing `@`, while existing usernames still sign in. | Username create/update paths do not provide the same consistent reservation. | MISSING / central username validation. | Medium | 54; cover setup, admin create, profile rename and OIDC-generated names. Do not rename existing accounts or reject them at login. |
+| 55 | Reject new/changed usernames containing `@`, while existing usernames still sign in. | Username create/update paths do not provide the same consistent reservation. | MISSING / shared validation: new/renamed names use ASCII letters, digits, underscore, hyphen and dot; no spaces. Clear UI help and bound SQL parameters. | Medium | 54; cover setup, admin create, profile rename and OIDC-generated names. Do not rename existing accounts or reject them at login. |
 | 56 | Changing password invalidates other browser sessions but preserves the current session. | Password change checks the existing password; other browser sessions are not consistently revoked by that route. | MISSING / use current revocation/audit boundary. | Medium | Keep current actor, network/session audit and recovery flows. Prefer revocation timestamps/events to source row deletion. |
 | 57 | API keys cannot create more API keys; minting requires an interactive browser session. | API-key creation authenticates a User but does not enforce the equivalent credential-kind guard. Scoped delegation is a separate contract. | MISSING / enforce at the auth API boundary. | Medium | Existing AuthenticatedActor; test API key and delegated actors, browser success, revoke/list semantics and plugin recovery boundaries. |
-| 58 | OIDC rejects an explicit `email_verified=false`; absent verification claim remains compatible. | Current identity resolution does not apply this exact rejection. | MISSING / adapt OIDC policy. | Medium | Preserve issuer/subject binding, provider allow-new-user/matching rules and actionable login errors. Do not accidentally require claim=true for every provider. |
+| 58 | OIDC rejects an explicit `email_verified=false`; absent verification claim remains compatible. | Current identity resolution does not apply this exact rejection. | MISSING / approved adaptation: Require verified email option, off by default; when on, require boolean true including rejection of missing claims. | Medium | Preserve issuer/subject binding, provider allow-new-user/matching rules and actionable login errors. Do not impose verification on providers with the option off; preserve their current compatibility. |
 | 59 | OIDC email updates handle another account already owning that email without a database 500. | Current subject-bound resolution can assign a changed email without the same explicit collision handling. | PARTIALLY PRESENT / protected collision handling. | Medium | 58; never merge accounts by unverified email; transactional uniqueness and clear failure. |
 | 60 | Setup configuration requires an admin after bootstrap. | Public GET /api/setup/configuration remains available after bootstrap. | MISSING / protect the post-bootstrap route. | Medium | Keep initial setup and generated frontend schema usable before an account exists; preserve environment locks and recovery UI. |
 | 61 | Mark DATABASE_URL secret so registry schema cannot disclose embedded credentials. | Field is hidden but not marked secret; hidden is not redaction. | MISSING / registry redaction + regression. | Low | 60, EnvConfigHandler redaction; keep connection resolution and startup diagnostics working without exposing secrets. |
@@ -177,10 +181,11 @@ They are reference requirements; they must be adapted to the current host/public
 plugin boundaries, not copied wholesale as fixtures or treated as proof that a
 direct port is safe.
 
-## Next step after selections
+## Implementation after selections
 
-For each selected capability, write the concrete host/plugin file plan, API/model
-and migration changes, backward compatibility, tests and documentation. Implement
+The [approved implementation plan](rosefall-469-implementation.md) records the
+host/plugin owners, data/API/UI changes, compatibility, tests and documentation
+for every selected capability. Implement
 only selected behavior in reviewable PRs into current main, with UI screenshots
 updated as the shared components change. Preserve Playnite, manual/provider
 achievement evidence, connected-library consent, plugin runtime/permissions,
