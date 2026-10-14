@@ -49,7 +49,7 @@ These values are used for environment-based bootstrap of the initial administrat
 
 | Variable | Source | Purpose |
 |---|---|---|
-| `PRIMARY_USER_USERNAME` | SETUP/BOTH | Initial administrator username: 1–100 ASCII letters, digits, underscores, hyphens or dots; no spaces. Existing bootstrap accounts are preserved. |
+| `PRIMARY_USER_USERNAME` | SETUP/BOTH | Initial administrator username: 1â€“100 ASCII letters, digits, underscores, hyphens or dots; no spaces. Existing bootstrap accounts are preserved. |
 | `PRIMARY_USER_EMAIL` | SETUP/BOTH | Initial administrator email. |
 | `PRIMARY_USER_PASSWORD` | SETUP/BOTH | Initial administrator password. |
 

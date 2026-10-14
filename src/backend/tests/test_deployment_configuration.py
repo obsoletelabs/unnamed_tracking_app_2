@@ -1,6 +1,7 @@
 """Deployment updates enforce locks and persist secrets through the public routes."""
 
 import json
+import time
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -12,11 +13,12 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from src.api.routes import auth_oidc, deployment_settings, setup
-from src.core.auth import get_current_admin
+from src.core.auth import hash_token, session_cookie_name
 from src.core.crypto import decrypt_secret, encrypt_secret
 from src.core.env_handler import EnvConfigHandler
 from src.core.nginx_configuration import NginxActivationError
 from src.database.models.app_integration_settings import AppIntegrationSettings
+from src.database.models.auth import UserSession
 from src.database.models.notification_delivery import NotificationDelivery
 from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_verification import NotificationVerification
@@ -60,6 +62,8 @@ class ConfigurationDb:
 @pytest.fixture
 async def configuration(monkeypatch):
     engine = create_engine("sqlite://")
+    User.__table__.create(engine)
+    UserSession.__table__.create(engine)
     AppIntegrationSettings.__table__.create(engine)
     OidcSettings.__table__.create(engine)
     NotificationDestination.__table__.create(engine)
@@ -76,7 +80,26 @@ async def configuration(monkeypatch):
     with Session(engine, expire_on_commit=False) as session:
         integration = AppIntegrationSettings()
         oidc = OidcSettings(enabled=False)
-        session.add_all([integration, oidc])
+        admin = User(
+            username="administrator",
+            email="admin@example.test",
+            password_hash="unused",
+            is_admin=True,
+            is_active=True,
+        )
+        session.add_all([integration, oidc, admin])
+        session.flush()
+        now = int(time.time())
+        token = "deployment-administrator-cookie"
+        session.add(
+            UserSession(
+                user_id=admin.id,
+                token_hash=hash_token(token),
+                expires_at=now + 3600,
+                created_at=now,
+                last_seen_at=now,
+            )
+        )
         session.commit()
         app = FastAPI()
         for routes in (deployment_settings, setup, auth_oidc):
@@ -89,10 +112,8 @@ async def configuration(monkeypatch):
                 session.rollback()
 
         app.dependency_overrides[get_db] = database
-        app.dependency_overrides[get_current_admin] = lambda: User(
-            username="administrator", email="admin@example.test", password_hash="unused"
-        )
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http:
+            http.cookies.set(session_cookie_name("test"), token)
             yield SimpleNamespace(
                 http=http, session=session, integration=integration, oidc=oidc, env=environment
             )

@@ -8,7 +8,7 @@ Local accounts use the application's username/password login. A successful login
 
 Passwords are not stored in plaintext. API requests made by the web application normally use the session cookie automatically.
 
-New or renamed usernames use 1–100 ASCII letters, digits, underscores, hyphens or dots, with no spaces. The first-run administrator, invitations and account administration use the same rule. Existing usernames continue to sign in and can be kept unchanged when editing other profile fields. Exact username matching takes priority over the email fallback; email matching is case insensitive.
+New or renamed usernames use 1â€“100 ASCII letters, digits, underscores, hyphens or dots, with no spaces. The first-run administrator, invitations and account administration use the same rule. Existing usernames continue to sign in and can be kept unchanged when editing other profile fields. Exact username matching takes priority over the email fallback; email matching is case insensitive.
 
 Changing your password in Profile requires your current password and signs out other active browser sessions. The browser making the change remains signed in. Session audit records are retained; API keys stay active. Concurrent local sign-ins and password changes are serialized so an old-password sign-in cannot create a live session after the change.
 
