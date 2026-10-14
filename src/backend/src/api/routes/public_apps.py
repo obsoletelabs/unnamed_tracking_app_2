@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.schemas.delegation import (
     SCOPE_DESCRIPTIONS,
     AchievementReportWrite,
+    CompatibilityWrite,
     TrackingWrite,
     integration_origin,
     integration_scopes,
@@ -366,6 +367,28 @@ async def tracking(
             f"/api/delegation/v1/games/{game_id}/tracking",
             method="PATCH",
             body=payload.model_dump(exclude_unset=True, mode="json"),
+        )
+    )["data"]
+
+
+@router.patch("/{plugin_id}/sources/{source_id}/games/{game_id}/play-compatibility")
+async def play_compatibility(
+    plugin_id: str,
+    source_id: UUID,
+    game_id: UUID,
+    payload: CompatibilityWrite,
+    request: Request,
+    *,
+    db: AsyncSession = _DB,
+) -> dict:
+    _app, actor, _session = await apps.authenticated(db, plugin_id, request)
+    source = await sources.owned_source(db, actor, source_id)
+    return (
+        await sources.source_request(
+            source,
+            f"/api/delegation/v1/games/{game_id}/play-compatibility",
+            method="PATCH",
+            body=payload.model_dump(mode="json"),
         )
     )["data"]
 

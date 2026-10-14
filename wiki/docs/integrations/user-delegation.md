@@ -60,6 +60,7 @@ All paths below are under `/api/delegation/v1`. Responses are not cacheable.
 | `lists.read` | `GET /lists`, `/lists/{id}`: own lists and contents |
 | `media.read` | `GET /media?kind=movie\|tv\|anime`: own tracked media |
 | `tracking.write` | `PATCH /games/{id}/tracking`: status, favorite, playtime, completion and ratings only |
+| `compatibility.write` | `PATCH /games/{id}/play-compatibility`: replace/clear your own multiplayer preset; separate from tracking writes |
 | `achievements.write` | `POST /games/{id}/achievement-reports`, `DELETE /games/{id}/achievement-reports/{report_id}`: local self reports only |
 
 Resource IDs never permit cross-user reads or writes. These credentials are

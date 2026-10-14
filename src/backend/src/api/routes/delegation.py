@@ -19,6 +19,7 @@ from src.api.schemas.delegation import (
     AccessRequest,
     AchievementReportWrite,
     ClientWrite,
+    CompatibilityWrite,
     GrantChange,
     PolicyWrite,
     TrackingWrite,
@@ -272,6 +273,32 @@ async def tracking(
     )
     await db.commit()
     return {"id": str(row.id), **jsonable_encoder(payload.model_dump(exclude_unset=True))}
+
+
+@router.patch("/games/{game_id}/play-compatibility")
+async def play_compatibility(
+    game_id: UUID,
+    payload: CompatibilityWrite,
+    actor: DelegatedActor = _ACTOR,
+    db: AsyncSession = _DB,
+) -> dict:
+    actor.require("compatibility.write")
+    row = await update_game(
+        game_id,
+        GameUpdate(**payload.model_dump()),
+        db,
+        actor.user,
+        AuthenticatedActor(actor.user.id, "api_key"),
+    )
+    delegation.record_audit(
+        db,
+        "compatibility_updated",
+        client_id=actor.grant.client_id,
+        user_id=actor.user.id,
+        grant_id=actor.grant.id,
+    )
+    await db.commit()
+    return {"id": str(row.id), **jsonable_encoder(payload.model_dump())}
 
 
 @router.get("/games/{game_id}/achievements")

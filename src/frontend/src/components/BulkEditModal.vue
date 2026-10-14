@@ -2,7 +2,8 @@
 import { reactive, ref } from "vue";
 import { bulkUpdateGames } from "../services/games";
 import type { BulkEditFields } from "../services/games";
-import type { GameStatus } from "../types/game";
+import type { GameStatus, GamePlayCompatibility } from "../types/game";
+import GamePlayFields from "./game/GamePlayFields.vue";
 import { PRIORITY_OPTIONS } from "../utils/priority";
 
 const props = defineProps<{
@@ -38,7 +39,9 @@ const apply = reactive({
   priority: false,
   tags: false,
   features: false,
+  playCompatibility: false,
 });
+const playCompatibility = ref<GamePlayCompatibility | null>(null);
 
 const statusValue = ref<GameStatus>("backlog");
 const favoriteValue = ref(true);
@@ -65,6 +68,8 @@ async function submit() {
   error.value = null;
   try {
     const fields: BulkEditFields = {};
+    if (apply.playCompatibility)
+      fields.playCompatibility = playCompatibility.value;
     if (apply.status) fields.status = statusValue.value;
     if (apply.favorite) fields.favorite = favoriteValue.value;
     if (apply.developer) fields.developer = developerValue.value.trim() || null;
@@ -274,6 +279,20 @@ async function submit() {
             />
           </div>
 
+          <section>
+            <label class="field-check"
+              ><input v-model="apply.playCompatibility" type="checkbox" /> Apply
+              multiplayer settings</label
+            >
+            <template v-if="apply.playCompatibility"
+              ><GamePlayFields v-model="playCompatibility" />
+              <p class="hint">
+                Replaces multiplayer details on every selected game. Leaving
+                “Playable with others” unchecked clears saved details. Other
+                fields are unchanged.
+              </p></template
+            >
+          </section>
           <div v-if="error" class="form-error">{{ error }}</div>
         </div>
 

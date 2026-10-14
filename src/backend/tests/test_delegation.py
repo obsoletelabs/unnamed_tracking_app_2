@@ -254,6 +254,36 @@ async def test_tracking_write_has_field_and_object_limits(delegation_flow):
         assert (await db.get(Game, flow.other_game_id)).favorite is False
 
 
+async def test_multiplayer_settings_need_separate_consent_and_own_game(delegation_flow):
+    flow = delegation_flow
+    endpoint = f"{BASE}/games/{flow.game_id}/play-compatibility"
+    payload = {"play_compatibility": {}}
+    headers, _ = await grant_access(flow, ["tracking.write"])
+    assert (await flow.client.patch(endpoint, headers=headers, json=payload)).status_code == 403
+    headers, grant_id = await grant_access(flow, ["compatibility.write", "games.read"])
+    result = await flow.client.patch(endpoint, headers=headers, json=payload)
+    assert result.status_code == 200
+    assert result.json()["play_compatibility"]["min_players"] is None
+    assert (
+        await flow.client.patch(
+            f"{BASE}/games/{flow.other_game_id}/play-compatibility",
+            headers=headers,
+            json=payload,
+        )
+    ).status_code == 404
+    assert (
+        await flow.client.patch(endpoint, headers=headers, json={**payload, "favorite": True})
+    ).status_code == 422
+    assert (
+        await flow.client.patch(endpoint, headers=headers, json={"play_compatibility": None})
+    ).status_code == 200
+    app.dependency_overrides[browser_user] = lambda: flow.user
+    assert (
+        await flow.client.patch(f"{BASE}/grants/{grant_id}", json={"scopes": ["games.read"]})
+    ).status_code == 200
+    assert (await flow.client.patch(endpoint, headers=headers, json=payload)).status_code == 403
+
+
 @pytest.mark.parametrize("hours", [1, None])
 @pytest.mark.parametrize("disabled", ["revocation", "expiry", "client", "owner_policy", "account"])
 async def test_live_authority_is_rechecked(delegation_flow, disabled, hours):

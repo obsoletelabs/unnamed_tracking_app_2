@@ -5,6 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from src.api.schemas.game import GamePlayCompatibility
 from src.database.models.game import GameStatus
 
 SCOPE_DESCRIPTIONS = {
@@ -16,6 +17,7 @@ SCOPE_DESCRIPTIONS = {
     "media.read": "Read your tracked media",
     "tracking.write": "Change your game status, completion, playtime and ratings",
     "achievements.write": "Create manual achievements and edit local achievement reports",
+    "compatibility.write": "Save your games' multiplayer settings",
 }
 
 
@@ -108,6 +110,10 @@ class TrackingWrite(DelegationSchema):
     rating_gameplay: float | None = Field(default=None, ge=0, le=10)
     rating_soundtrack: float | None = Field(default=None, ge=0, le=10)
     rating_overall: float | None = Field(default=None, ge=0, le=10)
+
+
+class CompatibilityWrite(DelegationSchema):
+    play_compatibility: GamePlayCompatibility | None
 
 
 class AchievementReportWrite(DelegationSchema):

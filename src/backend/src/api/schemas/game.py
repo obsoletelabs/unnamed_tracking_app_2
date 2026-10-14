@@ -38,14 +38,20 @@ class GamePlayCompatibility(BaseModel):
     """User-confirmed group play details; no provider or purchase verification."""
 
     model_config = ConfigDict(extra="forbid")
-    min_players: int = Field(ge=1, le=32, strict=True)
-    max_players: int = Field(ge=1, le=32, strict=True)
+    min_players: int | None = Field(default=None, ge=1, le=32, strict=True)
+    max_players: int | None = Field(default=None, ge=1, le=32, strict=True)
     duration_minutes: int | None = Field(default=None, ge=1, le=1440, strict=True)
     crossplay: bool = Field(default=False, strict=True)
 
     @model_validator(mode="after")
     def ordered_players(self) -> "GamePlayCompatibility":
-        if self.min_players > self.max_players:
+        if (self.min_players is None) != (self.max_players is None):
+            raise ValueError("Set both player limits, or leave both unknown.")
+        if (
+            self.min_players is not None
+            and self.max_players is not None
+            and self.min_players > self.max_players
+        ):
             raise ValueError("Maximum players must be at least the minimum.")
         return self
 
@@ -254,6 +260,7 @@ class GameBulkUpdate(BaseModel):
     game_ids: list[UUID] = Field(min_length=1, max_length=500)
     status: GameStatus | None = None
     favorite: bool | None = None
+    play_compatibility: GamePlayCompatibility | None = None
     developer: str | None = Field(default=None, max_length=200)
     publisher: str | None = Field(default=None, max_length=200)
     series: str | None = Field(default=None, max_length=200)

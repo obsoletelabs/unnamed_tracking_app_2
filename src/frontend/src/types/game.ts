@@ -62,8 +62,8 @@ export interface GamePlatform {
 }
 
 export interface GamePlayCompatibility {
-  minPlayers: number;
-  maxPlayers: number;
+  minPlayers: number | null;
+  maxPlayers: number | null;
   durationMinutes: number | null;
   crossplay: boolean;
 }

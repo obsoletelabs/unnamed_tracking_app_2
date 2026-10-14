@@ -137,7 +137,7 @@ async def sign_in(flow):
 
 @pytest.mark.parametrize(
     "extra_scopes",
-    [[], ["achievements.read", "tracking.write", "achievements.write"]],
+    [[], ["achievements.read", "tracking.write", "achievements.write"], ["compatibility.write"]],
 )
 async def test_source_consent_requests_only_chosen_capabilities(
     public_flow, monkeypatch, extra_scopes
@@ -475,6 +475,13 @@ async def test_connection_cannot_be_selected_by_another_actor(public_flow):
     assert (
         await flow.client.delete(flow.base + f"/sources/{source.id}", headers=headers)
     ).status_code == 404
+    assert (
+        await flow.client.patch(
+            flow.base + f"/sources/{source.id}/games/{uuid4()}/play-compatibility",
+            headers=headers,
+            json={"play_compatibility": {}},
+        )
+    ).status_code == 404
     async with SessionLocal() as db:
         actor = await db.get(PublicAppActor, actor_id)
         actor.expires_at = 0
@@ -482,6 +489,51 @@ async def test_connection_cannot_be_selected_by_another_actor(public_flow):
         await public_apps.purge_expired_data(db)
         await db.refresh(actor)
         assert actor.subject.startswith("expired:") and actor.display_name == ""
+
+
+async def test_multiplayer_save_forwards_only_validated_preset(public_flow, monkeypatch):
+    flow = public_flow
+    headers, actor_id = await sign_in(flow)
+    async with SessionLocal() as db:
+        source = PublicAppSource(
+            actor_id=actor_id, origin="https://source.example", instance_id=str(uuid4())
+        )
+        db.add(source)
+        await db.commit()
+    calls = []
+
+    async def remote(row, path, **options):
+        calls.append((row.id, path, options))
+        return {"status": 200, "data": {"id": "saved"}}
+
+    monkeypatch.setattr(public_app_sources, "source_request", remote)
+    game_id = uuid4()
+    endpoint = flow.base + f"/sources/{source.id}/games/{game_id}/play-compatibility"
+    result = await flow.client.patch(endpoint, headers=headers, json={"play_compatibility": {}})
+    assert result.status_code == 200 and result.json() == {"id": "saved"}
+    assert calls == [
+        (
+            source.id,
+            f"/api/delegation/v1/games/{game_id}/play-compatibility",
+            {
+                "method": "PATCH",
+                "body": {
+                    "play_compatibility": {
+                        "min_players": None,
+                        "max_players": None,
+                        "duration_minutes": None,
+                        "crossplay": False,
+                    }
+                },
+            },
+        )
+    ]
+    assert (
+        await flow.client.patch(
+            endpoint, headers=headers, json={"play_compatibility": {}, "user_id": str(uuid4())}
+        )
+    ).status_code == 422
+    assert len(calls) == 1
 
 
 async def test_ongoing_link_survives_guest_retention_but_sessions_expire(public_flow):
@@ -588,6 +640,13 @@ async def test_legacy_connection_requires_owner_opt_in_and_acknowledgement(
         endpoint = flow.base + f"/sources/{source_id}/games/{game_id}/tracking"
         assert (
             await flow.client.patch(endpoint, headers=headers, json={"favorite": True})
+        ).status_code == 409
+        assert (
+            await flow.client.patch(
+                flow.base + f"/sources/{source_id}/games/{game_id}/play-compatibility",
+                headers=headers,
+                json={"play_compatibility": {}},
+            )
         ).status_code == 409
         revoked = True
         refresh = await flow.client.post(

@@ -49,6 +49,7 @@ export const capabilityLabels: Record<string, string> = {
   "media.read": "Read tracked media",
   "tracking.write": "Change tracking, completion, playtime and ratings",
   "achievements.write": "Create manual achievements and local reports",
+  "compatibility.write": "Save multiplayer settings for your games",
 };
 
 const base = "/api/delegation/v1";

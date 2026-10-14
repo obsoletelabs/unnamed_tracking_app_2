@@ -20,8 +20,8 @@ import type {
 // nothing outside this file should ever see raw backend data directly.
 export interface BackendGame {
   play_compatibility?: {
-    min_players: number;
-    max_players: number;
+    min_players: number | null;
+    max_players: number | null;
     duration_minutes: number | null;
     crossplay: boolean;
   } | null;
@@ -1628,6 +1628,28 @@ export async function setRatings(
   return mapBackendGame(raw);
 }
 
+export async function setGamePlayCompatibility(
+  gameId: string,
+  value: GamePlayCompatibility | null,
+): Promise<Game> {
+  if (import.meta.env.VITE_USE_MOCK_DATA === "true") {
+    const game = mockGames.find((item) => item.id === gameId);
+    if (!game) throw new Error(`Game ${gameId} not found`);
+    game.playCompatibility = value;
+    return game;
+  }
+  const response = await fetch(`/api/game/update/${gameId}`, {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      play_compatibility: playCompatibilityPayload(value),
+    }),
+  });
+  if (!response.ok) throw await failedRequest(response);
+  return mapBackendGame((await response.json()) as BackendGame);
+}
+
 export async function setFavorite(
   gameId: string,
   favorite: boolean,
@@ -1755,6 +1777,7 @@ export async function setStatus(
 // notes, playtime, purchase info, and ratings are per-game by nature and
 // excluded so a bulk edit can't stamp one game's specifics onto many others.
 export interface BulkEditFields {
+  playCompatibility?: GamePlayCompatibility | null;
   status?: GameStatus;
   favorite?: boolean;
   developer?: string | null;
@@ -1772,6 +1795,10 @@ export async function bulkUpdateGames(
   fields: BulkEditFields,
 ): Promise<number> {
   const payload: Record<string, unknown> = { game_ids: gameIds };
+  if (fields.playCompatibility !== undefined)
+    payload.play_compatibility = playCompatibilityPayload(
+      fields.playCompatibility,
+    );
   if (fields.status !== undefined)
     payload.status = denormalizeStatus(fields.status);
   if (fields.favorite !== undefined) payload.favorite = fields.favorite;
@@ -1788,6 +1815,8 @@ export async function bulkUpdateGames(
     let count = 0;
     for (const game of mockGames) {
       if (!gameIds.includes(game.id)) continue;
+      if (fields.playCompatibility !== undefined)
+        game.playCompatibility = fields.playCompatibility;
       if (fields.status !== undefined) game.status = fields.status;
       if (fields.favorite !== undefined) game.favorite = fields.favorite;
       if (fields.developer !== undefined) game.developer = fields.developer;

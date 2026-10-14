@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, watch } from "vue";
 import UiModal from "./UiModal.vue";
+import GamePlayFields from "./game/GamePlayFields.vue";
 import {
   attachGameAssetFromUrl,
   createGame,
@@ -21,6 +22,7 @@ import type {
   GameStatus,
   AchievementsProvider,
   GameRelationshipType,
+  GamePlayCompatibility,
 } from "../types/game";
 import type { GameLink, GameOwnership } from "../types/game";
 import { useConfirm } from "../state/dialog";
@@ -220,14 +222,8 @@ const { titleProtected, titleLockOverride } = useTitleProtection(
 // the saved custom sorting name, blank when the library sorts by the title
 const sortTitle = ref(props.game?.sortTitle ?? "");
 const platform = ref(props.game?.platform ?? "");
-const playCompatibilityEnabled = ref(Boolean(props.game?.playCompatibility));
-const minimumPlayers = ref(props.game?.playCompatibility?.minPlayers ?? 1);
-const maximumPlayers = ref(props.game?.playCompatibility?.maxPlayers ?? 4);
-const sessionMinutes = ref<number | null>(
-  props.game?.playCompatibility?.durationMinutes ?? null,
-);
-const supportsCrossplay = ref(
-  props.game?.playCompatibility?.crossplay ?? false,
+const playCompatibility = ref<GamePlayCompatibility | null>(
+  props.game?.playCompatibility ? { ...props.game.playCompatibility } : null,
 );
 const priority = ref(props.game?.priority ?? "");
 const folderLocation = ref(props.game?.folderLocation ?? "");
@@ -647,14 +643,7 @@ async function submit() {
     source: source.value.trim() || null,
     providerIds: selectedProviderIds.value ?? props.game?.providerIds,
     platform: platform.value.trim() || null,
-    playCompatibility: playCompatibilityEnabled.value
-      ? {
-          minPlayers: minimumPlayers.value,
-          maxPlayers: maximumPlayers.value,
-          durationMinutes: sessionMinutes.value || null,
-          crossplay: supportsCrossplay.value,
-        }
-      : null,
+    playCompatibility: playCompatibility.value,
     priority: priority.value || null,
     ageRating: ageRating.value.trim() || null,
     timeToBeatHours: String(timeToBeatHours.value).trim()
@@ -1185,52 +1174,7 @@ async function submit() {
                 placeholder="Achievements, Cloud Saves"
               />
             </label>
-            <div class="metadata-refresh-panel">
-              <div>
-                <strong>Group play details</strong>
-                <p class="hint">
-                  Save the player count and typical session length for
-                  Activities. These details are confirmed by you.
-                </p>
-              </div>
-            </div>
-            <label class="checkbox-field">
-              <input v-model="playCompatibilityEnabled" type="checkbox" />
-              <span>Save group play compatibility</span>
-            </label>
-            <div v-if="playCompatibilityEnabled" class="field-row">
-              <label class="field"
-                ><span>Minimum players</span
-                ><input
-                  v-model.number="minimumPlayers"
-                  type="number"
-                  min="1"
-                  max="32"
-                  required
-              /></label>
-              <label class="field"
-                ><span>Maximum players</span
-                ><input
-                  v-model.number="maximumPlayers"
-                  type="number"
-                  :min="minimumPlayers"
-                  max="32"
-                  required
-              /></label>
-              <label class="field"
-                ><span>Typical session (minutes)</span
-                ><input
-                  v-model.number="sessionMinutes"
-                  type="number"
-                  min="1"
-                  max="1440"
-                  placeholder="Unknown"
-              /></label>
-              <label class="checkbox-field">
-                <input v-model="supportsCrossplay" type="checkbox" />
-                <span>Cross-platform play confirmed</span>
-              </label>
-            </div>
+            <GamePlayFields v-model="playCompatibility" />
           </div>
 
           <div v-else-if="activeTab === 'Media'" class="tab-panel">

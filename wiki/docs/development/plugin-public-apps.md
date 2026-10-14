@@ -93,6 +93,7 @@ object ID does not replace the authenticated owner.
 | GET `/lists/{id}` | `lists.read` | Owned list and contents |
 | GET `/media` | `media.read` | Own nondeleted movie/TV/anime projections; paginated |
 | PATCH `/games/{id}/tracking` | `tracking.write` | Owned game; status/favorite/playtime/completion/ratings allowlist |
+| PATCH `/games/{id}/play-compatibility` | `compatibility.write` | Owned game; replace/clear only self-reported multiplayer preset |
 | POST `/games/{id}/achievement-reports` | `achievements.write` | Owned game; manual report or local provider-ID override; provider evidence unchanged |
 | DELETE `/games/{id}/achievement-reports/{report_id}` | `achievements.write` | Report must belong to this owned game |
 
@@ -130,6 +131,20 @@ all `/sources` operations require an authenticated external session and current
 installation grants. Source IDs are checked against that actor before consent
 polling, refresh, disconnect, own-game artwork, tracking or achievement operations.
 Remote source ownership and write scopes are enforced again by delegation routes.
+
+`PATCH /sources/{source_id}/games/{game_id}/play-compatibility` forwards only
+`play_compatibility` to the source's corresponding delegated endpoint. It requires
+separately approved `compatibility.write`; `tracking.write` does not imply it.
+Legacy connections cannot use it. Saving across sources uses independent requests,
+so clients must report per-game successes and failures rather than claim an
+atomic cross-instance transaction. Existing grants gain no permissions on upgrade.
+
+The preset accepts either both `min_players` and `max_players` as integers from
+1–32, or both as `null`. An empty object marks multiplayer without inventing
+limits; a `null` preset clears it. Optional duration and crossplay remain
+self-reported. The authenticated library bulk editor supports the same preset,
+with omitted fields unchanged and explicit `null` clearing only selected owned
+games. This host feature also serves clients other than Discord.
 
 `POST /sources` accepts an optional unique `scopes` list. It defaults to
 `profile.read` and `games.read`, which the library broker requires. Additional
