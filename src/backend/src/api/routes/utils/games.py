@@ -21,6 +21,7 @@ from src.database.models.game_field_change import GameFieldChange
 from src.database.models.game_note_detail import GameNoteDetail
 from src.database.models.user_scan_settings import UserScanSettings
 from src.features import game_notes
+from src.features.metadata.locked_fields import drop_nulls_for_required_fields
 
 __all__ = ["_derive_sort_title"]
 
@@ -126,11 +127,7 @@ def _record_field_changes(game: Game, updates: dict, db: AsyncSession) -> None:
 
 
 def _drop_nulls_for_required_fields(updates: dict) -> dict:
-    cleaned = {
-        field: value
-        for field, value in updates.items()
-        if value is not None or field not in _NON_NULLABLE_UPDATE_FIELDS
-    }
+    cleaned = drop_nulls_for_required_fields(updates, _NON_NULLABLE_UPDATE_FIELDS)
     # a cleared sorting name is still a request: re-derive it from the title
     if "sort_title" in updates and updates["sort_title"] is None:
         cleaned["sort_title"] = ""

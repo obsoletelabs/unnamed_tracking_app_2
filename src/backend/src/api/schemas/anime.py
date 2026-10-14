@@ -101,7 +101,7 @@ class AnimeUpdate(TitleProtectionUpdate):
     """Payload for partial updates — every field optional. Seasons are
     never touched here; they have their own nested CRUD endpoints."""
 
-    provider_ids: ProviderIDs = Field(default_factory=dict)
+    provider_ids: ProviderIDs | None = None
 
     title: str | None = Field(default=None, min_length=1, max_length=500)
     title_english: str | None = Field(default=None, max_length=500)

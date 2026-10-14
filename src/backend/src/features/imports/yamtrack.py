@@ -11,13 +11,14 @@ import csv
 import datetime as dt
 import io
 from dataclasses import dataclass, field
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import Any
 
 from src.core.titles import derive_sort_title
 from src.database.models.anime import Anime, AnimeEpisode, AnimeSeason, AnimeStatus
 from src.database.models.movies import Movie, MovieStatus
 from src.database.models.tv_show import TVEpisode, TVSeason, TVShow, TVShowStatus
+from src.features.imports.ratings import parse_rating
 
 MAX_BYTES = 200 * 1024 * 1024
 MAX_ROWS = 50000
@@ -67,12 +68,7 @@ def _int(value: str | None) -> int | None:
 
 
 def _score(value: str | None) -> Decimal | None:
-    if not value or not value.strip():
-        return None
-    try:
-        return Decimal(value)
-    except InvalidOperation:
-        return None
+    return parse_rating(value)
 
 
 def _status(value: str | None, enum_class: Any) -> Any:

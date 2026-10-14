@@ -28,6 +28,18 @@ The game API and other authenticated routes resolve the caller from either the b
 
 ## Title protection
 
+Library PATCH requests distinguish missing fields, nulls and real values. Omitted
+fields retain their current value. A `null` for a required movie, TV or anime column
+(such as title, status, favorite, provider IDs or a list) also retains its value.
+A nullable column can be explicitly cleared with `null`. Zero, `false`, empty lists
+and empty provider-ID objects are applied. Games retain their existing exception:
+clearing `sort_title` derives it again from the title. Media `sort_title: null` keeps
+the current ordering name; updating the title without a sorting name derives one.
+
+`title_lock` is a protection control, not a nullable database column: it requires
+an explicit JSON boolean when supplied. Null still returns `422`, and the actor
+restrictions below continue to apply.
+
 `PATCH /api/game/update/{id}`, `/api/movie/update/{id}`, `/api/tv/update/{id}`,
 and `/api/anime/update/{id}` accept an optional JSON boolean `title_lock`:
 

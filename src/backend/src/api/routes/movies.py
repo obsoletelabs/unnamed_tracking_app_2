@@ -27,7 +27,10 @@ from src.database.models.media_extras import ActivityEventType
 from src.database.models.movies import Movie, MovieStatus
 from src.database.models.user import User
 from src.database.session import get_db
-from src.features.metadata.locked_fields import apply_updates_with_locking
+from src.features.metadata.locked_fields import (
+    apply_updates_with_locking,
+    drop_nulls_for_required_fields,
+)
 from src.features.metadata.service import (
     library_candidate,
     related_metadata,
@@ -191,7 +194,10 @@ async def update_movie(
     movie = await _get_movie_or_404(movie_id, db, current_user.id, for_update=True)
     previous_status = movie.status
 
-    updates = payload.model_dump(exclude_unset=True)
+    updates = drop_nulls_for_required_fields(
+        payload.model_dump(exclude_unset=True),
+        {column.key for column in movie.__table__.columns if not column.nullable},
+    )
 
     apply_updates_with_locking(movie, updates, _LOCKABLE_FIELDS, actor=actor)
     _sync_watch_progress(movie, updates)

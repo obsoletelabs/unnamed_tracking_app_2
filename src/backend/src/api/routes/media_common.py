@@ -17,7 +17,10 @@ from src.api.routes.media_extras import log_status_change
 from src.api.schemas.pagination import LibraryQuery, PaginatedResponse, score_ranks
 from src.core.auth import AuthenticatedActor
 from src.core.titles import derive_sort_title
-from src.features.metadata.locked_fields import apply_updates_with_locking
+from src.features.metadata.locked_fields import (
+    apply_updates_with_locking,
+    drop_nulls_for_required_fields,
+)
 
 
 async def owned_row(
@@ -65,6 +68,9 @@ async def update_tracking(
     actor: AuthenticatedActor | None = None,
 ) -> None:
     """Apply media edits, keep title ordering, and record a meaningful status transition."""
+    updates = drop_nulls_for_required_fields(
+        updates, {column.key for column in row.__table__.columns if not column.nullable}
+    )
     previous_status = row.status
     apply_updates_with_locking(row, updates, lockable_fields, actor=actor)
     if "title" in updates and "sort_title" not in updates:
