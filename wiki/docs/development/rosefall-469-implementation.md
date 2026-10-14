@@ -60,11 +60,20 @@ Until then, PRs remain available for review with current validation and screensh
   Full backend validation passed (2,403 tests, four skipped), frontend validation
   passed (528 tests), and hosted checks passed before the authorized squash merge.
   Modern/Classic account and phone screenshots are included.
-- **B:** implementation is in progress: opt-in verification, callback-alias
-  enforcement, email-collision handling and the false-default additive migration.
-  Callback/configuration regression coverage and UI validation accompany the change.
-- **C–O:** approved; not implemented yet. The package details below describe
-  the intended changes and verification, not completed behavior.
+- **B:** merged as [PR #127](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/127).
+  Opt-in verified email, callback-alias enforcement, collision handling and the
+  false-default additive migration are complete. Full backend validation passed
+  (2,441 tests, four skipped), frontend validation passed (531 tests), and all hosted
+  checks passed before the authorized squash merge. Modern/Classic screenshots
+  accompany the provider setting.
+- **C1 / 62:** implemented in [PR #128](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/128)
+  on `fix/public-asset-fetch`: one pinned public HTTP
+  boundary for cached images and game artwork URL downloads, with checked redirects,
+  bounded streaming and image validation. The final PR and validation are recorded
+  in the [handover](rosefall-469-handover.md).
+- **C2 / 63–64 and D–O:** approved; not implemented yet. The package details below
+  describe intended work, not completed behavior. Work stops after the current C1
+  package at the owner's request; resume from the handover.
 
 ## Concrete packages
 
@@ -132,7 +141,11 @@ provider health/gateway/permissions. Source URL filtering alone is insufficient.
 Validate upload extensions and actual permitted content, store safe filenames while
 keeping the original download/display name, and apply nosniff/sandbox headers to
 both complete and range responses. Preserve legitimate media playback, preview,
-200/206/416 semantics and public plugin document APIs. No database migration.
+200/206/416 semantics and public plugin document APIs. Before implementing original
+filename preservation, verify persistence requirements: the current MediaItem model
+has a sanitized stored filename and optional title, but no original-filename column.
+A new additive migration may be necessary; do not promise preservation using a
+parallel metadata store or overload a user-edited title.
 Test private/redirect/rebinding targets, oversized and invalid assets, MIME spoofing,
 filenames and range headers through public upload/download routes. Document limits
 and any demonstrated compatibility adjustment before changing supported formats.
