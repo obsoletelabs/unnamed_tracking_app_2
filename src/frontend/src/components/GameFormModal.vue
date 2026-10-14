@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, watch } from "vue";
 import UiModal from "./UiModal.vue";
+import GamePlayFields from "./game/GamePlayFields.vue";
 import {
   attachGameAssetFromUrl,
   createGame,
@@ -21,6 +22,7 @@ import type {
   GameStatus,
   AchievementsProvider,
   GameRelationshipType,
+  GamePlayCompatibility,
 } from "../types/game";
 import type { GameLink, GameOwnership } from "../types/game";
 import { useConfirm } from "../state/dialog";
@@ -220,6 +222,9 @@ const { titleProtected, titleLockOverride } = useTitleProtection(
 // the saved custom sorting name, blank when the library sorts by the title
 const sortTitle = ref(props.game?.sortTitle ?? "");
 const platform = ref(props.game?.platform ?? "");
+const playCompatibility = ref<GamePlayCompatibility | null>(
+  props.game?.playCompatibility ? { ...props.game.playCompatibility } : null,
+);
 const priority = ref(props.game?.priority ?? "");
 const folderLocation = ref(props.game?.folderLocation ?? "");
 const status = ref<GameStatus>(props.game?.status ?? "backlog");
@@ -638,6 +643,7 @@ async function submit() {
     source: source.value.trim() || null,
     providerIds: selectedProviderIds.value ?? props.game?.providerIds,
     platform: platform.value.trim() || null,
+    playCompatibility: playCompatibility.value,
     priority: priority.value || null,
     ageRating: ageRating.value.trim() || null,
     timeToBeatHours: String(timeToBeatHours.value).trim()
@@ -1168,6 +1174,7 @@ async function submit() {
                 placeholder="Achievements, Cloud Saves"
               />
             </label>
+            <GamePlayFields v-model="playCompatibility" />
           </div>
 
           <div v-else-if="activeTab === 'Media'" class="tab-panel">

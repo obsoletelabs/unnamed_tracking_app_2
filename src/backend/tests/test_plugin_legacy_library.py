@@ -23,6 +23,10 @@ class ExportDb:
     async def connection(self):
         return self
 
+    async def get(self, _model, _identity):
+        # This fixture represents an ordinary authenticated application user.
+        return None
+
     async def run_sync(self, function, *args):
         return function(None, *args)
 

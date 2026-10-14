@@ -1,0 +1,145 @@
+"""user integration delegation and local achievement reports
+
+Revision ID: 150faa21e2c0
+Revises: 626d06554967
+Create Date: 2026-10-13 12:20:17.380277
+
+"""
+
+from typing import Sequence, Union
+
+import sqlalchemy as sa
+from alembic import op
+from sqlalchemy.dialects import postgresql
+
+from src.database import migration_helpers as h
+
+# revision identifiers, used by Alembic.
+revision: str = "150faa21e2c0"
+down_revision: Union[str, None] = "626d06554967"
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    # Adoption replays migrations on existing schemas; preserve existing data.
+    h.create_table_if_missing(
+        "integration_clients",
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column("name", sa.String(length=100), nullable=False),
+        sa.Column("origin", sa.String(length=512), nullable=False),
+        sa.Column("enabled", sa.Boolean(), nullable=False),
+        sa.Column("created_at", sa.BigInteger(), nullable=False),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("origin"),
+    )
+    h.create_table_if_missing(
+        "integration_policy",
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("instance_id", sa.UUID(), nullable=False),
+        sa.Column("enabled", sa.Boolean(), nullable=False),
+        sa.Column("allow_guests", sa.Boolean(), nullable=False),
+        sa.Column("guest_retention_hours", sa.Integer(), nullable=False),
+        sa.Column("maximum_grant_hours", sa.Integer(), nullable=False),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    h.create_table_if_missing(
+        "delegation_requests",
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column("client_id", sa.UUID(), nullable=False),
+        sa.Column("requested_scopes", postgresql.ARRAY(sa.String()), nullable=False),
+        sa.Column("code_challenge", sa.String(length=64), nullable=False),
+        sa.Column("state", sa.String(length=16), nullable=False),
+        sa.Column("expires_at", sa.BigInteger(), nullable=False),
+        sa.Column("created_at", sa.BigInteger(), nullable=False),
+        sa.ForeignKeyConstraint(["client_id"], ["integration_clients.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    h.create_index_if_missing(
+        op.f("ix_delegation_requests_client_id"), "delegation_requests", ["client_id"], unique=False
+    )
+    h.create_index_if_missing(
+        op.f("ix_delegation_requests_expires_at"),
+        "delegation_requests",
+        ["expires_at"],
+        unique=False,
+    )
+    h.create_table_if_missing(
+        "achievement_overrides",
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column("game_id", sa.UUID(), nullable=False),
+        sa.Column("provider", sa.String(length=30), nullable=False),
+        sa.Column("external_id", sa.String(length=200), nullable=False),
+        sa.Column("name", sa.String(length=500), nullable=False),
+        sa.Column("description", sa.Text(), nullable=True),
+        sa.Column("unlocked", sa.Boolean(), nullable=False),
+        sa.Column("unlocked_at", sa.BigInteger(), nullable=True),
+        sa.Column("updated_at", sa.BigInteger(), nullable=False),
+        sa.ForeignKeyConstraint(["game_id"], ["games.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint(
+            "game_id", "provider", "external_id", name="uq_achievement_override_source"
+        ),
+    )
+    h.create_index_if_missing(
+        op.f("ix_achievement_overrides_game_id"), "achievement_overrides", ["game_id"], unique=False
+    )
+    h.create_table_if_missing(
+        "delegated_grants",
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column("user_id", sa.UUID(), nullable=False),
+        sa.Column("client_id", sa.UUID(), nullable=False),
+        sa.Column("request_id", sa.UUID(), nullable=False),
+        sa.Column("scopes", postgresql.ARRAY(sa.String()), nullable=False),
+        sa.Column("token_hash", sa.String(length=64), nullable=True),
+        sa.Column("expires_at", sa.BigInteger(), nullable=False),
+        sa.Column("revoked_at", sa.BigInteger(), nullable=True),
+        sa.Column("created_at", sa.BigInteger(), nullable=False),
+        sa.ForeignKeyConstraint(["client_id"], ["integration_clients.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["request_id"], ["delegation_requests.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("request_id"),
+        sa.UniqueConstraint("token_hash"),
+    )
+    h.create_index_if_missing(
+        op.f("ix_delegated_grants_client_id"), "delegated_grants", ["client_id"], unique=False
+    )
+    h.create_index_if_missing(
+        op.f("ix_delegated_grants_expires_at"), "delegated_grants", ["expires_at"], unique=False
+    )
+    h.create_index_if_missing(
+        op.f("ix_delegated_grants_user_id"), "delegated_grants", ["user_id"], unique=False
+    )
+    h.create_table_if_missing(
+        "delegation_audit",
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column("user_id", sa.UUID(), nullable=True),
+        sa.Column("client_id", sa.UUID(), nullable=True),
+        sa.Column("grant_id", sa.UUID(), nullable=True),
+        sa.Column("event", sa.String(length=32), nullable=False),
+        sa.Column("created_at", sa.BigInteger(), nullable=False),
+        sa.ForeignKeyConstraint(["client_id"], ["integration_clients.id"], ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(["grant_id"], ["delegated_grants.id"], ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="SET NULL"),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    h.create_index_if_missing(
+        op.f("ix_delegation_audit_user_id"), "delegation_audit", ["user_id"], unique=False
+    )
+
+
+def downgrade() -> None:
+    op.drop_index(op.f("ix_delegation_audit_user_id"), table_name="delegation_audit")
+    op.drop_table("delegation_audit")
+    op.drop_index(op.f("ix_delegated_grants_user_id"), table_name="delegated_grants")
+    op.drop_index(op.f("ix_delegated_grants_expires_at"), table_name="delegated_grants")
+    op.drop_index(op.f("ix_delegated_grants_client_id"), table_name="delegated_grants")
+    op.drop_table("delegated_grants")
+    op.drop_index(op.f("ix_achievement_overrides_game_id"), table_name="achievement_overrides")
+    op.drop_table("achievement_overrides")
+    op.drop_index(op.f("ix_delegation_requests_expires_at"), table_name="delegation_requests")
+    op.drop_index(op.f("ix_delegation_requests_client_id"), table_name="delegation_requests")
+    op.drop_table("delegation_requests")
+    op.drop_table("integration_policy")
+    op.drop_table("integration_clients")

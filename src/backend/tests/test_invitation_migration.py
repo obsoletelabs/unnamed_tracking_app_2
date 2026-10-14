@@ -24,15 +24,16 @@ def test_invitation_upgrade_adoption_and_downgrade_preserve_user_history():
     command = [sys.executable, "-m", "alembic", "-c", "alembic.ini"]
 
     def migrate(*arguments):
-        subprocess.run(
+        result = subprocess.run(
             command + list(arguments),
             cwd=Path(__file__).parents[1],
             env=environment,
-            check=True,
+            check=False,
             capture_output=True,
             text=True,
             timeout=60,
         )
+        assert result.returncode == 0, result.stdout + result.stderr
 
     with psycopg.connect(connection_url, autocommit=True) as connection:
         connection.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))

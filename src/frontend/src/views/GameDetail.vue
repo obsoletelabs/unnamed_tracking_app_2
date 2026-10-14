@@ -29,6 +29,7 @@ import {
 } from "../utils/achievements";
 import type { AchFilter } from "../composables/useGameAchievements";
 import GameAccountsPanel from "../components/game/GameAccountsPanel.vue";
+import GamePlayPanel from "../components/game/GamePlayPanel.vue";
 import GameOwnedCopiesPanel from "../components/game/GameOwnedCopiesPanel.vue";
 import GameWorldsPanel from "../components/game/GameWorldsPanel.vue";
 import { provide } from "vue";
@@ -510,6 +511,8 @@ const {
           </div>
         </div>
       </div>
+
+      <GamePlayPanel :game="game" @saved="onGameSaved" />
 
       <div v-if="mainTags.length" class="chip-row">
         <router-link

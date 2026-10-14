@@ -12,12 +12,19 @@ import type {
   GameLink,
   GameOwnership,
   GameRelationshipType,
+  GamePlayCompatibility,
 } from "../types/game";
 
 // The exact shape FastAPI sends, snake_case, matching the Python model
 // field-for-field. This is deliberately a separate type from `Game`:
 // nothing outside this file should ever see raw backend data directly.
 export interface BackendGame {
+  play_compatibility?: {
+    min_players: number | null;
+    max_players: number | null;
+    duration_minutes: number | null;
+    crossplay: boolean;
+  } | null;
   provider_ids?: Record<string, string>;
   locked_fields?: string[];
   id: string;
@@ -71,6 +78,19 @@ export interface BackendGame {
 // depending on config, handle both rather than assume one
 function toNumberOrNull(value: number | string | null): number | null {
   return value === null ? null : Number(value);
+}
+
+function playCompatibilityPayload(
+  value: GamePlayCompatibility | null | undefined,
+) {
+  return value
+    ? {
+        min_players: value.minPlayers,
+        max_players: value.maxPlayers,
+        duration_minutes: value.durationMinutes,
+        crossplay: value.crossplay,
+      }
+    : value;
 }
 
 function unixSecondsToIso(seconds: number | null): string | null {
@@ -152,6 +172,14 @@ export function mapBackendGame(raw: BackendGame): Game {
     source: raw.source,
     providerIds: raw.provider_ids ?? {},
     platform: raw.platform,
+    playCompatibility: raw.play_compatibility
+      ? {
+          minPlayers: raw.play_compatibility.min_players,
+          maxPlayers: raw.play_compatibility.max_players,
+          durationMinutes: raw.play_compatibility.duration_minutes,
+          crossplay: raw.play_compatibility.crossplay,
+        }
+      : null,
     priority: raw.priority,
     // only a sorting name someone chose, not the one derived from the title
     sortTitle:
@@ -672,6 +700,7 @@ export async function previewGameMetadataRefresh(
 }
 
 export interface NewGameInput {
+  playCompatibility?: GamePlayCompatibility | null;
   providerIds?: Record<string, string>;
   title: string;
   titleLock?: boolean;
@@ -746,6 +775,7 @@ export async function createGame(input: NewGameInput): Promise<Game> {
       completionDate: input.completionDate,
       tags: input.tags,
       features: input.features,
+      playCompatibility: input.playCompatibility,
       folderLocation: input.folderLocation || null,
       releaseDate: input.releaseDate,
       source: input.source,
@@ -798,6 +828,7 @@ export async function createGame(input: NewGameInput): Promise<Game> {
       rating_soundtrack: input.ratingSound,
       tags: input.tags,
       features: input.features,
+      play_compatibility: playCompatibilityPayload(input.playCompatibility),
       links: input.links,
       purchase_date: dateInputToUnixSeconds(input.ownership.purchaseDate),
       completion_date: dateInputToUnixSeconds(input.completionDate),
@@ -859,6 +890,10 @@ export async function updateGame(
       links: input.links,
       ownership: input.ownership,
       features: input.features,
+      playCompatibility:
+        input.playCompatibility === undefined
+          ? mockGames[index].playCompatibility
+          : input.playCompatibility,
     };
     mockGames[index] = updated;
     return updated;
@@ -896,6 +931,7 @@ export async function updateGame(
     rating_soundtrack: input.ratingSound,
     tags: input.tags,
     features: input.features,
+    play_compatibility: playCompatibilityPayload(input.playCompatibility),
     links: input.links,
     collections: input.collections,
     purchase_date: dateInputToUnixSeconds(input.ownership.purchaseDate),
@@ -1592,6 +1628,28 @@ export async function setRatings(
   return mapBackendGame(raw);
 }
 
+export async function setGamePlayCompatibility(
+  gameId: string,
+  value: GamePlayCompatibility | null,
+): Promise<Game> {
+  if (import.meta.env.VITE_USE_MOCK_DATA === "true") {
+    const game = mockGames.find((item) => item.id === gameId);
+    if (!game) throw new Error(`Game ${gameId} not found`);
+    game.playCompatibility = value;
+    return game;
+  }
+  const response = await fetch(`/api/game/update/${gameId}`, {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      play_compatibility: playCompatibilityPayload(value),
+    }),
+  });
+  if (!response.ok) throw await failedRequest(response);
+  return mapBackendGame((await response.json()) as BackendGame);
+}
+
 export async function setFavorite(
   gameId: string,
   favorite: boolean,
@@ -1719,6 +1777,7 @@ export async function setStatus(
 // notes, playtime, purchase info, and ratings are per-game by nature and
 // excluded so a bulk edit can't stamp one game's specifics onto many others.
 export interface BulkEditFields {
+  playCompatibility?: GamePlayCompatibility | null;
   status?: GameStatus;
   favorite?: boolean;
   developer?: string | null;
@@ -1736,6 +1795,10 @@ export async function bulkUpdateGames(
   fields: BulkEditFields,
 ): Promise<number> {
   const payload: Record<string, unknown> = { game_ids: gameIds };
+  if (fields.playCompatibility !== undefined)
+    payload.play_compatibility = playCompatibilityPayload(
+      fields.playCompatibility,
+    );
   if (fields.status !== undefined)
     payload.status = denormalizeStatus(fields.status);
   if (fields.favorite !== undefined) payload.favorite = fields.favorite;
@@ -1752,6 +1815,8 @@ export async function bulkUpdateGames(
     let count = 0;
     for (const game of mockGames) {
       if (!gameIds.includes(game.id)) continue;
+      if (fields.playCompatibility !== undefined)
+        game.playCompatibility = fields.playCompatibility;
       if (fields.status !== undefined) game.status = fields.status;
       if (fields.favorite !== undefined) game.favorite = fields.favorite;
       if (fields.developer !== undefined) game.developer = fields.developer;

@@ -37,6 +37,8 @@ import KeyboardShortcutsSection from "../components/settings/KeyboardShortcutsSe
 import ConnectionsSection from "../components/settings/ConnectionsSection.vue";
 import AniListImportSection from "../components/settings/AniListImportSection.vue";
 import ApiKeysSection from "../components/settings/ApiKeysSection.vue";
+import ConnectedAppsSection from "../components/settings/ConnectedAppsSection.vue";
+import IntegrationPolicySection from "../components/settings/IntegrationPolicySection.vue";
 import SessionsSection from "../components/settings/SessionsSection.vue";
 import ToggleButton from "../components/settings/ToggleButton.vue";
 import PluginManagerSection from "../components/settings/PluginManagerSection.vue";
@@ -83,6 +85,8 @@ const coreSectionIds = new Set([
   "app-installation",
   "branding",
   "api-keys",
+  "connected-apps",
+  "integration-policy",
   "sessions",
   "admin-sessions",
   "calendar-notifications",
@@ -187,6 +191,7 @@ const groups = computed<SettingsGroup[]>(() => {
         { id: "background-tasks", label: "Background tasks" },
         { id: "notifications", label: "Notifications" },
         { id: "api-keys", label: "API Keys" },
+        { id: "connected-apps", label: "Connected apps" },
         { id: "sessions", label: "Sessions" },
       ],
     },
@@ -221,6 +226,7 @@ const groups = computed<SettingsGroup[]>(() => {
           { id: "admin-sessions", label: "Session Manager" },
           { id: "oidc", label: "Single sign-on" },
           { id: "password-policy", label: "Password policy" },
+          { id: "integration-policy", label: "Integration access" },
         ],
       },
       {
@@ -536,6 +542,14 @@ function backToArea() {
           <KeyboardShortcutsSection v-else-if="activeSection === 'shortcuts'" />
           <ConnectionsSection v-else-if="activeSection === 'connections'" />
           <ApiKeysSection v-else-if="activeSection === 'api-keys'" />
+          <ConnectedAppsSection
+            v-else-if="activeSection === 'connected-apps'"
+          />
+          <IntegrationPolicySection
+            v-else-if="
+              activeSection === 'integration-policy' && currentUser?.is_admin
+            "
+          />
           <template
             v-else-if="
               activeSection === 'sessions' ||

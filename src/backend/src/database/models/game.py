@@ -159,6 +159,7 @@ class Game(Base):
         nullable=False,
         default=list,
     )
+    play_compatibility: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     features: Mapped[list[str]] = mapped_column(
         ARRAY(String),

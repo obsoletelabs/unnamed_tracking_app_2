@@ -45,6 +45,12 @@ const router = createRouter({
   },
   routes: [
     {
+      path: "/integration-access/:requestId",
+      name: "integration-access",
+      meta: { title: "Integration access" },
+      component: () => import("../views/IntegrationAccess.vue"),
+    },
+    {
       path: "/accept-invite",
       name: "accept-invite",
       meta: { title: "Accept invitation" },

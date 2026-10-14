@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from src.api.schemas.title_protection import TitleProtectionUpdate
 from src.core.page_settings import validate_page_settings
@@ -34,6 +34,28 @@ ProviderIds = dict[
 ]
 
 
+class GamePlayCompatibility(BaseModel):
+    """User-confirmed group play details; no provider or purchase verification."""
+
+    model_config = ConfigDict(extra="forbid")
+    min_players: int | None = Field(default=None, ge=1, le=32, strict=True)
+    max_players: int | None = Field(default=None, ge=1, le=32, strict=True)
+    duration_minutes: int | None = Field(default=None, ge=1, le=1440, strict=True)
+    crossplay: bool = Field(default=False, strict=True)
+
+    @model_validator(mode="after")
+    def ordered_players(self) -> "GamePlayCompatibility":
+        if (self.min_players is None) != (self.max_players is None):
+            raise ValueError("Set both player limits, or leave both unknown.")
+        if (
+            self.min_players is not None
+            and self.max_players is not None
+            and self.min_players > self.max_players
+        ):
+            raise ValueError("Maximum players must be at least the minimum.")
+        return self
+
+
 class GameBase(BaseModel):
     """Fields shared by create and update payloads."""
 
@@ -45,6 +67,7 @@ class GameBase(BaseModel):
     series: str | None = Field(default=None, max_length=200)
     tags: list[str] = Field(default_factory=list)
     features: list[str] = Field(default_factory=list)
+    play_compatibility: GamePlayCompatibility | None = None
     collections: list[str] = Field(default_factory=list)
     links: list[GameLinkSchema] = Field(default_factory=list)
     source: str | None = Field(default=None, max_length=50)
@@ -152,6 +175,7 @@ class GameUpdate(TitleProtectionUpdate):
     series: str | None = Field(default=None, max_length=200)
     tags: list[str] | None = None
     features: list[str] | None = None
+    play_compatibility: GamePlayCompatibility | None = None
     collections: list[str] | None = None
     links: list[GameLinkSchema] | None = None
     source: str | None = Field(default=None, max_length=50)
@@ -236,6 +260,7 @@ class GameBulkUpdate(BaseModel):
     game_ids: list[UUID] = Field(min_length=1, max_length=500)
     status: GameStatus | None = None
     favorite: bool | None = None
+    play_compatibility: GamePlayCompatibility | None = None
     developer: str | None = Field(default=None, max_length=200)
     publisher: str | None = Field(default=None, max_length=200)
     series: str | None = Field(default=None, max_length=200)

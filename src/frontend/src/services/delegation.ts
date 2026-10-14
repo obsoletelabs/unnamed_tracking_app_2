@@ -1,0 +1,109 @@
+import { pluginRequestError } from "./apiError";
+
+export interface AccessCapability {
+  scope: string;
+  description: string;
+  write: boolean;
+}
+export interface AccessRequestSummary {
+  external_account?: {
+    provider: string;
+    subject: string;
+    username: string;
+  } | null;
+  id: string;
+  name: string;
+  origin: string;
+  instance_id: string;
+  state: string;
+  expires_at: number;
+  maximum_grant_hours: number;
+  capabilities: AccessCapability[];
+}
+export interface IntegrationGrant {
+  external_account?: {
+    provider: string;
+    subject: string;
+    username: string;
+  } | null;
+  id: string;
+  name: string;
+  origin: string;
+  enabled: boolean;
+  scopes: string[];
+  created_at: number;
+  expires_at: number | null;
+  revoked_at: number | null;
+}
+export interface IntegrationClient {
+  id: string;
+  name: string;
+  origin: string;
+  enabled: boolean;
+}
+export interface IntegrationPolicy {
+  enabled: boolean;
+  allow_guests: boolean;
+  allow_any_origin: boolean;
+  allow_legacy_api_keys: boolean;
+  guest_retention_hours: number;
+  maximum_grant_hours: number;
+  clients: IntegrationClient[];
+}
+export const capabilityLabels: Record<string, string> = {
+  "profile.read": "Read display name and account identity",
+  "games.read": "Read library, ownership, ratings and tracking",
+  "achievements.read": "Read achievements and local reports",
+  "history.read": "Read game field-change history",
+  "lists.read": "Read collections and custom lists",
+  "media.read": "Read tracked media",
+  "tracking.write": "Change tracking, completion, playtime and ratings",
+  "achievements.write": "Create manual achievements and local reports",
+  "compatibility.write": "Save multiplayer settings for your games",
+};
+
+const base = "/api/delegation/v1";
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(base + path, {
+    ...init,
+    credentials: "include",
+    headers: { "Content-Type": "application/json", ...init?.headers },
+  });
+  if (!response.ok)
+    throw await pluginRequestError(
+      response,
+      "Integration access request failed.",
+    );
+  return response.json() as Promise<T>;
+}
+export const fetchAccessRequest = (id: string) =>
+  request<AccessRequestSummary>(`/requests/${encodeURIComponent(id)}`);
+export const decideAccessRequest = (
+  id: string,
+  approve: boolean,
+  scopes: string[],
+  expiresInHours: number | null,
+) =>
+  request<{ state: string }>(`/requests/${encodeURIComponent(id)}/decision`, {
+    method: "POST",
+    body: JSON.stringify({ approve, scopes, expires_in_hours: expiresInHours }),
+  });
+export const fetchIntegrationGrants = () =>
+  request<IntegrationGrant[]>("/grants");
+export const revokeIntegrationGrant = (id: string) =>
+  request(`/grants/${encodeURIComponent(id)}`, { method: "DELETE" });
+export const reduceIntegrationGrant = (id: string, scopes: string[]) =>
+  request(`/grants/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ scopes }),
+  });
+export const fetchIntegrationPolicy = () =>
+  request<IntegrationPolicy>("/policy");
+export const saveIntegrationPolicy = (
+  policy: Omit<IntegrationPolicy, "clients">,
+) => request("/policy", { method: "PUT", body: JSON.stringify(policy) });
+export const saveIntegrationClient = (client: Omit<IntegrationClient, "id">) =>
+  request<IntegrationClient>("/clients", {
+    method: "PUT",
+    body: JSON.stringify(client),
+  });

@@ -247,6 +247,29 @@ only Steam's broad official genres, so Elden Ring shows Souls-like, Open World,
 Dark Fantasy, RPG, Difficult and Action RPG rather than just Action and RPG. See
 [Steam tags as genres](../integrations/metadata.md#steam-tags-as-genres).
 
+### Multiplayer settings
+
+On **Overview**, choose **Edit multiplayer settings**. Tick **Playable with
+others** and save to mark multiplayer without supplying extra details. Exact
+player limits remain unknown. Enable **Set known player limits** to enter both
+minimum and maximum, or choose a common range. Session duration and confirmed
+crossplay are optional. These details are self-reported and also available in
+the game's ordinary Edit form.
+
+![Multiplayer settings on a game page](../images/game-multiplayer-editor.jpg)
+
+For several games, select them in the library and open **Bulk Edit**. Tick
+**Apply multiplayer settings** and review the replacement before saving. It
+affects only your selected games. Unchecked fields stay unchanged; applying with
+**Playable with others** unchecked clears their saved multiplayer details.
+
+Integrations can read these presets with approved library access. Saving them
+through an integration requires the separate `compatibility.write` capability;
+ordinary tracking write access does not include it. Game Night can apply a
+preset to selected records across connected current instances when each account
+has explicitly approved that capability. Refresh the connected libraries to use
+the saved changes. Older API-key connections remain read-only in its broker.
+
 ## Achievements
 
 Steam, PlayStation and RetroAchievements achievements are synced into the

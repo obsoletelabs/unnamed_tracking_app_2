@@ -13,7 +13,7 @@ from fastapi import HTTPException, Response
 from sqlalchemy import delete, func, select
 
 from src.api.routes import games, movies
-from src.api.schemas.game import GameCreate, GameUpdate
+from src.api.schemas.game import GameBulkUpdate, GameCreate, GameUpdate
 from src.api.schemas.movie import MovieUpdate
 from src.database.models.game import Game
 from src.database.models.movies import Movie, MovieStatus
@@ -56,6 +56,103 @@ async def _count_games(user_id) -> int:
         return await db.scalar(
             select(func.count()).select_from(Game).where(Game.user_id == user_id)
         )
+
+
+async def test_group_play_details_roundtrip_and_clear(scratch_user):
+    preset = {"min_players": 2, "max_players": 4, "duration_minutes": 45, "crossplay": True}
+    async with SessionLocal() as db:
+        created = await games.create_game(
+            _create("Group_Play", play_compatibility=preset), Response(), db, scratch_user
+        )
+        game_id = created.id
+    async with SessionLocal() as db:
+        row = await db.get(Game, game_id)
+        assert row.play_compatibility == preset
+        await games.update_game(game_id, GameUpdate(play_compatibility=None), db, scratch_user)
+    async with SessionLocal() as db:
+        assert (await db.get(Game, game_id)).play_compatibility is None
+
+
+async def test_group_play_can_be_marked_without_extra_metadata(scratch_user):
+    async with SessionLocal() as db:
+        created = await games.create_game(
+            _create("Group_Unknown", play_compatibility={}), Response(), db, scratch_user
+        )
+        assert created.play_compatibility["min_players"] is None
+        assert created.play_compatibility["max_players"] is None
+
+
+async def test_group_play_bulk_updates_only_selected_owned_games(scratch_user):
+    async with SessionLocal() as db:
+        other = User(
+            username="other_" + uuid.uuid4().hex,
+            email=uuid.uuid4().hex + "@example.test",
+            password_hash="x",
+        )
+        db.add(other)
+        await db.commit()
+        other_id = other.id
+        first = await games.create_game(_create("Group_First"), Response(), db, scratch_user)
+        first_id = first.id
+        second = await games.create_game(_create("Group_Second"), Response(), db, scratch_user)
+        second_id = second.id
+        third = await games.create_game(_create("Group_Third"), Response(), db, scratch_user)
+        third_id = third.id
+        foreign = Game(user_id=other_id, title="Other", folder_location="Other", sort_title="other")
+        db.add(foreign)
+        await db.commit()
+        foreign_id = foreign.id
+        try:
+            preset = {
+                "min_players": 2,
+                "max_players": 8,
+                "duration_minutes": None,
+                "crossplay": False,
+            }
+            result = await games.bulk_update_games(
+                GameBulkUpdate(
+                    game_ids=[first_id, second_id, foreign_id], play_compatibility=preset
+                ),
+                db,
+                scratch_user,
+            )
+            assert result == {"updated": 2}
+            for game_id in (first_id, second_id):
+                assert (await db.get(Game, game_id)).play_compatibility == preset
+            assert (await db.get(Game, third_id)).play_compatibility is None
+            assert (await db.get(Game, foreign_id)).play_compatibility is None
+            await games.bulk_update_games(
+                GameBulkUpdate(game_ids=[first_id, second_id], platform="PC"), db, scratch_user
+            )
+            assert (await db.get(Game, first_id)).play_compatibility == preset
+            await games.bulk_update_games(
+                GameBulkUpdate(game_ids=[first_id, second_id], play_compatibility=None),
+                db,
+                scratch_user,
+            )
+            assert (await db.get(Game, first_id)).play_compatibility is None
+        finally:
+            await db.execute(delete(User).where(User.id == other_id))
+            await db.commit()
+
+
+@pytest.mark.parametrize(
+    "preset",
+    [
+        {"min_players": 5, "max_players": 2},
+        {"min_players": 1, "max_players": 33},
+        {"min_players": True, "max_players": 4},
+        {"min_players": 1, "max_players": 4, "duration_minutes": 0},
+        {"min_players": 1, "max_players": 4, "crossplay": "yes"},
+        {"min_players": 1},
+        {"max_players": 4},
+    ],
+)
+def test_group_play_details_reject_unconfirmed_or_invalid_counts(preset):
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        _create("Invalid_Preset", play_compatibility=preset)
 
 
 async def test_repeated_playnite_create_returns_the_existing_game(scratch_user):
