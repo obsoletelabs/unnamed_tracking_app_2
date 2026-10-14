@@ -3,7 +3,12 @@
   lang="ts"
   generic="
     T extends FileDetails,
-    TR extends { id: string; filename: string; purge_at: number }
+    TR extends {
+      id: string;
+      filename: string;
+      original_filename?: string | null;
+      purge_at: number;
+    }
   "
 >
 // One screen for a game's Screenshots, Clips, Soundtrack, Docs or Modpack: the
@@ -284,7 +289,7 @@ function achievementName(id: string | null): string | null {
 function haystack(i: MediaItem): string {
   return [
     i.title ?? "",
-    originalName(i.filename),
+    originalName(i.filename, i.original_filename),
     i.note ?? "",
     i.tags.join(" "),
     achievementName(i.linked_achievement_id ?? null) ?? "",
@@ -302,8 +307,8 @@ const visible = computed(() => {
   if (q) list = list.filter((i) => haystack(i).includes(q));
   if (sort.value === "name")
     list.sort((a, b) =>
-      (a.title || originalName(a.filename)).localeCompare(
-        b.title || originalName(b.filename),
+      (a.title || originalName(a.filename, a.original_filename)).localeCompare(
+        b.title || originalName(b.filename, b.original_filename),
       ),
     );
   else
@@ -347,7 +352,7 @@ async function copy(item: MediaItem) {
   }
 }
 function download(item: MediaItem) {
-  downloadMedia(item.url, originalName(item.filename));
+  downloadMedia(item.url, originalName(item.filename, item.original_filename));
 }
 function remove(item: MediaItem) {
   if (lightboxId.value === item.id) lightboxId.value = null;
@@ -703,7 +708,9 @@ onBeforeUnmount(() => {
 
     <ul v-if="showTrash && trash.length" class="gm-trash">
       <li v-for="t in trash" :key="t.id">
-        <span class="gm-trash-name">{{ originalName(t.filename) }}</span>
+        <span class="gm-trash-name">{{
+          originalName(t.filename, t.original_filename)
+        }}</span>
         <span class="gm-trash-meta">purges in {{ daysLeft(t.purge_at) }}d</span>
         <button
           type="button"

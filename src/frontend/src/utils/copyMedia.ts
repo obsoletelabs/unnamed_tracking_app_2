@@ -57,9 +57,11 @@ export function downloadMedia(url: string, filename: string): void {
   a.remove();
 }
 
-// The stored name is "<id>_<original>", so strip the id for display and
-// for the downloaded file.
-export function originalName(filename: string): string {
-  const i = filename.indexOf("_");
-  return i > 0 ? filename.slice(i + 1) : filename;
+// Prefer the preserved Unicode basename. Legacy rows only have the safe stored name.
+export function originalName(
+  filename: string,
+  preserved?: string | null,
+): string {
+  if (preserved) return preserved;
+  return filename.replace(/^(?:[a-f\d]{8}|[a-f\d]{32})_/i, "");
 }

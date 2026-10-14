@@ -181,7 +181,7 @@ function onAudioMeta(e: Event) {
   length.value = formatDuration((e.target as HTMLAudioElement).duration);
 }
 const extension = computed(() => {
-  const name = originalName(props.item.filename);
+  const name = originalName(props.item.filename, props.item.original_filename);
   const i = name.lastIndexOf(".");
   return i > 0 ? name.slice(i + 1, i + 6).toUpperCase() : "FILE";
 });
@@ -270,8 +270,8 @@ function onKey(e: KeyboardEvent) {
 
 <template>
   <UiModal
-    :title="title.trim() || originalName(item.filename)"
-    :description="originalName(item.filename)"
+    :title="title.trim() || originalName(item.filename, item.original_filename)"
+    :description="originalName(item.filename, item.original_filename)"
     size="wide"
     @close="emit('close')"
     @keydown="onKey"
@@ -330,7 +330,12 @@ function onKey(e: KeyboardEvent) {
           <button
             type="button"
             class="ui-btn ui-btn-ghost ui-btn-sm"
-            @click="downloadMedia(item.url, originalName(item.filename))"
+            @click="
+              downloadMedia(
+                item.url,
+                originalName(item.filename, item.original_filename),
+              )
+            "
           >
             Download
           </button>

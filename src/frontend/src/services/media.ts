@@ -8,6 +8,7 @@ export type MediaKind = "screenshot" | "clip" | "soundtrack";
 export interface FileDetails {
   id: string;
   filename: string;
+  original_filename?: string | null;
   kind: string;
   url: string;
   tags: string[];
@@ -131,6 +132,7 @@ export async function uploadGameScreenshots(
       mockMedia.push({
         id: crypto.randomUUID(),
         filename: `${mockMedia.length}_${f.name}`,
+        original_filename: f.name,
         kind,
         url: URL.createObjectURL(f),
         tags: [],
@@ -341,6 +343,7 @@ export async function fetchAllMedia(
 // exist once it's assigned to a game and becomes a real MediaItem row)
 export interface InboxMediaItem {
   filename: string;
+  original_filename?: string | null;
   kind: MediaKind;
   url: string;
   created_at: number;
@@ -350,6 +353,7 @@ export interface InboxMediaItem {
 
 export interface TrashedInboxItem {
   filename: string;
+  original_filename?: string | null;
   kind: MediaKind;
   created_at: number;
   deleted_at: number;

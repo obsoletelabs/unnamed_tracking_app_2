@@ -1,5 +1,9 @@
 # Rosefall #469 handover — 14 October 2026
 
+This is the historical pause checkpoint. Work resumed on 15 October 2026; consult
+the [current implementation progress](rosefall-469-implementation.md#current-progress)
+for subsequent packages and PRs.
+
 Work is being wrapped up at the owner's request. Resume only when requested.
 This page separates completed adaptations from the approved backlog; the
 [implementation plan](rosefall-469-implementation.md),

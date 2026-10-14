@@ -26,6 +26,22 @@ There are three ways, and they all do the same thing:
 Several files can be added at once. Saves and worlds ask you to name them
 first, since one game can hold any number of named saves.
 
+Media uploads use the filename extension and inspect the content, rather than
+trusting the type reported by the browser. Supported images include PNG, JPEG/JFIF,
+GIF, WebP, AVIF, BMP, TIFF, HEIC/HEIF and ICO. Clips accept MP4/M4V, WebM, MOV, MKV,
+AVI and OGV; soundtrack accepts MP3, Ogg/OGA/Opus, WAV, FLAC, M4A and AAC. Playback
+uses the codecs supported by your browser. HTML and SVG belong in **Docs**, where
+they download as attachments, rather than in the media gallery.
+
+Invalid or oversized files are rejected individually; valid files in the same
+batch still save. Images use the general upload cap and a 40-million-pixel limit.
+Clips and soundtrack use the separate clip cap set in **Administration → Limits**.
+
+New uploads preserve their Unicode filename separately from the safe name used
+on disk. That name follows a file from Upload into a game and through delete/restore.
+Changing its title only changes its label inside the app. Older files retain their
+existing names; characters lost before this change cannot be reconstructed.
+
 ## Finding things
 
 - **Search** matches the title, the file name, your note, the tags and the
@@ -82,6 +98,11 @@ Every card can copy a link to its file or download it. Saves download their
 latest version, and the edit dialog lists every version so you can download an
 older one, add a new one, or delete one you no longer want. Worlds keep the
 same named archives, notes, tags and version downloads.
+
+Media and document downloads use the preserved filename when available. Client
+paths and control characters are removed; display/download names are limited to
+500 characters, and stored names to 240 ASCII bytes. A long stored name keeps its
+extension, and date detection still uses the preserved name.
 
 BlueMap rendering and its map viewer have been retired. Existing uploaded
 worlds and versions remain available in **Worlds**; the old `World Map` tab
