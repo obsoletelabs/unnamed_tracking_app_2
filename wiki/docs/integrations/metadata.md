@@ -21,6 +21,10 @@ is covered by the retained metadata behavior above.
 
 ## Protect a title
 
+Typing-triggered provider fetching can be disabled on your account or per
+provider. Administrators can restrict shared automatic searches. Explicit Search,
+selection, artwork and local filtering continue to work; see [Automatic Search](../user-guide/automatic-search.md).
+
 Edit a game, movie, TV show, or anime and use **Protect title from metadata
 updates** beside its title. A checked box means the title is protected. Changing
 a title automatically protects it; clear the checkbox to explicitly remove

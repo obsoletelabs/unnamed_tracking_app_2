@@ -79,10 +79,13 @@ export function useMetadataSearch(
   const warnings = ref<string[]>([]);
   const error = ref<string | null>(null);
   const searchedQuery = ref<string | null>(null);
-  const hasSearched = computed(() => searchedQuery.value === query.value.trim());
+  const hasSearched = computed(
+    () => searchedQuery.value === query.value.trim(),
+  );
   const manualSearchHint = computed(() =>
     !preferences.value.metadata_automatic_search_enabled &&
-    query.value.trim().length >= 2 && !hasSearched.value
+    query.value.trim().length >= 2 &&
+    !hasSearched.value
       ? "Automatic search is off. Press Search or Enter to fetch metadata."
       : null,
   );

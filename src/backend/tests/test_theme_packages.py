@@ -125,7 +125,11 @@ def test_http_admin_mutations_and_public_prelogin_assets(tmp_path):
     app.dependency_overrides[get_current_user] = lambda: user
     with TestClient(app) as client:
         upload = {"file": ("review.utt", package_bytes())}
-        assert client.get("/api/themes").json() == {"default_theme": "native", "default_ui_style": "archive-pocket", "themes": []}
+        assert client.get("/api/themes").json() == {
+            "default_theme": "native",
+            "default_ui_style": "archive-pocket",
+            "themes": [],
+        }
         assert client.get("/api/themes/manage").status_code == 403
         assert client.post("/api/themes/install", files=upload).status_code == 403
         user.is_admin = True
@@ -151,4 +155,8 @@ def test_http_admin_mutations_and_public_prelogin_assets(tmp_path):
         )
         assert client.get(asset_url).status_code == 404
         assert client.delete(f"/api/themes/{entry['id']}").status_code == 204
-        assert client.get("/api/themes").json() == {"default_theme": "native", "default_ui_style": "archive-pocket", "themes": []}
+        assert client.get("/api/themes").json() == {
+            "default_theme": "native",
+            "default_ui_style": "archive-pocket",
+            "themes": [],
+        }

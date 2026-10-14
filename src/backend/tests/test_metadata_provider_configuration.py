@@ -35,7 +35,7 @@ def provider_boundary(boundary, monkeypatch):  # noqa: F811 - imported pytest fi
 
     monkeypatch.setattr(providers, "discover_core_providers", AsyncMock(return_value=[]))
     db = Database(boundary.session)
-    AppIntegrationSettings.__table__.create(boundary.session.bind)
+    AppIntegrationSettings.__table__.create(boundary.session.bind, checkfirst=True)
 
     async def dependency():
         yield db

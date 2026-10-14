@@ -60,7 +60,12 @@ async def automatic_search_status(
     # A partial personal credential must not unlock calls that still consume a
     # shared secret. Scope precedence is the same as configuration_values().
     used = [presence[field.key] for field in credential_fields if any(presence[field.key].values())]
-    personal = bool(used) and all(field["user"] for field in used)
+    personal = (
+        any(field.secret for field in credential_fields)
+        and bool(used)
+        and all(field["user"] for field in used)
+        and all(presence[field.key]["user"] for field in credential_fields if field.required)
+    )
     account_enabled = preferences["metadata_automatic_search_enabled"]
     provider_enabled = preferences["metadata_automatic_search_providers"].get(provider.id, True)
     server_enabled = policy.get("*", True) and policy.get(provider.id, True)

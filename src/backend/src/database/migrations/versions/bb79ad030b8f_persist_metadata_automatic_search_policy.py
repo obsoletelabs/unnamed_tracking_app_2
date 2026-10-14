@@ -1,22 +1,22 @@
 """persist metadata automatic search policy
 
 Revision ID: bb79ad030b8f
-Revises: da9e271523e2
+Revises: e8c64dd34f5c
 Create Date: 2026-10-14 08:30:54.253024
 
 """
 
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import postgresql
 
 from src.database import migration_helpers as h
 
 # revision identifiers, used by Alembic.
 revision: str = "bb79ad030b8f"
-down_revision: Union[str, None] = "da9e271523e2"
+down_revision: Union[str, None] = "e8c64dd34f5c"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

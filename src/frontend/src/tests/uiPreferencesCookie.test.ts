@@ -9,6 +9,29 @@ import {
 
 afterEach(() => vi.unstubAllGlobals());
 describe("cosmetic preference cookies", () => {
+  it("preserves a Classic browser choice and its Rosefall colors", () => {
+    vi.stubGlobal("document", { cookie: "" });
+    vi.stubGlobal("location", { protocol: "https:" });
+    const value = {
+      ...DEFAULT_PREFERENCES,
+      ui_style: "classic" as const,
+      ui_theme: "dark" as const,
+    };
+    const device = createDeviceAppearance(
+      "dark",
+      "orange",
+      {},
+      false,
+      "classic",
+    );
+    saveUiPreferencesCookie(device, value, "device");
+    expect(readUiPreferencesCookie()).toMatchObject({
+      style: "classic",
+      scope: "device",
+      theme: "dark",
+      colors: { dark: { background: "#0d0d0d" } },
+    });
+  });
   it("round-trips appearance and layout with safe flags and without account data", () => {
     const document = { cookie: "" };
     vi.stubGlobal("document", document);

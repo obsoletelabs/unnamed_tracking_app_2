@@ -5,10 +5,11 @@ Revises: bb79ad030b8f
 Create Date: 2026-10-14 09:34:11.470947
 
 """
+
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 from src.database import migration_helpers as h
 

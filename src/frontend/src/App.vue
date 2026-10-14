@@ -146,7 +146,9 @@ const sidebarShown = computed(
 const contentStyle = computed(() => {
   if (!sidebarShown.value) return {};
   if (effectiveSidebarMode.value === "pinned")
-    return { marginLeft: `calc(${sidebarWidth.value}px + var(--ui-nav-content-gap))` };
+    return {
+      marginLeft: `calc(${sidebarWidth.value}px + var(--ui-nav-content-gap))`,
+    };
   if (effectiveSidebarMode.value === "rail") return { marginLeft: "88px" };
   return {};
 });

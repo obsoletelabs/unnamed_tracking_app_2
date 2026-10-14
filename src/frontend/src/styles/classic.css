@@ -92,6 +92,27 @@
   font-weight: 600;
 }
 
+/* Editors share the same controls and metadata session in both presentations.
+   Accent cues identify the active tab, search action and selected result. */
+:root[data-ui-style="classic"] .game-editor .modal-tab.active {
+  color: var(--ui-on-accent);
+  background: var(--ui-accent);
+  border-bottom-color: var(--ui-accent);
+}
+
+:root[data-ui-style="classic"] .game-editor .metadata-search {
+  border-color: color-mix(in srgb, var(--ui-accent) 38%, var(--ui-border));
+}
+
+:root[data-ui-style="classic"] .game-editor .search-heading strong {
+  color: var(--ui-accent-text);
+}
+
+:root[data-ui-style="classic"] .game-editor .metadata-result:hover {
+  border-color: var(--ui-accent);
+  background: color-mix(in srgb, var(--ui-accent) 12%, var(--ui-surface));
+}
+
 :root[data-ui-style="classic"]
   :is(.card-image, .card-cover, .game-card, .media-card) {
   border-radius: var(--ui-radius-card);

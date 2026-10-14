@@ -1,6 +1,7 @@
 """Policy, credential ownership and explicit-search regressions at the public boundary."""
 
 from dataclasses import replace
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import httpx
@@ -13,6 +14,7 @@ from test_progressive_metadata import ContractProvider, candidate, eventually, r
 from src.api.routes import metadata as routes
 from src.core.auth import session_cookie_name
 from src.core.preferences import save_preferences, validate_preference
+from src.features.metadata import automatic_search
 from src.features.metadata.automatic_search import (
     automatic_search_status,
     effective_automatic_search,
@@ -47,6 +49,80 @@ def test_policy_precedence(account, provider, server, personal, expected):
         uses_personal_credentials=personal,
     )
     assert enabled is expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "secret,required,presence,expected",
+    [
+        (
+            True,
+            True,
+            {
+                "api_key": {"user": True, "system": False},
+                "client_id": {"user": True, "system": False},
+            },
+            True,
+        ),
+        (
+            True,
+            True,
+            {
+                "api_key": {"user": True, "system": False},
+                "client_id": {"user": False, "system": True},
+            },
+            False,
+        ),
+        (
+            True,
+            True,
+            {
+                "api_key": {"user": True, "system": False},
+                "client_id": {"user": False, "system": False},
+            },
+            False,
+        ),
+        (
+            False,
+            True,
+            {
+                "api_key": {"user": True, "system": False},
+                "client_id": {"user": True, "system": False},
+            },
+            False,
+        ),
+    ],
+)
+async def test_only_complete_personal_credentials_override_server_policy(
+    monkeypatch, secret, required, presence, expected
+):
+    provider = SimpleNamespace(
+        id="test.provider",
+        user_id="owner",
+        declaration=SimpleNamespace(
+            configuration=[
+                SimpleNamespace(key="api_key", secret=secret, required=required),
+                SimpleNamespace(key="client_id", secret=False, required=True),
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        automatic_search,
+        "load_preferences",
+        AsyncMock(
+            return_value={
+                "metadata_automatic_search_enabled": True,
+                "metadata_automatic_search_providers": {},
+            }
+        ),
+    )
+    monkeypatch.setattr(automatic_search, "server_policy", AsyncMock(return_value={"*": False}))
+    monkeypatch.setattr(
+        automatic_search, "configuration_presence", AsyncMock(return_value=presence)
+    )
+    status = await automatic_search_status(None, provider)
+    assert status["enabled"] is expected
+    assert status["uses_personal_credentials"] is expected
 
 
 @pytest.mark.asyncio

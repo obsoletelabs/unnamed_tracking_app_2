@@ -473,16 +473,27 @@ async function searchMedia() {
   }
 }
 
-watch([progressiveSearch.error, searchingMetadata, metadataResults, progressiveSearch.manualSearchHint, progressiveSearch.hasSearched], () => {
-  if (progressiveSearch.error.value)
-    metadataMessage.value = progressiveSearch.error.value;
-  else if (!metadataApplied.value)
-    metadataMessage.value = progressiveSearch.manualSearchHint.value ?? (searchingMetadata.value
-      ? null
-      : progressiveSearch.hasSearched.value && !metadataResults.value.length
-        ? "No games found."
-        : null);
-});
+watch(
+  [
+    progressiveSearch.error,
+    searchingMetadata,
+    metadataResults,
+    progressiveSearch.manualSearchHint,
+    progressiveSearch.hasSearched,
+  ],
+  () => {
+    if (progressiveSearch.error.value)
+      metadataMessage.value = progressiveSearch.error.value;
+    else if (!metadataApplied.value)
+      metadataMessage.value =
+        progressiveSearch.manualSearchHint.value ??
+        (searchingMetadata.value
+          ? null
+          : progressiveSearch.hasSearched.value && !metadataResults.value.length
+            ? "No games found."
+            : null);
+  },
+);
 
 const appliedProviderFields = new Map<string, string>();
 function applyAvailableMetadata(result: MetadataSearchResult, initial = false) {

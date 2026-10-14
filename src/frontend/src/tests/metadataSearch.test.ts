@@ -90,6 +90,18 @@ it("turning automatic search off cancels a pending debounce without disabling th
   expect(fetch).toHaveBeenCalled();
 });
 
+it("shows a manual search hint without claiming no results before searching", async () => {
+  const { query, search } = setup();
+  preferences.value.metadata_automatic_search_enabled = false;
+  expect(search.hasSearched.value).toBe(false);
+  expect(search.manualSearchHint.value).toContain("Search or Enter");
+  await search.search();
+  expect(search.hasSearched.value).toBe(true);
+  expect(search.manualSearchHint.value).toBeNull();
+  query.value = "another";
+  expect(search.hasSearched.value).toBe(false);
+});
+
 it("marks typing requests as automatic and explicit requests as explicit", async () => {
   const { query, search, fetch } = setup();
   query.value = "portal";

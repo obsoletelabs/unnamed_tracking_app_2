@@ -94,7 +94,7 @@ function changeStyle(style: Preferences["ui_style"]) {
             )
           "
         >
-        <option value="archive-pocket">Modern</option>
+          <option value="archive-pocket">Modern</option>
           <option value="classic">Classic</option>
         </select>
       </div>

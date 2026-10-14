@@ -28,7 +28,8 @@ export function useMetadataSearch<
   const message = computed(() => {
     if (progressive.error.value) return progressive.error.value;
     if (appliedMessage.value) return appliedMessage.value;
-    if (progressive.manualSearchHint.value) return progressive.manualSearchHint.value;
+    if (progressive.manualSearchHint.value)
+      return progressive.manualSearchHint.value;
     if (
       progressive.searching.value ||
       query.value.trim().length < 2 ||
