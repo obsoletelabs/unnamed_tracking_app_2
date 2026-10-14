@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import RedirectResponse
 
-from src.core.auth import SESSION_TTL_SECONDS, hash_password, session_cookie_name
+from src.core.auth import SESSION_TTL_SECONDS, hash_password, session_cookie_name, validate_username
 from src.core.config import settings
 from src.core.crypto import decrypt_secret
 from src.core.oidc import OidcConfig, begin_oidc, env_oidc_config, oauth, register_oidc_provider
@@ -226,8 +226,15 @@ def _match_value(claims: dict[str, Any], field: str, email: str) -> str:
 
 
 def _safe_username(value: str, email: str) -> str:
-    username = "".join(char for char in value.strip() if char.isalnum() or char in "._-")[:100]
-    return username or email.split("@", 1)[0][:90] or f"user-{secrets.token_hex(4)}"
+    for candidate in (value, email.split("@", 1)[0]):
+        username = "".join(
+            char
+            for char in candidate.strip()
+            if char.isascii() and (char.isalnum() or char in "._-")
+        )[:100]
+        if username:
+            return validate_username(username)
+    return f"user-{secrets.token_hex(4)}"
 
 
 async def _create_oidc_user(

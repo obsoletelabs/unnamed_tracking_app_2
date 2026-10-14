@@ -92,9 +92,15 @@ async function submit() {
           ><input
             v-model="username"
             autocomplete="username"
+            aria-label="Username"
+            aria-describedby="invite-username-help"
             maxlength="100"
             required
-        /></label>
+          /><small id="invite-username-help"
+            >Use 1–100 ASCII letters, digits, underscores, hyphens or dots. No
+            spaces.</small
+          ></label
+        >
         <label class="field"
           ><span>Password</span
           ><PasswordInput

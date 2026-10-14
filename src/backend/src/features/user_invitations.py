@@ -12,7 +12,7 @@ from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 
 from src.core.app_integrations import get_public_app_url
-from src.core.auth import hash_password, hash_token, validate_password
+from src.core.auth import hash_password, hash_token, validate_password, validate_username
 from src.core.config import settings
 from src.core.crypto import decrypt_secret, encrypt_secret
 from src.core.public_url import normalize_public_url
@@ -246,11 +246,7 @@ async def _retire(db, row, *, revoked=False):
 
 async def accept_invitation(db, token_id, token, username, password):
     validate_password(password)
-    username = username.strip()
-    if not username or len(username) > 100 or any(ord(c) < 32 or ord(c) == 127 for c in username):
-        raise ValueError(
-            "Choose a username between 1 and 100 characters without control characters"
-        )
+    username = validate_username(username)
     # Same lock order as revoke/replacement prevents stale acceptance across withdrawal.
     await db.execute(select(func.pg_advisory_xact_lock(731856417203)))
     row = await db.scalar(
