@@ -33,6 +33,7 @@ class GameFileItem(Base):
     )
     kind: Mapped[str] = mapped_column(String(20), nullable=False)  # "doc" | "modpack"
     filename: Mapped[str] = mapped_column(String(500), nullable=False)
+    original_filename: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[int] = mapped_column(BigInteger, nullable=False, default=unix_timestamp)
     # same in-app details as a MediaItem: a name that does not touch the file,
     # a note, tags, and when the file is from (see helpers/media_dates.py)

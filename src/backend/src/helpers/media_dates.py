@@ -29,6 +29,8 @@ from typing import Literal
 
 from PIL import ExifTags, Image, UnidentifiedImageError
 
+from src.helpers.media import display_filename
+
 DateSource = Literal["photo", "video", "filename", "file", "uploaded", "manual", "achievement"]
 
 # an earlier "year" than this is a counter or a version number, not a date
@@ -198,7 +200,9 @@ def detect_date(
     return int(now), "uploaded"
 
 
-def detect_from_stored(path: Path, kind: str) -> tuple[int, DateSource] | None:
+def detect_from_stored(
+    path: Path, kind: str, *, original_name: str | None = None
+) -> tuple[int, DateSource] | None:
     """Re-read a file already saved: photo data first, then its name. Never the
     modified date, because on disk that is only the upload day."""
     now = time.time()
@@ -218,7 +222,7 @@ def detect_from_stored(path: Path, kind: str) -> tuple[int, DateSource] | None:
         if found is not None:
             return found, "video"
     # stored names look like "ab12cd34_<original name>"; drop the id first
-    original = path.name.split("_", 1)[1] if "_" in path.name else path.name
+    original = display_filename(path.name, original_name)
     found = from_filename(original, now)
     if found is not None:
         return found, "filename"

@@ -5,6 +5,7 @@ is the real test one, and the scratch user (with its games) is deleted after.
 
 import io
 import uuid
+import wave
 from types import SimpleNamespace
 
 import httpx
@@ -81,6 +82,16 @@ def _png() -> bytes:
     return buffer.getvalue()
 
 
+def _wav() -> bytes:
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as audio:
+        audio.setnchannels(1)
+        audio.setsampwidth(2)
+        audio.setframerate(8000)
+        audio.writeframes(b"\x00\x00" * 64)
+    return buffer.getvalue()
+
+
 async def test_screenshots_clips_and_soundtrack_upload_list_edit_and_detect(flow) -> None:
     clip = _mp4_with_creation(utc(2026, 5, 15, 19, 10, 11))
     response = await flow.client.post(
@@ -88,7 +99,7 @@ async def test_screenshots_clips_and_soundtrack_upload_list_edit_and_detect(flow
         files=[
             ("files", ("20260102_030405_shot.png", _png(), "image/png")),
             ("files", ("render.mp4", clip, "video/mp4")),
-            ("files", ("theme.mp3", b"ID3" + b"\x00" * 64, "audio/mpeg")),
+            ("files", ("theme.wav", _wav(), "audio/wav")),
             ("files", ("notes.txt", b"hello", "text/plain")),
         ],
         data={"last_modified": ["1700000000000"] * 4},

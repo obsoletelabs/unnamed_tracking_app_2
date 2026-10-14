@@ -30,8 +30,9 @@ from src.database.models.user import User
 from src.database.session import get_db
 from src.features.trash.media_trash import move_media_file_to_trash, restore_media_file_from_trash
 from src.features.trash.sweep import RETENTION_SECONDS
-from src.helpers.media import list_media, save_media_bytes
+from src.helpers.media import display_filename, list_media, original_filename, save_media_bytes
 from src.helpers.media_dates import detect_date
+from src.helpers.range_response import SAFE_FILE_HEADERS
 
 _FILES_DEFAULT = File(None, alias="files")
 
@@ -98,6 +99,7 @@ def _game_file_to_dict(item: GameFileItem, game_id: UUID, game_dir: Path) -> dic
     return {
         "id": str(item.id),
         "filename": item.filename,
+        "original_filename": item.original_filename,
         "kind": item.kind,
         "size": path.stat().st_size if path.is_file() else 0,
         "url": f"/api/game/{game_id}/files/{item.kind}/{item.filename}",
@@ -151,7 +153,7 @@ async def upload_game_files(
         )
     results: list[dict] = []
     for index, upload in enumerate(uploads):
-        data = await upload.read()
+        data = await upload.read(max_bytes + 1)
         if len(data) > max_bytes:
             results.append(
                 {
@@ -180,6 +182,7 @@ async def upload_game_files(
                 game_id=game_id,
                 kind=kind,
                 filename=saved_path.name,
+                original_filename=original_filename(upload.filename or "file"),
                 taken_at=taken_at,
                 taken_source=taken_source,
             )
@@ -291,6 +294,7 @@ async def list_game_file_trash(
             {
                 "id": str(item.id),
                 "filename": item.filename,
+                "original_filename": item.original_filename,
                 "deleted_at": item.deleted_at,
                 "purge_at": item.deleted_at + RETENTION_SECONDS,
             }
@@ -319,12 +323,22 @@ async def get_game_file(
     )
     if not path.is_file():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found.")
-    # arbitrary user files (saves/docs) should download, not attempt to
-    # render inline the way an image/video screenshot asset does — the
-    # random 8-char prefix save_media_bytes adds to dedupe filenames is
-    # stripped back off for the name the browser actually saves it as
-    original_name = Path(filename).name.split("_", 1)[-1]
-    return FileResponse(path, filename=original_name, media_type="application/octet-stream")
+    # Documents/modpacks download as attachments. Preserve the recorded original
+    # name, falling back to the legacy storage name for older files.
+    original_name = await db.scalar(
+        select(GameFileItem.original_filename).where(
+            GameFileItem.game_id == game_id,
+            GameFileItem.kind == kind,
+            GameFileItem.filename == path.name,
+            GameFileItem.deleted_at.is_(None),
+        )
+    )
+    return FileResponse(
+        path,
+        filename=display_filename(path.name, original_name),
+        media_type="application/octet-stream",
+        headers=SAFE_FILE_HEADERS,
+    )
 
 
 # pylint: enable=duplicate-code

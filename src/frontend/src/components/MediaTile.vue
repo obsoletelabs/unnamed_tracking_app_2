@@ -75,7 +75,7 @@ const accountName = computed(() => {
 
 const added = computed(() => formatMediaDate(props.item));
 const extension = computed(() => {
-  const name = originalName(props.item.filename);
+  const name = originalName(props.item.filename, props.item.original_filename);
   const i = name.lastIndexOf(".");
   return i > 0 ? name.slice(i + 1, i + 5).toUpperCase() : "FILE";
 });
@@ -87,7 +87,9 @@ function formatSize(bytes: number): string {
 }
 const dateHint = computed(() => SOURCE_LABEL[mediaSource(props.item)]);
 // the in-app title leads; the file's own name stays visible beneath it
-const fileName = computed(() => originalName(props.item.filename));
+const fileName = computed(() =>
+  originalName(props.item.filename, props.item.original_filename),
+);
 const title = computed(() => props.item.title || fileName.value);
 const shownTags = computed(() => props.item.tags.slice(0, 2));
 const moreTags = computed(() => Math.max(0, props.item.tags.length - 2));

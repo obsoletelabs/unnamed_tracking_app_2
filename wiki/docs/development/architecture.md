@@ -83,6 +83,35 @@ Both caches are disposable. Deleting `.cache/` loses nothing that cannot be rebu
 
 **Frontend.** `utils/gameImages.ts` adds the size to a game artwork URL (`sizedAssetUrl`) and starts a download early (`preloadImage`). `utils/mediaImages.ts` turns a title's stored address into the local URL, with a short stamp of the address so a changed picture is not served from the browser's memory. Card grids use `loading="lazy"` on images, and tiles that are CSS backgrounds use the `v-lazy-bg` directive (`directives/lazyBackground.ts`), which sets the image once the tile is near the screen.
 
+## Uploaded media and filenames
+
+`helpers/media.py` classifies gallery uploads by permitted extension, verifies and
+decodes bounded raster images, and checks known video/audio container or frame
+headers. It does not transcode video/audio. The game and inbox upload routes inspect
+content in a worker thread, read at most the configured cap plus one byte, and report
+rejections per file. Arbitrary documents/modpacks retain their download-only path.
+
+MediaItem, InboxItem and GameFileItem preserve `original_filename` independently
+of their stored `filename` and editable title. Migration `fed12ab64423` adds nullable
+columns after `0e3353138981`, safely preserving adopted columns and existing rows.
+Old rows keep a legacy storage-name fallback; no filename or filesystem rewrite is
+performed. Assignment carries the original name into MediaItem. Shared Vue gallery,
+editor, search/sort and download helpers use it without changing URL/storage identity.
+
+`helpers/range_response.py` adds `nosniff`, a CSP `sandbox` and consistent inline
+filename disposition to whole, partial and unsatisfiable media responses. Existing
+200/206/416 byte behavior is retained. Document downloads remain octet-stream
+attachments with the same security headers. Plugin document APIs, grants, package
+handling and their public request/response contracts remain unchanged.
+
+Container identifiers follow the [Ogg framing specification](https://xiph.org/ogg/doc/framing.html),
+[Matroska/EBML specification](https://www.matroska.org/technical/elements.html) and
+[FLAC format overview](https://www.xiph.org/flac/documentation_format_overview.html).
+
+![Modern media editor](../assets/media-safety/modern-editor.jpg)
+
+![Classic media editor](../assets/media-safety/classic-editor.jpg)
+
 ## How a game page opens
 
 `services/games.ts` keeps every game it has fetched in an entity cache (`peekGame`). Opening a game from the library draws it from that cache straight away and refreshes it from the server behind it. Its achievements, variants and parent game are requested in parallel with the game, and fill in when they arrive instead of holding the page back. The hero and poster downloads start before the game's details have returned. When there is nothing cached (opening the address directly), a loading screen is shown whose hero, poster and tab bar match the real page's sizes, so the page does not jump when it replaces it.

@@ -25,6 +25,7 @@ import {
 } from "../../state/taskProgress";
 import { refreshInboxCount } from "../../state/inbox";
 import { formatMediaDate } from "../../utils/mediaDate";
+import { originalName } from "../../utils/copyMedia";
 
 const maxUploadSizeMb = ref<number | null>(null);
 
@@ -512,7 +513,7 @@ async function restoreItem(item: TrashedInboxItem) {
               <button
                 type="button"
                 class="media-select"
-                :aria-label="`Select screenshot: ${item.filename}`"
+                :aria-label="`Select screenshot: ${originalName(item.filename, item.original_filename)}`"
                 :aria-pressed="selected.has(itemKey(item))"
                 @click="toggleSelected(item)"
               >
@@ -571,7 +572,7 @@ async function restoreItem(item: TrashedInboxItem) {
               <button
                 type="button"
                 class="media-select"
-                :aria-label="`Select clip: ${item.filename}`"
+                :aria-label="`Select clip: ${originalName(item.filename, item.original_filename)}`"
                 :aria-pressed="selected.has(itemKey(item))"
                 @click="toggleSelected(item)"
               >
@@ -654,7 +655,7 @@ async function restoreItem(item: TrashedInboxItem) {
         <ul v-if="showTrash" class="trash-list">
           <li v-for="item in inboxTrash" :key="itemKey(item)" class="trash-row">
             <span class="trash-name">{{
-              item.filename.split("_").slice(1).join("_")
+              originalName(item.filename, item.original_filename)
             }}</span>
             <span class="trash-meta"
               >purges in {{ daysUntil(item.purge_at) }}d</span

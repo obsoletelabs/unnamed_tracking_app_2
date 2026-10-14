@@ -66,14 +66,17 @@ Until then, PRs remain available for review with current validation and screensh
   (2,441 tests, four skipped), frontend validation passed (531 tests), and all hosted
   checks passed before the authorized squash merge. Modern/Classic screenshots
   accompany the provider setting.
-- **C1 / 62:** implemented in [PR #128](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/128)
-  on `fix/public-asset-fetch`: one pinned public HTTP
+- **C1 / 62:** merged as [PR #128](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/128): one pinned public HTTP
   boundary for cached images and game artwork URL downloads, with checked redirects,
   bounded streaming and image validation. The final PR and validation are recorded
   in the [handover](rosefall-469-handover.md).
-- **C2 / 63–64 and D–O:** approved; not implemented yet. The package details below
-  describe intended work, not completed behavior. Work stops after the current C1
-  package at the owner's request; resume from the handover.
+- **C2 / 63–64:** resumed on 15 October 2026 on `fix/media-upload-safety`.
+  Extension/content validation, bounded storage names, preserved original names and
+  equivalent whole/range response headers are implemented. The generated additive
+  migration and shared Modern/Classic UI have regression coverage and screenshots.
+  Final PR publication and hosted checks are in progress.
+- **D–O:** approved; not implemented yet. The package details below describe
+  intended work, not completed behavior.
 
 ## Concrete packages
 
@@ -142,10 +145,10 @@ Validate upload extensions and actual permitted content, store safe filenames wh
 keeping the original download/display name, and apply nosniff/sandbox headers to
 both complete and range responses. Preserve legitimate media playback, preview,
 200/206/416 semantics and public plugin document APIs. Before implementing original
-filename preservation, verify persistence requirements: the current MediaItem model
-has a sanitized stored filename and optional title, but no original-filename column.
-A new additive migration may be necessary; do not promise preservation using a
-parallel metadata store or overload a user-edited title.
+filename preservation, discovery found no existing original-name field. The reviewed
+additive migration adds nullable original_filename to MediaItem, InboxItem and
+GameFileItem. Keep original names separate from safe storage names and editable
+titles; do not rewrite existing files or invent missing historical names.
 Test private/redirect/rebinding targets, oversized and invalid assets, MIME spoofing,
 filenames and range headers through public upload/download routes. Document limits
 and any demonstrated compatibility adjustment before changing supported formats.

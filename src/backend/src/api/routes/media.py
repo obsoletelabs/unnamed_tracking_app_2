@@ -5,6 +5,7 @@ media. Per-game upload/list/patch/delete routes are in games.py
 (prefix /api/game/{id}/...); this file never touches those directly except
 when assigning an inbox file into a game."""
 
+import asyncio
 import shutil
 import time
 from pathlib import Path
@@ -38,7 +39,15 @@ from src.features.trash.inbox_trash import (
     restore_inbox_file_from_trash,
 )
 from src.features.trash.sweep import RETENTION_SECONDS
-from src.helpers.media import MediaKind, classify_media, list_media, media_subdir, save_media_bytes
+from src.helpers.media import (
+    MediaKind,
+    classify_media,
+    list_media,
+    media_subdir,
+    original_filename,
+    save_media_bytes,
+    validate_media,
+)
 from src.helpers.media_dates import detect_date
 from src.helpers.range_response import ranged_file_response
 from src.helpers.save_game_asset import DATA_ROOT as GAMES_DATA_ROOT
@@ -139,7 +148,7 @@ async def upload_to_inbox(
         )
         max_bytes = limit_mb * 1024 * 1024
 
-        data = await upload.read()
+        data = await upload.read(max_bytes + 1)
         if len(data) > max_bytes:
             results.append(
                 {
@@ -148,6 +157,12 @@ async def upload_to_inbox(
                     "reason": f"Larger than {limit_mb} MB.",
                 }
             )
+            continue
+
+        try:
+            await asyncio.to_thread(validate_media, data, upload.filename or "", kind)
+        except ValueError as exc:
+            results.append({"filename": upload.filename, "status": "rejected", "reason": str(exc)})
             continue
 
         dest_dir = _inbox_dir(current_user.id) / media_subdir(kind)
@@ -163,6 +178,7 @@ async def upload_to_inbox(
                 user_id=current_user.id,
                 kind=kind,
                 filename=saved_path.name,
+                original_filename=original_filename(upload.filename or "file"),
                 taken_at=taken_at,
                 taken_source=taken_source,
             )
@@ -193,6 +209,7 @@ async def list_inbox(
         "media": [
             {
                 "filename": item.filename,
+                "original_filename": item.original_filename,
                 "kind": item.kind,
                 "url": f"/api/media/inbox/{item.kind}/{item.filename}",
                 "created_at": item.created_at,
@@ -224,6 +241,7 @@ async def list_inbox_trash(
         media.append(
             {
                 "filename": item.filename,
+                "original_filename": item.original_filename,
                 "kind": item.kind,
                 "created_at": item.created_at,
                 "deleted_at": item.deleted_at,
@@ -238,12 +256,21 @@ async def get_inbox_media(
     request: Request,
     kind: MediaKind,
     filename: str,
+    db: AsyncSession = _DB_DEFAULT,
     current_user: User = _CURRENT_USER_DEFAULT,
 ) -> Response:
     path = _inbox_dir(current_user.id) / media_subdir(kind) / Path(filename).name
     if not path.is_file():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Media file not found.")
-    return ranged_file_response(request, path)
+    original = await db.scalar(
+        select(InboxItem.original_filename).where(
+            InboxItem.user_id == current_user.id,
+            InboxItem.kind == kind,
+            InboxItem.filename == path.name,
+            InboxItem.deleted_at.is_(None),
+        )
+    )
+    return ranged_file_response(request, path, filename=original)
 
 
 @router.delete("/inbox/{kind}/{filename}")
@@ -349,6 +376,7 @@ async def assign_inbox_media(
             game_id=payload.game_id,
             kind=kind,
             filename=dest_path.name,
+            original_filename=inbox_row.original_filename if inbox_row else None,
             taken_at=inbox_row.taken_at if inbox_row else None,
             taken_source=inbox_row.taken_source if inbox_row else None,
         )
@@ -408,6 +436,7 @@ async def list_all_media(
             "game_id": str(item.game_id),
             "game_title": game_title,
             "filename": item.filename,
+            "original_filename": item.original_filename,
             "kind": item.kind,
             "url": f"/api/game/{item.game_id}/screenshots/{item.kind}/{item.filename}",
             "tags": item.tags,

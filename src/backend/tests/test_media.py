@@ -1,10 +1,10 @@
 from src.helpers.media import classify_media, list_media, media_subdir, safe_filename
 
 
-def test_classify_media_prefers_content_type() -> None:
-    assert classify_media("image/png; charset=utf-8", "recording.mp4") == "screenshot"
-    assert classify_media("video/webm", "image.png") == "clip"
-    assert classify_media("audio/mpeg", "cover.jpg") == "soundtrack"
+def test_classify_media_uses_extensions_instead_of_sender_content_type() -> None:
+    assert classify_media("image/png; charset=utf-8", "recording.mp4") == "clip"
+    assert classify_media("video/webm", "image.png") == "screenshot"
+    assert classify_media("audio/mpeg", "cover.jpg") == "screenshot"
 
 
 def test_classify_media_falls_back_to_extension() -> None:

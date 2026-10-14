@@ -36,6 +36,8 @@ class MediaItem(Base):
         String(20), nullable=False
     )  # "screenshot" | "clip" | "soundtrack"
     filename: Mapped[str] = mapped_column(String(300), nullable=False)
+    # Separate from the safe stored filename and the user's editable in-app title.
+    original_filename: Mapped[str | None] = mapped_column(String(500), nullable=True)
     tags: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False, default=list)
     # which GameProfile (e.g. an OSRS account) this belongs to, if any — lets
     # a game with several accounts filter its gallery down to one instead of
