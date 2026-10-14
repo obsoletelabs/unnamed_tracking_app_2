@@ -5,6 +5,7 @@ import type { MetadataCandidate } from "../services/metadata";
 import type { QuickAddForm } from "../types/mediaLibrary";
 import { metadataEpisodeTotal } from "../services/mediaAdd";
 import { STATUS_BUCKETS, bucketToReal } from "../utils/mediaStatus";
+import { numberOrNull } from "../utils/numberInput";
 
 const props = defineProps<{
   candidate: MetadataCandidate;
@@ -36,7 +37,12 @@ const total = computed(() => metadataEpisodeTotal(props.candidate));
 const score = computed<string | number | null>({
   get: () => form.score,
   set: (value) => {
-    form.score = value === "" || value == null ? null : Number(value);
+    try {
+      form.score = numberOrNull(value, "Your rating");
+    } catch {
+      // Keep invalid input invalid so the existing validation blocks submission.
+      form.score = NaN;
+    }
   },
 });
 const poster = computed(

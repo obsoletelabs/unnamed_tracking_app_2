@@ -42,6 +42,7 @@ import { RETRO_PLATFORM_OPTIONS } from "../utils/platforms";
 import { useMetadataSearch } from "../composables/useMetadataSearch";
 import { gameMetadataResult } from "../utils/metadataCandidate";
 import { useTitleProtection } from "../utils/titleProtection";
+import { numberOrNull } from "../utils/numberInput";
 import {
   startTask,
   updateTask,
@@ -630,84 +631,99 @@ async function submit() {
   saving.value = true;
   error.value = null;
 
-  const input = {
-    title: title.value.trim(),
-    titleLock: isEditing.value ? titleLockOverride.value : undefined,
-    sortTitle: sortTitle.value.trim() || null,
-    folderLocation: folderLocation.value.trim(),
-    status: status.value,
-    description: description.value.trim() || null,
-    developer: developer.value.trim() || null,
-    publisher: publisher.value.trim() || null,
-    series: series.value.trim() || null,
-    parentGameId: parentGameId.value || null,
-    relationshipType: parentGameId.value
-      ? relationshipType.value || null
-      : null,
-    releaseDate: releaseDate.value || null,
-    dateAdded: dateAdded.value || null,
-    createdAt:
-      dateAdded.value && dateAdded.value !== initialDateAdded
-        ? localDateInputToUnixSeconds(dateAdded.value)
-        : null,
-    completionDate: completionDate.value || null,
-    source: source.value.trim() || null,
-    providerIds: selectedProviderIds.value ?? props.game?.providerIds,
-    platform: platform.value.trim() || null,
-    playCompatibility: playCompatibility.value,
-    priority: priority.value || null,
-    ageRating: ageRating.value.trim() || null,
-    timeToBeatHours: String(timeToBeatHours.value).trim()
-      ? Number(timeToBeatHours.value)
-      : null,
-    region: region.value.trim() || null,
-    language: language.value.trim() || null,
-    achievementsProvider: achievementsProvider.value,
-    ratingOverall: ratingOverall.value,
-    ratingStory: ratingStory.value,
-    ratingGameplay: ratingGameplay.value,
-    ratingSound: ratingSound.value,
-    tags: tagsInput.value
-      .split(",")
-      .map((t) => t.trim())
-      .filter(Boolean),
-    features: featuresInput.value
-      .split(",")
-      .map((f) => f.trim())
-      .filter(Boolean),
-    links: links.value.filter((l) => l.label.trim() && l.url.trim()),
-    ownership: {
-      format: ownershipFormat.value,
-      purchaseDate: purchaseDate.value || null,
-      price: price.value,
-      priceCurrency:
-        price.value !== null
-          ? priceCurrency.value.trim().toUpperCase() || "USD"
-          : null,
-      condition: condition.value.trim() || null,
-    },
-    favorite: props.game?.favorite ?? false,
-    collections: props.game?.collections ?? [],
-    profilesEnabled: profilesEnabled.value,
-    pageSettings: pageOverrides.value,
-    osrsStatsEnabled: osrsStatsEnabled.value,
-  };
-
-  // Capture artwork before awaiting the save. Retries only attach remaining assets
-  // to this saved game, even after the dialog has closed or another one is opened.
-  const artwork = [
-    {
-      kind: "key_art" as const,
-      file: coverFile.value,
-      url: pickedKeyArtUrl.value,
-    },
-    {
-      kind: "banner" as const,
-      file: bannerFile.value,
-      url: pickedBannerUrl.value,
-    },
-  ].filter((asset) => asset.file || asset.url);
   try {
+    const purchasePrice = numberOrNull(price.value, "Purchase price", {
+      min: 0,
+    });
+    const input = {
+      title: title.value.trim(),
+      titleLock: isEditing.value ? titleLockOverride.value : undefined,
+      sortTitle: sortTitle.value.trim() || null,
+      folderLocation: folderLocation.value.trim(),
+      status: status.value,
+      description: description.value.trim() || null,
+      developer: developer.value.trim() || null,
+      publisher: publisher.value.trim() || null,
+      series: series.value.trim() || null,
+      parentGameId: parentGameId.value || null,
+      relationshipType: parentGameId.value
+        ? relationshipType.value || null
+        : null,
+      releaseDate: releaseDate.value || null,
+      dateAdded: dateAdded.value || null,
+      createdAt:
+        dateAdded.value && dateAdded.value !== initialDateAdded
+          ? localDateInputToUnixSeconds(dateAdded.value)
+          : null,
+      completionDate: completionDate.value || null,
+      source: source.value.trim() || null,
+      providerIds: selectedProviderIds.value ?? props.game?.providerIds,
+      platform: platform.value.trim() || null,
+      playCompatibility: playCompatibility.value,
+      priority: priority.value || null,
+      ageRating: ageRating.value.trim() || null,
+      timeToBeatHours: numberOrNull(timeToBeatHours.value, "Time to beat", {
+        min: 0,
+      }),
+      region: region.value.trim() || null,
+      language: language.value.trim() || null,
+      achievementsProvider: achievementsProvider.value,
+      ratingOverall: numberOrNull(ratingOverall.value, "Overall rating", {
+        min: 0,
+        max: 10,
+      }),
+      ratingStory: numberOrNull(ratingStory.value, "Story rating", {
+        min: 0,
+        max: 10,
+      }),
+      ratingGameplay: numberOrNull(ratingGameplay.value, "Gameplay rating", {
+        min: 0,
+        max: 10,
+      }),
+      ratingSound: numberOrNull(ratingSound.value, "Soundtrack rating", {
+        min: 0,
+        max: 10,
+      }),
+      tags: tagsInput.value
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean),
+      features: featuresInput.value
+        .split(",")
+        .map((f) => f.trim())
+        .filter(Boolean),
+      links: links.value.filter((l) => l.label.trim() && l.url.trim()),
+      ownership: {
+        format: ownershipFormat.value,
+        purchaseDate: purchaseDate.value || null,
+        price: purchasePrice,
+        priceCurrency:
+          purchasePrice !== null
+            ? priceCurrency.value.trim().toUpperCase() || "USD"
+            : null,
+        condition: condition.value.trim() || null,
+      },
+      favorite: props.game?.favorite ?? false,
+      collections: props.game?.collections ?? [],
+      profilesEnabled: profilesEnabled.value,
+      pageSettings: pageOverrides.value,
+      osrsStatsEnabled: osrsStatsEnabled.value,
+    };
+
+    // Capture artwork before awaiting the save. Retries only attach remaining assets
+    // to this saved game, even after the dialog has closed or another one is opened.
+    const artwork = [
+      {
+        kind: "key_art" as const,
+        file: coverFile.value,
+        url: pickedKeyArtUrl.value,
+      },
+      {
+        kind: "banner" as const,
+        file: bannerFile.value,
+        url: pickedBannerUrl.value,
+      },
+    ].filter((asset) => asset.file || asset.url);
     const savedGame = isEditing.value
       ? await updateGame(props.game!.id, input)
       : await createGame(input);
