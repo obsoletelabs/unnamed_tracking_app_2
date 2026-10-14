@@ -6,22 +6,25 @@ disk, so after the first time nothing waits on someone else's server.
 
 The address is whatever was saved on the title, so it is checked before it is
 fetched: only http(s), only public hosts (never this machine or the local
-network), no redirects, and a size limit.
+network), checked redirects, and byte/pixel limits. Connections use only the
+validated DNS addresses and keep normal TLS hostname verification.
 """
 
 import hashlib
 import io
-import ipaddress
 import os
-import socket
 import tempfile
+from http.client import HTTPException
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import quote, urljoin
 
-import requests
 from PIL import Image, UnidentifiedImageError
 
+from src.helpers.public_http import parse_http_url, public_addresses, public_connection
+
 MAX_BYTES = 15 * 1024 * 1024
+MAX_PIXELS = 40_000_000
+MAX_REDIRECTS = 3
 _TIMEOUT = (5, 15)  # connect, read
 _QUALITY = 82
 _BACKDROP = (26, 26, 26)  # what a see-through image is laid over
@@ -32,57 +35,72 @@ class RemoteImageError(Exception):
 
 
 def is_public_host(host: str) -> bool:
-    """True when every address `host` resolves to is on the public internet."""
+    """True only if every resolved IPv4/IPv6 address is public."""
     try:
-        infos = socket.getaddrinfo(host, None)
-    except OSError:
+        public_addresses(host, 443)
+    except (OSError, ValueError):
         return False
-    if not infos:
-        return False
-    for info in infos:
-        address = ipaddress.ip_address(info[4][0])
-        if any(
-            (
-                address.is_private,
-                address.is_loopback,
-                address.is_link_local,
-                address.is_multicast,
-                address.is_reserved,
-                address.is_unspecified,
-            )
-        ):
-            return False
     return True
 
 
-def download_image(url: str) -> bytes:
-    """The bytes at `url`, or RemoteImageError if it is not a safe, small image."""
-    parts = urlsplit(url)
-    if parts.scheme not in ("http", "https") or not parts.hostname:
-        raise RemoteImageError("not an http(s) address")
-    if not is_public_host(parts.hostname):
-        raise RemoteImageError("not a public host")
+def _validate_image(data: bytes) -> None:
     try:
-        with requests.get(
-            url,
-            stream=True,
-            timeout=_TIMEOUT,
-            allow_redirects=False,
-            headers={"User-Agent": "unnamed-tracking-app/1.0 (image cache)"},
-        ) as response:
-            if response.status_code != 200:
-                raise RemoteImageError(f"status {response.status_code}")
-            declared = response.headers.get("content-length")
-            if declared and declared.isdigit() and int(declared) > MAX_BYTES:
-                raise RemoteImageError("too large")
-            data = bytearray()
-            for chunk in response.iter_content(64 * 1024):
-                data.extend(chunk)
-                if len(data) > MAX_BYTES:
+        with Image.open(io.BytesIO(data)) as image:
+            if image.width * image.height > MAX_PIXELS:
+                raise RemoteImageError("image dimensions exceed the pixel limit")
+            image.verify()
+    except (UnidentifiedImageError, OSError, SyntaxError, Image.DecompressionBombError) as exc:
+        raise RemoteImageError("not a valid image") from exc
+
+
+def download_image(url: str, *, max_bytes: int = MAX_BYTES) -> bytes:
+    """Read a bounded raster image with pinned public DNS and checked redirects."""
+    try:
+        for _ in range(MAX_REDIRECTS + 1):
+            parts = parse_http_url(url, allowed_ports={80, 443})
+            connection = public_connection(url, timeout=_TIMEOUT[1], connect_timeout=_TIMEOUT[0])
+            try:
+                path = quote(parts.path or "/", safe="/%:@")
+                if parts.query:
+                    path += "?" + quote(parts.query, safe="%/?&=:+,;@")
+                connection.request(
+                    "GET",
+                    path,
+                    headers={
+                        "User-Agent": "unnamed-tracking-app/1.0 (image cache)",
+                        "Accept": "image/*",
+                        "Accept-Encoding": "identity",
+                    },
+                )
+                response = connection.getresponse()
+                if response.status in {301, 302, 303, 307, 308}:
+                    location = response.getheader("location")
+                    if not location:
+                        raise RemoteImageError("redirect has no destination")
+                    if any(
+                        char.isspace() or ord(char) < 32 or ord(char) == 127 for char in location
+                    ):
+                        raise RemoteImageError("invalid redirect destination")
+                    url = urljoin(url, location)
+                    continue
+                if response.status != 200:
+                    raise RemoteImageError(f"status {response.status}")
+                declared = response.getheader("content-length")
+                if declared and declared.isdigit() and int(declared) > max_bytes:
                     raise RemoteImageError("too large")
-    except requests.RequestException as exc:
+                data = bytearray()
+                while chunk := response.read(min(64 * 1024, max_bytes - len(data) + 1)):
+                    data.extend(chunk)
+                    if len(data) > max_bytes:
+                        raise RemoteImageError("too large")
+                result = bytes(data)
+                _validate_image(result)
+                return result
+            finally:
+                connection.close()
+        raise RemoteImageError("too many image redirects")
+    except (OSError, ValueError, HTTPException) as exc:
         raise RemoteImageError(str(exc)) from exc
-    return bytes(data)
 
 
 def save_shrunk(data: bytes, target: Path, width: int) -> None:

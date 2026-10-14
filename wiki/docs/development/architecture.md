@@ -52,7 +52,32 @@ Stored game artwork keeps its private one-hour browser cache. Generated covers f
 
 **Movies, TV shows and anime.** Their posters and backdrops are addresses on TMDB or AniList. `GET /api/media-image/<movie|tv|anime>/<id>/<poster|backdrop|hero>` downloads the picture once, shrinks it (posters to 400 pixels, backdrops to 1920) and keeps it under `.cache/media-images/`. `hero` is the backdrop, or the poster when there is no backdrop. The file name includes a hash of the source address, so editing the address makes a fresh copy and removes the old one.
 
-The address is whatever was saved on the title, so `helpers/remote_images.py` treats it as untrusted: only http and https, only hosts whose every address is public (loopback, private, link-local and reserved ranges are refused), no redirects, and a 15 MB limit. If a download fails the route answers with a redirect to the original address, so the browser still gets the picture.
+The address is whatever was saved on the title, so `helpers/remote_images.py`
+treats it as untrusted. Cached media and achievement images, plus game artwork
+downloaded from a URL, share the same public-network boundary:
+
+- HTTP/HTTPS on ports 80 or 443, without URL credentials, fragments, raw whitespace,
+  control characters or backslashes.
+- Every DNS result must be globally routable. Private, loopback, link-local,
+  shared address space and multicast destinations are refused. Connections pin the
+  validated addresses, retain the original Host/TLS hostname and verify certificates.
+- Up to three redirects, with a fresh validation and pinned connection for every
+  hop. Authentication headers and cookies are never forwarded.
+- Five-second connection and fifteen-second socket read timeouts. Cached downloads
+  have a 15 MiB byte limit; game URL downloads use the administrator's general upload
+  cap. Streaming enforces the limit even without a trustworthy Content-Length.
+- Pillow validates image content before persistence, with a 40-million-pixel cap
+  before conversion. A claimed image MIME type is insufficient.
+
+The game URL route checks ownership before fetching and performs blocking network
+work in a worker thread. Rejected URLs/images return an understandable 400 without
+replacing artwork. Cache failure retains the existing redirect to the original
+address; that browser fallback does not authorize a server-side private fetch.
+
+`helpers/public_http.py` also supplies the pinned transport for delegated public
+instances and public-app image requests. Those callers keep their existing protocol,
+permission, header, redirect and size restrictions. General permission-granted
+plugin HTTP requests retain their separate network policy and public API contract.
 
 Both caches are disposable. Deleting `.cache/` loses nothing that cannot be rebuilt.
 

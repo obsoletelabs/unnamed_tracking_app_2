@@ -2,53 +2,28 @@
 
 from __future__ import annotations
 
-import ipaddress
 import json
 import math
 import re
-import socket
 import ssl
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
-from http.client import HTTPSConnection
+from http.client import HTTPConnection
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+from src.helpers.public_http import public_connection
 
 MAX_BYTES = 4 * 1024 * 1024
 # Provider bearer tokens may contain several KiB of signed claims.
 MAX_AUTHORIZATION_LENGTH = 16 * 1024
 
 
-def _public_connection(normalized: str) -> HTTPSConnection:
-    """Pin public DNS results while retaining the hostname for TLS/SNI validation."""
-    parts = urlsplit(normalized)
-    hostname = str(parts.hostname)
-    port = parts.port or 443
-    addresses = socket.getaddrinfo(hostname, port, type=socket.SOCK_STREAM)
-    if not addresses:
-        raise ValueError("Instance hostname has no addresses.")
-    for address in addresses:
-        ip = ipaddress.ip_address(address[4][0])
-        if not ip.is_global or ip.is_multicast:
-            raise ValueError("Instance must resolve exclusively to public addresses.")
-    connection = HTTPSConnection(hostname, port, timeout=8, context=ssl.create_default_context())
-    selected = addresses[0]
-
-    def pinned_connection(*_args: Any, **_kwargs: Any) -> socket.socket:
-        sock = socket.socket(selected[0], selected[1], selected[2])
-        sock.settimeout(8)
-        try:
-            sock.connect(selected[4])
-            return sock
-        except OSError:
-            sock.close()
-            raise
-
-    # HTTPSConnection.connect uses this factory and retains hostname/SNI checks.
-    connection._create_connection = pinned_connection  # type: ignore[attr-defined]  # pylint: disable=protected-access
-    return connection
+def _public_connection(normalized: str) -> HTTPConnection:
+    """Keep delegated authorization separate while sharing pinned host transport."""
+    return public_connection(normalized, timeout=8)
 
 
 def public_instance_request(

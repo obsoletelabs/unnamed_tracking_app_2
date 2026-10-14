@@ -781,7 +781,7 @@ def test_source_transport_pins_validated_ip_and_does_not_follow_redirect(monkeyp
 
     class FakeSocket:
         def settimeout(self, value):
-            assert value == 8
+            assert 0 < value <= 8
 
         def connect(self, address):
             connected.append(address)
@@ -810,7 +810,9 @@ def test_source_transport_pins_validated_ip_and_does_not_follow_redirect(monkeyp
         lambda *args, **kwargs: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", 443))],
     )
     monkeypatch.setattr(socket, "socket", lambda *args: FakeSocket())
-    monkeypatch.setattr(outbound, "HTTPSConnection", FakeConnection)
+    from src.helpers import public_http
+
+    monkeypatch.setattr(public_http, "HTTPSConnection", FakeConnection)
     assert (
         outbound.public_instance_request("https://instance.example", "/api/delegation/v1/instance")[
             "status"
