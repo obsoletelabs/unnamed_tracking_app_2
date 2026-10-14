@@ -8,7 +8,7 @@ export interface Preferences {
   ui_palette: import("./uiPalette").PaletteId;
   ui_custom_palette: import("./uiPalette").CustomPalette;
   ui_density: "comfortable" | "compact";
-  ui_style: "archive-pocket";
+  ui_style: "archive-pocket" | "classic";
   ui_reduce_motion: boolean;
   ui_high_contrast: boolean;
   ui_welcome_completed: boolean;
@@ -58,6 +58,8 @@ export interface Preferences {
   steam_user_tags: boolean;
   // also add the Steam wishlist, as Wishlist games, when importing from Steam
   steam_import_wishlist: boolean;
+  metadata_automatic_search_enabled: boolean;
+  metadata_automatic_search_providers: Record<string, boolean>;
   // what every game page shows; a game can override it
   game_page: PageSettings;
 }
@@ -110,6 +112,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   anilist_import_last_run_at: null,
   steam_user_tags: true,
   steam_import_wishlist: false,
+  metadata_automatic_search_enabled: true,
+  metadata_automatic_search_providers: {},
   game_page: DEFAULT_PAGE_SETTINGS,
 };
 

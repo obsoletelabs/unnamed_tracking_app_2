@@ -138,6 +138,17 @@ CONFIG_SECTIONS: tuple[ConfigSectionSpec, ...] = (
 # through resolution, validation, persistence, and the generated UI.
 CONFIG_REGISTRY: tuple[ConfigSpec, ...] = (
     ConfigSpec(
+        "DEFAULT_UI_STYLE",
+        "general",
+        input_type="choice",
+        label="Default built-in presentation",
+        choices=(("modern", "Modern"), ("classic", "Classic")),
+        default="modern",
+        description="Modern uses Archive desktop layouts and Pocket navigation. "
+        "Classic uses Rosefall's visual style. Saved personal choices take priority.",
+        storage="app_integration",
+    ),
+    ConfigSpec(
         "WEB_PUSH_VAPID_SUBJECT",
         "web_push",
         label="Push service contact",

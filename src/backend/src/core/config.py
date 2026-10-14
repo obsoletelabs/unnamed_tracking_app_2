@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Literal
 from urllib.parse import quote_plus
 
 from pydantic import Field, field_validator, model_validator
@@ -46,6 +47,7 @@ class Settings(BaseSettings):
     WEB_PUSH_VAPID_SUBJECT: str = ""
     WEB_PUSH_VAPID_PRIVATE_KEY: str = ""
     PUBLIC_APP_URL: str = ""
+    DEFAULT_UI_STYLE: Literal["modern", "classic"] = "modern"
     STARTUP_MODE: str = ""
     NOTIFICATION_BLOCKED_PROVIDERS: str = ""
     NOTIFICATION_BLOCKED_TYPES: str = ""

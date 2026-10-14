@@ -672,10 +672,11 @@ onUnmounted(() => {
 }
 .navigation {
   position: fixed;
-  inset: 12px auto 12px 12px;
+  inset: var(--ui-nav-outer-inset) auto var(--ui-nav-outer-inset)
+    var(--ui-nav-outer-inset);
   width: var(--sidebar-width);
-  max-width: calc(100vw - 24px);
-  height: calc(100dvh - 24px);
+  max-width: calc(100vw - 2 * var(--ui-nav-outer-inset));
+  height: calc(100dvh - 2 * var(--ui-nav-outer-inset));
   max-height: none;
   margin: 0;
   padding: 16px 10px 10px;

@@ -50,6 +50,8 @@
   --ui-radius-card: 14px;
   --ui-radius-dialog: 20px;
   --ui-radius-nav: 20px;
+  --ui-nav-outer-inset: 12px;
+  --ui-nav-content-gap: 24px;
   --ui-control-height: 40px;
   --ui-row-padding: 16px;
   --ui-edge-left: 28px;

@@ -5,8 +5,10 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
+from src.core.app_integrations import get_default_ui_style
 from src.core.auth import get_current_admin
 from src.core.theme_packages import (
     MAX_THEME_UPLOAD,
@@ -14,9 +16,11 @@ from src.core.theme_packages import (
     get_theme_store,
     inspect_theme_package,
 )
+from src.database.session import get_db
 
 router = APIRouter(prefix="/api/themes", tags=["themes"])
 Store = Annotated[ThemeStore, Depends(get_theme_store)]
+Database = Annotated[AsyncSession, Depends(get_db)]
 _THEME_FILE = File(...)
 _ADMIN = [Depends(get_current_admin)]
 
@@ -36,9 +40,9 @@ class ThemeDefault(BaseModel):
 
 
 @router.get("")
-def list_themes(store: Store) -> dict:
+async def list_themes(store: Store, db: Database) -> dict:
     """Expose enabled cosmetic choices before login and OIDC redirects."""
-    return store.catalogue()
+    return {**store.catalogue(), "default_ui_style": await get_default_ui_style(db)}
 
 
 @router.get("/manage", dependencies=_ADMIN)

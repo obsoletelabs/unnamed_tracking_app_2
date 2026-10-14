@@ -39,6 +39,7 @@ watchEffect(() => {
       mode.value,
       choices.value.ui_custom_palette,
       choices.value.ui_high_contrast,
+      choices.value.ui_style,
     );
 });
 const saving = ref(false);
@@ -108,6 +109,7 @@ async function finish(withTour = false) {
         >
           <option value="orange">Orange</option>
           <option value="green">Green</option>
+          <option value="classic">Classic</option>
           <option v-if="choices.ui_palette === 'custom'" value="custom">
             Current custom palette
           </option>

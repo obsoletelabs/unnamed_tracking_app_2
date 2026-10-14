@@ -32,6 +32,7 @@ from src.plugin_api.runtime_client import (
     PluginRuntimeUnavailable,
 )
 
+from .automatic_search import automatic_search_status
 from .configuration import configuration_presence, configuration_values, save_configuration
 from .core import CORE_PROVIDERS, CoreMetadataProvider, discover_core_providers
 from .deadlines import bounded
@@ -104,6 +105,8 @@ async def provider_configuration(
 
 
 @dataclass(frozen=True)
+# The immutable snapshot keeps actor, credential revision and search policy explicit.
+# pylint: disable-next=too-many-instance-attributes
 class PluginMetadataProvider:
     """A discovery snapshot; every operation rechecks current lifecycle and permissions."""
 
@@ -114,6 +117,7 @@ class PluginMetadataProvider:
     revision: str
     state: ProviderHealth
     priority: int = 100
+    automatic_search_enabled: bool = True
 
     @property
     def id(self) -> str:
@@ -159,8 +163,15 @@ class PluginMetadataProvider:
     ) -> ProviderResponse:
         """No provider-specific API, credentials, retries or throttling live in this adapter."""
         action_id = getattr(self.declaration.operations, operation)
-        if not action_id or not await self.authorized(operation):
-            return ProviderResponse(failure=ProviderFailure(code="plugin_unavailable"))
+        is_authorized = bool(action_id) and await self.authorized(operation)
+        automatic_allowed = True
+        if is_authorized and request.options.get("automatic_search") is True:
+            async with SessionLocal() as db:
+                automatic_allowed = bool((await automatic_search_status(db, self))["enabled"])
+        if not action_id or not is_authorized or not automatic_allowed:
+            return ProviderResponse(
+                failure=ProviderFailure(code="plugin_unavailable") if not is_authorized else None
+            )
         values = {"request": request.model_dump(mode="json"), "provider_id": self.id}
         if candidate is not None:
             values["candidate"] = candidate.model_dump(mode="json")

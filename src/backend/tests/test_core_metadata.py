@@ -29,7 +29,7 @@ from src.plugin_api.metadata_contracts import MediaType, MetadataProviderRequest
 @pytest.fixture
 def native_boundary(provider_boundary, monkeypatch):  # noqa: F811 - imported pytest fixture
     item = provider_boundary
-    AppIntegrationSettings.__table__.create(item.session.bind)
+    AppIntegrationSettings.__table__.create(item.session.bind, checkfirst=True)
     item.session.add(AppIntegrationSettings())
     item.session.commit()
     for key in _ENVIRONMENT_FALLBACKS:

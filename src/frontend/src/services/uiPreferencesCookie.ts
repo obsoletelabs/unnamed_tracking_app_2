@@ -29,7 +29,7 @@ export function readUiPreferencesCookie(): CachedUiPreferences | null {
     if (
       !appearance ||
       !["comfortable", "compact"].includes(value.density) ||
-      value.style !== "archive-pocket" ||
+      !["archive-pocket", "classic"].includes(value.style) ||
       typeof value.reduceMotion !== "boolean"
     )
       return null;

@@ -28,12 +28,15 @@ export function useMetadataSearch<
   const message = computed(() => {
     if (progressive.error.value) return progressive.error.value;
     if (appliedMessage.value) return appliedMessage.value;
+    if (progressive.manualSearchHint.value)
+      return progressive.manualSearchHint.value;
     if (
       progressive.searching.value ||
       query.value.trim().length < 2 ||
       results.value.length
     )
       return null;
+    if (!progressive.hasSearched.value) return null;
     return `No ${options.noun === "show" ? "shows" : options.noun === "movie" ? "movies" : options.noun} found. Check installed providers in Settings > Metadata/API.`;
   });
   watch(query, () => {
