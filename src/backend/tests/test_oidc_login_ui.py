@@ -54,6 +54,7 @@ def boundary(monkeypatch):
         enabled=True,
         providers_json=json.dumps(providers),
         issuer_url=None,
+        require_verified_email=False,
         client_id=None,
         client_secret=None,
         default_login_method="sso",

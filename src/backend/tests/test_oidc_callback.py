@@ -37,6 +37,9 @@ class CallbackDb:
     async def commit(self):
         self.session.commit()
 
+    async def rollback(self):
+        self.session.rollback()
+
 
 @pytest.fixture
 async def callback(monkeypatch):
@@ -189,3 +192,100 @@ async def test_oidc_jwks_fallback_preserves_other_identity_validation_errors(
         assert response.headers["location"] == "/login?oidc_error=authentication_failed"
         callback.client.userinfo.assert_not_awaited()
         assert callback.session.scalar(select(UserSession.id)) is None
+
+
+@pytest.mark.parametrize("verified", [False, None, "true", 1, "missing"])
+@pytest.mark.parametrize("account", ["new", "email_match", "subject_bound"])
+async def test_required_verified_email_rejects_before_any_account_mutation(
+    callback, verified, account
+):
+    user = None
+    if account != "new":
+        user = User(
+            username="reader",
+            email="reader@example.test" if account == "email_match" else "old@example.test",
+            password_hash="unused",
+            oidc_subject="provider:subject" if account == "subject_bound" else None,
+            is_admin=False,
+        )
+        callback.session.add(user)
+        callback.session.commit()
+    if verified != "missing":
+        callback.claims["email_verified"] = verified
+    callback.claims["groups"] = ["administrators"]
+    callback.selected_config.return_value = replace(
+        callback.config, require_verified_email=True, admin_group="administrators"
+    )
+    response = await complete(callback)
+    assert response.headers["location"] == "/login?oidc_error=verified_email_required"
+    assert session_cookie_name("test") not in response.cookies
+    assert callback.session.scalar(select(UserSession.id)) is None
+    if user is None:
+        assert callback.session.scalar(select(User.id)) is None
+    else:
+        callback.session.refresh(user)
+        assert not user.is_admin
+        assert user.email == (
+            "reader@example.test" if account == "email_match" else "old@example.test"
+        )
+        assert user.oidc_subject == ("provider:subject" if account == "subject_bound" else None)
+
+
+@pytest.mark.parametrize("verified", [False, None, "true", 1, "missing"])
+async def test_optional_verified_email_preserves_existing_provider_compatibility(
+    callback, verified
+):
+    if verified != "missing":
+        callback.claims["email_verified"] = verified
+    response = await complete(callback)
+    assert response.headers["location"] == "/login?oidc=success"
+    assert callback.session.scalar(select(UserSession.id)) is not None
+
+
+async def test_required_verified_email_accepts_explicit_boolean_true(callback):
+    callback.claims["email_verified"] = True
+    callback.selected_config.return_value = replace(callback.config, require_verified_email=True)
+    assert (await complete(callback)).headers["location"] == "/login?oidc=success"
+    assert callback.session.scalar(select(UserSession.id)) is not None
+
+
+@pytest.mark.parametrize("subject_bound", [True, False])
+async def test_oidc_cannot_adopt_another_accounts_email(callback, subject_bound):
+    user = User(
+        username="reader",
+        email="original@example.test",
+        password_hash="unused",
+        oidc_subject="provider:subject" if subject_bound else None,
+        is_admin=False,
+    )
+    owner = User(username="owner", email="reader@example.test", password_hash="unused")
+    callback.session.add_all([user, owner])
+    callback.session.commit()
+    callback.selected_config.return_value = replace(callback.config, user_match_field="username")
+    response = await complete(callback)
+    assert response.headers["location"] == "/login?oidc_error=email_conflict"
+    callback.session.refresh(user)
+    assert user.email == "original@example.test"
+    assert user.oidc_subject == ("provider:subject" if subject_bound else None)
+    assert callback.session.scalar(select(UserSession.id)) is None
+
+
+async def test_oidc_email_uniqueness_race_rolls_back_without_a_session(callback, monkeypatch):
+    original_create = auth_oidc._create_oidc_user
+
+    async def create_after_another_account_claims_email(db, *args, **kwargs):
+        # Represent a different transaction committing after the availability lookup.
+        callback.session.add(
+            User(username="concurrent-owner", email="reader@example.test", password_hash="unused")
+        )
+        callback.session.commit()
+        return await original_create(db, *args, **kwargs)
+
+    monkeypatch.setattr(auth_oidc, "_create_oidc_user", create_after_another_account_claims_email)
+    response = await complete(callback)
+    assert response.headers["location"] == "/login?oidc_error=identity_conflict"
+    assert session_cookie_name("test") not in response.cookies
+    assert callback.session.scalar(select(UserSession.id)) is None
+    users = callback.session.scalars(select(User)).all()
+    assert len(users) == 1 and users[0].username == "concurrent-owner"
+    assert users[0].oidc_subject is None

@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import RedirectResponse
 
@@ -35,7 +36,7 @@ def _env_config(request: Request) -> OidcConfig | None:
     return replace(config, redirect_uri=str(request.url_for("oidc_callback")))
 
 
-def _named_rows(row: OidcSettings) -> list[dict[str, Any]]:
+def _named_rows(row: OidcSettings, *, include_disabled: bool = False) -> list[dict[str, Any]]:
     try:
         data = json.loads(row.providers_json or "[]")
     except (TypeError, ValueError):
@@ -43,7 +44,9 @@ def _named_rows(row: OidcSettings) -> list[dict[str, Any]]:
     return [
         provider
         for provider in data
-        if isinstance(provider, dict) and provider.get("slug") and provider.get("enabled", True)
+        if isinstance(provider, dict)
+        and provider.get("slug")
+        and (include_disabled or provider.get("enabled", True))
     ]
 
 
@@ -59,12 +62,48 @@ def _config_from_provider(provider: dict[str, Any], redirect_uri: str) -> OidcCo
         admin_group=provider.get("admin_group") or None,
         user_match_field=provider.get("user_match_field") or "email",
         allow_new_users=bool(provider.get("allow_new_users", True)),
+        require_verified_email=provider.get("require_verified_email", False) is True,
         discovery_url=issuer if issuer.endswith("/.well-known/openid-configuration") else None,
         name=provider.get("name") or provider["slug"],
         slug=provider["slug"],
         button_text=provider.get("button_text") or "Continue with SSO",
         button_image_url=provider.get("button_image_url"),
     )
+
+
+def _with_verification_policy(
+    config: OidcConfig | None, row: OidcSettings | None
+) -> OidcConfig | None:
+    """The same issuer/client must not bypass a requirement through another callback alias."""
+    if config is None:
+        return None
+
+    def identity(issuer: str, client_id: str) -> tuple[str, str]:
+        return (
+            issuer.strip().rstrip("/").removesuffix("/.well-known/openid-configuration"),
+            client_id,
+        )
+
+    selected = identity(config.issuer_url, config.client_id)
+    required = config.require_verified_email
+    if row is not None:
+        required = required or (
+            row.require_verified_email
+            and selected == identity(row.issuer_url or "", row.client_id or "")
+        )
+        required = required or any(
+            provider.get("require_verified_email", False) is True
+            and selected
+            == identity(str(provider.get("issuer_url", "")), str(provider.get("client_id", "")))
+            for provider in _named_rows(row, include_disabled=True)
+        )
+    environment = env_oidc_config()
+    required = required or bool(
+        environment
+        and environment.require_verified_email
+        and selected == identity(environment.issuer_url, environment.client_id)
+    )
+    return replace(config, require_verified_email=required)
 
 
 def _named_provider_config(
@@ -87,15 +126,17 @@ async def _get_config(
     if row and not row.enabled:
         return None
     if row and slug != "default":
-        return _named_provider_config(row, request, slug, require_autostart)
+        return _with_verification_policy(
+            _named_provider_config(row, request, slug, require_autostart), row
+        )
 
     environment_config = _env_config(request)
     if environment_config is not None:
-        return environment_config
+        return _with_verification_policy(environment_config, row)
 
     if row and row.issuer_url and row.client_id and row.client_secret:
         issuer = row.issuer_url.strip()
-        return OidcConfig(
+        config = OidcConfig(
             issuer_url=issuer,
             client_id=row.client_id,
             client_secret=decrypt_secret(row.client_secret),
@@ -105,7 +146,9 @@ async def _get_config(
             admin_group=row.admin_group,
             user_match_field=row.user_match_field or "email",
             allow_new_users=row.allow_new_users,
+            require_verified_email=row.require_verified_email,
         )
+        return _with_verification_policy(config, row)
     return None
 
 
@@ -267,6 +310,8 @@ async def _resolve_oidc_identity(
     email = str(claims.get("email", "")).strip().lower()
     if not subject or not email:
         return "identity_missing"
+    if config.require_verified_email and claims.get("email_verified") is not True:
+        return "verified_email_required"
 
     field = config.user_match_field if config.user_match_field in {"email", "username"} else "email"
     match = _match_value(claims, field, email)
@@ -284,6 +329,9 @@ async def _resolve_oidc_identity(
     is_admin = bool(
         config.admin_group and config.admin_group in _groups(claims, config.groups_claim)
     )
+    email_owner = await db.scalar(select(User.id).where(User.email == email))
+    if email_owner is not None and (user is None or email_owner != user.id):
+        return "email_conflict"
     if user is None:
         if not config.allow_new_users:
             return "user_creation_disabled"
@@ -319,13 +367,18 @@ async def _complete_callback(
         logger.exception("OIDC callback token/userinfo exchange failed")
         return RedirectResponse("/login?oidc_error=authentication_failed", 303)
 
-    user = await _resolve_oidc_identity(db, config, claims)
-    if isinstance(user, str):
-        return RedirectResponse(f"/login?oidc_error={user}", 303)
-
-    session_context = await create_session(db, user, request)
-    session_token = session_context.token
-    await db.commit()
+    try:
+        user = await _resolve_oidc_identity(db, config, claims)
+        if isinstance(user, str):
+            return RedirectResponse(f"/login?oidc_error={user}", 303)
+        session_context = await create_session(db, user, request)
+        session_token = session_context.token
+        await db.commit()
+    except IntegrityError:
+        # A competing identity/account update can win after the availability lookup.
+        # Roll back all linking/provisioning/session work without exposing database details.
+        await db.rollback()
+        return RedirectResponse("/login?oidc_error=identity_conflict", 303)
     response = RedirectResponse("/login?oidc=success", 303)
     response.set_cookie(
         key=session_cookie_name(request.headers.get("host", "")),

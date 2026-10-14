@@ -29,6 +29,7 @@ class OidcConfig:  # pylint: disable=too-many-instance-attributes
     admin_group: str | None = None
     user_match_field: str = "email"
     allow_new_users: bool = True
+    require_verified_email: bool = False
     discovery_url: str | None = None
     name: str = "SSO"
     slug: str = "default"
@@ -70,6 +71,7 @@ def env_oidc_config() -> OidcConfig | None:
         groups_claim=settings.OIDC_GROUPS_CLAIM,
         admin_group=settings.OIDC_ADMIN_GROUP,
         user_match_field=getattr(settings, "OIDC_USER_MATCH_FIELD", "email"),
+        require_verified_email=settings.OIDC_REQUIRE_VERIFIED_EMAIL,
         discovery_url=issuer if issuer.endswith("/.well-known/openid-configuration") else None,
     )
 

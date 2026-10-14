@@ -91,6 +91,7 @@ class DeploymentSettingsRequest(BaseModel):
     oidc_default_login_method: str | None = None
     oidc_login_button_text: str | None = None
     oidc_allow_new_users: bool | None = None
+    oidc_require_verified_email: bool | None = None
     oidc_providers_json: str | None = None
     nginx_realip_header: str | None = None
     nginx_realip_trusted_proxies: str | None = None
@@ -146,6 +147,7 @@ _OIDC_ENV_NAMES = {
     "groups_claim": "OIDC_GROUPS_CLAIM",
     "admin_group": "OIDC_ADMIN_GROUP",
     "user_match_field": "OIDC_USER_MATCH_FIELD",
+    "require_verified_email": "OIDC_REQUIRE_VERIFIED_EMAIL",
 }
 
 _OIDC_ENV_LOCKED_FIELDS = {
@@ -158,6 +160,7 @@ _OIDC_ENV_LOCKED_FIELDS = {
     "oidc_admin_group",
     "oidc_user_match_field",
     "oidc_allow_new_users",
+    "oidc_require_verified_email",
     "oidc_enabled",
 }
 
@@ -166,6 +169,7 @@ def _provider_view(raw):
     item = dict(raw)
     secret = item.pop("client_secret", "")
     item["client_secret_configured"] = bool(secret)
+    item["require_verified_email"] = item.get("require_verified_email", False) is True
     return item
 
 
@@ -283,6 +287,11 @@ async def get_deployment_settings(db: AsyncSession, admin: User) -> dict:
             else "local",
             "login_button_text": oidc.login_button_text.strip() or "Continue with SSO",
             "allow_new_users": oidc.allow_new_users,
+            "require_verified_email": (
+                handler.get("OIDC_REQUIRE_VERIFIED_EMAIL")
+                if oidc_locks["require_verified_email"]
+                else oidc.require_verified_email
+            ),
             "client_secret_configured": bool(oidc.client_secret),
             "named_providers": named,
             "locked_fields": {
@@ -323,6 +332,8 @@ def _normalize_oidc_provider(
         )
     if item.get("user_match_field", "email") not in {"email", "username"}:
         raise HTTPException(400, "OIDC user matching must be email or username.")
+    if not isinstance(item.get("require_verified_email", False), bool):
+        raise HTTPException(400, "OIDC Require verified email must be true or false.")
     secret = item.get("client_secret") or existing.get(slug, {}).get("client_secret")
     if not secret and effective_oidc_enabled:
         raise HTTPException(
@@ -339,6 +350,7 @@ def _normalize_oidc_provider(
         "client_id": client_id,
         "client_secret": secret,
         "enabled": bool(item.get("enabled", True)),
+        "require_verified_email": item.get("require_verified_email", False),
     }
 
 
@@ -394,6 +406,8 @@ def _update_oidc_field(oidc: OidcSettings, field: str, value: Any) -> None:
         oidc.login_button_text = text
     elif field == "oidc_allow_new_users":
         oidc.allow_new_users = bool(value)
+    elif field == "oidc_require_verified_email" and value is not None:
+        oidc.require_verified_email = value
     elif value is not None:
         setattr(oidc, field.removeprefix("oidc_"), value or None)
 

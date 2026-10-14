@@ -89,6 +89,7 @@ class Settings(BaseSettings):
     OIDC_GROUPS_CLAIM: str = "groups"
     OIDC_ADMIN_GROUP: str | None = None
     OIDC_USER_MATCH_FIELD: str = "email"
+    OIDC_REQUIRE_VERIFIED_EMAIL: bool = False
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

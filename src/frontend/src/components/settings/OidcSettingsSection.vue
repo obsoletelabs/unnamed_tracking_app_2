@@ -33,6 +33,7 @@ function newProvider(): OidcProviderSetting {
     admin_group: null,
     user_match_field: "email",
     allow_new_users: true,
+    require_verified_email: false,
     button_text: "Continue with SSO",
     button_image_url: null,
     button_colour: "",
@@ -124,6 +125,7 @@ onMounted(async () => {
       client_secret: "",
       button_colour: provider.button_colour || "",
       autostart_enabled: provider.autostart_enabled !== false,
+      require_verified_email: provider.require_verified_email === true,
     }));
   } catch (err) {
     error.value =
@@ -155,6 +157,7 @@ async function save() {
       client_secret: "",
       button_colour: provider.button_colour || "",
       autostart_enabled: provider.autostart_enabled !== false,
+      require_verified_email: provider.require_verified_email === true,
     }));
     saved.value = true;
   } catch (err) {
@@ -399,6 +402,10 @@ async function save() {
         </div>
 
         <div class="provider-options">
+          <label>
+            <input v-model="provider.require_verified_email" type="checkbox" />
+            Require verified email
+          </label>
           <label
             ><input v-model="provider.allow_new_users" type="checkbox" /> Allow
             new users</label
@@ -418,6 +425,13 @@ async function save() {
         </div>
 
         <div class="autostart">
+          <small>
+            Verified email is optional by default. When required, the provider
+            must send email_verified=true; false, missing or malformed claims
+            are rejected. Providers sharing an issuer and client ID use the
+            strictest saved or environment requirement, including legacy
+            callbacks.
+          </small>
           <strong>Autostart URL</strong>
           <template v-if="provider.autostart_enabled">
             <span
