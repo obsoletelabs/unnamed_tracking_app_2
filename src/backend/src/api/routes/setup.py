@@ -15,10 +15,12 @@ from src.core.app_integrations import get_or_create_app_integration_settings
 from src.core.auth import (
     SESSION_TTL_SECONDS,
     get_current_admin,
+    get_current_user,
     hash_password,
     session_cookie_name,
     set_password_policy_override,
     validate_password,
+    validate_username,
 )
 from src.core.config import settings
 from src.core.config_registry import CONFIG_REGISTRY
@@ -385,6 +387,8 @@ def _save_oidc_configuration(
 async def setup_configuration(
     request: Request, db: AsyncSession = _DB_DEFAULT
 ) -> dict[str, object]:
+    if await db.scalar(select(User.id).limit(1)) is not None:
+        await get_current_admin(await get_current_user(request, db))
     return await _configuration(db, request)
 
 
@@ -470,6 +474,10 @@ async def setup_admin(
 
     if not username or not email or not password:
         raise HTTPException(status_code=400, detail="Username, email, and password are required.")
+    try:
+        username = validate_username(username)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Username: {exc}") from exc
 
     # OIDC is optional as a section. Selecting it means it is being configured
     # and will enable OIDC after complete provider credentials are saved.

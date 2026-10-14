@@ -1,3 +1,5 @@
+import { failedRequest } from "./apiError";
+
 export interface CurrentUser {
   id: string;
   username: string;
@@ -108,10 +110,7 @@ export async function updateProfile(
     throw new Error("That username or email is already taken.");
   }
   if (!response.ok) {
-    const message = await response.text();
-    throw new Error(
-      `Failed to update profile: ${response.status} ${response.statusText} ${message}`,
-    );
+    throw await failedRequest(response);
   }
 
   return await response.json();

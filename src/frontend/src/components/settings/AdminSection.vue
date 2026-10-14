@@ -216,8 +216,18 @@ function openCreateForm() {
       >
         <label class="field"
           ><span>Username</span
-          ><input v-model="newUsername" type="text" required
-        /></label>
+          ><input
+            v-model="newUsername"
+            type="text"
+            maxlength="100"
+            aria-label="Username"
+            aria-describedby="new-user-username-help"
+            required
+          /><small id="new-user-username-help"
+            >Use 1–100 ASCII letters, digits, underscores, hyphens or dots. No
+            spaces.</small
+          ></label
+        >
         <label class="field"
           ><span>Email</span><input v-model="newEmail" type="email" required
         /></label>

@@ -8,6 +8,10 @@ Local accounts use the application's username/password login. A successful login
 
 Passwords are not stored in plaintext. API requests made by the web application normally use the session cookie automatically.
 
+New or renamed usernames use 1–100 ASCII letters, digits, underscores, hyphens or dots, with no spaces. The first-run administrator, invitations and account administration use the same rule. Existing usernames continue to sign in and can be kept unchanged when editing other profile fields. Exact username matching takes priority over the email fallback; email matching is case insensitive.
+
+Changing your password in Profile requires your current password and signs out other active browser sessions. The browser making the change remains signed in. Session audit records are retained; API keys stay active. Concurrent local sign-ins and password changes are serialized so an old-password sign-in cannot create a live session after the change.
+
 ## Optional password recovery
 
 An administrator can install the maintained **Password Reset** plugin, approve its
@@ -139,3 +143,10 @@ the same responsive HTML design and readable plain alternative.
 ![Invitation dialog on the Users page](../assets/notification-mail-auth/invite-users-dialog-desktop.png)
 
 ![Invitation dialog on mobile](../assets/notification-mail-auth/invite-users-dialog-mobile.png)
+
+
+## API key creation and setup access
+
+Create API keys from an interactive signed-in browser session. An API key cannot mint another key, even when the request also carries a browser cookie. Existing key ownership, listing/revocation and integration scopes remain unchanged.
+
+Before the first account is created, the setup configuration remains available for bootstrap. After bootstrap, reading or changing it requires an administrator. Hidden ENV-only secrets, including the legacy database URL, are redacted from the configuration schema.

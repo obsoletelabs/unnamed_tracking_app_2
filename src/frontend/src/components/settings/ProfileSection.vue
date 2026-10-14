@@ -184,7 +184,17 @@ async function onAvatarFileChange(e: Event) {
     <form @submit.prevent="saveProfile">
       <label class="field">
         <span>Username</span>
-        <input v-model="username" type="text" />
+        <input
+          v-model="username"
+          type="text"
+          maxlength="100"
+          aria-label="Username"
+          aria-describedby="profile-username-help"
+        />
+        <small id="profile-username-help"
+          >Use 1–100 ASCII letters, digits, underscores, hyphens or dots. No
+          spaces. Existing usernames may be kept unchanged.</small
+        >
       </label>
 
       <label class="field">

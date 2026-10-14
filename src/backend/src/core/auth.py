@@ -78,6 +78,17 @@ def validate_password(password: str) -> str:
     return password
 
 
+def validate_username(value: str) -> str:
+    """Validate new/renamed sign-in identifiers without changing legacy accounts."""
+    username = value.strip()
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", username):
+        raise ValueError(
+            "Use 1–100 ASCII letters, digits, underscores, hyphens or dots. "
+            "Spaces and other characters are not allowed."
+        )
+    return username
+
+
 def hash_password(password: str) -> str:
     salt = secrets.token_bytes(_SALT_BYTES)
     password_hash = hashlib.scrypt(
@@ -130,6 +141,19 @@ async def revoke_session(db: AsyncSession, session_token: str) -> bool:
     )
     await db.commit()
     return bool(result.rowcount)
+
+
+async def revoke_other_sessions(db: AsyncSession, user_id: UUID, current_token: str | None) -> None:
+    """Revoke browser sessions atomically with an account change; retain audit rows."""
+    now = int(time.time())
+    statement = update(UserSession).where(
+        UserSession.user_id == user_id,
+        UserSession.revoked_at.is_(None),
+        UserSession.expires_at > now,
+    )
+    if current_token:
+        statement = statement.where(UserSession.token_hash != hash_token(current_token))
+    await db.execute(statement.values(revoked_at=now))
 
 
 def session_cookie_name(host: str) -> str:
@@ -244,6 +268,10 @@ async def ensure_primary_user(db: AsyncSession) -> User:
         user = await db.scalar(select(User).where(User.email == email))
 
     if user is None:
+        try:
+            username = validate_username(username)
+        except ValueError as exc:
+            raise RuntimeError(f"Invalid primary user username: {exc}") from exc
         # only a new account takes its password from the environment, so
         # only then does the policy apply; checking it on every start made a
         # later policy change crash startup for an account that already exists

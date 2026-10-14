@@ -21,10 +21,12 @@ from src.core.auth import (
     get_current_user,
     hash_password,
     password_policy,
+    revoke_other_sessions,
     revoke_session,
     session_cookie_name,
     set_password_policy_override,
     validate_password,
+    validate_username,
     verify_password,
 )
 from src.core.config import settings
@@ -57,6 +59,11 @@ class UserCreateRequest(BaseModel):
     email: str = Field(min_length=3, max_length=320)
     password: str = Field(min_length=1)
     is_admin: bool = False
+
+    @field_validator("username")
+    @classmethod
+    def validate_new_username(cls, value: str) -> str:
+        return validate_username(value)
 
     @field_validator("password")
     @classmethod
@@ -151,9 +158,12 @@ async def login(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, str]:
     identifier = payload.username_or_email.strip()
-    user = await db.scalar(
-        select(User).where((User.username == identifier) | (User.email == identifier.lower()))
-    )
+    # Existing usernames may contain @; exact sign-in identity wins over email.
+    user = await db.scalar(select(User).where(User.username == identifier).with_for_update())
+    if user is None:
+        user = await db.scalar(
+            select(User).where(User.email == identifier.lower()).with_for_update()
+        )
     if (
         user is None
         or not user.is_active
@@ -216,10 +226,14 @@ async def current_user(
 @router.patch("/me")
 async def update_current_user(
     payload: UserProfileUpdateRequest,
+    request: Request,
     user: User = Depends(get_current_user),
+    actor: AuthenticatedActor = Depends(get_current_actor),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, str | bool | None]:
     if payload.new_password is not None:
+        # Serialize password verification with concurrent sign-ins and password changes.
+        await db.refresh(user, with_for_update=True)
         if not payload.current_password or not verify_password(
             payload.current_password, user.password_hash
         ):
@@ -228,8 +242,11 @@ async def update_current_user(
                 detail="Current password is required to set a new password.",
             )
 
-    if payload.username is not None:
-        user.username = payload.username.strip()
+    if payload.username is not None and payload.username.strip() != user.username:
+        try:
+            user.username = validate_username(payload.username)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     if payload.email is not None:
         user.email = payload.email.strip().lower()
     if payload.new_password is not None:
@@ -243,6 +260,13 @@ async def update_current_user(
         )
 
     try:
+        if payload.new_password is not None:
+            current_token = (
+                request.cookies.get(session_cookie_name(request.headers.get("host", "")))
+                if actor.credential_kind == "session"
+                else None
+            )
+            await revoke_other_sessions(db, user.id, current_token)
         await db.commit()
         await db.refresh(user)
     except IntegrityError as exc:
@@ -340,8 +364,13 @@ async def list_users(
 async def create_user_api_key(
     payload: ApiKeyCreateRequest,
     user: User = Depends(get_current_user),
+    actor: AuthenticatedActor = Depends(get_current_actor),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, str | list[str]]:
+    if actor.credential_kind != "session":
+        raise HTTPException(
+            status_code=403, detail="Create API keys from a signed-in browser session."
+        )
     api_key, key_prefix, key_hash = create_api_key()
     db.add(
         UserApiKey(
