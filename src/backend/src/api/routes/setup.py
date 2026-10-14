@@ -78,7 +78,6 @@ class SetupRequest(BaseModel):
     oidc_admin_group: str | None = None
     oidc_user_match_field: str = "email"
     oidc_allow_new_users: bool = True
-    oidc_require_verified_email: bool = False
     oidc_button_text: str = "Continue with SSO"
     oidc_default_login_method: str = "local"
 
@@ -354,12 +353,18 @@ def _save_oidc_configuration(
         providers = json.loads(oidc.providers_json or "[]")
     except (TypeError, ValueError):
         providers = []
-    providers = [
-        item
-        for item in providers
-        if isinstance(item, dict)
-        and item.get("slug") != (values.get("OIDC_PROVIDER_SLUG") or "provider-1")
-    ]
+    slug = values.get("OIDC_PROVIDER_SLUG") or "provider-1"
+    if (
+        not handler.has("OIDC_REQUIRE_VERIFIED_EMAIL")
+        and "OIDC_REQUIRE_VERIFIED_EMAIL" not in values
+    ):
+        oidc.require_verified_email = oidc.require_verified_email or any(
+            isinstance(item, dict)
+            and item.get("slug") == slug
+            and item.get("require_verified_email", False) is True
+            for item in providers
+        )
+    providers = [item for item in providers if isinstance(item, dict) and item.get("slug") != slug]
     providers.insert(
         0,
         {

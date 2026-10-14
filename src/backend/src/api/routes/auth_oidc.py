@@ -317,8 +317,6 @@ async def _resolve_oidc_identity(
     email = str(claims.get("email", "")).strip().lower()
     if not subject or not email:
         return "identity_missing"
-    if config.require_verified_email and claims.get("email_verified") is not True:
-        return "verified_email_required"
 
     field = config.user_match_field if config.user_match_field in {"email", "username"} else "email"
     match = _match_value(claims, field, email)
@@ -344,10 +342,9 @@ async def _resolve_oidc_identity(
             return "user_creation_disabled"
         user = await _create_oidc_user(db, claims, email, linked_subject, is_admin=is_admin)
     else:
-        if not user.is_active:
-            return "account_disabled"
-        if user.oidc_subject and user.oidc_subject not in {linked_subject, subject}:
-            return "identity_conflict"
+        identity_conflict = user.oidc_subject and user.oidc_subject not in {linked_subject, subject}
+        if not user.is_active or identity_conflict:
+            return "identity_conflict" if user.is_active else "account_disabled"
         user.oidc_subject = linked_subject
         user.email = email
         if config.admin_group:
@@ -374,6 +371,9 @@ async def _complete_callback(
         logger.exception("OIDC callback token/userinfo exchange failed")
         return RedirectResponse("/login?oidc_error=authentication_failed", 303)
 
+    # Provider verification is checked before resolving or mutating any local account.
+    if config.require_verified_email and claims.get("email_verified") is not True:
+        return RedirectResponse("/login?oidc_error=verified_email_required", 303)
     try:
         user = await _resolve_oidc_identity(db, config, claims)
         if isinstance(user, str):

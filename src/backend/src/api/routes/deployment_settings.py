@@ -332,7 +332,10 @@ def _normalize_oidc_provider(
         )
     if item.get("user_match_field", "email") not in {"email", "username"}:
         raise HTTPException(400, "OIDC user matching must be email or username.")
-    if not isinstance(item.get("require_verified_email", False), bool):
+    required = item.get(
+        "require_verified_email", existing.get(slug, {}).get("require_verified_email", False)
+    )
+    if not isinstance(required, bool):
         raise HTTPException(400, "OIDC Require verified email must be true or false.")
     secret = item.get("client_secret") or existing.get(slug, {}).get("client_secret")
     if not secret and effective_oidc_enabled:
@@ -350,7 +353,7 @@ def _normalize_oidc_provider(
         "client_id": client_id,
         "client_secret": secret,
         "enabled": bool(item.get("enabled", True)),
-        "require_verified_email": item.get("require_verified_email", False),
+        "require_verified_email": required,
     }
 
 

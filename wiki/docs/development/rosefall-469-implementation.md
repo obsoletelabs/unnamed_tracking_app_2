@@ -56,11 +56,14 @@ Until then, PRs remain available for review with current validation and screensh
 
 ### Current progress
 
-- **A:** implementation is in [PR #126](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/126).
-  Focused authentication regressions and combined frontend checks pass; full
-  backend validation and final PR checks are in progress. Modern and Classic
-  profile screenshots accompany the shared username guidance.
-- **B–O:** approved; not implemented yet. The package details below describe
+- **A:** merged as [PR #126](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/126).
+  Full backend validation passed (2,403 tests, four skipped), frontend validation
+  passed (528 tests), and hosted checks passed before the authorized squash merge.
+  Modern/Classic account and phone screenshots are included.
+- **B:** implementation is in progress: opt-in verification, callback-alias
+  enforcement, email-collision handling and the false-default additive migration.
+  Callback/configuration regression coverage and UI validation accompany the change.
+- **C–O:** approved; not implemented yet. The package details below describe
   the intended changes and verification, not completed behavior.
 
 ## Concrete packages

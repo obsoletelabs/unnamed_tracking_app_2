@@ -689,7 +689,7 @@ button {
   gap: 6px;
 }
 
-.provider-options input {
+.section input[type="checkbox"] {
   accent-color: var(--ui-accent-text);
 }
 
