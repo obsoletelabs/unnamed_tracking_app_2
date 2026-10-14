@@ -15,7 +15,7 @@ The application accepts either the individual PostgreSQL variables or the legacy
 | `POSTGRES_DB` | ENV | Required with `POSTGRES_USER` and `POSTGRES_DB` | PostgreSQL database name. |
 | `POSTGRES_HOST` | ENV | `db` | PostgreSQL host. |
 | `POSTGRES_PORT` | ENV | `5432` | PostgreSQL port. |
-| `DATABASE_URL` | ENV | Alternative; deprecated | Legacy PostgreSQL connection URL. If the three component variables are complete, they take precedence. |
+| `DATABASE_URL` | ENV | Alternative; deprecated | Legacy PostgreSQL connection URL; redacted from configuration schema. If the three component variables are complete, they take precedence. |
 
 `DATABASE_URL` is still supported for compatibility. New deployments should use the individual PostgreSQL variables.
 
@@ -48,7 +48,7 @@ These values are used for environment-based bootstrap of the initial administrat
 
 | Variable | Source | Purpose |
 |---|---|---|
-| `PRIMARY_USER_USERNAME` | SETUP/BOTH | Initial administrator username. |
+| `PRIMARY_USER_USERNAME` | SETUP/BOTH | Initial administrator username: 1–100 ASCII letters, digits, underscores, hyphens or dots; no spaces. Existing bootstrap accounts are preserved. |
 | `PRIMARY_USER_EMAIL` | SETUP/BOTH | Initial administrator email. |
 | `PRIMARY_USER_PASSWORD` | SETUP/BOTH | Initial administrator password. |
 

@@ -1,3 +1,5 @@
+import { failedRequest } from "./apiError";
+
 export interface AdminUser {
   id: string;
   username: string;
@@ -66,10 +68,7 @@ export async function createUser(
     throw new Error("That username or email is already taken.");
   }
   if (!response.ok) {
-    const message = await response.text();
-    throw new Error(
-      `Failed to create user: ${response.status} ${response.statusText} ${message}`,
-    );
+    throw await failedRequest(response);
   }
   return await response.json();
 }
