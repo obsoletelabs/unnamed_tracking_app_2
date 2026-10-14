@@ -23,10 +23,10 @@ def parse_http_url(url: object, *, allowed_ports: Collection[int] | None = None)
         port = parts.port if parts.port is not None else (443 if parts.scheme == "https" else 80)
     except ValueError as exc:
         raise ValueError("Invalid outbound URL.") from exc
+    if parts.scheme not in {"https", "http"} or not parts.hostname:
+        raise ValueError("Use an HTTP(S) URL with a hostname.")
     if (
-        parts.scheme not in {"https", "http"}
-        or not parts.hostname
-        or parts.username is not None
+        parts.username is not None
         or parts.password is not None
         or "#" in url
         or any(char.isspace() or ord(char) < 32 or ord(char) == 127 for char in url)
