@@ -215,9 +215,12 @@ class MetadataHandler:
         timeout: float | None = None,
     ) -> ProviderResponse:
         started = time.monotonic()
+        work = request or session.request
+        if session.selected and operation != "search":
+            work = work.model_copy(update={"options": {**work.options, "automatic_search": False}})
         try:
             result = await bounded(
-                provider.invoke(operation, request or session.request, candidate),
+                provider.invoke(operation, work, candidate),
                 timeout if timeout is not None else self._timeout(session),
             )
         except TimeoutError:
@@ -237,6 +240,10 @@ class MetadataHandler:
     async def _search(self, session: SearchSession) -> None:
         tasks = []
         for provider in session.providers:
+            if session.request.options.get("automatic_search") is True and not getattr(
+                provider, "automatic_search_enabled", True
+            ):
+                continue
             if not provider.declaration.operations.search:
                 continue
             if provider.state in {ProviderHealth.DISABLED, ProviderHealth.NOT_CONFIGURED}:
@@ -575,6 +582,12 @@ class MetadataHandler:
                 session.work.pop(work_key, None)
         for group_id in target_ids:
             for provider in session.providers:
+                if (
+                    not session.selected
+                    and session.request.options.get("automatic_search") is True
+                    and not getattr(provider, "automatic_search_enabled", True)
+                ):
+                    continue
                 if provider.state in {ProviderHealth.DISABLED, ProviderHealth.NOT_CONFIGURED}:
                     continue
                 group = session.groups[group_id]

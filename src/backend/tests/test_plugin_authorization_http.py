@@ -29,6 +29,7 @@ from src.api.routes.plugin_manager import runtime as plugin_runtime
 from src.core.auth import hash_token, session_cookie_name
 from src.core.geoip import GeoLocation, geoip
 from src.database.models.achievement import Achievement  # noqa: F401
+from src.database.models.app_integration_settings import AppIntegrationSettings
 from src.database.models.auth import UserSession
 from src.database.models.delegation import IntegrationPolicy
 from src.database.models.notification import Notification
@@ -118,6 +119,7 @@ def boundary(monkeypatch):
         NotificationDestination,
         NotificationReceipt,
         UserPreferences,
+        AppIntegrationSettings,
         NotificationDelivery,
         NotificationProviderSetting,
         NotificationVerification,

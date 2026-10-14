@@ -27,6 +27,8 @@ nav:
       - Overview: user-guide/index.md
       - Authentication: user-guide/authentication.md
       - Appearance & Navigation: user-guide/appearance-and-navigation.md
+      - Classic and Modern: user-guide/classic.md
+      - Automatic Search: user-guide/automatic-search.md
       - Your Home: user-guide/home.md
       - OpenID Connect / SSO: user-guide/oidc.md
       - Data, Exports & Backups: user-guide/data-and-backups.md
@@ -69,6 +71,8 @@ nav:
       - Rosefall 469 Review Choices: development/rosefall-469-reconciliation.md
       - Rosefall 469 Implementation Plan: development/rosefall-469-implementation.md
       - Rosefall 469 Source Ledger: development/rosefall-469-files.md
+      - Classic UI Porting Guide: development/classic-ui.md
+      - Automatic Search Contract: development/automatic-search.md
       - UI PR Integration Review: development/ui-pr-integration-review.md
       - Final Main UI Integration: development/final-main-ui-integration.md
       - Remaining UI Merge Checks: development/ui-merge-checklist.md

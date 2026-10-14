@@ -6,6 +6,15 @@ export interface MetadataProviderStatus {
   provider_id: string;
   plugin_id: string;
   included?: boolean;
+  automatic_search?: {
+    enabled: boolean;
+    account_enabled: boolean;
+    provider_enabled: boolean;
+    server_enabled: boolean;
+    server_provider_enabled: boolean;
+    uses_personal_credentials: boolean;
+    reason: "account_disabled" | "provider_disabled" | "server_disabled" | null;
+  };
   name: string;
   media_types: MetadataMediaType[];
   state: string;
@@ -20,6 +29,27 @@ export interface MetadataProviderStatus {
     required: boolean;
     secret: boolean;
   }[];
+}
+
+export async function fetchServerAutomaticSearch(): Promise<boolean> {
+  const response = await fetch("/api/metadata/automatic-search", {
+    credentials: "include",
+  });
+  if (!response.ok) throw await failedRequest(response);
+  return (await response.json()).enabled;
+}
+
+export async function saveServerAutomaticSearch(
+  enabled: boolean,
+  providerId: string | null = null,
+): Promise<void> {
+  const response = await fetch("/api/metadata/automatic-search", {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled, provider_id: providerId }),
+  });
+  if (!response.ok) throw await failedRequest(response);
 }
 
 export async function fetchMetadataProviders(): Promise<
@@ -133,12 +163,13 @@ export async function startMetadataSearch(
   query: string,
   mediaType: MetadataMediaType,
   signal?: AbortSignal,
+  trigger: "explicit" | "automatic" = "explicit",
 ): Promise<MetadataSession> {
   const response = await fetch("/api/metadata/sessions", {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query, media_type: mediaType }),
+    body: JSON.stringify({ query, media_type: mediaType, trigger }),
     signal,
   });
   if (!response.ok) throw await failedRequest(response);

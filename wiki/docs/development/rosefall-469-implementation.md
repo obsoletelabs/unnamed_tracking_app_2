@@ -29,7 +29,7 @@ The owner approved the matrix recommendations on 14 October 2026, with these cha
   masquerading as immutable content identity.
 
 Independently authorized CI is merged as #122. Classic presentation, Automatic
-Search and the native Classic palette are in #123. The palette works with Modern
+Search and the native Classic palette are merged as #123. The palette works with Modern
 without changing its presentation. These requests are not Rosefall feature copies.
 
 ## Delivery order and branch dependencies
@@ -50,7 +50,18 @@ published histories will be merged forward without force pushes.
 The migration history must stay linear. OIDC/time-to-beat migrations will be
 generated only after the preceding schema PR is reflected in main, or explicitly
 depend on that PR and be checked against its head. Do not invent a competing head
-or hide an unrelated PR in the diff. No implementation PR will merge itself.
+or hide an unrelated PR in the diff. The owner authorized squash merges on
+14 October 2026 after each package is complete and all required checks pass.
+Until then, PRs remain available for review with current validation and screenshots.
+
+### Current progress
+
+- **A:** implementation is in [PR #126](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/126).
+  Focused authentication regressions and combined frontend checks pass; full
+  backend validation and final PR checks are in progress. Modern and Classic
+  profile screenshots accompany the shared username guidance.
+- **B–O:** approved; not implemented yet. The package details below describe
+  the intended changes and verification, not completed behavior.
 
 ## Concrete packages
 
@@ -87,9 +98,12 @@ help through the existing service error handling; do not expose raw database err
 ### B. Optional OIDC verification — 58, 59
 
 Extend `core/oidc.py`, `api/routes/auth_oidc.py`, OIDC administration routes,
-`database/models/oidc_provider.py`, `database/models/oidc_settings.py` and the
-registry/bootstrap path. Add `require_verified_email` with a false default via one
-reviewed additive migration; existing rows remain compatible. Carry it through
+`database/models/oidc_settings.py` and the registry/bootstrap path. Named providers
+are currently stored in `OidcSettings.providers_json`; the separate `OidcProvider`
+table is not used by the active configuration path and does not need a new column.
+Store the named-provider choice in its existing JSON configuration and add a
+false-default legacy/default setting through one reviewed additive migration.
+Existing rows remain compatible. Carry the choice through environment precedence,
 configuration resolution, request/response schemas and the frontend OIDC service.
 
 Extend `components/settings/OidcSettingsSection.vue` with a labeled switch and the

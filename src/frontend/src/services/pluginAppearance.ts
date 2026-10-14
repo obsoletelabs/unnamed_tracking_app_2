@@ -79,6 +79,7 @@ export function observePluginAppearance(
       "class",
       "data-theme",
       "data-density",
+      "data-ui-style",
       "data-palette",
       "data-plugin-theme",
       "data-theme-package",

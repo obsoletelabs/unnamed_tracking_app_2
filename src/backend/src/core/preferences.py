@@ -12,6 +12,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.app_integrations import get_default_ui_style
 from src.core.page_settings import DEFAULT_PAGE_SETTINGS, validate_page_settings
 from src.core.public_url import normalize_public_url
 from src.database.models.user_preferences import UserPreferences
@@ -68,15 +69,17 @@ DEFAULTS: dict[str, Any] = {
     "steam_user_tags": True,
     # also add the Steam wishlist, as Wishlist games, when importing from Steam
     "steam_import_wishlist": False,
+    "metadata_automatic_search_enabled": True,
+    "metadata_automatic_search_providers": {},
     # what every game page shows (tabs, buttons); a game can override it
     "game_page": DEFAULT_PAGE_SETTINGS,
 }
 
 _CHOICES: dict[str, tuple[Any, ...]] = {
     "ui_theme": ("system", "light", "dark"),
-    "ui_palette": ("orange", "green", "custom"),
+    "ui_palette": ("orange", "green", "classic", "custom"),
     "ui_density": ("comfortable", "compact"),
-    "ui_style": ("archive-pocket",),
+    "ui_style": ("archive-pocket", "classic"),
     "calendar_default_view": ("month", "week", "agenda"),
     "calendar_week_start": (0, 1),
     "notification_retention_days": (0, 7, 14, 30, 90, 180, 365),
@@ -151,6 +154,17 @@ def validate_preference(key: str, value: Any) -> Any:
     """Validate and normalize one preference value."""
     if key not in DEFAULTS:
         raise ValueError(f"Unknown preference {key!r}")
+    if key == "metadata_automatic_search_providers":
+        if not isinstance(value, dict) or len(value) > 256:
+            raise ValueError("Automatic search choices must be a bounded provider map")
+        if any(
+            not isinstance(provider_id, str)
+            or not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,127}", provider_id)
+            or not isinstance(enabled, bool)
+            for provider_id, enabled in value.items()
+        ):
+            raise ValueError("Automatic search choices require provider identifiers and booleans")
+        return dict(value)
     if key in _SET_CHOICES:
         allowed = _SET_CHOICES[key]
         if not isinstance(value, list) or any(item not in allowed for item in value):
@@ -314,6 +328,7 @@ _VALUE_VALIDATORS: dict[str, Callable[[Any], Any]] = {
 async def load_preferences(
     db: AsyncSession, user_id: UUID, *, lock: bool = False
 ) -> dict[str, Any]:
+    default_style = await get_default_ui_style(db)
     query = select(UserPreferences).where(UserPreferences.user_id == user_id)
     row = await db.scalar(
         query.with_for_update().execution_options(populate_existing=True) if lock else query
@@ -322,7 +337,7 @@ async def load_preferences(
     # Existing stored choices remain overrides; new accounts inherit the server default.
     if "notification_retention_days" in data and "notification_retention_inherit" not in data:
         data = {**data, "notification_retention_inherit": False}
-    return {**DEFAULTS, **data}
+    return {**DEFAULTS, "ui_style": default_style, **data}
 
 
 async def save_preferences(

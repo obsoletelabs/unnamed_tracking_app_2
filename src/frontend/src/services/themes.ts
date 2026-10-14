@@ -15,6 +15,7 @@ export interface InstalledTheme {
 }
 export interface ThemeCatalogue {
   default_theme: string;
+  default_ui_style?: "archive-pocket" | "classic";
   themes: InstalledTheme[];
 }
 async function request<T>(path: string, options?: RequestInit): Promise<T> {

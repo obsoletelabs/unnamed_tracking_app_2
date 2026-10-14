@@ -52,6 +52,17 @@ def test_custom_palette_rejects_css_and_non_color_data(color):
 
 
 @pytest.mark.asyncio
+async def test_classic_palette_saves_without_changing_modern_presentation_or_color_mode():
+    row = SimpleNamespace(data={"ui_style": "archive-pocket", "ui_theme": "system"})
+    db = SimpleNamespace(scalar=AsyncMock(return_value=row), commit=AsyncMock())
+    result = await save_preferences(db, uuid4(), {"ui_palette": "classic"})
+    assert result["ui_palette"] == "classic"
+    assert result["ui_style"] == "archive-pocket"
+    assert result["ui_theme"] == "system"
+    assert row.data["ui_palette"] == "classic"
+
+
+@pytest.mark.asyncio
 async def test_palette_is_normalized_and_persisted_only_for_its_account():
     account = uuid4()
     row = SimpleNamespace(data={"ui_theme": "system", "home_widgets": ["goals"]})

@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { effectScope, ref } from "vue";
+import { preferences } from "../state/preferences";
 import {
   useMetadataSearch,
   matchesMetadataQuery,
@@ -48,11 +49,70 @@ function candidate(title: string, id = title): MetadataCandidate {
 }
 const scopes: ReturnType<typeof effectScope>[] = [];
 afterEach(() => {
+  preferences.value.metadata_automatic_search_enabled = true;
   scopes.forEach((scope) => scope.stop());
   scopes.length = 0;
   Stream.instances = [];
   vi.useRealTimers();
   vi.unstubAllGlobals();
+});
+
+it("disabling automatic metadata search retains local filtering and explicit search", async () => {
+  const { query, search, fetch } = setup();
+  await search.search();
+  add(Stream.instances[0]!, candidate("Caramel Sauce"), 1);
+  preferences.value.metadata_automatic_search_enabled = false;
+  query.value = "cara";
+  await vi.advanceTimersByTimeAsync(300);
+  expect(search.results.value.map((item) => item.title)).toEqual([
+    "Caramel Sauce",
+  ]);
+  expect(
+    fetch.mock.calls.filter(([, options]) => options.method === "POST"),
+  ).toHaveLength(1);
+  expect(search.searching.value).toBe(false);
+  await search.search();
+  const posts = fetch.mock.calls.filter(
+    ([, options]) => options.method === "POST",
+  );
+  expect(posts).toHaveLength(2);
+  expect(JSON.parse(String(posts[1]![1].body)).trigger).toBe("explicit");
+});
+
+it("turning automatic search off cancels a pending debounce without disabling the Search action", async () => {
+  const { query, search, fetch } = setup();
+  query.value = "portal";
+  preferences.value.metadata_automatic_search_enabled = false;
+  await vi.advanceTimersByTimeAsync(300);
+  expect(fetch).not.toHaveBeenCalled();
+  expect(search.searching.value).toBe(false);
+  await search.search();
+  expect(fetch).toHaveBeenCalled();
+});
+
+it("shows a manual search hint without claiming no results before searching", async () => {
+  const { query, search } = setup();
+  preferences.value.metadata_automatic_search_enabled = false;
+  expect(search.hasSearched.value).toBe(false);
+  expect(search.manualSearchHint.value).toContain("Search or Enter");
+  await search.search();
+  expect(search.hasSearched.value).toBe(true);
+  expect(search.manualSearchHint.value).toBeNull();
+  query.value = "another";
+  expect(search.hasSearched.value).toBe(false);
+});
+
+it("marks typing requests as automatic and explicit requests as explicit", async () => {
+  const { query, search, fetch } = setup();
+  query.value = "portal";
+  await vi.advanceTimersByTimeAsync(300);
+  let posts = fetch.mock.calls.filter(
+    ([, options]) => options.method === "POST",
+  );
+  expect(JSON.parse(String(posts[0]![1].body)).trigger).toBe("automatic");
+  await search.search();
+  posts = fetch.mock.calls.filter(([, options]) => options.method === "POST");
+  expect(JSON.parse(String(posts[1]![1].body)).trigger).toBe("explicit");
 });
 function setup() {
   vi.useFakeTimers();

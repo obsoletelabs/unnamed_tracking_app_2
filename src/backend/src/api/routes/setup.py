@@ -88,6 +88,7 @@ class SetupRequest(BaseModel):
 _APP_FIELDS = {
     **NGINX_TLS_FIELDS,
     "PUBLIC_APP_URL": "public_app_url",
+    "DEFAULT_UI_STYLE": "default_ui_style",
     **SMTP_FIELDS,
     **PUSH_FIELDS,
     "STEAMGRIDDB_API_KEY": "steamgriddb_api_key",
@@ -120,6 +121,7 @@ def _persisted_values(app: AppIntegrationSettings, oidc: OidcSettings) -> dict[s
             if spec_name in {
                 *NGINX_TLS_FIELDS,
                 "PUBLIC_APP_URL",
+                "DEFAULT_UI_STYLE",
                 *(set(SMTP_FIELDS) - {"SMTP_PASSWORD"}),
                 "WEB_PUSH_VAPID_SUBJECT",
                 "IGDB_CLIENT_ID",
@@ -212,6 +214,8 @@ async def _save_configuration(
                 value = validate_deployment_url(value)
             except ValueError as exc:
                 raise HTTPException(400, str(exc)) from exc
+        if name == "DEFAULT_UI_STYLE" and value not in {"modern", "classic"}:
+            raise HTTPException(400, "Default presentation must be Modern or Classic.")
         if name in NGINX_TLS_FIELDS:
             try:
                 setattr(app, attribute, validate_nginx_value(attribute, value))

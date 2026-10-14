@@ -40,6 +40,17 @@ async def get_public_app_url(db: AsyncSession) -> str:
     return normalized if is_public_app_url(normalized) else ""
 
 
+async def get_default_ui_style(db: AsyncSession) -> str:
+    """Resolve the built-in presentation default without writing account choices."""
+    handler = EnvConfigHandler()
+    if handler.has("DEFAULT_UI_STYLE"):
+        value = handler.get("DEFAULT_UI_STYLE")
+    else:
+        value = await db.scalar(select(AppIntegrationSettings.default_ui_style).limit(1))
+    # archive-pocket is the existing account/API identifier for Modern.
+    return "classic" if value == "classic" else "archive-pocket"
+
+
 async def get_max_upload_size_mb(db: AsyncSession) -> int:
     """The effective image/media upload cap: whatever an admin set under
     Settings > Administration > Limits, falling back to the
