@@ -416,6 +416,29 @@ async def test_setup_persists_public_url_through_registry(configuration):
     assert configuration.integration.public_app_url == "https://app.example.test"
 
 
+async def test_setup_presentation_default_is_persisted_validated_and_env_locked(configuration):
+    response = await configuration.http.put(
+        "/api/setup/configuration", json={"configuration": {"DEFAULT_UI_STYLE": "classic"}}
+    )
+    assert response.status_code == 200
+    assert configuration.integration.default_ui_style == "classic"
+    general = next(section for section in response.json()["sections"] if section["id"] == "general")
+    field = next(item for item in general["fields"] if item["name"] == "DEFAULT_UI_STYLE")
+    assert field["value"] == "classic" and field["source"] == "database"
+    response = await configuration.http.put(
+        "/api/setup/configuration", json={"configuration": {"DEFAULT_UI_STYLE": "unknown"}}
+    )
+    assert response.status_code == 400
+    configuration.env["DEFAULT_UI_STYLE"] = "modern"
+    response = await configuration.http.put(
+        "/api/setup/configuration", json={"configuration": {"DEFAULT_UI_STYLE": "classic"}}
+    )
+    assert response.status_code == 200
+    general = next(section for section in response.json()["sections"] if section["id"] == "general")
+    field = next(item for item in general["fields"] if item["name"] == "DEFAULT_UI_STYLE")
+    assert field["locked"] and field["value"] == "modern" and field["source"] == "env"
+
+
 async def test_tls_configuration_is_validated_persisted_and_environment_locked(configuration):
     response = await configuration.http.put(
         "/api/settings/deployment",

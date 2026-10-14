@@ -6,8 +6,12 @@ import { SOURCE_VISUALS } from "../../composables/useMetadataSources";
 import {
   fetchMetadataProviders,
   saveMetadataProviderConfiguration,
+  fetchServerAutomaticSearch,
+  saveServerAutomaticSearch,
 } from "../../services/metadata";
 import type { MetadataProviderStatus } from "../../services/metadata";
+import { preferences, preferencesLoaded } from "../../state/preferences";
+import { queuePreferences } from "../../services/preferences";
 
 const props = defineProps<{
   pluginId?: string;
@@ -21,6 +25,56 @@ const error = ref<string | null>(null);
 const message = ref<string | null>(null);
 const expanded = ref<Record<string, boolean>>({});
 const loading = ref(true);
+const serverAutomaticSearch = ref(true);
+const masterAutomaticSearch = computed(() =>
+  scope.value === "system"
+    ? serverAutomaticSearch.value
+    : preferences.value.metadata_automatic_search_enabled,
+);
+function providerAutomaticSearch(provider: MetadataProviderStatus) {
+  return scope.value === "system"
+    ? (provider.automatic_search?.server_provider_enabled ?? true)
+    : (preferences.value.metadata_automatic_search_providers[
+        provider.provider_id
+      ] ?? true);
+}
+async function changeAutomaticSearch(
+  enabled: boolean,
+  provider?: MetadataProviderStatus,
+) {
+  const accountId = currentUser.value?.id;
+  busy.value = provider?.provider_id ?? "automatic-search";
+  error.value = null;
+  message.value = null;
+  try {
+    if (scope.value === "system") {
+      await saveServerAutomaticSearch(enabled, provider?.provider_id ?? null);
+    } else {
+      const result = await queuePreferences(
+        provider
+          ? {
+              metadata_automatic_search_providers: {
+                ...preferences.value.metadata_automatic_search_providers,
+                [provider.provider_id]: enabled,
+              },
+            }
+          : { metadata_automatic_search_enabled: enabled },
+      );
+      if (currentUser.value?.id !== accountId) return;
+      if (result.latest) preferences.value = result.prefs;
+    }
+    await refresh();
+    message.value = "Saved";
+  } catch (failure) {
+    if (currentUser.value?.id !== accountId) return;
+    error.value =
+      failure instanceof Error
+        ? failure.message
+        : "Automatic search settings could not be saved.";
+  } finally {
+    busy.value = null;
+  }
+}
 watch(scope, () => {
   for (const provider of providers.value)
     values.value[provider.provider_id] = {};
@@ -85,6 +139,7 @@ function description(provider: MetadataProviderStatus) {
 async function refresh() {
   try {
     providers.value = await fetchMetadataProviders();
+    serverAutomaticSearch.value = await fetchServerAutomaticSearch();
     for (const provider of providers.value)
       values.value[provider.provider_id] ??= {};
   } catch (failure) {
@@ -145,7 +200,7 @@ onMounted(() => void refresh());
       </button>
     </div>
     <label v-if="currentUser?.is_admin" class="field scope-field">
-      <span>Credentials for</span>
+      <span>Provider settings for</span>
       <select v-model="scope" :disabled="busy !== null">
         <option value="user">My account</option>
         <option value="system">System default</option>
@@ -157,6 +212,32 @@ onMounted(() => void refresh());
       account credentials take precedence over system defaults. Saved secrets
       stay hidden.
     </p>
+    <label v-if="!pluginId" class="automatic-search-setting">
+      <input
+        type="checkbox"
+        :checked="masterAutomaticSearch"
+        :disabled="busy !== null || !preferencesLoaded"
+        @change="
+          changeAutomaticSearch(($event.target as HTMLInputElement).checked)
+        "
+      />
+      <span>
+        <strong
+          >Automatic Search{{
+            scope === "system" ? " · server defaults" : ""
+          }}</strong
+        >
+        <small class="section-hint">
+          Search metadata providers while typing when adding games or media, or
+          looking up metadata. Search buttons, Enter, selecting a result and
+          library filtering continue to work.
+          <template v-if="scope === 'system'">
+            Server limits also cover providers without credentials. Users with
+            their own complete credentials can override these limits.
+          </template>
+        </small>
+      </span>
+    </label>
     <p v-if="loading" class="section-hint" role="status">Loading providers…</p>
     <p v-else-if="!shown.length" class="section-hint">
       Core providers are unavailable. Refresh status or check the server logs.
@@ -233,6 +314,38 @@ onMounted(() => void refresh());
           <p v-if="provider.checked_at" class="tile-hint">
             Last checked
             {{ new Date(provider.checked_at * 1000).toLocaleString() }}
+          </p>
+          <label class="automatic-search-setting">
+            <input
+              type="checkbox"
+              :checked="providerAutomaticSearch(provider)"
+              :disabled="
+                busy !== null || !masterAutomaticSearch || !preferencesLoaded
+              "
+              @change="
+                changeAutomaticSearch(
+                  ($event.target as HTMLInputElement).checked,
+                  provider,
+                )
+              "
+            />
+            <span>Automatic Search</span>
+          </label>
+          <p v-if="!masterAutomaticSearch" class="tile-hint">
+            The
+            {{ scope === "system" ? "server default" : "account" }} Automatic
+            Search switch is off.
+          </p>
+          <p
+            v-else-if="
+              scope === 'user' &&
+              provider.automatic_search?.reason === 'server_disabled'
+            "
+            class="tile-hint"
+          >
+            Automatic use of this server provider is disabled by an
+            administrator. Complete personal credentials take precedence where
+            this provider supports them.
           </p>
           <p
             v-if="provider.configuration.length && !fields(provider).length"
@@ -321,5 +434,15 @@ onMounted(() => void refresh());
 .scope-field {
   max-width: 16rem;
   margin-block: 0.75rem;
+}
+.automatic-search-setting {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-block: 12px;
+}
+.automatic-search-setting small {
+  display: block;
+  margin-top: 4px;
 }
 </style>

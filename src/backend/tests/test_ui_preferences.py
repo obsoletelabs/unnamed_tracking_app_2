@@ -6,6 +6,8 @@ from uuid import uuid4
 
 import pytest
 
+from src.core import app_integrations
+from src.core.env_handler import EnvConfigHandler
 from src.core.preferences import load_preferences, save_preferences, validate_preference
 from src.main import app  # noqa: F401 - register every model before compiling ORM queries
 
@@ -48,6 +50,43 @@ async def test_absent_account_gets_ui_defaults_not_another_accounts_overrides():
     assert result["ui_style"] == "archive-pocket"
     assert result["home_widgets"] == []
     assert result["ui_welcome_completed"] is False
+
+
+@pytest.mark.asyncio
+async def test_classic_preserves_color_mode_and_saved_custom_palette():
+    palette = {"saved": "colors"}
+    row = SimpleNamespace(data={"ui_theme": "light", "ui_custom_palette": palette})
+    db = SimpleNamespace(scalar=AsyncMock(return_value=row), commit=AsyncMock())
+    result = await save_preferences(db, uuid4(), {"ui_style": "classic"})
+    assert result["ui_style"] == "classic"
+    assert result["ui_theme"] == "light"
+    assert result["ui_custom_palette"] == palette
+
+
+@pytest.mark.asyncio
+async def test_server_default_only_applies_without_a_saved_choice(monkeypatch):
+    monkeypatch.setattr(app_integrations, "EnvConfigHandler", lambda: EnvConfigHandler({}))
+    db = SimpleNamespace(scalar=AsyncMock(side_effect=["classic", None]))
+    assert (await load_preferences(db, uuid4()))["ui_style"] == "classic"
+    db.scalar.side_effect = ["classic", SimpleNamespace(data={"ui_style": "archive-pocket"})]
+    assert (await load_preferences(db, uuid4()))["ui_style"] == "archive-pocket"
+
+
+@pytest.mark.asyncio
+async def test_environment_default_overrides_setup_without_overriding_account(monkeypatch):
+    monkeypatch.setattr(
+        app_integrations,
+        "EnvConfigHandler",
+        lambda: EnvConfigHandler({"DEFAULT_UI_STYLE": "classic"}),
+    )
+    db = SimpleNamespace(scalar=AsyncMock(return_value=None))
+    assert (await load_preferences(db, uuid4()))["ui_style"] == "classic"
+    db.scalar.assert_awaited_once()
+    db.scalar.return_value = SimpleNamespace(
+        data={"ui_style": "archive-pocket", "ui_theme": "light"}
+    )
+    result = await load_preferences(db, uuid4())
+    assert result["ui_style"] == "archive-pocket" and result["ui_theme"] == "light"
 
 
 @pytest.mark.asyncio

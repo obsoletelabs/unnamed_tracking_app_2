@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
@@ -13,11 +14,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.routes.settings import get_or_create_scan_settings
 from src.api.routes.utils.games import _scan_settings_to_preferences
-from src.core.auth import get_current_user
+from src.core.auth import get_current_admin, get_current_user
 from src.core.preferences import load_preferences
 from src.database.models.plugin_metadata_provider import PluginMetadataProviderRegistration
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features.metadata.automatic_search import (
+    automatic_search_status,
+    save_server_policy,
+    server_policy,
+)
 from src.features.metadata.core import CORE_PROVIDERS, core_registration
 from src.features.metadata.handler import handler
 from src.features.metadata.health import monitor
@@ -41,10 +47,43 @@ class SearchInput(BaseModel):
     query: str = Field(min_length=2, max_length=100)
     media_type: MediaType = MediaType.GAME
     limit: int = Field(default=20, ge=1, le=50)
+    trigger: Literal["explicit", "automatic"] = "explicit"
 
 
 class SelectionInput(BaseModel):
     candidate_id: UUID
+
+
+class AutomaticSearchInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    enabled: bool
+    provider_id: str | None = Field(default=None, pattern=r"^[a-z0-9][a-z0-9._-]{0,127}$")
+
+
+@router.get("/automatic-search")
+async def automatic_search_policy(db: Database, user: CurrentUser) -> dict:
+    del user
+    policy = await server_policy(db)
+    return {"enabled": policy.get("*", True)}
+
+
+@router.put("/automatic-search")
+async def update_automatic_search_policy(
+    payload: AutomaticSearchInput,
+    db: Database,
+    admin: Annotated[User, Depends(get_current_admin)],
+) -> dict:
+    del admin
+    if payload.provider_id:
+        row = (
+            await core_registration(db, payload.provider_id)
+            if payload.provider_id in CORE_PROVIDERS
+            else await db.get(PluginMetadataProviderRegistration, payload.provider_id)
+        )
+        if row is None or row.revoked_at is not None:
+            raise HTTPException(404, "Metadata provider not found.")
+    policy = await save_server_policy(db, payload.provider_id, payload.enabled)
+    return {"enabled": policy.get("*", True), "saved": True}
 
 
 class FocusInput(BaseModel):
@@ -71,10 +110,16 @@ async def start_search(payload: SearchInput, db: Database, user: CurrentUser) ->
     if len(query) < 2:
         raise HTTPException(422, "Enter at least two characters to search.")
     preferences = _scan_settings_to_preferences(await get_or_create_scan_settings(user.id, db))
-    providers = [
-        monitor.available(provider)
-        for provider in await discover_providers(db, user.id, payload.media_type, preferences)
-    ]
+    providers = []
+    for provider in await discover_providers(db, user.id, payload.media_type, preferences):
+        if payload.trigger == "automatic":
+            enabled = bool((await automatic_search_status(db, provider))["enabled"])
+            provider = replace(provider, automatic_search_enabled=enabled)
+            # Typing must not trigger validation with credentials whose automatic
+            # use is disabled. Explicit selection still retains these providers.
+            providers.append(monitor.available(provider) if enabled else provider)
+        else:
+            providers.append(monitor.available(provider))
     session = handler.start(
         MetadataProviderRequest(
             request_id=uuid4(),
@@ -82,7 +127,10 @@ async def start_search(payload: SearchInput, db: Database, user: CurrentUser) ->
             query=query,
             media_type=payload.media_type,
             limit=payload.limit,
-            options={"steam_user_tags": (await load_preferences(db, user.id))["steam_user_tags"]},
+            options={
+                "steam_user_tags": (await load_preferences(db, user.id))["steam_user_tags"],
+                "automatic_search": payload.trigger == "automatic",
+            },
         ),
         providers,
     )
@@ -174,6 +222,7 @@ async def providers_status(db: Database, user: CurrentUser) -> dict:
                 "checked_at": status.checked_at or None,
                 "failure": status.failure,
                 "configured_fields": await configuration_presence(db, provider),
+                "automatic_search": await automatic_search_status(db, provider),
             }
         )
     return {"providers": results}

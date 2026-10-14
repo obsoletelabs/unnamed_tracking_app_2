@@ -12,6 +12,7 @@ from test_plugin_authorization_http import PersistedDb, boundary, grant  # noqa:
 
 from src.api.routes import metadata as routes
 from src.core.auth import session_cookie_name
+from src.database.models.app_integration_settings import AppIntegrationSettings
 from src.database.models.plugin_metadata_provider import (
     PluginMetadataProviderRegistration,
     PluginProviderConfiguration,
@@ -34,6 +35,7 @@ def provider_boundary(boundary, monkeypatch):  # noqa: F811 - imported pytest fi
 
     monkeypatch.setattr(providers, "discover_core_providers", AsyncMock(return_value=[]))
     db = Database(boundary.session)
+    AppIntegrationSettings.__table__.create(boundary.session.bind, checkfirst=True)
 
     async def dependency():
         yield db

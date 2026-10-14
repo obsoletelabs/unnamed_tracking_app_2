@@ -1,0 +1,147 @@
+/* Built-in presentation for the shared UI. Palette selection remains in
+   uiPalette.ts; this file owns Classic's shape, typography and visual rhythm.
+   Never add page copies, provider behavior or alternate responsive layouts. */
+:root[data-ui-style="classic"] {
+  --ui-font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+  --ui-font-title: 1.7rem;
+  --ui-font-heading: 1.1rem;
+  --ui-font-body: 0.9375rem;
+  --ui-weight-title: 800;
+  --ui-weight-heading: 700;
+  --ui-radius-control: 8px;
+  --ui-radius-row: 6px;
+  --ui-radius-card: 8px;
+  --ui-radius-dialog: 14px;
+  --ui-radius-nav: 0px;
+  --ui-nav-outer-inset: 0px;
+  --ui-nav-content-gap: 0px;
+  --ui-control-height: 38px;
+  --ui-row-padding: 12px;
+  --ui-edge-left: 32px;
+  --ui-edge-right: 32px;
+  --ui-elevation: 0 18px 60px rgb(0 0 0 / 35%);
+  --ui-motion-fast: 120ms;
+  --ui-motion-normal: 180ms;
+}
+
+:root[data-ui-style="classic"][data-theme="light"] {
+  --ui-elevation: 0 18px 50px rgb(25 20 10 / 15%);
+}
+
+:root[data-ui-style="classic"][data-density="compact"] {
+  --ui-row-padding: 8px;
+  --ui-edge-left: 24px;
+  --ui-edge-right: 24px;
+}
+
+/* The current navigation keeps its resizing, disclosure and phone behavior.
+   Its presentation follows Rosefall's flat, bordered, densely grouped rail. */
+:root[data-ui-style="classic"] .navigation {
+  border-radius: var(--ui-radius-nav);
+  background: color-mix(in srgb, var(--ui-surface) 70%, var(--ui-bg));
+  box-shadow: none;
+}
+
+:root[data-ui-style="classic"]
+  :is(.nav-item, .nav-search, .brand-symbol, .nav-icon-button) {
+  border-radius: var(--ui-radius-control);
+}
+
+:root[data-ui-style="classic"] .nav-item {
+  font-size: 0.9375rem;
+  padding: 9px 12px;
+}
+
+:root[data-ui-style="classic"] .brand-name {
+  font-weight: 800;
+}
+
+:root[data-ui-style="classic"]
+  :is(.menu-toggle, .phone-topbar > button[aria-controls="app-navigation"]) {
+  border-radius: 16px;
+}
+
+:root[data-ui-style="classic"]
+  :is(.ui-head h1, .page-head h1, .library h1, .home h1) {
+  font-size: var(--ui-font-title);
+  font-weight: var(--ui-weight-title);
+  letter-spacing: -0.035em;
+}
+
+:root[data-ui-style="classic"]
+  :is(.source-tile, .settings-section, .ui-panel, .stat-card, .widget-card) {
+  border-radius: var(--ui-radius-card);
+  box-shadow: none;
+}
+
+:root[data-ui-style="classic"]
+  :is(
+    .ui-btn,
+    .primary-button,
+    .secondary-button,
+    .add-btn,
+    .select-btn,
+    .filter-btn,
+    .search-input,
+    .sort-select,
+    .ui-field
+  ) {
+  border-radius: var(--ui-radius-control);
+}
+
+:root[data-ui-style="classic"] :is(.seg-tab, .status-tab, .tab-button) {
+  font-weight: 600;
+}
+
+/* Editors share the same controls and metadata session in both presentations.
+   Accent cues identify the active tab, search action and selected result. */
+:root[data-ui-style="classic"] .game-editor .modal-tab.active {
+  color: var(--ui-on-accent);
+  background: var(--ui-accent);
+  border-bottom-color: var(--ui-accent);
+}
+
+:root[data-ui-style="classic"] .game-editor .metadata-search {
+  border-color: color-mix(in srgb, var(--ui-accent) 38%, var(--ui-border));
+}
+
+:root[data-ui-style="classic"] .game-editor .search-heading strong {
+  color: var(--ui-accent-text);
+}
+
+:root[data-ui-style="classic"] .game-editor .metadata-result:hover {
+  border-color: var(--ui-accent);
+  background: color-mix(in srgb, var(--ui-accent) 12%, var(--ui-surface));
+}
+
+:root[data-ui-style="classic"]
+  :is(.card-image, .card-cover, .game-card, .media-card) {
+  border-radius: var(--ui-radius-card);
+}
+
+:root[data-ui-style="classic"]
+  :is(.modal, .modal-content, .confirm-dialog, .form-shell, .ui-dialog) {
+  border-radius: var(--ui-radius-dialog);
+}
+
+/* Keep shared breakpoints and touch targets. Classic is a visual language,
+   not a second desktop/phone layout. */
+@media (max-width: 760px) {
+  :root[data-ui-style="classic"] {
+    --ui-edge-left: 16px;
+    --ui-edge-right: 16px;
+    --ui-control-height: 44px;
+  }
+}
+
+:root[data-ui-style="classic"].reduce-motion {
+  --ui-motion-fast: 0ms;
+  --ui-motion-normal: 0ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-ui-style="classic"] {
+    --ui-motion-fast: 0ms;
+    --ui-motion-normal: 0ms;
+  }
+}
