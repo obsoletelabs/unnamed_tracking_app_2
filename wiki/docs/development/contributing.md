@@ -18,11 +18,13 @@ The backend CI uses Python 3.12 and runs:
 - pylint;
 - Ruff format and lint.
 
+See [CI scope and results](ci-policy.md) for full checks on ready PRs/main and scoped checks on working branch pushes. Test suites always run on branch pushes.
+
 These checks run independently. A database setup, test, size, or formatting failure does not skip unrelated checks. Database-backed tests still require a successful migration upgrade. The CI migration check requires a valid single Alembic head. The final `backend-checks` summary preserves the repository's required status name and fails if any backend job, including the reusable pylint check, fails or is skipped.
 
 Pylint uses the shared `pyproject.toml` configuration and fails below 10/10. Missing docstrings are reviewed for usefulness instead of requiring boilerplate on every symbol. SQLAlchemy and Pydantic data models are exempt from the minimum public-method count; service classes remain checked. Correctness and complexity checks remain enabled.
 
-Ruff checks the submitted commit. A separate job applies safe fixes and formatting to same-repository PR branches, including draft PRs. Fork PRs receive the read-only checks. The writer checks the PR head before pushing and never force-pushes. GitHub may require approval to run workflows after a bot updates a PR; follow the PR's workflow approval banner or push a normal follow-up commit. See [GitHub's workflow trigger behavior](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow).
+Ruff checks the submitted commit. A separate job applies safe fixes and formatting to same-repository PR branches, once they are ready for review. Fork PRs receive the read-only checks. The writer checks the PR head before pushing and never force-pushes. GitHub may require approval to run workflows after a bot updates a PR; follow the PR's workflow approval banner or push a normal follow-up commit. See [GitHub's workflow trigger behavior](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow).
 
 See the [backend quality rework checkpoint](backend-quality.md) for the suppression audit and remaining cleanup.
 
@@ -41,6 +43,8 @@ docker compose exec -e PYTHONPATH=/app backend python -m pytest tests -q
 ```
 
 ## Frontend checks
+
+Lint, format, type checking, file size and tests have separate CI results. The existing Frontend summary requires them to pass.
 
 From `src/frontend`:
 
@@ -112,7 +116,7 @@ The frontend CI runs, from `src/frontend`:
 Source files are kept small enough to read:
 
 - Python modules (outside migrations) must be 1,000 lines or fewer. Pylint suppression comments do not bypass this independent CI check.
-- Frontend files are limited to 2,000 lines by ESLint (`max-lines`). A short list of files that were already larger when the rule was added is exempted in `eslint.config.js`. Split those up and remove them from the list, rather than adding to it.
+- Frontend source files are limited to 2,000 lines by ESLint (`max-lines`) and an independent physical file-size check.
 
 If a file is near its limit, move cohesive pieces into their own modules or components.
 
