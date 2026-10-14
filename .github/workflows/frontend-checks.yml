@@ -9,71 +9,145 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
-  contents: write
+  contents: read
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
-  frontend-checks:
-    name: Frontend
+  frontend-quality:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    name: Frontend ${{ matrix.check }}
     runs-on: ubuntu-latest
-
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [lint, format, typecheck, size]
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/changed-files
+        id: changes
+      - uses: actions/setup-node@v4
+        if: steps.changes.outputs.frontend == 'true'
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: src/frontend/package-lock.json
+      - name: Install dependencies
+        if: steps.changes.outputs.frontend == 'true'
+        working-directory: src/frontend
+        run: npm ci
+      - name: Run the scoped check
+        run: python3 tools/ci_checks.py frontend-${{ matrix.check }}
 
+  frontend-tests:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    name: Frontend tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/frontend/package-lock.json
       - name: Install dependencies
         working-directory: src/frontend
         run: npm ci
+      - name: Run frontend tests
+        working-directory: src/frontend
+        run: npm run test
+      - name: Test CI file selection
+        run: python3 -m unittest discover -s tools/tests -p 'test_ci_checks.py' -v
 
-      - name: Check frontend file size
-        run: node tools/check_frontend_size.mjs
-
+  notification-worker-tests:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    name: Notification worker tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - name: Test host notification worker privacy and retirement
         run: node --test src/backend/tests/notification_push_worker.test.mjs
 
-      - name: Fix formatting
+  frontend-autofix:
+    name: Frontend formatting fixes
+    if: >-
+      github.event_name == 'pull_request' &&
+      !github.event.pull_request.draft &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: quality-autofix-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: ./.github/actions/changed-files
+        id: changes
+      - uses: actions/setup-node@v4
+        if: steps.changes.outputs.frontend == 'true'
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/frontend/package-lock.json
+      - name: Install dependencies
+        if: steps.changes.outputs.frontend == 'true'
         working-directory: src/frontend
-        run: npm run format:fix
-
+        run: npm ci
+      - name: Fix changed frontend formatting
+        run: python3 tools/ci_checks.py frontend-format-fix
       - name: Commit formatting fixes
-        if: github.event_name == 'pull_request' && github.head_repository.full_name == github.repository
+        env:
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
-          if git diff --quiet; then
-            echo "No formatting changes needed."
+          git add -- src/frontend
+          if git diff --cached --quiet; then
             exit 0
           fi
-
+          git fetch origin "refs/heads/$PR_BRANCH"
+          if [ "$(git rev-parse FETCH_HEAD)" != "$EXPECTED_HEAD" ]; then
+            echo "::notice::The PR branch advanced; a newer run will apply formatting fixes."
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/frontend
-          git commit -m "chore: auto-fix frontend formatting"
-          git push origin HEAD:${{ github.head_ref }}
+          git commit -m "chore: format changed frontend files"
+          git push origin "HEAD:refs/heads/$PR_BRANCH"
 
-      - name: Check formatting
-        working-directory: src/frontend
-        run: npm run format
+  # Preserve the existing required status while checks report independently.
+  frontend-checks:
+    name: Frontend
+    if: ${{ always() && (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
+    needs: [frontend-quality, frontend-tests, notification-worker-tests]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every frontend check to pass
+        id: frontend-result
+        env:
+          CHECK_RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
 
-      - name: Lint
-        id: frontend-lint
-        working-directory: src/frontend
-        run: npm run lint
-
-      - name: Type check
-        id: frontend-typecheck
-        working-directory: src/frontend
-        run: npm run typecheck
-
-      - name: Tests
-        id: frontend-tests
-        working-directory: src/frontend
-        run: npm run test
-
+          results = json.loads(os.environ["CHECK_RESULTS"])
+          for name, job in results.items():
+              print(f"{name}: {job['result']}")
+          failures = {name: job["result"] for name, job in results.items() if job["result"] != "success"}
+          if failures:
+              raise SystemExit(f"Frontend checks did not all pass: {failures}")
+          PY
       - name: Report to Actions Dashboard
         if: always() && vars.PUSH_TO_DISPLAY_ENABLED == 'true'
         uses: pushtodisplay/actions-dashboard@ce26532a36af079259315587543935064f22e6b4
