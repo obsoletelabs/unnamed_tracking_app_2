@@ -1,4 +1,4 @@
-export type PaletteId = "orange" | "green" | "custom";
+export type PaletteId = "orange" | "green" | "classic" | "custom";
 export type PaletteMode = "light" | "dark";
 export type PresentationStyle = "archive-pocket" | "classic";
 export const PALETTE_FIELDS = [
@@ -142,7 +142,7 @@ export function paletteColors(
     ? GREEN_PALETTE[mode]
     : id === "custom"
       ? (custom[mode] ?? ORANGE_PALETTE[mode])
-      : style === "classic"
+      : id === "classic" || style === "classic"
         ? CLASSIC_PALETTE[mode]
         : ORANGE_PALETTE[mode];
 }
@@ -161,6 +161,9 @@ export function paletteTokens(
     contrastRatio(colors.accent, "#000000")
       ? "#ffffff"
       : "#000000";
+  const originalDark =
+    mode === "dark" &&
+    (id === "classic" || (style === "classic" && id === "orange"));
   return {
     "--ui-bg": colors.background,
     "--ui-surface": colors.surface,
@@ -169,14 +172,8 @@ export function paletteTokens(
     "--ui-text": colors.text,
     "--ui-dim": colors.muted,
     "--ui-faint": colors.muted,
-    "--ui-border-soft":
-      style === "classic" && id === "orange" && mode === "dark"
-        ? "#222222"
-        : mix(colors.text, 12),
-    "--ui-border":
-      style === "classic" && id === "orange" && mode === "dark"
-        ? "#2b2b2b"
-        : mix(colors.text, 22),
+    "--ui-border-soft": originalDark ? "#222222" : mix(colors.text, 12),
+    "--ui-border": originalDark ? "#2b2b2b" : mix(colors.text, 22),
     "--ui-border-strong": mix(colors.text, 45),
     "--ui-accent": colors.accent,
     "--ui-accent-text": colors.accent,

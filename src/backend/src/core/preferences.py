@@ -77,7 +77,7 @@ DEFAULTS: dict[str, Any] = {
 
 _CHOICES: dict[str, tuple[Any, ...]] = {
     "ui_theme": ("system", "light", "dark"),
-    "ui_palette": ("orange", "green", "custom"),
+    "ui_palette": ("orange", "green", "classic", "custom"),
     "ui_density": ("comfortable", "compact"),
     "ui_style": ("archive-pocket", "classic"),
     "calendar_default_view": ("month", "week", "agenda"),

@@ -9,6 +9,27 @@ import {
 
 afterEach(() => vi.unstubAllGlobals());
 describe("cosmetic preference cookies", () => {
+  it("preserves the Classic palette with Modern layout on reload", () => {
+    vi.stubGlobal("document", { cookie: "" });
+    vi.stubGlobal("location", { protocol: "https:" });
+    const value = {
+      ...DEFAULT_PREFERENCES,
+      ui_palette: "classic" as const,
+      ui_theme: "system" as const,
+    };
+    const device = createDeviceAppearance("system", "classic", {}, false);
+    saveUiPreferencesCookie(device, value, "device");
+    expect(readUiPreferencesCookie()).toMatchObject({
+      style: "archive-pocket",
+      palette: "classic",
+      theme: "system",
+      scope: "device",
+      colors: {
+        light: { background: "#f4f3f0" },
+        dark: { background: "#0d0d0d" },
+      },
+    });
+  });
   it("preserves a Classic browser choice and its Rosefall colors", () => {
     vi.stubGlobal("document", { cookie: "" });
     vi.stubGlobal("location", { protocol: "https:" });

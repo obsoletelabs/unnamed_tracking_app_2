@@ -20,7 +20,10 @@ saved settings and cosmetic cookies remain compatible.
 | Plugin iframe appearance | `services/pluginAppearance.ts` and public appearance messages |
 
 `data-ui-style="classic"` selects the centralized Classic rules. Palette
-application uses the style as an input. Classic's orange palette defaults to
+application uses the style as an input. The built-in `classic` palette works with
+either presentation without setting `data-ui-style="classic"`. Classic presentation
+selects this palette by default; legacy Classic/orange choices retain their original
+colors. Classic defaults to
 Rosefall #469's `#0d0d0d` page, `#1a1a1a` controls and `#d68a34` accent. Colors
 are semantic roles; custom values replace them completely. Do not hardcode these
 values in page components. Installed themes retain their own styling authority.

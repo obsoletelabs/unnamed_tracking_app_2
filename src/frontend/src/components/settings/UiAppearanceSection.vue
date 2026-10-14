@@ -49,7 +49,7 @@ function changeStyle(style: Preferences["ui_style"]) {
   return change({
     ui_style: style,
     ui_theme_package: "native",
-    ...(style === "classic" ? { ui_palette: "orange" as const } : {}),
+    ...(style === "classic" ? { ui_palette: "classic" as const } : {}),
   });
 }
 </script>

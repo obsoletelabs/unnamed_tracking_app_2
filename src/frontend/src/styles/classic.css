@@ -56,7 +56,8 @@
   font-weight: 800;
 }
 
-:root[data-ui-style="classic"] .menu-toggle {
+:root[data-ui-style="classic"]
+  :is(.menu-toggle, .phone-topbar > button[aria-controls="app-navigation"]) {
   border-radius: 16px;
 }
 

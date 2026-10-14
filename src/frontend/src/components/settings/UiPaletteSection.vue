@@ -37,7 +37,9 @@ const selectedTheme = computed(() =>
   availableThemes.value.find((theme) => theme.key === selected.value),
 );
 const selectedPalette = computed<PaletteId>(() =>
-  selected.value === "orange" || selected.value === "green"
+  selected.value === "orange" ||
+  selected.value === "green" ||
+  selected.value === "classic"
     ? selected.value
     : "custom",
 );
@@ -192,10 +194,13 @@ function apply() {
       <select id="ui-palette" v-model="selected" class="ui-field">
         <option value="orange">
           {{
-            presentation === "classic" ? "Rosefall original" : "Archive orange"
+            presentation === "classic"
+              ? "Presentation default"
+              : "Archive orange"
           }}
         </option>
         <option value="green">Garden green</option>
+        <option value="classic">Classic</option>
         <option value="custom">Custom colors</option>
         <optgroup v-if="availableThemes.length" label="Plugin palettes">
           <option

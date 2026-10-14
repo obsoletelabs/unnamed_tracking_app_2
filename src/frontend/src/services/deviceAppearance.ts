@@ -25,7 +25,7 @@ export function parseDeviceAppearance(
     if (
       value.version !== 1 ||
       !["light", "dark", "system"].includes(value.theme) ||
-      !["orange", "green", "custom"].includes(value.palette) ||
+      !["orange", "green", "classic", "custom"].includes(value.palette) ||
       typeof value.highContrast !== "boolean"
     )
       return null;
