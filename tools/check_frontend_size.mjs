@@ -15,7 +15,16 @@ async function inspect(directory) {
     }
   }
 }
-await inspect(root);
+const changed = process.argv.slice(2);
+if (changed.length) {
+  for (const name of changed) {
+    const filename = path.resolve(name);
+    const relative = path.relative(root, filename);
+    assert(!relative.startsWith("..") && !path.isAbsolute(relative), "Source file must be inside the frontend source tree");
+    const contents = await readFile(filename, "utf8");
+    inventory.push({ file: relative.replaceAll(path.sep, "/"), lines: contents.split("\n").length - Number(contents.endsWith("\n")) });
+  }
+} else await inspect(root);
 const oversized = inventory.filter(({ lines }) => lines > 2000);
 assert.equal(oversized.length, 0, `Frontend files exceed 2,000 lines:\n${oversized.map(({ file, lines }) => `${file}: ${lines}`).join("\n")}`);
 inventory.sort((left, right) => right.lines - left.lines);

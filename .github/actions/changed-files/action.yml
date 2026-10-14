@@ -1,0 +1,16 @@
+name: Changed application files
+description: Select quality checks using the complete PR or push diff
+outputs:
+  frontend:
+    description: Frontend code or quality configuration changed
+    value: ${{ steps.detect.outputs.frontend }}
+  backend:
+    description: Backend code or quality configuration changed
+    value: ${{ steps.detect.outputs.backend }}
+runs:
+  using: composite
+  steps:
+    - id: detect
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      run: python3 tools/ci_checks.py detect
