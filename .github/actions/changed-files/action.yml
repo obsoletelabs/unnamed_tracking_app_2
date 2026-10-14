@@ -12,4 +12,5 @@ runs:
   steps:
     - id: detect
       shell: bash
+      working-directory: ${{ github.workspace }}
       run: python3 tools/ci_checks.py detect
