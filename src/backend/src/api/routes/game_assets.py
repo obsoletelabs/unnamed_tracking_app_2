@@ -5,10 +5,8 @@ import io
 import time
 from pathlib import Path
 from typing import Literal, cast
-from urllib.parse import urlparse
 from uuid import UUID
 
-import requests
 from fastapi import (
     APIRouter,
     Depends,
@@ -44,6 +42,7 @@ from src.features.trash.sweep import RETENTION_SECONDS
 from src.helpers.media import MediaKind, classify_media, media_subdir, save_media_bytes
 from src.helpers.media_dates import detect_date, detect_from_stored
 from src.helpers.range_response import ranged_file_response
+from src.helpers.remote_images import RemoteImageError, download_image
 from src.helpers.save_game_asset import (
     ASSET_FILENAMES,
     AssetKind,
@@ -217,33 +216,15 @@ async def download_game_asset(
         )
 
     await _get_game_or_404(game_id, db, current_user.id)
-    parsed_url = urlparse(payload.url)
-    if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Image URL must use http or https."
-        )
-
+    max_upload_mb = await get_max_upload_size_mb(db)
     try:
-        response = await asyncio.to_thread(requests.get, payload.url, timeout=20)
-        response.raise_for_status()
-    except requests.RequestException as exc:
+        image_bytes = await asyncio.to_thread(
+            download_image, payload.url, max_bytes=max_upload_mb * 1024 * 1024
+        )
+    except RemoteImageError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=f"Could not download image: {exc}"
         ) from exc
-
-    content_type = response.headers.get("content-type", "").split(";", 1)[0].lower()
-    if not content_type.startswith("image/"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="URL did not return an image."
-        )
-    image_bytes = response.content
-    max_upload_mb = await get_max_upload_size_mb(db)
-    max_bytes = max_upload_mb * 1024 * 1024
-    if len(image_bytes) > max_bytes:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Image is larger than the {max_upload_mb} MB limit.",
-        )
 
     try:
         output_path = await save_game_asset(image_bytes, game_id, asset_kind)
