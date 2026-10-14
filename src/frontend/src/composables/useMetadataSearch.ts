@@ -1,5 +1,6 @@
 import { computed, onScopeDispose, ref, shallowRef, watch } from "vue";
 import type { Ref } from "vue";
+import { preferences } from "../state/preferences";
 import {
   cancelMetadataSearch,
   metadataEvents,
@@ -77,12 +78,21 @@ export function useMetadataSearch(
   const enrichingMedia = ref(false);
   const warnings = ref<string[]>([]);
   const error = ref<string | null>(null);
+  const searchedQuery = ref<string | null>(null);
+  const hasSearched = computed(() => searchedQuery.value === query.value.trim());
+  const manualSearchHint = computed(() =>
+    !preferences.value.metadata_automatic_search_enabled &&
+    query.value.trim().length >= 2 && !hasSearched.value
+      ? "Automatic search is off. Press Search or Enter to fetch metadata."
+      : null,
+  );
   let generation = 0;
   let activeSession: string | null = null;
   let stream: EventSource | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let controller: AbortController | null = null;
   let lastEventId = 0;
+  let automaticSession = false;
 
   const results = computed(() =>
     [...known.value.values()]
@@ -189,7 +199,7 @@ export function useMetadataSearch(
     };
   }
 
-  async function search() {
+  async function search(trigger: "explicit" | "automatic" = "explicit") {
     if (timer) clearTimeout(timer);
     timer = null;
     const expectedGeneration = ++generation;
@@ -198,17 +208,27 @@ export function useMetadataSearch(
     warnings.value = [];
     error.value = null;
     const currentQuery = query.value.trim();
+    automaticSession = trigger === "automatic";
+    if (
+      automaticSession &&
+      !preferences.value.metadata_automatic_search_enabled
+    ) {
+      searching.value = false;
+      return;
+    }
     if (currentQuery.length < 2) {
       searching.value = false;
       return;
     }
     searching.value = true;
+    searchedQuery.value = currentQuery;
     controller = new AbortController();
     try {
       const session = await startMetadataSearch(
         currentQuery,
         mediaType,
         controller.signal,
+        trigger,
       );
       if (generation !== expectedGeneration) {
         void cancelMetadataSearch(session.id).catch(() => {});
@@ -229,6 +249,7 @@ export function useMetadataSearch(
   }
 
   async function select(candidate: MetadataCandidate) {
+    automaticSession = false;
     const origin = origins.get(candidate.id);
     if (!origin)
       throw new Error("Search for this title again before selecting it.");
@@ -278,6 +299,7 @@ export function useMetadataSearch(
     title: string,
     providerIds: Record<string, string> = {},
   ) {
+    automaticSession = false;
     if (timer) clearTimeout(timer);
     timer = null;
     const expectedGeneration = ++generation;
@@ -300,9 +322,31 @@ export function useMetadataSearch(
       disconnect();
       selected.value = null;
       enrichingMedia.value = false;
+      searchedQuery.value = null;
       if (timer) clearTimeout(timer);
-      searching.value = query.value.trim().length >= 2;
-      timer = setTimeout(() => void search(), 250);
+      timer = null;
+      searching.value =
+        preferences.value.metadata_automatic_search_enabled &&
+        query.value.trim().length >= 2;
+      if (searching.value)
+        timer = setTimeout(() => void search("automatic"), 250);
+    },
+    { flush: "sync" },
+  );
+
+  const stopPreferencesWatch = watch(
+    () => preferences.value.metadata_automatic_search_enabled,
+    (enabled) => {
+      if (enabled) return; // Enabling does not issue a request without a new keystroke.
+      const hadAutomaticTimer = timer !== null;
+      if (timer) clearTimeout(timer);
+      timer = null;
+      if (hadAutomaticTimer || automaticSession) {
+        ++generation;
+        disconnect();
+        searching.value = false;
+        enrichingMedia.value = false;
+      }
     },
     { flush: "sync" },
   );
@@ -319,6 +363,7 @@ export function useMetadataSearch(
 
   onScopeDispose(() => {
     stopWatch();
+    stopPreferencesWatch();
     stop();
   });
 
@@ -329,7 +374,9 @@ export function useMetadataSearch(
     enrichingMedia,
     warnings,
     error,
-    search,
+    hasSearched,
+    manualSearchHint,
+    search: () => search(),
     select,
     focus,
     stop,

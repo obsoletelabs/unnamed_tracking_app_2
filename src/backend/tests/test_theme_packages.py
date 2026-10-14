@@ -5,6 +5,7 @@ import json
 import stat
 import zipfile
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import FastAPI
@@ -13,6 +14,7 @@ from fastapi.testclient import TestClient
 from src.api.routes.themes import router
 from src.core.auth import get_current_user
 from src.core.theme_packages import ThemeStore, get_theme_store, inspect_theme_package
+from src.database.session import get_db
 
 MANIFEST = {
     "format_version": 1,
@@ -118,11 +120,12 @@ def test_http_admin_mutations_and_public_prelogin_assets(tmp_path):
     app = FastAPI()
     app.include_router(router)
     app.dependency_overrides[get_theme_store] = lambda: ThemeStore(tmp_path)
+    app.dependency_overrides[get_db] = lambda: SimpleNamespace(scalar=AsyncMock(return_value=None))
     user = SimpleNamespace(is_admin=False)
     app.dependency_overrides[get_current_user] = lambda: user
     with TestClient(app) as client:
         upload = {"file": ("review.utt", package_bytes())}
-        assert client.get("/api/themes").json() == {"default_theme": "native", "themes": []}
+        assert client.get("/api/themes").json() == {"default_theme": "native", "default_ui_style": "archive-pocket", "themes": []}
         assert client.get("/api/themes/manage").status_code == 403
         assert client.post("/api/themes/install", files=upload).status_code == 403
         user.is_admin = True
@@ -148,4 +151,4 @@ def test_http_admin_mutations_and_public_prelogin_assets(tmp_path):
         )
         assert client.get(asset_url).status_code == 404
         assert client.delete(f"/api/themes/{entry['id']}").status_code == 204
-        assert client.get("/api/themes").json() == {"default_theme": "native", "themes": []}
+        assert client.get("/api/themes").json() == {"default_theme": "native", "default_ui_style": "archive-pocket", "themes": []}

@@ -41,7 +41,7 @@ const added = ref<{
 } | null>(null);
 const noResults = computed(
   () =>
-    query.value.trim().length >= 2 && !searching.value && !results.value.length,
+    media.hasSearched.value && !searching.value && !results.value.length,
 );
 function typeLabel(candidate: MetadataCandidate) {
   return candidate.media_type === "movie"
@@ -115,7 +115,8 @@ onDeactivated(media.stop);
     <p v-else-if="query.trim().length < 2" class="hint">
       Enter at least two characters to search.
     </p>
-    <p v-if="noResults" class="hint">
+    <p v-if="media.manualSearchHint.value" class="hint">{{ media.manualSearchHint.value }}</p>
+    <p v-else-if="noResults" class="hint">
       No matching titles. Try another title or media type.
     </p>
     <ul v-if="warnings.length" class="warnings">

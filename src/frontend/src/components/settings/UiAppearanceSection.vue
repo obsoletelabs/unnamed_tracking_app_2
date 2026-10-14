@@ -45,6 +45,13 @@ async function change(changes: Partial<Preferences>) {
     saving.value = false;
   }
 }
+function changeStyle(style: Preferences["ui_style"]) {
+  return change({
+    ui_style: style,
+    ui_theme_package: "native",
+    ...(style === "classic" ? { ui_palette: "orange" as const } : {}),
+  });
+}
 </script>
 
 <template>
@@ -66,6 +73,31 @@ async function change(changes: Partial<Preferences>) {
       </button>
     </div>
     <fieldset v-else :disabled="saving" class="appearance-fields">
+      <div class="appearance-row">
+        <div>
+          <label for="ui-style">Built-in presentation</label>
+          <p>
+            Modern combines Archive desktop layouts with Pocket navigation.
+            Classic starts with Rosefall colors and keeps your color mode. Saved
+            custom colors remain available below. Presentation follows the
+            account/browser choice; installed themes supply their own style.
+          </p>
+        </div>
+        <select
+          id="ui-style"
+          class="ui-field"
+          :value="appearancePreferences.ui_style"
+          @change="
+            changeStyle(
+              ($event.target as HTMLSelectElement)
+                .value as Preferences['ui_style'],
+            )
+          "
+        >
+        <option value="archive-pocket">Modern</option>
+          <option value="classic">Classic</option>
+        </select>
+      </div>
       <div class="appearance-row">
         <div>
           <label for="appearance-scope">Save theme choices to</label>
@@ -173,6 +205,7 @@ async function change(changes: Partial<Preferences>) {
       <UiPaletteSection
         :palette="appearancePreferences.ui_palette"
         :custom="appearancePreferences.ui_custom_palette"
+        :presentation="appearancePreferences.ui_style"
         :saving="saving"
         @change="change"
       />

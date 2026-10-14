@@ -1,5 +1,6 @@
 export type PaletteId = "orange" | "green" | "custom";
 export type PaletteMode = "light" | "dark";
+export type PresentationStyle = "archive-pocket" | "classic";
 export const PALETTE_FIELDS = [
   ["background", "Page background"],
   ["surface", "Cards & menus"],
@@ -65,6 +66,37 @@ const GREEN_PALETTE: Record<PaletteMode, PaletteColors> = {
   },
 };
 
+// Rosefall PR #469 uses near-black panels and orange controls. Light mode
+// preserves the same contrast hierarchy; it is an adaptation, not an old UI.
+export const CLASSIC_PALETTE: Record<PaletteMode, PaletteColors> = {
+  light: {
+    background: "#f4f3f0",
+    surface: "#ffffff",
+    surface_alt: "#eae8e3",
+    text: "#202020",
+    muted: "#5d5d5d",
+    accent: "#95560a",
+    success: "#26733c",
+    warning: "#855000",
+    error: "#b42318",
+    info: "#265a8b",
+    purple: "#6951a2",
+  },
+  dark: {
+    background: "#0d0d0d",
+    surface: "#1a1a1a",
+    surface_alt: "#222222",
+    text: "#f2f2f2",
+    muted: "#9c9c9c",
+    accent: "#d68a34",
+    success: "#86c99a",
+    warning: "#e9a94f",
+    error: "#ef9999",
+    info: "#93bde6",
+    purple: "#c084fc",
+  },
+};
+
 export function contrastRatio(first: string, second: string): number {
   const luminance = (hex: string) => {
     const values = [1, 3, 5]
@@ -104,20 +136,24 @@ export function paletteColors(
   id: PaletteId,
   mode: PaletteMode,
   custom: CustomPalette = {},
+  style: PresentationStyle = "archive-pocket",
 ): PaletteColors {
   return id === "green"
     ? GREEN_PALETTE[mode]
     : id === "custom"
       ? (custom[mode] ?? ORANGE_PALETTE[mode])
-      : ORANGE_PALETTE[mode];
+      : style === "classic"
+        ? CLASSIC_PALETTE[mode]
+        : ORANGE_PALETTE[mode];
 }
 
 export function paletteTokens(
   id: PaletteId,
   mode: PaletteMode,
   custom: CustomPalette = {},
+  style: PresentationStyle = "archive-pocket",
 ): Record<string, string> {
-  const colors = paletteColors(id, mode, custom);
+  const colors = paletteColors(id, mode, custom, style);
   const mix = (color: string, percent: number, background = colors.surface) =>
     `color-mix(in srgb, ${color} ${percent}%, ${background})`;
   const onAccent =
@@ -133,8 +169,14 @@ export function paletteTokens(
     "--ui-text": colors.text,
     "--ui-dim": colors.muted,
     "--ui-faint": colors.muted,
-    "--ui-border-soft": mix(colors.text, 12),
-    "--ui-border": mix(colors.text, 22),
+    "--ui-border-soft":
+      style === "classic" && id === "orange" && mode === "dark"
+        ? "#222222"
+        : mix(colors.text, 12),
+    "--ui-border":
+      style === "classic" && id === "orange" && mode === "dark"
+        ? "#2b2b2b"
+        : mix(colors.text, 22),
     "--ui-border-strong": mix(colors.text, 45),
     "--ui-accent": colors.accent,
     "--ui-accent-text": colors.accent,
@@ -165,9 +207,10 @@ export function applyPalette(
   mode: PaletteMode,
   custom: CustomPalette,
   highContrast = false,
+  style: PresentationStyle = "archive-pocket",
 ): void {
   // Remove only this palette's owned properties; layout and plugin styles remain separate.
-  const tokens = paletteTokens(id, mode, custom);
+  const tokens = paletteTokens(id, mode, custom, style);
   if (highContrast) {
     tokens["--ui-dim"] = tokens["--ui-text"]!;
     tokens["--ui-faint"] = tokens["--ui-text"]!;
@@ -175,7 +218,7 @@ export function applyPalette(
   }
   for (const token of Object.keys(tokens)) root.style.removeProperty(token);
   root.dataset.palette = id;
-  if (id !== "orange")
+  if (id !== "orange" || style === "classic")
     for (const [token, value] of Object.entries(tokens))
       root.style.setProperty(token, value);
 }

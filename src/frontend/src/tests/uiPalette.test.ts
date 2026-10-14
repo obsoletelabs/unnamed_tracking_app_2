@@ -5,9 +5,29 @@ import {
   contrastRatio,
   paletteContrastIssues,
   paletteTokens,
+  CLASSIC_PALETTE,
 } from "../services/uiPalette";
 
 describe("personal palette contrast and withdrawal", () => {
+  it("uses Rosefall's dark colors, an accessible light adaptation, and full custom overrides", () => {
+    expect(paletteTokens("orange", "dark", {}, "classic")["--ui-bg"]).toBe(
+      "#0d0d0d",
+    );
+    expect(paletteContrastIssues(CLASSIC_PALETTE.light)).toEqual([]);
+    expect(paletteContrastIssues(CLASSIC_PALETTE.dark)).toEqual([]);
+    const custom = {
+      light: { ...ORANGE_PALETTE.light, background: "#123456" },
+    };
+    expect(paletteTokens("custom", "light", custom, "classic")["--ui-bg"]).toBe(
+      "#123456",
+    );
+    expect(paletteTokens("green", "dark", {}, "classic")["--ui-bg"]).toBe(
+      "#141c18",
+    );
+    expect(paletteTokens("orange", "dark")["--ui-bg"]).toBe(
+      ORANGE_PALETTE.dark.background,
+    );
+  });
   it("keeps preset text and accent controls readable in both modes", () => {
     for (const id of ["orange", "green"] as const)
       for (const mode of ["light", "dark"] as const) {

@@ -473,15 +473,15 @@ async function searchMedia() {
   }
 }
 
-watch([progressiveSearch.error, searchingMetadata, metadataResults], () => {
+watch([progressiveSearch.error, searchingMetadata, metadataResults, progressiveSearch.manualSearchHint, progressiveSearch.hasSearched], () => {
   if (progressiveSearch.error.value)
     metadataMessage.value = progressiveSearch.error.value;
   else if (!metadataApplied.value)
-    metadataMessage.value = searchingMetadata.value
+    metadataMessage.value = progressiveSearch.manualSearchHint.value ?? (searchingMetadata.value
       ? null
-      : metadataQuery.value.trim().length >= 2 && !metadataResults.value.length
+      : progressiveSearch.hasSearched.value && !metadataResults.value.length
         ? "No games found."
-        : null;
+        : null);
 });
 
 const appliedProviderFields = new Map<string, string>();

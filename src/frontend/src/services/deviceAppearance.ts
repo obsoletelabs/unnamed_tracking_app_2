@@ -3,6 +3,7 @@ import {
   paletteColors,
   type PaletteColors,
   type PaletteId,
+  type PresentationStyle,
 } from "./uiPalette";
 
 // Cosmetic device preference only. Never include account identifiers or application data.
@@ -66,14 +67,15 @@ export function createDeviceAppearance(
   palette: PaletteId,
   custom: Partial<Record<"light" | "dark", PaletteColors>>,
   highContrast: boolean,
+  style: PresentationStyle = "archive-pocket",
 ): DeviceAppearance {
   return {
     version: 1,
     theme,
     palette,
     colors: {
-      light: paletteColors(palette, "light", custom),
-      dark: paletteColors(palette, "dark", custom),
+      light: paletteColors(palette, "light", custom, style),
+      dark: paletteColors(palette, "dark", custom, style),
     },
     highContrast,
   };

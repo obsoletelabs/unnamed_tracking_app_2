@@ -4,7 +4,6 @@ import { pluginThemes } from "../../state/pluginExtensions";
 import type { Preferences } from "../../services/preferences";
 import { resolvedUiTheme } from "../../state/uiAppearance";
 import {
-  ORANGE_PALETTE,
   paletteColors,
   PALETTE_FIELDS,
   paletteTokens,
@@ -13,6 +12,7 @@ import {
   type PaletteMode,
   type PaletteColors,
   type CustomPalette,
+  type PresentationStyle,
 } from "../../services/uiPalette";
 import {
   PALETTE_FILE_LIMIT,
@@ -23,6 +23,7 @@ const props = defineProps<{
   palette: PaletteId;
   custom: CustomPalette;
   saving: boolean;
+  presentation?: PresentationStyle;
 }>();
 const emit = defineEmits<{ change: [value: Partial<Preferences>] }>();
 const selected = ref<string>(props.palette);
@@ -72,8 +73,18 @@ async function importPalette(event: Event) {
 }
 function exportPalette() {
   const colors = {
-    light: paletteColors(selectedPalette.value, "light", draft.value),
-    dark: paletteColors(selectedPalette.value, "dark", draft.value),
+    light: paletteColors(
+      selectedPalette.value,
+      "light",
+      draft.value,
+      props.presentation,
+    ),
+    dark: paletteColors(
+      selectedPalette.value,
+      "dark",
+      draft.value,
+      props.presentation,
+    ),
   };
   const url = URL.createObjectURL(
     new Blob([writePaletteFile(colors)], { type: "application/json" }),
@@ -87,13 +98,19 @@ function exportPalette() {
 }
 function copy(colors: CustomPalette): Record<PaletteMode, PaletteColors> {
   return {
-    light: { ...ORANGE_PALETTE.light, ...colors.light },
-    dark: { ...ORANGE_PALETTE.dark, ...colors.dark },
+    light: {
+      ...paletteColors("orange", "light", {}, props.presentation),
+      ...colors.light,
+    },
+    dark: {
+      ...paletteColors("orange", "dark", {}, props.presentation),
+      ...colors.dark,
+    },
   };
 }
 const draft = ref(copy(props.custom));
 watch(
-  () => [props.palette, props.custom] as const,
+  () => [props.palette, props.custom, props.presentation] as const,
   () => {
     const match =
       props.palette === "custom"
@@ -136,7 +153,12 @@ watch(
   { immediate: true },
 );
 const previewStyle = computed(() => ({
-  ...paletteTokens(selectedPalette.value, mode.value, draft.value),
+  ...paletteTokens(
+    selectedPalette.value,
+    mode.value,
+    draft.value,
+    props.presentation,
+  ),
   colorScheme: mode.value,
 }));
 const issues = computed(() =>
@@ -168,7 +190,11 @@ function apply() {
     <fieldset :disabled="saving" class="palette-controls">
       <label for="ui-palette">Palette</label>
       <select id="ui-palette" v-model="selected" class="ui-field">
-        <option value="orange">Archive orange</option>
+        <option value="orange">
+          {{
+            presentation === "classic" ? "Rosefall original" : "Archive orange"
+          }}
+        </option>
         <option value="green">Garden green</option>
         <option value="custom">Custom colors</option>
         <optgroup v-if="availableThemes.length" label="Plugin palettes">

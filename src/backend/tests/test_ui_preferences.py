@@ -51,6 +51,17 @@ async def test_absent_account_gets_ui_defaults_not_another_accounts_overrides():
 
 
 @pytest.mark.asyncio
+async def test_classic_preserves_color_mode_and_saved_custom_palette():
+    palette = {"saved": "colors"}
+    row = SimpleNamespace(data={"ui_theme": "light", "ui_custom_palette": palette})
+    db = SimpleNamespace(scalar=AsyncMock(return_value=row), commit=AsyncMock())
+    result = await save_preferences(db, uuid4(), {"ui_style": "classic"})
+    assert result["ui_style"] == "classic"
+    assert result["ui_theme"] == "light"
+    assert result["ui_custom_palette"] == palette
+
+
+@pytest.mark.asyncio
 async def test_welcome_completion_is_personal_and_preserves_other_preferences():
     user_id = uuid4()
     row = SimpleNamespace(data={"ui_palette": "green", "calendar_week_start": 1})

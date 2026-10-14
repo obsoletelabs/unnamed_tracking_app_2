@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from uuid import UUID, uuid4
 
-from sqlalchemy import BigInteger, Integer, LargeBinary, String, Text
+from sqlalchemy import JSON, BigInteger, Integer, LargeBinary, String, Text, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -24,6 +25,12 @@ class AppIntegrationSettings(Base):
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
 
     # Metadata providers
+    metadata_automatic_search_policy: Mapped[dict[str, bool]] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"),
+        default=dict,
+        server_default=text("'{}'"),
+        nullable=False,
+    )
     steamgriddb_api_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     retroachievements_api_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     giantbomb_api_key: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -78,6 +85,7 @@ class AppIntegrationSettings(Base):
     # Public deployment identity. Inert normalized PNGs belong in the database
     # so branding follows the same backup/restore boundary as its metadata.
     branding_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    default_ui_style: Mapped[str | None] = mapped_column(String(16), nullable=True)
     branding_logo_png: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     branding_favicon_png: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
 

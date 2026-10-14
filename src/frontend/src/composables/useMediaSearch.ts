@@ -40,6 +40,8 @@ export function useMediaSearch(query: Ref<string>) {
   const searching = computed(() =>
     MEDIA_SEARCH_TYPES.some((type) => searches[type].searching.value),
   );
+  const hasSearched = computed(() => MEDIA_SEARCH_TYPES.every((type) => searches[type].hasSearched.value));
+  const manualSearchHint = searches.movie.manualSearchHint;
   const warnings = computed(() => [
     ...new Set(
       MEDIA_SEARCH_TYPES.flatMap((type) =>
@@ -77,6 +79,8 @@ export function useMediaSearch(query: Ref<string>) {
   return {
     results,
     searching,
+    hasSearched,
+    manualSearchHint,
     warnings,
     selected,
     enrichingMedia,

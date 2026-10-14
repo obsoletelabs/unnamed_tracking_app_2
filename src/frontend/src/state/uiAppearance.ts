@@ -34,6 +34,7 @@ export type UiAppearance = Pick<
 >;
 const cosmeticKeys = [
   "ui_theme",
+  "ui_style",
   "ui_theme_package",
   "ui_palette",
   "ui_custom_palette",
@@ -46,6 +47,7 @@ export const appearanceScope = ref<"account" | "device">(
 );
 const devicePreferences = ref<CosmeticAppearance>({
   ui_theme: cachedAppearance?.theme ?? "system",
+  ui_style: cachedAppearance?.style ?? "archive-pocket",
   ui_theme_package: cachedAppearance?.themePackage ?? "server",
   ui_palette: cachedAppearance?.palette ?? "orange",
   ui_custom_palette: cachedAppearance?.colors ?? {},
@@ -123,6 +125,7 @@ export function initializeUiAppearance(): void {
         value.ui_palette,
         value.ui_custom_palette,
         value.ui_high_contrast,
+        value.ui_style,
       );
       density = value.ui_density;
       style = value.ui_style;
@@ -135,6 +138,8 @@ export function initializeUiAppearance(): void {
       } catch {
         /* Server preferences still work without browser storage. */
       }
+    } else if (!cookie && appearanceScope.value === "account") {
+      style = themeCatalogue.value.default_ui_style ?? "archive-pocket";
     }
     root.dataset.theme = resolveUiTheme(device.theme, system.matches);
     resolvedUiTheme.value = resolveUiTheme(device.theme, system.matches);
@@ -149,8 +154,9 @@ export function initializeUiAppearance(): void {
       resolveUiTheme(device.theme, system.matches),
       device.colors,
       device.highContrast,
+      installed ? "archive-pocket" : style,
     );
-    root.dataset.uiStyle = style;
+    root.dataset.uiStyle = installed ? "archive-pocket" : style;
     root.dataset.density = density;
     root.classList.toggle("reduce-motion", reduceMotion);
     root.classList.toggle("high-contrast", device.highContrast);

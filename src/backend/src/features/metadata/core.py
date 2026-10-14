@@ -35,6 +35,7 @@ from src.plugin_api.metadata_contracts import (
     ProviderResponse,
 )
 
+from .automatic_search import automatic_search_status
 from .configuration import configuration_values
 
 CORE_PROVIDERS: dict[str, ModuleType] = {
@@ -125,6 +126,8 @@ async def migrate_core_credentials(
 
 
 @dataclass(frozen=True)
+# The immutable snapshot keeps actor, credential revision and search policy explicit.
+# pylint: disable-next=too-many-instance-attributes
 class CoreMetadataProvider:
     """Native operation adapter for the same progressive handler used by plugins."""
 
@@ -135,6 +138,7 @@ class CoreMetadataProvider:
     values: dict[str, str] = field(repr=False)
     priority: int = 100
     plugin_id: str = "host.metadata"  # Shared storage owner; there is no installed plugin.
+    automatic_search_enabled: bool = True
 
     @property
     def id(self) -> str:
@@ -167,6 +171,10 @@ class CoreMetadataProvider:
             return ProviderResponse.model_validate({"failure": {"code": "invalid_configuration"}})
         if not getattr(self.declaration.operations, operation):
             return ProviderResponse()
+        if request.options.get("automatic_search") is True:
+            async with SessionLocal() as db:
+                if not (await automatic_search_status(db, self))["enabled"]:
+                    return ProviderResponse()
         if not await self.authorized(operation):
             return ProviderResponse.model_validate({"failure": {"code": "invalid_configuration"}})
         work = request.model_dump(mode="json")
