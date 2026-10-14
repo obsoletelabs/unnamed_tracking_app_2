@@ -39,7 +39,14 @@ from src.database.models.user import User
 from src.database.session import get_db
 from src.features.trash.media_trash import move_media_file_to_trash, restore_media_file_from_trash
 from src.features.trash.sweep import RETENTION_SECONDS
-from src.helpers.media import MediaKind, classify_media, media_subdir, save_media_bytes
+from src.helpers.media import (
+    MediaKind,
+    classify_media,
+    media_subdir,
+    original_filename,
+    save_media_bytes,
+    validate_media,
+)
 from src.helpers.media_dates import detect_date, detect_from_stored
 from src.helpers.range_response import ranged_file_response
 from src.helpers.remote_images import RemoteImageError, download_image
@@ -247,6 +254,7 @@ def _media_item_to_dict(item: MediaItem, game_id: UUID) -> dict:
     return {
         "id": str(item.id),
         "filename": item.filename,
+        "original_filename": item.original_filename,
         "kind": item.kind,
         "url": f"/api/game/{game_id}/screenshots/{item.kind}/{item.filename}",
         "tags": item.tags,
@@ -417,7 +425,7 @@ async def upload_game_screenshots(
         )
         max_bytes = limit_mb * 1024 * 1024
 
-        data = await upload.read()
+        data = await upload.read(max_bytes + 1)
         if len(data) > max_bytes:
             results.append(
                 {
@@ -426,6 +434,12 @@ async def upload_game_screenshots(
                     "reason": f"Larger than {limit_mb} MB.",
                 }
             )
+            continue
+
+        try:
+            await asyncio.to_thread(validate_media, data, upload.filename or "", kind)
+        except ValueError as exc:
+            results.append({"filename": upload.filename, "status": "rejected", "reason": str(exc)})
             continue
 
         dest_dir = (
@@ -443,6 +457,7 @@ async def upload_game_screenshots(
                 game_id=game_id,
                 kind=kind,
                 filename=saved_path.name,
+                original_filename=original_filename(upload.filename or "file"),
                 profile_id=profile_id,
                 taken_at=taken_at,
                 taken_source=taken_source,
@@ -502,7 +517,15 @@ async def get_game_screenshot(
     )
     if not path.is_file():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Media file not found.")
-    return ranged_file_response(request, path)
+    original = await db.scalar(
+        select(MediaItem.original_filename).where(
+            MediaItem.game_id == game_id,
+            MediaItem.kind == kind,
+            MediaItem.filename == path.name,
+            MediaItem.deleted_at.is_(None),
+        )
+    )
+    return ranged_file_response(request, path, filename=original)
 
 
 # pylint: enable=duplicate-code,too-many-positional-arguments
@@ -549,7 +572,9 @@ async def detect_media_dates(
     changed: list[dict] = []
     for item in items:
         found = detect_from_stored(
-            game_dir / media_subdir(cast(MediaKind, item.kind)) / item.filename, item.kind
+            game_dir / media_subdir(cast(MediaKind, item.kind)) / item.filename,
+            item.kind,
+            original_name=item.original_filename,
         )
         if found is None:
             continue

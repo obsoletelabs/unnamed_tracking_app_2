@@ -33,6 +33,7 @@ class InboxItem(Base):
     )
     kind: Mapped[str] = mapped_column(String(20), nullable=False)
     filename: Mapped[str] = mapped_column(String(500), nullable=False)
+    original_filename: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[int] = mapped_column(BigInteger, nullable=False, default=unix_timestamp)
     # when it was really taken and where that came from, carried over to the
     # MediaItem when the file is assigned to a game (see helpers/media_dates.py)

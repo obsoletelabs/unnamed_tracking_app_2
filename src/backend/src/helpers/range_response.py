@@ -13,12 +13,18 @@ import mimetypes
 import re
 from collections.abc import Iterator
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import Request
 from fastapi.responses import FileResponse, Response, StreamingResponse
 
-_RANGE = re.compile(r"^bytes=(\d*)-(\d*)$")
+from src.helpers.media import display_filename
+
+_RANGE = re.compile(r"^bytes=([0-9]{0,20})-([0-9]{0,20})$")
 _CHUNK = 1024 * 256
+
+# Stored user content must not run scripts or access the application origin.
+SAFE_FILE_HEADERS = {"X-Content-Type-Options": "nosniff", "Content-Security-Policy": "sandbox"}
 
 
 def _parse_range(header: str, size: int) -> tuple[int, int] | None:
@@ -53,18 +59,21 @@ def _read(path: Path, start: int, end: int) -> Iterator[bytes]:
             yield chunk
 
 
-def ranged_file_response(request: Request, path: Path) -> Response:
+def ranged_file_response(request: Request, path: Path, *, filename: str | None = None) -> Response:
     size = path.stat().st_size
     media_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    headers = {"Accept-Ranges": "bytes", **SAFE_FILE_HEADERS}
+    encoded = quote(display_filename(path.name, filename), safe="")
+    headers["Content-Disposition"] = f"inline; filename*=utf-8''{encoded}"
     header = request.headers.get("range")
     if not header:
-        return FileResponse(path, media_type=media_type, headers={"Accept-Ranges": "bytes"})
+        return FileResponse(path, media_type=media_type, headers=headers)
 
     span = _parse_range(header, size)
     if span is None:
         return Response(
             status_code=416,
-            headers={"Content-Range": f"bytes */{size}", "Accept-Ranges": "bytes"},
+            headers={"Content-Range": f"bytes */{size}", **headers},
         )
     start, end = span
     return StreamingResponse(
@@ -74,6 +83,6 @@ def ranged_file_response(request: Request, path: Path) -> Response:
         headers={
             "Content-Range": f"bytes {start}-{end}/{size}",
             "Content-Length": str(end - start + 1),
-            "Accept-Ranges": "bytes",
+            **headers,
         },
     )
