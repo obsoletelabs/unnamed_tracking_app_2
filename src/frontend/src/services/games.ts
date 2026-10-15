@@ -226,6 +226,8 @@ export function mapBackendGame(raw: BackendGame): Game {
 // Every game this page has seen, so opening one can draw at once from what the
 // library already fetched and refresh quietly behind it.
 const gameCache = createEntityCache<Game>();
+let mutationVersion = 0;
+const gameMutationVersions = new Map<string, number>();
 export const peekGame = gameCache.peek;
 export function rememberGameRelationship(
   id: string,
@@ -254,6 +256,18 @@ function rememberGame(game: Game): Game {
   return gameCache.put(game);
 }
 
+function rememberGameMutation(game: Game): Game {
+  gameMutationVersions.set(game.id, ++mutationVersion);
+  return rememberGame(game);
+}
+
+function rememberFetchedGame(game: Game, started: number): Game {
+  const current = gameCache.peek(game.id);
+  return current && (gameMutationVersions.get(game.id) ?? 0) > started
+    ? current
+    : rememberGame(game);
+}
+
 // /api/game/list caps a single page at 200, page through until a page
 // comes back short, otherwise only the first 50 (the endpoint's default)
 // ever reached the library view once a synced library grew past that.
@@ -263,6 +277,7 @@ export async function fetchGames(): Promise<Game[]> {
   if (import.meta.env.VITE_USE_MOCK_DATA === "true") {
     return mockGames;
   }
+  const started = mutationVersion;
   const all: BackendGame[] = [];
   let skip = 0;
   while (true) {
@@ -280,7 +295,9 @@ export async function fetchGames(): Promise<Game[]> {
     if (page.length < GAMES_PAGE_SIZE) break;
     skip += GAMES_PAGE_SIZE;
   }
-  const games = all.map(mapBackendGame).map(rememberGame);
+  const games = all.map((raw) =>
+    rememberFetchedGame(mapBackendGame(raw), started),
+  );
   gameCache.markListLoaded();
   return games;
 }
@@ -448,6 +465,7 @@ export async function fetchGame(id: string): Promise<Game | null> {
   if (import.meta.env.VITE_USE_MOCK_DATA === "true") {
     return mockGames.find((g) => g.id === id) ?? null;
   }
+  const started = mutationVersion;
   const response = await fetch(`/api/game/get/${id}`, {
     credentials: "include",
   });
@@ -458,7 +476,7 @@ export async function fetchGame(id: string): Promise<Game | null> {
     );
   }
   const raw: BackendGame = await response.json();
-  return rememberGame(mapBackendGame(raw));
+  return rememberFetchedGame(mapBackendGame(raw), started);
 }
 
 // every game whose parentGameId points at this one, e.g. Minecraft's
@@ -1669,14 +1687,11 @@ export async function setFavorite(
   });
 
   if (!response.ok) {
-    const message = await response.text();
-    throw new Error(
-      `Failed to update favorite: ${response.status} ${response.statusText} ${message}`,
-    );
+    throw await failedRequest(response);
   }
 
   const raw: BackendGame = await response.json();
-  return mapBackendGame(raw);
+  return rememberGameMutation(mapBackendGame(raw));
 }
 
 export async function setResumeNote(
@@ -1763,14 +1778,11 @@ export async function setStatus(
   });
 
   if (!response.ok) {
-    const message = await response.text();
-    throw new Error(
-      `Failed to update status: ${response.status} ${response.statusText} ${message}`,
-    );
+    throw await failedRequest(response);
   }
 
   const raw: BackendGame = await response.json();
-  return mapBackendGame(raw);
+  return rememberGameMutation(mapBackendGame(raw));
 }
 
 // Deliberately narrower than NewGameInput/GameUpdate, title, folder,

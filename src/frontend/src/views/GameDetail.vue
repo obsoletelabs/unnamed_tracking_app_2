@@ -2,7 +2,7 @@
 import PluginExtensionSlot from "../components/plugins/PluginExtensionSlot.vue";
 import PluginContextualActions from "../components/plugins/PluginContextualActions.vue";
 import { formatDisplayDate } from "../utils/dates";
-import { activePriority, priorityLabel } from "../utils/priority";
+import { activePriority, priorityLabel, isFinished } from "../utils/priority";
 import { HERO_WIDTH, POSTER_WIDTH, sizedAssetUrl } from "../utils/gameImages";
 import type { TrashedGameFile } from "../services/media";
 import SkeletonBlock from "../components/SkeletonBlock.vue";
@@ -60,6 +60,7 @@ const {
   resumeNoteEditing,
   resumeNoteSaving,
   resumeNoteError,
+  resumeNoteInput,
   startEditResumeNote,
   saveResumeNote,
   loggingPlaytime,
@@ -542,14 +543,23 @@ const {
       </div>
 
       <section
+        v-if="
+          resumeNoteEditing ||
+          game.resumeNote?.trim() ||
+          !isFinished(game.status)
+        "
         class="my-note"
-        :class="{ empty: !game.resumeNote && !resumeNoteEditing }"
+        :class="{ empty: !game.resumeNote?.trim() && !resumeNoteEditing }"
       >
         <template v-if="resumeNoteEditing">
           <header class="note-head">
             <h3>Where I left off</h3>
           </header>
           <textarea
+            :ref="
+              (element) =>
+                (resumeNoteInput = element as HTMLTextAreaElement | null)
+            "
             v-model="resumeNoteDraft"
             class="note-input"
             rows="3"
@@ -577,7 +587,7 @@ const {
             </button>
           </div>
         </template>
-        <template v-else-if="game.resumeNote">
+        <template v-else-if="game.resumeNote?.trim()">
           <header class="note-head">
             <h3>Where I left off</h3>
             <span class="note-private">Only you can see this</span>
@@ -594,6 +604,14 @@ const {
           <span class="note-private">Only you can see this</span>
         </template>
       </section>
+      <button
+        v-else
+        type="button"
+        class="btn-text"
+        @click="startEditResumeNote"
+      >
+        + Add a note on where you left off
+      </button>
 
       <div v-if="variants.length" class="related-section">
         <div class="section-heading">

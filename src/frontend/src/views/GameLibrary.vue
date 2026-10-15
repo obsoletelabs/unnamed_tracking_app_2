@@ -101,6 +101,7 @@ const {
   onGameSaved,
   onDeleteFromModal,
   toggleFavorite,
+  onGameUpdated,
   collectionPickerGame,
   handleAddToCollection,
   onCollectionAdded,
@@ -676,6 +677,7 @@ const compactPreview = computed(
                 gridFocusIndex === virtualRow.index * CARD_COLUMNS + colIndex
               "
               @edit="openEditModal"
+              @updated="onGameUpdated"
               @add-to-collection="handleAddToCollection"
               @toggle-select="toggleSelect"
             />

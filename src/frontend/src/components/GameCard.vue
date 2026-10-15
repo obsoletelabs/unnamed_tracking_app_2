@@ -6,6 +6,7 @@ import type { Game, GameStatus } from "../types/game";
 import { setFavorite, setStatus } from "../services/games";
 import { ref, computed, nextTick, onUnmounted, watch } from "vue";
 import { computeScore } from "../utils/scoring";
+import { activePriority, priorityLabel } from "../utils/priority";
 import { appearanceSettings } from "../state/appearance";
 import CompletionBadge from "./CompletionBadge.vue";
 import UiModal from "./UiModal.vue";
@@ -24,6 +25,7 @@ const emit = defineEmits<{
   edit: [game: Game];
   "add-to-collection": [game: Game];
   "toggle-select": [game: Game, shiftKey: boolean];
+  updated: [game: Game];
 }>();
 
 const router = useRouter();
@@ -76,6 +78,11 @@ watch(
   },
 );
 const favoriteSaving = ref(false);
+const statusSaving = ref(false);
+const mutationError = ref<string | null>(null);
+const priority = computed(() =>
+  activePriority({ status: localStatus.value, priority: props.game.priority }),
+);
 
 const coverRef = ref<HTMLElement | null>(null);
 const menuPosition = ref({ top: 0, left: 0 });
@@ -131,24 +138,42 @@ function openGame(e?: MouseEvent) {
 }
 
 async function toggleFavorite() {
+  if (favoriteSaving.value) return;
+  const previous = localFavorite.value;
   const next = !localFavorite.value;
   localFavorite.value = next;
   favoriteSaving.value = true;
+  mutationError.value = null;
   try {
-    await setFavorite(props.game.id, next);
-  } catch {
-    localFavorite.value = !next;
+    const saved = await setFavorite(props.game.id, next);
+    localFavorite.value = saved.favorite;
+    emit("updated", saved);
+  } catch (error) {
+    localFavorite.value = previous;
+    mutationError.value =
+      error instanceof Error
+        ? error.message
+        : "Favorite could not be saved. Try again.";
   } finally {
     favoriteSaving.value = false;
   }
 }
 
 async function chooseStatus(status: GameStatus) {
+  if (statusSaving.value) return;
+  statusSaving.value = true;
+  mutationError.value = null;
   try {
-    await setStatus(props.game.id, status);
-    localStatus.value = status;
-  } catch {
-    // silently ignore, card just keeps showing the old status
+    const saved = await setStatus(props.game.id, status);
+    localStatus.value = saved.status;
+    emit("updated", saved);
+  } catch (error) {
+    mutationError.value =
+      error instanceof Error
+        ? error.message
+        : "Status could not be saved. Try again.";
+  } finally {
+    statusSaving.value = false;
   }
   closeMenu();
 }
@@ -298,6 +323,7 @@ function copyFolderPath() {
             type="button"
             class="favorite-button"
             :class="{ active: localFavorite }"
+            :aria-pressed="localFavorite"
             :disabled="favoriteSaving"
             title="Favorite"
             @click.stop="toggleFavorite"
@@ -445,6 +471,7 @@ function copyFolderPath() {
                 type="button"
                 class="menu-item"
                 :class="{ active: s === localStatus }"
+                :disabled="statusSaving"
                 @click="chooseStatus(s)"
               >
                 {{ s }}
@@ -466,6 +493,16 @@ function copyFolderPath() {
         <span class="status">{{ localStatus }}</span>
         <span class="playtime">{{ playtimeLabel }}</span>
       </div>
+      <span
+        v-if="priority !== null"
+        class="priority-tag"
+        :aria-label="`Priority ${priority}`"
+        :title="priorityLabel(priority)"
+        >Priority {{ priority }}</span
+      >
+      <p v-if="mutationError" class="mutation-error" role="alert">
+        {{ mutationError }}
+      </p>
       <div v-if="(ownedCopyCount ?? 1) > 1" class="meta-row ownership-count">
         {{ ownedCopyCount }} owned copies
       </div>
@@ -481,6 +518,22 @@ function copyFolderPath() {
 </template>
 
 <style scoped>
+.priority-tag {
+  display: inline-block;
+  align-self: flex-start;
+  margin-top: 6px;
+  padding: 3px 7px;
+  border: 1px solid var(--ui-accent-line);
+  border-radius: var(--ui-radius-control);
+  background: var(--ui-accent-soft);
+  color: var(--ui-accent-text);
+  font-size: 0.72rem;
+}
+.mutation-error {
+  margin: 6px 0 0;
+  color: var(--ui-error);
+  font-size: 0.75rem;
+}
 .copy-review-link {
   display: block;
   margin-top: 6px;

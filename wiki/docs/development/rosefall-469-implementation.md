@@ -86,18 +86,33 @@ Until then, PRs remain available for review with current validation and screensh
   [light mode](../assets/numeric-validation/modern-light-quick-edit.jpg) and
   [phone](../assets/numeric-validation/classic-dark-phone-quick-edit.jpg) screenshots
   cover inline validation. The shared quick-editor grid fits the phone dialog.
-- **E / 23:** in progress on `feat/metadata-provider-choices`.
+- **E / 23:** merged as [PR #131](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/131).
   Account provider opt-outs cover builtin/plugin discovery, current invocation,
   cached responses, direct metadata actions and scheduled metadata work. Saved
   credentials and typing choices remain intact. Library-sync actions keep their
   existing permission path. Steam precedes GOG only in unsaved defaults.
-  Full local validation passed 2,584 backend tests (four skipped), 569 frontend
-  tests, and 16 separate SDK/provider contract tests. Hosted checks are pending.
+  All full hosted checks passed before the authorized squash merge: 2,586 backend
+  tests (four skipped), 569 frontend tests, and full configured lint/type checks.
+  Sixteen separate SDK/provider contract tests also passed.
   Shared settings screenshots cover [Modern](../assets/provider-choices/modern-dark.jpg),
   [Classic dark](../assets/provider-choices/classic-dark.jpg),
   [Classic light](../assets/provider-choices/classic-light.jpg) and
   [phone](../assets/provider-choices/classic-dark-phone.jpg).
-- **F–O:** approved; not implemented yet. The package details below describe
+- **F UI / 10, 12–13:** in progress on `feat/game-library-consistency`.
+  Card saves reconcile the library, filters/counts, current preview and entity cache;
+  older reads cannot undo a successful save. Active priorities use the existing
+  priority policy. Finished games keep written notes and a compact keyboard-accessible
+  action for empty notes. Full local frontend validation passed 579 tests.
+  Screenshots cover [Modern dark](../assets/game-card-consistency/modern-dark-priority.jpg),
+  [Classic dark](../assets/game-card-consistency/classic-dark-priority.jpg),
+  [Classic light](../assets/game-card-consistency/classic-light-priority.jpg),
+  [phone](../assets/game-card-consistency/classic-dark-phone-priority.jpg),
+  [finished notes](../assets/game-card-consistency/classic-dark-finished-note.jpg) and
+  [retained written notes](../assets/game-card-consistency/classic-light-written-note.jpg).
+- **F backend / 1–3, 5:** pending. On 15 October the owner clarified that every
+  existing Played choice stays unchanged; automatic progression is limited to
+  eligible Backlog/Wishlist records. Folder coordination still needs implementation.
+- **G–O:** approved; not implemented yet. The package details below describe
   intended work, not completed behavior.
 
 ## Concrete packages
@@ -216,7 +231,8 @@ Update provider and Automatic Search guides; inspect actual packaged optional pr
 Extend `api/routes/library_sync.py`, `api/routes/steam_import_steps.py`,
 `features/imports/library_games.py` and game update/filesystem boundaries. Centralize
 status progression after authoritative ownership/playtime/achievement writes; preserve
-manual completion and existing Played/Beaten/Dropped/On Hold/Mastered decisions.
+manual completion and all statuses other than eligible Backlog/Wishlist. Existing
+Played choices never advance automatically, even with full provider completion.
 An achievements GET remains read-only. No bulk historical status rewrite.
 
 Folder changes coordinate locked row updates with validated owned paths, collisions,

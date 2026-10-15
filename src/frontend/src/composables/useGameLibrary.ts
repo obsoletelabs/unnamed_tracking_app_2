@@ -933,10 +933,17 @@ export function useGameLibrary() {
     const next = !game.favorite;
     game.favorite = next;
     try {
-      await setFavorite(game.id, next);
+      onGameUpdated(await setFavorite(game.id, next));
     } catch {
       game.favorite = !next;
     }
+  }
+
+  function onGameUpdated(saved: Game) {
+    const existing = games.value.find((game) => game.id === saved.id);
+    if (!existing) return;
+    Object.assign(existing, saved);
+    if (selectedGame.value?.id === saved.id) selectedGame.value = existing;
   }
 
   const collectionPickerGame = ref<Game | null>(null);
@@ -1497,6 +1504,7 @@ export function useGameLibrary() {
     onGameSaved,
     onDeleteFromModal,
     toggleFavorite,
+    onGameUpdated,
     collectionPickerGame,
     handleAddToCollection,
     onCollectionAdded,
