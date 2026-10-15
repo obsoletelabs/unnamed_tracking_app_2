@@ -159,14 +159,53 @@ Until then, PRs remain available for review with current validation and screensh
   validation passed 2,705 backend and 582 frontend tests, full configured quality
   checks and all seven hosted workflows. Companion Linux checks passed 648 tests
   and paired Plugin Manager integration. Modern/Classic desktop/phone screenshots
-  are recorded in the game guide. Normal official signing/publication follows the
-  plugin merge; the newly published artifact still needs verification.
+  are recorded in the game guide. Official HLTB 0.7.0 was signed/published normally;
+  signature/package validators and execution of its bundled SDK with simulated
+  public gateway replies passed for all four estimate fields. Direct live provider
+  token/search verification also passed; this is not a claim of installed-host live
+  provider execution.
 - **H and I:** in progress on a combined library branch. Exclusions and saved
   query/preset compatibility, percent-containing collection names, safe filtered
-  reorder and episode-page preservation pass 25 focused regressions. Global media
-  sorting, loaded-extent refresh and the full package checks remain pending.
+  reorder and episode-page preservation pass 25 focused regressions. The pushed
+  global media sorting/counts and shared loaded-extent refresh implementation passes
+  21 focused frontend paging/header/recovery tests. Full backend validation passed
+  2,708 tests (four skipped), mypy passed 356 files and Ruff/format passed 574 files.
+  Affected configured Pylint passed at 10/10. Full frontend checks passed 601 tests
+  across 102 suites, ESLint, Prettier, vue-tsc and production build. Modern dark
+  and Classic light browser checks verified sorting, keyboard reversal and
+  independent tab counts; screenshots are in the media library guide. The
+  temporary approval-service limit is resolved. Final ready-PR hosted checks and
+  the authorized squash merge remain required before #137 is complete.
 - **J–O:** approved; not implemented yet. The package details below describe
   intended work, not completed behavior.
+
+### Issue-by-issue execution order
+
+The owner requested one issue at a time, most complex first, on 15 October 2026.
+[Tracker #141](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/141)
+contains the ordered queue, dependencies and existing related follow-ups #125,
+#132 and #138–140. Finish #137, then start #142 (shared staged metadata lookup).
+
+All 29 untouched approved matrix rows are assigned exactly once:
+
+| Issue | Remaining work | Matrix rows |
+| --- | --- | --- |
+| #142 | Shared staged lookup | 15, 17, 28, 29 |
+| #143 | Full game editor | 6, 7, 14, 18, 19 |
+| #144 | Shared media editor sections/fields | 26, 27 |
+| #145 | Fair due jobs and bounded anime franchise checks | 47–50 |
+| #146 | Empty media trash and opt-in retention | 45–46 |
+| #147 | Owned day activity and accessible heatmap | 51–52 |
+| #148 | Server-backed artwork revalidation | 43–44 |
+| #149 | Shared quick editors and tracking details | 20, 21, 37, 38 |
+| #150 | Permission-aware settings search | 68 |
+| #152 | Trashed-game statistics predicates | 53 |
+| #153 | Dependent preference explanations | 70 |
+| #154 | Selective final copy/migration consistency | 71 |
+
+#151 separately tracks the known legacy game-file trash sweep path/locking
+follow-up from #135. Existing issues are reused rather than duplicated. The
+separate notification and game-identity overhaul epics remain outside this queue.
 
 ## Concrete packages
 
