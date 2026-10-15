@@ -160,23 +160,15 @@ def _valid_owned_game(game: object) -> bool:
     )
 
 
-def get_owned_games(steam_id: str, api_key: str | SteamSession) -> list[dict]:
-    """Reported apps, not an authoritative list of every license (e.g. demos)."""
-    if isinstance(api_key, SteamSession) and steam_id != api_key.steam_id:
-        raise SteamLibraryError(
-            "The Steam session belongs to a different account. Reconnect Steam."
-        )
+def credentialed_get(
+    url: str, api_key: str | SteamSession, params: dict[str, str]
+) -> requests.Response:
+    """GET a Web API endpoint with the key or signed-in session, keeping the key out of
+    errors. Steam answers 401/403 when it rejects either credential."""
     try:
         resp = SESSION.get(
-            f"{_WEB_API_BASE}/IPlayerService/GetOwnedGames/v1/",
-            params={
-                **credential_params(api_key),
-                "steamid": steam_id,
-                "include_appinfo": "1",
-                "include_played_free_games": "1",
-                "include_free_sub": "1",
-                "skip_unvetted_apps": "0",
-            },
+            url,
+            params={**credential_params(api_key), **params},
             timeout=20,
             allow_redirects=False,
         )
@@ -187,6 +179,26 @@ def get_owned_games(steam_id: str, api_key: str | SteamSession) -> list[dict]:
         if isinstance(api_key, SteamSession):
             raise SteamLibraryError("Steam rejected this session. Reconnect Steam in Connections.")
         raise SteamLibraryError("Steam rejected the API key.")
+    return resp
+
+
+def get_owned_games(steam_id: str, api_key: str | SteamSession) -> list[dict]:
+    """Reported apps, not an authoritative list of every license (e.g. demos)."""
+    if isinstance(api_key, SteamSession) and steam_id != api_key.steam_id:
+        raise SteamLibraryError(
+            "The Steam session belongs to a different account. Reconnect Steam."
+        )
+    resp = credentialed_get(
+        f"{_WEB_API_BASE}/IPlayerService/GetOwnedGames/v1/",
+        api_key,
+        {
+            "steamid": steam_id,
+            "include_appinfo": "1",
+            "include_played_free_games": "1",
+            "include_free_sub": "1",
+            "skip_unvetted_apps": "0",
+        },
+    )
     if resp.status_code >= 400:
         raise SteamLibraryError(f"Steam library request failed ({resp.status_code}).")
     if isinstance(api_key, SteamSession):

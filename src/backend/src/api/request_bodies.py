@@ -51,7 +51,8 @@ def _needs_credentials(headers: Headers) -> bool:
     return "transfer-encoding" in headers
 
 
-class AnonymousBodyLimitMiddleware:
+# ASGI middleware is a callable with no other public methods.
+class AnonymousBodyLimitMiddleware:  # pylint: disable=too-few-public-methods
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
 
