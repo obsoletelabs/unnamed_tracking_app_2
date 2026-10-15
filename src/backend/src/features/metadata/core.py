@@ -16,6 +16,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.crypto import encrypt_secret
+from src.core.preferences import load_preferences
 from src.core.provider_credentials import resolve_metadata_provider_credentials
 from src.database.models.app_integration_settings import AppIntegrationSettings
 from src.database.models.plugin_metadata_provider import (
@@ -36,7 +37,7 @@ from src.plugin_api.metadata_contracts import (
 )
 
 from .automatic_search import automatic_search_status
-from .configuration import configuration_values
+from .configuration import configuration_values, provider_enabled
 
 CORE_PROVIDERS: dict[str, ModuleType] = {
     module.PROVIDER_ID: module
@@ -139,6 +140,7 @@ class CoreMetadataProvider:
     priority: int = 100
     plugin_id: str = "host.metadata"  # Shared storage owner; there is no installed plugin.
     automatic_search_enabled: bool = True
+    account_enabled: bool = True
 
     @property
     def id(self) -> str:
@@ -155,6 +157,8 @@ class CoreMetadataProvider:
     async def authorized(self, _operation: str) -> bool:
         """A cancelled or cached operation cannot reuse a replaced credential context."""
         async with SessionLocal() as db:
+            if not await provider_enabled(db, self.user_id, self.id):
+                return False
             row = await db.get(PluginMetadataProviderRegistration, self.id)
             if row is None:
                 return False
@@ -207,6 +211,7 @@ async def discover_core_providers(
     preferences: dict[str, Any] | None = None,
 ) -> list[CoreMetadataProvider]:
     providers = []
+    account_preferences = await load_preferences(db, user_id)
     for provider_id, module in CORE_PROVIDERS.items():
         declaration = MetadataProviderRegistration.model_validate(module.DECLARATION)
         if media_type is not None and media_type not in declaration.media_types:
@@ -224,7 +229,16 @@ async def discover_core_providers(
         )
         order = (preferences or {}).get("provider_order", [])
         priority = order.index(declaration.name) if declaration.name in order else 100
+        enabled = account_preferences["metadata_providers_enabled"].get(provider_id, True)
         providers.append(
-            CoreMetadataProvider(declaration, user_id, revision, state, values, priority)
+            CoreMetadataProvider(
+                declaration,
+                user_id,
+                revision,
+                state if enabled else ProviderHealth.DISABLED,
+                values,
+                priority,
+                account_enabled=enabled,
+            )
         )
     return providers

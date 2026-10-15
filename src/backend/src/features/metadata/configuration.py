@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.crypto import decrypt_secret, encrypt_secret
+from src.core.preferences import load_preferences
 from src.database.models.plugin_metadata_provider import (
     PluginMetadataProviderRegistration,
     PluginProviderConfiguration,
@@ -28,6 +29,12 @@ class ConfigurationProvider(Protocol):
     def user_id(self) -> UUID: ...
     @property
     def declaration(self) -> MetadataProviderRegistration: ...
+
+
+async def provider_enabled(db: AsyncSession, user_id: UUID, provider_id: str) -> bool:
+    """Metadata opt-outs follow the account, independently of credential ownership."""
+    preferences = await load_preferences(db, user_id)
+    return preferences["metadata_providers_enabled"].get(provider_id, True) is not False
 
 
 async def configuration_values(

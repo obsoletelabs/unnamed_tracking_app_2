@@ -12,6 +12,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.preferences import load_preferences
 from src.database.models.plugin_metadata_provider import (
     PluginMetadataProviderRegistration,
 )
@@ -33,12 +34,55 @@ from src.plugin_api.runtime_client import (
 )
 
 from .automatic_search import automatic_search_status
-from .configuration import configuration_presence, configuration_values, save_configuration
+from .configuration import (
+    configuration_presence,
+    configuration_values,
+    provider_enabled,
+    save_configuration,
+)
 from .core import CORE_PROVIDERS, CoreMetadataProvider, discover_core_providers
 from .deadlines import bounded
 
 logger = logging.getLogger(__name__)
 Operation = Literal["search", "metadata", "media", "health"]
+
+
+async def authorize_metadata_action(
+    db: AsyncSession,
+    *,
+    plugin_id: str,
+    installation_id: UUID,
+    user_id: UUID,
+    action_id: str,
+    operation: Operation,
+    provider_id: object = None,
+) -> None:
+    """Direct plugin UI actions obey the same account policy as host searches.
+
+    Legacy actions without an explicit provider ID remain valid when every
+    matching registration is enabled. An ambiguous action cannot bypass an opt-out.
+    """
+    registrations = await db.scalars(
+        select(PluginMetadataProviderRegistration).where(
+            PluginMetadataProviderRegistration.plugin_id == plugin_id,
+            PluginMetadataProviderRegistration.installation_id == installation_id,
+            PluginMetadataProviderRegistration.revoked_at.is_(None),
+        )
+    )
+    matches = [
+        row
+        for row in registrations
+        if getattr(
+            MetadataProviderRegistration.model_validate(row.declaration).operations, operation
+        )
+        == action_id
+        and (provider_id is None or row.provider_id == provider_id)
+    ]
+    if not matches:
+        raise PermissionError("Metadata action does not belong to a current provider.")
+    for row in matches:
+        if not await provider_enabled(db, user_id, row.provider_id):
+            raise PermissionError("This metadata provider is disabled for your account.")
 
 
 async def register_provider(
@@ -100,6 +144,8 @@ async def provider_configuration(
         raise LookupError("metadata provider registration not found")
     if row.plugin_id != plugin_id or row.installation_id != installation_id:
         raise PermissionError("metadata provider configuration belongs to another installation")
+    if not await provider_enabled(db, user_id, row.provider_id):
+        raise PermissionError("This metadata provider is disabled for your account.")
     values, revision = await configuration_values(db, row, user_id)
     return {"values": values, "revision": revision}
 
@@ -118,6 +164,7 @@ class PluginMetadataProvider:
     state: ProviderHealth
     priority: int = 100
     automatic_search_enabled: bool = True
+    account_enabled: bool = True
 
     @property
     def id(self) -> str:
@@ -129,6 +176,8 @@ class PluginMetadataProvider:
 
     async def authorized(self, operation: Operation) -> bool:
         async with SessionLocal() as db:
+            if not await provider_enabled(db, self.user_id, self.id):
+                return False
             registration = await db.get(PluginMetadataProviderRegistration, self.id)
             if (
                 registration is None
@@ -162,6 +211,8 @@ class PluginMetadataProvider:
         candidate: MetadataCandidate | None = None,
     ) -> ProviderResponse:
         """No provider-specific API, credentials, retries or throttling live in this adapter."""
+        if request.user_id != self.user_id:
+            return ProviderResponse(failure=ProviderFailure(code="invalid_configuration"))
         action_id = getattr(self.declaration.operations, operation)
         is_authorized = bool(action_id) and await self.authorized(operation)
         automatic_allowed = True
@@ -244,6 +295,7 @@ async def discover_providers(
         registrations.remove(row)
     if not registrations:
         return providers
+    account_preferences = await load_preferences(db, user_id)
     try:
         plugins = await bounded(PluginRuntimeClient().plugins(), 2)
     except (PluginRuntimeUnavailable, PluginRuntimeRequestError, TimeoutError):
@@ -259,9 +311,17 @@ async def discover_providers(
         )
         order = (preferences or {}).get("provider_order", [])
         priority = order.index(declaration.name) if declaration.name in order else 100
+        enabled = account_preferences["metadata_providers_enabled"].get(row.provider_id, True)
         providers.append(
             PluginMetadataProvider(
-                declaration, row.plugin_id, row.installation_id, user_id, revision, state, priority
+                declaration,
+                row.plugin_id,
+                row.installation_id,
+                user_id,
+                revision,
+                state if enabled else ProviderHealth.DISABLED,
+                priority,
+                account_enabled=enabled,
             )
         )
     return providers

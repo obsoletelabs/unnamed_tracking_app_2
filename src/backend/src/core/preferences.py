@@ -71,6 +71,7 @@ DEFAULTS: dict[str, Any] = {
     "steam_import_wishlist": False,
     "metadata_automatic_search_enabled": True,
     "metadata_automatic_search_providers": {},
+    "metadata_providers_enabled": {},
     # what every game page shows (tabs, buttons); a game can override it
     "game_page": DEFAULT_PAGE_SETTINGS,
 }
@@ -154,16 +155,16 @@ def validate_preference(key: str, value: Any) -> Any:
     """Validate and normalize one preference value."""
     if key not in DEFAULTS:
         raise ValueError(f"Unknown preference {key!r}")
-    if key == "metadata_automatic_search_providers":
+    if key in {"metadata_automatic_search_providers", "metadata_providers_enabled"}:
         if not isinstance(value, dict) or len(value) > 256:
-            raise ValueError("Automatic search choices must be a bounded provider map")
+            raise ValueError("Metadata choices must be a bounded provider map")
         if any(
             not isinstance(provider_id, str)
             or not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,127}", provider_id)
             or not isinstance(enabled, bool)
             for provider_id, enabled in value.items()
         ):
-            raise ValueError("Automatic search choices require provider identifiers and booleans")
+            raise ValueError("Metadata choices require provider identifiers and booleans")
         return dict(value)
     if key in _SET_CHOICES:
         allowed = _SET_CHOICES[key]
