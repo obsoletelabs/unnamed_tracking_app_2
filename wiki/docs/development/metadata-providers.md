@@ -238,6 +238,28 @@ have been removed.
 
 ## Validation
 
+Form-side lookup uses the existing progressive session/selected candidate. The
+shared comparison stages only checked fields and preserves current manual edits,
+locks and unchecked choices through late enrichment. A changed form title or
+lookup target invalidates stale choices. Provider IDs and TV season identities
+are explicit choices; unrelated checked fields do not relink tracking. Current
+actor/title enforcement remains authoritative at Save.
+
+`POST /api/metadata/sessions/{session_id}/artwork` previews only a URL currently
+offered by that session's selected candidate. Ownership, recorded supplying
+provider and current media authorization are checked before pinned public image
+fetching and byte/pixel validation. The response is a bounded normalized PNG with
+`no-store` and `nosniff`; it never writes a library asset. Source provenance stays
+inside the host session. Steam offers its tall cover before a header fallback;
+the browser tries only bounded host-verified choices and releases blob URLs.
+
+The existing TV update endpoint accepts an optional bounded `seasons` list for
+selected lookup saves. It reuses the higher-numbered-season policy, adds new
+seasons in the same transaction and leaves existing season/progress values alone.
+No schema migration is needed. These are host form/session changes; Plugin API v1
+metadata inputs/outputs, grants and package consumers are unchanged, so optional
+provider implementations and SDKs need no release for this adaptation.
+
 Regression suites cover concurrency, hard deadlines, deterministic ranking,
 partial patches, identity conflicts, rolling-window changes, selected artwork,
 credential scopes, encryption, lifecycle revocation, health and stale UI events.

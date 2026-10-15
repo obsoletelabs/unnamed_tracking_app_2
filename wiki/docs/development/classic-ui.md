@@ -54,13 +54,25 @@ values in page components. Installed themes retain their own styling authority.
    custom palettes, compact density, contrast, reduced motion and narrow screens.
    Capture representative screenshots and update the PR when the UI changes.
 
-The #469 game editor's hero, eight tabs and field-by-field lookup are references
-for a shared form improvement. The current editor uses a progressive metadata
-session and protected refresh preview. A future port should reuse that session
-for the lookup panel, stage checked changes in the existing form, preserve locked
-fields and identities, and keep Search/Enter explicit when Automatic Search is
-off. Do not copy #469's parallel search timer/API or replace the host refresh
-guard with direct provider writes.
+The #469 field-by-field lookup is adapted through `useMetadataComparison.ts` and
+`MetadataComparison.vue`, shared by the current game/media editors and quick-add
+review. Form adapters supply their own values, labels and current protection.
+They stage checked changes and leave persistence to the existing Save boundary.
+The host's progressive search/selection composable remains the only search timer
+and session client. Artwork goes through `useMetadataArtwork.ts` and the owned,
+selected host preview route; do not introduce browser-side provider probes.
+
+The comparison's surface, selected border, action colors, type and radii use
+semantic tokens. Its bounded field area keeps Apply/Cancel available in both
+presentations. Modern and Classic share all selection, stale-response, protection
+and Save behavior. New form fields should extend the adapter and its definitions,
+including the public lock name and artwork role when applicable. Preserve a
+populated form value until explicitly checked, and recheck current protection
+when applying.
+
+The game hero/eight-tab and richer editor layouts remain the next shared editor
+workstream (#143/#144). Keep new behavior in the current host components; no
+Classic page copies or independent provider clients are needed.
 
 ## Designing new UI for both presentations
 
