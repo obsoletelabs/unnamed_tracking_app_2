@@ -102,7 +102,7 @@ async def test_status_query_and_bucket_keep_independent_tab_counts(flow, kind: s
     response = await flow.client.get(f"{api}/list", params={"status_bucket": "plan"})
     assert response.status_code == 200, response.text
     assert [row["title"] for row in response.json()["items"]] == ["Planned"]
-    assert response.json()["status_counts"] == {"WISHLIST": 1}
+    assert response.json()["status_counts"] == {"WATCHED": 1, "WISHLIST": 1}
     assert (await flow.client.get(f"{api}/list", params={"status": "unknown"})).status_code == 422
     assert (
         await flow.client.get(f"{api}/list", params={"status_bucket": "unknown"})
@@ -165,9 +165,9 @@ async def test_status_tabs_share_combined_library_filters(flow, kind: str) -> No
     assert page["total"] == 1
     assert page["status_counts"] == {"WATCHED": 1, "WISHLIST": 1}
 
-    # A bucket remains active for the tabs even when the selected status has no rows.
+    # Tab counts remain independent when the selected status and bucket have no rows.
     response = await flow.client.get(f"{api}/list", params=[*filters, ("status_bucket", "plan")])
     assert response.status_code == 200, response.text
     assert response.json()["items"] == []
     assert response.json()["total"] == 0
-    assert response.json()["status_counts"] == {"WISHLIST": 1}
+    assert response.json()["status_counts"] == {"WATCHED": 1, "WISHLIST": 1}

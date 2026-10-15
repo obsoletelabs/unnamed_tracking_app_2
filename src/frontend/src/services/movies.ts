@@ -122,6 +122,7 @@ const api = createMediaApi<BackendMovie, Movie, MovieInput>({
   toBody: inputToBody,
 });
 export const fetchMoviesPage = api.fetchPage;
+export const movieLibraryRevision = api.mutationRevision;
 export const fetchMovies = api.fetchAll;
 export const getMovie = api.get;
 export const createMovie = api.create;

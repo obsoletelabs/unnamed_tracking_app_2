@@ -218,6 +218,7 @@ const api = createMediaApi<BackendAnime, Anime, AnimeInput>({
   toBody: inputToBody,
 });
 export const fetchAnimePage = api.fetchPage;
+export const animeLibraryRevision = api.mutationRevision;
 export const fetchAnime = api.fetchAll;
 export const getAnime = api.get;
 export const createAnime = api.create;
@@ -387,6 +388,7 @@ export async function createSeason(
     body: JSON.stringify(seasonInputToBody(input)),
   });
   const raw = await handle<BackendAnime>(response, "create season");
+  api.markMutation();
   return mapBackendAnime(raw);
 }
 
@@ -421,6 +423,7 @@ export async function updateSeason(
     body: JSON.stringify(body),
   });
   const raw = await handle<BackendAnime>(response, "update season");
+  api.markMutation();
   return mapBackendAnime(raw);
 }
 
@@ -438,7 +441,10 @@ export async function fetchEpisodes(
     },
   );
   const raw = await handle<BackendAnime>(response, "fetch episodes");
-  return mapBackendAnime(raw);
+  const previous = JSON.stringify(animeCache.peek(showId));
+  const show = mapBackendAnime(raw);
+  if (JSON.stringify(show) !== previous) api.markMutation();
+  return show;
 }
 
 export interface EpisodeUpdateInput {
@@ -468,6 +474,7 @@ export async function updateEpisode(
     },
   );
   const raw = await handle<BackendAnime>(response, "update episode");
+  api.markMutation();
   return mapBackendAnime(raw);
 }
 
@@ -490,6 +497,7 @@ export async function bulkSetEpisodesWatched(
     },
   );
   const raw = await handle<BackendAnime>(response, "bulk-update episodes");
+  api.markMutation();
   return mapBackendAnime(raw);
 }
 
@@ -502,6 +510,7 @@ export async function deleteSeason(
     credentials: "include",
   });
   const raw = await handle<BackendAnime>(response, "delete season");
+  api.markMutation();
   return mapBackendAnime(raw);
 }
 
@@ -779,6 +788,7 @@ export async function refreshAnimeAiring(id: string): Promise<Anime> {
     credentials: "include",
   });
   const raw = await handle<BackendAnime>(response, "refresh airing schedule");
+  api.markMutation();
   return mapBackendAnime(raw);
 }
 

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.routes.media_common import (
     LibraryFilters,
     library_page,
+    library_progress,
     owned_row,
     purge_row,
     restore_row,
@@ -147,6 +148,7 @@ async def list_movies(
             MovieStatus,
             search_clause=title_search([Movie.title], query.search),
             year_column=Movie.release_date,
+            progress_column=library_progress(Movie) if query.sort == "progress" else None,
         ),
     )
 

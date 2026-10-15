@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.routes.media_common import (
     LibraryFilters,
     library_page,
+    library_progress,
     owned_row,
     purge_row,
     related_row,
@@ -325,6 +326,9 @@ async def list_anime(
                 query.search,
             ),
             year_column=Anime.first_air_date,
+            progress_column=library_progress(Anime, AnimeSeason)
+            if query.sort == "progress"
+            else None,
         ),
     )
 

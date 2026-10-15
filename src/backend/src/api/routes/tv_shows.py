@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.routes.media_common import (
     LibraryFilters,
     library_page,
+    library_progress,
     owned_row,
     purge_row,
     related_row,
@@ -208,6 +209,9 @@ async def list_shows(
             TVShowStatus,
             search_clause=title_search([TVShow.title], query.search),
             year_column=TVShow.first_air_date,
+            progress_column=library_progress(TVShow, TVSeason)
+            if query.sort == "progress"
+            else None,
         ),
     )
 

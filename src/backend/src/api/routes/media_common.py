@@ -9,12 +9,13 @@ from enum import Enum
 from typing import Any
 
 from fastapi import HTTPException, status
-from sqlalchemy import ColumnElement, Select, func, or_, select
+from sqlalchemy import ColumnElement, Select, case, extract, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.functions import count as sql_count
+from sqlalchemy.sql.functions import sum as sql_sum
 
 from src.api.routes.media_extras import log_status_change
-from src.api.schemas.pagination import LibraryQuery, PaginatedResponse, score_ranks
+from src.api.schemas.pagination import LibraryQuery, LibrarySort, PaginatedResponse, score_ranks
 from src.core.auth import AuthenticatedActor
 from src.core.titles import derive_sort_title
 from src.features.metadata.locked_fields import (
@@ -108,6 +109,8 @@ class LibraryFilters:
     year_column: Any | None = None
     year_from: int | None = None
     year_to: int | None = None
+    sort: LibrarySort = "title"
+    progress_column: Any = None
 
     @classmethod
     def from_query(
@@ -117,6 +120,7 @@ class LibraryFilters:
         *,
         search_clause: ColumnElement[bool] | None,
         year_column: Any,
+        progress_column: Any = None,
     ) -> "LibraryFilters":
         return cls(
             status_filter=query.status,
@@ -132,6 +136,8 @@ class LibraryFilters:
             year_column=year_column,
             year_from=query.year_from,
             year_to=query.year_to,
+            sort=query.sort,
+            progress_column=progress_column,
         )
 
 
@@ -162,8 +168,6 @@ def _library_statement(model: Any, user_id: Any, filters: LibraryFilters) -> Sel
         stmt = stmt.where(model.favorite == filters.favorite)
     if filters.search_clause is not None:
         stmt = stmt.where(filters.search_clause)
-    if filters.status_values:
-        stmt = stmt.where(model.status.in_(filters.status_values))
     if filters.genres:
         genre_clauses = [model.genres.contains([genre]) for genre in filters.genres]
         stmt = stmt.where(*(genre_clauses if filters.genre_match_all else [or_(*genre_clauses)]))
@@ -185,6 +189,44 @@ def _library_statement(model: Any, user_id: Any, filters: LibraryFilters) -> Sel
     return stmt
 
 
+def library_progress(model: Any, season_model: Any = None) -> Any:
+    """Use the same known-total season ratio and movie seen statuses as library cards."""
+    if season_model is None:
+        return case((model.status.in_(["WATCHED", "FAVORITE", "REWATCH"]), 100), else_=0)
+    total = sql_sum(season_model.episode_count)
+    known = sql_count(season_model.id) == sql_count(season_model.episode_count)
+    return (
+        select(
+            case(
+                (known & (total > 0), sql_sum(season_model.episodes_watched) * 100.0 / total),
+                else_=0,
+            )
+        )
+        .where(season_model.show_id == model.id)
+        .correlate(model)
+        .scalar_subquery()
+    )
+
+
+def _library_order(model: Any, filters: LibraryFilters) -> tuple[Any, ...]:
+    """Validated keys select expressions; nulls stay last and IDs resolve every tie."""
+    title = model.sort_title.asc().nulls_last()
+    if filters.sort == "title_desc":
+        return (model.sort_title.desc().nulls_last(), model.id)
+    if filters.sort in {"rank", "score"}:
+        primary = model.rating_overall.desc().nulls_last()
+    elif filters.sort == "added":
+        primary = model.created_at.desc().nulls_last()
+    elif filters.sort in {"year_new", "year_old"} and filters.year_column is not None:
+        year = extract("year", filters.year_column)
+        primary = (year.desc() if filters.sort == "year_new" else year.asc()).nulls_last()
+    elif filters.sort == "progress" and filters.progress_column is not None:
+        primary = filters.progress_column.desc().nulls_last()
+    else:
+        return (title, model.id)
+    return (primary, title, model.id)
+
+
 async def library_page(
     db: AsyncSession,
     model: Any,
@@ -204,8 +246,10 @@ async def library_page(
     status_counts = {row_status.value: count for row_status, count in counts_result.all()}
     if filters.status_filter is not None:
         stmt = stmt.where(model.status == filters.status_filter)
+    if filters.status_values:
+        stmt = stmt.where(model.status.in_(filters.status_values))
     total = await db.scalar(select(sql_count()).select_from(stmt.subquery()))
-    stmt = stmt.order_by(model.sort_title).offset(skip).limit(limit)
+    stmt = stmt.order_by(*_library_order(model, filters)).offset(skip).limit(limit)
     result = await db.execute(stmt)
     return PaginatedResponse(
         items=list(result.scalars().unique().all()),

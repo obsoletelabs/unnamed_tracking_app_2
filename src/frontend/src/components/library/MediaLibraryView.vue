@@ -17,7 +17,7 @@ import UiModal from "../UiModal.vue";
 import SegmentedTabs from "../SegmentedTabs.vue";
 import type { SegmentOption } from "../SegmentedTabs.vue";
 import { preferences } from "../../state/preferences";
-import { matchesFilters } from "../../utils/libraryFilters";
+import { matchesFilters, savedMediaSort } from "../../utils/libraryFilters";
 import type { LibraryFilters } from "../../utils/libraryFilters";
 import { blurOnLeave } from "../../utils/blurOnLeave";
 import { PHONE_CARD_COLUMNS } from "../../utils/libraryLayout";
@@ -28,13 +28,18 @@ import {
   statusBucket,
   statusBucketLabel,
   bucketToReal,
+  mediaBucketCounts,
 } from "../../utils/mediaStatus";
 
 // A normalized view-model so this one component can drive Movies, TV
 // Shows, and Anime without knowing about seasons, episode tables, or any
 // other per-entity detail — each Library.vue page adapts its real
 // entities into this shape and reacts to the events below.
-import type { LibraryCardVM, EditForm } from "../../types/mediaLibrary";
+import type {
+  LibraryCardVM,
+  EditForm,
+  MediaSortKey,
+} from "../../types/mediaLibrary";
 export type { LibraryCardVM, EditForm } from "../../types/mediaLibrary";
 
 // The pill/tab labels shown everywhere in this view come from the shared
@@ -47,6 +52,7 @@ const props = defineProps<{
   addLabel: string;
   items: LibraryCardVM[];
   total: number;
+  hasMore?: boolean;
   statusCounts: Record<string, number>;
   // library-wide leaderboard positions from the server
   scoreRanks?: Record<string, number>;
@@ -78,6 +84,7 @@ function maybeLoadMore() {
   if (
     layout.value === "board" ||
     props.loading ||
+    props.hasMore === false ||
     props.items.length >= props.total ||
     // what is already loaded is still being drawn a screenful at a time
     renderLimit.value < filteredItems.value.length
@@ -215,34 +222,36 @@ function emitFilters() {
     });
   }, 250);
 }
-type SortKey =
-  | "rank"
-  | "score"
-  | "title"
-  | "title_desc"
-  | "added"
-  | "year_new"
-  | "year_old"
-  | "progress";
-const SORT_KEYS: SortKey[] = [
-  "rank",
-  "score",
-  "title",
-  "title_desc",
-  "added",
-  "year_new",
-  "year_old",
-  "progress",
-];
-function savedSort(): SortKey {
-  try {
-    const v = localStorage.getItem(`librarySort:${props.kind}`) as SortKey;
-    return SORT_KEYS.includes(v) ? v : "rank";
-  } catch {
-    return "rank";
-  }
+const sortKey = ref<MediaSortKey>(savedMediaSort(props.kind));
+interface SortColumn {
+  label: string;
+  key?: MediaSortKey;
+  alternate?: MediaSortKey;
 }
-const sortKey = ref<SortKey>(savedSort());
+const listColumns: SortColumn[] = [
+  { label: "" },
+  { label: "Title", key: "title", alternate: "title_desc" },
+  { label: "" },
+  { label: "Progress", key: "progress" },
+  { label: "Score", key: "score" },
+  { label: "Rank", key: "rank" },
+  { label: "Status" },
+];
+function columnDirection(column: SortColumn) {
+  if (!column.key) return undefined;
+  if (sortKey.value !== column.key && sortKey.value !== column.alternate)
+    return "none";
+  return sortKey.value === "title" || sortKey.value === "rank"
+    ? "ascending"
+    : "descending";
+}
+function selectColumn(column: SortColumn) {
+  if (column.key)
+    sortKey.value =
+      column.alternate && sortKey.value === column.key
+        ? column.alternate
+        : column.key;
+}
 watch(sortKey, (v) => {
   try {
     localStorage.setItem(`librarySort:${props.kind}`, v);
@@ -350,6 +359,7 @@ onBeforeUnmount(() => sentinelObserver?.disconnect());
 
 // Every filter except the status tab (the Board shows the tabs as rows).
 const filters = computed<LibraryFilters>(() => ({
+  sort: sortKey.value,
   search: searchQuery.value,
   genres: [...selectedGenres.value],
   genreMatchAll: genreMatchAll.value,
@@ -386,10 +396,7 @@ function computedRank(it: LibraryCardVM): number | null {
   return rankByItemId.value.get(it.id) ?? null;
 }
 
-const statusCounts = computed<Record<string, number>>(() => ({
-  all: props.total,
-  ...props.statusCounts,
-}));
+const statusCounts = computed(() => mediaBucketCounts(props.statusCounts));
 
 function progressPct(it: LibraryCardVM): number {
   if (!it.isEpisodic) return it.watched > 0 ? 100 : 0;
@@ -402,44 +409,8 @@ const filteredItems = computed(() => {
     list = list.filter((it) => statusBucket(it.status) === activeStatus.value);
   }
   list = list.filter(matchesFilterState);
-  const sorted = [...list];
-  const year = (it: LibraryCardVM) =>
-    it.releaseYear ? parseInt(it.releaseYear, 10) : null;
-  // titles missing the sorted value always go last, whichever direction
-  const byNullable = (
-    value: (it: LibraryCardVM) => number | null,
-    direction: 1 | -1,
-  ) =>
-    sorted.sort((a, b) => {
-      const va = value(a);
-      const vb = value(b);
-      if (va === null && vb === null) return a.title.localeCompare(b.title);
-      if (va === null) return 1;
-      if (vb === null) return -1;
-      return (va - vb) * direction || a.title.localeCompare(b.title);
-    });
-  if (sortKey.value === "title") {
-    sorted.sort((a, b) => a.title.localeCompare(b.title));
-  } else if (sortKey.value === "title_desc") {
-    sorted.sort((a, b) => b.title.localeCompare(a.title));
-  } else if (sortKey.value === "progress") {
-    sorted.sort((a, b) => progressPct(b) - progressPct(a));
-  } else if (sortKey.value === "score") {
-    byNullable((it) => it.score, -1);
-  } else if (sortKey.value === "added") {
-    byNullable((it) => it.addedAt ?? null, -1);
-  } else if (sortKey.value === "year_new") {
-    byNullable(year, -1);
-  } else if (sortKey.value === "year_old") {
-    byNullable(year, 1);
-  } else {
-    sorted.sort((a, b) => {
-      const ra = computedRank(a) ?? 999999;
-      const rb = computedRank(b) ?? 999999;
-      return ra - rb || a.title.localeCompare(b.title);
-    });
-  }
-  return sorted;
+  // The API orders the complete matching library before pagination.
+  return list;
 });
 const renderedItems = computed(() =>
   filteredItems.value.slice(0, renderLimit.value),
@@ -472,7 +443,8 @@ function moveBoard(status: string, direction: -1 | 1, available: number) {
   }
   if (
     current + available >= props.items.length &&
-    props.items.length < props.total
+    props.items.length < props.total &&
+    props.hasMore !== false
   ) {
     emit("load-more");
   }
@@ -1073,19 +1045,46 @@ defineExpose({ openQuickAdd });
           <p v-if="!filteredItems.length" class="empty-state">
             Nothing matches. Try a different filter or search.
           </p>
-          <div v-else class="list-scroll">
-            <div class="list-row-header">
-              <span></span><span>Title</span><span></span><span>Progress</span
-              ><span>Score</span><span>Rank</span><span>Status</span>
+          <div
+            v-else
+            class="list-scroll"
+            role="table"
+            aria-label="Library titles"
+          >
+            <div class="list-row-header" role="row">
+              <span
+                v-for="(column, index) in listColumns"
+                :key="index"
+                role="columnheader"
+                :aria-sort="columnDirection(column)"
+              >
+                <button
+                  v-if="column.key"
+                  type="button"
+                  @click="selectColumn(column)"
+                  :aria-label="`Sort by ${column.label}`"
+                >
+                  {{ column.label
+                  }}<span aria-hidden="true">{{
+                    columnDirection(column) === "ascending"
+                      ? "↑"
+                      : columnDirection(column) === "descending"
+                        ? "↓"
+                        : ""
+                  }}</span>
+                </button>
+                <template v-else>{{ column.label }}</template>
+              </span>
             </div>
-            <div class="list-rows">
+            <div class="list-rows" role="rowgroup">
               <div
                 v-for="it in renderedItems"
                 :key="it.id"
                 class="list-row"
+                role="row"
                 @click="handleCardClick(it)"
               >
-                <div class="list-thumb-wrap">
+                <div class="list-thumb-wrap" role="cell">
                   <div class="list-thumb">
                     <img
                       v-if="it.poster"
@@ -1104,7 +1103,7 @@ defineExpose({ openQuickAdd });
                     <CheckIcon v-if="selectedIds.has(it.id)" />
                   </div>
                 </div>
-                <div class="list-title-col">
+                <div class="list-title-col" role="cell">
                   <div class="list-title">{{ it.title }}</div>
                   <div class="list-type">
                     {{ it.format ?? typeLabel
@@ -1116,7 +1115,7 @@ defineExpose({ openQuickAdd });
                     <span class="dot"></span>Airing
                   </div>
                 </div>
-                <div class="icon-cluster no-card-click">
+                <div class="icon-cluster no-card-click" role="cell">
                   <button
                     type="button"
                     class="icon-btn"
@@ -1168,7 +1167,7 @@ defineExpose({ openQuickAdd });
                     </svg>
                   </button>
                 </div>
-                <div class="list-progress">
+                <div class="list-progress" role="cell">
                   <div class="list-progress-label">{{ it.progressLabel }}</div>
                   <button
                     v-if="it.canAdvance"
@@ -1190,16 +1189,20 @@ defineExpose({ openQuickAdd });
                   </button>
                   <div v-else class="plus-btn-spacer"></div>
                 </div>
-                <div class="score-tag" :class="{ empty: !it.score }">
+                <div
+                  class="score-tag"
+                  role="cell"
+                  :class="{ empty: !it.score }"
+                >
                   {{ it.score ? `★ ${it.score}` : "–" }}
                 </div>
-                <div class="rank-cell">
+                <div class="rank-cell" role="cell">
                   <span v-if="computedRank(it)" class="rank-badge"
                     >#{{ computedRank(it) }}</span
                   >
                   <span v-else class="rank-empty">–</span>
                 </div>
-                <div class="status-cell">
+                <div class="status-cell" role="cell">
                   <span class="pill" :class="statusBucket(it.status)">{{
                     statusBucketLabel(it.status)
                   }}</span>
@@ -1212,7 +1215,10 @@ defineExpose({ openQuickAdd });
             ref="moreSentinel"
             class="render-sentinel"
           ></div>
-          <div v-if="items.length < total" class="load-more-indicator">
+          <div
+            v-if="items.length < total && hasMore !== false"
+            class="load-more-indicator"
+          >
             {{ loading ? "Loading more…" : "Scroll for more" }}
           </div>
         </template>
@@ -1375,7 +1381,10 @@ defineExpose({ openQuickAdd });
             ref="moreSentinel"
             class="render-sentinel"
           ></div>
-          <div v-if="items.length < total" class="load-more-indicator">
+          <div
+            v-if="items.length < total && hasMore !== false"
+            class="load-more-indicator"
+          >
             {{ loading ? "Loading more…" : "Scroll for more" }}
           </div>
         </template>

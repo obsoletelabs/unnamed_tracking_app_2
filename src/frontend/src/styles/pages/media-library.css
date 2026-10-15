@@ -704,6 +704,23 @@
   color: var(--ui-faint);
   font-weight: 700;
 }
+.list-row-header button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  padding: 4px 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+.list-row-header [aria-sort="ascending"],
+.list-row-header [aria-sort="descending"] {
+  color: var(--ui-accent-text);
+}
 .list-row-header span:nth-child(4),
 .list-row-header span:nth-child(5),
 .list-row-header span:nth-child(6),
