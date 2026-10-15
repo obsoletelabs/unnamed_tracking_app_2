@@ -12,6 +12,7 @@ from src.database.models.achievement import Achievement
 from src.database.models.game import Game, GameStatus
 from src.database.models.user import User
 from src.database.session import SessionLocal
+from src.helpers import save_game_asset
 from src.main import app
 from tests.test_game_files_flow import game_flow  # noqa: F401
 
@@ -70,6 +71,8 @@ async def test_wishlist_is_disabled_by_default(flow):
 
 
 async def test_wishlist_reimport_keeps_saved_games_and_adds_new_ones(flow, monkeypatch):
+    # New wishlist games get a library folder; keep it out of the real data root.
+    monkeypatch.setattr(save_game_asset, "DATA_ROOT", flow.tmp)
     await connect_steam(flow)
     enriched = uuid.UUID(await create_game(flow, "Elden Ring", app_id="1245620"))
     async with SessionLocal() as db:
