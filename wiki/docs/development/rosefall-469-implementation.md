@@ -98,20 +98,30 @@ Until then, PRs remain available for review with current validation and screensh
   [Classic dark](../assets/provider-choices/classic-dark.jpg),
   [Classic light](../assets/provider-choices/classic-light.jpg) and
   [phone](../assets/provider-choices/classic-dark-phone.jpg).
-- **F UI / 10, 12–13:** in progress on `feat/game-library-consistency`.
+- **F UI / 10, 12–13:** merged as [PR #133](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/133).
   Card saves reconcile the library, filters/counts, current preview and entity cache;
   older reads cannot undo a successful save. Active priorities use the existing
   priority policy. Finished games keep written notes and a compact keyboard-accessible
-  action for empty notes. Full local frontend validation passed 579 tests.
+  action for empty notes. Full local frontend validation passed 579 tests;
+  all seven full hosted workflows passed before the authorized squash merge.
   Screenshots cover [Modern dark](../assets/game-card-consistency/modern-dark-priority.jpg),
   [Classic dark](../assets/game-card-consistency/classic-dark-priority.jpg),
   [Classic light](../assets/game-card-consistency/classic-light-priority.jpg),
   [phone](../assets/game-card-consistency/classic-dark-phone-priority.jpg),
   [finished notes](../assets/game-card-consistency/classic-dark-finished-note.jpg) and
   [retained written notes](../assets/game-card-consistency/classic-light-written-note.jpg).
-- **F backend / 1–3, 5:** pending. On 15 October the owner clarified that every
-  existing Played choice stays unchanged; automatic progression is limited to
-  eligible Backlog/Wishlist records. Folder coordination still needs implementation.
+- **F progression / 1–3:** implemented on `feat/synced-game-progression`;
+  full local backend tests passed (2,669; four skipped), along with mypy and
+  Ruff and full Pylint (10/10). Fifty-one separate Epic plugin consumer tests
+  passed without SDK changes.
+  One host policy handles owned-library,
+  delayed Steam achievement, explicit achievement refresh and public plugin
+  import writes. Only fresh provider evidence advances eligible Backlog/Wishlist;
+  Wishlist needs owned-library evidence. On 15 October the owner clarified that
+  every existing Played choice stays unchanged, including full completion.
+  Achievement GET remains read-only; all providers recheck the current locked
+  identity/status after a delayed single-game refresh. The plugin schema is unchanged.
+- **F folders / 5:** pending. Folder coordination still needs implementation.
 - **G–O:** approved; not implemented yet. The package details below describe
   intended work, not completed behavior.
 

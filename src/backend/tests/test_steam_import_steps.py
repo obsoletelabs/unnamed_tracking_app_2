@@ -125,9 +125,10 @@ async def test_achievement_batch_preserves_unavailable_progress_and_manual_statu
         assert game.status == GameStatus.PLAYING
 
 
-@pytest.mark.parametrize("original", [GameStatus.PLAYED, GameStatus.PLAYING, GameStatus.BACKLOG])
-async def test_achievement_batch_settles_only_unchanged_automatic_status(
-    flow, monkeypatch, original
+@pytest.mark.parametrize("original", list(GameStatus))
+@pytest.mark.parametrize("legacy_hint", [False, True])
+async def test_achievement_batch_advances_only_backlog_and_preserves_all_played_choices(
+    flow, monkeypatch, original, legacy_hint
 ):
     await connect_steam(flow)
     identity = uuid.UUID(await create_game(flow, "Automatic"))
@@ -145,12 +146,16 @@ async def test_achievement_batch_settles_only_unchanged_automatic_status(
     )
     response = await flow.client.post(
         "/api/library-sync/steam/achievements",
-        json={"game_ids": [str(identity)], "status_game_ids": [str(identity)]},
+        json={
+            "game_ids": [str(identity)],
+            "status_game_ids": [str(identity)] if legacy_hint else [],
+        },
     )
     assert response.status_code == 200, response.text
     async with SessionLocal() as db:
         game = await db.get(Game, identity)
-        assert game.status == (GameStatus.MASTERED if original == GameStatus.PLAYED else original)
+        assert game.status == (GameStatus.MASTERED if original == GameStatus.BACKLOG else original)
+        assert (game.completion_date is not None) is (original == GameStatus.BACKLOG)
 
 
 async def test_achievement_batch_filters_owner_source_and_deleted_games(flow, monkeypatch):

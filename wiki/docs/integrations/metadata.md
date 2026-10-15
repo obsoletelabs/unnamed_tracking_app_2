@@ -243,8 +243,12 @@ The application saves owned games and playtime first, then reads achievements in
 small batches before fetching store details. A failed batch leaves the imported
 games available. Unavailable achievement progress keeps the previous snapshot;
 the completion message reports any games whose progress could not be read.
-Existing manually chosen game statuses are preserved. New imports can settle
-their initial automatic status once their achievement progress arrives.
+Fresh provider evidence advances only eligible Backlog/Wishlist games. All
+existing Played choices are preserved, along with Playing, On Hold, Beaten,
+Dropped and Mastered. An owned Wishlist game can become Backlog, Played or
+Mastered; achievement-only refreshes do not establish Wishlist ownership.
+Fully unlocked nonempty provider sets can advance Backlog to Mastered. Local
+achievement reports and locally entered playtime are not provider evidence.
 
 API clients retain the immediate achievement sync by default. Clients opting
 into `/api/library-sync/steam?achievements=later` receive `achievement_game_ids`
@@ -252,6 +256,10 @@ and `status_game_ids` for the subsequent authenticated
 `/api/library-sync/steam/achievements` requests. Each request accepts up to 25
 game IDs and rechecks ownership, source, deletion and provider identity before
 saving. The application's client sends five games per request.
+The legacy `status_game_ids` field remains accepted for older clients, but cannot
+override this policy: eligibility uses the current locked row, regardless of
+whether the client supplies that hint. A previously Played game does not settle
+to Mastered in a later batch. Achievement GET routes remain read-only.
 
 ![Steam import keeps saved games when achievement progress is unavailable](../assets/steam-batches/connections-390.png)
 
