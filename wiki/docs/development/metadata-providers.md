@@ -82,6 +82,24 @@ These community estimates never replace the user's personal playtime. Migration
 playtime values are preserved. The matching SDK/schema and optional HLTB provider
 updates belong in the companion plugin repository.
 
+The native IGDB adapter queries its documented
+[Game Time To Beat endpoint](https://api-docs.igdb.com/#game-time-to-beat):
+`hastily`, `normally` and `completely` map from seconds to Main story, Main + extras
+and Completionist. No All play styles average is invented. This bounded auxiliary
+lookup reuses native authentication/pacing, and its failure preserves ordinary
+IGDB metadata. It never invokes HLTB or another provider.
+
+The host merges useful completion figures from other providers first, preserving
+their normal relative priority, then fills missing categories from native IGDB.
+Zero/missing figures do not suppress fallback. This authority is independent of
+completion order and does not change priority for other metadata fields.
+
+The public outbound header allowlist adds bounded `Accept-Language` and
+`X-Auth-Token` for provider initialization. Existing length/count/newline checks,
+redirect refusal, response bounds and permission enforcement remain in place.
+HLTB obtains and renews its token through the public gateway in the companion
+plugin; no provider implementation is copied into the host.
+
 ## Registration and permission enforcement
 
 A running plugin calls `metadata_providers.register` with its namespaced ID,

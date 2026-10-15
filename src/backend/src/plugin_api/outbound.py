@@ -185,8 +185,10 @@ def _valid_header(key: object, value: object) -> bool:
         and key.lower()
         in {
             "accept",
+            "accept-language",
             "authorization",
             "x-emby-token",
+            "x-auth-token",
             "client-id",
             "content-type",
             "user-agent",

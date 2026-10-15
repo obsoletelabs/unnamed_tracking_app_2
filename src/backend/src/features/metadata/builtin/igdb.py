@@ -95,14 +95,14 @@ async def _access_token(http: ProviderHttp, credentials: dict[str, str]) -> str:
             return token
 
 
-async def games(values, query):
+async def _query(values, endpoint, query):
     credentials = provider_values(PROVIDER_ID, ("client_id", "client_secret"))
     http = ProviderHttp(values["request"], "igdb", min_gap=0.35)
     for attempt in range(2):
         token = await _access_token(http, credentials)
         try:
             return await http(
-                "https://api.igdb.com/v4/games",
+                f"https://api.igdb.com/v4/{endpoint}",
                 method="POST",
                 text_body=query,
                 headers={
@@ -122,6 +122,43 @@ async def games(values, query):
             if attempt == 1:
                 raise
     raise ProviderFailure("invalid_configuration")
+
+
+async def games(values, query):
+    """Use the shared authenticated transport for the game identity/details endpoint."""
+    return await _query(values, "games", query)
+
+
+def _hours(seconds):
+    if isinstance(seconds, bool) or not isinstance(seconds, (int, float)):
+        return None
+    if not math.isfinite(seconds) or seconds <= 0:
+        return None
+    hours = round(seconds / 3600, 1)
+    return hours if 0 < hours <= 99_999.9 else None
+
+
+async def _completion_times(values, game_id):
+    """A best-effort same-provider lookup; other providers remain independently scheduled."""
+    try:
+        async with asyncio.timeout(2):
+            rows = await _query(
+                values,
+                "game_time_to_beats",
+                f"fields game_id,hastily,normally,completely; where game_id = {int(game_id)}; limit 1;",
+            )
+        row = next((entry for entry in rows if entry.get("game_id") == game_id), {})
+        return {
+            field: value
+            for field, source in (
+                ("time_to_beat_hours", "hastily"),
+                ("time_to_beat_extras_hours", "normally"),
+                ("time_to_beat_completionist_hours", "completely"),
+            )
+            if (value := _hours(row.get(source))) is not None
+        }
+    except (ProviderFailure, TimeoutError, ValueError, TypeError, AttributeError):
+        return {}
 
 
 async def search(values):
@@ -188,6 +225,7 @@ async def metadata(values):
     )
     return {
         "metadata": {
+            **await _completion_times(values, item["id"]),
             "title": item.get("name"),
             "description": item.get("summary"),
             "release_date": release.isoformat() if release else None,

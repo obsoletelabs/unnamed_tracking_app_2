@@ -31,6 +31,14 @@ logger = logging.getLogger(__name__)
 PRELOAD_CONCURRENCY = 5
 SEARCH_CACHE_SECONDS = 120
 SEARCH_CACHE_CAPACITY = 256
+_COMPLETION_ESTIMATE_FIELDS = frozenset(
+    {
+        "time_to_beat_hours",
+        "time_to_beat_extras_hours",
+        "time_to_beat_completionist_hours",
+        "time_to_beat_all_hours",
+    }
+)
 
 
 class Provider(Protocol):
@@ -389,10 +397,17 @@ class MetadataHandler:
             key=lambda item: (item[0], item[1]),
         )
         metadata: dict[str, Any] = {}
-        for _, _, patch in patches:
+        fallback_times: dict[str, Any] = {}
+        for _, provider_id, patch in patches:
             for name, value in patch.model_dump(mode="json").items():
                 if value is None or value == [] or value == {} or value == "":
                     continue
+                if name in _COMPLETION_ESTIMATE_FIELDS:
+                    if value <= 0:
+                        continue
+                    if provider_id == "core.igdb":
+                        fallback_times.setdefault(name, value)
+                        continue
                 if name in {"provider_ids", "scores", "titles"}:
                     for namespace, external_id in value.items():
                         metadata.setdefault(name, {}).setdefault(namespace, external_id)
@@ -400,6 +415,8 @@ class MetadataHandler:
                     MetadataHandler._merge_episodes(metadata.setdefault(name, {}), value)
                 else:
                     metadata.setdefault(name, value)
+        for name, value in fallback_times.items():
+            metadata.setdefault(name, value)
         if "episodes" in metadata:
             metadata["episodes"] = sorted(
                 metadata["episodes"].values(),

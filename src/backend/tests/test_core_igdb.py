@@ -46,6 +46,37 @@ async def test_search_metadata_and_artwork_share_a_token(monkeypatch):
     assert sum("oauth2/token" in url for url in calls) == 1
 
 
+@pytest.mark.parametrize("unavailable", [False, True])
+async def test_completion_times_use_the_native_endpoint_without_losing_metadata(
+    monkeypatch, unavailable
+):
+    calls = []
+
+    async def network(url, **options):
+        calls.append(url)
+        if "oauth2/token" in url:
+            return token_response()
+        if url.endswith("game_time_to_beats"):
+            assert "where game_id = 1;" in options["text_body"]
+            if unavailable:
+                raise core_http.ProviderFailure("unavailable")
+            return [{"game_id": 1, "hastily": 3600, "normally": 5400, "completely": 7200}]
+        return [{"id": 1, "name": "Portal", "summary": "Keep this description"}]
+
+    monkeypatch.setattr(core_http, "_network", network)
+    values = {"request": {}, "candidate": {"provider_ids": {"igdb": "1"}}}
+    metadata = (await igdb.metadata(values))["metadata"]
+    assert metadata["title"] == "Portal" and metadata["description"] == "Keep this description"
+    if unavailable:
+        assert "time_to_beat_hours" not in metadata
+    else:
+        assert metadata["time_to_beat_hours"] == 1
+        assert metadata["time_to_beat_extras_hours"] == 1.5
+        assert metadata["time_to_beat_completionist_hours"] == 2
+        assert "time_to_beat_all_hours" not in metadata
+    assert all("igdb.com" in url or "twitch.tv" in url for url in calls)
+
+
 async def test_concurrent_requests_share_token_refresh(monkeypatch):
     tokens = 0
     entered = asyncio.Event()
