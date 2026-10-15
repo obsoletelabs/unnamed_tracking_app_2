@@ -61,6 +61,10 @@ export function createMediaApi<
   toBody: (input: Input) => Record<string, unknown>;
 }) {
   const { base, noun, plural, cache, map, toBody } = options;
+  let revision = 0;
+  function markMutation() {
+    revision++;
+  }
 
   async function fetchPage(
     offset = 0,
@@ -87,6 +91,7 @@ export function createMediaApi<
     filters?.formats.forEach((format) => params.append("format", format));
     if (filters?.statusBucket && filters.statusBucket !== "all")
       params.set("status_bucket", filters.statusBucket);
+    if (filters?.sort) params.set("sort", filters.sort);
     const response = await fetch(`${base}/list?${params}`, {
       credentials: "include",
     });
@@ -119,10 +124,13 @@ export function createMediaApi<
   }
 
   async function get(id: string): Promise<Entity> {
+    const previous = JSON.stringify(cache.peek(id));
     const response = await fetch(`${base}/get/${id}`, {
       credentials: "include",
     });
-    return map(await handle<Raw>(response, `fetch ${noun} ${id}`));
+    const item = map(await handle<Raw>(response, `fetch ${noun} ${id}`));
+    if (JSON.stringify(item) !== previous) markMutation();
+    return item;
   }
 
   async function create(input: Input): Promise<Entity> {
@@ -132,7 +140,9 @@ export function createMediaApi<
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(toBody(input)),
     });
-    return map(await handle<Raw>(response, `create ${noun}`));
+    const item = map(await handle<Raw>(response, `create ${noun}`));
+    markMutation();
+    return item;
   }
 
   async function update(id: string, input: Input): Promise<Entity> {
@@ -142,7 +152,9 @@ export function createMediaApi<
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(toBody(input)),
     });
-    return map(await handle<Raw>(response, `update ${noun} ${id}`));
+    const item = map(await handle<Raw>(response, `update ${noun} ${id}`));
+    markMutation();
+    return item;
   }
 
   async function remove(id: string): Promise<void> {
@@ -154,6 +166,7 @@ export function createMediaApi<
     if (!response.ok && response.status !== 204) {
       throw new Error(`Failed to delete ${noun} ${id}: ${response.status}`);
     }
+    markMutation();
   }
 
   async function fetchTrash(): Promise<TrashedMedia[]> {
@@ -172,7 +185,9 @@ export function createMediaApi<
     if (!response.ok) {
       throw new Error(`Failed to restore ${noun} ${id}: ${response.status}`);
     }
-    return map(await response.json());
+    const item = map(await response.json());
+    markMutation();
+    return item;
   }
 
   async function purge(id: string): Promise<void> {
@@ -183,9 +198,12 @@ export function createMediaApi<
     if (!response.ok && response.status !== 204) {
       throw new Error(`Failed to purge ${noun} ${id}: ${response.status}`);
     }
+    markMutation();
   }
 
   return {
+    mutationRevision: () => revision,
+    markMutation,
     fetchPage,
     fetchAll,
     get,

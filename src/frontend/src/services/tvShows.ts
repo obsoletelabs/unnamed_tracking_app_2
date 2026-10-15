@@ -199,6 +199,7 @@ const api = createMediaApi<BackendTVShow, TVShow, TVShowInput>({
   toBody: inputToBody,
 });
 export const fetchTVShowsPage = api.fetchPage;
+export const tvLibraryRevision = api.mutationRevision;
 export const fetchTVShows = api.fetchAll;
 export const getTVShow = api.get;
 export const createTVShow = api.create;
@@ -354,6 +355,7 @@ export async function createSeason(
     body: JSON.stringify(seasonInputToBody(input)),
   });
   const raw = await handle<BackendTVShow>(response, "create season");
+  api.markMutation();
   return mapBackendTVShow(raw);
 }
 
@@ -388,6 +390,7 @@ export async function updateSeason(
     body: JSON.stringify(body),
   });
   const raw = await handle<BackendTVShow>(response, "update season");
+  api.markMutation();
   return mapBackendTVShow(raw);
 }
 
@@ -405,7 +408,10 @@ export async function fetchEpisodes(
     },
   );
   const raw = await handle<BackendTVShow>(response, "fetch episodes");
-  return mapBackendTVShow(raw);
+  const previous = JSON.stringify(tvShowCache.peek(showId));
+  const show = mapBackendTVShow(raw);
+  if (JSON.stringify(show) !== previous) api.markMutation();
+  return show;
 }
 
 export interface EpisodeUpdateInput {
@@ -435,6 +441,7 @@ export async function updateEpisode(
     },
   );
   const raw = await handle<BackendTVShow>(response, "update episode");
+  api.markMutation();
   return mapBackendTVShow(raw);
 }
 
@@ -457,6 +464,7 @@ export async function bulkSetEpisodesWatched(
     },
   );
   const raw = await handle<BackendTVShow>(response, "bulk-update episodes");
+  api.markMutation();
   return mapBackendTVShow(raw);
 }
 
@@ -469,6 +477,7 @@ export async function deleteSeason(
     credentials: "include",
   });
   const raw = await handle<BackendTVShow>(response, "delete season");
+  api.markMutation();
   return mapBackendTVShow(raw);
 }
 
@@ -682,5 +691,6 @@ export async function refreshTVShowAiring(id: string): Promise<TVShow> {
     credentials: "include",
   });
   const raw = await handle<BackendTVShow>(response, "refresh airing schedule");
+  api.markMutation();
   return mapBackendTVShow(raw);
 }

@@ -47,3 +47,19 @@ export function statusBucketLabel(realStatus: string): string {
   const bucket = statusBucket(realStatus);
   return STATUS_BUCKETS.find((s) => s.key === bucket)?.label ?? "Plan to Watch";
 }
+
+export function mediaBucketCounts(
+  realCounts: Record<string, number>,
+): Record<string, number> {
+  const counts: Record<string, number> = {
+    all: 0,
+    ...Object.fromEntries(STATUS_BUCKETS.map(({ key }) => [key, 0])),
+  };
+  for (const [status, count] of Object.entries(realCounts)) {
+    const bucket = REAL_TO_BUCKET[status.toLowerCase().replaceAll("_", " ")];
+    if (!bucket || !Number.isFinite(count) || count < 0) continue;
+    counts[bucket] += count;
+    counts.all += count;
+  }
+  return counts;
+}

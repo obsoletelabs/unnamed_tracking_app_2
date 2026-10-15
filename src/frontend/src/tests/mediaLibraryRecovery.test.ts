@@ -11,9 +11,18 @@ import type { LibraryFilters } from "../utils/libraryFilters";
 vi.mock("../components/library/MediaLibraryView.vue", () => ({
   default: { render: () => null },
 }));
-vi.mock("../services/movies", () => ({ fetchMoviesPage: vi.fn() }));
-vi.mock("../services/tvShows", () => ({ fetchTVShowsPage: vi.fn() }));
-vi.mock("../services/anime", () => ({ fetchAnimePage: vi.fn() }));
+vi.mock("../services/movies", () => ({
+  fetchMoviesPage: vi.fn(),
+  movieLibraryRevision: () => 0,
+}));
+vi.mock("../services/tvShows", () => ({
+  fetchTVShowsPage: vi.fn(),
+  tvLibraryRevision: () => 0,
+}));
+vi.mock("../services/anime", () => ({
+  fetchAnimePage: vi.fn(),
+  animeLibraryRevision: () => 0,
+}));
 
 const renderer = createRenderer<object, object>({
   createElement: () => ({}),

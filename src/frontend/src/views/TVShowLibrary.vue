@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { computed, onMounted } from "vue";
 import { useKeptAlive } from "../utils/useKeptAlive";
-import type { LibraryFilters } from "../utils/libraryFilters";
+import { useMediaLibraryPage } from "../composables/useMediaLibraryPage";
 import {
   fetchTVShowsPage,
+  tvLibraryRevision,
   updateTVShow,
   deleteTVShow,
   tvShowToInput,
@@ -19,9 +20,20 @@ import type {
   EditForm,
 } from "../components/library/MediaLibraryView.vue";
 
-const shows = ref<TVShow[]>([]);
-const loading = ref(true);
-const error = ref<string | null>(null);
+const {
+  entries: shows,
+  loading,
+  refreshing,
+  error,
+  total,
+  statusCounts,
+  scoreRanks,
+  currentFilters,
+  hasMore,
+  load,
+  loadMore,
+  refreshLibrary,
+} = useMediaLibraryPage(fetchTVShowsPage, "tv", "TV shows", tvLibraryRevision);
 
 function seasonProgress(show: TVShow): {
   watched: number;
@@ -65,77 +77,8 @@ function toVM(show: TVShow): LibraryCardVM {
 
 const items = computed(() => shows.value.map(toVM));
 
-// Only the very first load shows the loading state; a refresh when the
-// page comes back swaps data in quietly, so titles never blink away.
-let loadRequest = 0;
-const refreshing = ref(false);
-const total = ref(0);
-const statusCounts = ref<Record<string, number>>({});
-const scoreRanks = ref<Record<string, number>>({});
-const pageSize = 100;
-const currentSearch = ref("");
-const currentFilters = ref<LibraryFilters & { statusBucket: string }>({
-  search: "",
-  genres: [],
-  genreMatchAll: false,
-  formats: [],
-  onlyFavorites: false,
-  onlyUnrated: false,
-  onlyWithNote: false,
-  minScore: null,
-  yearFrom: "",
-  yearTo: "",
-  statusBucket: "all",
-});
-async function load(
-  filters: LibraryFilters & { statusBucket: string } = currentFilters.value,
-) {
-  currentFilters.value = filters;
-  currentSearch.value = filters.search;
-  const request = ++loadRequest;
-  refreshing.value = true;
-  if (!shows.value.length) loading.value = true;
-  try {
-    const page = await fetchTVShowsPage(0, pageSize, filters);
-    if (request !== loadRequest) return;
-    shows.value = page.items;
-    total.value = page.total;
-    statusCounts.value = page.statusCounts;
-    scoreRanks.value = page.scoreRanks;
-    error.value = null;
-  } catch (e) {
-    if (request !== loadRequest) return;
-    error.value = e instanceof Error ? e.message : "Failed to load TV shows.";
-  } finally {
-    if (request === loadRequest) {
-      loading.value = false;
-      refreshing.value = false;
-    }
-  }
-}
-async function loadMore() {
-  if (loading.value || shows.value.length >= total.value) return;
-  const request = loadRequest;
-  loading.value = true;
-  try {
-    const page = await fetchTVShowsPage(
-      shows.value.length,
-      pageSize,
-      currentFilters.value,
-    );
-    if (request !== loadRequest) return;
-    shows.value.push(...page.items);
-    error.value = null;
-  } catch (e) {
-    if (request !== loadRequest) return;
-    error.value =
-      e instanceof Error ? e.message : "Failed to load more TV shows.";
-  } finally {
-    if (request === loadRequest) loading.value = false;
-  }
-}
-onMounted(load);
-useKeptAlive(load, {
+onMounted(() => load(currentFilters.value));
+useKeptAlive(refreshLibrary, {
   isLoading: () => refreshing.value || loading.value,
   hasError: () => error.value !== null,
 });
@@ -268,6 +211,7 @@ function detailRoute(id: string): string {
     :total="total"
     :status-counts="statusCounts"
     :score-ranks="scoreRanks"
+    :has-more="hasMore"
     :loading="loading"
     :error="error"
     :detail-route="detailRoute"

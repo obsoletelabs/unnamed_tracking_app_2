@@ -1,3 +1,15 @@
+export const MEDIA_SORT_KEYS = [
+  "rank",
+  "score",
+  "title",
+  "title_desc",
+  "added",
+  "year_new",
+  "year_old",
+  "progress",
+] as const;
+export type MediaSortKey = (typeof MEDIA_SORT_KEYS)[number];
+
 export interface LibraryCardVM {
   id: string;
   title: string;

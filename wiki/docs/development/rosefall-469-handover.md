@@ -1,4 +1,64 @@
-# Rosefall #469 handover — 14 October 2026
+# Rosefall #469 handover
+
+## Current checkpoint — 15 October 2026
+
+The owner requested an issue for every untouched approved workstream and related
+follow-up, then one issue at a time from most complex to least complex. The
+[ordered tracker #141](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/141)
+contains 13 new focused issues (#142–154), all 29 untouched approved matrix rows
+and existing #125, #132, #138–140. Finish #137 before starting #142. Do not broaden
+this queue to the separate identity/notification overhaul projects.
+
+Completed since the historical checkpoint: security, OIDC, media safety/numeric
+handling, provider choices, game card consistency/progression/storage and completion
+estimates are merged through #136. HLTB/SDK companion PR #47 is merged. Normal
+publication produced signed HLTB 0.7.0; package/signature validators passed, and
+its bundled SDK returned all four fields over simulated public gateway replies.
+The full completion-estimate package passed all seven hosted workflows before
+merge, with 2,705 backend and 582 frontend tests. Classic and Modern screenshots
+are in the game guide and PR #136.
+
+Current host branch: `feat/library-query-controls`, based on merged main
+`2fa725bf8bb383a3b87a20e69d68ef0fcd6982e3`. Draft
+[PR #137](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/137) contains
+pushed checkpoint `879f974455450c0e17dd9979e8e85433b6d0a151`: exclusions, persisted
+query/preset compatibility, percent-containing collection names, filtered reorder
+and stable episode paging, with screenshots and 25 focused regressions.
+
+Global media sorting/paging is committed and pushed as `089993d62`:
+
+- Validated API sort keys, stable ID ties/null placement, server episode progress
+  and independent tab counts in the existing media list boundary; no migration.
+- Shared frontend paging/query generation, bounded loaded-extent refresh,
+  two-minute freshness, local-save invalidation, empty/no-growth stopping and
+  preservation of newer local edits/deletes during refresh.
+- Accessible sort headers, five-bucket totals and sort-bearing request identity.
+- Regression tests and current documentation/issue ledger.
+
+Verification: full backend **2,708 passed, four skipped**; mypy **356 source
+files**; Ruff lint/format **574 files**; full frontend **601 tests / 102 suites**,
+ESLint, Prettier, vue-tsc and production build passed. All 484 frontend source
+files meet the size limit. Configured Pylint on the affected backend modules
+passed at **10/10**, and the final API sorting/lifecycle/rank suite passed 21 tests.
+Strict MkDocs and diff whitespace checks passed. No checks were disabled.
+
+The temporary approval-service usage limit is resolved. Modern dark and Classic
+light browser checks verified rank/title ordering, keyboard reversal, retained
+filters and independent All/Completed/Plan counts against the isolated backend.
+Updated sorting screenshots accompany the existing exclusion/phone screenshots.
+
+Remaining steps for #137:
+
+1. Publish the final documentation/screenshots and update #137's description.
+2. Mark the completed package ready; require all full
+   hosted workflows on its final head before the authorized squash merge.
+3. Update #141's current-work status, then tackle only #142 next.
+
+Task-owned checks use the `uta-rosefall-oidc` Compose project and local Vite port
+5179. Scratch logs/configs are in this task's visualization directory. Hosted
+Rosefall/Obsolete application data and unrelated Docker projects are untouched.
+
+## Historical checkpoint — 14 October 2026
 
 This is the historical pause checkpoint. Work resumed on 15 October 2026; consult
 the [current implementation progress](rosefall-469-implementation.md#current-progress)

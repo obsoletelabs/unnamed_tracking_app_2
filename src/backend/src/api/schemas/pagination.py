@@ -1,13 +1,16 @@
 """Shared response models for paginated library endpoints."""
 
 from enum import Enum
-from typing import Generic, TypeVar
+from typing import Generic, Literal, TypeVar
 
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 T = TypeVar("T")
 StatusT = TypeVar("StatusT", bound=Enum)
+LibrarySort = Literal[
+    "title", "title_desc", "rank", "score", "added", "year_new", "year_old", "progress"
+]
 
 
 class LibraryQuery(BaseModel, Generic[StatusT]):
@@ -29,6 +32,7 @@ class LibraryQuery(BaseModel, Generic[StatusT]):
     min_score: float | None = Field(default=None, ge=0, le=10)
     year_from: int | None = Field(default=None, ge=1, le=9999)
     year_to: int | None = Field(default=None, ge=1, le=9999)
+    sort: LibrarySort = "title"
 
 
 class PaginatedResponse(BaseModel, Generic[T]):
@@ -54,6 +58,6 @@ async def score_ranks(db, model, user_id) -> dict[str, int]:  # type: ignore[no-
             model.deleted_at.is_(None),
             model.rating_overall.is_not(None),
         )
-        .order_by(model.rating_overall.desc(), model.sort_title)
+        .order_by(model.rating_overall.desc(), model.sort_title, model.id)
     )
     return {str(row[0]): i + 1 for i, row in enumerate(result.all())}

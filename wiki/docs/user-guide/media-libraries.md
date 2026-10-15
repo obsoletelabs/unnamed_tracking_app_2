@@ -34,12 +34,42 @@ removes its value. Entering `0` keeps a real zero. Episodes watched requires a
 whole number; a blank or fractional count keeps Quick edit open with an explanation.
 These controls work the same way in Modern and Classic.
 
+In long episode lists, saving watched state, a rating or a note keeps your chosen
+episode page. Switching to a different season or ordered episode list selects the
+page containing its next unwatched episode.
+
 IMDb, Letterboxd and Yamtrack list imports normalize user ratings to 0–10 with
 two decimal places. Letterboxd's five-point scale is doubled first. Finite scores
 outside the range are bounded to 0 or 10, and invalid/nonfinite scores are left
 unrated. Rounding uses half to even (`8.765` becomes `8.76`). Other numeric values
 keep their existing precision. An app JSON restore reports and skips an entry
 with a nonfinite numeric value while continuing with valid entries.
+
+## Sorting, counts and returning to the library
+
+The sort menu orders the complete matching library before pages are loaded. Choose
+Rank, Score, Title, Recently added, Year or Progress. In List layout, the Title,
+Progress, Score and Rank headers are keyboard-accessible sort controls; selecting
+Title again reverses its direction. Missing scores/dates stay last, with stable
+ordering when values tie.
+
+Progress uses the same watched/known-total episode ratio as the cards. An unknown
+or zero total has zero progress. Movies use their existing seen status. Sorting
+does not download every title into the browser.
+
+Status tabs sum all real statuses into the five displayed groups. **All** counts
+the matching titles across statuses; the result total can be smaller when a status
+tab is selected. Search and other selected filters still apply to those counts.
+
+Returning within two minutes reuses fresh loaded data. When a refresh is needed,
+it refreshes the extent already loaded, preserving the current query and sort
+instead of shrinking to the first page. Successful local saves invalidate that
+freshness window. Old pagination replies cannot append to a newer query, and an
+empty or repeated page stops further loading while retaining the server's total.
+
+| Modern: title order | Classic: keyboard reversal and Completed filter |
+| --- | --- |
+| ![Modern dark sorting controls](../assets/library-query-controls/modern-dark-sorting.jpg) | ![Classic light sorting and independent tab counts](../assets/library-query-controls/classic-light-sorting.jpg) |
 
 ## Rank
 

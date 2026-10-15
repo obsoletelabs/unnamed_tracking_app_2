@@ -52,6 +52,10 @@ A collection can sit inside another by naming it **Parent/Child**. The card
 shows the parent above the name, and the collection's own page links back to the
 parent.
 
+Names containing `%`, including **50% Off**, retain their literal spelling.
+Entering a media list's **Reorder** mode shows every media type and temporarily
+disables type filters, so arrow and drag positions match the full saved list.
+
 ## Where it is stored
 
 Which games are in a collection is stored on the server with the game. The rest

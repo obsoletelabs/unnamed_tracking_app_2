@@ -166,6 +166,7 @@ const {
   persist: persistOrder,
   onEnter: () => {
     sortMode.value = "manual";
+    typeFilter.value = "all";
   },
 });
 
@@ -367,6 +368,7 @@ async function addTitle(m: PickItem) {
           type="button"
           class="ui-chip"
           :class="{ on: typeFilter === 'all' }"
+          :disabled="reorderMode"
           @click="typeFilter = 'all'"
         >
           All
@@ -377,6 +379,7 @@ async function addTitle(m: PickItem) {
           type="button"
           class="ui-chip"
           :class="{ on: typeFilter === t }"
+          :disabled="reorderMode"
           @click="typeFilter = t"
         >
           {{ TYPE_LABEL[t] }} <span class="n">{{ typeCounts[t] }}</span>

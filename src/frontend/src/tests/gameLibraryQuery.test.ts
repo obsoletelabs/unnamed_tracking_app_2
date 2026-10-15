@@ -11,6 +11,25 @@ import {
 } from "../utils/gameLibraryQuery";
 
 describe("shared game filters", () => {
+  it("round trips and normalizes exclusions without changing legacy links", () => {
+    const filters = readGameLibraryQuery({
+      not_status: ["playing", "playing", "invalid"],
+      not_tag: ["Genre: Indie", "indie"],
+      not_platform: ["ps5", "PlayStation 4", "PC"],
+    });
+    expect(filters.excludedStatuses).toEqual(["playing"]);
+    expect(filters.excludedTags.map((tag) => tag.toLowerCase())).toEqual([
+      "indie",
+    ]);
+    expect(filters.excludedPlatforms).toEqual(["PlayStation", "PC"]);
+    expect(
+      readGameLibraryQuery(
+        parseQuery(stringifyQuery(writeGameLibraryQuery(filters))),
+      ),
+    ).toEqual(filters);
+    expect(readGameLibraryQuery({ tag: "Indie" }).excludedTags).toEqual([]);
+  });
+
   it("preserves closed filters in the URL without losing selections or unrelated parameters", () => {
     const filters = { ...DEFAULT_GAME_FILTERS, tagsFilter: ["Puzzle", "RPG"] };
     const query = parseQuery(
@@ -54,6 +73,9 @@ describe("shared game filters", () => {
       retroAchievementsOnly: true,
       missingFilter: "rating",
       tagsFilter: ["Indie", "Card & Board"],
+      excludedStatuses: [],
+      excludedTags: [],
+      excludedPlatforms: [],
     };
     const query = parseQuery(stringifyQuery(writeGameLibraryQuery(filters)));
     expect(query.tag).toEqual(["Indie", "Card & Board"]);

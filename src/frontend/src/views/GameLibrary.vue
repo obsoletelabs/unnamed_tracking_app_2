@@ -68,6 +68,9 @@ const {
   missingFilter,
   toggleTagFilter,
   isTagSelected,
+  isExcluded,
+  toggleExclusion,
+  exclusionGroups,
   recentSearches,
   showRecentSearches,
   commitSearchToRecent,
@@ -516,6 +519,26 @@ const compactPreview = computed(
             </button>
           </div>
         </div>
+        <fieldset
+          v-for="group in exclusionGroups"
+          :key="group.kind"
+          class="advanced-field advanced-field-wide exclusion-group"
+        >
+          <legend>{{ group.label }}</legend>
+          <div class="tags-multiselect">
+            <button
+              v-for="value in group.values"
+              :key="value"
+              type="button"
+              class="tag-chip"
+              :class="{ active: isExcluded(group.kind, value) }"
+              :aria-pressed="isExcluded(group.kind, value)"
+              @click="toggleExclusion(group.kind, value)"
+            >
+              Not {{ value }}
+            </button>
+          </div>
+        </fieldset>
         <div class="advanced-toggles">
           <button
             type="button"

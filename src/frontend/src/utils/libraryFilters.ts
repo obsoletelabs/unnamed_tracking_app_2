@@ -2,6 +2,17 @@
 // they can be tested. A title with no known value for a filter that needs one
 // (no year for a year range, no score for a minimum score) never matches it.
 
+import { MEDIA_SORT_KEYS, type MediaSortKey } from "../types/mediaLibrary";
+
+export function savedMediaSort(kind: string): MediaSortKey {
+  try {
+    const value = localStorage.getItem(`librarySort:${kind}`) as MediaSortKey;
+    return MEDIA_SORT_KEYS.includes(value) ? value : "rank";
+  } catch {
+    return "rank";
+  }
+}
+
 export interface Filterable {
   title: string;
   altTitles?: string[];
@@ -25,6 +36,7 @@ export interface LibraryFilters {
   yearFrom: string;
   yearTo: string;
   statusBucket?: string;
+  sort?: MediaSortKey;
 }
 
 export function matchesFilters(it: Filterable, f: LibraryFilters): boolean {
