@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { fetchGames, peekAllGames, peekGame } from "../services/games";
+import {
+  fetchGame,
+  fetchGames,
+  peekAllGames,
+  peekGame,
+  setFavorite,
+  setStatus,
+} from "../services/games";
 import type { BackendGame } from "../services/games";
 
 function raw(id: string, title: string): BackendGame {
@@ -64,4 +71,67 @@ describe("the game cache", () => {
     expect(again.achievementTotal).toBe(20);
     expect(again.achievementPercent).toBe(45);
   });
+  it.each(["favorite", "status"])(
+    "remembers a successful %s mutation without losing completion data",
+    async (kind) => {
+      const original = raw(`mutation-${kind}`, "A game");
+      serve([original]);
+      const [before] = await fetchGames();
+      before.achievementTotal = 2;
+      before.achievementPercent = 50;
+      before.achievements = [
+        { id: "earned", name: "An achievement", unlockedAt: "2026-10-15" },
+      ];
+      const response = {
+        ...original,
+        favorite: kind === "favorite",
+        status: kind === "status" ? "BEATEN" : "BACKLOG",
+      };
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response(JSON.stringify(response))),
+      );
+      const saved =
+        kind === "favorite"
+          ? await setFavorite(original.id, true)
+          : await setStatus(original.id, "beaten");
+      expect(peekGame(original.id)).toBe(saved);
+      expect(peekAllGames()?.find((game) => game.id === original.id)).toBe(
+        saved,
+      );
+      expect(saved.achievementTotal).toBe(2);
+      expect(saved.achievementPercent).toBe(50);
+      expect(saved.achievements).toEqual(before.achievements);
+    },
+  );
+  it.each(["list", "detail"])(
+    "does not let an older %s response undo a successful card save",
+    async (kind) => {
+      const original = raw(`pending-${kind}`, "A game");
+      serve([original]);
+      await fetchGames();
+      let finish!: (response: Response) => void;
+      const fetch = vi
+        .fn()
+        .mockImplementationOnce(
+          () =>
+            new Promise<Response>((resolve) => {
+              finish = resolve;
+            }),
+        )
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ ...original, favorite: true })),
+        );
+      vi.stubGlobal("fetch", fetch);
+      const pending = kind === "list" ? fetchGames() : fetchGame(original.id);
+      await setFavorite(original.id, true);
+      finish(
+        new Response(JSON.stringify(kind === "list" ? [original] : original)),
+      );
+      const result = await pending;
+      const game = Array.isArray(result) ? result[0] : result;
+      expect(game?.favorite).toBe(true);
+      expect(peekGame(original.id)?.favorite).toBe(true);
+    },
+  );
 });

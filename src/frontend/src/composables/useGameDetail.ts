@@ -1,6 +1,6 @@
 import { useGameChecklist } from "./useGameChecklist";
 import { usePageTitle } from "../state/pageTitle";
-import { computed, ref, watch, onMounted, onUnmounted } from "vue";
+import { computed, ref, watch, onMounted, onUnmounted, nextTick } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   deleteGame,
@@ -405,6 +405,7 @@ export function useGameDetail() {
   const resumeNoteEditing = ref(false);
   const resumeNoteSaving = ref(false);
   const resumeNoteError = ref<string | null>(null);
+  const resumeNoteInput = ref<HTMLTextAreaElement | null>(null);
   watch(
     () => game.value?.id,
     () => {
@@ -413,9 +414,11 @@ export function useGameDetail() {
       resumeNoteError.value = null;
     },
   );
-  function startEditResumeNote() {
+  async function startEditResumeNote() {
     resumeNoteDraft.value = game.value?.resumeNote ?? "";
     resumeNoteEditing.value = true;
+    await nextTick();
+    resumeNoteInput.value?.focus();
   }
   async function saveResumeNote() {
     if (!game.value) return;
@@ -1789,6 +1792,7 @@ export function useGameDetail() {
     resumeNoteEditing,
     resumeNoteSaving,
     resumeNoteError,
+    resumeNoteInput,
     startEditResumeNote,
     saveResumeNote,
     loggingPlaytime,

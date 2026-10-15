@@ -82,6 +82,25 @@ async function library() {
 }
 
 describe("game library filtering", () => {
+  it("reconciles a saved card status across filters, counts and the current preview", async () => {
+    const view = await library();
+    const selected = view.games.value[0]!;
+    view.statusFilter.value = "playing";
+    view.selectedGame.value = selected;
+    view.onGameUpdated({ ...selected, status: "beaten" });
+    expect(view.filteredGames.value.map((item) => item.id)).toEqual(["Gamma"]);
+    expect(view.statusCounts.value.playing).toBe(1);
+    expect(view.statusCounts.value.beaten).toBe(1);
+    expect(view.selectedGame.value?.status).toBe("beaten");
+  });
+  it("removes an unfavorited card from the shared favorite filter without a reload", async () => {
+    const view = await library();
+    view.favoritesOnly.value = true;
+    const selected = view.games.value[0]!;
+    view.onGameUpdated({ ...selected, favorite: false });
+    expect(view.filteredGames.value).toEqual([]);
+    expect(view.statusCounts.value.all).toBe(0);
+  });
   it("closes the filter panel in the URL while retaining active tags and unrelated parameters", async () => {
     routing.route.query = { filters: "1", tag: "Indie", campaign: "friends" };
     routing.route.fullPath = "/games?filters=1&tag=Indie&campaign=friends";
