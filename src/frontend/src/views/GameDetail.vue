@@ -78,6 +78,7 @@ const {
   libraryLink,
   ratingParts,
   overviewFacts,
+  completionEstimates,
   mainTags,
   moreTags,
   activeTab,
@@ -673,6 +674,21 @@ const {
 
       <details class="more-details">
         <summary>More details</summary>
+
+        <div v-if="completionEstimates.length" class="more-block">
+          <h3 class="more-title">Time to beat</h3>
+          <p class="kv-label">Community estimates in hours.</p>
+          <div class="kv-grid">
+            <div
+              v-for="estimate in completionEstimates"
+              :key="estimate.label"
+              class="kv-row"
+            >
+              <span class="kv-label">{{ estimate.label }}</span>
+              <span class="kv-value">~{{ estimate.hours }}h</span>
+            </div>
+          </div>
+        </div>
 
         <div v-if="game.platforms.length" class="more-block">
           <h3 class="more-title">Platforms</h3>

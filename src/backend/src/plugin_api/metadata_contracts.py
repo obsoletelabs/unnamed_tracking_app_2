@@ -140,6 +140,15 @@ class MetadataPatch(MetadataModel):
     genres: tuple[Annotated[str, Field(max_length=128)], ...] = Field(default=(), max_length=128)
     platforms: tuple[Annotated[str, Field(max_length=128)], ...] = Field(default=(), max_length=64)
     time_to_beat_hours: float | None = Field(default=None, ge=0, le=100_000, allow_inf_nan=False)
+    time_to_beat_extras_hours: float | None = Field(
+        default=None, ge=0, le=99_999.9, allow_inf_nan=False
+    )
+    time_to_beat_completionist_hours: float | None = Field(
+        default=None, ge=0, le=99_999.9, allow_inf_nan=False
+    )
+    time_to_beat_all_hours: float | None = Field(
+        default=None, ge=0, le=99_999.9, allow_inf_nan=False
+    )
     runtime_minutes: int | None = Field(default=None, ge=0, le=100_000)
     director: str | None = Field(default=None, max_length=512)
     writer: str | None = Field(default=None, max_length=512)

@@ -106,6 +106,10 @@ export function gameMetadataResult(
     series: metadata.series ?? null,
     age_rating: metadata.age_rating ?? null,
     time_to_beat_hours: metadata.time_to_beat_hours ?? null,
+    time_to_beat_extras_hours: metadata.time_to_beat_extras_hours ?? null,
+    time_to_beat_completionist_hours:
+      metadata.time_to_beat_completionist_hours ?? null,
+    time_to_beat_all_hours: metadata.time_to_beat_all_hours ?? null,
     tags: metadata.tags ?? metadata.genres ?? [],
     features: metadata.features ?? [],
     links: metadata.links ?? [],

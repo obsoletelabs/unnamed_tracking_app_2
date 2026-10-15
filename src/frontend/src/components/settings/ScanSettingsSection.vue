@@ -307,7 +307,8 @@ async function save() {
             <strong>Release date</strong>
           </ToggleButton>
           <ToggleButton v-model="saveTimeToBeat" label="Time to beat">
-            <strong>Time to beat</strong>: main story hours, from HowLongToBeat
+            <strong>Time to beat</strong>: community completion estimates from
+            HowLongToBeat and IGDB
           </ToggleButton>
         </div>
       </div>

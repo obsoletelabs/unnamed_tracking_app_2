@@ -92,6 +92,46 @@ async def eventually(condition):
             await asyncio.sleep(0.001)
 
 
+@pytest.mark.parametrize("preferred_state", ["partial", "empty", "failed"])
+async def test_native_completion_times_fill_only_categories_missing_from_other_sources(
+    preferred_state,
+):
+    class EstimatesProvider(ContractProvider):
+        async def invoke(self, operation, request, candidate=None):
+            if self.id == "core.igdb":
+                return ProviderResponse(
+                    metadata=MetadataPatch(
+                        time_to_beat_hours=10,
+                        time_to_beat_extras_hours=15,
+                        time_to_beat_completionist_hours=20,
+                    )
+                )
+            # Native metadata can arrive first and rank ahead of this enrichment.
+            await asyncio.sleep(0.01)
+            if preferred_state == "failed":
+                return ProviderResponse(failure=ProviderFailure(code="unavailable"))
+            return ProviderResponse(
+                metadata=MetadataPatch(
+                    time_to_beat_hours=12 if preferred_state == "partial" else 0,
+                    time_to_beat_all_hours=18 if preferred_state == "partial" else None,
+                )
+            )
+
+    native = EstimatesProvider("core.igdb", priority=0)
+    enrichment = EstimatesProvider("optional.estimates", priority=100)
+    handler = MetadataHandler()
+    record, failures = await handler.enrich(
+        request(), [native, enrichment], candidate(provider="core.igdb"), include_media=False
+    )
+    assert record["metadata"]["time_to_beat_hours"] == (12 if preferred_state == "partial" else 10)
+    assert record["metadata"]["time_to_beat_extras_hours"] == 15
+    assert record["metadata"]["time_to_beat_completionist_hours"] == 20
+    assert record["metadata"].get("time_to_beat_all_hours") == (
+        18 if preferred_state == "partial" else None
+    )
+    assert bool(failures) is (preferred_state == "failed")
+
+
 @pytest.mark.asyncio
 async def test_fast_results_are_visible_while_slow_provider_is_running():
     gate = asyncio.Event()

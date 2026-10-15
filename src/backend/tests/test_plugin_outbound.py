@@ -52,6 +52,25 @@ def test_header_controls_redirects_timeout_and_bounded_response(monkeypatch):
         outbound.outbound_json({"url": "https://host", "headers": {"Host": "other"}})
 
 
+def test_metadata_initialization_headers_are_allowed_but_remain_bounded():
+    request = outbound._outbound_request(
+        {
+            "url": "https://howlongtobeat.com/api/search/site",
+            "headers": {"Accept-Language": "en-US,en;q=0.9", "X-Auth-Token": "public-search-token"},
+        }
+    )
+    assert request.headers["Accept-language"] == "en-US,en;q=0.9"
+    assert request.headers["X-auth-token"] == "public-search-token"
+    for value in ("x" * 2049, "token\r\nHost: other"):
+        with pytest.raises(ValueError, match="headers"):
+            outbound._outbound_request(
+                {
+                    "url": "https://howlongtobeat.com/api/search/site",
+                    "headers": {"X-Auth-Token": value},
+                }
+            )
+
+
 def test_server_errors_do_not_echo_remote_secrets(monkeypatch):
     class Opener:
         def open(self, *args, **kwargs):

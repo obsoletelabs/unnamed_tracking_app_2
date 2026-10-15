@@ -186,8 +186,13 @@ const facts = computed(() => {
     });
   if (props.game.timeToBeatHours)
     list.push({
-      label: "Time to beat",
+      label: "Main story estimate",
       value: `${props.game.timeToBeatHours}h`,
+    });
+  if (props.game.timeToBeatCompletionistHours)
+    list.push({
+      label: "Completionist estimate",
+      value: `${props.game.timeToBeatCompletionistHours}h`,
     });
   // a fact with nothing to say is left out rather than shown as N/A
   return list.filter((f) => f.value !== "N/A");
@@ -262,7 +267,10 @@ const FIELD_LABEL: Record<string, string> = {
   description: "Description",
   age_rating: "Age rating",
   release_date: "Release date",
-  time_to_beat_hours: "Time to beat",
+  time_to_beat_hours: "Main story estimate",
+  time_to_beat_extras_hours: "Main + extras estimate",
+  time_to_beat_completionist_hours: "Completionist estimate",
+  time_to_beat_all_hours: "All play styles estimate",
   status: "Status",
   purchase_price: "Price",
   purchase_price_currency_code: "Currency",

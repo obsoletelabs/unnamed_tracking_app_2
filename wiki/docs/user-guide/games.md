@@ -47,6 +47,31 @@ history records supported metadata changes.
 
 Bulk edit changes selected records only. Locked fields are not overwritten by refresh operations.
 
+## Completion estimates
+
+The full editor's **General** tab has four estimates in hours: **Main story**,
+**Main + extras**, **Completionist** and **All play styles**. Leave a field empty
+when its estimate is unknown. These community estimates are separate from your
+logged playtime and never add to it.
+
+The overview shows Main story when available. Expand **More details > Time to beat**
+to see every available category; **Stats** also shows Main story and Completionist.
+Modern and Classic use the same fields and save behavior.
+
+HLTB supplies the available categories through its optional metadata plugin. IGDB
+can fill missing Main story, Main + extras and Completionist estimates. Unavailable
+estimates remain empty. **Save time to beat** in scan settings controls enrichment
+for all four fields, and protected fields retain their existing values. Export and
+import preserve each category.
+
+![Completion estimates in the shared Modern editor](../assets/game-time-estimates/modern-dark-editor.jpg)
+
+The same fields adapt to the
+[Classic phone editor](../assets/game-time-estimates/classic-light-phone-editor.jpg).
+Examples also show [Classic details](../assets/game-time-estimates/classic-dark-details.jpg),
+[Modern details](../assets/game-time-estimates/modern-dark-details.jpg) and
+[Modern light statistics](../assets/game-time-estimates/modern-light-stats.jpg).
+
 ## Card updates and priority
 
 Saving a card's status or favorite updates the library's filters, counts and current

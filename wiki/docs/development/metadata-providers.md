@@ -62,6 +62,44 @@ contract check. Unknown fields, invalid identifiers, unsafe types, non-finite
 scores and oversized collections are rejected. Canonical provider scores use
 0–100; existing library score fields retain their 0–10 scale.
 
+### Completion-time categories (API 1.1.13)
+
+`MetadataPatch` accepts three additional optional hour values:
+`time_to_beat_extras_hours` (Main story + extras),
+`time_to_beat_completionist_hours` (Completionist) and `time_to_beat_all_hours`
+(All play styles). `time_to_beat_hours` retains its Main story meaning. The new
+values must be finite, nonnegative and at most 99,999.9 hours; storage uses the same
+one-decimal precision as Main story. Missing values preserve existing information.
+Providers emitting only Main story remain compatible, and earlier v1.1 packages
+remain executable. A provider emitting the new fields must target API 1.1.13 so
+older hosts reject it before execution rather than rejecting its result later.
+
+Game edits, reads, library export/import, manual field protection, history and
+the public game-details gateway carry the additional categories. Metadata refresh
+and library enrichment honor the existing Save time to beat setting for all four.
+These community estimates never replace the user's personal playtime. Migration
+`03bb35a3b692` adds nullable columns after `fed12ab64423`; existing Main story and
+playtime values are preserved. The matching SDK/schema and optional HLTB provider
+updates belong in the companion plugin repository.
+
+The native IGDB adapter queries its documented
+[Game Time To Beat endpoint](https://api-docs.igdb.com/#game-time-to-beat):
+`hastily`, `normally` and `completely` map from seconds to Main story, Main + extras
+and Completionist. No All play styles average is invented. This bounded auxiliary
+lookup reuses native authentication/pacing, and its failure preserves ordinary
+IGDB metadata. It never invokes HLTB or another provider.
+
+The host merges useful completion figures from other providers first, preserving
+their normal relative priority, then fills missing categories from native IGDB.
+Zero/missing figures do not suppress fallback. This authority is independent of
+completion order and does not change priority for other metadata fields.
+
+The public outbound header allowlist adds bounded `Accept-Language` and
+`X-Auth-Token` for provider initialization. Existing length/count/newline checks,
+redirect refusal, response bounds and permission enforcement remain in place.
+HLTB obtains and renews its token through the public gateway in the companion
+plugin; no provider implementation is copied into the host.
+
 ## Registration and permission enforcement
 
 A running plugin calls `metadata_providers.register` with its namespaced ID,

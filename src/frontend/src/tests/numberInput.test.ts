@@ -135,7 +135,13 @@ describe("game editor", () => {
         await label!.get("input").setValue(value);
       };
       await tab("General");
-      await setField("Time to Beat (hours)");
+      for (const name of [
+        "Main story",
+        "Main + extras",
+        "Completionist",
+        "All play styles",
+      ])
+        await setField(name);
       await tab("Ratings & Tags");
       for (const name of ["Atmosphere", "Story", "Gameplay", "Sound"])
         await setField(name);
@@ -148,6 +154,9 @@ describe("game editor", () => {
         "game-id",
         expect.objectContaining({
           timeToBeatHours: normalized,
+          timeToBeatExtrasHours: normalized,
+          timeToBeatCompletionistHours: normalized,
+          timeToBeatAllHours: normalized,
           ratingOverall: normalized,
           ratingStory: normalized,
           ratingGameplay: normalized,
