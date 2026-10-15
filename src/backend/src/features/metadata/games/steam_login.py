@@ -18,6 +18,9 @@ from src.features.metadata.games import steam_session
 
 _HEADERS = {"Origin": "https://steamcommunity.com", "Referer": "https://steamcommunity.com/"}
 _DEVICE = {"device_friendly_name": "Unnamed Tracking App", "platform_type": 2}
+# Steam's EAuthSessionGuardType values for codes a person types in.
+GUARD_EMAIL_CODE = 2
+GUARD_DEVICE_CODE = 3
 _TRANSFER_URLS = {
     "https://store.steampowered.com/login/settoken",
     "https://store.steampowered.com/login/settoken/",
@@ -191,7 +194,11 @@ def poll(client: requests.Session, pending: dict) -> dict:
 
 def submit_guard(client: requests.Session, pending: dict, code: str, code_type: int) -> None:
     allowed = {item["confirmation_type"] for item in pending["allowed_confirmations"]}
-    if code_type not in {1, 2} or code_type not in allowed or not pending.get("steamid"):
+    if (
+        code_type not in {GUARD_EMAIL_CODE, GUARD_DEVICE_CODE}
+        or code_type not in allowed
+        or not pending.get("steamid")
+    ):
         raise steam_session.SteamLibraryError("This sign-in does not accept that Steam Guard code.")
     if not 0 < len(code) <= 10 or not code.isascii() or not code.isalnum():
         raise steam_session.SteamLibraryError("Enter the Steam Guard code shown by Steam.")

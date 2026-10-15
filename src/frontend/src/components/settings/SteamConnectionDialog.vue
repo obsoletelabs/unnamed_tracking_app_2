@@ -10,10 +10,15 @@ import {
   disconnectSteam,
   fetchSteamConnection,
   pollSteamLogin,
+  STEAM_GUARD_DEVICE_CODE,
+  STEAM_GUARD_EMAIL_CODE,
   SteamConnectionError,
   submitSteamGuard,
 } from "../../services/steamConnection";
-import type { SteamConnection } from "../../services/steamConnection";
+import type {
+  SteamConnection,
+  SteamGuardCodeType,
+} from "../../services/steamConnection";
 
 const emit = defineEmits<{ close: []; changed: [] }>();
 const connection = ref<SteamConnection | null>(null);
@@ -21,7 +26,7 @@ const method = ref<"qr" | "account">("qr");
 const accountName = ref("");
 const password = ref("");
 const guardCode = ref("");
-const guardType = ref<1 | 2>(2);
+const guardType = ref<SteamGuardCodeType>(STEAM_GUARD_DEVICE_CODE);
 const busy = ref(false);
 const loading = ref(true);
 const error = ref("");
@@ -35,11 +40,12 @@ const pending = computed(() => connection.value?.pending);
 const guardTypes = computed(
   () =>
     pending.value?.confirmation_types.filter(
-      (type) => type === 1 || type === 2,
+      (type): type is SteamGuardCodeType =>
+        type === STEAM_GUARD_EMAIL_CODE || type === STEAM_GUARD_DEVICE_CODE,
     ) ?? [],
 );
 const guardDescription = computed(() =>
-  guardType.value === 1
+  guardType.value === STEAM_GUARD_EMAIL_CODE
     ? "Enter the code Steam emailed you."
     : "Enter the code from Steam Guard in your mobile app.",
 );
@@ -64,7 +70,9 @@ watch(
   },
 );
 watch(guardTypes, (types) => {
-  guardType.value = types.includes(2) ? 2 : 1;
+  guardType.value = types.includes(STEAM_GUARD_DEVICE_CODE)
+    ? STEAM_GUARD_DEVICE_CODE
+    : STEAM_GUARD_EMAIL_CODE;
 });
 
 function stopPolling() {
@@ -302,8 +310,10 @@ onBeforeUnmount(() => {
         >
           <label v-if="guardTypes.length > 1"
             >Confirmation method<select v-model="guardType" class="ui-field">
-              <option :value="2">Steam Guard app code</option>
-              <option :value="1">Email code</option>
+              <option :value="STEAM_GUARD_DEVICE_CODE">
+                Steam Guard app code
+              </option>
+              <option :value="STEAM_GUARD_EMAIL_CODE">Email code</option>
             </select></label
           >
           <label

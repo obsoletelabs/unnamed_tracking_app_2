@@ -79,7 +79,7 @@ def test_password_is_rsa_encrypted_for_steam_and_not_returned():
 def test_guard_code_must_match_steams_allowed_confirmation():
     client = Mock()
     with pytest.raises(steam_session.SteamLibraryError):
-        steam_login.submit_guard(client, pending(), "12345", 2)
+        steam_login.submit_guard(client, pending(), "12345", steam_login.GUARD_EMAIL_CODE)
     client.post.assert_not_called()
     client.post.return_value = reply({})
     steam_login.submit_guard(
@@ -88,6 +88,32 @@ def test_guard_code_must_match_steams_allowed_confirmation():
     values = json.loads(client.post.call_args.kwargs["data"]["input_json"])
     assert values["steamid"] == pending()["steamid"]
     assert values["code_type"] == 2
+
+
+@pytest.mark.parametrize(
+    ("allowed", "code_type", "accepted"),
+    [
+        # Steam's EAuthSessionGuardType: 1 None, 2 EmailCode, 3 DeviceCode,
+        # 4 DeviceConfirmation, 5 EmailConfirmation.
+        ([4, 3], 3, True),
+        ([2], 2, True),
+        ([1], 1, False),
+        ([4], 4, False),
+        ([5], 5, False),
+    ],
+)
+def test_guard_codes_use_steams_confirmation_types(allowed, code_type, accepted):
+    client = Mock()
+    client.post.return_value = reply({})
+    state = {**pending(), "allowed_confirmations": [{"confirmation_type": t} for t in allowed]}
+    if accepted:
+        steam_login.submit_guard(client, state, "ABCDE", code_type)
+        values = json.loads(client.post.call_args.kwargs["data"]["input_json"])
+        assert values["code_type"] == code_type
+    else:
+        with pytest.raises(steam_session.SteamLibraryError):
+            steam_login.submit_guard(client, state, "ABCDE", code_type)
+        client.post.assert_not_called()
 
 
 def test_provider_sign_in_errors_do_not_echo_response_secrets():

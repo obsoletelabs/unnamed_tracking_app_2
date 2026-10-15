@@ -73,7 +73,8 @@ class AccountRequest(BaseModel):
 
 class GuardRequest(AttemptRequest):
     code: SecretStr
-    code_type: Literal[1, 2]
+    # Steam's EmailCode (2) and DeviceCode (3) confirmation types.
+    code_type: Literal[2, 3]
 
 
 @router.get("", response_model=ConnectionRead)

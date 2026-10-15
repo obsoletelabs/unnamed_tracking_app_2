@@ -320,6 +320,42 @@ async def test_steam_validation_errors_do_not_echo_secrets(actors):
         app.dependency_overrides.pop(get_current_user, None)
 
 
+async def test_guard_route_accepts_steams_code_confirmation_types(actors, monkeypatch):
+    identities, _clock = actors
+    submitted = []
+
+    async def submit(_db, _user_id, _attempt, code, code_type):
+        submitted.append((code, code_type))
+        return {
+            "connected": False,
+            "method": None,
+            "display_name": None,
+            "expires_at": None,
+            "pending": None,
+        }
+
+    async def current_actor():
+        async with SessionLocal() as db:
+            return await db.get(User, identities[0])
+
+    monkeypatch.setattr(connection, "submit_guard", submit)
+    app.dependency_overrides[get_current_user] = current_actor
+    try:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            # Steam's EmailCode (2) and DeviceCode (3); 1 is "no Guard".
+            for code_type, expected in [(2, 200), (3, 200), (1, 400), (4, 400)]:
+                reply = await client.post(
+                    "/api/settings/steam/login/guard",
+                    json={"attempt_id": "attempt", "code": "ABCDE", "code_type": code_type},
+                )
+                assert reply.status_code == expected, reply.text
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+    assert submitted == [("ABCDE", 2), ("ABCDE", 3)]
+
+
 async def test_owner_bulk_and_batched_achievement_imports_need_no_api_key(
     actors, monkeypatch, tmp_path
 ):
