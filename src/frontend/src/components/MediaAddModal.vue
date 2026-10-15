@@ -9,7 +9,10 @@ import MetadataComparison from "./MetadataComparison.vue";
 import { useMetadataComparison } from "../composables/useMetadataComparison";
 import { useMetadataArtwork } from "../composables/useMetadataArtwork";
 import type { QuickAddForm } from "../types/mediaLibrary";
-import { metadataEpisodeTotal } from "../services/mediaAdd";
+import {
+  metadataEpisodeTotal,
+  reviewableMediaMetadata,
+} from "../services/mediaAdd";
 import { STATUS_BUCKETS, bucketToReal } from "../utils/mediaStatus";
 import { numberOrNull } from "../utils/numberInput";
 
@@ -44,7 +47,7 @@ const comparison = useMetadataComparison(
   () =>
     Object.fromEntries(
       Object.keys({
-        ...props.candidate.metadata,
+        ...reviewableMediaMetadata(props.candidate),
         poster: null,
         backdrop: null,
       }).map((key) => [
@@ -56,6 +59,7 @@ const comparison = useMetadataComparison(
                 poster: "Poster",
                 backdrop: "Backdrop",
                 seasons: "Offered seasons",
+                scores: "Provider scores (0–100)",
               } as Record<string, string>
             )[key] ??
             key
@@ -72,7 +76,7 @@ watch(
     if (reviewing.value)
       comparison.offer(
         {
-          ...props.candidate.metadata,
+          ...reviewableMediaMetadata(props.candidate),
           poster: artwork.urls.value.cover,
           backdrop: artwork.urls.value.banner,
         },
@@ -95,7 +99,10 @@ function applyReview() {
   reviewed.value = JSON.parse(
     JSON.stringify({
       ...props.candidate,
-      metadata,
+      metadata: {
+        ...metadata,
+        title: props.candidate.metadata.title || props.candidate.title,
+      },
       assets: props.candidate.assets.filter(
         (asset) => asset.url === poster || asset.url === backdrop,
       ),

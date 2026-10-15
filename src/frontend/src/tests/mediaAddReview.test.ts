@@ -18,7 +18,15 @@ it("reviews checked metadata in the real quick-add flow without losing personal 
     year: null,
     alternate_titles: [],
     assets: [],
-    metadata: { description: "Offered description", genres: ["Drama"] },
+    metadata: {
+      title: "Canonical chosen movie",
+      description: "Offered description",
+      genres: ["Drama"],
+      year: 2005,
+      provider_ids: { ignored: "id" },
+      links: [{ label: "Unsupported", url: "https://example.test" }],
+      scores: { tvmaze: 85 },
+    },
   };
   const wrapper = mount(MediaAddModal, {
     props: { candidate, enriching: false, saving: false, error: null },
@@ -40,6 +48,17 @@ it("reviews checked metadata in the real quick-add flow without losing personal 
       .get('input[type="checkbox"]')
       .setValue(false);
     expect(wrapper.emitted("save")).toBeUndefined();
+    const offeredLabels = wrapper
+      .findAll(".comparison-change strong")
+      .map((row) => row.text());
+    for (const unsupported of [
+      "Title",
+      "Year",
+      "Provider ids",
+      "Links",
+      "Provider scores (0–100)",
+    ])
+      expect(offeredLabels).not.toContain(unsupported);
     await wrapper
       .findAll("button")
       .find((button) => /^Apply \d/.test(button.text()))!
@@ -61,7 +80,7 @@ it("reviews checked metadata in the real quick-add flow without losing personal 
     expect(event[0]).toMatchObject({ score: 7, status: "wishlist" });
     expect(event[1]).toMatchObject({
       provider_ids: { imdb: "tt123" },
-      metadata: { genres: ["Drama"] },
+      metadata: { title: "Canonical chosen movie", genres: ["Drama"] },
     });
     expect((event[1] as MetadataCandidate).metadata).not.toHaveProperty(
       "description",
