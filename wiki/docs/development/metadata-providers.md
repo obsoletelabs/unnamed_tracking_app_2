@@ -77,6 +77,23 @@ installation integrity, lifecycle and scoped grants before and after invocation;
 cached responses also require current authorization. Disable, removal, update
 and grant revocation cannot authorize stale work.
 
+Account metadata opt-outs are host preferences, independent of plugin lifecycle,
+grants and credential scope. `metadata_providers_enabled` is a bounded map of at
+most 256 provider identifiers to JSON booleans; an absent entry means enabled.
+The provider catalog includes `account_enabled`, and disabled providers remain
+listed so they can be re-enabled. Discovery, health scheduling, fresh invocation
+authorization and cached search authorization enforce the account choice. Work
+that completes after an opt-out fails the final authorization check.
+
+The existing configuration gateway denies a disabled provider's credential
+resolution. Direct plugin UI metadata actions also resolve their current
+registration before invoking the runtime. Pass `provider_id` in action values
+when an action serves multiple providers. Older actions that omit it still work
+when every matching registration is enabled; ambiguous calls cannot bypass an
+opt-out. Registration, configuration editing and separate library-sync actions
+retain their existing boundaries. This adds no new SDK method or wire-schema
+requirement: existing official provider declarations and SDK helpers remain valid.
+
 ## Three phases
 
 `POST /api/metadata/sessions` returns an owner-scoped session immediately.

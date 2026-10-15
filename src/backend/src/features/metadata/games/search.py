@@ -528,7 +528,7 @@ IMAGE_PROVIDER_NAMES = {"SteamGridDB", "ScreenScraper"}
 # "best of category first" — see user_scan_settings.py's identical constant
 # for the reasoning; kept in sync manually since these are two intentionally
 # separate modules (backend model defaults vs. search-time fallback)
-DEFAULT_PROVIDER_ORDER = ["IGDB", "GiantBomb", "GOG", "Steam", "RetroAchievements", "HowLongToBeat"]
+DEFAULT_PROVIDER_ORDER = ["IGDB", "GiantBomb", "Steam", "GOG", "RetroAchievements", "HowLongToBeat"]
 DEFAULT_IMAGE_PROVIDER_ORDER = ["SteamGridDB", "ScreenScraper"]
 DEFAULT_PREFERENCES: dict[str, Any] = {
     "provider_order": DEFAULT_PROVIDER_ORDER,

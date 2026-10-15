@@ -218,6 +218,7 @@ async def providers_status(db: Database, user: CurrentUser) -> dict:
                 **provider.declaration.model_dump(mode="json"),
                 "plugin_id": provider.plugin_id,
                 "included": provider.id in CORE_PROVIDERS,
+                "account_enabled": provider.account_enabled,
                 "state": status.state,
                 "checked_at": status.checked_at or None,
                 "failure": status.failure,

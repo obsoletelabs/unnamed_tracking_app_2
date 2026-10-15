@@ -76,17 +76,28 @@ Until then, PRs remain available for review with current validation and screensh
   migration and shared Modern/Classic UI have regression coverage and screenshots.
   All hosted checks passed before the authorized squash merge: 2,517 backend tests
   (four skipped) and 533 frontend tests. Existing uploads keep their storage paths.
-- **D / 30, 65–67:** in progress on `fix/numeric-patch-validation`.
+- **D / 30, 65–67:** merged as [PR #130](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/130).
   Import rating normalization, finite restore conversion, required-null PATCH
-  handling and shared frontend numeric inputs have regression coverage. Local
-  validation passed 2,564 backend tests (four skipped), followed by all 49 final
-  numeric regressions, and 566 frontend tests. Final hosted checks are pending.
+  handling and shared frontend numeric inputs have regression coverage. Hosted
+  validation passed 2,566 backend tests (four skipped) and 566 frontend
+  tests. All seven full hosted workflows passed before the authorized squash merge.
   [Modern](../assets/numeric-validation/modern-dark-quick-edit.jpg),
   [Classic](../assets/numeric-validation/classic-dark-quick-edit.jpg),
   [light mode](../assets/numeric-validation/modern-light-quick-edit.jpg) and
   [phone](../assets/numeric-validation/classic-dark-phone-quick-edit.jpg) screenshots
   cover inline validation. The shared quick-editor grid fits the phone dialog.
-- **E–O:** approved; not implemented yet. The package details below describe
+- **E / 23:** in progress on `feat/metadata-provider-choices`.
+  Account provider opt-outs cover builtin/plugin discovery, current invocation,
+  cached responses, direct metadata actions and scheduled metadata work. Saved
+  credentials and typing choices remain intact. Library-sync actions keep their
+  existing permission path. Steam precedes GOG only in unsaved defaults.
+  Full local validation passed 2,584 backend tests (four skipped), 569 frontend
+  tests, and 16 separate SDK/provider contract tests. Hosted checks are pending.
+  Shared settings screenshots cover [Modern](../assets/provider-choices/modern-dark.jpg),
+  [Classic dark](../assets/provider-choices/classic-dark.jpg),
+  [Classic light](../assets/provider-choices/classic-light.jpg) and
+  [phone](../assets/provider-choices/classic-dark-phone.jpg).
+- **F–O:** approved; not implemented yet. The package details below describe
   intended work, not completed behavior.
 
 ## Concrete packages

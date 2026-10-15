@@ -10,12 +10,12 @@ from src.database.base import Base, unix_timestamp
 
 # default ordering is "best of category first" — IGDB and GiantBomb are the
 # broadest, most consistently populated general databases; GOG's public
-# catalog is also solid and needs no key; Steam is accurate but
-# store-page-only; RetroAchievements is excellent but retro-only;
+# catalog is also solid and needs no key; Steam is preferred before GOG
+# for its store identities; RetroAchievements is excellent but retro-only;
 # HowLongToBeat contributes a single field, so it's least useful to check
 # first. SteamGridDB's library and curation (community-rated, purpose-built
 # for cover art) beats ScreenScraper's narrower retro-focused art.
-DEFAULT_PROVIDER_ORDER = ["IGDB", "GiantBomb", "GOG", "Steam", "RetroAchievements", "HowLongToBeat"]
+DEFAULT_PROVIDER_ORDER = ["IGDB", "GiantBomb", "Steam", "GOG", "RetroAchievements", "HowLongToBeat"]
 DEFAULT_IMAGE_PROVIDER_ORDER = ["SteamGridDB", "ScreenScraper"]
 
 

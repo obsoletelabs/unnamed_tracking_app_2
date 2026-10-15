@@ -75,6 +75,8 @@ async def automatic_search_status(
         server_enabled=server_enabled,
         uses_personal_credentials=personal,
     )
+    if preferences.get("metadata_providers_enabled", {}).get(provider.id, True) is False:
+        enabled, reason = False, "metadata_provider_disabled"
     return {
         "enabled": enabled,
         "account_enabled": account_enabled,

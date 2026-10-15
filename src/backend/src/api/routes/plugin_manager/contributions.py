@@ -37,6 +37,7 @@ from src.database.models.public_app import PublicAppActor, PublicAppSession
 from src.database.models.user import User
 from src.database.session import get_db
 from src.features.delegation import integration_policy
+from src.features.metadata.providers import Operation, authorize_metadata_action
 from src.features.notification_destinations import invalidate_legacy_configuration
 from src.plugin_api.compatibility import is_legacy_contract
 from src.plugin_api.contracts import (
@@ -69,6 +70,12 @@ _GEOIP_UPLOAD_FILE = File(...)
 _PLUGIN_DB = Depends(get_db)
 _PLUGIN_USER = Depends(get_current_user)
 _PLUGIN_SETTINGS_BODY = Body(default_factory=dict)
+_METADATA_ACTION_OPERATIONS: dict[str, Operation] = {
+    "metadata_providers.search": "search",
+    "metadata_providers.metadata": "metadata",
+    "metadata_providers.media": "media",
+    "metadata_providers.health": "health",
+}
 
 
 _DOCUMENT_DATA_ROOT = Path("/data/users")
@@ -388,6 +395,20 @@ async def _authorize_action(
             raise HTTPException(
                 status_code=403, detail=f"Permission {capability} has not been granted."
             )
+        metadata_operation = _METADATA_ACTION_OPERATIONS.get(capability)
+        if metadata_operation is not None:
+            try:
+                await authorize_metadata_action(
+                    db,
+                    plugin_id=plugin_id,
+                    installation_id=installation_id,
+                    user_id=user.id,
+                    action_id=action_id,
+                    operation=metadata_operation,
+                    provider_id=payload.values.get("provider_id"),
+                )
+            except PermissionError as exc:
+                raise HTTPException(403, str(exc)) from exc
     if action.get("confirmation") and getattr(payload, "confirmed", False) is not True:
         raise HTTPException(status_code=409, detail="Explicit action confirmation is required.")
     return document, installation_id
