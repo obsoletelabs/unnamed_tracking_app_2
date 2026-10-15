@@ -72,6 +72,23 @@ Examples also show [Classic details](../assets/game-time-estimates/classic-dark-
 [Modern details](../assets/game-time-estimates/modern-dark-details.jpg) and
 [Modern light statistics](../assets/game-time-estimates/modern-light-stats.jpg).
 
+## Excluding games
+
+Open **Filters** to exclude statuses, tags/genres or platform families. Choose
+**Not …** to hide matching games while retaining your include filters. Exclusions
+take precedence; a game selected by both an include and an exclusion stays hidden.
+Platform exclusions also check owned copies, such as PS4 and PS5 within PlayStation.
+
+Each exclusion has a removable **Not …** chip. **Clear advanced filters** and
+**Clear all** remove exclusions too. Saved presets and shared filter links retain
+them; older presets start with no exclusions. Counts describe the matching games.
+These controls filter the loaded library without contacting metadata providers.
+
+![Classic exclusion controls](../assets/library-query-controls/classic-light-exclusions.jpg)
+
+The [Modern phone controls](../assets/library-query-controls/modern-dark-phone-exclusions.jpg)
+use the same selection and keyboard behavior.
+
 ## Card updates and priority
 
 Saving a card's status or favorite updates the library's filters, counts and current

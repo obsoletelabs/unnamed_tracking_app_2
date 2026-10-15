@@ -34,6 +34,10 @@ removes its value. Entering `0` keeps a real zero. Episodes watched requires a
 whole number; a blank or fractional count keeps Quick edit open with an explanation.
 These controls work the same way in Modern and Classic.
 
+In long episode lists, saving watched state, a rating or a note keeps your chosen
+episode page. Switching to a different season or ordered episode list selects the
+page containing its next unwatched episode.
+
 IMDb, Letterboxd and Yamtrack list imports normalize user ratings to 0–10 with
 two decimal places. Letterboxd's five-point scale is doubled first. Finite scores
 outside the range are bounded to 0 or 10, and invalid/nonfinite scores are left

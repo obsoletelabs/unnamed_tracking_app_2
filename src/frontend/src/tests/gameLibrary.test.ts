@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { nextTick, reactive } from "vue";
 import { parseQuery, stringifyQuery, type LocationQueryRaw } from "vue-router";
 import type { Game } from "../types/game";
+import { DEFAULT_GAME_FILTERS } from "../utils/gameLibraryQuery";
 
 const routing = vi.hoisted(() => ({
   route: {} as Record<string, unknown>,
@@ -82,6 +83,90 @@ async function library() {
 }
 
 describe("game library filtering", () => {
+  it("combines exclusions with includes and keeps counts, chips and reset in sync", async () => {
+    routing.route.query = {
+      tag: "Indie",
+      not_status: "playing",
+      not_tag: "RPG",
+    };
+    routing.route.fullPath = "/games?tag=Indie&not_status=playing&not_tag=RPG";
+    const view = await library();
+    expect(view.filteredGames.value.map((item) => item.id)).toEqual(["Beta"]);
+    expect(view.statusCounts.value).toMatchObject({
+      all: 1,
+      playing: 0,
+      backlog: 1,
+    });
+    expect(view.activeFilterPills.value.map((pill) => pill.label)).toContain(
+      "Not playing",
+    );
+    view.activeFilterPills.value
+      .find((pill) => pill.label === "Not playing")!
+      .clear();
+    expect(view.filteredGames.value.map((item) => item.id)).toEqual([
+      "Alpha",
+      "Beta",
+    ]);
+    view.clearAllFilters();
+    await nextTick();
+    expect(view.excludedStatuses.value).toEqual([]);
+    expect(view.excludedTags.value).toEqual([]);
+    expect(view.excludedPlatforms.value).toEqual([]);
+    expect(view.statusCounts.value.all).toBe(3);
+    expect(routing.route.query).toEqual({ filters: "1" });
+  });
+
+  it("excludes normalized platform families from any owned copy", async () => {
+    routing.route.query = { not_platform: "ps5" };
+    routing.route.fullPath = "/games?not_platform=ps5";
+    const view = await library();
+    const main = view.games.value[0]!;
+    const copy = game("Console copy", "backlog", []);
+    copy.parentGameId = main.id;
+    copy.relationshipType = "owned_copy";
+    copy.platforms = [
+      {
+        platform: "PlayStation 4",
+        playtimeMinutes: 0,
+        completionPercent: null,
+        lastPlayedAt: null,
+      },
+    ];
+    view.games.value = [...view.games.value, copy];
+    expect(view.excludedPlatforms.value).toEqual(["PlayStation"]);
+    expect(view.filteredGames.value.map((item) => item.id)).toEqual([
+      "Beta",
+      "Gamma",
+    ]);
+  });
+
+  it("persists exclusions and clears them when applying a legacy preset", async () => {
+    localStorage.setItem(
+      "gameLibraryFilters",
+      JSON.stringify({ excludedTags: ["Genre: Indie"] }),
+    );
+    const view = await library();
+    expect(view.filteredGames.value.map((item) => item.id)).toEqual(["Gamma"]);
+    view.toggleExclusion("status", "playing");
+    await nextTick();
+    expect(
+      JSON.parse(localStorage.getItem("gameLibraryFilters")!).excludedStatuses,
+    ).toEqual(["playing"]);
+    view.applyPreset({
+      name: "Old",
+      filters: {
+        ...DEFAULT_GAME_FILTERS,
+        tagsFilter: ["Indie"],
+        excludedStatuses: undefined,
+        excludedTags: undefined,
+        excludedPlatforms: undefined,
+      },
+    });
+    expect(view.excludedStatuses.value).toEqual([]);
+    expect(view.excludedTags.value).toEqual([]);
+    expect(view.excludedPlatforms.value).toEqual([]);
+  });
+
   it("reconciles a saved card status across filters, counts and the current preview", async () => {
     const view = await library();
     const selected = view.games.value[0]!;

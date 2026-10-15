@@ -1,6 +1,7 @@
 import type { LocationQuery, LocationQueryRaw } from "vue-router";
 import type { GameStatus } from "../types/game";
 import { gameGenres } from "./genres";
+import { normalizePlatformFamily } from "./platforms";
 
 export const GAME_SORT_KEYS = [
   "name",
@@ -43,6 +44,9 @@ export interface GameLibraryFilters {
   retroAchievementsOnly: boolean;
   missingFilter: "none" | "playtime" | "rating" | "tags" | "description";
   tagsFilter: string[];
+  excludedStatuses: GameStatus[];
+  excludedTags: string[];
+  excludedPlatforms: string[];
 }
 
 export const DEFAULT_GAME_FILTERS: GameLibraryFilters = {
@@ -62,6 +66,9 @@ export const DEFAULT_GAME_FILTERS: GameLibraryFilters = {
   retroAchievementsOnly: false,
   missingFilter: "none",
   tagsFilter: [],
+  excludedStatuses: [],
+  excludedTags: [],
+  excludedPlatforms: [],
 };
 
 const TEXT_FILTERS = {
@@ -85,6 +92,9 @@ const QUERY_KEYS = [
   "achievements",
   "retro",
   "missing",
+  "not_status",
+  "not_tag",
+  "not_platform",
   ...Object.keys(TEXT_FILTERS),
 ];
 
@@ -98,6 +108,32 @@ export function normalizeGameTags(tags: string[], genre = "all"): string[] {
   return [
     ...new Map(normalized.map((tag) => [tag.toLowerCase(), tag])).values(),
   ];
+}
+
+export function normalizeGameExclusions(filters: {
+  excludedStatuses?: string[];
+  excludedTags?: string[];
+  excludedPlatforms?: string[];
+}) {
+  return {
+    excludedStatuses: [
+      ...new Set(
+        (filters.excludedStatuses ?? []).filter(
+          (status): status is GameStatus =>
+            status !== "all" &&
+            GAME_STATUS_OPTIONS.includes(status as GameStatus),
+        ),
+      ),
+    ],
+    excludedTags: normalizeGameTags(filters.excludedTags ?? []),
+    excludedPlatforms: [
+      ...new Set(
+        (filters.excludedPlatforms ?? [])
+          .map(normalizePlatformFamily)
+          .filter(Boolean),
+      ),
+    ],
+  };
 }
 
 export function hasGameLibraryQuery(query: LocationQuery): boolean {
@@ -148,6 +184,14 @@ export function readGameLibraryQuery(query: LocationQuery): GameLibraryFilters {
     ...values("tag"),
     ...values("genre"),
   ]);
+  Object.assign(
+    filters,
+    normalizeGameExclusions({
+      excludedStatuses: values("not_status"),
+      excludedTags: values("not_tag"),
+      excludedPlatforms: values("not_platform"),
+    }),
+  );
   return filters;
 }
 
@@ -167,6 +211,12 @@ export function writeGameLibraryQuery(
     if (filters[field] !== "all") result[key] = filters[field];
   const tags = normalizeGameTags(filters.tagsFilter);
   if (tags.length) result.tag = tags;
+  const exclusions = normalizeGameExclusions(filters);
+  if (exclusions.excludedStatuses.length)
+    result.not_status = exclusions.excludedStatuses;
+  if (exclusions.excludedTags.length) result.not_tag = exclusions.excludedTags;
+  if (exclusions.excludedPlatforms.length)
+    result.not_platform = exclusions.excludedPlatforms;
   if (filters.favoritesOnly) result.favorites = "1";
   if (filters.retroAchievementsOnly) result.retro = "1";
   if (filters.achievementsFilter !== "all")

@@ -48,6 +48,7 @@ import {
   GAME_STATUS_OPTIONS,
   hasGameLibraryQuery,
   normalizeGameTags,
+  normalizeGameExclusions,
   readGameLibraryFilterVisibility,
   readGameLibraryQuery,
   writeGameLibraryQuery,
@@ -254,6 +255,30 @@ export function useGameLibrary() {
   const tagsFilter = ref<string[]>(
     normalizeGameTags(persisted.tagsFilter ?? [], persisted.genreFilter),
   );
+  const exclusions = normalizeGameExclusions(persisted);
+  const excludedStatuses = ref(exclusions.excludedStatuses);
+  const excludedTags = ref(exclusions.excludedTags);
+  const excludedPlatforms = ref(exclusions.excludedPlatforms);
+  const exclusionRefs = {
+    status: excludedStatuses,
+    tag: excludedTags,
+    platform: excludedPlatforms,
+  };
+  function isExcluded(kind: keyof typeof exclusionRefs, value: string) {
+    return exclusionRefs[kind].value.some(
+      (item) => item.toLowerCase() === value.toLowerCase(),
+    );
+  }
+  function toggleExclusion(kind: keyof typeof exclusionRefs, value: string) {
+    const target = exclusionRefs[kind];
+    Object.assign(target, {
+      value: isExcluded(kind, value)
+        ? target.value.filter(
+            (item) => item.toLowerCase() !== value.toLowerCase(),
+          )
+        : [...target.value, value],
+    });
+  }
   function toggleTagFilter(tag: string) {
     const normalized = normalizeGameTags([tag])[0];
     if (!normalized) return;
@@ -286,6 +311,9 @@ export function useGameLibrary() {
       retroAchievementsOnly,
       missingFilter,
       tagsFilter,
+      excludedStatuses,
+      excludedTags,
+      excludedPlatforms,
     ],
     () => {
       const toSave: PersistedFilters = {
@@ -306,6 +334,9 @@ export function useGameLibrary() {
         retroAchievementsOnly: retroAchievementsOnly.value,
         missingFilter: missingFilter.value,
         tagsFilter: tagsFilter.value,
+        excludedStatuses: excludedStatuses.value,
+        excludedTags: excludedTags.value,
+        excludedPlatforms: excludedPlatforms.value,
       };
       localStorage.setItem(FILTERS_KEY, JSON.stringify(toSave));
     },
@@ -372,6 +403,10 @@ export function useGameLibrary() {
     if (retroAchievementsOnly.value) count++;
     if (missingFilter.value !== "none") count++;
     if (tagsFilter.value.length) count++;
+    count +=
+      excludedStatuses.value.length +
+      excludedTags.value.length +
+      excludedPlatforms.value.length;
     return count;
   });
 
@@ -394,6 +429,9 @@ export function useGameLibrary() {
     retroAchievementsOnly.value = false;
     missingFilter.value = "none";
     tagsFilter.value = [];
+    excludedStatuses.value = [];
+    excludedTags.value = [];
+    excludedPlatforms.value = [];
   }
 
   function clearAllFilters() {
@@ -409,7 +447,15 @@ export function useGameLibrary() {
   // effect, with no separate live-updating machinery needed)
   interface FilterPreset {
     name: string;
-    filters: Omit<PersistedFilters, "searchQuery" | "showAdvancedFilters">;
+    filters: Omit<
+      PersistedFilters,
+      | "searchQuery"
+      | "showAdvancedFilters"
+      | "excludedStatuses"
+      | "excludedTags"
+      | "excludedPlatforms"
+    > &
+      Partial<ReturnType<typeof normalizeGameExclusions>>;
   }
   const PRESETS_KEY = "gameLibraryFilterPresets";
   function loadPresets(): FilterPreset[] {
@@ -422,7 +468,7 @@ export function useGameLibrary() {
   }
   const filterPresets = ref<FilterPreset[]>(loadPresets());
   const showPresetsMenu = ref(false);
-  function currentFilterValues(): FilterPreset["filters"] {
+  function currentFilterValues(): Omit<GameLibraryFilters, "searchQuery"> {
     return {
       statusFilter: statusFilter.value,
       platformFilter: platformFilter.value,
@@ -439,6 +485,9 @@ export function useGameLibrary() {
       retroAchievementsOnly: retroAchievementsOnly.value,
       missingFilter: missingFilter.value,
       tagsFilter: [...tagsFilter.value],
+      excludedStatuses: [...excludedStatuses.value],
+      excludedTags: [...excludedTags.value],
+      excludedPlatforms: [...excludedPlatforms.value],
     };
   }
   async function saveCurrentAsPreset() {
@@ -480,6 +529,10 @@ export function useGameLibrary() {
       preset.filters.tagsFilter ?? [],
       preset.filters.genreFilter,
     );
+    const exclusions = normalizeGameExclusions(preset.filters);
+    excludedStatuses.value = exclusions.excludedStatuses;
+    excludedTags.value = exclusions.excludedTags;
+    excludedPlatforms.value = exclusions.excludedPlatforms;
     showAdvancedFilters.value = true;
     showPresetsMenu.value = false;
   }
@@ -541,6 +594,9 @@ export function useGameLibrary() {
     retroAchievementsOnly,
     missingFilter,
     tagsFilter,
+    excludedStatuses,
+    excludedTags,
+    excludedPlatforms,
   };
   const queryKey = (query: LocationQueryRaw) =>
     stringifyQuery(
@@ -624,6 +680,32 @@ export function useGameLibrary() {
   const genreOptions = computed(() =>
     genreOptionsFor(games.value.map((g) => g.tags)),
   );
+  const exclusionGroups = computed(() => [
+    {
+      kind: "status" as const,
+      label: "Exclude statuses",
+      values: statusOptions.filter((status) => status !== "all"),
+    },
+    {
+      kind: "tag" as const,
+      label: "Exclude tags & genres",
+      values: genreOptions.value,
+    },
+    {
+      kind: "platform" as const,
+      label: "Exclude platforms",
+      values: [
+        ...new Set([
+          ...platformOptions.value,
+          ...games.value.flatMap((game) =>
+            game.platforms.map((platform) =>
+              normalizePlatformFamily(platform.platform),
+            ),
+          ),
+        ]),
+      ].sort(),
+    },
+  ]);
 
   function uniqueValues(pick: (g: Game) => string | null): string[] {
     const set = new Set<string>();
@@ -1000,6 +1082,18 @@ export function useGameLibrary() {
 
   const gamesMatchingFilters = computed(() => {
     let result = libraryEntries.value;
+    result = result.filter(
+      (game) =>
+        !excludedStatuses.value.includes(game.status) &&
+        !excludedTags.value.some((tag) => hasGenre(game.tags, tag)) &&
+        !copiesOf(game).some((copy) =>
+          copy.platforms.some((platform) =>
+            excludedPlatforms.value.includes(
+              normalizePlatformFamily(platform.platform),
+            ),
+          ),
+        ),
+    );
     if (platformFilter.value !== "all") {
       result = result.filter((g) =>
         copiesOf(g).some((copy) =>
@@ -1214,6 +1308,13 @@ export function useGameLibrary() {
   // isn't one: the status tabs already show it, as in Media
   const activeFilterPills = computed(() => {
     const pills: { key: string; label: string; clear: () => void }[] = [];
+    for (const kind of ["status", "tag", "platform"] as const)
+      for (const value of exclusionRefs[kind].value)
+        pills.push({
+          key: `not-${kind}-${value}`,
+          label: `Not ${value}`,
+          clear: () => toggleExclusion(kind, value),
+        });
     if (platformFilter.value !== "all")
       pills.push({
         key: "platform",
@@ -1471,6 +1572,12 @@ export function useGameLibrary() {
     tagsFilter,
     toggleTagFilter,
     isTagSelected,
+    excludedStatuses,
+    excludedTags,
+    excludedPlatforms,
+    toggleExclusion,
+    isExcluded,
+    exclusionGroups,
     recentSearches,
     showRecentSearches,
     commitSearchToRecent,

@@ -42,9 +42,7 @@ const games = ref<Game[]>([]);
 const loading = ref(true);
 const error = ref<string | null>(null);
 
-const collectionName = computed(() =>
-  decodeURIComponent(route.params.name as string),
-);
+const collectionName = computed(() => route.params.name as string);
 // same "Parent/Child" naming convention as CollectionTile.vue
 const nestedParent = computed(() => {
   const idx = collectionName.value.indexOf("/");

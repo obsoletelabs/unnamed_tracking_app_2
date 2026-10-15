@@ -429,7 +429,7 @@
   gap: 6px;
   background: color-mix(in srgb, var(--ui-accent) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--ui-accent) 35%, transparent);
-  color: #f0c896;
+  color: var(--ui-accent-text);
   border-radius: 999px;
   padding: 5px 10px 5px 12px;
   font-size: 12px;
@@ -629,6 +629,15 @@
 .advanced-field-wide {
   grid-column: 1 / -1;
 }
+.exclusion-group {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.exclusion-group legend {
+  margin-bottom: 6px;
+}
 .tags-multiselect {
   display: flex;
   flex-wrap: wrap;
@@ -654,7 +663,8 @@
   border-color: var(--accent-line);
   color: var(--accent);
 }
-.advanced-field label {
+.advanced-field label,
+.exclusion-group legend {
   color: var(--text-dim);
   font-size: 0.7rem;
   font-weight: var(--ui-weight-title);

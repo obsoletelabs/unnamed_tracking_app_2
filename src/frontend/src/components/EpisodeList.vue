@@ -209,7 +209,7 @@ const pageCount = computed(() =>
 // episode list itself changes (a different season, or the initial
 // sync), not on every watched-toggle inside the current page.
 watch(
-  () => props.episodes,
+  () => props.episodes.map((episode) => episode.id).join("\0"),
   () => {
     const episodes = displayEpisodes.value;
     if (!episodes.length) {
@@ -249,6 +249,7 @@ function goToPage(p: number) {
           ‹ Prev
         </button>
         <select
+          aria-label="Episode page"
           :value="page"
           @change="goToPage(Number(($event.target as HTMLSelectElement).value))"
         >

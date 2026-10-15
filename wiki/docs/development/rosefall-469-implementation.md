@@ -148,7 +148,7 @@ Until then, PRs remain available for review with current validation and screensh
   seven full hosted workflows passed before the authorized squash merge, including
   full frontend checks and configured Pylint. The plugin API/SDK and database schema
   are unchanged by that package.
-- **G / 8–9, 24–25:** in progress. The additive API/data foundation supplies three
+- **G / 8–9, 24–25:** host PR #136 and companion plugin PR #47 merged. The additive API/data foundation supplies three
   nullable completion-time categories, protected editing/history, export/import,
   metadata refresh and public game details. The generated/reviewed migration is
   linear after `fed12ab64423` and preserves Main story and personal playtime.
@@ -156,9 +156,16 @@ Until then, PRs remain available for review with current validation and screensh
   The separate HLTB/SDK update initializes search and renews a rejected token once
   through the public gateway. Shared Modern/Classic editors, overview/details and
   statistics expose the categories without changing personal playtime. Host
-  PR #136 and plugin PR #47 remain in progress until complete paired validation
-  and screenshots are recorded; this package is not complete.
-- **H–O:** approved; not implemented yet. The package details below describe
+  validation passed 2,705 backend and 582 frontend tests, full configured quality
+  checks and all seven hosted workflows. Companion Linux checks passed 648 tests
+  and paired Plugin Manager integration. Modern/Classic desktop/phone screenshots
+  are recorded in the game guide. Normal official signing/publication follows the
+  plugin merge; the newly published artifact still needs verification.
+- **H and I:** in progress on a combined library branch. Exclusions and saved
+  query/preset compatibility, percent-containing collection names, safe filtered
+  reorder and episode-page preservation pass 25 focused regressions. Global media
+  sorting, loaded-extent refresh and the full package checks remain pending.
+- **J–O:** approved; not implemented yet. The package details below describe
   intended work, not completed behavior.
 
 ## Concrete packages
