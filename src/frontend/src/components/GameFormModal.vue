@@ -1,22 +1,15 @@
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, watch } from "vue";
+import { ref, computed, nextTick, onMounted, watch, proxyRefs } from "vue";
 import UiModal from "./UiModal.vue";
 import GamePlayFields from "./game/GamePlayFields.vue";
 import {
   attachGameAssetFromUrl,
   createGame,
   fetchGames,
-  fetchGame,
-  previewGameMetadataRefresh,
-  applyGameMetadataRefresh,
   updateGame,
   uploadGameAsset,
 } from "../services/games";
-import type {
-  MetadataSearchResult,
-  RefreshMetadataOptions,
-  RefreshMetadataPreview,
-} from "../services/games";
+import type { MetadataSearchResult } from "../services/games";
 import type {
   Game,
   GameStatus,
@@ -25,10 +18,7 @@ import type {
   GamePlayCompatibility,
 } from "../types/game";
 import type { GameLink, GameOwnership } from "../types/game";
-import { useConfirm } from "../state/dialog";
-import { lockedFieldLabels } from "../utils/lockedFields";
 
-const confirm = useConfirm();
 import PageSettingsEditor from "./PageSettingsEditor.vue";
 import { preferences } from "../state/preferences";
 import { resolvePage } from "../utils/gamePage";
@@ -40,6 +30,9 @@ import { PRIORITY_OPTIONS, isFinished } from "../utils/priority";
 import { RETRO_PLATFORM_OPTIONS } from "../utils/platforms";
 
 import { useMetadataSearch } from "../composables/useMetadataSearch";
+import { useMetadataComparison } from "../composables/useMetadataComparison";
+import { useMetadataArtwork } from "../composables/useMetadataArtwork";
+import MetadataComparison from "./MetadataComparison.vue";
 import { gameMetadataResult } from "../utils/metadataCandidate";
 import { useTitleProtection } from "../utils/titleProtection";
 import { numberOrNull } from "../utils/numberInput";
@@ -343,7 +336,7 @@ const selectingMetadata = ref(false);
 const selectedProviderIds = ref<Record<string, string> | undefined>();
 let selectionGeneration = 0;
 const metadataResults = computed(() =>
-  progressiveSearch.selected.value
+  progressiveSearch.selected.value || metadataApplied.value
     ? []
     : progressiveSearch.results.value.map(gameMetadataResult),
 );
@@ -359,36 +352,7 @@ const pickedKeyArtUrl = ref<string | null>(null);
 const pickedBannerUrl = ref<string | null>(null);
 const keyArtCandidates = ref<string[]>([]);
 const bannerCandidates = ref<string[]>([]);
-const metadataRefreshPreview = ref<RefreshMetadataPreview | null>(null);
-const refreshingMetadata = ref(false);
-const refreshMetadataError = ref<string | null>(null);
-const refreshMetadataIncludeArt = ref(true);
-const mediaSearchResults = ref<MetadataSearchResult[]>([]);
 const searchingMedia = progressiveSearch.enrichingMedia;
-
-const metadataFormDirty = computed(() => {
-  if (!isEditing.value || !props.game) return false;
-  return (
-    title.value !== props.game.title ||
-    description.value !== (props.game.description ?? "") ||
-    developer.value !== (props.game.developer ?? "") ||
-    publisher.value !== (props.game.publisher ?? "") ||
-    series.value !== (props.game.series ?? "") ||
-    ageRating.value !== (props.game.ageRating ?? "") ||
-    releaseDate.value !== (props.game.releaseDate ?? "") ||
-    completionEstimateInputs.some(
-      ({ key, input }) =>
-        String(input.value) !== String(props.game?.[key] ?? ""),
-    ) ||
-    tagsInput.value !== props.game.tags.join(", ") ||
-    featuresInput.value !== props.game.features.join(", ") ||
-    JSON.stringify(links.value) !== JSON.stringify(props.game.links) ||
-    !!coverFile.value ||
-    !!bannerFile.value ||
-    pickedKeyArtUrl.value !== null ||
-    pickedBannerUrl.value !== null
-  );
-});
 
 const hasMediaProvider = computed(() =>
   metadataProviders.value.some(
@@ -400,91 +364,6 @@ const hasMediaProvider = computed(() =>
       ),
   ),
 );
-
-async function refreshMetadataFromEditor() {
-  if (!props.game || refreshingMetadata.value || saving.value) return;
-  refreshMetadataError.value = null;
-  metadataRefreshPreview.value = null;
-
-  if (metadataFormDirty.value) {
-    refreshMetadataError.value =
-      "Save or cancel your current metadata edits before repulling. This prevents the refresh from replacing unsaved changes.";
-    return;
-  }
-
-  refreshingMetadata.value = true;
-  const options: RefreshMetadataOptions = {
-    updateText: true,
-    fillMissingArt: refreshMetadataIncludeArt.value,
-    overwriteExistingArt: false,
-  };
-  try {
-    const preview = await previewGameMetadataRefresh(props.game, options);
-    metadataRefreshPreview.value = preview;
-    if (preview.status === "no-match") {
-      refreshMetadataError.value = preview.providerErrors.length
-        ? `No exact match was returned. Provider warnings: ${preview.providerErrors.join(" ")}`
-        : "No exact provider match was found for this game title.";
-      return;
-    }
-    if (preview.status === "error") {
-      refreshMetadataError.value =
-        "The metadata providers could not be reached. No changes were applied.";
-      return;
-    }
-    const locked = preview.skippedLockedFields.length
-      ? ` Locked fields were preserved: ${lockedFieldLabels(preview.skippedLockedFields).join(", ")}.`
-      : "";
-    const changes = preview.changedFields.length
-      ? preview.changedFields.join(", ")
-      : "no text fields";
-    const art = [
-      preview.wouldAddKeyArt ? "cover art" : "",
-      preview.wouldAddBanner ? "banner art" : "",
-    ].filter(Boolean);
-    const confirmed = await confirm({
-      title: `Repull from ${preview.provider ?? "metadata provider"}?`,
-      message: `This will update ${changes}${art.length ? ` and add ${art.join(" and ")}` : ""}. Nothing already stored as artwork will be replaced.${locked}`,
-      confirmLabel: "Apply refresh",
-    });
-    if (!confirmed) return;
-
-    const outcome = await applyGameMetadataRefresh(props.game, options);
-    if (outcome.status !== "updated") {
-      refreshMetadataError.value =
-        outcome.status === "no-match"
-          ? "The provider no longer returned an exact match. No changes were applied."
-          : "The metadata refresh failed. No changes were applied.";
-      return;
-    }
-    const updated = await fetchGame(props.game.id);
-    if (updated) {
-      title.value = updated.title;
-      description.value = updated.description ?? "";
-      developer.value = updated.developer ?? "";
-      publisher.value = updated.publisher ?? "";
-      series.value = updated.series ?? "";
-      ageRating.value = updated.ageRating ?? "";
-      releaseDate.value = updated.releaseDate ?? "";
-      for (const estimate of completionEstimateInputs) {
-        const value = updated[estimate.key];
-        estimate.input.value = value != null ? String(value) : "";
-      }
-      tagsInput.value = updated.tags.join(", ");
-      featuresInput.value = updated.features.join(", ");
-      links.value = [...updated.links];
-      metadataRefreshPreview.value = null;
-      metadataMessage.value = `Updated from ${outcome.provider ?? "metadata provider"}.${outcome.skippedLockedFields.length ? ` Preserved locked fields: ${lockedFieldLabels(outcome.skippedLockedFields).join(", ")}.` : ""}`;
-      if (outcome.keyArtAdded) pickedKeyArtUrl.value = null;
-      if (outcome.bannerAdded) pickedBannerUrl.value = null;
-    }
-  } catch (err) {
-    refreshMetadataError.value =
-      err instanceof Error ? err.message : "Metadata refresh failed.";
-  } finally {
-    refreshingMetadata.value = false;
-  }
-}
 
 async function searchMetadata() {
   metadataApplied.value = false;
@@ -498,7 +377,10 @@ async function searchMedia() {
     return;
   }
   try {
-    await progressiveSearch.focus(query, props.game?.providerIds ?? {});
+    await progressiveSearch.focus(
+      query,
+      selectedProviderIds.value ?? props.game?.providerIds ?? {},
+    );
   } catch (failure) {
     metadataMessage.value =
       failure instanceof Error ? failure.message : "Media search failed.";
@@ -516,6 +398,8 @@ watch(
   () => {
     if (progressiveSearch.error.value)
       metadataMessage.value = progressiveSearch.error.value;
+    else if (progressiveSearch.selected.value)
+      metadataMessage.value = "Review the offered fields before applying them.";
     else if (!metadataApplied.value)
       metadataMessage.value =
         progressiveSearch.manualSearchHint.value ??
@@ -527,83 +411,143 @@ watch(
   },
 );
 
-const appliedProviderFields = new Map<string, string>();
-function applyAvailableMetadata(result: MetadataSearchResult, initial = false) {
-  const fields = {
-    title,
-    description,
-    developer,
-    publisher,
-    series,
-    age_rating: ageRating,
-    release_date: releaseDate,
-    tags: tagsInput,
-    features: featuresInput,
-    time_to_beat_hours: timeToBeatHours,
-    time_to_beat_extras_hours: timeToBeatExtrasHours,
-    time_to_beat_completionist_hours: timeToBeatCompletionistHours,
-    time_to_beat_all_hours: timeToBeatAllHours,
-  };
-  const values = {
-    ...result,
-    tags: result.tags.join(", "),
-    features: result.features.join(", "),
-    time_to_beat_hours:
-      result.time_to_beat_hours == null
-        ? null
-        : String(result.time_to_beat_hours),
-    time_to_beat_extras_hours:
-      result.time_to_beat_extras_hours == null
-        ? null
-        : String(result.time_to_beat_extras_hours),
-    time_to_beat_completionist_hours:
-      result.time_to_beat_completionist_hours == null
-        ? null
-        : String(result.time_to_beat_completionist_hours),
-    time_to_beat_all_hours:
-      result.time_to_beat_all_hours == null
-        ? null
-        : String(result.time_to_beat_all_hours),
-  };
-  for (const [name, input] of Object.entries(fields)) {
-    const value = values[name as keyof typeof values];
-    if (
-      typeof value !== "string" ||
-      !value ||
-      props.game?.lockedFields?.includes(name) ||
-      (name === "title" && titleProtected.value)
-    )
-      continue;
-    if (
-      initial ||
-      !input.value ||
-      String(input.value) === appliedProviderFields.get(name)
-    ) {
-      input.value = value;
-      appliedProviderFields.set(name, value);
-    }
-  }
-  if (
-    result.links.length &&
-    !props.game?.lockedFields?.includes("links") &&
-    (initial ||
-      !links.value.length ||
-      JSON.stringify(links.value) === appliedProviderFields.get("links"))
-  ) {
-    links.value = result.links.map((link) => ({ ...link }));
-    appliedProviderFields.set("links", JSON.stringify(links.value));
-  }
-}
-watch(progressiveSearch.selected, (candidate) => {
-  if (!candidate) return;
-  selectedProviderIds.value = { ...candidate.provider_ids };
-  const result = gameMetadataResult(candidate);
-  applyAvailableMetadata(result);
-  if (result.key_art_urls.length) keyArtCandidates.value = result.key_art_urls;
-  if (result.banner_urls.length) bannerCandidates.value = result.banner_urls;
-  if (!pickedKeyArtUrl.value) pickedKeyArtUrl.value = result.key_art_url;
-  if (!pickedBannerUrl.value) pickedBannerUrl.value = result.banner_url;
+const artwork = useMetadataArtwork(
+  progressiveSearch.selected,
+  progressiveSearch.previewArtwork,
+);
+const lookupCover = computed({
+  get: () =>
+    coverFile.value
+      ? `Local file: ${coverFile.value.name}`
+      : (pickedKeyArtUrl.value ?? props.game?.coverImageUrl ?? null),
+  set: (url: string | null) => {
+    pickedKeyArtUrl.value = url;
+    coverFile.value = null;
+  },
 });
+const lookupBanner = computed({
+  get: () =>
+    bannerFile.value
+      ? `Local file: ${bannerFile.value.name}`
+      : (pickedBannerUrl.value ?? props.game?.bannerImageUrl ?? null),
+  set: (url: string | null) => {
+    pickedBannerUrl.value = url;
+    bannerFile.value = null;
+  },
+});
+const lookupIds = computed({
+  get: () => selectedProviderIds.value ?? props.game?.providerIds ?? {},
+  set: (ids: Record<string, string>) => {
+    selectedProviderIds.value = ids;
+  },
+});
+const lookupFields = proxyRefs({
+  title,
+  description,
+  developer,
+  publisher,
+  series,
+  source,
+  age_rating: ageRating,
+  release_date: releaseDate,
+  tags: tagsInput,
+  features: featuresInput,
+  time_to_beat_hours: timeToBeatHours,
+  time_to_beat_extras_hours: timeToBeatExtrasHours,
+  time_to_beat_completionist_hours: timeToBeatCompletionistHours,
+  time_to_beat_all_hours: timeToBeatAllHours,
+  links,
+  provider_ids: lookupIds,
+  key_art: lookupCover,
+  banner: lookupBanner,
+});
+const lookupLabels = {
+  title: "Title",
+  description: "Description",
+  developer: "Developer",
+  publisher: "Publisher",
+  series: "Series",
+  source: "Source",
+  age_rating: "Age rating",
+  release_date: "Release date",
+  tags: "Tags",
+  features: "Features",
+  time_to_beat_hours: "Main story",
+  time_to_beat_extras_hours: "Main story and extras",
+  time_to_beat_completionist_hours: "Completionist",
+  time_to_beat_all_hours: "All play styles",
+  links: "Links",
+  provider_ids: "Provider identity",
+  key_art: "Cover",
+  banner: "Banner",
+};
+const comparison = useMetadataComparison(
+  () => lookupFields,
+  () =>
+    Object.fromEntries(
+      Object.entries(lookupLabels).map(([key, label]) => [
+        key,
+        {
+          label,
+          locked:
+            key === "title"
+              ? titleProtected.value
+              : (props.game?.lockedFields ?? []).includes(key),
+          image: key === "key_art" || key === "banner",
+        },
+      ]),
+    ),
+);
+watch([progressiveSearch.selected, artwork.urls], ([candidate]) => {
+  if (!candidate) {
+    comparison.clear();
+    return;
+  }
+  const result = gameMetadataResult(candidate);
+  const hours = (value: number | string | null | undefined) =>
+    value == null ? undefined : String(value);
+  comparison.offer(
+    {
+      title: result.title,
+      description: result.description ?? undefined,
+      developer: result.developer ?? undefined,
+      publisher: result.publisher ?? undefined,
+      series: result.series ?? undefined,
+      source: result.provider,
+      age_rating: result.age_rating ?? undefined,
+      release_date: result.release_date ?? undefined,
+      tags: result.tags.join(", "),
+      features: result.features.join(", "),
+      links: result.links,
+      time_to_beat_hours: hours(result.time_to_beat_hours),
+      time_to_beat_extras_hours: hours(result.time_to_beat_extras_hours),
+      time_to_beat_completionist_hours: hours(
+        result.time_to_beat_completionist_hours,
+      ),
+      time_to_beat_all_hours: hours(result.time_to_beat_all_hours),
+      provider_ids: { ...lookupIds.value, ...candidate.provider_ids },
+      key_art: artwork.urls.value.cover,
+      banner: artwork.urls.value.banner,
+    },
+    candidate.id,
+  );
+  keyArtCandidates.value = result.key_art_urls;
+  bannerCandidates.value = result.banner_urls;
+});
+function cancelLookup() {
+  comparison.clear();
+  progressiveSearch.stop();
+}
+function applyLookup() {
+  const candidate = progressiveSearch.selected.value;
+  if (!candidate) return;
+  const applied = comparison.apply();
+  if (!isEditing.value && applied.has("title")) suggestFolderFromTitle();
+  metadataApplied.value = true;
+  metadataMessage.value = `Applied ${applied.size} changes from ${candidate.provider_name}. Save to keep them.`;
+  progressiveSearch.stop();
+  if (!compact.value && !isEditing.value) activeTab.value = "General";
+}
 async function applyMetadata(result: MetadataSearchResult) {
   if (saving.value) return;
   const candidate = progressiveSearch.results.value.find(
@@ -613,35 +557,17 @@ async function applyMetadata(result: MetadataSearchResult) {
     metadataMessage.value = "Search for this title again before selecting it.";
     return;
   }
-  const currentSelection = ++selectionGeneration;
+  const request = ++selectionGeneration;
   selectingMetadata.value = true;
-  selectedProviderIds.value = { ...candidate.provider_ids };
-  appliedProviderFields.clear();
-  applyAvailableMetadata(result, true);
-  sortTitle.value = "";
-  folderLocation.value = result.title
-    .trim()
-    .replace(/[^A-Za-z0-9_-]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  folderTouched.value = false;
-  source.value = result.provider;
-  pickedKeyArtUrl.value = result.key_art_url;
-  pickedBannerUrl.value = result.banner_url;
-  keyArtCandidates.value = result.key_art_urls;
-  bannerCandidates.value = result.banner_urls;
-  mediaSearchResults.value = [];
-  metadataMessage.value = `Prefilled from ${result.provider}. Review the fields before saving.`;
-  metadataApplied.value = true;
-  if (!compact.value && !isEditing.value) activeTab.value = "General";
   try {
     await progressiveSearch.select(candidate);
   } catch {
-    // The chosen identity and available fields remain usable if enrichment fails.
+    /* Available partial fields remain reviewable after an enrichment failure. */
   } finally {
-    if (currentSelection === selectionGeneration)
-      selectingMetadata.value = false;
+    if (request === selectionGeneration) selectingMetadata.value = false;
   }
 }
+watch(() => props.game, cancelLookup);
 
 // when editing, the folder name is already real data, don't let the
 // title-blur auto-suggest silently overwrite it
@@ -670,6 +596,7 @@ function onBannerFileChange(e: Event) {
 }
 
 async function submit() {
+  if (progressiveSearch.selected.value) return;
   if (saving.value || selectingMetadata.value) return;
   if (compact.value) suggestFolderFromTitle();
   if (!validateGeneral()) return;
@@ -856,6 +783,17 @@ async function submit() {
 
       <form class="modal-form" @submit.prevent="onFormSubmit">
         <div class="editor-body">
+          <MetadataComparison
+            v-if="progressiveSearch.selected.value"
+            :changes="comparison.changes.value"
+            :reason="comparison.reason.value"
+            :provider="progressiveSearch.selected.value.provider_name"
+            :busy="artwork.busy.value || searchingMedia"
+            :previews="artwork.previews.value"
+            @toggle="comparison.toggle"
+            @apply="applyLookup"
+            @cancel="cancelLookup"
+          />
           <div
             v-if="compact || activeTab === 'General' || activeTab === 'Find'"
             class="tab-panel"
@@ -1273,53 +1211,6 @@ async function submit() {
           </div>
 
           <div v-else-if="activeTab === 'Media'" class="tab-panel">
-            <div class="metadata-refresh-panel">
-              <div>
-                <strong>Repull metadata</strong>
-                <p class="hint">
-                  Re-fetch the current game title from your configured
-                  providers. Locked/manual fields are preserved; existing
-                  artwork is never replaced.
-                </p>
-              </div>
-              <label class="checkbox-field">
-                <input v-model="refreshMetadataIncludeArt" type="checkbox" />
-                <span>Add missing cover/banner art</span>
-              </label>
-              <button
-                type="button"
-                class="secondary-button"
-                :disabled="refreshingMetadata || saving"
-                @click="refreshMetadataFromEditor"
-              >
-                {{
-                  refreshingMetadata ? "Checking provider…" : "Repull Metadata"
-                }}
-              </button>
-              <p v-if="refreshMetadataError" class="form-error">
-                {{ refreshMetadataError }}
-              </p>
-              <p
-                v-if="
-                  metadataRefreshPreview &&
-                  metadataRefreshPreview.status === 'preview'
-                "
-                class="hint"
-              >
-                Preview:
-                {{
-                  metadataRefreshPreview.changedFields.length
-                    ? metadataRefreshPreview.changedFields.join(", ")
-                    : "no text changes"
-                }}<span
-                  v-if="metadataRefreshPreview.skippedLockedFields.length"
-                >
-                  · preserved
-                  {{ metadataRefreshPreview.skippedLockedFields.length }} locked
-                  field(s)</span
-                >.
-              </p>
-            </div>
             <div class="media-search-panel">
               <div>
                 <strong>Find artwork</strong>
@@ -1568,7 +1459,10 @@ async function submit() {
             type="submit"
             class="primary-button"
             :disabled="
-              saving || selectingMetadata || (compact && !title.trim())
+              saving ||
+              selectingMetadata ||
+              !!progressiveSearch.selected.value ||
+              (compact && !title.trim())
             "
           >
             {{ saving ? "Saving…" : isEditing ? "Save Changes" : "Add Game" }}
@@ -1641,18 +1535,6 @@ async function submit() {
   gap: 14px;
   min-height: 380px;
 }
-.metadata-refresh-panel {
-  border: 1px solid var(--ui-border);
-  border-radius: var(--ui-radius-control);
-  padding: 12px;
-  background: var(--ui-surface);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.metadata-refresh-panel strong {
-  color: var(--ui-text);
-}
 .media-search-panel {
   flex-wrap: wrap;
   border: 1px solid var(--ui-border);
@@ -1673,10 +1555,6 @@ async function submit() {
 .media-search-panel .hint {
   margin: 2px 0 0;
 }
-.metadata-refresh-panel .hint {
-  margin: 0;
-}
-
 .metadata-search {
   border: 1px solid var(--ui-border);
   border-radius: var(--ui-radius-control);

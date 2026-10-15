@@ -2,61 +2,68 @@
 
 ## Current checkpoint — 15 October 2026
 
-The owner requested an issue for every untouched approved workstream and related
-follow-up, then one issue at a time from most complex to least complex. The
-[ordered tracker #141](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/141)
-contains 13 new focused issues (#142–154), all 29 untouched approved matrix rows
-and existing #125, #132, #138–140. Finish #137 before starting #142. Do not broaden
-this queue to the separate identity/notification overhaul projects.
+The [ordered tracker #141](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/141)
+contains every remaining approved Rosefall workstream and related follow-up. Work
+one issue at a time, most complex first, respecting dependencies. Separate identity
+and notification overhaul projects are outside this queue.
 
-Completed since the historical checkpoint: security, OIDC, media safety/numeric
-handling, provider choices, game card consistency/progression/storage and completion
-estimates are merged through #136. HLTB/SDK companion PR #47 is merged. Normal
-publication produced signed HLTB 0.7.0; package/signature validators passed, and
-its bundled SDK returned all four fields over simulated public gateway replies.
-The full completion-estimate package passed all seven hosted workflows before
-merge, with 2,705 backend and 582 frontend tests. Classic and Modern screenshots
-are in the game guide and PR #136.
+Packages through **#137 are merged into Obsolete Labs main**. The combined library
+PR passed all seven full hosted workflows on `36dc10cd0146e00e268f15e201492dd0fde0cfce`
+and was squash-merged as `3b597a02403b05a46dfbe1e8e1aff7ae8c58c77f`. It adds game
+exclusions, global media sorting/counts, loaded-extent refresh and navigation fixes.
+Its local suites passed 2,708 backend tests (four skipped) and 601 frontend tests.
 
-Current host branch: `feat/library-query-controls`, based on merged main
-`2fa725bf8bb383a3b87a20e69d68ef0fcd6982e3`. Draft
-[PR #137](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/137) contains
-pushed checkpoint `879f974455450c0e17dd9979e8e85433b6d0a151`: exclusions, persisted
-query/preset compatibility, percent-containing collection names, filtered reorder
-and stable episode paging, with screenshots and 25 focused regressions.
+**Active issue: #142 only**, published as
+[PR #155](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/155) from
+`feat/staged-metadata-lookup`, based on current main after #137. Coherent backend
+commit `20c8cb3f6` and frontend commit `a86580db` are pushed; the final documentation
+and screenshots accompany them in this PR.
 
-Global media sorting/paging is committed and pushed as `089993d62`:
+- One checked comparison model/panel serves game/movie/TV/anime editors and the
+  actual Add media quick-add review. Apply stages local values; Save persists;
+  Cancel discards. Save waits for a pending lookup to be applied or cancelled.
+- Empty editable values default checked; populated values, zeroes, manual edits,
+  unchecked choices and locks are preserved. Changed titles/selections/artwork
+  revisions cannot apply stale responses.
+- Provider identity is explicit on edits. TV groups identity and seasons; Save
+  adds only higher-numbered seasons and preserves current season tracking.
+- Artwork provenance stays in the host session. Owned selected previews recheck
+  provider media authorization and use pinned public image fetching/validation.
+  Steam tries tall cover then header. No migration, SDK or provider package change.
+- Modern/Classic share logic and semantic tokens. The Classic UI guide documents
+  how to extend the shared adapter instead of copying old components/search code.
 
-- Validated API sort keys, stable ID ties/null placement, server episode progress
-  and independent tab counts in the existing media list boundary; no migration.
-- Shared frontend paging/query generation, bounded loaded-extent refresh,
-  two-minute freshness, local-save invalidation, empty/no-growth stopping and
-  preservation of newer local edits/deletes during refresh.
-- Accessible sort headers, five-bucket totals and sort-bearing request identity.
-- Regression tests and current documentation/issue ledger.
+Validation: full backend **2,715 passed, four skipped**, mypy **357 files**, full
+configured Pylint **10/10**, Ruff lint/format **577 files**. Full frontend **616
+passed**, ESLint, Prettier, vue-tsc and production build passed; all **491 source
+files** meet the size limit. The final small result-list visibility adjustment
+also passed focused form/search/add tests and types. Live quick-add review exposed
+unused provider fields; correction `144d7322` limits its checklist to persisted
+fields, retains the selected title/identity, and passed 17 focused tests, types,
+lint/format and the size check. The staged-season regression
+failed before its fix. Live Steam Portal and TVmaze The Office checks verified
+selection, metadata, owned artwork previews, checked Apply and cancelling the form
+without database writes. Modern dark and Classic light screenshots are included.
 
-Verification: full backend **2,708 passed, four skipped**; mypy **356 source
-files**; Ruff lint/format **574 files**; full frontend **601 tests / 102 suites**,
-ESLint, Prettier, vue-tsc and production build passed. All 484 frontend source
-files meet the size limit. Configured Pylint on the affected backend modules
-passed at **10/10**, and the final API sorting/lifecycle/rank suite passed 21 tests.
-Strict MkDocs and diff whitespace checks passed. No checks were disabled.
+The preview's TVmaze account opt-out was enabled for the live check. Only the
+synthetic local account was changed. A phone capture could not be verified because
+the integrated browser ignored its viewport override and still reported 1280px;
+the invalid capture was removed. Do not claim fresh phone visual verification.
 
-The temporary approval-service usage limit is resolved. Modern dark and Classic
-light browser checks verified rank/title ordering, keyboard reversal, retained
-filters and independent All/Completed/Plan counts against the isolated backend.
-Updated sorting screenshots accompany the existing exclusion/phone screenshots.
+Remaining steps: mark #155 ready and require all
+full hosted workflows on its final head before the authorized squash merge. Then
+close #142 through the PR, update #141 and start only #143 next. Do not mark #142
+complete before final PR validation/merge.
 
-Remaining steps for #137:
+HLTB companion PR #47 is merged and official HLTB 0.7.0 was signed/published
+normally. Package/signature validators and execution of its bundled SDK over
+simulated public gateway replies passed for all four estimate fields. Earlier live
+provider token/search checks passed; this does not claim installed-host live HLTB.
 
-1. Publish the final documentation/screenshots and update #137's description.
-2. Mark the completed package ready; require all full
-   hosted workflows on its final head before the authorized squash merge.
-3. Update #141's current-work status, then tackle only #142 next.
-
-Task-owned checks use the `uta-rosefall-oidc` Compose project and local Vite port
-5179. Scratch logs/configs are in this task's visualization directory. Hosted
-Rosefall/Obsolete application data and unrelated Docker projects are untouched.
+Task-owned checks use `uta-rosefall-oidc` and local Vite port 5179. Scratch logs,
+Compose configuration and preview data backups are in this task's visualization
+directory. Hosted application data and unrelated Docker projects are untouched.
+The earlier approval-service usage limit is resolved.
 
 ## Historical checkpoint — 14 October 2026
 

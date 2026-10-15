@@ -7,6 +7,7 @@ import {
   focusMetadataEntity,
   selectMetadataCandidate,
   startMetadataSearch,
+  previewMetadataArtwork,
 } from "../services/metadata";
 import type {
   MetadataCandidate,
@@ -364,6 +365,29 @@ export function useMetadataSearch(
     selected.value = null;
   }
 
+  async function previewArtwork(url: string) {
+    const session = activeSession;
+    const candidate = selected.value;
+    const request = generation;
+    if (
+      !session ||
+      !candidate ||
+      !candidate.assets.some((asset) => asset.url === url)
+    )
+      throw new Error(
+        "Select this metadata result again before previewing artwork.",
+      );
+    const data = await previewMetadataArtwork(session, candidate.id, url);
+    if (
+      request !== generation ||
+      session !== activeSession ||
+      selected.value?.id !== candidate.id ||
+      !selected.value.assets.some((asset) => asset.url === url)
+    )
+      throw new Error("The lookup selection changed.");
+    return data;
+  }
+
   onScopeDispose(() => {
     stopWatch();
     stopPreferencesWatch();
@@ -383,5 +407,6 @@ export function useMetadataSearch(
     select,
     focus,
     stop,
+    previewArtwork,
   };
 }

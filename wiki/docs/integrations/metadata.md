@@ -38,21 +38,43 @@ over the provider's alternate-language spellings.
 
 ![A protected custom title in the game editor](../assets/title-protection/game-editor.png)
 
-## Repull metadata from the game editor
+## Review metadata before saving
 
-Open **Edit Game → Media → Repull Metadata**. The editor first performs a provider lookup and shows a confirmation describing the fields that would change and any locked fields that will be preserved.
+Search in a game, movie, TV or anime editor and select a result. **Look up metadata**
+compares the current and offered values. Empty editable fields start checked;
+existing values and real zeroes stay unchecked, and protected fields cannot be
+selected. Check the changes you want, then **Apply** to place them in the form.
+**Save** persists them. Cancel lookup leaves the form alone; cancelling the form
+also discards changes already applied to it. Save waits for Apply or Cancel.
 
-The refresh uses the current game title and requires an exact title match (ignoring case and common trademark/copyright marks). A fuzzy or missing match is not applied.
+The game editor's **Media → Search artwork** uses the current title/provider
+identity and the same review. The old immediate-saving Repull confirmation has
+been replaced by this staged workflow. Other explicit/scheduled refresh actions
+retain their existing behavior.
 
-The workflow is:
+On an existing record, **Provider identity** is a separate choice. TV groups it
+with the offered season list; choosing a description or picture alone cannot
+relink tracking. Save adds only higher-numbered seasons and preserves existing
+seasons, manual names, episode counts and watched progress.
 
-1. Choose whether missing cover/banner artwork may be added.
-2. Click **Repull Metadata**.
-3. Review the provider and the fields that would change.
-4. Cancel, or confirm **Apply refresh**.
-5. The editor reloads the saved game data after a successful refresh.
+Artwork is verified by the host before it is offered. Steam tries a tall cover
+and then its header when needed. Failed artwork does not discard useful text.
+Manual edits and unchecked choices survive later enrichment; changing the form
+title invalidates the old preview and asks for another search.
 
-Existing artwork is never replaced by this editor action. Replacing artwork remains a separate explicit action.
+The **Add media** quick-add dialog also has **Review metadata before adding**.
+Its checked choices stay staged while status, rating, dates and episode progress
+remain as entered. **Add to library** saves the title and those choices.
+The selected title/provider identity remain attached to the new record. The
+checklist includes only metadata supported by this add flow; provider diagnostics
+and unused fields are not offered as saveable changes.
+
+| Classic light | Modern dark |
+| --- | --- |
+| ![Classic TV lookup with checked fields](../assets/metadata-lookup/classic-light-tv-review.jpg) | ![Modern game lookup with staged choices](../assets/metadata-lookup/modern-dark-game-review.jpg) |
+
+[Add media review](../assets/metadata-lookup/modern-dark-media-add-review.jpg)
+and [applied choices with the personal rating retained](../assets/metadata-lookup/modern-dark-media-add-applied.jpg).
 
 ## Manual fields and locked metadata
 

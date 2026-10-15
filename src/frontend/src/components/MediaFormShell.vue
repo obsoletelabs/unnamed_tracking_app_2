@@ -11,6 +11,7 @@ defineProps<{
   saving: boolean;
   deleting: boolean;
   error: string | null;
+  lookupPending?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -43,7 +44,7 @@ const emit = defineEmits<{
       <button
         type="button"
         class="ui-btn ui-btn-primary"
-        :disabled="saving || deleting"
+        :disabled="saving || deleting || lookupPending"
         @click="emit('save')"
       >
         {{ saving ? "Saving…" : editing ? "Save Changes" : "Add " + noun }}

@@ -130,9 +130,13 @@ Provider timing uses explicit fixtures; the separate
 [live provider check](../assets/media-search/live-providers.json) uses the
 configured core providers without fixtures.
 
-The existing Edit dialogs still let you search for metadata and adjust the full
-form. Fields you changed yourself are kept rather than overwritten (the dialog
-tells you which it skipped).
+Use **Review metadata before adding** in the add dialog to choose individual
+metadata/artwork fields without losing personal tracking inputs. The Edit dialogs
+use the same checked comparison after selecting a lookup result. **Apply** stages
+the selected values; **Save** persists them. Cancelling the form discards them.
+Provider identity is an explicit choice, grouped with offered TV seasons. Selecting
+an unrelated description or picture cannot change the tracked provider identity.
+See [the shared lookup workflow](../integrations/metadata.md#review-metadata-before-saving).
 
 ## Metadata provider extension (1.1.1)
 

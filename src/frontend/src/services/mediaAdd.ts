@@ -1,7 +1,7 @@
 import { createMovie } from "./movies";
 import { createTVShow, updateSeason as updateTVSeason } from "./tvShows";
 import { createAnime, updateSeason as updateAnimeSeason } from "./anime";
-import type { MetadataCandidate } from "./metadata";
+import type { CanonicalMetadata, MetadataCandidate } from "./metadata";
 import type { QuickAddForm } from "../types/mediaLibrary";
 import type { MovieStatus } from "../types/movie";
 import type { TVShowStatus } from "../types/tv_show";
@@ -24,6 +24,48 @@ export function metadataEpisodeTotal(
     seasons.every((season) => season.episode_count != null)
     ? seasons.reduce((sum, season) => sum + (season.episode_count ?? 0), 0)
     : null;
+}
+
+export function reviewableMediaMetadata(
+  candidate: MetadataCandidate,
+): CanonicalMetadata {
+  // Only offer fields persisted by this add flow; provider diagnostics/links are not form fields.
+  const common = [
+    "description",
+    "studios",
+    "countries",
+    "languages",
+    "genres",
+    "tags",
+    "features",
+    "age_rating",
+  ];
+  const specific =
+    candidate.media_type === "movie"
+      ? ["release_date", "runtime_minutes", "director", "writer"]
+      : candidate.media_type === "tv_show"
+        ? ["release_date", "episode_runtime_minutes", "creators", "seasons"]
+        : [
+            "release_date",
+            "episode_runtime_minutes",
+            "episode_count",
+            "format",
+          ];
+  const metadata: CanonicalMetadata = Object.fromEntries(
+    [...common, ...specific].map((key) => [
+      key,
+      candidate.metadata[key as keyof CanonicalMetadata],
+    ]),
+  );
+  const scoreKeys =
+    candidate.media_type === "anime" ? ["anilist", "mal"] : ["tmdb"];
+  metadata.scores = Object.fromEntries(
+    scoreKeys.flatMap((key) => {
+      const value = candidate.metadata.scores?.[key];
+      return value == null ? [] : [[key, value]];
+    }),
+  );
+  return metadata;
 }
 
 export async function addMediaCandidate(

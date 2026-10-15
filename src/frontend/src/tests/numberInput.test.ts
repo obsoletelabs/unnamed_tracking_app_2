@@ -55,6 +55,8 @@ vi.mock("../composables/useMetadataSearch", async () => {
       error: ref(null),
       manualSearchHint: ref(null),
       hasSearched: ref(false),
+      previewArtwork: vi.fn(),
+      stop: vi.fn(),
     }),
   };
 });
@@ -72,6 +74,9 @@ vi.mock("../utils/useMetadataSearch", async () => {
       run: vi.fn(),
       select: vi.fn(),
       applied: vi.fn(),
+      candidate: ref(null),
+      previewArtwork: vi.fn(),
+      stop: vi.fn(),
     }),
   };
 });

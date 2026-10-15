@@ -164,7 +164,7 @@ Until then, PRs remain available for review with current validation and screensh
   public gateway replies passed for all four estimate fields. Direct live provider
   token/search verification also passed; this is not a claim of installed-host live
   provider execution.
-- **H and I:** in progress on a combined library branch. Exclusions and saved
+- **H and I:** merged in combined [PR #137](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/137). Exclusions and saved
   query/preset compatibility, percent-containing collection names, safe filtered
   reorder and episode-page preservation pass 25 focused regressions. The pushed
   global media sorting/counts and shared loaded-extent refresh implementation passes
@@ -174,9 +174,18 @@ Until then, PRs remain available for review with current validation and screensh
   across 102 suites, ESLint, Prettier, vue-tsc and production build. Modern dark
   and Classic light browser checks verified sorting, keyboard reversal and
   independent tab counts; screenshots are in the media library guide. The
-  temporary approval-service limit is resolved. Final ready-PR hosted checks and
-  the authorized squash merge remain required before #137 is complete.
-- **J–O:** approved; not implemented yet. The package details below describe
+  temporary approval-service limit is resolved. All seven full hosted workflows
+  passed before the authorized squash merge into main.
+- **J / 15, 17, 28–29:** active issue #142 in [PR #155](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/155).
+  Shared checked add/edit comparison, current protection/manual-edit handling,
+  identity-bound verified artwork and staged TV seasons are committed/pushed.
+  Game Repull no longer persists before Save. The actual Add media flow also
+  supports review while retaining tracking inputs. Full local backend 2,715 tests
+  (four skipped), frontend 616 tests, configured quality/build and size checks
+  passed. Live Steam/TVmaze checks and Modern/Classic desktop screenshots passed;
+  fresh phone visual verification remains unavailable because the integrated
+  browser ignored its viewport override. Full hosted checks/merge remain pending.
+- **K–O:** approved; not implemented yet. The package details below describe
   intended work, not completed behavior.
 
 ### Issue-by-issue execution order
@@ -184,7 +193,7 @@ Until then, PRs remain available for review with current validation and screensh
 The owner requested one issue at a time, most complex first, on 15 October 2026.
 [Tracker #141](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/141)
 contains the ordered queue, dependencies and existing related follow-ups #125,
-#132 and #138–140. Finish #137, then start #142 (shared staged metadata lookup).
+#132 and #138–140. #137 is merged; finish #142 in #155, then start only #143.
 
 All 29 untouched approved matrix rows are assigned exactly once:
 

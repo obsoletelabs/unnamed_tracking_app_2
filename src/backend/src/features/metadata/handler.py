@@ -90,6 +90,7 @@ class SearchSession:
     provider_states: dict[str, str] = field(default_factory=dict)
     sources: dict[str, Source] = field(default_factory=dict)
     candidates: dict[str, dict[str, Any]] = field(default_factory=dict)
+    asset_providers: dict[tuple[str, str], set[str]] = field(default_factory=dict)
     groups: dict[str, tuple[str, ...]] = field(default_factory=dict)
     redirects: dict[str, str] = field(default_factory=dict)
     selected: str | None = None
@@ -767,7 +768,7 @@ class MetadataHandler:
                     self._rank(session)
                 elif operation == "media":
                     received_data = received_data or bool(response.assets)
-                    self._append_assets(session, key, response)
+                    self._append_assets(session, key, response, provider.id)
             session.completed.add(work_key)
             if not received_data:
                 identity_ids = self._operation_candidate(session, key).provider_ids
@@ -783,12 +784,16 @@ class MetadataHandler:
                 self._enrich(session)
 
     @staticmethod
-    def _append_assets(session: SearchSession, key: str, response: ProviderResponse) -> None:
+    def _append_assets(
+        session: SearchSession, key: str, response: ProviderResponse, provider_id: str
+    ) -> None:
         group_id = next(
             (group_id for group_id, group in session.groups.items() if key in group), None
         )
         if group_id is None:
             return
+        for asset in response.assets:
+            session.asset_providers.setdefault((asset.kind, str(asset.url)), set()).add(provider_id)
         item = session.candidates[group_id]
         assets = item["assets"] + [asset.model_dump(mode="json") for asset in response.assets]
         item["assets"] = sorted(

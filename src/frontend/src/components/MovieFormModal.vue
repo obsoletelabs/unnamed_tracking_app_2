@@ -22,7 +22,9 @@ import MediaMetadataSearch from "./MediaMetadataSearch.vue";
 import { useMetadataSearch } from "../utils/useMetadataSearch";
 import { splitList } from "../utils/formLists";
 import { movieMetadataResult } from "../utils/metadataCandidate";
-import { metadataPrefill } from "../utils/metadataPrefill";
+import { useMetadataComparison } from "../composables/useMetadataComparison";
+import { useMetadataArtwork } from "../composables/useMetadataArtwork";
+import MetadataComparison from "./MetadataComparison.vue";
 
 import { useTitleProtection } from "../utils/titleProtection";
 import { numberOrNull } from "../utils/numberInput";
@@ -40,7 +42,7 @@ const emit = defineEmits<{
 function blankFields() {
   return {
     title: "",
-    providerIds: {} as Record<string, string>,
+    tracking: { providerIds: {} as Record<string, string> },
     description: "",
     releaseDate: "",
     runtimeMinutes: null as number | null,
@@ -89,7 +91,7 @@ function loadFromMovie(movie: Movie | null | undefined) {
   }
   fields.value = {
     title: movie.title,
-    providerIds: movie.providerIds ?? {},
+    tracking: { providerIds: movie.providerIds ?? {} },
     description: movie.description ?? "",
     releaseDate: movie.releaseDate ?? "",
     runtimeMinutes: movie.runtimeMinutes,
@@ -114,42 +116,97 @@ function loadFromMovie(movie: Movie | null | undefined) {
 
 watch(() => props.movie, loadFromMovie, { immediate: true });
 
-const prefillMetadata = metadataPrefill<ReturnType<typeof blankFields>>();
-
-function applyMetadata(result: MovieMetadataResult) {
-  const locked = new Set(props.movie?.lockedFields ?? []);
+const artwork = useMetadataArtwork(search.candidate, search.previewArtwork);
+const comparison = useMetadataComparison(
+  () => fields.value,
+  () => ({
+    title: { label: "Title", locked: titleProtected.value },
+    description: {
+      label: "Description",
+      locked: (props.movie?.lockedFields ?? []).includes("description"),
+    },
+    posterUrl: {
+      label: "Poster",
+      locked: (props.movie?.lockedFields ?? []).includes("poster_url"),
+      image: true,
+    },
+    backdropUrl: {
+      label: "Backdrop",
+      locked: (props.movie?.lockedFields ?? []).includes("backdrop_url"),
+      image: true,
+    },
+    genresInput: {
+      label: "Genres",
+      locked: (props.movie?.lockedFields ?? []).includes("genres"),
+    },
+    releaseDate: {
+      label: "Release date",
+      locked: (props.movie?.lockedFields ?? []).includes("release_date"),
+    },
+    runtimeMinutes: {
+      label: "Runtime",
+      locked: (props.movie?.lockedFields ?? []).includes("runtime_minutes"),
+    },
+    director: {
+      label: "Director",
+      locked: (props.movie?.lockedFields ?? []).includes("director"),
+    },
+    writer: {
+      label: "Writer",
+      locked: (props.movie?.lockedFields ?? []).includes("writer"),
+    },
+    studiosInput: {
+      label: "Studios",
+      locked: (props.movie?.lockedFields ?? []).includes("studios"),
+    },
+    tmdbScore: {
+      label: "TMDB score",
+      locked: (props.movie?.lockedFields ?? []).includes("tmdb_score"),
+    },
+    tracking: { label: "Provider identity" },
+  }),
+);
+function offerMetadata(result: MovieMetadataResult) {
   const incoming: Partial<ReturnType<typeof blankFields>> = {};
-  if (!titleProtected.value) incoming.title = result.title ?? undefined;
-  if (!locked.has("description"))
-    incoming.description = result.description ?? undefined;
-  if (!locked.has("poster_url"))
-    incoming.posterUrl = result.posterUrl ?? undefined;
-  if (!locked.has("backdrop_url"))
-    incoming.backdropUrl = result.backdropUrl ?? undefined;
-  if (!locked.has("genres"))
-    incoming.genresInput = result.genres.join(", ") ?? undefined;
-  if (!locked.has("release_date"))
-    incoming.releaseDate = result.releaseDate ?? undefined;
-  if (!locked.has("runtime_minutes"))
-    incoming.runtimeMinutes = result.runtimeMinutes ?? undefined;
-  if (!locked.has("director")) incoming.director = result.director ?? undefined;
-  if (!locked.has("writer")) incoming.writer = result.writer ?? undefined;
-  if (!locked.has("studios"))
-    incoming.studiosInput = result.studios.join(", ") ?? undefined;
-  if (!locked.has("tmdb_score"))
-    incoming.tmdbScore = result.tmdbScore ?? undefined;
-  prefillMetadata(fields.value, incoming, result.candidateId);
-  if (result.providerIds)
-    fields.value.providerIds = {
-      ...fields.value.providerIds,
+  incoming.title = result.title ?? undefined;
+  incoming.description = result.description ?? undefined;
+  incoming.posterUrl = artwork.urls.value.cover;
+  incoming.backdropUrl = artwork.urls.value.banner;
+  incoming.genresInput = result.genres.join(", ") ?? undefined;
+  incoming.releaseDate = result.releaseDate ?? undefined;
+  incoming.runtimeMinutes = result.runtimeMinutes ?? undefined;
+  incoming.director = result.director ?? undefined;
+  incoming.writer = result.writer ?? undefined;
+  incoming.studiosInput = result.studios.join(", ") ?? undefined;
+  incoming.tmdbScore = result.tmdbScore ?? undefined;
+  incoming.tracking = {
+    providerIds: {
+      ...fields.value.tracking.providerIds,
       ...result.providerIds,
-    };
-  search.applied(result, [...locked]);
+    },
+  };
+  comparison.offer(
+    incoming,
+    result.candidateId ?? `${result.provider}-${result.providerId}`,
+  );
+}
+watch([search.selected, artwork.urls], ([result]) => {
+  if (result) offerMetadata(result);
+  else comparison.clear();
+});
+function cancelLookup() {
+  comparison.clear();
+  search.stop();
+}
+function applyLookup() {
+  const result = search.selected.value;
+  if (!result) return;
+  comparison.apply();
+  search.applied(result, []);
+  search.stop();
 }
 
-watch(search.selected, (result) => {
-  if (result) applyMetadata(result);
-});
+watch(() => props.movie, cancelLookup);
 
 // what the search box lists for each match
 const searchResults = computed(() =>
@@ -169,6 +226,7 @@ function pickResult(key: string) {
 }
 
 async function submit() {
+  if (search.selected.value) return;
   if (!fields.value.title.trim()) {
     error.value = "Title is required.";
     return;
@@ -188,7 +246,7 @@ async function submit() {
     const input = {
       progressMinutes,
       title: fields.value.title.trim(),
-      providerIds: fields.value.providerIds,
+      providerIds: fields.value.tracking.providerIds,
       titleLock: props.movie ? titleLockOverride.value : undefined,
       description: fields.value.description.trim() || null,
       releaseDate: fields.value.releaseDate || null,
@@ -250,6 +308,7 @@ async function remove() {
     noun="Movie"
     :editing="!!movie"
     :saving="saving"
+    :lookup-pending="!!search.selected.value"
     :deleting="deleting"
     :error="error"
     @closed="emit('closed')"
@@ -267,6 +326,18 @@ async function remove() {
       :warnings="search.warnings.value"
       @search="search.run"
       @pick="pickResult"
+    />
+
+    <MetadataComparison
+      v-if="search.selected.value"
+      :changes="comparison.changes.value"
+      :reason="comparison.reason.value"
+      :provider="search.selected.value.provider"
+      :busy="artwork.busy.value || search.enrichingMedia.value"
+      :previews="artwork.previews.value"
+      @toggle="comparison.toggle"
+      @apply="applyLookup"
+      @cancel="cancelLookup"
     />
 
     <img

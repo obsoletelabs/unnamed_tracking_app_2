@@ -24,6 +24,13 @@ or enter a title, choose a status and platform, then save. Metadata results reta
 their provider identities, including optional plugin providers. Duplicate and
 owned-copy review remains a separate confirmation step.
 
+Selecting a result opens **Look up metadata**. Review current/offered values,
+check the changes you want and **Apply** them to the form before saving. Populated
+values remain unchecked and protected fields stay unchanged. Artwork is verified
+before it is offered. Cancelling the form discards the staged changes; selecting
+a result does not immediately create or update a library entry. See the
+[shared lookup workflow and screenshots](../integrations/metadata.md#review-metadata-before-saving).
+
 Choose **Full form** for folders, relationships, ownership, artwork and other
 fields. Your search selection and edits carry over. Titles that cannot generate
 a folder name open the full form so you can supply one; folder collisions remain

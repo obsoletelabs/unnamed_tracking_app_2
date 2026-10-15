@@ -60,13 +60,13 @@ async function pick(candidate: MetadataCandidate) {
         : "Could not load this title's details.";
   }
 }
-async function save(form: QuickAddForm) {
+async function save(form: QuickAddForm, reviewed?: MetadataCandidate) {
   if (!selected.value || saving.value) return;
   saving.value = true;
   saveError.value = null;
   try {
     const title = selected.value.metadata.title || selected.value.title;
-    const result = await addMediaCandidate(selected.value, form);
+    const result = await addMediaCandidate(reviewed ?? selected.value, form);
     added.value = { title, ...result };
     media.closeSelection();
   } catch (error) {
@@ -152,6 +152,7 @@ onDeactivated(media.stop);
       :enriching="enrichingMedia"
       :saving="saving"
       :error="saveError"
+      :preview-artwork="media.previewArtwork"
       @close="!saving && media.closeSelection()"
       @save="save"
     />

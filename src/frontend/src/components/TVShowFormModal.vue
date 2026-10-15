@@ -18,7 +18,9 @@ import MediaMetadataSearch from "./MediaMetadataSearch.vue";
 import { useMetadataSearch } from "../utils/useMetadataSearch";
 import { splitList } from "../utils/formLists";
 import { tvMetadataResult } from "../utils/metadataCandidate";
-import { metadataPrefill } from "../utils/metadataPrefill";
+import { useMetadataComparison } from "../composables/useMetadataComparison";
+import { useMetadataArtwork } from "../composables/useMetadataArtwork";
+import MetadataComparison from "./MetadataComparison.vue";
 
 import { useTitleProtection } from "../utils/titleProtection";
 import { numberOrNull } from "../utils/numberInput";
@@ -36,7 +38,11 @@ const emit = defineEmits<{
 function blankFields() {
   return {
     title: "",
-    providerIds: {} as Record<string, string>,
+    tracking: {
+      providerIds: {} as Record<string, string>,
+      externalId: null as string | null,
+      seasons: [] as SeasonInput[],
+    },
     description: "",
     firstAirDate: "",
     episodeRuntimeMinutes: null as number | null,
@@ -50,7 +56,6 @@ function blankFields() {
     posterUrl: null as string | null,
     backdropUrl: null as string | null,
     tmdbScore: null as number | null,
-    externalId: null as string | null,
   };
 }
 
@@ -61,10 +66,8 @@ const statusBucketModel = computed({
     fields.value.status = bucketToReal(bucket) as TVShowStatus;
   },
 });
-// staged from a metadata search result when creating a new show — bulk
-// created alongside it so the user doesn't have to type each season in
-// by hand. Never used on edit (seasons are managed from the detail page).
-const stagedSeasons = ref<SeasonInput[]>([]);
+let applySeasons = false;
+const stagedSeasons = computed(() => fields.value.tracking.seasons);
 const { titleProtected, titleLockOverride } = useTitleProtection(
   () => props.show,
   () => fields.value.title,
@@ -81,14 +84,24 @@ const search = useMetadataSearch<TVShowMetadataResult>({
 });
 
 function loadFromShow(show: TVShow | null | undefined) {
-  stagedSeasons.value = [];
+  applySeasons = false;
   if (!show) {
     fields.value = blankFields();
     return;
   }
   fields.value = {
     title: show.title,
-    providerIds: show.providerIds ?? {},
+    tracking: {
+      providerIds: show.providerIds ?? {},
+      externalId: show.externalId,
+      seasons: show.seasons.map((season) => ({
+        seasonNumber: season.seasonNumber,
+        name: season.name,
+        episodeCount: season.episodeCount,
+        airDate: season.airDate,
+        posterUrl: season.posterUrl,
+      })),
+    },
     description: show.description ?? "",
     firstAirDate: show.firstAirDate ?? "",
     episodeRuntimeMinutes: show.episodeRuntimeMinutes,
@@ -102,48 +115,99 @@ function loadFromShow(show: TVShow | null | undefined) {
     posterUrl: show.posterUrl,
     backdropUrl: show.backdropUrl,
     tmdbScore: show.tmdbScore,
-    externalId: show.externalId,
   };
 }
 
 watch(() => props.show, loadFromShow, { immediate: true });
 
-const prefillMetadata = metadataPrefill<ReturnType<typeof blankFields>>();
-
-function applyMetadata(result: TVShowMetadataResult) {
-  const locked = new Set(props.show?.lockedFields ?? []);
+const artwork = useMetadataArtwork(search.candidate, search.previewArtwork);
+const comparison = useMetadataComparison(
+  () => fields.value,
+  () => ({
+    title: { label: "Title", locked: titleProtected.value },
+    description: {
+      label: "Description",
+      locked: (props.show?.lockedFields ?? []).includes("description"),
+    },
+    posterUrl: {
+      label: "Poster",
+      locked: (props.show?.lockedFields ?? []).includes("poster_url"),
+      image: true,
+    },
+    backdropUrl: {
+      label: "Backdrop",
+      locked: (props.show?.lockedFields ?? []).includes("backdrop_url"),
+      image: true,
+    },
+    genresInput: {
+      label: "Genres",
+      locked: (props.show?.lockedFields ?? []).includes("genres"),
+    },
+    firstAirDate: {
+      label: "First air date",
+      locked: (props.show?.lockedFields ?? []).includes("first_air_date"),
+    },
+    episodeRuntimeMinutes: {
+      label: "Episode runtime",
+      locked: (props.show?.lockedFields ?? []).includes(
+        "episode_runtime_minutes",
+      ),
+    },
+    creatorsInput: {
+      label: "Creators",
+      locked: (props.show?.lockedFields ?? []).includes("creators"),
+    },
+    tmdbScore: {
+      label: "TMDB score",
+      locked: (props.show?.lockedFields ?? []).includes("tmdb_score"),
+    },
+    tracking: { label: "Provider identity and offered seasons" },
+  }),
+);
+function offerMetadata(result: TVShowMetadataResult) {
   const incoming: Partial<ReturnType<typeof blankFields>> = {};
-  if (!titleProtected.value) incoming.title = result.title ?? undefined;
-  if (!locked.has("description"))
-    incoming.description = result.description ?? undefined;
-  if (!locked.has("poster_url"))
-    incoming.posterUrl = result.posterUrl ?? undefined;
-  if (!locked.has("backdrop_url"))
-    incoming.backdropUrl = result.backdropUrl ?? undefined;
-  if (!locked.has("genres"))
-    incoming.genresInput = result.genres.join(", ") ?? undefined;
-  if (!locked.has("first_air_date"))
-    incoming.firstAirDate = result.firstAirDate ?? undefined;
-  if (!locked.has("episode_runtime_minutes"))
-    incoming.episodeRuntimeMinutes = result.episodeRuntimeMinutes ?? undefined;
-  if (!locked.has("creators"))
-    incoming.creatorsInput = result.creators.join(", ") ?? undefined;
-  if (!locked.has("tmdb_score"))
-    incoming.tmdbScore = result.tmdbScore ?? undefined;
-  prefillMetadata(fields.value, incoming, result.candidateId);
-  if (result.providerIds)
-    fields.value.providerIds = {
-      ...fields.value.providerIds,
+  incoming.title = result.title ?? undefined;
+  incoming.description = result.description ?? undefined;
+  incoming.posterUrl = artwork.urls.value.cover;
+  incoming.backdropUrl = artwork.urls.value.banner;
+  incoming.genresInput = result.genres.join(", ") ?? undefined;
+  incoming.firstAirDate = result.firstAirDate ?? undefined;
+  incoming.episodeRuntimeMinutes = result.episodeRuntimeMinutes ?? undefined;
+  incoming.creatorsInput = result.creators.join(", ") ?? undefined;
+  incoming.tmdbScore = result.tmdbScore ?? undefined;
+  incoming.tracking = {
+    providerIds: {
+      ...fields.value.tracking.providerIds,
       ...result.providerIds,
-    };
-  if (result.tvmazeId) fields.value.externalId = result.tvmazeId;
-  if (result.seasons.length) stagedSeasons.value = result.seasons;
-  search.applied(result, [...locked]);
+    },
+    externalId: result.providerIds?.tvmaze ?? fields.value.tracking.externalId,
+    seasons: result.seasons.length
+      ? result.seasons
+      : fields.value.tracking.seasons,
+  };
+  comparison.offer(
+    incoming,
+    result.candidateId ?? `${result.provider}-${result.providerId}`,
+  );
+}
+watch([search.selected, artwork.urls], ([result]) => {
+  if (result) offerMetadata(result);
+  else comparison.clear();
+});
+function cancelLookup() {
+  comparison.clear();
+  search.stop();
+}
+function applyLookup() {
+  const result = search.selected.value;
+  if (!result) return;
+  const applied = comparison.apply();
+  if (applied.has("tracking")) applySeasons = true;
+  search.applied(result, []);
+  search.stop();
 }
 
-watch(search.selected, (result) => {
-  if (result) applyMetadata(result);
-});
+watch(() => props.show, cancelLookup);
 
 // what the search box lists for each match
 const searchResults = computed(() =>
@@ -163,6 +227,7 @@ function pickResult(key: string) {
 }
 
 async function submit() {
+  if (search.selected.value) return;
   if (!fields.value.title.trim()) {
     error.value = "Title is required.";
     return;
@@ -172,7 +237,7 @@ async function submit() {
   try {
     const input = {
       title: fields.value.title.trim(),
-      providerIds: fields.value.providerIds,
+      providerIds: fields.value.tracking.providerIds,
       titleLock: props.show ? titleLockOverride.value : undefined,
       description: fields.value.description.trim() || null,
       firstAirDate: fields.value.firstAirDate || null,
@@ -197,8 +262,8 @@ async function submit() {
         min: 0,
         max: 10,
       }),
-      externalId: fields.value.externalId,
-      seasons: props.show ? undefined : stagedSeasons.value,
+      externalId: fields.value.tracking.externalId,
+      seasons: !props.show || applySeasons ? stagedSeasons.value : undefined,
     };
     const saved = props.show
       ? await updateTVShow(props.show.id, {
@@ -235,6 +300,7 @@ async function remove() {
     noun="TV Show"
     :editing="!!show"
     :saving="saving"
+    :lookup-pending="!!search.selected.value"
     :deleting="deleting"
     :error="error"
     @closed="emit('closed')"
@@ -252,6 +318,18 @@ async function remove() {
       :warnings="search.warnings.value"
       @search="search.run"
       @pick="pickResult"
+    />
+
+    <MetadataComparison
+      v-if="search.selected.value"
+      :changes="comparison.changes.value"
+      :reason="comparison.reason.value"
+      :provider="search.selected.value.provider"
+      :busy="artwork.busy.value || search.enrichingMedia.value"
+      :previews="artwork.previews.value"
+      @toggle="comparison.toggle"
+      @apply="applyLookup"
+      @cancel="cancelLookup"
     />
 
     <img

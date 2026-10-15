@@ -23,11 +23,14 @@ export function useMetadataSearch<
       : null,
   );
   const results = computed(() =>
-    selected.value ? [] : progressive.results.value.map(options.convert),
+    selected.value || appliedMessage.value
+      ? []
+      : progressive.results.value.map(options.convert),
   );
   const message = computed(() => {
     if (progressive.error.value) return progressive.error.value;
     if (appliedMessage.value) return appliedMessage.value;
+    if (selected.value) return null;
     if (progressive.manualSearchHint.value)
       return progressive.manualSearchHint.value;
     if (
@@ -64,8 +67,14 @@ export function useMetadataSearch<
     message,
     warnings: progressive.warnings,
     enrichingMedia: progressive.enrichingMedia,
-    run: progressive.search,
+    run: () => {
+      appliedMessage.value = null;
+      return progressive.search();
+    },
     select,
     applied,
+    stop: progressive.stop,
+    candidate: progressive.selected,
+    previewArtwork: progressive.previewArtwork,
   };
 }

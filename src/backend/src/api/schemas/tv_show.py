@@ -92,10 +92,10 @@ class TVShowCreate(TVShowBase):
 # Preserve this media contract's field defaults and compatibility model names.
 # pylint: disable=duplicate-code
 class TVShowUpdate(TitleProtectionUpdate):
-    """Payload for partial updates — every field optional. Seasons are
-    never touched here; they have their own nested CRUD endpoints."""
+    """Partial updates; selected lookup seasons add only higher-numbered seasons."""
 
     provider_ids: ProviderIDs | None = None
+    seasons: list[SeasonInput] | None = Field(default=None, max_length=500)
 
     title: str | None = Field(default=None, min_length=1, max_length=500)
     sort_title: str | None = Field(default=None, max_length=500)
