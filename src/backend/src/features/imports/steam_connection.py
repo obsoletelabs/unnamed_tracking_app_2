@@ -168,10 +168,15 @@ async def disconnect(db: AsyncSession, user_id: UUID) -> dict:
     return connection_status(user)
 
 
-async def _claim(db: AsyncSession, user_id: UUID, attempt: str) -> dict:
+async def _claim(db: AsyncSession, user_id: UUID, attempt: str, *, paced: bool = True) -> dict:
+    """Serialize provider calls; only automatic polls wait for Steam's interval.
+
+    A typed Guard code is a one-off user action. Pacing it like a poll would
+    reject most submissions, because the client polls whenever the interval ends.
+    """
     user = await locked_user(db, user_id)
     state = _require_attempt(user, attempt)
-    if state["phase"] != "waiting" or state["next_action_at"] > time.time():
+    if state["phase"] != "waiting" or (paced and state["next_action_at"] > time.time()):
         raise SteamConnectionError("Wait for the current Steam sign-in request.", 429)
     state["next_action_at"] = time.time() + max(30, state["interval"])
     state["phase"] = "checking"
@@ -215,7 +220,13 @@ async def poll(db: AsyncSession, user_id: UUID, attempt: str) -> dict:
     user = await locked_user(db, user_id)
     _require_attempt(user, attempt)
     if session is not None:
-        await check_library_owner(db, user, session.steam_id)
+        try:
+            await check_library_owner(db, user, session.steam_id)
+        except SteamConnectionError:
+            # The sign-in is finished; its session is discarded, so end the attempt.
+            user.steam_login_state = None
+            await db.commit()
+            raise
         user.steam_id = session.steam_id
         user.steam_api_key = None
         user.steam_access_token = encrypt_secret(session.access_token)
@@ -253,7 +264,7 @@ def _guard_provider(state: dict, code: str, code_type: int) -> None:
 async def submit_guard(
     db: AsyncSession, user_id: UUID, attempt: str, code: str, code_type: int
 ) -> dict:
-    state = await _claim(db, user_id, attempt)
+    state = await _claim(db, user_id, attempt, paced=False)
     try:
         await asyncio.to_thread(_guard_provider, state, code, code_type)
     finally:

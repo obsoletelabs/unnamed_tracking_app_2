@@ -162,6 +162,33 @@ async def test_expired_attempt_and_rapid_poll_do_not_reach_steam(actors, monkeyp
     provider.assert_called_once()
 
 
+async def test_guard_code_is_not_paced_like_automatic_polls(actors, monkeypatch):
+    identities, clock = actors
+    attempt = await start_attempt(identities[0], clock)
+    monkeypatch.setattr(connection, "_poll_provider", Mock(return_value=({}, None)))
+    guard = Mock()
+    monkeypatch.setattr(connection, "_guard_provider", guard)
+    async with SessionLocal() as db:
+        # The dialog keeps polling while the person types the code.
+        await connection.poll(db, identities[0], attempt)
+        await connection.submit_guard(db, identities[0], attempt, "ABCDE", 3)
+        guard.assert_called_once()
+        # Polls still wait for Steam's interval after the code is sent.
+        with pytest.raises(connection.SteamConnectionError) as error:
+            await connection.poll(db, identities[0], attempt)
+        assert error.value.status_code == 429
+        user = await connection.locked_user(db, identities[0])
+        state = connection._pending(user)
+        state["phase"] = "checking"
+        connection._save_pending(user, state)
+        await db.commit()
+        # A provider request already in flight still blocks a code.
+        with pytest.raises(connection.SteamConnectionError) as error:
+            await connection.submit_guard(db, identities[0], attempt, "FGHIJ", 3)
+        assert error.value.status_code == 429
+    guard.assert_called_once()
+
+
 async def test_disconnect_preserves_library_and_blocks_other_account_progress(actors, monkeypatch):
     identities, clock = actors
     await connect_account(identities[0], clock, monkeypatch)
@@ -199,7 +226,10 @@ async def test_disconnect_preserves_library_and_blocks_other_account_progress(ac
     async with SessionLocal() as db:
         user = await db.get(User, identities[0])
         assert user.steam_refresh_token is None
+        # The refused sign-in ends, so the next one can start straight away.
+        assert user.steam_login_state is None
         assert (await db.get(Game, game_id)).playtime_seconds == 900
+        assert (await connection.begin(db, identities[0]))["pending"] is not None
 
 
 async def test_session_renewal_and_late_import_recheck(actors, monkeypatch):
