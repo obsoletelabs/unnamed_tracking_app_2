@@ -159,19 +159,22 @@ async def import_wishlist(
     index = await LibraryIndex.load(db, current_user.id, "Steam")
     game_ids: list[str] = []
     for app_id in app_ids:
-        game, created = await _get_or_create_game(
+        placeholder = f"{_PLACEHOLDER}{app_id}"
+        if index.find(placeholder, str(app_id)) is not None:
+            # Already saved: a re-import must not rename it back to the placeholder.
+            continue
+        game, _created = await _get_or_create_game(
             db,
             current_user.id,
-            f"{_PLACEHOLDER}{app_id}",
+            placeholder,
             "Steam",
             external_id=str(app_id),
             index=index,
         )
-        if created:
-            game.status = GameStatus.WISHLIST
-            _add_source_tag_and_collection(game, "Steam")
-            await db.flush()
-            game_ids.append(str(game.id))
+        game.status = GameStatus.WISHLIST
+        _add_source_tag_and_collection(game, "Steam")
+        await db.flush()
+        game_ids.append(str(game.id))
     await db.commit()
     return {
         "enabled": True,

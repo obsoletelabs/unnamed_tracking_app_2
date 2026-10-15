@@ -7,6 +7,7 @@ from sqlalchemy import delete, select
 
 from src.api.routes import steam_import_steps
 from src.core.auth import get_current_user
+from src.core.preferences import save_preferences
 from src.database.models.achievement import Achievement
 from src.database.models.game import Game, GameStatus
 from src.database.models.user import User
@@ -66,6 +67,36 @@ async def test_wishlist_is_disabled_by_default(flow):
     response = await flow.client.post("/api/library-sync/steam/wishlist")
     assert response.status_code == 200, response.text
     assert response.json() == {"enabled": False, "added": 0, "game_ids": []}
+
+
+async def test_wishlist_reimport_keeps_saved_games_and_adds_new_ones(flow, monkeypatch):
+    await connect_steam(flow)
+    enriched = uuid.UUID(await create_game(flow, "Elden Ring", app_id="1245620"))
+    async with SessionLocal() as db:
+        (await db.get(Game, enriched)).status = GameStatus.WISHLIST
+        await save_preferences(db, flow.user_id, {"steam_import_wishlist": True})
+    monkeypatch.setattr(
+        steam_import_steps.steam_wishlist, "get_wishlist_app_ids", lambda *_: [1245620, 1086940]
+    )
+
+    async def recheck(*_args):
+        return None
+
+    monkeypatch.setattr(steam_import_steps.steam_connection, "recheck", recheck)
+    response = await flow.client.post("/api/library-sync/steam/wishlist")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["wishlisted"] == 2 and body["added"] == 1
+    async with SessionLocal() as db:
+        assert (await db.get(Game, enriched)).title == "Elden Ring"
+        added = await db.get(Game, uuid.UUID(body["game_ids"][0]))
+        assert added.external_id == "1086940"
+        assert added.status == GameStatus.WISHLIST
+    # Running it again adds nothing and renames nothing.
+    response = await flow.client.post("/api/library-sync/steam/wishlist")
+    assert response.json()["added"] == 0
+    async with SessionLocal() as db:
+        assert (await db.get(Game, enriched)).title == "Elden Ring"
 
 
 async def connect_steam(flow):
