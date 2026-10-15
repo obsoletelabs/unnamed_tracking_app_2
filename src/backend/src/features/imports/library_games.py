@@ -11,7 +11,9 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.game import FOLDER_NAME_MAX_LENGTH, Game, GameStatus
+from src.features.game_folders import reserved_names
 from src.features.metadata.locked_fields import apply_metadata_updates
+from src.helpers import save_game_asset
 from src.helpers.save_game_asset import create_game_folder
 
 _SLUG_INVALID = re.compile(r"[^A-Za-z0-9_-]+")
@@ -46,8 +48,12 @@ def _folder_candidates(title: str) -> Iterator[str]:
 
 async def _unique_folder_location(db: AsyncSession, user_id: UUID, title: str) -> str:
     statement = select(Game.id).where(Game.user_id == user_id)
+    reserved = reserved_names(save_game_asset.DATA_ROOT, user_id)
     for candidate in _folder_candidates(title):
-        if await db.scalar(statement.where(Game.folder_location == candidate)) is None:
+        if (
+            candidate not in reserved
+            and await db.scalar(statement.where(Game.folder_location == candidate)) is None
+        ):
             return candidate
     raise AssertionError("unreachable")
 
@@ -105,6 +111,7 @@ class LibraryIndex:
         )
 
     def claim_folder(self, title: str) -> str:
+        self.folders.update(reserved_names(save_game_asset.DATA_ROOT, self.user_id))
         folder = next(name for name in _folder_candidates(title) if name not in self.folders)
         self.folders.add(folder)
         return folder

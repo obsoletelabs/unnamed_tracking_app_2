@@ -220,7 +220,9 @@ async def refresh_game_metadata(
     if not payload.dry_run:
         # Provider lookup can overlap an editor or sync. Check the latest owned row
         # and its protection under the same lock used to apply the refresh.
-        game = await _get_game_or_404(game_id, db, current_user.id, for_update=True)
+        game = await _get_game_or_404(
+            game_id, db, current_user.id, for_update=True, for_storage=True
+        )
         if (
             payload.expected_updated_at is not None
             and game.updated_at != payload.expected_updated_at
@@ -229,6 +231,8 @@ async def refresh_game_metadata(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Game changed after the metadata preview. Refresh the editor and try again.",
             )
+    else:
+        game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
 
     field_values: dict[str, object] = {
         "title": match.get("title"),

@@ -20,7 +20,7 @@ from src.database.models.game import Game
 from src.database.models.game_field_change import GameFieldChange
 from src.database.models.game_note_detail import GameNoteDetail
 from src.database.models.user_scan_settings import UserScanSettings
-from src.features import game_notes
+from src.features import game_folders, game_notes
 from src.features.metadata.locked_fields import drop_nulls_for_required_fields
 
 __all__ = ["_derive_sort_title"]
@@ -219,18 +219,24 @@ async def _get_game_or_404(
     include_deleted: bool = False,
     *,
     for_update: bool = False,
+    for_storage: bool = False,
 ) -> Game:
     stmt = select(Game).where(Game.id == game_id, Game.user_id == user_id)
     if not include_deleted:
         stmt = stmt.where(Game.deleted_at.is_(None))
-    if for_update:
-        stmt = stmt.with_for_update().execution_options(populate_existing=True)
+    if for_update or for_storage:
+        stmt = stmt.with_for_update(read=not for_update).execution_options(populate_existing=True)
     game = await db.scalar(stmt)
     if game is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Game {game_id} not found",
         )
+    if for_storage:
+        try:
+            game_folders.ensure_storage_ready(_DATA_ROOT, game)
+        except game_folders.FolderStorageError as exc:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return game
 
 

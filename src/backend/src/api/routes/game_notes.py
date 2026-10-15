@@ -34,7 +34,7 @@ from src.database.models.game import Game
 from src.database.models.game_note_detail import GameNoteDetail, GameNoteVersion
 from src.database.models.user import User
 from src.database.session import get_db
-from src.features import game_notes
+from src.features import game_folders, game_notes
 
 _DB_DEPENDENCY = Depends(get_db)
 
@@ -95,7 +95,10 @@ async def search_notes(
     needle = q.strip().lower()
     games = (
         await db.scalars(
-            select(Game).where(Game.user_id == current_user.id, Game.deleted_at.is_(None))
+            select(Game)
+            .where(Game.user_id == current_user.id, Game.deleted_at.is_(None))
+            .with_for_update(read=True)
+            .execution_options(populate_existing=True)
         )
     ).all()
     pinned = {
@@ -112,6 +115,11 @@ async def search_notes(
     hits: list[tuple[int, int, dict]] = []
     for game in games:
         if not game.folder_location:
+            continue
+        try:
+            game_folders.ensure_storage_ready(_DATA_ROOT, game)
+        except game_folders.FolderStorageError:
+            # A pending move must not make search recreate or scan the old location.
             continue
         directory = _notes_dir(game)
         if not directory.exists():
@@ -171,7 +179,7 @@ async def update_note_details(
     db: AsyncSession = _DB,
     current_user: User = _USER,
 ) -> dict:
-    game = await _get_game_or_404(game_id, db, current_user.id)
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     name, path = _existing_note(game, note_name)
     row = await game_notes.ensure_row(db, game_id, name, created_at=int(path.stat().st_mtime))
     changes = payload.model_dump(exclude_unset=True)
@@ -193,8 +201,9 @@ async def update_note_details(
                     detail="That achievement is not on this game.",
                 )
         row.linked_achievement_id = wanted
+    response = _note_summary(path, row)
     await db.commit()
-    return _note_summary(path, row)
+    return response
 
 
 # ------------------------------------------------- duplicate and move ----
@@ -207,7 +216,7 @@ async def duplicate_note(
     db: AsyncSession = _DB,
     current_user: User = _USER,
 ) -> dict:
-    game = await _get_game_or_404(game_id, db, current_user.id)
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     name, path = _existing_note(game, note_name)
     directory = path.parent
     copy_name = _free_name(directory, f"{name} copy")
@@ -217,8 +226,9 @@ async def duplicate_note(
     row = await game_notes.ensure_row(db, game_id, copy_name)
     row.tags = list(source.tags)
     row.linked_achievement_id = source.linked_achievement_id
+    response = _note_summary(target, row)
     await db.commit()
-    return _note_summary(target, row)
+    return response
 
 
 class NoteMove(BaseModel):
@@ -235,8 +245,10 @@ async def move_note(
 ) -> dict:
     """Move a note, with its tags, pin and saved versions, to another game. The
     achievement it was tied to is dropped, since it belongs to the old game."""
-    game = await _get_game_or_404(game_id, db, current_user.id)
-    target_game = await _get_game_or_404(payload.target_game_id, db, current_user.id)
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
+    target_game = await _get_game_or_404(
+        payload.target_game_id, db, current_user.id, for_storage=True
+    )
     if target_game.id == game.id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="The note is already in that game."
@@ -251,12 +263,13 @@ async def move_note(
     row.game_id = target_game.id
     row.name = new_name
     row.linked_achievement_id = None
-    await db.commit()
-    return {
+    response = {
         "game_id": str(target_game.id),
         "game_title": target_game.title,
         "note": _note_summary(destination, row),
     }
+    await db.commit()
+    return response
 
 
 # -------------------------------------------------------------- versions ----
@@ -269,7 +282,7 @@ async def list_note_versions(
     db: AsyncSession = _DB,
     current_user: User = _USER,
 ) -> dict[str, list[dict]]:
-    game = await _get_game_or_404(game_id, db, current_user.id)
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     name, path = _existing_note(game, note_name)
     row = await game_notes.ensure_row(db, game_id, name, created_at=int(path.stat().st_mtime))
     versions = (
@@ -321,7 +334,7 @@ async def get_note_version(
     db: AsyncSession = _DB,
     current_user: User = _USER,
 ) -> dict:
-    game = await _get_game_or_404(game_id, db, current_user.id)
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     name, _path = _existing_note(game, note_name)
     _row, version = await _version_or_404(db, game_id, name, version_id)
     return {
@@ -341,7 +354,7 @@ async def restore_note_version(
 ) -> dict:
     """Put an earlier version back. What is there now is kept as a version first,
     so a restore can be undone."""
-    game = await _get_game_or_404(game_id, db, current_user.id)
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     name, path = _existing_note(game, note_name)
     row, version = await _version_or_404(db, game_id, name, version_id)
     current = path.read_text(encoding="utf-8", errors="replace")
@@ -382,7 +395,7 @@ async def create_game_note(
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> dict[str, str | None]:
     """Create a markdown note without replacing an existing note."""
-    game = await _get_game_or_404(game_id, db, current_user.id)
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     normalized_name = _normalize_note_name(note_name)
     note_path = _game_note_path(game, normalized_name)
     try:
@@ -417,7 +430,7 @@ async def update_game_note(
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> dict[str, str | None]:
     """Update an existing markdown note."""
-    game = await _get_game_or_404(game_id, db, current_user.id)
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     normalized_name = _normalize_note_name(note_name)
     note_path = _game_note_path(game, normalized_name)
     if not note_path.is_file():
@@ -451,7 +464,7 @@ async def rename_game_note(
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> dict[str, str | None]:
     """Rename a note without replacing the destination or losing its contents."""
-    game = await _get_game_or_404(game_id, db, current_user.id)
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     source_name = _normalize_note_name(note_name)
     destination_name = _normalize_note_name(payload.new_name)
     source_path = _game_note_path(game, source_name)
@@ -516,7 +529,7 @@ async def list_game_notes(
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> dict[str, list[str]]:
     """Return the markdown note names associated with a game."""
-    game = await _get_game_or_404(game_id, db, current_user.id)
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
 
     if not game.folder_location:
         raise HTTPException(
@@ -541,7 +554,7 @@ async def list_game_note_summaries(
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> dict[str, list[dict]]:
     """The notes with their edit time, length and a preview, for the Notes tab."""
-    game = await _get_game_or_404(game_id, db, current_user.id)
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     if not game.folder_location:
         return {"notes": []}
     notes_dir = _DATA_ROOT / str(game.user_id) / "games" / game.folder_location / "notes"
@@ -549,11 +562,13 @@ async def list_game_note_summaries(
         return {"notes": []}
     rows = await game_notes.sync_rows(db, game_id, notes_dir)
     paths = [p for p in notes_dir.iterdir() if p.is_file() and p.suffix.lower() == ".md"]
-    return {
+    response = {
         "notes": [
             _note_summary(p, rows.get(p.stem)) for p in sorted(paths, key=lambda p: p.stem.lower())
         ]
     }
+    await db.commit()
+    return response
 
 
 @crud_router.get(
@@ -570,7 +585,7 @@ async def get_game_note(
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> Response:
     """Return the contents of one game note as markdown."""
-    game = await _get_game_or_404(game_id, db, current_user.id)
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     note_path = _game_note_path(game, note_name)
 
     if not note_path.exists():
@@ -598,7 +613,7 @@ async def delete_game_note(
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> dict[str, str]:
     """Delete one markdown note from a game."""
-    game = await _get_game_or_404(game_id, db, current_user.id)
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     note_path = _game_note_path(game, note_name)
 
     if not note_path.exists():

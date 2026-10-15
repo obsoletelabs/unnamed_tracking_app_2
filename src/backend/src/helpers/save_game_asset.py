@@ -11,7 +11,9 @@ from sqlalchemy import select
 
 from src.database.models.game import Game
 from src.database.session import SessionLocal
+from src.features import game_folders
 from src.helpers.asset_previews import make_standard_previews
+from src.helpers.async_storage import finish_storage_operation
 
 DATA_ROOT = Path("/data/users")
 
@@ -34,7 +36,8 @@ ASSET_FILENAMES: dict[AssetKind, str] = {
 
 def create_game_folder(user_id: UUID | str, folder_name: str) -> Path:
     """Create and return the persistent data directory for a game."""
-    folder_path = DATA_ROOT / str(user_id) / "games" / folder_name
+    game_folders.ensure_name_available(DATA_ROOT, user_id, folder_name)
+    folder_path = game_folders.owned_folder(DATA_ROOT, user_id, folder_name)
     folder_path.mkdir(parents=True, exist_ok=True)
     (folder_path / "notes").mkdir(exist_ok=True)
     (folder_path / "screenshots").mkdir(exist_ok=True)
@@ -105,6 +108,7 @@ async def save_locked_game_asset(
         raise ValueError(f"Game not found for id: {game.id}")
     if not game.folder_location:
         raise ValueError(f"Game {game.id} is missing folder_location")
+    game_folders.ensure_storage_ready(DATA_ROOT, game)
 
     output_dir = create_game_folder(game.user_id, game.folder_location)
 
@@ -121,17 +125,6 @@ async def save_locked_game_asset(
 
 async def _finish_previews(output_path: Path, asset_kind: AssetKind, game_id: str) -> None:
     """Cancellation must not release storage while the thread still uses its path."""
-    task = asyncio.create_task(
+    await finish_storage_operation(
         asyncio.to_thread(make_standard_previews, output_path, asset_kind, game_id)
     )
-    cancelled = False
-    try:
-        while not task.done():
-            try:
-                await asyncio.shield(task)
-            except asyncio.CancelledError:
-                cancelled = True
-        task.result()
-    finally:
-        if cancelled:
-            raise asyncio.CancelledError

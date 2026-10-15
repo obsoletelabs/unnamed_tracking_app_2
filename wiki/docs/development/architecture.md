@@ -59,6 +59,37 @@ lets artwork be written for newly flushed games before commit. Both entry points
 use the same image validation, resizing and preview implementation. These are
 internal host helpers; the public plugin API is unchanged.
 
+### Moving game storage
+
+Changing `folder_location` moves the entire owned game directory with a same-parent
+rename. Artwork, notes and their files, profiles' attachments, archive versions and
+nested trash retain their relative paths; existing game-ID download URLs still work.
+Existing destinations and symlinked game/owner directories are rejected.
+
+`features/game_folders.py` coordinates this with an exclusively locked Game row.
+Before moving files it flushes the new database name and writes a bounded recovery
+record under `<data>/users/<user-id>/games/.folder-moves/<game-id>.json`. A failed
+save re-reads the persisted row before restoring files, including when a commit
+acknowledgement was lost. Cleanup also holds the row lock. It never overwrites or
+deletes an ambiguous source/destination pair.
+
+An interrupted move reserves both names and blocks storage access instead of
+recreating an empty old directory. Retrying a folder-name save reconciles it with
+the database before applying the requested edit. If both locations exist, a record
+is malformed, or storage is unavailable, preserve both locations and the recovery
+record for administrator inspection; do not remove the record to bypass the error.
+This coordinates database transactions and process interruption; it is not a
+replacement for storage/database backups.
+
+File, media, note, archive, artwork and plugin-document reads/writes take shared
+Game row locks before resolving paths. Streaming responses retain the request's
+database dependency through transmission. Preview workers and folder transactions
+finish before parent cancellation releases their storage/session resources.
+Backfill helpers flush instead of committing midway through file operations, and
+deployment limits are resolved before the final storage lock. New/imported games
+check pending-name reservations before creating their directories. No plugin
+contract or migration is needed.
+
 **Games.** `GET /api/game/<id>/assets/<kind>` accepts `?w=<pixels>` (64 to 4096) and returns a JPEG no wider than that. The route that serves it is `api/routes/default_game_assets.py`, which is registered before the one in `games.py` and so is the one that answers. Copies live at `<data>/users/<user-id>/.cache/asset-previews/<game-id>/<kind>-<width>.jpg` and are rebuilt when the original is newer. They are written to a temporary file and moved into place, so a request never reads half a file. The widths the app uses (banner 1920 and 800, cover 400) are also made as soon as artwork is saved (`helpers/asset_previews.py`). An image already as small as asked for is sent unchanged.
 
 Stored game artwork keeps its private one-hour browser cache. Generated covers for games without artwork use `private, no-cache`, requiring revalidation when the URL is requested again so a newly uploaded cover can replace the placeholder. The standalone default-cover preview still uses its existing one-hour cache.

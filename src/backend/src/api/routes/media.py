@@ -27,6 +27,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.api.routes.utils.games import _get_game_or_404
 from src.core.app_integrations import get_max_upload_size_mb, get_upload_limits_mb
 from src.core.auth import get_current_user
 from src.database.models.game import Game
@@ -344,13 +345,7 @@ async def assign_inbox_media(
     if not source_path.is_file():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Media file not found.")
 
-    game = await db.scalar(
-        select(Game).where(
-            Game.id == payload.game_id, Game.user_id == current_user.id, Game.deleted_at.is_(None)
-        )
-    )
-    if game is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found.")
+    game = await _get_game_or_404(payload.game_id, db, current_user.id, for_storage=True)
     if not game.folder_location:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Game folder_location is missing."

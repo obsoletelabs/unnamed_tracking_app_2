@@ -27,7 +27,7 @@ async def content_counts(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> dict[str, int]:
-    game = await _get_game_or_404(game_id, db, current_user.id)
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
 
     async def count(model: Any, *where: ColumnElement[bool]) -> int:
         return int(await db.scalar(select(sql_count()).select_from(model).where(*where)) or 0)
