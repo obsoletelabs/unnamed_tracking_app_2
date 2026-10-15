@@ -105,7 +105,7 @@ async def get_game_asset(
             detail=f"Unsupported asset kind '{asset_kind}'. Supported values: {sorted(ALLOWED_ASSET_KINDS)}",
         )
 
-    game = await _get_game_or_404(game_id, db, current_user.id)
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     asset_path = (
         _DATA_ROOT
         / str(game.user_id)
@@ -300,7 +300,7 @@ async def save_clip_thumbnail(
     """Keep a clip's preview picture, made in the browser when it was uploaded
     (or the first time it was shown), so it never has to be made again. The
     picture is shrunk and saved as a JPEG; the clip's length is kept with it."""
-    game = await _get_game_or_404(game_id, db, current_user.id)
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     item = await db.scalar(
         select(MediaItem).where(
             MediaItem.id == media_id,
@@ -348,7 +348,7 @@ async def get_clip_thumbnail(
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> FileResponse:
-    game = await _get_game_or_404(game_id, db, current_user.id)
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     item = await db.scalar(
         select(MediaItem).where(MediaItem.id == media_id, MediaItem.game_id == game_id)
     )
@@ -382,7 +382,7 @@ async def upload_game_screenshots(
     be tagged, noted, and linked to an achievement afterward. An optional
     profile_id tags the whole batch to one account (e.g. an OSRS ironman) —
     useful for a "levelup dump from this account" upload in one go."""
-    game = await _get_game_or_404(game_id, db, current_user.id)
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     if not game.folder_location:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Game folder_location is missing."
@@ -404,6 +404,9 @@ async def upload_game_screenshots(
         )
 
     results: list[dict] = []
+    limits = await get_upload_limits_mb(db)
+    image_limit_mb = await get_max_upload_size_mb(db)
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     for index, upload in enumerate(uploads):
         kind = classify_media(upload.content_type, upload.filename or "")
         if kind is None:
@@ -418,11 +421,7 @@ async def upload_game_screenshots(
 
         # clips/soundtrack get a much larger cap than images — a real video
         # clip routinely exceeds a cover-art-sized limit
-        limit_mb = (
-            (await get_upload_limits_mb(db))["max_clip_size_mb"]
-            if kind in ("clip", "soundtrack")
-            else await get_max_upload_size_mb(db)
-        )
+        limit_mb = limits["max_clip_size_mb"] if kind in ("clip", "soundtrack") else image_limit_mb
         max_bytes = limit_mb * 1024 * 1024
 
         data = await upload.read(max_bytes + 1)
@@ -482,7 +481,7 @@ async def list_game_screenshots(
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> dict[str, list[dict]]:
-    await _get_game_or_404(game_id, db, current_user.id)
+    await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     stmt = select(MediaItem).where(MediaItem.game_id == game_id, MediaItem.deleted_at.is_(None))
     if profile_id is not None:
         stmt = stmt.where(MediaItem.profile_id == profile_id)
@@ -506,7 +505,7 @@ async def get_game_screenshot(
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> Response:
-    game = await _get_game_or_404(game_id, db, current_user.id)
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     path = (
         _DATA_ROOT
         / str(game.user_id)
@@ -558,7 +557,7 @@ async def detect_media_dates(
     """Re-read the date from the files themselves (photo data, then the file
     name) for the chosen items. Files with nothing to read keep their date, so
     a date you set by hand is only replaced when the file really has one."""
-    game = await _get_game_or_404(game_id, db, current_user.id)
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     items = (
         await db.scalars(
             select(MediaItem).where(
@@ -594,7 +593,7 @@ async def update_media_item(
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> dict:
-    await _get_game_or_404(game_id, db, current_user.id)
+    await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     item = await db.scalar(
         select(MediaItem).where(MediaItem.id == media_id, MediaItem.game_id == game_id)
     )
@@ -628,7 +627,7 @@ async def delete_game_screenshot(
     """Soft-delete: moves the file to trash and marks its row deleted
     rather than removing it — restorable for 7 days, same as game
     archives (features/trash/sweep.py does the eventual real deletion)."""
-    game = await _get_game_or_404(game_id, db, current_user.id)
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     item = await db.scalar(
         select(MediaItem).where(
             MediaItem.game_id == game_id,
@@ -653,7 +652,7 @@ async def list_game_screenshot_trash(
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> dict[str, list[dict]]:
-    await _get_game_or_404(game_id, db, current_user.id)
+    await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     result = await db.execute(
         select(MediaItem)
         .where(MediaItem.game_id == game_id, MediaItem.deleted_at.is_not(None))
@@ -680,7 +679,7 @@ async def restore_game_screenshot(
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> dict:
-    game = await _get_game_or_404(game_id, db, current_user.id)
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     item = await db.scalar(
         select(MediaItem).where(
             MediaItem.game_id == game_id,

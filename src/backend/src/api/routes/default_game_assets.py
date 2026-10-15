@@ -15,6 +15,7 @@ from src.core.auth import get_current_user
 from src.database.models.user import User
 from src.database.session import get_db
 from src.helpers.asset_previews import ensure_preview, preview_path
+from src.helpers.async_storage import finish_storage_operation
 from src.helpers.save_game_asset import ASSET_FILENAMES, AssetKind
 
 router = APIRouter(
@@ -117,7 +118,7 @@ async def get_game_asset_with_fallback(
             detail=f"Unsupported asset kind '{asset_kind}'. Supported values: {sorted(ALLOWED_ASSET_KINDS)}",
         )
 
-    game = await _get_game_or_404(game_id, db, current_user.id)
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     asset_path = (
         _DATA_ROOT
         / str(game.user_id)
@@ -129,13 +130,15 @@ async def get_game_asset_with_fallback(
     if asset_path.is_file():
         media_type = "image/png"
         if w is not None:
-            asset_path, media_type = await asyncio.to_thread(
-                ensure_preview,
-                asset_path,
-                preview_path(
-                    _DATA_ROOT / str(game.user_id) / ".cache", str(game_id), asset_kind, w
-                ),
-                w,
+            asset_path, media_type = await finish_storage_operation(
+                asyncio.to_thread(
+                    ensure_preview,
+                    asset_path,
+                    preview_path(
+                        _DATA_ROOT / str(game.user_id) / ".cache", str(game_id), asset_kind, w
+                    ),
+                    w,
+                )
             )
         return FileResponse(
             asset_path,

@@ -8,14 +8,19 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
+import requests
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from PIL import Image
+from sqlalchemy import select
 
-from src.api.routes import game_assets
+from src.api.routes import game_assets, game_metadata, library_sync
 from src.core.auth import get_current_user
-from src.database.session import get_db
+from src.database.models.game import Game
+from src.database.models.user import User
+from src.database.session import SessionLocal, get_db
 from src.helpers import public_http, remote_images
+from tests.test_game_files_flow import game_flow  # noqa: F401
 
 
 class ImageResponse:
@@ -326,3 +331,111 @@ def test_connection_falls_back_only_to_prevalidated_addresses_and_closes_failed_
     assert result is sockets[1]
     assert result.address == ("2606:4700:4700::1111", 443, 0, 0)
     result.close()
+
+
+@pytest.mark.parametrize("private", [False, True])
+async def test_library_enrichment_uses_the_public_image_boundary(network, monkeypatch, private):
+    legacy_response = SimpleNamespace(
+        content=network.content,
+        headers={"content-type": "image/png"},
+        raise_for_status=lambda: None,
+    )
+    legacy_calls = []
+
+    def legacy_get(*args, **_kwargs):
+        legacy_calls.append(args)
+        return legacy_response
+
+    monkeypatch.setattr(requests, "get", legacy_get)
+    save = AsyncMock()
+    monkeypatch.setattr(library_sync, "save_locked_game_asset", save)
+    game = SimpleNamespace(id=uuid4())
+    url = "http://127.0.0.1/private.png" if private else "https://public.example/art.png"
+    saved = await library_sync._download_asset(url, game, "icon")
+    assert saved is (not private)
+    assert legacy_calls == []
+    if private:
+        save.assert_not_awaited()
+        assert network.calls == []
+    else:
+        assert save.await_args.args == (network.content, game, "icon")
+        assert network.calls[0][1] == "public.example"
+
+
+@pytest.mark.parametrize("kind", ["key_art", "banner"])
+@pytest.mark.parametrize("private", [False, True])
+async def test_metadata_refresh_uses_public_image_validation_for_both_art_kinds(
+    flow, network, monkeypatch, kind, private
+):
+    legacy_calls = []
+
+    def legacy_get(*args, **_kwargs):
+        legacy_calls.append(args)
+        return SimpleNamespace(content=network.content, raise_for_status=lambda: None)
+
+    monkeypatch.setattr(requests, "get", legacy_get)
+    save = AsyncMock()
+    monkeypatch.setattr(game_metadata, "save_locked_game_asset", save)
+    url = "http://127.0.0.1/private.png" if private else "https://public.example/art.png"
+    monkeypatch.setattr(
+        game_metadata,
+        "resolve_library_record",
+        AsyncMock(return_value=({"title": "Flow", "assets": [{"kind": kind, "url": url}]}, [])),
+    )
+    response = await flow.client.post(
+        f"{flow.game}/metadata/refresh",
+        json={
+            "dry_run": False,
+            "update_text": False,
+            "fill_missing_art": True,
+            "overwrite_existing_art": True,
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert legacy_calls == []
+    if private:
+        save.assert_not_awaited()
+        assert len(response.json()["provider_errors"]) == 1
+        assert network.calls == []
+    else:
+        assert save.await_args.args[0] == network.content
+        assert save.await_args.args[1].id == flow.game_id
+        assert save.await_args.args[2] == kind
+        assert response.json()["provider_errors"] == []
+
+
+async def test_library_enrichment_keeps_art_fallback_and_uses_configured_limit(
+    flow, network, monkeypatch
+):
+    save = AsyncMock()
+    limit = AsyncMock(return_value=1)
+    monkeypatch.setattr(library_sync, "save_locked_game_asset", save)
+    monkeypatch.setattr(library_sync, "get_max_upload_size_mb", limit)
+    monkeypatch.setattr(
+        library_sync,
+        "resolve_library_record",
+        AsyncMock(
+            return_value=(
+                {
+                    "title": "Flow",
+                    "assets": [
+                        {"kind": "icon", "url": "http://127.0.0.1/private.png"},
+                        {"kind": "icon", "url": "https://public.example/icon.png"},
+                    ],
+                },
+                [],
+            )
+        ),
+    )
+    async with SessionLocal() as db:
+        game = await db.scalar(select(Game).where(Game.id == flow.game_id).with_for_update())
+        await library_sync._enrich_new_game(game, await db.get(User, flow.user_id), {})
+        save.assert_awaited_once()
+        assert save.await_args.args == (network.content, game, "icon")
+        assert len(network.calls) == 1 and network.calls[0][1] == "public.example"
+        limit.assert_awaited_once()
+
+        save.reset_mock()
+        network.declared = 2 * 1024 * 1024
+        await library_sync._enrich_new_game(game, await db.get(User, flow.user_id), {})
+        save.assert_not_awaited()

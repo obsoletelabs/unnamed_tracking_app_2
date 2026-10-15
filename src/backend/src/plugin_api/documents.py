@@ -21,6 +21,7 @@ from sqlalchemy.orm import raiseload
 
 from src.database.models.game import Game
 from src.database.models.game_file_item import GameFileItem
+from src.features.game_folders import FolderStorageError, ensure_name_available
 
 MAX_DOCUMENT_BYTES = 5 * 1024 * 1024
 MAX_CHUNK_BYTES = 24 * 1024
@@ -76,6 +77,8 @@ def owned_documents_query(user_id: object) -> Select[tuple[GameFileItem, Game]]:
             GameFileItem.kind == "doc",
             GameFileItem.deleted_at.is_(None),
         )
+        .with_for_update(read=True, of=Game)
+        .execution_options(populate_existing=True)
     )
 
 
@@ -114,6 +117,10 @@ def document_path(data_root: Path, user_id: object, folder: str | None, filename
         raise DocumentAccessError("invalid", "Invalid document filename.", 400)
     if not folder:
         raise DocumentAccessError("missing", "Document not found.", 404)
+    try:
+        ensure_name_available(data_root, str(user_id), folder)
+    except FolderStorageError as exc:
+        raise DocumentAccessError("conflict", str(exc), 409) from exc
     owner_root = (data_root / str(user_id) / "games").resolve()
     root = (owner_root / folder / "docs").resolve()
     path = (root / filename).resolve()

@@ -4,6 +4,8 @@ TV shows and anime, including their tracked seasons and episodes.
 Folder assets, screenshots and saves
 aren't included in either direction."""
 
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -22,7 +24,9 @@ from src.features.backup.scheduler import (
     BACKUP_INTERVAL_SECONDS,
     BACKUPS_TO_KEEP_PER_USER,
 )
+from src.features.game_folders import reserved_names
 from src.features.imports.library_export import build_library_export
+from src.helpers import save_game_asset
 from src.helpers.save_game_asset import create_game_folder
 
 router = APIRouter(prefix="/api", tags=["export"], dependencies=[Depends(get_current_user)])
@@ -70,16 +74,19 @@ class ImportResult(BaseModel):
     errors: list[str]
 
 
-async def _available_folder_location(folder_name: str, db: AsyncSession) -> str:
-    """folder_location is unique server-wide, pick the first free
+async def _available_folder_location(folder_name: str, db: AsyncSession, user_id: UUID) -> str:
+    """Within the owner, pick the first free
     'name', 'name-2', 'name-3'... instead of failing the whole import over
     one collision (importing back onto the same server being the most
     common way this collision actually happens)."""
+    reserved = reserved_names(save_game_asset.DATA_ROOT, user_id)
     candidate = folder_name
     suffix = 2
     while True:
-        stmt = select(Game.id).where(Game.folder_location == candidate, Game.deleted_at.is_(None))
-        if not (await db.execute(stmt)).scalar_one_or_none():
+        stmt = select(Game.id).where(
+            Game.user_id == user_id, Game.folder_location == candidate, Game.deleted_at.is_(None)
+        )
+        if candidate not in reserved and not (await db.execute(stmt)).scalar_one_or_none():
             return candidate
         candidate = f"{folder_name}-{suffix}"
         suffix += 1
@@ -99,7 +106,9 @@ async def import_library(
         try:
             data = entry.model_dump()
             data["user_id"] = current_user.id
-            data["folder_location"] = await _available_folder_location(data["folder_location"], db)
+            data["folder_location"] = await _available_folder_location(
+                data["folder_location"], db, current_user.id
+            )
             if not data.get("sort_title"):
                 data["sort_title"] = _derive_sort_title(data["title"])
 
@@ -121,9 +130,9 @@ async def import_library(
             game = Game(**data)
             game.links = link_rows
             db.add(game)
-            await db.commit()
-            await db.refresh(game)
+            await db.flush()
             create_game_folder(current_user.id, game.folder_location)
+            await db.commit()
             created += 1
         except IntegrityError as exc:
             await db.rollback()

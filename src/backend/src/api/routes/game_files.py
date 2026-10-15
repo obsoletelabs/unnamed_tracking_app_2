@@ -91,7 +91,7 @@ async def _sync_game_file_items(game_id: UUID, game_dir: Path, db: AsyncSession)
             db.add(GameFileItem(game_id=game_id, kind=kind, filename=filename, created_at=mtime))
             added = True
     if added:
-        await db.commit()
+        await db.flush()
 
 
 def _game_file_to_dict(item: GameFileItem, game_id: UUID, game_dir: Path) -> dict:
@@ -127,7 +127,7 @@ async def upload_game_files(
     """Generic file attachments for a game — docs/manuals and modpacks can
     be almost any format, so unlike screenshots/clips there's no
     content-type validation, just a size cap."""
-    game = await _get_game_or_404(game_id, db, current_user.id)
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     if not game.folder_location:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Game folder_location is missing."
@@ -141,6 +141,8 @@ async def upload_game_files(
         else await get_max_upload_size_mb(db)
     )
     max_bytes = limit_mb * 1024 * 1024
+    # Initializing deployment limits can commit; take a fresh storage lock afterward.
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     # Accept both the current plural field used by the frontend and the
     # legacy/single-file field used by older clients.
     uploads = list(files or [])
@@ -203,7 +205,7 @@ async def list_game_files(
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> dict[str, list[dict]]:
-    game = await _get_game_or_404(game_id, db, current_user.id)
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     if not game.folder_location:
         return {"files": []}
     game_dir = _DATA_ROOT / str(game.user_id) / "games" / game.folder_location
@@ -217,9 +219,11 @@ async def list_game_files(
         )
         .order_by(GameFileItem.filename)
     )
-    return {
+    response = {
         "files": [_game_file_to_dict(item, game_id, game_dir) for item in result.scalars().all()]
     }
+    await db.commit()
+    return response
 
 
 class GameFileUpdate(BaseModel):
@@ -242,7 +246,7 @@ async def update_game_file(
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> dict:
-    game = await _get_game_or_404(game_id, db, current_user.id)
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     item = await db.scalar(
         select(GameFileItem).where(
             GameFileItem.id == item_id,
@@ -261,10 +265,10 @@ async def update_game_file(
         setattr(item, field, value)
     if "taken_at" in changes:
         item.taken_source = (source or "manual") if changes["taken_at"] is not None else None
-    await db.commit()
-    await db.refresh(item)
     game_dir = _DATA_ROOT / str(game.user_id) / "games" / (game.folder_location or "")
-    return _game_file_to_dict(item, game_id, game_dir)
+    response = _game_file_to_dict(item, game_id, game_dir)
+    await db.commit()
+    return response
 
 
 # pylint: enable=duplicate-code,too-many-positional-arguments
@@ -277,7 +281,7 @@ async def list_game_file_trash(
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> dict[str, list[dict]]:
-    await _get_game_or_404(game_id, db, current_user.id)
+    await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     result = await db.execute(
         select(GameFileItem)
         .where(
@@ -312,7 +316,7 @@ async def get_game_file(
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> FileResponse:
-    game = await _get_game_or_404(game_id, db, current_user.id)
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     path = (
         _DATA_ROOT
         / str(game.user_id)
@@ -356,7 +360,7 @@ async def delete_game_file(
     rather than removing it — restorable for 7 days, same as every other
     delete path in the app (features/trash/sweep.py does the eventual
     real deletion)."""
-    game = await _get_game_or_404(game_id, db, current_user.id)
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     game_dir = _DATA_ROOT / str(game.user_id) / "games" / (game.folder_location or "")
     await _sync_game_file_items(game_id, game_dir, db)
     name = Path(filename).name
@@ -385,7 +389,7 @@ async def restore_game_file(
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> dict[str, str]:
-    game = await _get_game_or_404(game_id, db, current_user.id)
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     name = Path(filename).name
     item = await db.scalar(
         select(GameFileItem).where(

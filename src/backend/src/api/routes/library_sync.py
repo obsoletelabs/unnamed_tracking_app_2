@@ -21,7 +21,6 @@ from datetime import UTC, date, datetime
 from typing import Literal
 from uuid import UUID
 
-import requests
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,8 +29,8 @@ from src.api.routes.settings import (
     get_or_create_scan_settings,
 )
 from src.api.routes.utils.games import _scan_settings_to_preferences
+from src.core.app_integrations import get_max_upload_size_mb
 from src.core.auth import get_current_user
-from src.core.config import settings as app_settings
 from src.core.crypto import decrypt_secret
 from src.database.models.achievement import Achievement
 from src.database.models.game import Game, GameStatus
@@ -51,7 +50,8 @@ from src.features.metadata.games.retroachievements import (
 )
 from src.features.metadata.locked_fields import apply_metadata_updates
 from src.features.metadata.service import game_result, library_candidate, resolve_library_record
-from src.helpers.save_game_asset import AssetKind, save_game_asset
+from src.helpers.remote_images import MAX_BYTES, RemoteImageError, download_image
+from src.helpers.save_game_asset import AssetKind, save_locked_game_asset
 from src.helpers.steam_achievement_rows import (  # noqa: F401
     needs_community_descriptions as _needs_community_descriptions,
 )
@@ -120,25 +120,18 @@ def _add_to_series_collection(game: Game, series: str) -> None:
         game.collections = [*game.collections, series]
 
 
-async def _download_asset(url: str, game_id: UUID, asset_kind: AssetKind) -> bool:
+async def _download_asset(
+    url: str, game: Game, asset_kind: AssetKind, *, max_bytes: int = MAX_BYTES
+) -> bool:
     """Best-effort — mirrors games.py's download_game_asset route but never
     raises, since one bad art URL must not fail an entire library sync.
     Returns whether it actually saved something, so callers can fall back
     to a different URL."""
     try:
-        response = await asyncio.to_thread(requests.get, url, timeout=20)
-        response.raise_for_status()
-    except requests.RequestException:
-        return False
-    content_type = response.headers.get("content-type", "").split(";", 1)[0].lower()
-    if not content_type.startswith("image/"):
-        return False
-    if len(response.content) > app_settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024:
-        return False
-    try:
-        await save_game_asset(response.content, game_id, asset_kind)
+        content = await asyncio.to_thread(download_image, url, max_bytes=max_bytes)
+        await save_locked_game_asset(content, game, asset_kind)
         return True
-    except (OSError, ValueError):
+    except (RemoteImageError, OSError, ValueError):
         return False
 
 
@@ -158,6 +151,9 @@ async def _enrich_new_game(game: Game, user: User, preferences: dict) -> None:
             include_media=True,
             preferences=preferences,
         )
+        max_image_bytes = MAX_BYTES
+        if record and record.get("assets"):
+            max_image_bytes = (await get_max_upload_size_mb(metadata_db)) * 1024 * 1024
     if not record:
         return
     match = game_result(record)
@@ -195,7 +191,7 @@ async def _enrich_new_game(game: Game, user: User, preferences: dict) -> None:
     ]
     for asset_kind, field in asset_fields:
         for url in match.get(field + "s", []):
-            if await _download_asset(url, game.id, asset_kind):
+            if await _download_asset(url, game, asset_kind, max_bytes=max_image_bytes):
                 break
 
 

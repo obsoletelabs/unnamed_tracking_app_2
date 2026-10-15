@@ -4,7 +4,6 @@ import asyncio
 import time
 from uuid import UUID
 
-import requests
 from fastapi import (
     APIRouter,
     Depends,
@@ -24,6 +23,7 @@ from src.api.routes.utils.games import (
     _record_field_changes,
     _scan_settings_to_preferences,
 )
+from src.core.app_integrations import get_max_upload_size_mb
 from src.core.auth import get_current_user
 from src.core.preferences import load_preferences
 from src.core.titles import normalize_metadata_title as _normalize_metadata_title
@@ -36,9 +36,10 @@ from src.features.metadata.service import (
     resolve_library_record,
     search_games,
 )
+from src.helpers.remote_images import MAX_BYTES, download_image
 from src.helpers.save_game_asset import (
     ASSET_FILENAMES,
-    save_game_asset,
+    save_locked_game_asset,
 )
 from src.plugin_api.metadata_contracts import MediaType
 
@@ -210,10 +211,18 @@ async def refresh_game_metadata(
             "game_updated_at": game.updated_at,
         }
 
+    max_image_bytes = MAX_BYTES
+    if payload.fill_missing_art and not payload.dry_run:
+        # The limits singleton can initialize/commit. Resolve it before taking
+        # the game lock so a first-use setup cannot release storage mid-write.
+        max_image_bytes = (await get_max_upload_size_mb(db)) * 1024 * 1024
+
     if not payload.dry_run:
         # Provider lookup can overlap an editor or sync. Check the latest owned row
         # and its protection under the same lock used to apply the refresh.
-        game = await _get_game_or_404(game_id, db, current_user.id, for_update=True)
+        game = await _get_game_or_404(
+            game_id, db, current_user.id, for_update=True, for_storage=True
+        )
         if (
             payload.expected_updated_at is not None
             and game.updated_at != payload.expected_updated_at
@@ -222,6 +231,8 @@ async def refresh_game_metadata(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Game changed after the metadata preview. Refresh the editor and try again.",
             )
+    else:
+        game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
 
     field_values: dict[str, object] = {
         "title": match.get("title"),
@@ -305,13 +316,11 @@ async def refresh_game_metadata(
     if payload.fill_missing_art:
 
         async def _download_art(url: str) -> bytes:
-            response = await asyncio.to_thread(requests.get, url, timeout=20)
-            response.raise_for_status()
-            return response.content
+            return await asyncio.to_thread(download_image, url, max_bytes=max_image_bytes)
 
         if key_art_url and (payload.overwrite_existing_art or not key_art_exists):
             try:
-                await save_game_asset(await _download_art(str(key_art_url)), game.id, "key_art")
+                await save_locked_game_asset(await _download_art(str(key_art_url)), game, "key_art")
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 provider_errors.append(
                     f"{match.get('provider', 'Metadata')}: cover art could not be downloaded: {exc}"
@@ -320,7 +329,7 @@ async def refresh_game_metadata(
                 would_add_key_art = True
         if banner_url and (payload.overwrite_existing_art or not banner_exists):
             try:
-                await save_game_asset(await _download_art(str(banner_url)), game.id, "banner")
+                await save_locked_game_asset(await _download_art(str(banner_url)), game, "banner")
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 provider_errors.append(
                     f"{match.get('provider', 'Metadata')}: banner art could not be downloaded: {exc}"

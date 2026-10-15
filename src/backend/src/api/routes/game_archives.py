@@ -103,7 +103,7 @@ async def _get_archive_or_404(
     kind: ArchiveKind | None = None,
     include_deleted: bool = False,
 ) -> GameArchive:
-    await _get_game_or_404(game_id, db, user_id)
+    await _get_game_or_404(game_id, db, user_id, for_storage=True)
     # eager-loads versions — db.get() doesn't, and every caller of this
     # touches archive.versions afterward; a lazy-load on an already-awaited
     # async session blows up with MissingGreenlet
@@ -178,7 +178,7 @@ async def list_archives(
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> list[dict]:
     """List active archives of the requested kind for a game."""
-    await _get_game_or_404(game_id, db, current_user.id)
+    await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     result = await db.execute(
         select(GameArchive)
         .options(selectinload(GameArchive.versions))
@@ -202,7 +202,7 @@ async def list_archive_trash(
 ) -> list[dict]:
     """Soft-deleted archives of this kind, newest-deleted first — each still
     restorable until its purge_at passes (see features/trash/sweep.py)."""
-    await _get_game_or_404(game_id, db, current_user.id)
+    await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     result = await db.execute(
         select(GameArchive)
         .options(selectinload(GameArchive.versions))
@@ -230,7 +230,7 @@ async def create_archive(
     """Creates a new named archive and uploads its first version in one
     call — e.g. dropping a world save creates the "Main World" slot and
     its first save together, rather than a two-step flow."""
-    game = await _get_game_or_404(game_id, db, current_user.id)
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     if not game.folder_location:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Game folder_location is missing."
@@ -245,6 +245,7 @@ async def create_archive(
     )
 
     archive = GameArchive(id=uuid4(), game_id=game_id, kind=kind, name=name.strip())
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     db.add(archive)
     await db.flush()
 
@@ -281,7 +282,7 @@ async def add_archive_version(
     """Uploads a new version to an existing archive — the previous
     version(s) stay as history rather than being replaced."""
     archive = await _get_archive_or_404(game_id, archive_id, db, current_user.id)
-    game = await _get_game_or_404(game_id, db, current_user.id)
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     if not game.folder_location:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Game folder_location is missing."
@@ -293,6 +294,7 @@ async def add_archive_version(
         else (await get_upload_limits_mb(db))["max_save_archive_size_mb"]
     )
 
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     dest_dir = _archive_dir(
         game.folder_location,
         archive.kind,  # type: ignore[arg-type]
@@ -354,7 +356,7 @@ async def delete_archive(
     rather than removing anything — restorable for 7 days (see
     features/trash/sweep.py, which does the eventual real deletion)."""
     archive = await _get_archive_or_404(game_id, archive_id, db, current_user.id)
-    game = await _get_game_or_404(game_id, db, current_user.id)
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     if game.folder_location:
         game_dir = _DATA_ROOT / str(current_user.id) / "games" / game.folder_location
         dir_path = _archive_dir(
@@ -385,7 +387,7 @@ async def restore_archive(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Archive isn't deleted."
         )
-    game = await _get_game_or_404(game_id, db, current_user.id)
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     if game.folder_location:
         game_dir = _DATA_ROOT / str(current_user.id) / "games" / game.folder_location
         dir_path = _archive_dir(
@@ -416,7 +418,7 @@ async def delete_archive_version(
 ) -> dict:
     """Soft-delete one version of an archive."""
     archive = await _get_archive_or_404(game_id, archive_id, db, current_user.id)
-    game = await _get_game_or_404(game_id, db, current_user.id)
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     version = next(
         (v for v in archive.versions if v.id == version_id and v.deleted_at is None), None
     )
@@ -453,7 +455,7 @@ async def restore_archive_version(
     archive = await _get_archive_or_404(
         game_id, archive_id, db, current_user.id, include_deleted=True
     )
-    game = await _get_game_or_404(game_id, db, current_user.id)
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     version = next(
         (v for v in archive.versions if v.id == version_id and v.deleted_at is not None), None
     )
@@ -490,7 +492,7 @@ async def download_archive_version(
 ) -> FileResponse:
     """Download an archived save version."""
     archive = await _get_archive_or_404(game_id, archive_id, db, current_user.id)
-    game = await _get_game_or_404(game_id, db, current_user.id)
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     version = next(
         (v for v in archive.versions if v.id == version_id and v.deleted_at is None), None
     )

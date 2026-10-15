@@ -81,7 +81,7 @@ async def sync_rows(db: AsyncSession, game_id: UUID, notes_dir: Path) -> dict[st
         await db.delete(rows.pop(name))
         changed = True
     if changed:
-        await db.commit()
+        await db.flush()
     return rows
 
 

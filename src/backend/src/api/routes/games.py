@@ -139,7 +139,7 @@ from src.database.models.game import Game, GameLink, GameStatus
 from src.database.models.game_field_change import GameFieldChange
 from src.database.models.user import User
 from src.database.session import get_db
-from src.features import game_ownership
+from src.features import game_folders, game_ownership
 from src.features.metadata.locked_fields import apply_updates_with_locking, authorize_title_update
 from src.features.trash.game_trash import move_game_to_trash, restore_game_from_trash
 from src.features.trash.sweep import RETENTION_SECONDS
@@ -378,6 +378,10 @@ async def create_game(
             return existing
 
     await _ensure_folder_location_available(payload.folder_location, current_user.id, db)
+    try:
+        game_folders.ensure_name_available(_DATA_ROOT, current_user.id, payload.folder_location)
+    except game_folders.FolderStorageError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     await _validate_game_relationship(
         payload.parent_game_id, payload.relationship_type, db, current_user.id
     )
@@ -400,6 +404,8 @@ async def create_game(
     db.add(game)
 
     try:
+        await db.flush()
+        create_game_folder(game.user_id, game.folder_location)
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
@@ -412,7 +418,6 @@ async def create_game(
                 return existing
         raise _duplicate_folder_error(payload.folder_location) from exc
 
-    create_game_folder(game.user_id, game.folder_location)
     return game
 
 
@@ -516,6 +521,7 @@ async def update_game(
 
     updates = _drop_nulls_for_required_fields(payload.model_dump(exclude_unset=True))
     authorize_title_update(game, updates, actor)
+    old_folder = game.folder_location
 
     if "folder_location" in updates and updates["folder_location"] is not None:
         await _ensure_folder_location_available(
@@ -528,6 +534,12 @@ async def update_game(
         await _validate_game_relationship(
             effective_parent, effective_relationship, db, current_user.id, game_id
         )
+
+    if "folder_location" in updates:
+        try:
+            game_folders.recover_folder_move(_DATA_ROOT, game)
+        except (game_folders.FolderStorageError, OSError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     # `links` is a relationship, not a plain column — setattr needs actual
     # GameLink instances, not the raw {label, url} dicts model_dump
@@ -553,11 +565,20 @@ async def update_game(
     if updates.get("status") == GameStatus.MASTERED and game.completion_date is None:
         game.completion_date = int(time.time())
 
+    target_folder = game.folder_location
     try:
-        await db.commit()
+        if target_folder != old_folder:
+            await game_folders.commit_folder_move(db, game, old_folder, _DATA_ROOT)
+        else:
+            await db.commit()
     except IntegrityError as exc:
         await db.rollback()
-        raise _duplicate_folder_error(game.folder_location) from exc
+        raise _duplicate_folder_error(target_folder) from exc
+    except (game_folders.FolderStorageError, OSError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Could not save the game folder. {exc} Retry saving its folder name to recover.",
+        ) from exc
 
     return game
 
@@ -627,7 +648,7 @@ async def delete_game(
     clips, notes, achievements, saves, everything lives under this one
     folder), so it gets the same protection as game archives instead of
     the instant, permanent delete it had before."""
-    game = await _get_game_or_404(game_id, db, current_user.id)
+    game = await _get_game_or_404(game_id, db, current_user.id, for_update=True, for_storage=True)
     if game.folder_location:
         move_game_to_trash(
             _DATA_ROOT / str(game.user_id) / "games" / game.folder_location, _DATA_ROOT, game_id
@@ -666,7 +687,9 @@ async def restore_game(
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> Game:
-    game = await _get_game_or_404(game_id, db, current_user.id, include_deleted=True)
+    game = await _get_game_or_404(
+        game_id, db, current_user.id, include_deleted=True, for_update=True, for_storage=True
+    )
     if game.deleted_at is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Game isn't deleted.")
     if game.folder_location:
