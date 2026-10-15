@@ -21,6 +21,7 @@ import { animeMetadataResult } from "../utils/metadataCandidate";
 import { metadataPrefill } from "../utils/metadataPrefill";
 
 import { useTitleProtection } from "../utils/titleProtection";
+import { numberOrNull } from "../utils/numberInput";
 
 const props = defineProps<{
   show?: Anime | null;
@@ -182,18 +183,25 @@ async function submit() {
       titleLock: props.show ? titleLockOverride.value : undefined,
       description: fields.value.description.trim() || null,
       firstAirDate: fields.value.firstAirDate || null,
-      episodeRuntimeMinutes: fields.value.episodeRuntimeMinutes,
+      episodeRuntimeMinutes: numberOrNull(
+        fields.value.episodeRuntimeMinutes,
+        "Episode runtime",
+        { min: 0, integer: true },
+      ),
       studios: splitList(fields.value.studiosInput),
       genres: splitList(fields.value.genresInput),
       tags: splitList(fields.value.tagsInput),
       status: fields.value.status,
       favorite: fields.value.favorite,
-      ratingOverall: fields.value.ratingOverall,
-      personalRank: fields.value.personalRank,
+      ratingOverall: numberOrNull(fields.value.ratingOverall, "Your rating", {
+        min: 0,
+        max: 10,
+      }),
+      personalRank: numberOrNull(fields.value.personalRank, "Personal rank"),
       posterUrl: fields.value.posterUrl,
       backdropUrl: fields.value.backdropUrl,
-      anilistScore: fields.value.anilistScore,
-      malScore: fields.value.malScore,
+      anilistScore: numberOrNull(fields.value.anilistScore, "AniList score"),
+      malScore: numberOrNull(fields.value.malScore, "MAL score"),
       externalId: fields.value.externalId,
       anilistId: fields.value.anilistId,
     };

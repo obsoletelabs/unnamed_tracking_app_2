@@ -3,6 +3,7 @@ on a Movie/TVShow/Anime row, so the "Apply metadata" search result button
 (features/metadata/*/search.py's results, applied via each FormModal) can
 skip re-filling them later instead of silently overwriting a manual fix."""
 
+from collections.abc import Collection
 from typing import Any, Protocol
 
 from fastapi import HTTPException
@@ -13,6 +14,17 @@ from src.core.auth import AuthenticatedActor
 # This structural contract describes a data field, not an object with operations.
 class _LockableEntity(Protocol):  # pylint: disable=too-few-public-methods
     locked_fields: list[str]
+
+
+def drop_nulls_for_required_fields(
+    updates: dict[str, Any], required_fields: Collection[str]
+) -> dict[str, Any]:
+    """Keep required values on null PATCH input; preserve nullable clears and zero."""
+    return {
+        field: value
+        for field, value in updates.items()
+        if value is not None or field not in required_fields
+    }
 
 
 def authorize_title_update(

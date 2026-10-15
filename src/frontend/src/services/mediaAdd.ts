@@ -6,6 +6,7 @@ import type { QuickAddForm } from "../types/mediaLibrary";
 import type { MovieStatus } from "../types/movie";
 import type { TVShowStatus } from "../types/tv_show";
 import type { AnimeStatus } from "../types/anime";
+import { numberOrNull, requiredNumber } from "../utils/numberInput";
 import {
   movieMetadataResult,
   tvMetadataResult,
@@ -29,6 +30,10 @@ export async function addMediaCandidate(
   candidate: MetadataCandidate,
   form: QuickAddForm,
 ) {
+  const watched = requiredNumber(form.watched, "Episodes watched", {
+    min: 0,
+    integer: true,
+  });
   const common = {
     title: candidate.metadata.title || candidate.title,
     providerIds: candidate.provider_ids,
@@ -40,7 +45,7 @@ export async function addMediaCandidate(
     tags: candidate.metadata.tags ?? [],
     features: candidate.metadata.features ?? [],
     ageRating: candidate.metadata.age_rating ?? null,
-    ratingOverall: form.score,
+    ratingOverall: numberOrNull(form.score, "Your rating", { min: 0, max: 10 }),
     startDate: form.startDate,
     endDate: form.endDate,
   };
@@ -100,7 +105,7 @@ export async function addMediaCandidate(
         })();
   const updateSeason =
     candidate.media_type === "tv_show" ? updateTVSeason : updateAnimeSeason;
-  let remaining = form.watched;
+  let remaining = watched;
   let progressWarning = false;
   for (const season of [...show.seasons].sort(
     (a, b) => a.seasonNumber - b.seasonNumber,

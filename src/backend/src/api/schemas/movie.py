@@ -73,7 +73,7 @@ class MovieCreate(MovieBase):
 class MovieUpdate(TitleProtectionUpdate):
     """Payload for partial updates — every field optional."""
 
-    provider_ids: ProviderIDs = Field(default_factory=dict)
+    provider_ids: ProviderIDs | None = None
 
     title: str | None = Field(default=None, min_length=1, max_length=500)
     sort_title: str | None = Field(default=None, max_length=500)

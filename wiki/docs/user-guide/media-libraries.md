@@ -27,6 +27,20 @@ matching remain unresolved. Movies and TV shows can still be imported.
 These three libraries share one layout, so what is described here applies to
 all of them. Their own pages cover what is specific to each.
 
+## Ratings and numeric edits
+
+Clearing an optional number, such as your rating, runtime or total episode count,
+removes its value. Entering `0` keeps a real zero. Episodes watched requires a
+whole number; a blank or fractional count keeps Quick edit open with an explanation.
+These controls work the same way in Modern and Classic.
+
+IMDb, Letterboxd and Yamtrack list imports normalize user ratings to 0–10 with
+two decimal places. Letterboxd's five-point scale is doubled first. Finite scores
+outside the range are bounded to 0 or 10, and invalid/nonfinite scores are left
+unrated. Rounding uses half to even (`8.765` becomes `8.76`). Other numeric values
+keep their existing precision. An app JSON restore reports and skips an entry
+with a nonfinite numeric value while continuing with valid entries.
+
 ## Rank
 
 A title with a score gets a **rank**: its place among every title you have

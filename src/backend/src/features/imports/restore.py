@@ -53,9 +53,12 @@ def _convert(column: Any, value: Any) -> Any:
         return value if isinstance(value, dt.date) else dt.date.fromisoformat(str(value)[:10])
     if isinstance(kind, Numeric):
         try:
-            return Decimal(str(value))
+            number = Decimal(str(value))
         except InvalidOperation as exc:
             raise ValueError(f"{column.key}: not a number") from exc
+        if not number.is_finite():
+            raise ValueError(f"{column.key}: must be a finite number")
+        return number
     if isinstance(kind, SAEnum) and kind.enum_class is not None:
         enum_class: type[enum.Enum] = kind.enum_class
         try:

@@ -36,6 +36,38 @@ const form: QuickAddForm = {
   startDate: "2026-01-02",
   endDate: null,
 };
+
+it.each([NaN, Infinity, -Infinity])(
+  "rejects a nonfinite rating before creating anything (%s)",
+  async (score) => {
+    await expect(
+      addMediaCandidate(candidate("movie"), { ...form, score }),
+    ).rejects.toThrow("Your rating: enter a finite number.");
+    expect(createMovie).not.toHaveBeenCalled();
+  },
+);
+
+it.each([-1, 1.5, NaN])(
+  "rejects invalid episode progress before creating a show (%s)",
+  async (watched) => {
+    await expect(
+      addMediaCandidate(candidate("tv_show"), { ...form, watched }),
+    ).rejects.toThrow("Episodes watched:");
+    expect(createTVShow).not.toHaveBeenCalled();
+  },
+);
+
+it.each(["", 0])(
+  "keeps cleared ratings and real zero distinct (%s)",
+  async (score) => {
+    vi.mocked(createMovie).mockResolvedValue({ id: "numeric-movie" } as Movie);
+    const input = { ...form, score } as unknown as QuickAddForm;
+    await addMediaCandidate(candidate("movie"), input);
+    expect(createMovie).toHaveBeenCalledWith(
+      expect.objectContaining({ ratingOverall: score === "" ? null : 0 }),
+    );
+  },
+);
 function candidate(type: MetadataMediaType): MetadataCandidate {
   return {
     id: "selected",

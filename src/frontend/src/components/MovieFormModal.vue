@@ -25,6 +25,7 @@ import { movieMetadataResult } from "../utils/metadataCandidate";
 import { metadataPrefill } from "../utils/metadataPrefill";
 
 import { useTitleProtection } from "../utils/titleProtection";
+import { numberOrNull } from "../utils/numberInput";
 
 const props = defineProps<{
   movie?: Movie | null;
@@ -185,13 +186,16 @@ async function submit() {
   error.value = null;
   try {
     const input = {
-      progressMinutes: progressMinutes || null,
+      progressMinutes,
       title: fields.value.title.trim(),
       providerIds: fields.value.providerIds,
       titleLock: props.movie ? titleLockOverride.value : undefined,
       description: fields.value.description.trim() || null,
       releaseDate: fields.value.releaseDate || null,
-      runtimeMinutes: fields.value.runtimeMinutes,
+      runtimeMinutes: numberOrNull(fields.value.runtimeMinutes, "Runtime", {
+        min: 0,
+        integer: true,
+      }),
       director: fields.value.director.trim() || null,
       writer: fields.value.writer.trim() || null,
       studios: splitList(fields.value.studiosInput),
@@ -199,11 +203,17 @@ async function submit() {
       tags: splitList(fields.value.tagsInput),
       status: fields.value.status,
       favorite: fields.value.favorite,
-      ratingOverall: fields.value.ratingOverall,
-      personalRank: fields.value.personalRank,
+      ratingOverall: numberOrNull(fields.value.ratingOverall, "Your rating", {
+        min: 0,
+        max: 10,
+      }),
+      personalRank: numberOrNull(fields.value.personalRank, "Personal rank"),
       posterUrl: fields.value.posterUrl,
       backdropUrl: fields.value.backdropUrl,
-      tmdbScore: fields.value.tmdbScore,
+      tmdbScore: numberOrNull(fields.value.tmdbScore, "TMDB score", {
+        min: 0,
+        max: 10,
+      }),
     };
     const saved = props.movie
       ? await updateMovie(props.movie.id, {

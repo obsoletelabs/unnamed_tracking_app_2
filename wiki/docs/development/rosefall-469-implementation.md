@@ -70,12 +70,23 @@ Until then, PRs remain available for review with current validation and screensh
   boundary for cached images and game artwork URL downloads, with checked redirects,
   bounded streaming and image validation. The final PR and validation are recorded
   in the [handover](rosefall-469-handover.md).
-- **C2 / 63–64:** resumed on 15 October 2026 on `fix/media-upload-safety`.
+- **C2 / 63–64:** merged as [PR #129](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/129).
   Extension/content validation, bounded storage names, preserved original names and
   equivalent whole/range response headers are implemented. The generated additive
   migration and shared Modern/Classic UI have regression coverage and screenshots.
-  Final PR publication and hosted checks are in progress.
-- **D–O:** approved; not implemented yet. The package details below describe
+  All hosted checks passed before the authorized squash merge: 2,517 backend tests
+  (four skipped) and 533 frontend tests. Existing uploads keep their storage paths.
+- **D / 30, 65–67:** in progress on `fix/numeric-patch-validation`.
+  Import rating normalization, finite restore conversion, required-null PATCH
+  handling and shared frontend numeric inputs have regression coverage. Local
+  validation passed 2,564 backend tests (four skipped), followed by all 49 final
+  numeric regressions, and 566 frontend tests. Final hosted checks are pending.
+  [Modern](../assets/numeric-validation/modern-dark-quick-edit.jpg),
+  [Classic](../assets/numeric-validation/classic-dark-quick-edit.jpg),
+  [light mode](../assets/numeric-validation/modern-light-quick-edit.jpg) and
+  [phone](../assets/numeric-validation/classic-dark-phone-quick-edit.jpg) screenshots
+  cover inline validation. The shared quick-editor grid fits the phone dialog.
+- **E–O:** approved; not implemented yet. The package details below describe
   intended work, not completed behavior.
 
 ## Concrete packages

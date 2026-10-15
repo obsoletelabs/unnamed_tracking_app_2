@@ -21,6 +21,7 @@ import { matchesFilters } from "../../utils/libraryFilters";
 import type { LibraryFilters } from "../../utils/libraryFilters";
 import { blurOnLeave } from "../../utils/blurOnLeave";
 import { PHONE_CARD_COLUMNS } from "../../utils/libraryLayout";
+import { numberOrNull, requiredNumber } from "../../utils/numberInput";
 import { quickTourActive } from "../../state/quickTour";
 import {
   STATUS_BUCKETS,
@@ -649,6 +650,7 @@ const finishTargetId = ref<string | null>(null);
 const finishTitle = ref("");
 const finishPoster = ref<string | null>(null);
 const finishScore = ref<number | null>(null);
+const finishError = ref<string | null>(null);
 const finishBucket = ref("completed");
 const finishWatched = ref(0);
 const finishTotalEpisodes = ref<number | null>(null);
@@ -662,6 +664,7 @@ function openFinishRating(
   finishTitle.value = it.title;
   finishPoster.value = it.poster;
   finishScore.value = null;
+  finishError.value = null;
   finishBucket.value = bucket;
   finishWatched.value = watched;
   finishTotalEpisodes.value = totalEpisodes;
@@ -672,27 +675,44 @@ function closeFinish() {
   finishTargetId.value = null;
 }
 function stepFinishScore(delta: number) {
-  const base = finishScore.value ?? 0;
-  finishScore.value = Math.max(
-    0,
-    Math.min(10, Math.round((base + delta) * 10) / 10),
-  );
+  finishError.value = null;
+  try {
+    const base = numberOrNull(finishScore.value, "Your rating") ?? 0;
+    finishScore.value = Math.max(
+      0,
+      Math.min(10, Math.round((base + delta) * 10) / 10),
+    );
+  } catch (error) {
+    finishError.value =
+      error instanceof Error ? error.message : "Check your rating.";
+  }
 }
 function finishSave() {
   if (!finishTargetId.value) return;
-  emit("save-edit", finishTargetId.value, {
-    status: bucketToReal(finishBucket.value),
-    score: finishScore.value,
-    watched: finishWatched.value,
-    totalEpisodes: finishTotalEpisodes.value,
-    seen: finishWatched.value > 0,
-  });
-  closeFinish();
+  finishError.value = null;
+  try {
+    const score = numberOrNull(finishScore.value, "Your rating", {
+      min: 0,
+      max: 10,
+    });
+    emit("save-edit", finishTargetId.value, {
+      status: bucketToReal(finishBucket.value),
+      score,
+      watched: finishWatched.value,
+      totalEpisodes: finishTotalEpisodes.value,
+      seen: finishWatched.value > 0,
+    });
+    closeFinish();
+  } catch (error) {
+    finishError.value =
+      error instanceof Error ? error.message : "Check your rating.";
+  }
 }
 
 // ---- small edit modal ----
 const editOpen = ref(false);
 const editTargetId = ref<string | null>(null);
+const editError = ref<string | null>(null);
 const editForm = reactive<EditForm>({
   status: "plan",
   score: null,
@@ -701,6 +721,7 @@ const editForm = reactive<EditForm>({
   seen: false,
 });
 function openEdit(it: LibraryCardVM) {
+  editError.value = null;
   editTargetId.value = it.id;
   editForm.status = statusBucket(it.status);
   editForm.score = it.score;
@@ -715,29 +736,48 @@ function closeEdit() {
 }
 function saveEdit() {
   if (!editTargetId.value) return;
-  const target = props.items.find((i) => i.id === editTargetId.value);
-  const wasCompleted = target
-    ? statusBucket(target.status) === "completed"
-    : false;
-  const justCompleted = editForm.status === "completed" && !wasCompleted;
-  const id = editTargetId.value;
-  const totalEpisodes = editForm.totalEpisodes;
-  // Setting status to Completed catches episodes watched up to the known
-  // total automatically — no reason to make someone type in the number
-  // themselves when the app already knows it.
-  const watched =
-    editForm.status === "completed" && totalEpisodes !== null
-      ? totalEpisodes
-      : editForm.watched;
-  const scoreAlreadySet = editForm.score !== null;
-  emit("save-edit", id, {
-    ...editForm,
-    watched,
-    status: bucketToReal(editForm.status),
-  });
-  closeEdit();
-  if (target && justCompleted && !scoreAlreadySet) {
-    openFinishRating(target, "completed", watched, totalEpisodes);
+  editError.value = null;
+  try {
+    const target = props.items.find((i) => i.id === editTargetId.value);
+    const wasCompleted = target
+      ? statusBucket(target.status) === "completed"
+      : false;
+    const justCompleted = editForm.status === "completed" && !wasCompleted;
+    const id = editTargetId.value;
+    const totalEpisodes = numberOrNull(
+      editForm.totalEpisodes,
+      "Total episodes",
+      { min: 0, integer: true },
+    );
+    const score = numberOrNull(editForm.score, "Your rating", {
+      min: 0,
+      max: 10,
+    });
+    // Setting status to Completed catches episodes watched up to the known
+    // total automatically — no reason to make someone type in the number
+    // themselves when the app already knows it.
+    const watched =
+      editForm.status === "completed" && totalEpisodes !== null
+        ? totalEpisodes
+        : requiredNumber(editForm.watched, "Episodes watched", {
+            min: 0,
+            integer: true,
+          });
+    const scoreAlreadySet = score !== null;
+    emit("save-edit", id, {
+      ...editForm,
+      totalEpisodes,
+      score,
+      watched,
+      status: bucketToReal(editForm.status),
+    });
+    closeEdit();
+    if (target && justCompleted && !scoreAlreadySet) {
+      openFinishRating(target, "completed", watched, totalEpisodes);
+    }
+  } catch (error) {
+    editError.value =
+      error instanceof Error ? error.message : "Check the numeric fields.";
   }
 }
 
@@ -1620,6 +1660,9 @@ defineExpose({ openQuickAdd });
         <div class="finish-body">
           <div class="finish-eyebrow">You finished it</div>
           <h3>{{ finishTitle }}</h3>
+          <p v-if="finishError" class="ui-error-box" role="alert">
+            {{ finishError }}
+          </p>
 
           <div class="decimal-rate finish-rate">
             <button
@@ -1667,6 +1710,9 @@ defineExpose({ openQuickAdd });
       @close="closeEdit"
     >
       <div class="media-modal-content">
+        <p v-if="editError" class="ui-error-box" role="alert">
+          {{ editError }}
+        </p>
         <div class="qa-field-grid">
           <label class="qa-field">
             <span>Status</span>

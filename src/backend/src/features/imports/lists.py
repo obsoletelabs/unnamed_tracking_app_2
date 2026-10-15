@@ -24,6 +24,8 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
+from src.features.imports.ratings import parse_rating
+
 MAX_BYTES = 30 * 1024 * 1024
 _MOVIE_TYPES = {"movie", "tvmovie", "short", "tvshort", "video", "tvspecial"}
 _TV_TYPES = {"tvseries", "tvminiseries"}
@@ -119,10 +121,7 @@ def _letterboxd_rows(
 
 
 def _letterboxd_score(value: str) -> Decimal | None:
-    try:
-        return Decimal(value) * 2 if value else None
-    except ArithmeticError:
-        return None
+    return parse_rating(value, scale=Decimal(2))
 
 
 def _apply_letterboxd_diary(
@@ -131,7 +130,8 @@ def _apply_letterboxd_diary(
     for row in diary or []:
         if item := _letterboxd_entry(titles, row):
             item.status = "WATCHED"
-            item.rating = item.rating or _letterboxd_score(row.get("Rating", ""))
+            if item.rating is None:
+                item.rating = _letterboxd_score(row.get("Rating", ""))
             if row.get("Rewatch", "").lower() == "yes":
                 item.rewatches += 1
             seen = _day(row.get("Watched Date", ""))
@@ -162,7 +162,9 @@ def parse_letterboxd(raw: bytes, filename: str = "") -> list[ImportedTitle]:
     for row in ratings or []:
         if item := _letterboxd_entry(titles, row):
             item.status = "WATCHED"
-            item.rating = _letterboxd_score(row.get("Rating", "")) or item.rating
+            rating = _letterboxd_score(row.get("Rating", ""))
+            if rating is not None:
+                item.rating = rating
     _apply_letterboxd_diary(titles, diary)
     for name, data in files.items():
         if name.endswith("likes/films.csv"):
@@ -195,12 +197,7 @@ def parse_imdb(raw: bytes) -> tuple[list[ImportedTitle], int]:
         if not title:
             skipped += 1
             continue
-        rating: Decimal | None = None
-        if row.get("Your Rating"):
-            try:
-                rating = Decimal(row["Your Rating"])
-            except ArithmeticError:
-                rating = None
+        rating = parse_rating(row.get("Your Rating"))
         runtime = row.get("Runtime (mins)", "")
         out.append(
             ImportedTitle(
