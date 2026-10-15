@@ -52,7 +52,7 @@ from src.features.metadata.service import (
     search_media,
 )
 from src.features.metadata.tv.episode_sync import fetch_season_episodes
-from src.features.tv_seasons import check_in_background, is_due
+from src.features.tv_seasons import add_selected_seasons, check_in_background, is_due
 from src.plugin_api.metadata_contracts import MediaType
 
 _QUERY_DEFAULT = Query(..., min_length=2, max_length=100, alias="query")
@@ -245,8 +245,15 @@ async def update_show(
     """Update a show and keep its derived sort title synchronized."""
     show = await _get_show_or_404(show_id, db, current_user.id, for_update=True)
     await update_tracking(
-        db, show, payload.model_dump(exclude_unset=True), _LOCKABLE_FIELDS, "tv", actor=actor
+        db,
+        show,
+        payload.model_dump(exclude_unset=True, exclude={"seasons"}),
+        _LOCKABLE_FIELDS,
+        "tv",
+        actor=actor,
     )
+    if payload.seasons:
+        await add_selected_seasons(db, show, [season.model_dump() for season in payload.seasons])
 
     await db.commit()
     return await _get_show_or_404(show_id, db, current_user.id)

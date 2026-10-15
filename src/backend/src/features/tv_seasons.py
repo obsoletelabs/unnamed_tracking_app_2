@@ -51,6 +51,18 @@ def new_seasons(known_numbers: set[int], listed: list[dict[str, Any]]) -> list[d
     return [s for s in listed if s["season_number"] > highest]
 
 
+async def add_selected_seasons(
+    db: AsyncSession, show: TVShow, listed: list[dict[str, Any]]
+) -> None:
+    """Use the existing enrichment numbering policy without overwriting progress or manual edits."""
+    known = set(
+        (await db.scalars(select(TVSeason.season_number).where(TVSeason.show_id == show.id))).all()
+    )
+    unique = {entry["season_number"]: entry for entry in new_seasons(known, listed)}
+    for number in sorted(unique):
+        db.add(TVSeason(show_id=show.id, **unique[number]))
+
+
 async def check_new_seasons(db: AsyncSession, show: TVShow) -> int:
     """Adds any new seasons and notifies. Returns how many were added."""
     first_check = show.seasons_checked_at is None

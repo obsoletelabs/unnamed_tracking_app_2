@@ -7,7 +7,7 @@ from dataclasses import replace
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,6 +19,7 @@ from src.core.preferences import load_preferences
 from src.database.models.plugin_metadata_provider import PluginMetadataProviderRegistration
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features.metadata.artwork import preview_artwork
 from src.features.metadata.automatic_search import (
     automatic_search_status,
     save_server_policy,
@@ -32,6 +33,7 @@ from src.features.metadata.providers import (
     discover_providers,
     save_configuration,
 )
+from src.helpers.remote_images import RemoteImageError
 from src.plugin_api.grants import has_capability_grant
 from src.plugin_api.metadata_contracts import MediaType, MetadataCandidate, MetadataProviderRequest
 
@@ -52,6 +54,11 @@ class SearchInput(BaseModel):
 
 class SelectionInput(BaseModel):
     candidate_id: UUID
+
+
+class ArtworkPreviewInput(SelectionInput):
+    model_config = ConfigDict(extra="forbid")
+    url: str = Field(min_length=1, max_length=8192)
 
 
 class AutomaticSearchInput(BaseModel):
@@ -204,6 +211,27 @@ async def select_candidate(session_id: str, payload: SelectionInput, user: Curre
         return handler.select(_owned(session_id, user), str(payload.candidate_id))
     except LookupError as exc:
         raise HTTPException(404, "Metadata candidate not found.") from exc
+
+
+@router.post("/sessions/{session_id}/artwork")
+async def selected_artwork(
+    session_id: str, payload: ArtworkPreviewInput, user: CurrentUser
+) -> Response:
+    try:
+        data = await preview_artwork(
+            _owned(session_id, user), str(payload.candidate_id), payload.url
+        )
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(403, str(exc)) from exc
+    except RemoteImageError as exc:
+        raise HTTPException(400, "This artwork could not be verified.") from exc
+    return Response(
+        data,
+        media_type="image/png",
+        headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
+    )
 
 
 @router.get("/providers")

@@ -121,12 +121,13 @@ def media(values):
     base = f"https://cdn.akamai.steamstatic.com/steam/apps/{app_id}"
     return {
         "assets": [
-            {"kind": kind, "url": base + "/" + name, "priority": 200}
-            for kind, name in (
-                ("key_art", "library_600x900.jpg"),
-                ("banner", "library_hero.jpg"),
-                ("logo", "logo.png"),
-                ("banner", "header.jpg"),
+            {"kind": kind, "url": base + "/" + name, "priority": priority}
+            for kind, name, priority in (
+                ("key_art", "library_600x900.jpg", 200),
+                ("key_art", "header.jpg", 201),
+                ("banner", "library_hero.jpg", 200),
+                ("logo", "logo.png", 200),
+                ("banner", "header.jpg", 201),
             )
         ]
     }
