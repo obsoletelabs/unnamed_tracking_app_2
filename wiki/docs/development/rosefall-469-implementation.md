@@ -70,10 +70,11 @@ Until then, PRs remain available for review with current validation and screensh
   boundary for cached images and game artwork URL downloads, with checked redirects,
   bounded streaming and image validation. The final PR and validation are recorded
   in the [handover](rosefall-469-handover.md).
-  Follow-up discovered during folder work: automatic library enrichment and
-  game metadata refresh still use older `requests.get` image paths. Route those
-  through the same public-image boundary in a focused follow-up; no SDK change
-  or broader provider permissions are needed.
+  The follow-up for automatic library enrichment and game metadata refresh is
+  implemented in the combined draft [PR #135](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/135):
+  both use that boundary and effective configured image limits. Six regressions
+  reproduced the old downloader bypass; coverage also preserves safe candidate
+  fallback. No SDK change or broader provider permissions are needed.
 - **C2 / 63–64:** merged as [PR #129](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/129).
   Extension/content validation, bounded storage names, preserved original names and
   equivalent whole/range response headers are implemented. The generated additive
@@ -126,9 +127,11 @@ Until then, PRs remain available for review with current validation and screensh
   Achievement GET remains read-only; all providers recheck the current locked
   identity/status after a delayed single-game refresh. The plugin schema is unchanged.
   All seven full hosted workflows passed before the authorized squash merge.
-- **F folders / 5:** artwork prerequisite implemented on `fix/game-artwork-storage-locks`;
-  full local backend tests passed as unprivileged UID 1000 (2,674; four skipped).
-  Full Ruff, mypy and configured Pylint (10/10) also passed.
+- **F folders / 5:** combined draft [PR #135](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/135)
+  contains the verified artwork prerequisite; folder rename/rollback and remaining
+  file-operation coordination continue as additional logical commits in that PR.
+  The artwork-only commit passed full local backend tests as unprivileged
+  UID 1000 (2,674; four skipped), full Ruff, mypy and configured Pylint (10/10).
   Ordinary artwork writes retain a shared
   game lock through PNG/preview completion, including cancellation. Imports and
   enrichment use their current locked row, including uncommitted new games.

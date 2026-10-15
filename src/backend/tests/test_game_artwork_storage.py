@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
 import pytest
-import requests
 from PIL import Image
 from sqlalchemy import select, text
 
@@ -94,11 +93,7 @@ async def test_artwork_keeps_the_row_lock_until_previews_finish(flow, monkeypatc
 async def test_import_artwork_uses_the_callers_locked_game_without_a_second_row_lookup(
     flow, monkeypatch, fresh
 ):
-    response = requests.Response()
-    response.status_code = 200
-    response.headers["content-type"] = "image/png"
-    response._content = picture()
-    monkeypatch.setattr(library_sync.requests, "get", Mock(return_value=response))
+    monkeypatch.setattr(library_sync, "download_image", Mock(return_value=picture()))
     monkeypatch.setattr(
         library_sync,
         "resolve_library_record",

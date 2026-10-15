@@ -87,6 +87,14 @@ work in a worker thread. Rejected URLs/images return an understandable 400 witho
 replacing artwork. Cache failure retains the existing redirect to the original
 address; that browser fallback does not authorize a server-side private fetch.
 
+Automatic library enrichment and foreground game metadata refresh use that same
+public-image downloader, including DNS pinning, checked redirects, actual image
+decoding and pixel limits. They apply the effective image-upload byte limit from
+Administration → Limits. A failed library artwork candidate falls back to the
+next candidate; foreground refresh reports an artwork error while retaining its
+existing partial-refresh behavior. Limits initialization happens before the
+foreground game lock, since initializing the settings singleton can commit.
+
 `helpers/public_http.py` also supplies the pinned transport for delegated public
 instances and public-app image requests. Those callers keep their existing protocol,
 permission, header, redirect and size restrictions. General permission-granted
