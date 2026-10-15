@@ -160,3 +160,24 @@ def test_library_request_failure_does_not_expose_the_api_key(monkeypatch) -> Non
         steam.get_owned_games("76561197960287930", "private-key")
     assert "private-key" not in str(error.value)
     assert "Try again" in str(error.value)
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda: steam.resolve_steam_id("vanity-name", "ABCDEF0123456789ABCDEF0123456789"),
+        lambda: steam.get_schema_for_game("ABCDEF0123456789ABCDEF0123456789", 620),
+        lambda: steam.get_player_achievements(
+            "76561197960287930", "ABCDEF0123456789ABCDEF0123456789", 620
+        ),
+    ],
+)
+def test_network_errors_never_echo_the_api_key(monkeypatch, call) -> None:
+    error = requests.ConnectionError(
+        "Max retries exceeded with url: /?key=ABCDEF0123456789ABCDEF0123456789"
+    )
+    monkeypatch.setattr(steam.SESSION, "get", Mock(side_effect=error))
+    with pytest.raises(steam.SteamLibraryError) as raised:
+        call()
+    assert "ABCDEF0123456789" not in str(raised.value)
+    assert raised.value.__cause__ is None

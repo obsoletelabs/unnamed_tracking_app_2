@@ -124,8 +124,9 @@ def resolve_steam_id(identifier: str, api_key: str | SteamSession) -> str:
             params={"key": api_key, "vanityurl": vanity},
             timeout=15,
         )
-    except requests.RequestException as exc:
-        raise SteamLibraryError(f"Could not reach Steam: {exc}") from exc
+    except requests.RequestException:
+        # Request exceptions can include the URL and its API key.
+        raise SteamLibraryError("Could not reach Steam. Try again shortly.") from None
     if resp.status_code >= 400:
         raise SteamLibraryError(f"Steam rejected the profile lookup ({resp.status_code}).")
     try:
@@ -258,8 +259,9 @@ def get_schema_for_game(api_key: str, app_id: int) -> dict[str, dict]:
             params={"key": api_key, "appid": str(app_id)},
             timeout=20,
         )
-    except requests.RequestException as exc:
-        raise SteamLibraryError(f"Could not reach Steam: {exc}") from exc
+    except requests.RequestException:
+        # Request exceptions can include the URL and its API key.
+        raise SteamLibraryError("Could not reach Steam. Try again shortly.") from None
     if resp.status_code >= 400:
         raise SteamLibraryError(f"Steam schema request failed ({resp.status_code}).")
     try:
@@ -397,8 +399,9 @@ def get_player_achievements(
             params={"key": api_key, "steamid": steam_id, "appid": str(app_id), "l": "english"},
             timeout=20,
         )
-    except requests.RequestException as exc:
-        raise SteamLibraryError(f"Could not reach Steam: {exc}") from exc
+    except requests.RequestException:
+        # Request exceptions can include the URL and its API key.
+        raise SteamLibraryError("Could not reach Steam. Try again shortly.") from None
     try:
         payload = resp.json().get("playerstats", {})
     except ValueError:
