@@ -37,7 +37,7 @@ from src.plugin_api.metadata_contracts import (
 )
 
 from .automatic_search import automatic_search_status
-from .configuration import configuration_values, provider_enabled
+from .configuration import configuration_values, provider_enabled, provider_priority
 
 CORE_PROVIDERS: dict[str, ModuleType] = {
     module.PROVIDER_ID: module
@@ -227,8 +227,6 @@ async def discover_core_providers(
             if missing
             else ProviderHealth.UNVALIDATED
         )
-        order = (preferences or {}).get("provider_order", [])
-        priority = order.index(declaration.name) if declaration.name in order else 100
         enabled = account_preferences["metadata_providers_enabled"].get(provider_id, True)
         providers.append(
             CoreMetadataProvider(
@@ -237,7 +235,7 @@ async def discover_core_providers(
                 revision,
                 state if enabled else ProviderHealth.DISABLED,
                 values,
-                priority,
+                provider_priority(declaration.name, preferences),
                 account_enabled=enabled,
             )
         )

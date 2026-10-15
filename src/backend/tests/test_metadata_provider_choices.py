@@ -285,3 +285,26 @@ async def test_ambiguous_legacy_action_cannot_choose_an_opted_out_provider(polic
     with pytest.raises(PermissionError, match="disabled for your account"):
         await providers.authorize_metadata_action(item.database, **arguments)
     await providers.authorize_metadata_action(item.database, **arguments, provider_id=other_id)
+
+
+@pytest.mark.parametrize("kind", ["core", "plugin"])
+async def test_provider_snapshot_cannot_be_reused_for_another_actor(
+    policy_boundary, monkeypatch, kind
+):
+    item = policy_boundary
+    provider_id = "core.steam"
+    if kind == "plugin":
+        row = await register(item)
+        await save_configuration(item.database, row, "system", {"api_key": "actor-test-key"})
+        provider_id = row.provider_id
+    snapshot = next(
+        p
+        for p in await providers.discover_providers(item.database, item.users[0].id)
+        if p.id == provider_id
+    )
+    native_call = AsyncMock(return_value={"candidates": []})
+    monkeypatch.setattr(core.CORE_PROVIDERS["core.steam"], "search", native_call)
+    response = await snapshot.invoke("search", work(item.users[1], MediaType.GAME))
+    assert response.failure is not None
+    native_call.assert_not_awaited()
+    item.runtime.action.assert_not_awaited()

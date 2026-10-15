@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from typing import Protocol
+from typing import Any, Protocol
 from uuid import UUID
 
 from sqlalchemy import select
@@ -35,6 +35,12 @@ async def provider_enabled(db: AsyncSession, user_id: UUID, provider_id: str) ->
     """Metadata opt-outs follow the account, independently of credential ownership."""
     preferences = await load_preferences(db, user_id)
     return preferences["metadata_providers_enabled"].get(provider_id, True) is not False
+
+
+def provider_priority(name: str, preferences: dict[str, Any] | None) -> int:
+    """Core and optional providers use the same saved name-based authority order."""
+    order = (preferences or {}).get("provider_order", [])
+    return order.index(name) if name in order else 100
 
 
 async def configuration_values(

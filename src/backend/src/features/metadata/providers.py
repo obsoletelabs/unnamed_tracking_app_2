@@ -38,6 +38,7 @@ from .configuration import (
     configuration_presence,
     configuration_values,
     provider_enabled,
+    provider_priority,
     save_configuration,
 )
 from .core import CORE_PROVIDERS, CoreMetadataProvider, discover_core_providers
@@ -211,10 +212,10 @@ class PluginMetadataProvider:
         candidate: MetadataCandidate | None = None,
     ) -> ProviderResponse:
         """No provider-specific API, credentials, retries or throttling live in this adapter."""
-        if request.user_id != self.user_id:
-            return ProviderResponse(failure=ProviderFailure(code="invalid_configuration"))
         action_id = getattr(self.declaration.operations, operation)
-        is_authorized = bool(action_id) and await self.authorized(operation)
+        is_authorized = (
+            bool(action_id) and request.user_id == self.user_id and await self.authorized(operation)
+        )
         automatic_allowed = True
         if is_authorized and request.options.get("automatic_search") is True:
             async with SessionLocal() as db:
@@ -309,8 +310,6 @@ async def discover_providers(
         state = _provider_state(
             declaration, values, row.installation_id, live.get(row.plugin_id, {})
         )
-        order = (preferences or {}).get("provider_order", [])
-        priority = order.index(declaration.name) if declaration.name in order else 100
         enabled = account_preferences["metadata_providers_enabled"].get(row.provider_id, True)
         providers.append(
             PluginMetadataProvider(
@@ -320,7 +319,7 @@ async def discover_providers(
                 user_id,
                 revision,
                 state if enabled else ProviderHealth.DISABLED,
-                priority,
+                provider_priority(declaration.name, preferences),
                 account_enabled=enabled,
             )
         )
