@@ -84,8 +84,8 @@ def resolve_metadata_provider_credentials(
             _decrypt(app_integrations.steamgriddb_api_key) if app_integrations else None,
         ),
         igdb_client_id=_prefer(
-            app_integrations.igdb_client_id if app_integrations else None,
             _ENVIRONMENT_FALLBACKS["igdb_client_id"],
+            app_integrations.igdb_client_id if app_integrations else None,
         ),
         igdb_client_secret=_prefer(
             _ENVIRONMENT_FALLBACKS["igdb_client_secret"],
