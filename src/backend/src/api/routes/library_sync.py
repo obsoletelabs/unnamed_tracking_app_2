@@ -51,7 +51,7 @@ from src.features.metadata.games.retroachievements import (
 )
 from src.features.metadata.locked_fields import apply_metadata_updates
 from src.features.metadata.service import game_result, library_candidate, resolve_library_record
-from src.helpers.save_game_asset import AssetKind, save_game_asset
+from src.helpers.save_game_asset import AssetKind, save_locked_game_asset
 from src.helpers.steam_achievement_rows import (  # noqa: F401
     needs_community_descriptions as _needs_community_descriptions,
 )
@@ -120,7 +120,7 @@ def _add_to_series_collection(game: Game, series: str) -> None:
         game.collections = [*game.collections, series]
 
 
-async def _download_asset(url: str, game_id: UUID, asset_kind: AssetKind) -> bool:
+async def _download_asset(url: str, game: Game, asset_kind: AssetKind) -> bool:
     """Best-effort — mirrors games.py's download_game_asset route but never
     raises, since one bad art URL must not fail an entire library sync.
     Returns whether it actually saved something, so callers can fall back
@@ -136,7 +136,7 @@ async def _download_asset(url: str, game_id: UUID, asset_kind: AssetKind) -> boo
     if len(response.content) > app_settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024:
         return False
     try:
-        await save_game_asset(response.content, game_id, asset_kind)
+        await save_locked_game_asset(response.content, game, asset_kind)
         return True
     except (OSError, ValueError):
         return False
@@ -195,7 +195,7 @@ async def _enrich_new_game(game: Game, user: User, preferences: dict) -> None:
     ]
     for asset_kind, field in asset_fields:
         for url in match.get(field + "s", []):
-            if await _download_asset(url, game.id, asset_kind):
+            if await _download_asset(url, game, asset_kind):
                 break
 
 

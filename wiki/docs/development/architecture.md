@@ -46,6 +46,19 @@ The production entrypoint does not print configuration secrets. New logging code
 
 A game's artwork is stored as PNG files in its folder: `key_art.png` (600 by 900) and `banner.png` (3840 by 1240, often 5 to 10 MB), plus a logo and an icon. A page rarely needs that much, so smaller copies are made and kept in a cache.
 
+Artwork writes use `helpers/save_game_asset.py`. `save_game_asset` loads an active
+game under a shared PostgreSQL row lock and retains its session until both the PNG
+and standard previews are complete. Folder edits using an exclusive game lock
+therefore wait for those writes. Cancellation waits for the preview worker to
+finish before releasing storage, including repeated cancellation requests.
+
+Imports and metadata enrichment already hold the game's transaction/row lock and
+call `save_locked_game_asset` with that current Game row. They must keep the lock
+until the call finishes. This avoids a second session waiting on its caller and
+lets artwork be written for newly flushed games before commit. Both entry points
+use the same image validation, resizing and preview implementation. These are
+internal host helpers; the public plugin API is unchanged.
+
 **Games.** `GET /api/game/<id>/assets/<kind>` accepts `?w=<pixels>` (64 to 4096) and returns a JPEG no wider than that. The route that serves it is `api/routes/default_game_assets.py`, which is registered before the one in `games.py` and so is the one that answers. Copies live at `<data>/users/<user-id>/.cache/asset-previews/<game-id>/<kind>-<width>.jpg` and are rebuilt when the original is newer. They are written to a temporary file and moved into place, so a request never reads half a file. The widths the app uses (banner 1920 and 800, cover 400) are also made as soon as artwork is saved (`helpers/asset_previews.py`). An image already as small as asked for is sent unchanged.
 
 Stored game artwork keeps its private one-hour browser cache. Generated covers for games without artwork use `private, no-cache`, requiring revalidation when the URL is requested again so a newly uploaded cover can replace the placeholder. The standalone default-cover preview still uses its existing one-hour cache.

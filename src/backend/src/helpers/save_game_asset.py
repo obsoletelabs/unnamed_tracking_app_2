@@ -65,33 +65,48 @@ def _resize_to_exact(image: Image.Image, width: int, height: int) -> Image.Image
     return resized
 
 
-async def get_game_folder(game_id: UUID | str) -> tuple[UUID, str]:
-    async with SessionLocal() as session:
-        game = await session.scalar(
-            select(Game).where(Game.id == str(game_id), Game.deleted_at.is_(None))
-        )
-        if game is None:
-            raise ValueError(f"Game not found for id: {game_id}")
-        if not game.folder_location:
-            raise ValueError(f"Game {game_id} is missing folder_location")
-        return game.user_id, game.folder_location
-
-
 async def save_game_asset(
     image: bytes | str | Path | Image.Image,
     game_id: UUID | str,
     asset_kind: AssetKind,
 ) -> Path:
-    """Resize one image to the exact target size for a game asset and save it to disk.
+    """Keep the game row locked until its artwork and previews have been saved.
 
-    Example:
-        await save_game_asset(image_bytes, game_id, "key_art")
+    Callers already holding a game row lock must use ``save_locked_game_asset``
+    instead, so an independent session never waits on the caller's transaction.
     """
     if asset_kind not in ASSET_SIZES:
         raise ValueError(f"Unsupported asset kind: {asset_kind}")
+    async with SessionLocal() as session:
+        game = await session.scalar(
+            select(Game)
+            .where(Game.id == str(game_id), Game.deleted_at.is_(None))
+            .with_for_update(read=True)
+        )
+        if game is None:
+            raise ValueError(f"Game not found for id: {game_id}")
+        return await save_locked_game_asset(image, game, asset_kind)
 
-    user_id, folder_name = await get_game_folder(game_id)
-    output_dir = create_game_folder(user_id, folder_name)
+
+async def save_locked_game_asset(
+    image: bytes | str | Path | Image.Image,
+    game: Game,
+    asset_kind: AssetKind,
+) -> Path:
+    """Write within the caller's existing game lock or uncommitted game creation.
+
+    Imports/enrichment keep their transaction open through this call. Using their
+    current row also supports newly flushed games invisible to other sessions.
+    Both entry points share this one image/preview implementation.
+    """
+    if asset_kind not in ASSET_SIZES:
+        raise ValueError(f"Unsupported asset kind: {asset_kind}")
+    if game.deleted_at is not None:
+        raise ValueError(f"Game not found for id: {game.id}")
+    if not game.folder_location:
+        raise ValueError(f"Game {game.id} is missing folder_location")
+
+    output_dir = create_game_folder(game.user_id, game.folder_location)
 
     width, height = ASSET_SIZES[asset_kind]
     image_obj = _load_image_bytes(image)
@@ -100,5 +115,23 @@ async def save_game_asset(
     output_path = output_dir / ASSET_FILENAMES[asset_kind]
     resized.save(output_path, format="PNG")
     # the smaller copies the pages show, made now so no first visit waits for them
-    await asyncio.to_thread(make_standard_previews, output_path, asset_kind, str(game_id))
+    await _finish_previews(output_path, asset_kind, str(game.id))
     return output_path
+
+
+async def _finish_previews(output_path: Path, asset_kind: AssetKind, game_id: str) -> None:
+    """Cancellation must not release storage while the thread still uses its path."""
+    task = asyncio.create_task(
+        asyncio.to_thread(make_standard_previews, output_path, asset_kind, game_id)
+    )
+    cancelled = False
+    try:
+        while not task.done():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                cancelled = True
+        task.result()
+    finally:
+        if cancelled:
+            raise asyncio.CancelledError

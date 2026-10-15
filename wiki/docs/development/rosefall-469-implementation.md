@@ -70,6 +70,10 @@ Until then, PRs remain available for review with current validation and screensh
   boundary for cached images and game artwork URL downloads, with checked redirects,
   bounded streaming and image validation. The final PR and validation are recorded
   in the [handover](rosefall-469-handover.md).
+  Follow-up discovered during folder work: automatic library enrichment and
+  game metadata refresh still use older `requests.get` image paths. Route those
+  through the same public-image boundary in a focused follow-up; no SDK change
+  or broader provider permissions are needed.
 - **C2 / 63–64:** merged as [PR #129](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/129).
   Extension/content validation, bounded storage names, preserved original names and
   equivalent whole/range response headers are implemented. The generated additive
@@ -110,7 +114,7 @@ Until then, PRs remain available for review with current validation and screensh
   [phone](../assets/game-card-consistency/classic-dark-phone-priority.jpg),
   [finished notes](../assets/game-card-consistency/classic-dark-finished-note.jpg) and
   [retained written notes](../assets/game-card-consistency/classic-light-written-note.jpg).
-- **F progression / 1–3:** implemented on `feat/synced-game-progression`;
+- **F progression / 1–3:** merged as [PR #134](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/134);
   full local backend tests passed (2,669; four skipped), along with mypy and
   Ruff and full Pylint (10/10). Fifty-one separate Epic plugin consumer tests
   passed without SDK changes.
@@ -121,7 +125,16 @@ Until then, PRs remain available for review with current validation and screensh
   every existing Played choice stays unchanged, including full completion.
   Achievement GET remains read-only; all providers recheck the current locked
   identity/status after a delayed single-game refresh. The plugin schema is unchanged.
-- **F folders / 5:** pending. Folder coordination still needs implementation.
+  All seven full hosted workflows passed before the authorized squash merge.
+- **F folders / 5:** artwork prerequisite implemented on `fix/game-artwork-storage-locks`;
+  full local backend tests passed as unprivileged UID 1000 (2,674; four skipped).
+  Full Ruff, mypy and configured Pylint (10/10) also passed.
+  Ordinary artwork writes retain a shared
+  game lock through PNG/preview completion, including cancellation. Imports and
+  enrichment use their current locked row, including uncommitted new games.
+  Five regressions cover the lock lifetime, repeated cancellation and import
+  visibility. Filesystem rename/rollback and coordination for the other file
+  boundaries still need implementation.
 - **G–O:** approved; not implemented yet. The package details below describe
   intended work, not completed behavior.
 
