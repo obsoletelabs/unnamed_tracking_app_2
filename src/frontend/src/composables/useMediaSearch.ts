@@ -90,6 +90,11 @@ export function useMediaSearch(query: Ref<string>) {
     select,
     closeSelection,
     stop,
+    previewArtwork: (url: string) => {
+      if (!selectedType.value)
+        throw new Error("Select a title before previewing artwork.");
+      return searches[selectedType.value].previewArtwork(url);
+    },
     search: () =>
       Promise.all(MEDIA_SEARCH_TYPES.map((type) => searches[type].search())),
   };

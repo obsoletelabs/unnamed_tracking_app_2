@@ -18,7 +18,9 @@ import MediaMetadataSearch from "./MediaMetadataSearch.vue";
 import { useMetadataSearch } from "../utils/useMetadataSearch";
 import { splitList } from "../utils/formLists";
 import { animeMetadataResult } from "../utils/metadataCandidate";
-import { metadataPrefill } from "../utils/metadataPrefill";
+import { useMetadataComparison } from "../composables/useMetadataComparison";
+import { useMetadataArtwork } from "../composables/useMetadataArtwork";
+import MetadataComparison from "./MetadataComparison.vue";
 
 import { useTitleProtection } from "../utils/titleProtection";
 import { numberOrNull } from "../utils/numberInput";
@@ -36,7 +38,11 @@ const emit = defineEmits<{
 function blankFields() {
   return {
     title: "",
-    providerIds: {} as Record<string, string>,
+    tracking: {
+      providerIds: {} as Record<string, string>,
+      externalId: null as string | null,
+      anilistId: null as string | null,
+    },
     description: "",
     firstAirDate: "",
     episodeRuntimeMinutes: null as number | null,
@@ -51,8 +57,6 @@ function blankFields() {
     backdropUrl: null as string | null,
     anilistScore: null as number | null,
     malScore: null as number | null,
-    externalId: null as string | null,
-    anilistId: null as string | null,
   };
 }
 
@@ -85,7 +89,11 @@ function loadFromShow(show: Anime | null | undefined) {
   }
   fields.value = {
     title: show.title,
-    providerIds: show.providerIds ?? {},
+    tracking: {
+      providerIds: show.providerIds ?? {},
+      externalId: show.externalId,
+      anilistId: show.anilistId,
+    },
     description: show.description ?? "",
     firstAirDate: show.firstAirDate ?? "",
     episodeRuntimeMinutes: show.episodeRuntimeMinutes,
@@ -100,52 +108,101 @@ function loadFromShow(show: Anime | null | undefined) {
     backdropUrl: show.backdropUrl,
     anilistScore: show.anilistScore,
     malScore: show.malScore,
-    externalId: show.externalId,
-    anilistId: show.anilistId,
   };
 }
 
 watch(() => props.show, loadFromShow, { immediate: true });
 
-const prefillMetadata = metadataPrefill<ReturnType<typeof blankFields>>();
-
-function applyMetadata(result: AnimeMetadataResult) {
-  const locked = new Set(props.show?.lockedFields ?? []);
+const artwork = useMetadataArtwork(search.candidate, search.previewArtwork);
+const comparison = useMetadataComparison(
+  () => fields.value,
+  () => ({
+    title: { label: "Title", locked: titleProtected.value },
+    description: {
+      label: "Description",
+      locked: (props.show?.lockedFields ?? []).includes("description"),
+    },
+    posterUrl: {
+      label: "Poster",
+      locked: (props.show?.lockedFields ?? []).includes("poster_url"),
+      image: true,
+    },
+    backdropUrl: {
+      label: "Backdrop",
+      locked: (props.show?.lockedFields ?? []).includes("backdrop_url"),
+      image: true,
+    },
+    genresInput: {
+      label: "Genres",
+      locked: (props.show?.lockedFields ?? []).includes("genres"),
+    },
+    firstAirDate: {
+      label: "First air date",
+      locked: (props.show?.lockedFields ?? []).includes("first_air_date"),
+    },
+    episodeRuntimeMinutes: {
+      label: "Episode runtime",
+      locked: (props.show?.lockedFields ?? []).includes(
+        "episode_runtime_minutes",
+      ),
+    },
+    studiosInput: {
+      label: "Studios",
+      locked: (props.show?.lockedFields ?? []).includes("studios"),
+    },
+    anilistScore: {
+      label: "AniList score",
+      locked: (props.show?.lockedFields ?? []).includes("anilist_score"),
+    },
+    malScore: {
+      label: "MAL score",
+      locked: (props.show?.lockedFields ?? []).includes("mal_score"),
+    },
+    tracking: { label: "Provider identity" },
+  }),
+);
+function offerMetadata(result: AnimeMetadataResult) {
   const incoming: Partial<ReturnType<typeof blankFields>> = {};
-  if (!titleProtected.value) incoming.title = result.title ?? undefined;
-  if (!locked.has("description"))
-    incoming.description = result.description ?? undefined;
-  if (!locked.has("poster_url"))
-    incoming.posterUrl = result.posterUrl ?? undefined;
-  if (!locked.has("backdrop_url"))
-    incoming.backdropUrl = result.backdropUrl ?? undefined;
-  if (!locked.has("genres"))
-    incoming.genresInput = result.genres.join(", ") ?? undefined;
-  if (!locked.has("first_air_date"))
-    incoming.firstAirDate = result.firstAirDate ?? undefined;
-  if (!locked.has("episode_runtime_minutes"))
-    incoming.episodeRuntimeMinutes = result.episodeRuntimeMinutes ?? undefined;
-  if (!locked.has("studios"))
-    incoming.studiosInput = result.studios.join(", ") ?? undefined;
-  if (!locked.has("anilist_score"))
-    incoming.anilistScore = result.anilistScore ?? undefined;
-  if (!locked.has("mal_score"))
-    incoming.malScore = result.malScore ?? undefined;
-  prefillMetadata(fields.value, incoming, result.candidateId);
-  if (result.providerIds)
-    fields.value.providerIds = {
-      ...fields.value.providerIds,
+  incoming.title = result.title ?? undefined;
+  incoming.description = result.description ?? undefined;
+  incoming.posterUrl = artwork.urls.value.cover;
+  incoming.backdropUrl = artwork.urls.value.banner;
+  incoming.genresInput = result.genres.join(", ") ?? undefined;
+  incoming.firstAirDate = result.firstAirDate ?? undefined;
+  incoming.episodeRuntimeMinutes = result.episodeRuntimeMinutes ?? undefined;
+  incoming.studiosInput = result.studios.join(", ") ?? undefined;
+  incoming.anilistScore = result.anilistScore ?? undefined;
+  incoming.malScore = result.malScore ?? undefined;
+  incoming.tracking = {
+    providerIds: {
+      ...fields.value.tracking.providerIds,
       ...result.providerIds,
-    };
-  if (result.malId) fields.value.externalId = result.malId;
-  if (result.providerIds?.anilist)
-    fields.value.anilistId = result.providerIds.anilist;
-  search.applied(result, [...locked]);
+    },
+    externalId: result.providerIds?.mal ?? fields.value.tracking.externalId,
+    anilistId: result.providerIds?.anilist ?? fields.value.tracking.anilistId,
+  };
+  comparison.offer(
+    incoming,
+    result.candidateId ?? `${result.provider}-${result.providerId}`,
+  );
+}
+watch([search.selected, artwork.urls], ([result]) => {
+  if (result) offerMetadata(result);
+  else comparison.clear();
+});
+function cancelLookup() {
+  comparison.clear();
+  search.stop();
+}
+function applyLookup() {
+  const result = search.selected.value;
+  if (!result) return;
+  comparison.apply();
+  search.applied(result, []);
+  search.stop();
 }
 
-watch(search.selected, (result) => {
-  if (result) applyMetadata(result);
-});
+watch(() => props.show, cancelLookup);
 
 // what the search box lists for each match
 const searchResults = computed(() =>
@@ -170,6 +227,7 @@ function pickResult(key: string) {
 }
 
 async function submit() {
+  if (search.selected.value) return;
   if (!fields.value.title.trim()) {
     error.value = "Title is required.";
     return;
@@ -179,7 +237,7 @@ async function submit() {
   try {
     const input = {
       title: fields.value.title.trim(),
-      providerIds: fields.value.providerIds,
+      providerIds: fields.value.tracking.providerIds,
       titleLock: props.show ? titleLockOverride.value : undefined,
       description: fields.value.description.trim() || null,
       firstAirDate: fields.value.firstAirDate || null,
@@ -202,8 +260,8 @@ async function submit() {
       backdropUrl: fields.value.backdropUrl,
       anilistScore: numberOrNull(fields.value.anilistScore, "AniList score"),
       malScore: numberOrNull(fields.value.malScore, "MAL score"),
-      externalId: fields.value.externalId,
-      anilistId: fields.value.anilistId,
+      externalId: fields.value.tracking.externalId,
+      anilistId: fields.value.tracking.anilistId,
     };
     const saved = props.show
       ? await updateAnime(props.show.id, {
@@ -240,6 +298,7 @@ async function remove() {
     noun="Anime"
     :editing="!!show"
     :saving="saving"
+    :lookup-pending="!!search.selected.value"
     :deleting="deleting"
     :error="error"
     @closed="emit('closed')"
@@ -257,6 +316,18 @@ async function remove() {
       :warnings="search.warnings.value"
       @search="search.run"
       @pick="pickResult"
+    />
+
+    <MetadataComparison
+      v-if="search.selected.value"
+      :changes="comparison.changes.value"
+      :reason="comparison.reason.value"
+      :provider="search.selected.value.provider"
+      :busy="artwork.busy.value || search.enrichingMedia.value"
+      :previews="artwork.previews.value"
+      @toggle="comparison.toggle"
+      @apply="applyLookup"
+      @cancel="cancelLookup"
     />
 
     <img

@@ -217,6 +217,24 @@ export function metadataEvents(sessionId: string, after = 0): EventSource {
   );
 }
 
+export async function previewMetadataArtwork(
+  sessionId: string,
+  candidateId: string,
+  url: string,
+): Promise<Blob> {
+  const response = await fetch(
+    `/api/metadata/sessions/${encodeURIComponent(sessionId)}/artwork`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ candidate_id: candidateId, url }),
+    },
+  );
+  if (!response.ok) throw await failedRequest(response);
+  return response.blob();
+}
+
 export async function focusMetadataEntity(
   title: string,
   mediaType: MetadataMediaType,

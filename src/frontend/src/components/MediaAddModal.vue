@@ -1,7 +1,13 @@
 <script setup lang="ts">
-import { computed, reactive, watch } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 import UiModal from "./UiModal.vue";
-import type { MetadataCandidate } from "../services/metadata";
+import type {
+  CanonicalMetadata,
+  MetadataCandidate,
+} from "../services/metadata";
+import MetadataComparison from "./MetadataComparison.vue";
+import { useMetadataComparison } from "../composables/useMetadataComparison";
+import { useMetadataArtwork } from "../composables/useMetadataArtwork";
 import type { QuickAddForm } from "../types/mediaLibrary";
 import { metadataEpisodeTotal } from "../services/mediaAdd";
 import { STATUS_BUCKETS, bucketToReal } from "../utils/mediaStatus";
@@ -12,8 +18,108 @@ const props = defineProps<{
   enriching: boolean;
   saving: boolean;
   error: string | null;
+  previewArtwork?: (url: string) => Promise<Blob>;
 }>();
-const emit = defineEmits<{ close: []; save: [form: QuickAddForm] }>();
+const emit = defineEmits<{
+  close: [];
+  save: [form: QuickAddForm, reviewed?: MetadataCandidate];
+}>();
+type ReviewFields = CanonicalMetadata & {
+  poster: string | null;
+  backdrop: string | null;
+};
+const reviewing = ref(false);
+const reviewed = ref<MetadataCandidate | undefined>();
+const reviewFields = ref<ReviewFields>({ poster: null, backdrop: null });
+const artwork = useMetadataArtwork(
+  computed(() => (reviewing.value ? props.candidate : null)),
+  (url) => {
+    if (!props.previewArtwork)
+      return Promise.reject(new Error("Artwork preview is unavailable."));
+    return props.previewArtwork(url);
+  },
+);
+const comparison = useMetadataComparison(
+  () => reviewFields.value,
+  () =>
+    Object.fromEntries(
+      Object.keys({
+        ...props.candidate.metadata,
+        poster: null,
+        backdrop: null,
+      }).map((key) => [
+        key,
+        {
+          label:
+            (
+              {
+                poster: "Poster",
+                backdrop: "Backdrop",
+                seasons: "Offered seasons",
+              } as Record<string, string>
+            )[key] ??
+            key
+              .replaceAll("_", " ")
+              .replace(/^./, (letter) => letter.toUpperCase()),
+          image: key === "poster" || key === "backdrop",
+        },
+      ]),
+    ),
+);
+watch(
+  [() => props.candidate, artwork.urls, reviewing],
+  () => {
+    if (reviewing.value)
+      comparison.offer(
+        {
+          ...props.candidate.metadata,
+          poster: artwork.urls.value.cover,
+          backdrop: artwork.urls.value.banner,
+        },
+        props.candidate.id,
+      );
+  },
+  { deep: true },
+);
+watch(
+  () => props.candidate.id,
+  () => {
+    reviewing.value = false;
+    reviewed.value = undefined;
+    comparison.clear();
+  },
+);
+function applyReview() {
+  comparison.apply();
+  const { poster, backdrop, ...metadata } = reviewFields.value;
+  reviewed.value = JSON.parse(
+    JSON.stringify({
+      ...props.candidate,
+      metadata,
+      assets: props.candidate.assets.filter(
+        (asset) => asset.url === poster || asset.url === backdrop,
+      ),
+    }),
+  );
+  reviewing.value = false;
+}
+function beginReview() {
+  const previous = reviewed.value;
+  reviewFields.value = {
+    ...previous?.metadata,
+    poster:
+      previous?.assets.find((asset) => asset.kind === "poster")?.url ?? null,
+    backdrop:
+      previous?.assets.find(
+        (asset) => asset.kind === "banner" || asset.kind === "hero",
+      )?.url ?? null,
+  };
+  reviewing.value = true;
+}
+function cancelReview() {
+  reviewing.value = false;
+  comparison.clear();
+}
 const form = reactive<QuickAddForm>({
   status: "plan",
   watched: 0,
@@ -57,17 +163,21 @@ const invalid = computed(
       (!Number.isFinite(form.score) || form.score < 0 || form.score > 10)),
 );
 function submit() {
-  if (invalid.value || props.saving) return;
-  emit("save", {
-    ...form,
-    startDate: form.startDate || null,
-    endDate: form.endDate || null,
-    status: bucketToReal(form.status),
-    watched:
-      form.status === "completed" && total.value != null
-        ? total.value
-        : form.watched,
-  });
+  if (invalid.value || props.saving || reviewing.value) return;
+  emit(
+    "save",
+    {
+      ...form,
+      startDate: form.startDate || null,
+      endDate: form.endDate || null,
+      status: bucketToReal(form.status),
+      watched:
+        form.status === "completed" && total.value != null
+          ? total.value
+          : form.watched,
+    },
+    reviewed.value,
+  );
 }
 </script>
 
@@ -95,6 +205,28 @@ function submit() {
       now.
     </p>
     <p v-if="error" class="ui-error-box" role="alert">{{ error }}</p>
+    <button
+      v-if="!reviewing"
+      type="button"
+      class="ui-btn ui-btn-ghost"
+      @click="beginReview"
+    >
+      Review metadata before adding
+    </button>
+    <p v-if="reviewed && !reviewing" class="hint" role="status">
+      Your checked metadata choices are staged. Add to library to save them.
+    </p>
+    <MetadataComparison
+      v-if="reviewing"
+      :changes="comparison.changes.value"
+      :reason="comparison.reason.value"
+      :provider="candidate.provider_name"
+      :busy="artwork.busy.value || enriching"
+      :previews="artwork.previews.value"
+      @toggle="comparison.toggle"
+      @apply="applyReview"
+      @cancel="cancelReview"
+    />
     <div class="fields">
       <label
         ><span>Status</span
@@ -143,7 +275,7 @@ function submit() {
       <button
         type="button"
         class="ui-btn ui-btn-primary"
-        :disabled="saving || invalid"
+        :disabled="saving || invalid || reviewing"
         @click="submit"
       >
         {{ saving ? "Adding…" : "Add to library" }}
