@@ -51,7 +51,14 @@ separately by the host's existing game metadata flow.
 Imported metadata respects locked fields, including title and its derived sort
 title. Imported playtime only increases and can also be protected by a field
 lock. New games start in Backlog, or Played when reported playtime is positive.
-Subsequent imports preserve status, notes, ratings and other personal state.
+Subsequent available imports also advance eligible Backlog/Wishlist games using
+fresh reported playtime. `available: true` establishes ownership, so Wishlist
+becomes Backlog when no playtime is supplied; a locally saved positive playtime
+value alone does not imply provider progress. Explicit positive provider playtime
+can advance an eligible game even when the stored playtime field is protected.
+Every existing Played, Playing, On Hold, Beaten, Dropped or Mastered status stays
+unchanged. Notes, ratings and other personal state remain intact. This policy is
+enforced by the host without changing the public request/response schema or SDK.
 The source label is set on creation and later manual source edits are preserved.
 
 An already-deleted record returns `conflict: "deleted"`; it is not restored or

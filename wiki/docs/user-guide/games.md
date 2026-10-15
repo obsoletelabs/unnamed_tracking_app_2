@@ -109,6 +109,27 @@ achievement schema. If Steam supplies a schema but no player progress, existing
 achievements keep their stored unlock state until a later successful sync.
 An explicit player list with every achievement locked is still applied.
 
+### Automatic status progression
+
+Successful connected-library syncs can advance existing **Backlog** and
+**Wishlist** games as well as new imports. An owned Wishlist game becomes Backlog
+when no progress is reported, Played when the provider reports playtime or some
+unlocked achievements, or Mastered when a nonempty achievement set is fully
+unlocked. The first automatic Mastered transition sets a completion date only
+when one is not already saved.
+
+Every existing **Played**, Playing, On Hold, Beaten, Dropped or Mastered choice
+stays unchanged, including Played games whose achievements later reach 100%.
+Only fresh provider evidence counts; locally entered playtime and achievement
+reports do not trigger this progression. Unavailable progress does not erase the
+previous snapshot or imply completion.
+
+Refreshing achievements can advance a Backlog game, but does not establish
+ownership of a Wishlist game. Opening the achievements tab only reads saved
+data; it never changes status. Steam's deferred achievement batches follow the
+same rule, so a game already marked Played stays Played. Optional store plugins
+using the public game-import operation share the host's ownership/playtime policy.
+
 Provider settings show each source's active library game count and the time of
 its last successful sync. Trashed games are excluded; restoring them returns
 them to the count.

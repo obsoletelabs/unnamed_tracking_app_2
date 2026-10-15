@@ -17,10 +17,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.routes.library_sync import (
     _SYNC_CONCURRENCY,
     _add_source_tag_and_collection,
-    _apply_status,
     _enrich_steam_game_by_appid,
     _get_or_create_game,
-    _infer_status,
     _replace_achievements,
 )
 from src.core.auth import get_current_user
@@ -29,6 +27,7 @@ from src.database.models.game import Game, GameStatus
 from src.database.models.user import User
 from src.database.session import get_db
 from src.features.imports import steam_connection
+from src.features.imports.game_progression import apply_provider_progress
 from src.features.imports.library_games import LibraryIndex, lock_imported_game
 from src.features.imports.steam_achievements import SteamAchievementData, fetch_steam_achievements
 from src.features.metadata.games import steam, steam_wishlist
@@ -48,6 +47,7 @@ class EnrichRequest(BaseModel):
 
 
 class AchievementsRequest(EnrichRequest):
+    # Accepted for older clients; current locked status alone determines eligibility.
     status_game_ids: list[UUID] = Field(default_factory=list, max_length=25)
 
 
@@ -88,14 +88,13 @@ async def import_achievements(
         await steam_connection.recheck(db, current_user.id, steam_id, api_key)
     except steam_connection.SteamConnectionError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
-    return await _save_achievement_batch(db, current_user.id, fetched, body.status_game_ids)
+    return await _save_achievement_batch(db, current_user.id, fetched)
 
 
 async def _save_achievement_batch(
     db: AsyncSession,
     user_id: UUID,
     fetched: dict[UUID, tuple[str | None, SteamAchievementData]],
-    status_game_ids: list[UUID],
 ) -> dict[str, Any]:
     """Apply snapshots only to identities still owned when the provider responds."""
     games = (
@@ -111,7 +110,6 @@ async def _save_achievement_batch(
             .execution_options(populate_existing=True)
         )
     ).all()
-    settle = set(status_game_ids)
     synced = 0
     unavailable: list[str] = []
     for game in games:
@@ -126,18 +124,10 @@ async def _save_achievement_batch(
         if schema:
             await _replace_achievements(db, game.id, "Steam", rows)
             synced += len(rows)
-        # Only the fresh imports identified by the original sync may settle
-        # their automatic status. A subsequent manual choice is retained.
-        if game.id in settle and game.status == _infer_status(
-            playtime_seconds=game.playtime_seconds
-        ):
-            _apply_status(
+            apply_provider_progress(
                 game,
-                _infer_status(
-                    playtime_seconds=game.playtime_seconds,
-                    total_achievements=len(rows),
-                    unlocked_achievements=sum(1 for row in rows if row["unlocked"]),
-                ),
+                total_achievements=len(rows),
+                unlocked_achievements=sum(1 for row in rows if row["unlocked"]),
             )
     await db.commit()
     return {"achievements_synced": synced, "achievements_unavailable": unavailable}

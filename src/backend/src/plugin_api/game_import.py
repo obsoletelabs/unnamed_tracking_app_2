@@ -12,7 +12,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.database.models.game import Game, GameStatus
+from src.database.models.game import Game
+from src.features.imports.game_progression import apply_provider_progress
 from src.features.imports.library_games import get_or_create_game
 from src.features.metadata.locked_fields import apply_metadata_updates
 
@@ -136,8 +137,7 @@ async def dispatch_game_import(
             if item.playtime_seconds is not None:
                 updates["playtime_seconds"] = max(game.playtime_seconds, item.playtime_seconds)
             apply_metadata_updates(game, updates)
-            if result["created"] and game.playtime_seconds > 0:
-                game.status = GameStatus.PLAYED
+            apply_provider_progress(game, owned=True, playtime_seconds=item.playtime_seconds)
             game.stale_since = None
         elif game.stale_since is None:
             game.stale_since = int(time.time())

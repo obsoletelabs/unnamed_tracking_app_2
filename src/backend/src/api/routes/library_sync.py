@@ -39,6 +39,7 @@ from src.database.models.user import User
 from src.database.session import SessionLocal, get_db
 from src.features.connection_jobs import sync_scope
 from src.features.imports import steam_connection
+from src.features.imports.game_progression import apply_provider_progress
 from src.features.imports.library_games import LibraryIndex, lock_imported_game
 from src.features.imports.library_games import get_or_create_game as _get_or_create_game
 from src.features.imports.steam_achievements import SteamAchievementData, fetch_steam_achievements
@@ -90,33 +91,6 @@ async def _enrich_steam_game_by_appid(
     """Owned-game IDs anchor enrichment without another title match."""
     game.provider_ids = {**(game.provider_ids or {}), "steam": str(app_id)}
     await _enrich_new_game(game, user, {"steam_user_tags": use_user_tags})
-
-
-def _infer_status(
-    *, playtime_seconds: int = 0, total_achievements: int = 0, unlocked_achievements: int = 0
-) -> GameStatus:
-    """A freshly-imported game has no manual status from the user yet — a
-    library sync only sets one (never overwrites one on re-sync, see
-    `_get_or_create_game`'s `created` flag). No playtime/achievement
-    progress at all means untouched (Backlog); full achievement completion
-    means Mastered; anything in between just means "played" — there's no
-    reliable signal for "currently playing" vs. "played once and stopped"
-    from a bulk library pull, so Played is the honest, non-presumptuous
-    middle ground rather than guessing Playing."""
-    has_progress = playtime_seconds > 0 or unlocked_achievements > 0
-    if not has_progress:
-        return GameStatus.BACKLOG
-    if unlocked_achievements >= total_achievements > 0:
-        return GameStatus.MASTERED
-    return GameStatus.PLAYED
-
-
-def _apply_status(game: Game, new_status: GameStatus) -> None:
-    """Sets game.status and, the first time it becomes Mastered, records
-    when — same rule as the manual status-change routes in games.py."""
-    game.status = new_status
-    if new_status == GameStatus.MASTERED and game.completion_date is None:
-        game.completion_date = int(time.time())
 
 
 def _add_source_tag_and_collection(game: Game, source: str) -> None:
@@ -367,7 +341,8 @@ async def refresh_game_achievements(
     """Re-reads one game's achievements from the provider it came from (Steam,
     PlayStation or RetroAchievements): what each is, whether it's hidden, what
     you've unlocked and when, and how many players have it. It doesn't sync the
-    library, and nothing else about the game is touched."""
+    library. Fresh progress may advance eligible Backlog games; other saved
+    statuses, including Wishlist without ownership evidence, are preserved."""
     game = await db.scalar(
         select(Game).where(
             Game.id == game_id, Game.user_id == current_user.id, Game.deleted_at.is_(None)
@@ -376,6 +351,7 @@ async def refresh_game_achievements(
     if game is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
     external_id = game.external_id or ""
+    platform = game.platform
     if game.source == "Steam":
         provider, rows = "Steam", await _fetch_steam_rows(current_user, external_id, db)
     elif game.source == "RetroAchievements":
@@ -389,16 +365,24 @@ async def refresh_game_achievements(
             detail="Only games that came from Steam, PlayStation or RetroAchievements have "
             "achievements to refresh.",
         )
-    if rows and provider == "Steam":
-        # The selected record may have been deleted or moved while Steam replied.
-        current = await lock_imported_game(db, current_user.id, game_id, "Steam")
-        if current is None or current.external_id != external_id:
+    if rows:
+        # Every provider must recheck ownership and identity after network work.
+        current = await lock_imported_game(db, current_user.id, game_id, provider)
+        if (
+            current is None
+            or (current.external_id or "") != external_id
+            or (provider == "PlayStation" and current.platform != platform)
+        ):
             raise HTTPException(
                 status_code=409,
                 detail="This game changed during the refresh. Saved progress was kept.",
             )
-    if rows:
-        await _replace_achievements(db, game.id, provider, rows)
+        await _replace_achievements(db, current.id, provider, rows)
+        apply_provider_progress(
+            current,
+            total_achievements=len(rows),
+            unlocked_achievements=sum(1 for row in rows if row["unlocked"]),
+        )
         await db.commit()
     return {
         "provider": provider,
@@ -567,7 +551,8 @@ async def _sync_steam_library(
         games_added += created
         games_updated += not created
         synced_titles.append(title)
-        became_owned = not created and game.status == GameStatus.WISHLIST
+        if game.status in {GameStatus.BACKLOG, GameStatus.WISHLIST}:
+            status_ids.append(str(game.id))
 
         total_achievements = unlocked_count = 0
         if schema and unlocked is not None:
@@ -579,16 +564,15 @@ async def _sync_steam_library(
         elif unlocked is None:
             achievements_unavailable.append(title)
 
-        if created or became_owned:
-            _apply_status(
-                game,
-                _infer_status(
-                    playtime_seconds=game.playtime_seconds,
-                    total_achievements=total_achievements,
-                    unlocked_achievements=unlocked_count,
-                ),
-            )
-            status_ids.append(str(game.id))
+        apply_provider_progress(
+            game,
+            owned=True,
+            playtime_seconds=entry["playtime_forever"] * 60
+            if "playtime_forever" in entry
+            else None,
+            total_achievements=total_achievements,
+            unlocked_achievements=unlocked_count,
+        )
         if created:
             _add_source_tag_and_collection(game, "Steam")
             newly_created.append((game, app_id))
@@ -684,12 +668,13 @@ async def _sync_retroachievements_library(db: AsyncSession, current_user: User) 
             await _replace_achievements(db, game.id, "RetroAchievements", rows)
             achievements_synced += len(rows)
 
+        apply_provider_progress(
+            game,
+            owned=True,
+            total_achievements=len(rows),
+            unlocked_achievements=sum(1 for row in rows if row["unlocked"]),
+        )
         if created:
-            unlocked_count = sum(1 for r in rows if r["unlocked"])
-            _apply_status(
-                game,
-                _infer_status(total_achievements=len(rows), unlocked_achievements=unlocked_count),
-            )
             _add_source_tag_and_collection(game, "RetroAchievements")
             newly_created.append(game)
 
@@ -800,12 +785,13 @@ async def _sync_psn_library(db: AsyncSession, current_user: User) -> dict:
             await _replace_achievements(db, game.id, "PlayStation", rows)
             achievements_synced += len(rows)
 
+        apply_provider_progress(
+            game,
+            owned=True,
+            total_achievements=len(rows),
+            unlocked_achievements=sum(1 for row in rows if row["unlocked"]),
+        )
         if created:
-            unlocked_count = sum(1 for r in rows if r["unlocked"])
-            _apply_status(
-                game,
-                _infer_status(total_achievements=len(rows), unlocked_achievements=unlocked_count),
-            )
             _add_source_tag_and_collection(game, "PlayStation")
             newly_created.append(game)
 
