@@ -12,10 +12,16 @@ from src.database.models.achievement import Achievement
 from src.database.models.game import Game, GameStatus
 from src.database.models.user import User
 from src.database.session import SessionLocal
+from src.helpers import save_game_asset
 from src.plugin_api.game_import import dispatch_game_import
 from tests.test_game_files_flow import game_flow  # noqa: F401
 
 SOURCES = ["Steam", "RetroAchievements", "PlayStation"]
+
+
+@pytest.fixture(autouse=True)
+def isolated_import_storage(tmp_path, monkeypatch):
+    monkeypatch.setattr(save_game_asset, "DATA_ROOT", tmp_path)
 
 
 async def provider_game(flow, source, original):
