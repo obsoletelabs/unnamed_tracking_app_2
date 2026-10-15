@@ -44,6 +44,22 @@ async def locked_user(db: AsyncSession, user_id: UUID) -> User:
     return user
 
 
+# Every Fernet token starts with its version byte, which encodes to this prefix.
+_FERNET_PREFIX = "gAAAAA"
+
+
+def stored_api_key(user: User) -> str | None:
+    """The legacy Web API key; rows saved before encryption still hold it in plain text."""
+    value = user.steam_api_key
+    if not value:
+        return None
+    return decrypt_secret(value) if value.startswith(_FERNET_PREFIX) else value
+
+
+def store_api_key(user: User, key: str | None) -> None:
+    user.steam_api_key = encrypt_secret(key) if key else None
+
+
 def _pending(user: User) -> dict | None:
     if not user.steam_login_state:
         return None
@@ -305,14 +321,17 @@ async def credentials(db: AsyncSession, user: User) -> tuple[str, str | steam.St
         await check_library_owner(db, user, steam_id)
         await db.commit()
         return steam_id, replace(session, connection_id=refresh)
-    key = user.steam_api_key
+    key = stored_api_key(user)
     if not key:
         raise SteamConnectionError("Reconnect Steam in Settings > Connections.")
+    if user.steam_api_key == key:
+        # Encrypt a key saved before keys were encrypted, now that it is in use.
+        store_api_key(user, key)
     await db.commit()
     previous_id = steam_id
     steam_id = await asyncio.to_thread(steam.resolve_steam_id, steam_id, key)
     user = await locked_user(db, user.id)
-    if user.steam_api_key != key or user.steam_id != previous_id:
+    if stored_api_key(user) != key or user.steam_id != previous_id:
         raise SteamConnectionError("Steam connection changed during this request.", 409)
     await check_library_owner(db, user, steam_id)
     user.steam_id = steam_id
@@ -332,7 +351,7 @@ async def recheck(
             and user.steam_refresh_token == credential.connection_id
         )
     else:
-        matches = user.steam_api_key == credential and user.steam_id == steam_id
+        matches = stored_api_key(user) == credential and user.steam_id == steam_id
     if not matches:
         raise SteamConnectionError(
             "Steam connection changed during this import. Saved progress was kept.", 409

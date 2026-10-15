@@ -38,7 +38,8 @@ class User(Base):
     xbox_client_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
     gog_refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)
     steam_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    steam_api_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Legacy Web API key, Fernet encrypted (older rows may still hold the plain key).
+    steam_api_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
     # Owner-session secrets and short-lived sign-in state are Fernet encrypted.
     steam_access_token: Mapped[str | None] = mapped_column(Text, nullable=True)
     steam_refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)

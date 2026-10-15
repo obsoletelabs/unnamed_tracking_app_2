@@ -269,16 +269,16 @@ async def test_renewal_cannot_persist_after_disconnect(actors, monkeypatch):
         assert (await db.get(User, identities[0])).steam_access_token is None
 
 
-@pytest.mark.parametrize("phase", ["bound", "resolve", "validate"])
+@pytest.mark.parametrize("phase", ["bound", "validate"])
 async def test_late_legacy_save_cannot_restore_disconnected_credentials(actors, monkeypatch, phase):
     identities, _clock = actors
-    resolver = Mock(return_value=OWNER)
-    validator = Mock(return_value={"validated": True, "persona_name": "Stale result"})
-    monkeypatch.setattr(settings_routes.steam, "resolve_steam_id", resolver)
-    monkeypatch.setattr(settings_routes, "_validate_provider", validator)
+    validator = Mock(
+        return_value={"steam_id": OWNER, "persona_name": "Stale result", "avatar_url": None}
+    )
+    monkeypatch.setattr(settings_routes, "_validate_steam", validator)
 
     async def delayed(function, *args):
-        if function is (validator if phase == "validate" else resolver):
+        if function is validator:
             async with SessionLocal() as other_db:
                 await connection.disconnect(other_db, identities[0])
         return function(*args)
@@ -304,9 +304,10 @@ async def test_legacy_save_reloads_actor_before_overwriting_a_new_owner_session(
     actors, monkeypatch
 ):
     identities, clock = actors
-    monkeypatch.setattr(settings_routes.steam, "resolve_steam_id", Mock(return_value=OWNER))
     monkeypatch.setattr(
-        settings_routes, "_validate_provider", Mock(return_value={"validated": True})
+        settings_routes,
+        "_validate_steam",
+        Mock(return_value={"steam_id": OWNER, "persona_name": None, "avatar_url": None}),
     )
     async with SessionLocal() as db:
         stale_user = await db.get(User, identities[0])
@@ -320,6 +321,26 @@ async def test_legacy_save_reloads_actor_before_overwriting_a_new_owner_session(
         user = await db.get(User, identities[0])
         assert user.steam_api_key is None
         assert decrypt_secret(user.steam_refresh_token) == "private-refresh"
+
+
+async def test_legacy_plain_api_key_still_works_and_is_encrypted_on_use(actors, monkeypatch):
+    identities, _clock = actors
+    monkeypatch.setattr(connection.steam, "resolve_steam_id", lambda sid, _key: sid)
+    async with SessionLocal() as db:
+        user = await db.get(User, identities[0])
+        # A key saved before keys were encrypted.
+        user.steam_id, user.steam_api_key = OWNER, "a" * 32
+        await db.commit()
+        steam_id, key = await connection.credentials(db, user)
+        assert (steam_id, key) == (OWNER, "a" * 32)
+    async with SessionLocal() as db:
+        user = await db.get(User, identities[0])
+        assert user.steam_api_key != "a" * 32
+        assert decrypt_secret(user.steam_api_key) == "a" * 32
+        assert connection.stored_api_key(user) == "a" * 32
+        # The encrypted key keeps working for later imports and their rechecks.
+        assert await connection.credentials(db, user) == (OWNER, "a" * 32)
+        await connection.recheck(db, identities[0], OWNER, "a" * 32)
 
 
 async def test_steam_validation_errors_do_not_echo_secrets(actors):
