@@ -119,7 +119,7 @@ If TLS configuration fails during startup, the diagnostic HTTP listener remains 
 
 ## OIDC and proxy URLs
 
-Nginx forwards `X-Forwarded-Proto` and Uvicorn trusts that header only from the local Nginx hop. This allows request-derived OIDC callback URLs to use `https` when clients connect through embedded TLS.
+Nginx forwards `X-Forwarded-Proto`, keeping an outer proxy's value only when that proxy is trusted (`NGINX_REALIP_TRUSTED_PROXIES`), and Uvicorn trusts that header only from the local Nginx hop. This allows request-derived OIDC callback URLs to use `https` when clients connect through embedded TLS.
 
 If another reverse proxy is placed in front of the container, ensure it preserves the external HTTPS scheme and that the deployment’s proxy trust boundary remains limited to the expected internal hop.
 

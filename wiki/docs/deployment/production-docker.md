@@ -101,8 +101,11 @@ When TLS is enabled, the container selects `readytls.conf` or `readytlsredirect.
 | `NGINX_TLS_CERTIFICATE` | empty | Optional PEM certificate/chain path; the conventional `/etc/nginx/tls/tls.crt` is detected automatically when present. |
 | `NGINX_TLS_PRIVATE_KEY` | empty | Optional PEM private-key path; the conventional `/etc/nginx/tls/tls.key` is detected automatically when present. |
 | `NGINX_TLS_REDIRECT_HTTP` | `false` | Redirect HTTP to HTTPS after readiness. |
+| `NGINX_TLS_REDIRECT_PORT` | `443` | HTTPS port named in the redirect; set it when the published HTTPS port differs (the example Compose files do this from `UNNAMED_TRACKING_APP_HTTPS_PORT`, default 8443). |
 
-When enabled, publish container port 443 and mount the certificate directory read-only. Do not bake keys into the image.
+When enabled, publish container port 443 and mount the certificate directory read-only. Do not bake keys into the image. The example Compose files already publish it as `UNNAMED_TRACKING_APP_HTTPS_PORT` (default 8443).
+
+The redirect leaves the plugin-runtime gateway (`/api/plugins/runtime/gateway`) on HTTP, because the plugin runtime calls it over the internal network, and does not redirect requests that a trusted proxy reports as already HTTPS. The container's own readiness probe and healthcheck call HTTPS directly when TLS is enabled.
 
 Confirm external HTTPS access before enabling HTTP redirection. Changes to container environment variables require container recreation; unlocked settings changed through the app reload immediately.
 
@@ -110,7 +113,7 @@ Confirm external HTTPS access before enabling HTTP redirection. Changes to conta
 
 ![TLS settings on mobile](../assets/application-settings/tls-blocks-mobile.png)
 
-`AUTH_COOKIE_SECURE=true` should be used when the public application URL is HTTPS. Nginx sends `X-Forwarded-Proto` and Uvicorn accepts that header only from the local proxy, preserving HTTPS for request-derived OIDC callback URLs.
+`AUTH_COOKIE_SECURE=true` should be used when the public application URL is HTTPS. Nginx sends `X-Forwarded-Proto` and Uvicorn accepts that header only from the local proxy, preserving HTTPS for request-derived OIDC callback URLs. Behind an outer proxy that terminates HTTPS, Nginx passes on that proxy's `X-Forwarded-Proto` only when it connects from a trusted proxy address (`NGINX_REALIP_TRUSTED_PROXIES`); otherwise it reports the scheme of its own connection.
 
 If TLS is enabled but the certificate/key is missing, unreadable, malformed, or mismatched, Nginx validation fails and startup reports a frontend/configuration failure. Because the startup configuration remains HTTP-only until the production handoff, the diagnostic page remains reachable during this failure.
 

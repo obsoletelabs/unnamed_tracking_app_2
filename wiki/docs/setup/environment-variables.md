@@ -71,6 +71,7 @@ Configure TLS and trusted proxies under **Settings → Administration → Applic
 |---|---|---|
 | `NGINX_TLS_ENABLED` | `false` | Enable production HTTPS; publish port 443 first. |
 | `NGINX_TLS_REDIRECT_HTTP` | `false` | Redirect HTTP to HTTPS; requires TLS and reachable external HTTPS. |
+| `NGINX_TLS_REDIRECT_PORT` | `443` | Environment only. The HTTPS port the redirect sends browsers to, when the published port is not 443. The example Compose files set it from `UNNAMED_TRACKING_APP_HTTPS_PORT`. |
 | `NGINX_TLS_CERTIFICATE` | Empty | Absolute mounted PEM certificate/chain path. |
 | `NGINX_TLS_PRIVATE_KEY` | Empty | Absolute mounted PEM private-key path, supplied with the certificate. |
 
@@ -184,6 +185,7 @@ These are Compose interpolation variables from `src/docker-container/compose.yam
 |---|---|---|
 | `UNNAMED_TRACKING_APP_VERSION` | `latest` | Published image tag. |
 | `UNNAMED_TRACKING_APP_PORT` | `8080` | Host port mapped to the application's container port 80. |
+| `UNNAMED_TRACKING_APP_HTTPS_PORT` | `8443` | Host port mapped to container port 443 (used once HTTPS is enabled), and the default HTTPS redirect port. |
 | `POSTGRES_USER` | `unnamed_tracking` in the production Compose file | Database container username. |
 | `POSTGRES_DB` | `unnamed_tracking` in the production Compose file | Database container database name. |
 | `POSTGRES_PASSWORD` | Required | Database container password. |

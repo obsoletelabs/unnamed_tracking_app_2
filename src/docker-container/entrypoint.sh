@@ -222,9 +222,15 @@ if ! nginx -s reload; then
 fi
 
 attempt=1
+# Probe HTTPS directly when enabled: an HTTP redirect may name a published port
+# that only exists outside the container.
+frontend_probe_url="http://127.0.0.1/"
+case "${NGINX_TLS_ENABLED:-false}" in
+  true|TRUE|1|yes|YES) frontend_probe_url="https://127.0.0.1/" ;;
+esac
 # Reload is asynchronous: startup workers can still answer HTTP 200. Publish
 # READY only after a request returns the actual compiled application document.
-while ! { curl -kfsSL http://127.0.0.1/ -o "$STATUS_DIR/frontend-probe.html" &&
+while ! { curl -kfsSL "$frontend_probe_url" -o "$STATUS_DIR/frontend-probe.html" &&
   cmp -s /srv/frontend/index.html "$STATUS_DIR/frontend-probe.html"; } 2>/dev/null; do
   log "Frontend not ready (attempt $attempt)"
   if [ "$attempt" -ge 15 ]; then fail_startup "FRONTEND_FAILED" "Nginx could not serve the production frontend. See Docker stderr for Nginx diagnostics." "ready" "ready" "ready" "failed"; fi

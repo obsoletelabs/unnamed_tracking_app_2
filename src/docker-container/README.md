@@ -52,7 +52,7 @@ HTTP-only is the default. Configure embedded TLS under **Settings → Administra
 
 Saving TLS settings also activates renewed certificate files when their paths are unchanged. There is no separate reload button. Mount certificate/key files read-only; the UI accepts their absolute container paths, never file contents. If TLS is enabled without certificate/key paths, the image first uses a complete certificate/key pair already present at `/etc/nginx/tls/tls.crt` and `/etc/nginx/tls/tls.key`; otherwise it generates a self-signed localhost certificate/key pair under `/run/unnamed-tracking/tls`. The conventional `/etc/nginx/tls` paths also fall back to the generated pair when those files are not mounted. Explicit non-default certificate/key paths remain supported for production. TLS itself remains disabled by default.
 
-Publish port 443 before enabling HTTPS. Enable HTTP redirection only after confirming external HTTPS access. The development frontend/backend stack saves settings for production but cannot reload Nginx because it does not run the embedded listener. Changing container environment variables still requires recreating the container; UI/setup changes to unlocked fields apply immediately and survive restart. The healthcheck follows HTTP-to-HTTPS redirection and accepts the container's loopback self-signed certificate.
+Publish port 443 before enabling HTTPS. Enable HTTP redirection only after confirming external HTTPS access. The development frontend/backend stack saves settings for production but cannot reload Nginx because it does not run the embedded listener. Changing container environment variables still requires recreating the container; UI/setup changes to unlocked fields apply immediately and survive restart. The healthcheck calls HTTPS directly when it is available, falls back to HTTP, and accepts the container's loopback self-signed certificate.
 
 Set:
 
@@ -63,7 +63,7 @@ NGINX_TLS_PRIVATE_KEY=/etc/nginx/tls/tls.key
 NGINX_TLS_REDIRECT_HTTP=true
 ```
 
-`NGINX_TLS_REDIRECT_HTTP` is optional and defaults to false. When enabled, HTTP redirects to HTTPS after the production configuration is activated. During startup failure, the diagnostic HTTP listener remains available so a broken certificate does not hide the diagnostic page.
+`NGINX_TLS_REDIRECT_HTTP` is optional and defaults to false. When enabled, HTTP redirects to HTTPS after the production configuration is activated, except the internal plugin-runtime gateway. Set `NGINX_TLS_REDIRECT_PORT` when browsers reach HTTPS on a published port other than 443; the bundled Compose file sets it from `UNNAMED_TRACKING_APP_HTTPS_PORT` (default 8443). During startup failure, the diagnostic HTTP listener remains available so a broken certificate does not hide the diagnostic page.
 
 Mount externally managed certificates read-only, for example:
 

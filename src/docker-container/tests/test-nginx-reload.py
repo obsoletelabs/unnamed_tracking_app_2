@@ -2,8 +2,11 @@
 
 import asyncio
 import http.client
+import os
 import ssl
 import subprocess
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 from src.core.nginx_configuration import (
@@ -16,7 +19,7 @@ ACTIVE = Path("/etc/nginx/nginx.conf")
 TLS = Path("/tmp/nginx-config-tests/tls")
 
 
-def request_status(secure=False):
+def request(path, secure=False, method="GET", headers=None):
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE
@@ -26,10 +29,31 @@ def request_status(secure=False):
         else http.client.HTTPConnection("127.0.0.1", timeout=2)
     )
     try:
-        connection.request("GET", "/_startup/status.json")
-        return connection.getresponse().status
+        connection.request(method, path, body=b"" if method == "POST" else None, headers=headers or {})
+        response = connection.getresponse()
+        return response.status, response.getheader("location"), response.read().decode()
     finally:
         connection.close()
+
+
+def request_status(secure=False):
+    return request("/_startup/status.json", secure)[0]
+
+
+class ForwardedProtoEcho(BaseHTTPRequestHandler):
+    """Stands in for the backend and reports the scheme Nginx forwarded."""
+
+    def _echo(self):
+        body = (self.headers.get("X-Forwarded-Proto") or "").encode()
+        self.send_response(200)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    do_GET = do_POST = _echo
+
+    def log_message(self, *_args):
+        pass
 
 
 async def main():
@@ -39,7 +63,12 @@ async def main():
         check=True,
     )
     subprocess.run(["nginx"], check=True)
+    backend = HTTPServer(("127.0.0.1", 8000), ForwardedProtoEcho)
+    threading.Thread(target=backend.serve_forever, daemon=True).start()
     try:
+        # Only trusted proxies may say a request arrived over HTTPS.
+        assert request("/api/echo")[2] == "http"
+        assert request("/api/echo", headers={"X-Forwarded-Proto": "https"})[2] == "https"
         original = ACTIVE.read_bytes()
         configuration = NginxConfiguration(
             enabled=True,
@@ -65,6 +94,15 @@ async def main():
         async with apply_nginx_change(redirected):
             assert request_status() == 301
             assert request_status(secure=True) == 200
+            assert request("/api/echo", secure=True)[2] == "https"
+            assert request("/library")[:2] == (301, "https://127.0.0.1/library")
+            # A trusted HTTPS proxy's requests are not redirected again.
+            status, _location, scheme = request(
+                "/api/echo", headers={"X-Forwarded-Proto": "https"}
+            )
+            assert (status, scheme) == (200, "https")
+            # The plugin runtime reaches the gateway over internal HTTP.
+            assert request("/api/plugins/runtime/gateway", method="POST")[0] == 200
             subprocess.run(
                 ["curl", "-kfsSL", "http://127.0.0.1/_startup/status.json"],
                 check=True,
@@ -83,14 +121,25 @@ async def main():
 
         async with apply_nginx_change(redirected):
             pass  # Reload unchanged settings after certificate renewal.
+        # The redirect names the HTTPS port clients reach when it is not 443.
+        os.environ["NGINX_TLS_REDIRECT_PORT"] = "8443"
+        try:
+            async with apply_nginx_change(redirected):
+                assert request("/library")[:2] == (301, "https://127.0.0.1:8443/library")
+                assert request_status(secure=True) == 200
+        finally:
+            del os.environ["NGINX_TLS_REDIRECT_PORT"]
         async with apply_nginx_change(
             NginxConfiguration(header="CF-Connecting-IP", trusted_proxies="")
         ):
             assert request_status() == 200
             assert "set_real_ip_from" not in ACTIVE.read_text(encoding="utf-8")
+            # Without trusted proxies a client cannot claim HTTPS.
+            assert request("/api/echo", headers={"X-Forwarded-Proto": "https"})[2] == "http"
         assert not list(ACTIVE.parent.glob(".nginx-candidate-*"))
         print("Live Nginx HTTP/HTTPS/redirect, validation, rollback and reload tests passed")
     finally:
+        backend.shutdown()
         subprocess.run(["nginx", "-s", "quit"], check=True)
 
 
