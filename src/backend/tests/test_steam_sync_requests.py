@@ -7,7 +7,7 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy import delete, select
 
-from src.api.routes import library_sync
+from src.api.routes import library_sync, steam_import_steps
 from src.database.models.achievement import Achievement
 from src.database.models.game import Game, GameStatus
 from src.database.models.user import User
@@ -204,8 +204,69 @@ async def test_deferred_sync_saves_games_without_achievement_requests(
         game = await db.scalar(select(Game).where(Game.user_id == steam_owner))
         assert str(game.id) == identity
         assert game.playtime_seconds == 300
-        assert game.status == GameStatus.PLAYED
+        # The achievement batches decide between Played and Mastered.
+        assert game.status == GameStatus.BACKLOG
     schema.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("progress", "expected"),
+    [
+        ("complete", GameStatus.MASTERED),
+        ("partial", GameStatus.PLAYED),
+        ("unavailable", GameStatus.PLAYED),
+        ("no-schema", GameStatus.PLAYED),
+    ],
+)
+async def test_deferred_achievement_batches_finish_status_progression(
+    steam_owner, monkeypatch, tmp_path, progress, expected
+):
+    """Settings > Sync now defers achievements; a fully unlocked game still becomes Mastered."""
+    monkeypatch.setattr(save_game_asset, "DATA_ROOT", tmp_path)
+    monkeypatch.setattr(library_sync.steam, "resolve_steam_id", lambda sid, _key: sid)
+    monkeypatch.setattr(
+        library_sync.steam,
+        "get_owned_games",
+        lambda *_: [{"appid": 123, "name": "Deferred game", "playtime_forever": 600}],
+    )
+    monkeypatch.setattr(
+        steam_import_steps.steam,
+        "get_schema_for_game",
+        lambda *_: (
+            {}
+            if progress == "no-schema"
+            else {"A": {"displayName": "A"}, "B": {"displayName": "B"}}
+        ),
+    )
+
+    def player(*_args):
+        if progress == "unavailable":
+            raise steam_import_steps.steam.SteamLibraryError("Private profile")
+        return [
+            {"apiname": "A", "achieved": 1},
+            {"apiname": "B", "achieved": int(progress == "complete")},
+        ]
+
+    monkeypatch.setattr(steam_import_steps.steam, "get_player_achievements", player)
+    async with SessionLocal() as db:
+        user = await db.get(User, steam_owner)
+        result = await library_sync.sync_steam_library(
+            achievements="later", db=db, current_user=user
+        )
+    async with SessionLocal() as db:
+        user = await db.get(User, steam_owner)
+        await steam_import_steps.import_achievements(
+            steam_import_steps.AchievementsRequest(
+                game_ids=result["achievement_game_ids"],
+                status_game_ids=result["status_game_ids"],
+            ),
+            db=db,
+            current_user=user,
+        )
+    async with SessionLocal() as db:
+        game = await db.scalar(select(Game).where(Game.user_id == steam_owner))
+        assert game.status == expected
+        assert (game.completion_date is not None) is (expected == GameStatus.MASTERED)
 
 
 @pytest.mark.parametrize("response_kind", ["no-schema", "unavailable", "failed", "locked"])

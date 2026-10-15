@@ -568,8 +568,10 @@ async def _sync_steam_library(
         apply_provider_progress(
             game,
             owned=True,
+            # Deferred achievement batches finish this progression with the saved
+            # playtime: deciding Played before achievements arrive rules out Mastered.
             playtime_seconds=entry["playtime_forever"] * 60
-            if "playtime_forever" in entry
+            if "playtime_forever" in entry and achievements == "now"
             else None,
             total_achievements=total_achievements,
             unlocked_achievements=unlocked_count,
