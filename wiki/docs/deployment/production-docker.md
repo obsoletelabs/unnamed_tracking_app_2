@@ -176,9 +176,14 @@ The production-container workflow builds the image and validates Nginx/TLS confi
 
 ## Upload transport
 
-Embedded Nginx forwards upload bodies to the application instead of applying its
-default 1 MB ceiling. The host still enforces each saved image/file, clip, save
-archive, world-save and plugin-package limit. This keeps administrator overrides
-and large supported archives usable and returns native JSON validation results.
-HTTP and HTTPS use the same limits; operator backend/migration logs remain private
-in both modes. An additional external proxy must allow the configured upload size.
+Embedded Nginx streams `/api/` request bodies to the application instead of
+applying its default 1 MB ceiling or buffering them to disk; other paths keep the
+1 MB limit. Before reading a body larger than 1 MB, or one without a declared
+size, the application requires a valid session, API key, plugin management token,
+integration grant or plugin-runtime token; otherwise it discards the body without
+storing it and answers 413. The host
+still enforces each saved image/file, clip, save archive, world-save and
+plugin-package limit. This keeps administrator overrides and large supported
+archives usable and returns native JSON validation results. HTTP and HTTPS use the
+same limits; operator backend/migration logs remain private in both modes. An
+additional external proxy must allow the configured upload size.

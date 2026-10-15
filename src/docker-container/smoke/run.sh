@@ -179,6 +179,7 @@ docker exec "$APP_CONTAINER" nginx -T >"$ARTIFACT_DIR/nginx-config.txt" 2>&1
 grep -q 'listen 80;' "$ARTIFACT_DIR/nginx-config.txt"
 grep -q 'root /srv/frontend;' "$ARTIFACT_DIR/nginx-config.txt"
 grep -q 'proxy_pass http://127.0.0.1:8000;' "$ARTIFACT_DIR/nginx-config.txt"
+grep -q 'proxy_request_buffering off;' "$ARTIFACT_DIR/nginx-config.txt"
 
 echo "Checking backend health on the internal loopback."
 docker exec "$APP_CONTAINER" curl --fail --silent --show-error http://127.0.0.1:8000/health >"$ARTIFACT_DIR/backend-health.json"
@@ -217,6 +218,12 @@ curl --fail --silent --show-error -b "$ARTIFACT_DIR/cookies.txt" \
   "$BASE_URL/api/game/$game_id/screenshots" >"$ARTIFACT_DIR/upload-rejection.json"
 grep -qi 'content-type: application/json' "$ARTIFACT_DIR/upload-response-headers.txt"
 python3 -c 'import json,sys; assert "Larger than 1 MB." in str(json.load(open(sys.argv[1])))' "$ARTIFACT_DIR/upload-rejection.json"
+echo "Checking that anonymous bodies over 1 MB are refused without being stored."
+anonymous_status="$(curl --silent --show-error -o "$ARTIFACT_DIR/anonymous-upload.json" -w '%{http_code}' \
+  -H 'Content-Type: application/json' --data-binary "@$ARTIFACT_DIR/oversized.png" \
+  "$BASE_URL/api/auth/login")"
+[[ "$anonymous_status" == 413 ]]
+grep -q 'Sign in to send a request body larger than 1 MB.' "$ARTIFACT_DIR/anonymous-upload.json"
 curl --fail --silent --show-error -b "$ARTIFACT_DIR/cookies.txt" -X PUT \
   -H 'Content-Type: application/json' -d "@$ARTIFACT_DIR/upload-limits-before.json" \
   "$BASE_URL/api/settings/upload-limit" >/dev/null
