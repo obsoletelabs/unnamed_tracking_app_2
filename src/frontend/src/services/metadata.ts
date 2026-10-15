@@ -6,6 +6,7 @@ export interface MetadataProviderStatus {
   provider_id: string;
   plugin_id: string;
   included?: boolean;
+  account_enabled?: boolean;
   automatic_search?: {
     enabled: boolean;
     account_enabled: boolean;
@@ -13,7 +14,12 @@ export interface MetadataProviderStatus {
     server_enabled: boolean;
     server_provider_enabled: boolean;
     uses_personal_credentials: boolean;
-    reason: "account_disabled" | "provider_disabled" | "server_disabled" | null;
+    reason:
+      | "account_disabled"
+      | "provider_disabled"
+      | "server_disabled"
+      | "metadata_provider_disabled"
+      | null;
   };
   name: string;
   media_types: MetadataMediaType[];

@@ -60,6 +60,7 @@ export interface Preferences {
   steam_import_wishlist: boolean;
   metadata_automatic_search_enabled: boolean;
   metadata_automatic_search_providers: Record<string, boolean>;
+  metadata_providers_enabled: Record<string, boolean>;
   // what every game page shows; a game can override it
   game_page: PageSettings;
 }
@@ -114,6 +115,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   steam_import_wishlist: false,
   metadata_automatic_search_enabled: true,
   metadata_automatic_search_providers: {},
+  metadata_providers_enabled: {},
   game_page: DEFAULT_PAGE_SETTINGS,
 };
 

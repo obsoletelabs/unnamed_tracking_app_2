@@ -12,6 +12,13 @@ your library and filtering already fetched candidates remain local and do not
 depend on Automatic Search. The form explains how to search explicitly when
 typing-triggered fetching is off.
 
+**Use for metadata** is a separate account choice on each provider tile. Turning
+it off also blocks explicit searches, enrichment, artwork and scheduled metadata
+work for that provider, including when it uses server credentials. Saved Automatic
+Search choices and credentials remain intact. Connected-library ownership,
+playtime and achievement sync are unaffected. See
+[provider selection](../integrations/metadata.md#provider-selection-and-priority).
+
 Administrators use the same provider tiles with **System default** selected.
 They can restrict Automatic Search server-wide or for any built-in or installed
 metadata provider, including providers that do not use credentials.

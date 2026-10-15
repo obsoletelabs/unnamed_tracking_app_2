@@ -64,6 +64,21 @@ If a provider does not return a value, the existing value is not cleared.
 
 ## Provider selection and priority
 
+In **Settings → Metadata/API → My account**, each provider has **Use for metadata**.
+Turn it off to stop that account's searches, enrichment, artwork and scheduled
+metadata requests for the provider, including requests using server credentials.
+The choice applies to builtin and optional providers. It does not remove saved
+metadata, delete credentials or change connected-library ownership, playtime or
+achievement sync. Turn it on again to resume using the saved configuration.
+
+This differs from **Automatic Search**, which controls typing-triggered fetching
+only. A whole-provider opt-out also blocks explicit metadata requests. Its saved
+Automatic Search choice is preserved and resumes when the provider is re-enabled.
+Local library filtering continues to work.
+
+New unsaved game-provider orders place Steam before GOG. Existing stored orders
+remain unchanged, including an existing order that matched an older default.
+
 The refresh uses the same generic metadata handler as search. Providers run concurrently. The user's provider order determines field authority, while artwork is a separate selected-entity operation. Provider failures are reported without discarding successful results from other providers.
 
 Provider credentials are declared by each built-in or optional provider and configured in the host provider panel. Field-save toggles remain in metadata preferences. The game editor uses that same configuration.

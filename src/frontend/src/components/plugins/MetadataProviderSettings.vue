@@ -26,6 +26,44 @@ const message = ref<string | null>(null);
 const expanded = ref<Record<string, boolean>>({});
 const loading = ref(true);
 const serverAutomaticSearch = ref(true);
+function accountEnabled(provider: MetadataProviderStatus) {
+  return (
+    preferences.value.metadata_providers_enabled?.[provider.provider_id] ??
+    provider.account_enabled ??
+    true
+  );
+}
+async function changeProviderEnabled(
+  provider: MetadataProviderStatus,
+  input: HTMLInputElement,
+) {
+  const enabled = input.checked;
+  input.checked = accountEnabled(provider);
+  const accountId = currentUser.value?.id;
+  busy.value = provider.provider_id;
+  error.value = null;
+  message.value = null;
+  try {
+    const result = await queuePreferences({
+      metadata_providers_enabled: {
+        ...preferences.value.metadata_providers_enabled,
+        [provider.provider_id]: enabled,
+      },
+    });
+    if (currentUser.value?.id !== accountId) return;
+    if (result.latest) preferences.value = result.prefs;
+    await refresh();
+    message.value = "Saved";
+  } catch (failure) {
+    if (currentUser.value?.id !== accountId) return;
+    error.value =
+      failure instanceof Error
+        ? failure.message
+        : "Provider choice could not be saved.";
+  } finally {
+    busy.value = null;
+  }
+}
 const masterAutomaticSearch = computed(() =>
   scope.value === "system"
     ? serverAutomaticSearch.value
@@ -111,6 +149,7 @@ function visual(provider: MetadataProviderStatus) {
   );
 }
 function statusClass(provider: MetadataProviderStatus) {
+  if (!accountEnabled(provider)) return "disconnected";
   if (provider.state === "healthy") return "connected";
   if (
     [
@@ -168,8 +207,9 @@ async function save(provider: MetadataProviderStatus, clear = false) {
       patch,
     );
     values.value[provider.provider_id] = {};
-    message.value =
-      "Saved. Validation runs in the background; refresh status to see its result.";
+    message.value = accountEnabled(provider)
+      ? "Saved. Validation runs in the background; refresh status to see its result."
+      : "Saved. This provider remains disabled for your account.";
     await refresh();
   } catch (failure) {
     error.value =
@@ -206,6 +246,11 @@ onMounted(() => void refresh());
         <option value="system">System default</option>
       </select>
     </label>
+    <p v-if="scope === 'user'" class="section-hint">
+      Choose the providers this account uses for searches, metadata and artwork,
+      including providers with server credentials. These choices do not change
+      connected-library ownership, playtime or achievement sync.
+    </p>
     <p class="section-hint">
       Core providers are included with the app. Steam game search, TVmaze and
       anime search work without keys; additional providers are optional. Your
@@ -265,13 +310,32 @@ onMounted(() => void refresh());
             class="tile-status"
             :class="statusClass(provider)"
             role="status"
-            >{{ states[provider.state] ?? provider.state }}</span
+            >{{
+              !accountEnabled(provider)
+                ? "Disabled for your account"
+                : (states[provider.state] ?? provider.state)
+            }}</span
           >
         </div>
         <p class="tile-desc" :title="description(provider)">
           {{ description(provider) }}
           <span v-if="provider.included" class="tile-hint"> · Built in</span>
         </p>
+        <label
+          v-if="scope === 'user'"
+          class="automatic-search-setting provider-choice"
+        >
+          <input
+            type="checkbox"
+            :aria-label="`Use ${provider.name} for metadata`"
+            :checked="accountEnabled(provider)"
+            :disabled="busy !== null || !preferencesLoaded"
+            @change="
+              changeProviderEnabled(provider, $event.target as HTMLInputElement)
+            "
+          />
+          <span>Use for metadata</span>
+        </label>
         <div class="tile-actions">
           <button
             type="button"
@@ -320,7 +384,10 @@ onMounted(() => void refresh());
               type="checkbox"
               :checked="providerAutomaticSearch(provider)"
               :disabled="
-                busy !== null || !masterAutomaticSearch || !preferencesLoaded
+                busy !== null ||
+                !masterAutomaticSearch ||
+                !preferencesLoaded ||
+                (scope === 'user' && !accountEnabled(provider))
               "
               @change="
                 changeAutomaticSearch(
@@ -331,6 +398,13 @@ onMounted(() => void refresh());
             />
             <span>Automatic Search</span>
           </label>
+          <p v-if="!accountEnabled(provider)" class="tile-hint">
+            Disabled for your account. Searches, metadata updates and artwork
+            from this provider are off, including when server credentials are
+            available. Your credentials and Automatic Search choice are kept.
+            Connected-library ownership, playtime and achievement sync are
+            unaffected.
+          </p>
           <p v-if="!masterAutomaticSearch" class="tile-hint">
             The
             {{ scope === "system" ? "server default" : "account" }} Automatic
@@ -355,7 +429,7 @@ onMounted(() => void refresh());
           </p>
           <p
             v-if="
-              provider.state === 'disabled' ||
+              (provider.state === 'disabled' && accountEnabled(provider)) ||
               provider.state === 'plugin_unavailable'
             "
             class="tile-hint"
@@ -444,5 +518,13 @@ onMounted(() => void refresh());
 .automatic-search-setting small {
   display: block;
   margin-top: 4px;
+}
+.automatic-search-setting input {
+  accent-color: var(--ui-accent);
+}
+.provider-choice {
+  min-height: 44px;
+  align-items: center;
+  margin-block: 0;
 }
 </style>

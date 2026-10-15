@@ -25,8 +25,8 @@ const saveSuccess = ref(false);
 const providerOrder = ref<DataProvider[]>([
   "IGDB",
   "GiantBomb",
-  "GOG",
   "Steam",
+  "GOG",
   "RetroAchievements",
   "HowLongToBeat",
 ]);

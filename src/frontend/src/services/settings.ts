@@ -62,8 +62,8 @@ const MOCK_SCAN_SETTINGS: ScanSettings = {
   provider_order: [
     "IGDB",
     "GiantBomb",
-    "GOG",
     "Steam",
+    "GOG",
     "RetroAchievements",
     "HowLongToBeat",
   ],
