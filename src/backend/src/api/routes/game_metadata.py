@@ -132,6 +132,9 @@ _GAME_METADATA_FIELDS = frozenset(
         "age_rating",
         "release_date",
         "time_to_beat_hours",
+        "time_to_beat_extras_hours",
+        "time_to_beat_completionist_hours",
+        "time_to_beat_all_hours",
         "links",
     }
 )
@@ -245,6 +248,9 @@ async def refresh_game_metadata(
         "age_rating": match.get("age_rating"),
         "release_date": match.get("release_date"),
         "time_to_beat_hours": match.get("time_to_beat_hours"),
+        "time_to_beat_extras_hours": match.get("time_to_beat_extras_hours"),
+        "time_to_beat_completionist_hours": match.get("time_to_beat_completionist_hours"),
+        "time_to_beat_all_hours": match.get("time_to_beat_all_hours"),
         "links": match.get("links"),
     }
     gated_flags = {
@@ -257,6 +263,9 @@ async def refresh_game_metadata(
         "age_rating": "save_age_rating",
         "release_date": "save_release_date",
         "time_to_beat_hours": "save_time_to_beat",
+        "time_to_beat_extras_hours": "save_time_to_beat",
+        "time_to_beat_completionist_hours": "save_time_to_beat",
+        "time_to_beat_all_hours": "save_time_to_beat",
     }
     updates: dict[str, object] = {}
     skipped_locked: list[str] = []

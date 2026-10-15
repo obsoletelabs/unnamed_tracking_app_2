@@ -71,7 +71,7 @@ Until then, PRs remain available for review with current validation and screensh
   bounded streaming and image validation. The final PR and validation are recorded
   in the [handover](rosefall-469-handover.md).
   The follow-up for automatic library enrichment and game metadata refresh is
-  implemented in the combined [PR #135](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/135):
+  merged in the combined [PR #135](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/135):
   both use that boundary and effective configured image limits. Six regressions
   reproduced the old downloader bypass; coverage also preserves safe candidate
   fallback. No SDK change or broader provider permissions are needed.
@@ -127,7 +127,7 @@ Until then, PRs remain available for review with current validation and screensh
   Achievement GET remains read-only; all providers recheck the current locked
   identity/status after a delayed single-game refresh. The plugin schema is unchanged.
   All seven full hosted workflows passed before the authorized squash merge.
-- **F folders / 5:** combined [PR #135](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/135)
+- **F folders / 5:** merged in combined [PR #135](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/135), which
   implements folder moves/recovery, coordinated file operations, artwork locking
   and the related enrichment downloader follow-up as logical commits in one PR.
   The artwork-only commit passed full local backend tests as unprivileged
@@ -143,11 +143,18 @@ Until then, PRs remain available for review with current validation and screensh
   locks; previews and folder saves finish before cancellation releases resources.
   The final affected storage/security suite passed 185 tests as unprivileged
   UID 1000, including nine folder-move regressions and concurrent archive upload.
-  Full-suite validation caught an upload-limit resolver regression, now corrected
-  with its existing assertions preserved; final full hosted checks are pending.
-  Full mypy, Ruff and strict docs passed. The plugin API/SDK and database schema
-  are unchanged.
-- **G–O:** approved; not implemented yet. The package details below describe
+  Full backend validation passed 2,690 tests (four skipped) after correcting an
+  upload-limit resolver regression with its existing assertions preserved. All
+  seven full hosted workflows passed before the authorized squash merge, including
+  full frontend checks and configured Pylint. The plugin API/SDK and database schema
+  are unchanged by that package.
+- **G / 8–9, 24–25:** in progress. The additive API/data foundation supplies three
+  nullable completion-time categories, protected editing/history, export/import,
+  metadata refresh and public game details. The generated/reviewed migration is
+  linear after `fed12ab64423` and preserves Main story and personal playtime.
+  Provider retrieval/authority, companion SDK/HLTB updates and the shared UI are
+  still pending; this package is not complete.
+- **H–O:** approved; not implemented yet. The package details below describe
   intended work, not completed behavior.
 
 ## Concrete packages

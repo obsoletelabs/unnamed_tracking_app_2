@@ -79,6 +79,11 @@ class GameBase(BaseModel):
     relationship_type: GameRelationshipType | None = None
     age_rating: str | None = Field(default=None, max_length=20)
     time_to_beat_hours: Decimal | None = Field(default=None, ge=0)
+    time_to_beat_extras_hours: Decimal | None = Field(default=None, ge=0, le=Decimal("99999.9"))
+    time_to_beat_completionist_hours: Decimal | None = Field(
+        default=None, ge=0, le=Decimal("99999.9")
+    )
+    time_to_beat_all_hours: Decimal | None = Field(default=None, ge=0, le=Decimal("99999.9"))
 
     folder_location: str = Field(
         min_length=1,
@@ -185,6 +190,11 @@ class GameUpdate(TitleProtectionUpdate):
     language: str | None = Field(default=None, max_length=50)
     age_rating: str | None = Field(default=None, max_length=20)
     time_to_beat_hours: Decimal | None = Field(default=None, ge=0)
+    time_to_beat_extras_hours: Decimal | None = Field(default=None, ge=0, le=Decimal("99999.9"))
+    time_to_beat_completionist_hours: Decimal | None = Field(
+        default=None, ge=0, le=Decimal("99999.9")
+    )
+    time_to_beat_all_hours: Decimal | None = Field(default=None, ge=0, le=Decimal("99999.9"))
     parent_game_id: UUID | None = None
     relationship_type: GameRelationshipType | None = None
 

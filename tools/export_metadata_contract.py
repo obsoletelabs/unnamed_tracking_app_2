@@ -1,4 +1,4 @@
-"""Export the public Plugin API 1.1.1 metadata JSON schemas from host models.
+"""Export the current public Plugin API metadata JSON schemas from host models.
 
 Run with backend dependencies installed and PYTHONPATH=src/backend.
 """
@@ -7,6 +7,7 @@ import argparse
 import json
 from pathlib import Path
 
+from src.plugin_api.base_contracts import PLUGIN_API_CONTRACT_VERSION
 from src.plugin_api.metadata_contracts import (
     MetadataProviderRegistration,
     MetadataProviderRequest,
@@ -16,12 +17,14 @@ from src.plugin_api.metadata_contracts import (
 
 def export(destination: Path) -> None:
     destination.mkdir(parents=True, exist_ok=True)
-    for name, model in (("metadata-registration-v1", MetadataProviderRegistration),
-                        ("metadata-request-v1", MetadataProviderRequest),
-                        ("metadata-response-v1", ProviderResponse)):
+    for name, model in (
+        ("metadata-registration-v1", MetadataProviderRegistration),
+        ("metadata-request-v1", MetadataProviderRequest),
+        ("metadata-response-v1", ProviderResponse),
+    ):
         schema = model.model_json_schema()
         schema["$schema"] = "https://json-schema.org/draft/2020-12/schema"
-        schema["x-api-contract-version"] = "1.1.1"
+        schema["x-api-contract-version"] = PLUGIN_API_CONTRACT_VERSION
         (destination / f"{name}.schema.json").write_text(
             json.dumps(schema, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
         )

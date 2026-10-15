@@ -171,7 +171,12 @@ async def _enrich_new_game(game: Game, user: User, preferences: dict) -> None:
         "tags",
         "features",
         "time_to_beat_hours",
+        "time_to_beat_extras_hours",
+        "time_to_beat_completionist_hours",
+        "time_to_beat_all_hours",
     ):
+        if field.startswith("time_to_beat") and not preferences.get("save_time_to_beat", True):
+            continue
         value = match.get(field)
         if value:
             apply_metadata_updates(game, {field: value})

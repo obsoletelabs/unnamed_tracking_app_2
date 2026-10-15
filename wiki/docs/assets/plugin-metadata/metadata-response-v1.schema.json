@@ -547,6 +547,48 @@
           "default": null,
           "title": "Time To Beat Hours"
         },
+        "time_to_beat_extras_hours": {
+          "anyOf": [
+            {
+              "maximum": 99999.9,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Time To Beat Extras Hours"
+        },
+        "time_to_beat_completionist_hours": {
+          "anyOf": [
+            {
+              "maximum": 99999.9,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Time To Beat Completionist Hours"
+        },
+        "time_to_beat_all_hours": {
+          "anyOf": [
+            {
+              "maximum": 99999.9,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Time To Beat All Hours"
+        },
         "runtime_minutes": {
           "anyOf": [
             {
@@ -1093,5 +1135,5 @@
   "title": "ProviderResponse",
   "type": "object",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "x-api-contract-version": "1.1.1"
+  "x-api-contract-version": "1.1.13"
 }

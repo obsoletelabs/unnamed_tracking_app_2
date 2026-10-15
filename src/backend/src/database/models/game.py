@@ -185,6 +185,11 @@ class Game(Base):
         Numeric(6, 1),
         nullable=True,
     )
+    time_to_beat_extras_hours: Mapped[Decimal | None] = mapped_column(Numeric(6, 1), nullable=True)
+    time_to_beat_completionist_hours: Mapped[Decimal | None] = mapped_column(
+        Numeric(6, 1), nullable=True
+    )
+    time_to_beat_all_hours: Mapped[Decimal | None] = mapped_column(Numeric(6, 1), nullable=True)
 
     # eager (selectin, not the default lazy) — unlike every other
     # relationship on this model, GameRead serializes `links` straight into

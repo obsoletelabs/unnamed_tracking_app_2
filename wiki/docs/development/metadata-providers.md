@@ -62,6 +62,26 @@ contract check. Unknown fields, invalid identifiers, unsafe types, non-finite
 scores and oversized collections are rejected. Canonical provider scores use
 0–100; existing library score fields retain their 0–10 scale.
 
+### Completion-time categories (API 1.1.13)
+
+`MetadataPatch` accepts three additional optional hour values:
+`time_to_beat_extras_hours` (Main story + extras),
+`time_to_beat_completionist_hours` (Completionist) and `time_to_beat_all_hours`
+(All play styles). `time_to_beat_hours` retains its Main story meaning. The new
+values must be finite, nonnegative and at most 99,999.9 hours; storage uses the same
+one-decimal precision as Main story. Missing values preserve existing information.
+Providers emitting only Main story remain compatible, and earlier v1.1 packages
+remain executable. A provider emitting the new fields must target API 1.1.13 so
+older hosts reject it before execution rather than rejecting its result later.
+
+Game edits, reads, library export/import, manual field protection, history and
+the public game-details gateway carry the additional categories. Metadata refresh
+and library enrichment honor the existing Save time to beat setting for all four.
+These community estimates never replace the user's personal playtime. Migration
+`03bb35a3b692` adds nullable columns after `fed12ab64423`; existing Main story and
+playtime values are preserved. The matching SDK/schema and optional HLTB provider
+updates belong in the companion plugin repository.
+
 ## Registration and permission enforcement
 
 A running plugin calls `metadata_providers.register` with its namespaced ID,
