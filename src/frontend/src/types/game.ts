@@ -139,6 +139,9 @@ export interface Game {
   sortTitle?: string | null;
   ageRating: string | null;
   timeToBeatHours: number | null;
+  timeToBeatExtrasHours?: number | null;
+  timeToBeatCompletionistHours?: number | null;
+  timeToBeatAllHours?: number | null;
   region: string | null;
   language: string | null;
   achievementsProvider: AchievementsProvider;

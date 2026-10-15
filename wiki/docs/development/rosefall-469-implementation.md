@@ -152,8 +152,12 @@ Until then, PRs remain available for review with current validation and screensh
   nullable completion-time categories, protected editing/history, export/import,
   metadata refresh and public game details. The generated/reviewed migration is
   linear after `fed12ab64423` and preserves Main story and personal playtime.
-  Provider retrieval/authority, companion SDK/HLTB updates and the shared UI are
-  still pending; this package is not complete.
+  Native IGDB now fills missing estimate categories after other useful sources.
+  The separate HLTB/SDK update initializes search and renews a rejected token once
+  through the public gateway. Shared Modern/Classic editors, overview/details and
+  statistics expose the categories without changing personal playtime. Host
+  PR #136 and plugin PR #47 remain in progress until complete paired validation
+  and screenshots are recorded; this package is not complete.
 - **H–O:** approved; not implemented yet. The package details below describe
   intended work, not completed behavior.
 

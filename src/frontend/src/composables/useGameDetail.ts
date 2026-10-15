@@ -693,6 +693,8 @@ export function useGameDetail() {
         ? { label: "Playtime", value: formatPlaytime(minutes) }
         : { label: "Playtime", value: "–", muted: true },
     );
+    if (g.timeToBeatHours != null && g.timeToBeatHours > 0)
+      facts.push({ label: "Main story", value: `~${g.timeToBeatHours}h` });
     if (g.achievementTotal > 0 && achievementsOn.value)
       facts.push({
         label: "Achievements",
@@ -714,6 +716,22 @@ export function useGameDetail() {
         value: g.platforms.map((p) => p.platform).join(", "),
       });
     return facts.slice(0, 5);
+  });
+
+  const completionEstimates = computed(() => {
+    const current = game.value;
+    if (!current) return [];
+    return [
+      { label: "Main story", hours: current.timeToBeatHours },
+      { label: "Main + extras", hours: current.timeToBeatExtrasHours },
+      { label: "Completionist", hours: current.timeToBeatCompletionistHours },
+      { label: "All play styles", hours: current.timeToBeatAllHours },
+    ].filter(
+      (estimate) =>
+        estimate.hours != null &&
+        Number.isFinite(estimate.hours) &&
+        estimate.hours > 0,
+    );
   });
 
   // only the main genres up top; the rest of the tags are under "More details"
@@ -1810,6 +1828,7 @@ export function useGameDetail() {
     libraryLink,
     ratingParts,
     overviewFacts,
+    completionEstimates,
     mainTags,
     moreTags,
     activeTab,

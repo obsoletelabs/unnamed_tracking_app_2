@@ -154,6 +154,31 @@ describe("mapBackendGame", () => {
     expect(game.priority).toBe("2");
   });
 
+  it("maps completion estimates while keeping older Main-story-only payloads valid", () => {
+    const legacy = mapBackendGame(raw);
+    expect(legacy.timeToBeatExtrasHours).toBeNull();
+    expect(legacy.timeToBeatCompletionistHours).toBeNull();
+    expect(legacy.timeToBeatAllHours).toBeNull();
+    const game = mapBackendGame({
+      ...raw,
+      time_to_beat_hours: "10.5",
+      time_to_beat_extras_hours: "16.2",
+      time_to_beat_completionist_hours: "25.8",
+      time_to_beat_all_hours: "18.1",
+      playtime_seconds: 1234,
+    });
+    expect([
+      game.timeToBeatHours,
+      game.timeToBeatExtrasHours,
+      game.timeToBeatCompletionistHours,
+      game.timeToBeatAllHours,
+    ]).toEqual([10.5, 16.2, 25.8, 18.1]);
+    expect(game.platforms[0].playtimeMinutes).toBe(
+      mapBackendGame({ ...raw, playtime_seconds: 1234 }).platforms[0]
+        .playtimeMinutes,
+    );
+  });
+
   it("only reports a sorting name someone chose", () => {
     expect(mapBackendGame(raw).sortTitle).toBeNull();
     expect(

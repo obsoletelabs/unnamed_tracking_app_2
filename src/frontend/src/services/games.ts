@@ -1,3 +1,5 @@
+import type { MetadataSearchResult } from "./metadata";
+export type { MetadataSearchResult } from "./metadata";
 import { mockGames } from "../data/mockGames";
 import { failedRequest } from "./apiError";
 import { normalizeKind } from "../utils/achievements";
@@ -45,6 +47,9 @@ export interface BackendGame {
   parent_game_id: string | null;
   relationship_type: GameRelationshipType | null;
   time_to_beat_hours: number | string | null;
+  time_to_beat_extras_hours?: number | string | null;
+  time_to_beat_completionist_hours?: number | string | null;
+  time_to_beat_all_hours?: number | string | null;
   status: string;
   priority: string | null;
   favorite: boolean;
@@ -186,6 +191,13 @@ export function mapBackendGame(raw: BackendGame): Game {
       raw.sort_title === deriveSortTitle(raw.title) ? null : raw.sort_title,
     ageRating: raw.age_rating,
     timeToBeatHours: toNumberOrNull(raw.time_to_beat_hours),
+    timeToBeatExtrasHours: toNumberOrNull(
+      raw.time_to_beat_extras_hours ?? null,
+    ),
+    timeToBeatCompletionistHours: toNumberOrNull(
+      raw.time_to_beat_completionist_hours ?? null,
+    ),
+    timeToBeatAllHours: toNumberOrNull(raw.time_to_beat_all_hours ?? null),
     region: raw.region ?? null,
     language: raw.language ?? null,
     // not stored per game: a RetroAchievements library sync is the one
@@ -497,33 +509,6 @@ export async function fetchGameVariants(id: string): Promise<Game[]> {
   return raw.map(mapBackendGame);
 }
 
-export interface MetadataSearchResult {
-  release_year?: number | null;
-  candidate_id?: string;
-  provider_ids?: Record<string, string>;
-  provider: string;
-  provider_id: string;
-  title: string;
-  description: string | null;
-  release_date: string | null;
-  developer: string | null;
-  publisher: string | null;
-  series: string | null;
-  age_rating: string | null;
-  time_to_beat_hours: number | string | null;
-  tags: string[];
-  features: string[];
-  links: GameLink[];
-  key_art_url: string | null;
-  key_art_urls: string[];
-  banner_url: string | null;
-  banner_urls: string[];
-  logo_url: string | null;
-  logo_urls: string[];
-  icon_url: string | null;
-  icon_urls: string[];
-}
-
 export interface MetadataSearchResponse {
   results: MetadataSearchResult[];
   steamgriddb_configured: boolean;
@@ -743,6 +728,9 @@ export interface NewGameInput {
   source: string | null;
   ageRating: string | null;
   timeToBeatHours: number | null;
+  timeToBeatExtrasHours?: number | null;
+  timeToBeatCompletionistHours?: number | null;
+  timeToBeatAllHours?: number | null;
   region: string | null;
   language: string | null;
   achievementsProvider: AchievementsProvider;
@@ -800,6 +788,9 @@ export async function createGame(input: NewGameInput): Promise<Game> {
       providerIds: input.providerIds,
       ageRating: input.ageRating,
       timeToBeatHours: input.timeToBeatHours,
+      timeToBeatExtrasHours: input.timeToBeatExtrasHours ?? null,
+      timeToBeatCompletionistHours: input.timeToBeatCompletionistHours ?? null,
+      timeToBeatAllHours: input.timeToBeatAllHours ?? null,
       region: input.region,
       language: input.language,
       achievementsProvider: input.achievementsProvider,
@@ -840,6 +831,9 @@ export async function createGame(input: NewGameInput): Promise<Game> {
       language: input.language,
       age_rating: input.ageRating,
       time_to_beat_hours: input.timeToBeatHours,
+      time_to_beat_extras_hours: input.timeToBeatExtrasHours,
+      time_to_beat_completionist_hours: input.timeToBeatCompletionistHours,
+      time_to_beat_all_hours: input.timeToBeatAllHours,
       rating_overall: input.ratingOverall,
       rating_story: input.ratingStory,
       rating_gameplay: input.ratingGameplay,
@@ -902,6 +896,18 @@ export async function updateGame(
       source: input.source,
       ageRating: input.ageRating,
       timeToBeatHours: input.timeToBeatHours,
+      timeToBeatExtrasHours:
+        input.timeToBeatExtrasHours === undefined
+          ? (mockGames[index].timeToBeatExtrasHours ?? null)
+          : input.timeToBeatExtrasHours,
+      timeToBeatCompletionistHours:
+        input.timeToBeatCompletionistHours === undefined
+          ? (mockGames[index].timeToBeatCompletionistHours ?? null)
+          : input.timeToBeatCompletionistHours,
+      timeToBeatAllHours:
+        input.timeToBeatAllHours === undefined
+          ? (mockGames[index].timeToBeatAllHours ?? null)
+          : input.timeToBeatAllHours,
       region: input.region,
       language: input.language,
       achievementsProvider: input.achievementsProvider,
@@ -943,6 +949,9 @@ export async function updateGame(
     language: input.language,
     age_rating: input.ageRating,
     time_to_beat_hours: input.timeToBeatHours,
+    time_to_beat_extras_hours: input.timeToBeatExtrasHours,
+    time_to_beat_completionist_hours: input.timeToBeatCompletionistHours,
+    time_to_beat_all_hours: input.timeToBeatAllHours,
     rating_overall: input.ratingOverall,
     rating_story: input.ratingStory,
     rating_gameplay: input.ratingGameplay,

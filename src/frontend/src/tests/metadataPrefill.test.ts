@@ -3,8 +3,40 @@ import { metadataPrefill } from "../utils/metadataPrefill";
 import {
   movieMetadataResult,
   animeMetadataResult,
+  gameMetadataResult,
 } from "../utils/metadataCandidate";
 import type { MetadataCandidate } from "../services/metadata";
+
+it("carries all completion estimates from progressive game enrichment", () => {
+  const candidate: MetadataCandidate = {
+    id: "game",
+    external_id: "723",
+    title: "Portal",
+    year: 2007,
+    provider: "test.provider",
+    provider_name: "Test",
+    providers: ["test.provider"],
+    rank: 0,
+    alternate_titles: [],
+    media_type: "game",
+    assets: [],
+    provider_ids: { hltb: "723" },
+    metadata: {
+      time_to_beat_hours: 10.5,
+      time_to_beat_extras_hours: 16.2,
+      time_to_beat_completionist_hours: 25.8,
+      time_to_beat_all_hours: 18.1,
+    },
+  };
+  const result = gameMetadataResult(candidate);
+  expect([
+    result.time_to_beat_hours,
+    result.time_to_beat_extras_hours,
+    result.time_to_beat_completionist_hours,
+    result.time_to_beat_all_hours,
+  ]).toEqual([10.5, 16.2, 25.8, 18.1]);
+  expect(result.provider_ids).toEqual({ hltb: "723" });
+});
 
 it("retains partial fields and manual edits while late enrichment fills blanks", () => {
   const fill = metadataPrefill<{

@@ -256,6 +256,33 @@ const ageRating = ref(props.game?.ageRating ?? "");
 const timeToBeatHours = ref<string | number>(
   props.game?.timeToBeatHours != null ? String(props.game.timeToBeatHours) : "",
 );
+const timeToBeatExtrasHours = ref<string | number>(
+  props.game?.timeToBeatExtrasHours ?? "",
+);
+const timeToBeatCompletionistHours = ref<string | number>(
+  props.game?.timeToBeatCompletionistHours ?? "",
+);
+const timeToBeatAllHours = ref<string | number>(
+  props.game?.timeToBeatAllHours ?? "",
+);
+const completionEstimateInputs = [
+  { label: "Main story", key: "timeToBeatHours", input: timeToBeatHours },
+  {
+    label: "Main + extras",
+    key: "timeToBeatExtrasHours",
+    input: timeToBeatExtrasHours,
+  },
+  {
+    label: "Completionist",
+    key: "timeToBeatCompletionistHours",
+    input: timeToBeatCompletionistHours,
+  },
+  {
+    label: "All play styles",
+    key: "timeToBeatAllHours",
+    input: timeToBeatAllHours,
+  },
+] as const;
 const region = ref(props.game?.region ?? "");
 const language = ref(props.game?.language ?? "");
 const achievementsProvider = ref<AchievementsProvider>(
@@ -349,8 +376,10 @@ const metadataFormDirty = computed(() => {
     series.value !== (props.game.series ?? "") ||
     ageRating.value !== (props.game.ageRating ?? "") ||
     releaseDate.value !== (props.game.releaseDate ?? "") ||
-    String(timeToBeatHours.value) !==
-      String(props.game.timeToBeatHours ?? "") ||
+    completionEstimateInputs.some(
+      ({ key, input }) =>
+        String(input.value) !== String(props.game?.[key] ?? ""),
+    ) ||
     tagsInput.value !== props.game.tags.join(", ") ||
     featuresInput.value !== props.game.features.join(", ") ||
     JSON.stringify(links.value) !== JSON.stringify(props.game.links) ||
@@ -437,8 +466,10 @@ async function refreshMetadataFromEditor() {
       series.value = updated.series ?? "";
       ageRating.value = updated.ageRating ?? "";
       releaseDate.value = updated.releaseDate ?? "";
-      timeToBeatHours.value =
-        updated.timeToBeatHours != null ? String(updated.timeToBeatHours) : "";
+      for (const estimate of completionEstimateInputs) {
+        const value = updated[estimate.key];
+        estimate.input.value = value != null ? String(value) : "";
+      }
       tagsInput.value = updated.tags.join(", ");
       featuresInput.value = updated.features.join(", ");
       links.value = [...updated.links];
@@ -509,6 +540,9 @@ function applyAvailableMetadata(result: MetadataSearchResult, initial = false) {
     tags: tagsInput,
     features: featuresInput,
     time_to_beat_hours: timeToBeatHours,
+    time_to_beat_extras_hours: timeToBeatExtrasHours,
+    time_to_beat_completionist_hours: timeToBeatCompletionistHours,
+    time_to_beat_all_hours: timeToBeatAllHours,
   };
   const values = {
     ...result,
@@ -518,6 +552,18 @@ function applyAvailableMetadata(result: MetadataSearchResult, initial = false) {
       result.time_to_beat_hours == null
         ? null
         : String(result.time_to_beat_hours),
+    time_to_beat_extras_hours:
+      result.time_to_beat_extras_hours == null
+        ? null
+        : String(result.time_to_beat_extras_hours),
+    time_to_beat_completionist_hours:
+      result.time_to_beat_completionist_hours == null
+        ? null
+        : String(result.time_to_beat_completionist_hours),
+    time_to_beat_all_hours:
+      result.time_to_beat_all_hours == null
+        ? null
+        : String(result.time_to_beat_all_hours),
   };
   for (const [name, input] of Object.entries(fields)) {
     const value = values[name as keyof typeof values];
@@ -664,7 +710,23 @@ async function submit() {
       ageRating: ageRating.value.trim() || null,
       timeToBeatHours: numberOrNull(timeToBeatHours.value, "Time to beat", {
         min: 0,
+        max: 99999.9,
       }),
+      timeToBeatExtrasHours: numberOrNull(
+        timeToBeatExtrasHours.value,
+        "Main + extras",
+        { min: 0, max: 99999.9 },
+      ),
+      timeToBeatCompletionistHours: numberOrNull(
+        timeToBeatCompletionistHours.value,
+        "Completionist",
+        { min: 0, max: 99999.9 },
+      ),
+      timeToBeatAllHours: numberOrNull(
+        timeToBeatAllHours.value,
+        "All play styles",
+        { min: 0, max: 99999.9 },
+      ),
       region: region.value.trim() || null,
       language: language.value.trim() || null,
       achievementsProvider: achievementsProvider.value,
@@ -1097,17 +1159,23 @@ async function submit() {
               </div>
 
               <div class="field-row">
-                <label class="field">
-                  <span>Time to Beat (hours)</span>
+                <label
+                  v-for="estimate in completionEstimateInputs"
+                  :key="estimate.key"
+                  class="field"
+                >
+                  <span>{{ estimate.label }}</span>
                   <input
-                    v-model="timeToBeatHours"
+                    v-model="estimate.input.value"
                     type="number"
                     min="0"
-                    step="0.5"
+                    max="99999.9"
+                    step="0.1"
                     placeholder="e.g. 12.5"
                   />
                 </label>
               </div>
+              <p class="hint">Estimates in hours; playtime stays separate.</p>
 
               <div class="field-row">
                 <label class="field">

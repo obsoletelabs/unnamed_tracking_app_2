@@ -1,3 +1,4 @@
+import type { GameLink } from "../types/game";
 import { failedRequest } from "./apiError";
 
 export type MetadataMediaType = "game" | "movie" | "tv_show" | "anime";
@@ -103,6 +104,9 @@ export interface CanonicalMetadata {
   series?: string | null;
   age_rating?: string | null;
   time_to_beat_hours?: number | null;
+  time_to_beat_extras_hours?: number | null;
+  time_to_beat_completionist_hours?: number | null;
+  time_to_beat_all_hours?: number | null;
   tags?: string[];
   features?: string[];
   genres?: string[];
@@ -234,4 +238,34 @@ export async function focusMetadataEntity(
   });
   if (!response.ok) throw await failedRequest(response);
   return response.json();
+}
+
+export interface MetadataSearchResult {
+  release_year?: number | null;
+  candidate_id?: string;
+  provider_ids?: Record<string, string>;
+  provider: string;
+  provider_id: string;
+  title: string;
+  description: string | null;
+  release_date: string | null;
+  developer: string | null;
+  publisher: string | null;
+  series: string | null;
+  age_rating: string | null;
+  time_to_beat_hours: number | string | null;
+  time_to_beat_extras_hours?: number | string | null;
+  time_to_beat_completionist_hours?: number | string | null;
+  time_to_beat_all_hours?: number | string | null;
+  tags: string[];
+  features: string[];
+  links: GameLink[];
+  key_art_url: string | null;
+  key_art_urls: string[];
+  banner_url: string | null;
+  banner_urls: string[];
+  logo_url: string | null;
+  logo_urls: string[];
+  icon_url: string | null;
+  icon_urls: string[];
 }
