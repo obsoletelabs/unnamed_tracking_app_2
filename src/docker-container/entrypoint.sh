@@ -38,7 +38,12 @@ fail_startup() {
   write_status "$phase" "failed" "$database" "$migrations" "$backend" "$frontend" "$message"
   log "Detailed diagnostics remain available in container log output and /run/unnamed-tracking/"
   log "Entering failure hold-loop to keep Nginx alive"
-  while :; do sleep 3600; done
+  hold_forever
+}
+
+# sh runs traps only after a foreground command returns; wait returns on a signal.
+hold_forever() {
+  while :; do sleep 3600 & wait "$!"; done
 }
 
 cleanup() {
@@ -236,7 +241,7 @@ while :; do
     log "Backend crashed after startup"
     printf '%s\n' "The backend stopped unexpectedly. See /run/unnamed-tracking/backend.log for detailed backend output." > "$DETAILS_FILE"
     write_status "BACKEND_CRASHED" "failed" "ready" "ready" "failed" "ready" "The backend stopped unexpectedly. Detailed backend output is retained at /run/unnamed-tracking/backend.log."
-    while :; do sleep 3600; done
+    hold_forever
   fi
   sleep 2
 done

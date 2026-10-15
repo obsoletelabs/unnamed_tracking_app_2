@@ -236,6 +236,10 @@ echo "Controlled failure: invalid database configuration."
 docker run -d --name "$INVALID_CONTAINER" -p 18081:80 "$SMOKE_IMAGE" >/dev/null
 assert_failure_phase "$INVALID_CONTAINER" CONFIGURATION_FAILED
 curl --fail --silent --show-error "http://127.0.0.1:18081/_startup/status.json?ts=$RANDOM" >"$ARTIFACT_DIR/invalid-config-status.json"
+echo "Checking that a failed startup still stops promptly and cleans up."
+docker stop -t 10 "$INVALID_CONTAINER" >/dev/null
+[[ "$(docker inspect -f '{{.State.ExitCode}}' "$INVALID_CONTAINER")" == 0 ]]
+docker logs "$INVALID_CONTAINER" 2>&1 | grep -q 'Cleanup triggered'
 docker rm -f "$INVALID_CONTAINER" >/dev/null
 
 echo "Controlled failure: database unavailable."
