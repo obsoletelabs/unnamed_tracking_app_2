@@ -47,6 +47,22 @@ history records supported metadata changes.
 
 Bulk edit changes selected records only. Locked fields are not overwritten by refresh operations.
 
+## Card updates and priority
+
+Saving a card's status or favorite updates the library's filters, counts and current
+preview immediately. A failed save keeps the previous value and shows a retryable
+error. A library/detail response that started before a successful save cannot undo
+that saved status or favorite in the local cache.
+
+Cards show their active priority using the same 1–5 policy as sorting and the detail
+preview. Beaten, Mastered, Played and Dropped games hide inactive priority. Legacy
+HIGH/MEDIUM/LOW values retain their existing normalization. Modern and Classic share
+these controls and behavior.
+
+Finished games with an empty **Where I left off** note show a compact add-note action
+instead of an empty note block. Written notes remain visible. Keyboard activation
+opens and focuses the note editor.
+
 ## Possible duplicates
 
 Open **Settings > Library > Duplicates** to compare possible duplicate games across manual entries, Steam, other stores and plugin imports. Suggestions use matching titles or shared provider identities, so a manually renamed game can still be found. Known conflicting years, platforms and provider identities are excluded. Compare each entry's source, release, status, playtime and identities; open its title to inspect notes and files. **Keep both** remembers your decision across future checks and import reruns. Nothing is merged or deleted automatically. **Check again** refreshes the review and shows additional pairs after decisions.

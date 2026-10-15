@@ -323,6 +323,7 @@ function copyFolderPath() {
             type="button"
             class="favorite-button"
             :class="{ active: localFavorite }"
+            :aria-pressed="localFavorite"
             :disabled="favoriteSaving"
             title="Favorite"
             @click.stop="toggleFavorite"
@@ -519,6 +520,7 @@ function copyFolderPath() {
 <style scoped>
 .priority-tag {
   display: inline-block;
+  align-self: flex-start;
   margin-top: 6px;
   padding: 3px 7px;
   border: 1px solid var(--ui-accent-line);

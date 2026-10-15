@@ -543,9 +543,13 @@ const {
       </div>
 
       <section
-        v-if="resumeNoteEditing || game.resumeNote || !isFinished(game.status)"
+        v-if="
+          resumeNoteEditing ||
+          game.resumeNote?.trim() ||
+          !isFinished(game.status)
+        "
         class="my-note"
-        :class="{ empty: !game.resumeNote && !resumeNoteEditing }"
+        :class="{ empty: !game.resumeNote?.trim() && !resumeNoteEditing }"
       >
         <template v-if="resumeNoteEditing">
           <header class="note-head">
@@ -583,7 +587,7 @@ const {
             </button>
           </div>
         </template>
-        <template v-else-if="game.resumeNote">
+        <template v-else-if="game.resumeNote?.trim()">
           <header class="note-head">
             <h3>Where I left off</h3>
             <span class="note-private">Only you can see this</span>
