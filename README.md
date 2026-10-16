@@ -27,6 +27,15 @@ The tests use the running database, so start the stack first.
 docker compose exec -e PYTHONPATH=/app backend python -m pytest tests -q
 ```
 
+Tests of repository-level tools (`tools/tests`) need the complete checkout rather
+than the backend container's `/app`, so they run in a one-off container:
+
+```bash
+docker compose run --rm --no-deps -v "$PWD:/repository:ro" -w /repository \
+  -e PYTHONPATH=/repository/src/backend --entrypoint python backend \
+  -m pytest -q -p no:cacheprovider tools/tests/test_plugin_acceptance_acquisition.py
+```
+
 ## Frontend checks
 cd /src/frontend
 npm run lint
