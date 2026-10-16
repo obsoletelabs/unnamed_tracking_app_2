@@ -153,6 +153,7 @@ defineExpose({ scrollToTop });
           :aria-selected="item === tab"
           :aria-controls="panelId"
           :tabindex="item === tab ? 0 : -1"
+          :autofocus="item === tab"
           @click="tab = item"
         >
           {{ item }}

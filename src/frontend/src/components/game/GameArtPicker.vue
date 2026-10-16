@@ -114,9 +114,12 @@ const isPicked = (url: string) =>
           />
         </label>
         <div class="art-link">
+          <!-- text, not url: a half-typed link in a hidden tab must not block Save -->
           <input
             v-model="link"
-            type="url"
+            type="text"
+            inputmode="url"
+            autocomplete="off"
             class="editor-input"
             :aria-label="`${label} image link`"
             placeholder="Paste an image link"
