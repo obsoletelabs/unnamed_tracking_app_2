@@ -10,8 +10,10 @@ import {
   buildInitialValues,
   dispatchPluginAction,
   downloadPluginDocument,
+  openExternalDestination,
   PluginActionError,
   pluginExternalDestination,
+  reserveExternalTab,
   validateField,
   type PluginUiDocument,
   type UiAction,
@@ -191,17 +193,24 @@ async function handleFrontendMessage(event: MessageEvent) {
         );
         return;
       }
-      result = await dispatchPluginAction(
-        props.document.plugin_id,
-        action.id,
-        data.values && typeof data.values === "object"
-          ? (data.values as Record<string, unknown>)
-          : {},
-        undefined,
-        Boolean(action.confirmation),
-      );
-      const destination = pluginExternalDestination(action, result);
-      if (destination) window.location.assign(destination);
+      // The click inside the frame activates this page too, so the tab can
+      // be reserved here; the frame itself never gains popup permission.
+      const tab = reserveExternalTab(action);
+      let destination: string | null = null;
+      try {
+        result = await dispatchPluginAction(
+          props.document.plugin_id,
+          action.id,
+          data.values && typeof data.values === "object"
+            ? (data.values as Record<string, unknown>)
+            : {},
+          undefined,
+          Boolean(action.confirmation),
+        );
+        destination = pluginExternalDestination(action, result);
+      } finally {
+        openExternalDestination(destination, tab);
+      }
     } else if (method === "plugin.download-document") {
       await downloadPluginDocument(
         props.document.plugin_id,
