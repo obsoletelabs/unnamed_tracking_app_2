@@ -3,7 +3,6 @@ from the caller's own library, no caching/background jobs."""
 
 import asyncio
 import time
-from pathlib import Path
 from typing import Any
 from uuid import UUID
 
@@ -18,16 +17,20 @@ from src.database.models.game import Game
 from src.database.models.game_field_change import GameFieldChange
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features import game_folders
+from src.helpers import save_game_asset
 
 router = APIRouter(prefix="/api/stats", tags=["stats"], dependencies=[Depends(get_current_user)])
 
-_DATA_ROOT = Path("/data/games")
 
-
-def _folder_size_bytes(folder_location: str | None) -> int:
+def _folder_size_bytes(user_id: UUID, folder_location: str | None) -> int:
     if not folder_location:
         return 0
-    game_dir = _DATA_ROOT / folder_location
+    try:
+        game_dir = game_folders.owned_folder(save_game_asset.DATA_ROOT, user_id, folder_location)
+    except game_folders.FolderStorageError:
+        # Symlinked or invalid storage is skipped, never followed.
+        return 0
     if not game_dir.is_dir():
         return 0
     total = 0
@@ -184,9 +187,13 @@ async def get_stats_overview(
     queries = _overview_queries(current_user.id)
     # An AsyncSession runs these sequentially; only independent filesystem reads run concurrently.
     results = {name: await db.execute(statement) for name, statement in queries.items()}
+    # The folders query is already scoped to the caller, so every row is theirs.
     folder_locations = [row[0] for row in results["folders"].all()]
     storage_used_bytes = await asyncio.gather(
-        *(asyncio.to_thread(_folder_size_bytes, folder) for folder in folder_locations)
+        *(
+            asyncio.to_thread(_folder_size_bytes, current_user.id, folder)
+            for folder in folder_locations
+        )
     )
     return _overview_payload(results, sum(storage_used_bytes))
 
