@@ -4,7 +4,13 @@ import { mockGames } from "../data/mockGames";
 import { failedRequest } from "./apiError";
 import { normalizeKind } from "../utils/achievements";
 import { createEntityCache } from "../utils/entityCache";
-import { POSTER_WIDTH, sizedAssetUrl } from "../utils/gameImages";
+import {
+  POSTER_WIDTH,
+  type GameAssetKind,
+  gameAssetUrl,
+  rememberArtworkRevision,
+  sizedAssetUrl,
+} from "../utils/gameImages";
 import type { ContentCounts, PageOverrides } from "../utils/gamePage";
 import type {
   Achievement,
@@ -141,11 +147,8 @@ export function mapBackendGame(raw: BackendGame): Game {
     coverColor: "#2a2a2a",
     // every place a cover is shown is a card or a poster well under 400 px
     // wide, and the stored cover is a PNG of up to a megabyte
-    coverImageUrl: sizedAssetUrl(
-      `/api/game/${raw.id}/assets/key_art`,
-      POSTER_WIDTH,
-    ),
-    bannerImageUrl: `/api/game/${raw.id}/assets/banner`,
+    coverImageUrl: sizedAssetUrl(gameAssetUrl(raw.id, "key_art"), POSTER_WIDTH),
+    bannerImageUrl: gameAssetUrl(raw.id, "banner"),
     status: normalizeStatus(raw.status),
     ratingOverall: toNumberOrNull(raw.rating_overall),
     ratingStory: toNumberOrNull(raw.rating_story),
@@ -1592,11 +1595,13 @@ export interface GameAssetUploadResponse {
   asset_kind: string;
   path: string;
   status: string;
+  // identifies the stored bytes; see utils/gameImages
+  revision?: string;
 }
 
 export async function uploadGameAsset(
   gameId: string,
-  assetKind: "key_art" | "banner" | "logo" | "icon",
+  assetKind: GameAssetKind,
   file: File,
 ): Promise<GameAssetUploadResponse> {
   const formData = new FormData();
@@ -1615,12 +1620,21 @@ export async function uploadGameAsset(
     );
   }
 
-  return await response.json();
+  return rememberRevision(gameId, assetKind, await response.json());
+}
+
+function rememberRevision(
+  gameId: string,
+  assetKind: GameAssetKind,
+  result: GameAssetUploadResponse,
+): GameAssetUploadResponse {
+  rememberArtworkRevision(gameId, assetKind, result.revision);
+  return result;
 }
 
 export async function attachGameAssetFromUrl(
   gameId: string,
-  assetKind: "key_art" | "banner" | "logo" | "icon",
+  assetKind: GameAssetKind,
   url: string,
 ): Promise<GameAssetUploadResponse> {
   const response = await fetch(
@@ -1640,7 +1654,7 @@ export async function attachGameAssetFromUrl(
     );
   }
 
-  return await response.json();
+  return rememberRevision(gameId, assetKind, await response.json());
 }
 
 export interface GameRatings {
