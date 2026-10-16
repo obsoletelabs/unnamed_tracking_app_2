@@ -1494,6 +1494,7 @@ async function submit() {
 </template>
 
 <style scoped src="../styles/shared/editorForm.css"></style>
+<style scoped src="../styles/shared/editorActions.css"></style>
 <style scoped>
 .tab-panel {
   display: flex;
@@ -1664,68 +1665,7 @@ async function submit() {
 .quick-add .form-error {
   margin-top: 14px;
 }
-.modal-actions-spacer {
-  flex: 1;
-}
-.danger-button {
-  background: color-mix(in srgb, var(--ui-error) 15%, transparent);
-  color: var(--ui-error);
-  border: none;
-  border-radius: var(--ui-radius-control);
-  padding: 10px 20px;
-  font-weight: 600;
-  font-size: 0.9rem;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-.danger-button:hover {
-  background: color-mix(in srgb, var(--ui-error) 30%, transparent);
-}
-.primary-button,
-.secondary-button {
-  border: none;
-  border-radius: var(--ui-radius-control);
-  padding: 10px 20px;
-  font-weight: 600;
-  font-size: 0.9rem;
-  white-space: nowrap;
-  cursor: pointer;
-  transition:
-    background 0.15s ease,
-    transform 0.05s ease;
-}
-.primary-button {
-  background: var(--ui-accent);
-  color: var(--ui-on-accent);
-}
-.primary-button:hover:not(:disabled) {
-  filter: brightness(1.08);
-}
-.primary-button:active:not(:disabled) {
-  transform: scale(0.98);
-}
-.primary-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.secondary-button {
-  background: color-mix(in srgb, var(--ui-text) 8%, transparent);
-  color: var(--ui-text);
-}
-.secondary-button:hover {
-  background: color-mix(in srgb, var(--ui-text) 15%, transparent);
-}
-.secondary-button[aria-expanded="true"] {
-  background: var(--ui-accent-soft);
-  color: var(--ui-accent-text);
-}
-:is(
-  .primary-button,
-  .secondary-button,
-  .danger-button,
-  .remove-button
-):focus-visible {
+.remove-button:focus-visible {
   outline: 2px solid var(--ui-accent);
   outline-offset: 2px;
 }
@@ -1736,11 +1676,6 @@ async function submit() {
   .link-row > .field:nth-child(2) {
     grid-column: 1 / -1;
     order: 3;
-  }
-  .primary-button,
-  .secondary-button,
-  .danger-button {
-    padding: 10px 14px;
   }
 }
 </style>
