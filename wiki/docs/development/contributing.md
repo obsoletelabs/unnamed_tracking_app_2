@@ -11,6 +11,7 @@ Keep backend-only logic in the backend and frontend-only behavior in the fronten
 The backend CI uses Python 3.12 and runs:
 
 - backend pytest (with PostgreSQL and an Alembic upgrade);
+- repository-level tool tests from `tools/tests`, in the same Backend tests job;
 - plugin runtime policy tests;
 - Alembic migration graph validation;
 - Python module size validation;
@@ -41,6 +42,16 @@ Run tests with the development database available:
 ```bash
 docker compose exec -e PYTHONPATH=/app backend python -m pytest tests -q
 ```
+
+That container holds only the backend under `/app`. Tests of repository-level tools need the complete checkout, so run them in a one-off backend container that mounts it read-only:
+
+```bash
+docker compose run --rm --no-deps -v "$PWD:/repository:ro" -w /repository \
+  -e PYTHONPATH=/repository/src/backend --entrypoint python backend \
+  -m pytest -q -p no:cacheprovider tools/tests/test_plugin_acceptance_acquisition.py
+```
+
+See [Repository-level tool tests](index.md#repository-level-tool-tests) for the equivalent command outside Docker.
 
 ## Frontend checks
 
