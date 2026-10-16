@@ -152,3 +152,30 @@ async def test_unavailable_picture_storage_does_not_break_current_user(profile_c
     response = await client.get("/api/auth/me")
     assert response.status_code == 200
     assert response.json()["profile_picture_version"] is None
+
+
+async def test_picture_can_be_removed_and_removal_is_repeatable(profile_client):
+    client, user_id, root = profile_client
+    image = io.BytesIO()
+    Image.new("RGB", (8, 8), "red").save(image, "PNG")
+    uploaded = await client.put(
+        f"/api/user/{user_id}/profile-picture",
+        files={"file": ("avatar.png", image.getvalue(), "image/png")},
+    )
+    assert uploaded.json()["profile_picture_version"]
+    for _ in range(2):
+        removed = await client.delete(f"/api/user/{user_id}/profile-picture")
+        assert removed.status_code == 200
+        assert removed.json()["profile_picture_version"] is None
+    assert not (root / str(user_id) / "profile.png").exists()
+    assert (await client.get("/api/auth/me")).json()["profile_picture_version"] is None
+    assert (await client.get(f"/api/user/{user_id}/profile-picture")).status_code == 404
+
+
+async def test_removal_cannot_target_another_users_picture(profile_client):
+    client, _, root = profile_client
+    other = uuid.uuid4()
+    (root / str(other)).mkdir()
+    Image.new("RGB", (8, 8)).save(root / str(other) / "profile.png")
+    assert (await client.delete(f"/api/user/{other}/profile-picture")).status_code == 403
+    assert (root / str(other) / "profile.png").exists()
