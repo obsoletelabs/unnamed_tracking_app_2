@@ -100,30 +100,13 @@ defineExpose({ scrollToTop });
 </script>
 
 <template>
-  <UiModal
-    :title="title"
-    :size="size"
-    :bounded="bounded"
-    :dismissible="dismissible"
-    class="editor-shell"
-    @close="emit('close')"
-  >
+  <UiModal :title="title" :size="size" :bounded="bounded" :dismissible="dismissible" class="editor-shell"
+    @close="emit('close')">
     <template v-if="heading !== undefined" #header="{ titleId }">
       <div class="editor-hero">
-        <button
-          type="button"
-          class="editor-cover"
-          :class="{ empty: !cover || coverFailed }"
-          :aria-label="coverLabel"
-          :title="coverLabel"
-          @click="emit('cover')"
-        >
-          <img
-            v-if="cover && !coverFailed"
-            :src="cover"
-            alt=""
-            @error="coverFailed = true"
-          />
+        <button type="button" class="editor-cover" :class="{ empty: !cover || coverFailed }" :aria-label="coverLabel"
+          :title="coverLabel" @click="emit('cover')">
+          <img v-if="cover && !coverFailed" :src="cover" alt="" @error="coverFailed = true" />
         </button>
         <div class="editor-titles">
           <h2 :id="titleId" class="editor-kicker">{{ title }}</h2>
@@ -134,44 +117,18 @@ defineExpose({ scrollToTop });
     </template>
 
     <div class="editor-frame" :class="{ bounded }">
-      <div
-        v-if="tabs.length"
-        ref="tabRow"
-        class="editor-tabs"
-        role="tablist"
-        :aria-label="tabsLabel"
-        @keydown="onTabKey"
-      >
-        <button
-          v-for="item in tabs"
-          :id="tabId(item)"
-          :key="item"
-          type="button"
-          role="tab"
-          class="editor-tab"
-          :class="{ active: item === tab }"
-          :aria-selected="item === tab"
-          :aria-controls="panelId"
-          :tabindex="item === tab ? 0 : -1"
-          :autofocus="item === tab"
-          @click="tab = item"
-        >
+      <div v-if="tabs.length" ref="tabRow" class="editor-tabs" role="tablist" :aria-label="tabsLabel"
+        @keydown="onTabKey">
+        <button v-for="item in tabs" :id="tabId(item)" :key="item" type="button" role="tab" class="editor-tab"
+          :class="{ active: item === tab }" :aria-selected="item === tab" :aria-controls="panelId"
+          :tabindex="item === tab ? 0 : -1" :autofocus="item === tab" @click="tab = item">
           {{ item }}
         </button>
       </div>
-      <form
-        :id="formId"
-        ref="body"
-        class="editor-body"
-        @submit.prevent="emit('submit')"
-      >
+      <form :id="formId" ref="body" class="editor-body" @submit.prevent="emit('submit')">
         <slot name="lead" />
-        <div
-          :id="panelId"
-          class="editor-panel"
-          :role="tabs.length ? 'tabpanel' : undefined"
-          :aria-labelledby="tabs.length && tab ? tabId(tab) : undefined"
-        >
+        <div :id="panelId" class="editor-panel" :role="tabs.length ? 'tabpanel' : undefined"
+          :aria-labelledby="tabs.length && tab ? tabId(tab) : undefined">
           <slot />
         </div>
       </form>
@@ -194,6 +151,7 @@ defineExpose({ scrollToTop });
   min-width: 0;
   flex: 1;
 }
+
 .editor-cover {
   flex: none;
   width: 64px;
@@ -205,31 +163,35 @@ defineExpose({ scrollToTop });
   background: var(--ui-surface-2);
   cursor: pointer;
 }
+
 .editor-cover img {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
+
 .editor-cover.empty {
-  background: linear-gradient(
-    150deg,
-    var(--ui-accent-soft),
-    var(--ui-surface-2) 70%
-  );
+  background: linear-gradient(150deg,
+      var(--ui-accent-soft),
+      var(--ui-surface-2) 70%);
 }
+
 .editor-cover:hover {
   border-color: var(--ui-accent-line);
 }
+
 .editor-cover:focus-visible,
 .editor-tab:focus-visible {
   outline: 2px solid var(--ui-accent);
   outline-offset: 2px;
 }
+
 .editor-titles {
   flex: 1;
   min-width: 0;
 }
+
 .editor-kicker {
   margin: 0;
   font-size: 0.7rem;
@@ -239,6 +201,7 @@ defineExpose({ scrollToTop });
   text-transform: uppercase;
   color: var(--ui-accent-text);
 }
+
 .editor-heading {
   margin: 2px 0 0;
   overflow: hidden;
@@ -249,6 +212,7 @@ defineExpose({ scrollToTop });
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
 .editor-subtitle {
   margin: 2px 0 0;
   overflow: hidden;
@@ -257,12 +221,14 @@ defineExpose({ scrollToTop });
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
 .editor-frame.bounded {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
   min-height: 0;
 }
+
 .editor-tabs {
   flex: none;
   display: flex;
@@ -276,9 +242,11 @@ defineExpose({ scrollToTop });
   background: var(--ui-surface-2);
   scrollbar-width: none;
 }
+
 .editor-tabs::-webkit-scrollbar {
   display: none;
 }
+
 .editor-tab {
   flex: none;
   min-height: calc(var(--ui-control-height) - 6px);
@@ -296,49 +264,61 @@ defineExpose({ scrollToTop });
     background var(--ui-motion-fast) ease,
     color var(--ui-motion-fast) ease;
 }
+
 .editor-tab:hover {
   color: var(--ui-text);
 }
+
 .editor-tab.active {
   background: var(--ui-accent);
   color: var(--ui-on-accent);
 }
+
 .editor-body {
   display: flex;
   flex-direction: column;
   gap: 14px;
   min-width: 0;
 }
+
 .bounded .editor-body {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   padding: 16px 20px 20px;
 }
+
 .editor-panel {
   min-width: 0;
 }
+
 .editor-status {
   flex: none;
 }
+
 .bounded .editor-status {
   padding: 0 20px 12px;
 }
+
 @media (max-width: 760px) {
   .editor-hero {
     gap: 12px;
   }
+
   .editor-cover {
     width: 48px;
     height: 68px;
   }
+
   .editor-tabs {
     max-width: calc(100% - 32px);
     margin: 10px 16px 0;
   }
+
   .bounded .editor-body {
     padding: 14px 16px 16px;
   }
+
   .bounded .editor-status {
     padding: 0 16px 10px;
   }
