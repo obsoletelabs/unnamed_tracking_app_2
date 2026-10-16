@@ -56,6 +56,27 @@ async function change(changes: Partial<Preferences>) {
   }
 }
 
+function formatTime(seconds: number): string {
+  return new Date(seconds * 1000).toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
+// The scheduler records every attempt; a failure keeps the last successful import.
+const importStatus = computed(() => {
+  const {
+    anilist_import_last_attempt_at: attempt,
+    anilist_import_last_run_at: success,
+    anilist_import_last_error: failure,
+  } = prefs.value;
+  const last = success
+    ? ` Last successful import: ${formatTime(success)}.`
+    : "";
+  if (!failure || !attempt) return last.trim();
+  const reason = /[.!?]$/.test(failure) ? failure : `${failure}.`;
+  return `Scheduled import failed ${formatTime(attempt)}: ${reason} It will try again at the next scheduled time.${last}`;
+});
+
 async function setCadence(value: string) {
   customCadence.value = false;
   await change({ anilist_import_interval_minutes: Number(value) });
@@ -141,9 +162,19 @@ async function setCustomCadence(hours: number) {
       <strong>Update existing titles</strong>: apply AniList list changes to
       titles already in the library
     </ToggleButton>
+    <p
+      v-if="importStatus"
+      class="import-status"
+      :class="{ failed: !!prefs.anilist_import_last_error }"
+      role="status"
+    >
+      {{ importStatus }}
+    </p>
     <p class="section-hint">
       The scheduler runs in the app background once a minute. Imports are
-      bounded so a large multi-user deployment cannot monopolize the worker.
+      bounded so a large multi-user deployment cannot monopolize the worker;
+      accounts that are due go first, and a failed import waits for its next
+      scheduled time instead of retrying every minute.
     </p>
   </section>
 </template>
@@ -169,6 +200,15 @@ async function setCustomCadence(hours: number) {
 .error {
   color: var(--ui-error);
   font-size: 0.82rem;
+}
+.import-status {
+  margin: 14px 0;
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: var(--ui-text);
+}
+.import-status.failed {
+  color: var(--ui-error);
 }
 .field {
   display: flex;

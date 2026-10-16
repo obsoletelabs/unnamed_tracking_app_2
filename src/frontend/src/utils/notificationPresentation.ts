@@ -20,6 +20,16 @@ const kinds: Record<string, Presentation> = {
     tone: "violet",
     group: "releases",
   },
+  franchise_season: {
+    label: "New season listed",
+    tone: "blue",
+    group: "seasons",
+  },
+  franchise_extra: {
+    label: "Movie, OVA or special listed",
+    tone: "violet",
+    group: "releases",
+  },
   game_released: { label: "Game released", tone: "green", group: "releases" },
   game_sale: { label: "Game on sale", tone: "amber", group: "releases" },
   game_price_hit: {
