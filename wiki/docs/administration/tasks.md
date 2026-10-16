@@ -8,7 +8,7 @@ Current deployment-wide jobs are:
 - **Airing episode check** — enabled by default, normally every 30 minutes; checks TV/anime airing data and can be manually forced.
 - **Media refresh** — disabled by default, normally daily; fills missing episode metadata and corrects stale media data.
 
-Per-user scheduled AniList imports are also processed in bounded batches when enabled in user preferences. External notification deliveries use the same loop, but their retry schedule is owned by the notification delivery coordinator rather than the task settings page.
+The per-user AniList import is a personal task in Account → Background tasks and runs through this same loop (at most four imports at once). External notification deliveries use the same loop, but their retry schedule is owned by the notification delivery coordinator rather than the task settings page.
 
 The task view shows running state, last run, and a bounded summary. A failed iteration is logged and retried by a later loop; it does not stop the API server.
 
@@ -49,6 +49,14 @@ New tasks start off, with a daily interval. Disconnecting pauses a saved task wh
 retaining its switch, interval and history; reconnecting restores availability. A paused,
 enabled task can still be switched off. Xbox and GOG currently store credentials without
 a library-sync workflow, so they do not have an executable autosync task.
+
+Every account also has an **AniList import** task. The username and the "update existing
+titles" choice stay in Settings → Import & export; the task controls whether the import runs by
+itself, how often (1 hour to 30 days), when it last ran and what happened. It starts off and is
+unavailable until a username is saved. Failures show a short message without remote details.
+Schedules saved before this task existed are moved to it automatically, keeping their state.
+
+![The AniList import personal task in Modern](../assets/anilist-user-schedule/background-tasks-modern.jpg)
 
 ![Personal autosync tasks for configured connections](../assets/connection-autosync/all-connections.jpg)
 
