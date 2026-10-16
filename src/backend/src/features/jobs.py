@@ -25,9 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.job_setting import JobSetting
 from src.database.models.user import User
-from src.database.models.user_preferences import UserPreferences
 from src.database.session import SessionLocal
-from src.features.imports.anilist import import_anilist_library
 from src.features.metadata import refresh_job
 from src.features.metadata.refresh import check_airing_episodes
 from src.features.notification_audit import publish_lifecycle
@@ -40,7 +38,6 @@ from src.features.user_invitations import expire_invitations
 
 logger = logging.getLogger(__name__)
 TICK_SECONDS = 60
-ANILIST_IMPORT_MAX_USERS_PER_TICK = 4
 
 
 @dataclass(frozen=True)
@@ -247,10 +244,15 @@ async def get_user_jobs(db: AsyncSession, user_id: UUID) -> list[JobSpec]:
     """Share the personal task registry between account controls and the scheduler."""
     # Adapters depend on JobSpec; import them after this registry is initialized.
     # pylint: disable=import-outside-toplevel
+    from src.features.anilist_jobs import get_anilist_jobs
     from src.features.connection_jobs import get_connection_jobs
     from src.features.plugin_jobs import get_plugin_jobs
 
-    return [*await get_connection_jobs(db, user_id), *await get_plugin_jobs(db, user_id)]
+    return [
+        *await get_connection_jobs(db, user_id),
+        *await get_anilist_jobs(db, user_id),
+        *await get_plugin_jobs(db, user_id),
+    ]
 
 
 async def get_scheduled_user_jobs(db: AsyncSession) -> list[JobSpec]:
@@ -274,40 +276,6 @@ def _on_media_refresh_finished(progress: dict[str, Any]) -> None:
 refresh_job.finish_hooks.append(_on_media_refresh_finished)
 
 
-async def _run_due_anilist_imports(now: int) -> None:
-    """Run a small bounded batch so one deployment with many users cannot starve other jobs."""
-    async with SessionLocal() as db:
-        rows = (
-            await db.execute(
-                select(UserPreferences, User)
-                .join(User, User.id == UserPreferences.user_id)
-                .where(UserPreferences.data["anilist_import_enabled"].as_boolean().is_(True))
-                .limit(ANILIST_IMPORT_MAX_USERS_PER_TICK)
-            )
-        ).all()
-    for pref_row, user in rows:
-        data = pref_row.data
-        username = str(data.get("anilist_import_username") or "").strip()
-        interval = int(data.get("anilist_import_interval_minutes") or 24 * 60)
-        last_run = data.get("anilist_import_last_run_at")
-        if not username or not is_due(True, last_run, interval, now):
-            continue
-        try:
-            async with SessionLocal() as db:
-                result = await import_anilist_library(
-                    db, user.id, username, bool(data.get("anilist_import_update_existing"))
-                )
-                pref = await db.get(UserPreferences, pref_row.id)
-                if pref is not None:
-                    pref.data = {**pref.data, "anilist_import_last_run_at": now}
-                    await db.commit()
-            logger.info("Scheduled AniList import for user %s: %s", user.id, result)
-        # An unexpected worker failure must not terminate the remaining scheduled work.
-        # pylint: disable-next=broad-exception-caught
-        except Exception:
-            logger.exception("Scheduled AniList import failed for user %s", user.id)
-
-
 async def run_jobs_loop() -> None:
     """Run eligible schedules without blocking imports or notification delivery."""
     # Plugin adapters import JobSpec/record_run from this registry; load them after initialization.
@@ -318,7 +286,6 @@ async def run_jobs_loop() -> None:
         await asyncio.sleep(TICK_SECONDS)
         try:
             now = int(time.time())
-            await _run_due_anilist_imports(now)
             await scan_notification_users()
             async with SessionLocal() as db:
                 await expire_verification_secrets(db)
