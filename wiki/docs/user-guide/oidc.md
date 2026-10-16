@@ -35,6 +35,19 @@ Providers can be added, removed, reordered, and configured independently.
 
 The **Default login method** setting controls whether the normal login page initially prioritises local credentials or SSO.
 
+## Collapsing and reordering providers
+
+Each provider is a collapsible row. Saved providers open collapsed, showing only the provider name, slug, a status label when the provider is disabled or hidden from the login page, and the reorder and **Remove** controls. Select the provider name, or the arrow beside it, to show or hide its settings. A newly added provider opens expanded so it can be filled in. With more than one provider, **Expand all** and **Collapse all** switch every row at once.
+
+Collapse providers to reorder a long list without scrolling through every setting:
+
+- **Mouse:** drag a provider by its header and drop it on another provider.
+- **Keyboard and touch:** use the **↑** and **↓** buttons. Focus stays with the provider that moved, so repeated presses keep moving it, and screen readers announce its new position.
+
+Expanding, collapsing and reordering only change the page. Unsaved edits are kept while a provider is collapsed. Select **Save OIDC settings** to store the new order; the login page lists providers in that order.
+
+![Collapsed providers in Modern](../assets/oidc-provider-collapse/modern-dark-collapsed.jpg)
+
 ## Redirect URI
 
 The settings UI generates the redirect URI from the address currently used to access the application and displays it as read-only.
