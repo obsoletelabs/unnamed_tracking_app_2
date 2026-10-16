@@ -63,6 +63,10 @@ OFFICE_TYPES = {
 }
 MAX_OFFICE_EXPANDED_BYTES = 20 * 1024 * 1024
 MAX_OFFICE_XML_BYTES = 2 * 1024 * 1024
+# Charts keep their data in an embedded workbook. Macro-free OOXML packages may stay
+# embedded because previews never open them; OLE objects (.bin) and macro-enabled
+# packages, which [Content_Types].xml declares, are still refused.
+EMBEDDED_PACKAGE_SUFFIXES = (".xlsx", ".docx", ".pptx")
 
 
 def owned_documents_query(user_id: object) -> Select[tuple[GameFileItem, Game]]:
@@ -203,9 +207,8 @@ def _office_entry_name(entry: zipfile.ZipInfo, names: set[str]) -> str:
             name.casefold() in names,
             entry.flag_bits & 1,
             entry.compress_type not in {0, 8},
-            bool(
-                {"vbaproject.bin", "basic", "scripts", "embeddings", "activex"}.intersection(parts)
-            ),
+            bool({"vbaproject.bin", "basic", "scripts", "activex"}.intersection(parts)),
+            "embeddings" in parts and not name.lower().endswith(EMBEDDED_PACKAGE_SUFFIXES),
             (entry.external_attr >> 16) & 0o170000 == 0o120000,
         )
     ):

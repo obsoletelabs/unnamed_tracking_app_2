@@ -555,3 +555,31 @@ def test_office_zip_bombs_and_macros_are_rejected(tmp_path):
     )
     with pytest.raises(DocumentAccessError):
         read_representation(path)
+
+
+@pytest.mark.parametrize("suffix", ["docx", "pptx"])
+def test_office_charts_keep_their_macro_free_embedded_workbook(tmp_path, suffix):
+    root = "word" if suffix == "docx" else "ppt"
+    files = {
+        "[Content_Types].xml": b"<Types/>",
+        "word/document.xml" if suffix == "docx" else "ppt/presentation.xml": b"<document/>",
+        f"{root}/charts/chart1.xml": b"<chartSpace/>",
+        f"{root}/embeddings/Microsoft_Excel_Worksheet.xlsx": b"PK workbook",
+    }
+    path = tmp_path / ("charts." + suffix)
+    path.write_bytes(office_archive(files))
+    assert read_representation(path)[2] == suffix
+    for name, content_types in (
+        (f"{root}/embeddings/oleObject1.bin", b"<Types/>"),
+        (f"{root}/embeddings/Microsoft_Excel_Macro-Enabled.xlsm", b"<Types/>"),
+        (
+            f"{root}/embeddings/Microsoft_Excel_Worksheet.xlsx",
+            b'<Types><Default Extension="xlsx" '
+            b'ContentType="application/vnd.ms-excel.sheet.macroEnabled.12"/></Types>',
+        ),
+    ):
+        path.write_bytes(
+            office_archive({**files, "[Content_Types].xml": content_types, name: b"object"})
+        )
+        with pytest.raises(DocumentAccessError):
+            read_representation(path)
