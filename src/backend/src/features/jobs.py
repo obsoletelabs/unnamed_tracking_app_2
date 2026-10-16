@@ -27,6 +27,7 @@ from src.database.models.job_setting import JobSetting
 from src.database.models.user import User
 from src.database.models.user_preferences import UserPreferences
 from src.database.session import SessionLocal
+from src.features import job_runs
 from src.features.imports.anilist import import_anilist_library
 from src.features.metadata import refresh_job
 from src.features.metadata.refresh import check_airing_episodes
@@ -66,6 +67,9 @@ class JobSpec:
     available: bool = True
     unavailable_reason: str = ""
     user_id: UUID | None = None
+    # Set when the cause is permanent (disconnect, revoked grant, disabled plugin) rather than an
+    # outage: the owner's schedule is then turned off and must be explicitly enabled again.
+    revoked: bool = False
 
 
 def _summarize_refresh(r: dict[str, Any]) -> str:
@@ -212,6 +216,7 @@ async def get_setting(db: AsyncSession, spec: JobSpec) -> JobSetting:
 async def describe(db: AsyncSession, spec: JobSpec) -> dict[str, Any]:
     """Combine persistent history with live runtime availability for Tasks controls."""
     row = await get_setting(db, spec)
+    now = int(time.time())
     return {
         "id": spec.id,
         "name": spec.name,
@@ -223,7 +228,12 @@ async def describe(db: AsyncSession, spec: JobSpec) -> dict[str, Any]:
         "last_run_at": row.last_run_at,
         "last_result": row.last_result or {},
         "last_summary": spec.summarize(row.last_result or {}) if row.last_run_at else "",
-        "running": spec.is_running(),
+        "running": spec.is_running() or job_runs.lease_active(row, now),
+        "paused": row.paused,
+        "status": row.status,
+        "last_success_at": row.last_success_at,
+        "next_run_at": job_runs.next_run_at(row, now),
+        "failure_count": row.failure_count,
         "plugin_id": spec.plugin_id,
         "plugin_name": spec.plugin_name,
         "available": spec.available,
@@ -236,11 +246,58 @@ async def record_run(job_id: str, result: dict[str, Any], *, spec: JobSpec | Non
     async with SessionLocal() as db:
         spec = spec or JOBS[job_id]
         row = await get_setting(db, spec)
-        row.last_run_at = int(time.time())
+        now = int(time.time())
+        row.last_run_at = now
+        public = job_runs.apply_outcome(row, result, now)
         row.last_result = {
-            k: v for k, v in result.items() if isinstance(v, (int, float, str, bool)) or v is None
+            k: v for k, v in public.items() if isinstance(v, (int, float, str, bool)) or v is None
         }
         await db.commit()
+
+
+async def control_job(db: AsyncSession, spec: JobSpec, action: str) -> dict[str, Any]:
+    """Pause, resume or cancel one job's run without touching its saved records."""
+    row = await get_setting(db, spec)
+    job_runs.apply_control(row, action, spec.is_running() or job_runs.lease_active(row))
+    await db.commit()
+    return await describe(db, spec)
+
+
+async def disable_revoked_schedules(db: AsyncSession) -> None:
+    """Turn off personal schedules whose connection, grant or plugin is permanently gone.
+
+    Outages only pause a schedule; revocation, disconnect, disable and uninstall make the
+    owner choose to enable it again, so nothing resumes silently when access returns."""
+    # Adapters depend on JobSpec; import them after this registry is initialized.
+    # pylint: disable-next=import-outside-toplevel
+    from src.features import plugin_jobs
+
+    rows = (
+        await db.scalars(
+            select(JobSetting).where(JobSetting.user_id.is_not(None), JobSetting.enabled.is_(True))
+        )
+    ).all()
+    listed: dict[UUID, dict[str, JobSpec]] = {}
+    for row in rows:
+        user_id = row.user_id
+        if user_id is None:
+            continue
+        if user_id not in listed:
+            listed[user_id] = {spec.id: spec for spec in await get_user_jobs(db, user_id)}
+        spec = listed[user_id].get(row.job_id)
+        uninstalled = (
+            spec is None
+            and row.job_id.startswith("user-plugin:")
+            and plugin_jobs.runtime_reachable()
+        )
+        if uninstalled or (spec is not None and spec.revoked):
+            row.enabled, row.status, row.retry_at = False, "disabled", None
+            row.last_result = {
+                "completed": False,
+                "summary": "Autosync was turned off because access was removed. "
+                "Turn it on again after reconnecting or restoring permissions.",
+            }
+    await db.commit()
 
 
 async def get_user_jobs(db: AsyncSession, user_id: UUID) -> list[JobSpec]:
@@ -328,6 +385,7 @@ async def run_jobs_loop() -> None:
                 await db.commit()
                 await process_pending_deliveries(db)
                 await publish_lifecycle(db)
+                await disable_revoked_schedules(db)
                 due = []
                 for spec in [
                     *JOBS.values(),
@@ -335,22 +393,13 @@ async def run_jobs_loop() -> None:
                     *await get_scheduled_user_jobs(db),
                 ]:
                     row = await get_setting(db, spec)
-                    continuation = (row.last_result or {}).get("continue_after_seconds")
-                    interval = row.interval_minutes
-                    if (
-                        spec.user_id is not None
-                        and (row.last_result or {}).get("completed") is False
-                        and isinstance(continuation, int)
-                        and not isinstance(continuation, bool)
-                    ):
-                        interval = min(60, max(1, (continuation + 59) // 60))
                     if (
                         spec.available
                         and spec.min_interval_minutes
                         <= row.interval_minutes
                         <= spec.max_interval_minutes
                         and not spec.is_running()
-                        and is_due(row.enabled, row.last_run_at, interval, now)
+                        and job_runs.is_due(row, now)
                     ):
                         due.append(spec)
                 await db.commit()

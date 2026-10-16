@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.database.models.plugin_permissions import PluginPermissionGrant
 from src.database.models.user import User
 from src.database.session import SessionLocal
+from src.features.job_runs import bounded_delay, job_lease
 from src.features.jobs import JobSpec, get_setting, record_run
 from src.plugin_api.contracts import PluginScheduledTask, PluginUiDocument, UiAction, parse_semver
 from src.plugin_api.grants import effective_capabilities, installation_is_executable
@@ -28,6 +29,12 @@ logger = logging.getLogger(__name__)
 client = PluginRuntimeClient()
 _last_inventory: list[dict[str, Any]] = []
 _running: dict[str, asyncio.Task[None]] = {}
+_runtime_state = {"reachable": False}
+
+
+def runtime_reachable() -> bool:
+    """Whether the last inventory came from the live runtime rather than the cached copy."""
+    return _runtime_state["reachable"]
 
 
 def task_job_id(installation_id: UUID, task_id: str, user_id: UUID | None = None) -> str:
@@ -72,24 +79,33 @@ async def _task_availability(
     installation_id: UUID,
     runtime_available: bool,
     user_id: UUID | None = None,
-) -> tuple[frozenset[str], dict[str, UiAction], str]:
-    """Resolve lifecycle, exact-scope grants and declared actions before exposing controls."""
+) -> tuple[frozenset[str], dict[str, UiAction], str, bool]:
+    """Resolve lifecycle, exact-scope grants and declared actions before exposing controls.
+
+    The last item says whether an unavailable task is permanently revoked (plugin disabled or
+    background access withdrawn) rather than temporarily stopped or unreachable."""
     if not runtime_available:
-        return frozenset(), {}, "Plugin runtime is unavailable. Scheduling is paused."
+        return frozenset(), {}, "Plugin runtime is unavailable. Scheduling is paused.", False
     if not installation_is_executable(plugin):
-        return frozenset(), {}, "Start this compatible plugin to use its tasks."
+        return (
+            frozenset(),
+            {},
+            "Start this compatible plugin to use its tasks.",
+            plugin.get("enabled") is False,
+        )
     capabilities = await _background_capabilities(db, plugin, installation_id, user_id)
     if "tasks.background" not in capabilities:
         return (
             capabilities,
             {},
             "Background permission or the task's account identity is unavailable.",
+            True,
         )
     try:
         document = PluginUiDocument.model_validate(await client.plugin_ui(plugin["plugin_id"]))
     except (PluginRuntimeUnavailable, PluginRuntimeRequestError, ValidationError):
-        return capabilities, {}, "Plugin task declarations are unavailable."
-    return capabilities, {action.id: action for action in document.actions}, ""
+        return capabilities, {}, "Plugin task declarations are unavailable.", False
+    return capabilities, {action.id: action for action in document.actions}, "", False
 
 
 def _result_summary(result: dict[str, Any]) -> str:
@@ -106,68 +122,81 @@ def _action_unavailable_reason(action: UiAction | None, capabilities: frozenset[
     return ""
 
 
-async def _execute_task(spec: JobSpec, installation_id: UUID, task_id: str, mode: str) -> None:
-    """Recheck current identity and grants immediately before isolated dispatch."""
+async def _dispatch(
+    spec: JobSpec, installation_id: UUID, task_id: str, mode: str
+) -> dict[str, Any]:
+    """Recheck identity, grants, the owner's choice and pause state, then run one bounded step."""
     result: dict[str, Any] = {
         "completed": False,
         "summary": "Plugin task could not run. Check its diagnostics.",
     }
-    try:
-        async with SessionLocal() as db:
-            current = next(
-                (job for job in await get_plugin_jobs(db, spec.user_id) if job.id == spec.id), None
+    async with SessionLocal() as db:
+        current = next(
+            (job for job in await get_plugin_jobs(db, spec.user_id) if job.id == spec.id), None
+        )
+        setting = await get_setting(db, current or spec)
+        if current is None or not current.available:
+            result["summary"] = (
+                current.unavailable_reason
+                if current
+                else "This plugin task is no longer installed."
             )
-            if current is None or not current.available:
-                result["summary"] = (
-                    current.unavailable_reason
-                    if current
-                    else "This plugin task is no longer installed."
-                )
-            elif (
-                mode == "needed"
-                and spec.user_id is not None
-                and not (await get_setting(db, current)).enabled
-            ):
-                result["summary"] = "Autosync was disabled before this step started."
-            else:
-                response = await client.run_scheduled_task(
-                    str(spec.plugin_id),
-                    str(installation_id),
-                    task_id,
-                    "scheduled" if mode == "needed" else "manual",
-                    **({"user_id": str(spec.user_id)} if spec.user_id is not None else {}),
-                )
-                completed = (
-                    response.get("completed") is not False and response.get("ok") is not False
-                )
-                summary = response.get("summary")
-                result = {
-                    "completed": completed,
-                    "summary": summary[:512]
-                    if isinstance(summary, str)
-                    else "Completed"
-                    if completed
-                    else "Task reported a failure.",
-                }
-                continuation = response.get("continue_after_seconds")
-                if (
-                    spec.user_id is not None
-                    and not completed
-                    and isinstance(continuation, int)
-                    and not isinstance(continuation, bool)
-                ):
-                    result["continue_after_seconds"] = min(3600, max(60, continuation))
-    except (PluginRuntimeUnavailable, PluginRuntimeRequestError):
-        logger.warning("Plugin task dispatch failed: %s", spec.id)
-    except (SQLAlchemyError, OSError, ValueError):
-        logger.exception("Plugin task failed: %s", spec.id)
+        elif mode == "needed" and spec.user_id is not None and not setting.enabled:
+            result["summary"] = "Autosync was disabled before this step started."
+        elif mode == "needed" and (setting.paused or setting.cancel_requested):
+            result["summary"] = "This task is paused. Resume it to continue from the saved step."
+        else:
+            response = await client.run_scheduled_task(
+                str(spec.plugin_id),
+                str(installation_id),
+                task_id,
+                "scheduled" if mode == "needed" else "manual",
+                **({"user_id": str(spec.user_id)} if spec.user_id is not None else {}),
+            )
+            completed = response.get("completed") is not False and response.get("ok") is not False
+            summary = response.get("summary")
+            result = {
+                "completed": completed,
+                "summary": summary[:512]
+                if isinstance(summary, str)
+                else "Completed"
+                if completed
+                else "Task reported a failure.",
+            }
+            if spec.user_id is not None and not completed:
+                for field in ("continue_after_seconds", "retry_after_seconds"):
+                    delay = bounded_delay(response.get(field))
+                    if delay is not None:
+                        result[field] = delay
+                if response.get("disable_schedule") is True:
+                    result["disable_schedule"] = True
+    return result
+
+
+async def _execute_task(spec: JobSpec, installation_id: UUID, task_id: str, mode: str) -> None:
+    """Hold the job's durable lease for one step so no second run can overlap it."""
+    try:
+        async with job_lease(spec) as acquired:
+            if not acquired:
+                return
+            result: dict[str, Any] = {
+                "completed": False,
+                "summary": "Plugin task could not run. Check its diagnostics.",
+            }
+            try:
+                result = await _dispatch(spec, installation_id, task_id, mode)
+            except (PluginRuntimeUnavailable, PluginRuntimeRequestError):
+                logger.warning("Plugin task dispatch failed: %s", spec.id)
+            except (SQLAlchemyError, OSError, ValueError):
+                logger.exception("Plugin task failed: %s", spec.id)
+            try:
+                await record_run(spec.id, result, spec=spec)
+            except SQLAlchemyError:
+                logger.exception("Plugin task result could not be saved: %s", spec.id)
+    except SQLAlchemyError:
+        logger.exception("Plugin task could not claim its run: %s", spec.id)
     finally:
-        try:
-            await record_run(spec.id, result, spec=spec)
-        except SQLAlchemyError:
-            logger.exception("Plugin task result could not be saved: %s", spec.id)
-        finally:
-            _running.pop(spec.id, None)
+        _running.pop(spec.id, None)
 
 
 def _job_spec(
@@ -175,7 +204,9 @@ def _job_spec(
     installation_id: UUID,
     declaration: PluginScheduledTask,
     reason: str,
+    *,
     user_id: UUID | None = None,
+    revoked: bool = False,
 ) -> JobSpec:
     """Reuse ordinary schedule persistence, Run now and no-overlap behavior."""
     job_id = task_job_id(installation_id, declaration.id, user_id)
@@ -206,8 +237,63 @@ def _job_spec(
         available=not reason,
         unavailable_reason=reason,
         user_id=user_id,
+        revoked=revoked,
     )
     return spec
+
+
+def _declared_tasks(
+    plugin: dict[str, Any],
+) -> tuple[UUID, list[PluginScheduledTask], tuple[int, int, int]] | None:
+    """Parse one installation's bounded, unique task declarations, or skip it."""
+    raw_tasks = plugin.get("scheduled_tasks")
+    if (
+        plugin.get("legacy_compatibility")
+        or not isinstance(raw_tasks, list)
+        or not raw_tasks
+        or len(raw_tasks) > 32
+    ):
+        return None
+    try:
+        installation_id = UUID(str(plugin.get("installation_id", "")))
+        declarations = [PluginScheduledTask.model_validate(task) for task in raw_tasks]
+        api_version = parse_semver(plugin.get("api_contract_version", "0.0.0"))
+    except (ValueError, ValidationError):
+        return None
+    if len({task.id for task in declarations}) != len(declarations):
+        return None
+    return installation_id, declarations, api_version
+
+
+async def _plugin_task_jobs(
+    db: AsyncSession,
+    plugin: dict[str, Any],
+    declared: tuple[UUID, list[PluginScheduledTask], tuple[int, int, int]],
+    runtime_available: bool,
+    user_id: UUID | None,
+) -> list[JobSpec]:
+    """Build the jobs one installation contributes for the server or one account."""
+    installation_id, declarations, api_version = declared
+    jobs: list[JobSpec] = []
+    availability = await _task_availability(db, plugin, installation_id, runtime_available, user_id)
+    capabilities, actions, shared_reason, shared_revoked = availability
+    for declaration in declarations:
+        if (declaration.scope == "user") != (user_id is not None):
+            continue
+        if declaration.scope == "user" and api_version < (1, 1, 11):
+            continue
+        action_reason = _action_unavailable_reason(actions.get(declaration.action_id), capabilities)
+        jobs.append(
+            _job_spec(
+                plugin,
+                installation_id,
+                declaration,
+                shared_reason or action_reason,
+                user_id=user_id,
+                revoked=shared_revoked or (bool(action_reason) and not shared_reason),
+            )
+        )
+    return jobs
 
 
 async def get_plugin_jobs(db: AsyncSession, user_id: UUID | None = None) -> list[JobSpec]:
@@ -219,34 +305,11 @@ async def get_plugin_jobs(db: AsyncSession, user_id: UUID | None = None) -> list
     except (PluginRuntimeUnavailable, PluginRuntimeRequestError):
         inventory = _last_inventory
         runtime_available = False
+    _runtime_state["reachable"] = runtime_available
     jobs: list[JobSpec] = []
     for plugin in inventory:
-        raw_tasks = plugin.get("scheduled_tasks")
-        if (
-            plugin.get("legacy_compatibility")
-            or not isinstance(raw_tasks, list)
-            or not raw_tasks
-            or len(raw_tasks) > 32
-        ):
+        declared = _declared_tasks(plugin)
+        if declared is None:
             continue
-        try:
-            installation_id = UUID(str(plugin.get("installation_id", "")))
-            declarations = [PluginScheduledTask.model_validate(task) for task in raw_tasks]
-            api_version = parse_semver(plugin.get("api_contract_version", "0.0.0"))
-        except (ValueError, ValidationError):
-            continue
-        if len({task.id for task in declarations}) != len(declarations):
-            continue
-        capabilities, actions, shared_reason = await _task_availability(
-            db, plugin, installation_id, runtime_available, user_id
-        )
-        for declaration in declarations:
-            if (declaration.scope == "user") != (user_id is not None):
-                continue
-            if declaration.scope == "user" and api_version < (1, 1, 11):
-                continue
-            reason = shared_reason or _action_unavailable_reason(
-                actions.get(declaration.action_id), capabilities
-            )
-            jobs.append(_job_spec(plugin, installation_id, declaration, reason, user_id))
+        jobs.extend(await _plugin_task_jobs(db, plugin, declared, runtime_available, user_id))
     return jobs

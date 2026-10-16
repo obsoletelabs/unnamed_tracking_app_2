@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.database.models.job_setting import JobSetting
 from src.database.models.user import User
 from src.database.session import SessionLocal
+from src.features.job_runs import job_lease
 from src.features.jobs import JobSpec, get_setting, record_run
 
 logger = logging.getLogger(__name__)
@@ -101,19 +102,34 @@ def _job_spec(user_id: UUID, provider: str, label: str, reason: str) -> JobSpec:
         available=not reason,
         unavailable_reason=reason,
         user_id=user_id,
+        revoked=bool(reason),
     )
     return spec
 
 
 async def _execute(spec: JobSpec, provider: str, mode: str) -> None:
+    """Hold the job's durable lease so a second host process cannot overlap this inventory."""
+    try:
+        async with job_lease(spec) as acquired:
+            if acquired:
+                await _run_locked(spec, provider, mode)
+    except SQLAlchemyError:
+        logger.error("Connection sync could not claim its run: %s", spec.id)
+    finally:
+        _running.pop(spec.id, None)
+
+
+async def _run_locked(spec: JobSpec, provider: str, mode: str) -> None:
     result: dict[str, Any] = {"completed": False, "summary": "Sync could not run. Try Run now."}
     try:
         async with SessionLocal() as db:
             user = await db.get(User, spec.user_id)
             if user is None or not user.is_active or not _configured(user, provider):
                 result["summary"] = "The account or connection is unavailable. Sync is paused."
-            elif mode == "needed" and not (await get_setting(db, spec)).enabled:
+            elif mode == "needed" and not (setting := await get_setting(db, spec)).enabled:
                 result["summary"] = "Autosync was disabled before this run started."
+            elif mode == "needed" and (setting.paused or setting.cancel_requested):
+                result["summary"] = "This task is paused. Resume it to run again."
             else:
                 async with sync_scope(user.id, provider):
                     counts = await _sync_library(db, user, provider)
@@ -157,8 +173,6 @@ async def _execute(spec: JobSpec, provider: str, mode: str) -> None:
             await record_run(spec.id, result, spec=spec)
         except SQLAlchemyError:
             logger.error("Connection sync result could not be saved: %s", spec.id)
-        finally:
-            _running.pop(spec.id, None)
 
 
 async def _sync_library(db: AsyncSession, user: User, provider: str) -> dict[str, Any]:
