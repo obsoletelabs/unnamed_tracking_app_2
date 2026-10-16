@@ -232,6 +232,8 @@ Until then, PRs remain available for review with current validation and screensh
   search (68) and selective copy (71) in package O are separate.
 - **K, N and the rest of O:** approved; not implemented yet. The package details below describe
   intended work, not completed behavior.
+- **Remaining K (#144, #149) and L–O:** approved; not implemented yet. The
+  package details below describe intended work, not completed behavior.
 
 ### Issue-by-issue execution order
 
@@ -240,6 +242,7 @@ The owner requested one issue at a time, most complex first, on 15 October 2026.
 contains the ordered queue, dependencies and existing related follow-ups #125,
 #132 and #138–140. #142 is merged in #155 and #143 in #171; see the status board below.
 #132 and #138–140. #142 is merged in #155; #143 is merged in #171, and #144 is in review in [PR #181](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/181).
+#132 and #138–140. #142 is merged in #155; #143 is the active issue.
 
 All 29 untouched approved matrix rows are assigned exactly once:
 
