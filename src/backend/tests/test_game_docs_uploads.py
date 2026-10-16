@@ -3,13 +3,17 @@ returns the stored bytes as an inert attachment (issue #157)."""
 
 import io
 import os
+import uuid
 import zipfile
+from types import SimpleNamespace
 from urllib.parse import unquote
 
 import pytest
 
 from src.core.app_integrations import get_or_create_app_integration_settings
+from src.core.auth import get_current_user
 from src.database.session import SessionLocal
+from src.main import app
 from src.plugin_api.documents import OFFICE_TYPES, read_representation
 from tests.test_game_files_flow import game_flow
 
@@ -117,6 +121,33 @@ async def test_docs_accept_any_file_type_and_return_it_only_as_an_attachment(flo
     for name in ("Walkthrough.docx", "攻略 — guide.docx"):
         path = stored / listed[name]["filename"]
         assert read_representation(path, 0)[1:3] == (DOCX, "docx")
+
+
+async def test_docs_stay_in_the_owners_game_folder(flow) -> None:
+    response = await flow.client.post(
+        f"{flow.game}/files/doc",
+        files={"file": ("../../..\\notes/../../Manual.docx", _docx(), DOCX)},
+    )
+    saved = response.json()["results"][0]
+    assert saved["status"] == "saved"
+    # Client paths never reach the disk; only the preserved display name keeps the basename.
+    docs = flow.tmp / str(flow.user_id) / "games" / "Flow" / "docs"
+    assert [p.name for p in docs.iterdir()] == [saved["filename"]]
+    assert sorted(p for p in flow.tmp.rglob("*.docx")) == [docs / saved["filename"]]
+    [item] = (await flow.client.get(f"{flow.game}/files/doc")).json()["files"]
+    assert item["original_filename"] == "Manual.docx"
+
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=uuid.uuid4())
+    try:
+        assert (await flow.client.get(f"{flow.game}/files/doc")).status_code == 404
+        assert (await flow.client.get(item["url"])).status_code == 404
+        refused = await flow.client.post(
+            f"{flow.game}/files/doc", files={"file": ("x.docx", _docx(), DOCX)}
+        )
+        assert refused.status_code == 404
+    finally:
+        app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=flow.user_id)
+    assert [p.name for p in docs.iterdir()] == [saved["filename"]]
 
 
 @pytest.fixture(name="saved_limits")
