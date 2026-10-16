@@ -77,7 +77,9 @@ All paths below are under `/api/delegation/v1`. Responses are not cacheable.
 | `compatibility.write` | `PATCH /games/{id}/play-compatibility`: replace/clear your own multiplayer preset; separate from tracking writes |
 | `achievements.write` | `POST /games/{id}/achievement-reports`, `DELETE /games/{id}/achievement-reports/{report_id}`: local self reports only |
 
-Resource IDs never permit cross-user reads or writes. These credentials are
+Resource IDs never permit cross-user reads or writes. The
+[API access matrix](../development/api-access-matrix.md) lists every route and the
+credential class it accepts. These credentials are
 rejected on ordinary app, API-key management, authentication, plugin-management
 and administration routes. Existing `utk_` API keys retain their legacy behavior;
 they are not accepted as delegated credentials. Browser sessions are required
