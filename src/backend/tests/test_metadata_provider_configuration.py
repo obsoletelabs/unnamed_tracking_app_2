@@ -17,6 +17,7 @@ from src.database.models.plugin_metadata_provider import (
     PluginMetadataProviderRegistration,
     PluginProviderConfiguration,
 )
+from src.database.models.user_scan_settings import UserScanSettings
 from src.database.session import get_db
 from src.features.metadata import providers
 from src.features.metadata.health import ProviderHealthMonitor
@@ -36,6 +37,7 @@ def provider_boundary(boundary, monkeypatch):  # noqa: F811 - imported pytest fi
     monkeypatch.setattr(providers, "discover_core_providers", AsyncMock(return_value=[]))
     db = Database(boundary.session)
     AppIntegrationSettings.__table__.create(boundary.session.bind, checkfirst=True)
+    UserScanSettings.__table__.create(boundary.session.bind, checkfirst=True)
 
     async def dependency():
         yield db

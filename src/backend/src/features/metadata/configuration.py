@@ -17,6 +17,7 @@ from src.database.models.plugin_metadata_provider import (
     PluginMetadataProviderRegistration,
     PluginProviderConfiguration,
 )
+from src.database.models.user_scan_settings import DEFAULT_PROVIDER_ORDER, UserScanSettings
 from src.plugin_api.metadata_contracts import MetadataProviderRegistration
 
 
@@ -37,10 +38,31 @@ async def provider_enabled(db: AsyncSession, user_id: UUID, provider_id: str) ->
     return preferences["metadata_providers_enabled"].get(provider_id, True) is not False
 
 
-def provider_priority(name: str, preferences: dict[str, Any] | None) -> int:
-    """Core and optional providers use the same saved name-based authority order."""
+def _names_provider(entry: object, provider_id: str, name: str) -> bool:
+    # Orders saved before provider IDs named providers by display name; IDs contain a dot.
+    return entry == provider_id or (isinstance(entry, str) and "." not in entry and entry == name)
+
+
+def provider_priority(provider_id: str, name: str, preferences: dict[str, Any] | None) -> int:
+    """Core and optional providers share one saved order; unlisted providers come last."""
     order = (preferences or {}).get("provider_order", [])
-    return order.index(name) if name in order else 100
+    return next(
+        (index for index, entry in enumerate(order) if _names_provider(entry, provider_id, name)),
+        100,
+    )
+
+
+async def with_saved_provider_order(
+    db: AsyncSession, user_id: UUID, preferences: dict[str, Any] | None
+) -> dict[str, Any]:
+    """Every metadata path follows the account's saved order unless its caller gives one."""
+    if preferences and "provider_order" in preferences:
+        return preferences
+    saved = await db.scalar(
+        select(UserScanSettings.provider_order).where(UserScanSettings.user_id == user_id)
+    )
+    order = saved if saved is not None else list(DEFAULT_PROVIDER_ORDER)
+    return {**(preferences or {}), "provider_order": order}
 
 
 async def configuration_values(

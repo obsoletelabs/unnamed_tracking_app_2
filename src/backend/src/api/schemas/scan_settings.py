@@ -1,24 +1,24 @@
 """Pydantic schemas for scan and metadata import settings."""
 
 # The scan settings API intentionally mirrors adjacent settings schemas.
+import re
 from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-# strictly separated — a data provider never contributes art and an image
-# provider never contributes data (see search.py's search_game_metadata)
-DATA_PROVIDERS = {"Steam", "IGDB", "RetroAchievements", "GiantBomb", "GOG", "HowLongToBeat"}
+# Retained for compatibility; artwork follows each asset's own priority.
 IMAGE_PROVIDERS = {"SteamGridDB", "ScreenScraper"}
-
-DataProvider = Literal["Steam", "IGDB", "RetroAchievements", "GiantBomb", "GOG", "HowLongToBeat"]
 ImageProvider = Literal["SteamGridDB", "ScreenScraper"]
+# Core (core.<name>) and plugin metadata provider IDs; the route checks they exist.
+_PROVIDER_ID = re.compile(r"[a-z0-9][a-z0-9_-]*(?:\.[a-z0-9][a-z0-9_-]*)+")
 
 
 class ScanSettingsUpdate(BaseModel):
     """Partial update — every field optional."""
 
-    provider_order: list[DataProvider] | None = Field(default=None, max_length=6)
+    # Metadata provider IDs, most authoritative first.
+    provider_order: list[str] | None = Field(default=None, max_length=64)
     image_provider_order: list[ImageProvider] | None = Field(default=None, max_length=2)
     save_developer: bool | None = None
     save_publisher: bool | None = None
@@ -38,7 +38,11 @@ class ScanSettingsUpdate(BaseModel):
     @classmethod
     def validate_provider_order(cls, value: list[str] | None) -> list[str] | None:
         """Validate the configured order of metadata providers."""
-        return _validate_order(value, DATA_PROVIDERS)
+        if value is not None and not all(
+            len(item) <= 128 and _PROVIDER_ID.fullmatch(item) for item in value
+        ):
+            raise ValueError("provider order values must be metadata provider IDs.")
+        return _validate_order(value, set(value or []))
 
     @field_validator("image_provider_order")
     @classmethod

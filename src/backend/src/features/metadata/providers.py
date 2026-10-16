@@ -40,6 +40,7 @@ from .configuration import (
     provider_enabled,
     provider_priority,
     save_configuration,
+    with_saved_provider_order,
 )
 from .core import CORE_PROVIDERS, CoreMetadataProvider, discover_core_providers
 from .deadlines import bounded
@@ -273,6 +274,7 @@ async def discover_providers(
     preferences: dict[str, Any] | None = None,
 ) -> list[PluginMetadataProvider | CoreMetadataProvider]:
     """Derive discovery from durable registrations, current lifecycle and scoped grants."""
+    preferences = await with_saved_provider_order(db, user_id, preferences)
     providers: list[PluginMetadataProvider | CoreMetadataProvider] = list(
         await discover_core_providers(db, user_id, media_type, preferences)
     )
@@ -319,7 +321,7 @@ async def discover_providers(
                 user_id,
                 revision,
                 state if enabled else ProviderHealth.DISABLED,
-                provider_priority(declaration.name, preferences),
+                provider_priority(row.provider_id, declaration.name, preferences),
                 account_enabled=enabled,
             )
         )

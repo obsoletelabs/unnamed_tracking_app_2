@@ -98,8 +98,20 @@ only. A whole-provider opt-out also blocks explicit metadata requests. Its saved
 Automatic Search choice is preserved and resumes when the provider is re-enabled.
 Local library filtering continues to work.
 
-New unsaved game-provider orders place Steam before GOG. Existing stored orders
-remain unchanged, including an existing order that matched an older default.
+**Settings → Metadata/API → Scan Settings → Provider order** lists every
+provider your account can use: the built-in providers and any installed plugin
+providers, with a note when one is off for you or still needs setup. Move a
+provider up to let its fields win when several providers match. The order is
+saved by provider ID, so a plugin provider keeps its place across plugin updates;
+providers you have not placed follow in provider-ID order. Searches, refreshes
+and background imports all use the saved order.
+
+New unsaved orders place IGDB, then Steam, before every other provider, so Steam
+still comes before GOG. Orders saved before provider IDs, which name providers
+such as `Steam` or `GOG`, keep applying until you save the list again.
+The screen no longer shows a separate image provider order, because the metadata
+handler did not use it: artwork is ranked by the priority each provider gives the
+assets it returns.
 
 The refresh uses the same generic metadata handler as search. Providers run concurrently. The user's provider order determines field authority, while artwork is a separate selected-entity operation. Provider failures are reported without discarding successful results from other providers.
 

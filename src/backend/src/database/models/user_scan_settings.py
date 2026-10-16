@@ -8,14 +8,12 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from src.database.base import Base, unix_timestamp
 
-# default ordering is "best of category first" — IGDB and GiantBomb are the
-# broadest, most consistently populated general databases; GOG's public
-# catalog is also solid and needs no key; Steam is preferred before GOG
-# for its store identities; RetroAchievements is excellent but retro-only;
-# HowLongToBeat contributes a single field, so it's least useful to check
-# first. SteamGridDB's library and curation (community-rated, purpose-built
-# for cover art) beats ScreenScraper's narrower retro-focused art.
-DEFAULT_PROVIDER_ORDER = ["IGDB", "GiantBomb", "Steam", "GOG", "RetroAchievements", "HowLongToBeat"]
+# Provider IDs in authority order; providers not listed come after them, by provider ID.
+# This keeps the behaviour of the old name-based default, where IGDB led Steam and
+# every other current provider (core or plugin, such as GOG) came after them.
+# Rows saved before provider IDs hold display names, which still match.
+DEFAULT_PROVIDER_ORDER = ["core.igdb", "core.steam"]
+# Retained for compatibility; artwork follows each asset's own priority.
 DEFAULT_IMAGE_PROVIDER_ORDER = ["SteamGridDB", "ScreenScraper"]
 
 

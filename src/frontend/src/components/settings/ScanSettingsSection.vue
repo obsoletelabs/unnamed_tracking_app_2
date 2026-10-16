@@ -1,20 +1,18 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from "vue";
 import { fetchScanSettings, updateScanSettings } from "../../services/settings";
-import type { DataProvider, ImageProvider } from "../../services/settings";
+import {
+  fetchMetadataProviders,
+  orderMetadataProviders,
+  type MetadataProviderStatus,
+} from "../../services/metadata";
 import ToggleButton from "./ToggleButton.vue";
 
-const DATA_PROVIDER_LABELS: Record<DataProvider, string> = {
-  Steam: "Steam",
-  IGDB: "IGDB",
-  GiantBomb: "Giant Bomb",
-  GOG: "GOG",
-  RetroAchievements: "RetroAchievements",
-  HowLongToBeat: "HowLongToBeat (time to beat only)",
-};
-const IMAGE_PROVIDER_LABELS: Record<ImageProvider, string> = {
-  SteamGridDB: "SteamGridDB",
-  ScreenScraper: "ScreenScraper",
+const MEDIA_LABELS: Record<string, string> = {
+  game: "Games",
+  movie: "Movies",
+  tv_show: "TV",
+  anime: "Anime",
 };
 
 const loading = ref(true);
@@ -22,18 +20,9 @@ const saving = ref(false);
 const error = ref<string | null>(null);
 const saveSuccess = ref(false);
 
-const providerOrder = ref<DataProvider[]>([
-  "IGDB",
-  "GiantBomb",
-  "Steam",
-  "GOG",
-  "RetroAchievements",
-  "HowLongToBeat",
-]);
-const imageProviderOrder = ref<ImageProvider[]>([
-  "SteamGridDB",
-  "ScreenScraper",
-]);
+// Every provider this account can use, core and plugin, in authority order.
+// Null when the list could not load, so a save leaves the saved order alone.
+const providerOrder = ref<MetadataProviderStatus[] | null>(null);
 const saveDeveloper = ref(true);
 const savePublisher = ref(true);
 const saveSeries = ref(true);
@@ -49,8 +38,22 @@ const saveLogo = ref(true);
 const saveIcon = ref(true);
 const providerLastUsed = ref<Record<string, number>>({});
 
-function lastUsedLabel(provider: string): string {
-  const at = providerLastUsed.value[provider];
+function providerNote(provider: MetadataProviderStatus): string {
+  const media = provider.media_types
+    .map((type) => MEDIA_LABELS[type] ?? type)
+    .join(" · ");
+  if (provider.account_enabled === false) return `${media} · off for you`;
+  if (["not_configured", "invalid_configuration"].includes(provider.state))
+    return `${media} · needs setup`;
+  if (provider.state === "plugin_unavailable")
+    return `${media} · plugin unavailable`;
+  return media;
+}
+
+function lastUsedLabel(provider: MetadataProviderStatus): string {
+  const at =
+    providerLastUsed.value[provider.provider_id] ??
+    providerLastUsed.value[provider.name];
   if (!at) return "never used";
   const seconds = Date.now() / 1000 - at;
   if (seconds < 60) return "used just now";
@@ -61,9 +64,15 @@ function lastUsedLabel(provider: string): string {
 
 onMounted(async () => {
   try {
-    const settings = await fetchScanSettings();
-    providerOrder.value = settings.provider_order;
-    imageProviderOrder.value = settings.image_provider_order;
+    const [settings, providers] = await Promise.all([
+      fetchScanSettings(),
+      fetchMetadataProviders().catch(() => null),
+    ]);
+    if (providers)
+      providerOrder.value = orderMetadataProviders(
+        providers,
+        settings.provider_order,
+      );
     saveDeveloper.value = settings.save_developer;
     savePublisher.value = settings.save_publisher;
     saveSeries.value = settings.save_series;
@@ -92,7 +101,6 @@ onMounted(async () => {
 watch(
   [
     providerOrder,
-    imageProviderOrder,
     saveDeveloper,
     savePublisher,
     saveSeries,
@@ -121,14 +129,10 @@ function reorder<T>(list: T[], index: number, direction: -1 | 1): T[] | null {
   return next;
 }
 
-function moveDataProvider(index: number, direction: -1 | 1) {
+function moveProvider(index: number, direction: -1 | 1) {
+  if (!providerOrder.value) return;
   const next = reorder(providerOrder.value, index, direction);
   if (next) providerOrder.value = next;
-}
-
-function moveImageProvider(index: number, direction: -1 | 1) {
-  const next = reorder(imageProviderOrder.value, index, direction);
-  if (next) imageProviderOrder.value = next;
 }
 
 async function save() {
@@ -137,8 +141,11 @@ async function save() {
   saveSuccess.value = false;
   try {
     await updateScanSettings({
-      provider_order: providerOrder.value,
-      image_provider_order: imageProviderOrder.value,
+      ...(providerOrder.value && {
+        provider_order: providerOrder.value.map(
+          (provider) => provider.provider_id,
+        ),
+      }),
       save_developer: saveDeveloper.value,
       save_publisher: savePublisher.value,
       save_series: saveSeries.value,
@@ -173,81 +180,49 @@ async function save() {
 
     <p v-if="loading">Loading…</p>
     <template v-else>
-      <div class="provider-order-row">
-        <div class="field-block">
-          <span class="field-label">Data provider order</span>
-          <p class="field-sublabel">
-            Which provider's text/data fields win when more than one has a
-            match.
-          </p>
-          <ol class="provider-list">
-            <li
-              v-for="(provider, index) in providerOrder"
-              :key="provider"
-              class="provider-item"
-            >
-              <span class="provider-item-label">
-                {{ DATA_PROVIDER_LABELS[provider] }}
-                <small class="provider-last-used">{{
-                  lastUsedLabel(provider)
-                }}</small>
-              </span>
-              <div class="provider-arrows">
-                <button
-                  type="button"
-                  :disabled="index === 0"
-                  @click="moveDataProvider(index, -1)"
-                >
-                  ↑
-                </button>
-                <button
-                  type="button"
-                  :disabled="index === providerOrder.length - 1"
-                  @click="moveDataProvider(index, 1)"
-                >
-                  ↓
-                </button>
-              </div>
-            </li>
-          </ol>
-        </div>
-
-        <div class="field-block">
-          <span class="field-label">Image provider order</span>
-          <p class="field-sublabel">
-            Which provider's art wins when more than one has art.
-          </p>
-          <ol class="provider-list">
-            <li
-              v-for="(provider, index) in imageProviderOrder"
-              :key="provider"
-              class="provider-item"
-            >
-              <span class="provider-item-label">
-                {{ IMAGE_PROVIDER_LABELS[provider] }}
-                <small class="provider-last-used">{{
-                  lastUsedLabel(provider)
-                }}</small>
-              </span>
-              <div class="provider-arrows">
-                <button
-                  type="button"
-                  :disabled="index === 0"
-                  @click="moveImageProvider(index, -1)"
-                >
-                  ↑
-                </button>
-                <button
-                  type="button"
-                  :disabled="index === imageProviderOrder.length - 1"
-                  @click="moveImageProvider(index, 1)"
-                >
-                  ↓
-                </button>
-              </div>
-            </li>
-          </ol>
-        </div>
+      <div class="field-block">
+        <span class="field-label">Provider order</span>
+        <p class="field-sublabel">
+          Which provider's fields win when more than one has a match. Includes
+          plugin providers; manage them under Metadata Sources.
+        </p>
+        <p v-if="!providerOrder" class="field-sublabel" role="status">
+          Metadata providers could not be loaded, so their order can't be
+          changed right now.
+        </p>
+        <ol v-else class="provider-list">
+          <li
+            v-for="(provider, index) in providerOrder"
+            :key="provider.provider_id"
+            class="provider-item"
+          >
+            <span class="provider-item-label">
+              <span>{{ provider.name }}</span>
+              <small class="provider-last-used"
+                >{{ providerNote(provider) }} ·
+                {{ lastUsedLabel(provider) }}</small
+              >
+            </span>
+            <div class="provider-arrows">
+              <button
+                type="button"
+                :aria-label="`Move ${provider.name} up`"
+                :disabled="index === 0"
+                @click="moveProvider(index, -1)"
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                :aria-label="`Move ${provider.name} down`"
+                :disabled="index === providerOrder.length - 1"
+                @click="moveProvider(index, 1)"
+              >
+                ↓
+              </button>
+            </div>
+          </li>
+        </ol>
       </div>
 
       <div class="field-block">
@@ -343,15 +318,6 @@ async function save() {
 }
 .field-block {
   margin-bottom: 20px;
-}
-.provider-order-row {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 24px;
-  margin-bottom: 20px;
-}
-.provider-order-row .field-block {
-  margin-bottom: 0;
 }
 .field-label {
   display: block;

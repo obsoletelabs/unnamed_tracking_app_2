@@ -1,19 +1,12 @@
-// strictly separated, a data provider never contributes art and an image
-// provider never contributes data (see backend search.py)
-export type DataProvider =
-  | "Steam"
-  | "IGDB"
-  | "RetroAchievements"
-  | "GiantBomb"
-  | "GOG"
-  | "HowLongToBeat";
+// Retained for compatibility; artwork follows each asset's own priority.
 export type ImageProvider = "SteamGridDB" | "ScreenScraper";
-export type ScanProvider = DataProvider | ImageProvider;
 
 export interface ScanSettings {
   id: string;
   user_id: string;
-  provider_order: DataProvider[];
+  // Metadata provider IDs (core.<name> or a plugin's), most authoritative
+  // first. Orders saved before provider IDs may hold display names instead.
+  provider_order: string[];
   image_provider_order: ImageProvider[];
   save_developer: boolean;
   save_publisher: boolean;
@@ -59,14 +52,7 @@ export type ScanSettingsUpdate = Partial<
 const MOCK_SCAN_SETTINGS: ScanSettings = {
   id: "mock",
   user_id: "mock",
-  provider_order: [
-    "IGDB",
-    "GiantBomb",
-    "Steam",
-    "GOG",
-    "RetroAchievements",
-    "HowLongToBeat",
-  ],
+  provider_order: ["core.igdb", "core.steam"],
   image_provider_order: ["SteamGridDB", "ScreenScraper"],
   save_developer: true,
   save_publisher: true,

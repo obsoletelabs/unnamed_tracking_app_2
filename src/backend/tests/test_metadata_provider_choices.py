@@ -18,7 +18,7 @@ from src.core.preferences import load_preferences, save_preferences, validate_pr
 from src.database.models.user_preferences import UserPreferences
 from src.database.models.user_scan_settings import DEFAULT_PROVIDER_ORDER, UserScanSettings
 from src.features.metadata import core, providers
-from src.features.metadata.configuration import save_configuration
+from src.features.metadata.configuration import provider_priority, save_configuration
 from src.features.metadata.handler import MetadataHandler
 from src.plugin_api.metadata_contracts import (
     MediaType,
@@ -66,7 +66,20 @@ def test_account_provider_choices_are_bounded_boolean_overrides():
 
 
 def test_only_unsaved_provider_order_prefers_steam_to_gog():
-    assert DEFAULT_PROVIDER_ORDER.index("Steam") < DEFAULT_PROVIDER_ORDER.index("GOG")
+    default = {"provider_order": DEFAULT_PROVIDER_ORDER}
+    assert provider_priority("core.steam", "Steam", default) < provider_priority(
+        "official.metadata-gog.provider", "GOG", default
+    )
+
+
+def test_provider_order_names_providers_by_id_or_legacy_display_name():
+    legacy = {"provider_order": ["GOG", "Steam", "IGDB"]}
+    assert provider_priority("official.metadata-gog.provider", "GOG", legacy) == 0
+    assert provider_priority("core.steam", "Steam", legacy) == 1
+    current = {"provider_order": ["official.metadata-gog.provider", "core.steam"]}
+    assert provider_priority("official.metadata-gog.provider", "GOG", current) == 0
+    # A provider ID only names that provider, never another with the same display name.
+    assert provider_priority("other.plugin.provider", "GOG", current) == 100
 
 
 @pytest.mark.parametrize("operation", ["search", "metadata", "media", "health"])
@@ -243,7 +256,7 @@ async def test_saved_provider_order_survives_the_new_default(policy_boundary):
     existing = await get_or_create_scan_settings(item.users[0].id, item.database)
     assert existing.provider_order == saved
     new = await get_or_create_scan_settings(item.users[1].id, item.database)
-    assert new.provider_order.index("Steam") < new.provider_order.index("GOG")
+    assert new.provider_order == DEFAULT_PROVIDER_ORDER
 
 
 async def test_results_arriving_after_an_optout_are_not_applied(policy_boundary, monkeypatch):

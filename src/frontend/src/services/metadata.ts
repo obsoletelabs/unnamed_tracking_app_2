@@ -69,6 +69,37 @@ export async function fetchMetadataProviders(): Promise<
   return (await response.json()).providers;
 }
 
+// Saved orders from before provider IDs name providers by display name; IDs
+// always contain a dot. Mirrors the backend's provider_priority.
+function namesProvider(entry: string, provider: MetadataProviderStatus) {
+  return (
+    entry === provider.provider_id ||
+    (!entry.includes(".") && entry === provider.name)
+  );
+}
+
+/** Providers in the saved authority order; unlisted ones follow by provider ID. */
+export function orderMetadataProviders(
+  providers: MetadataProviderStatus[],
+  savedOrder: string[],
+): MetadataProviderStatus[] {
+  const rank = (provider: MetadataProviderStatus) => {
+    const index = savedOrder.findIndex((entry) =>
+      namesProvider(entry, provider),
+    );
+    return index === -1 ? savedOrder.length : index;
+  };
+  return [...providers].sort(
+    (a, b) =>
+      rank(a) - rank(b) ||
+      (a.provider_id < b.provider_id
+        ? -1
+        : a.provider_id > b.provider_id
+          ? 1
+          : 0),
+  );
+}
+
 export async function saveMetadataProviderConfiguration(
   providerId: string,
   scope: "system" | "user",

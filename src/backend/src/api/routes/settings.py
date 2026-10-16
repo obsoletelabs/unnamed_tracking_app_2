@@ -44,6 +44,7 @@ from src.features.metadata.games.retroachievements import (
 from src.features.metadata.games.screenscraper import ScreenScraperClient, ScreenScraperError
 from src.features.metadata.games.steam import SteamLibraryError
 from src.features.metadata.games.xbox import XboxClient, XboxError
+from src.features.metadata.providers import discover_providers
 from src.helpers.save_badge_image import badge_image_path, delete_badge_image, save_badge_image
 
 router = APIRouter(
@@ -167,6 +168,13 @@ async def update_scan_settings(
     current_user: User = Depends(get_current_user),
 ) -> UserScanSettings:
     """Update the caller's metadata-scan preferences."""
+    if payload.provider_order is not None:
+        available = {provider.id for provider in await discover_providers(db, current_user.id)}
+        unknown = sorted(set(payload.provider_order) - available)
+        if unknown:
+            raise HTTPException(
+                status_code=422, detail=f"Unknown metadata providers: {', '.join(unknown)}."
+            )
     scan_settings = await get_or_create_scan_settings(current_user.id, db)
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(scan_settings, field, value)
