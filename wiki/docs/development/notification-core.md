@@ -14,6 +14,11 @@ Notification orchestration lives in `features/notification_controller.py`, with 
 | Delivery | Work for one notification and destination revision. |
 | Attempt | Durable record of one physical send, independent of the provider. |
 
+The [canonical notification contract](notification-contract.md) versions these
+responsibilities, adds durable stories, structured content and provider
+capabilities, and maps every existing record, producer and Plugin API surface onto
+them through explicit adapters.
+
 Existing media handlers retain their enrichment through a compatibility draft. Typed game events resolve the recipient's owned game. `game.released` uses its known release date; `game.sale.started` requires an identified live quote and regular price; `game.price.threshold_hit` requires an identified downward threshold crossing. Decimal strings, currency, market, platform, source and observation identity are validated. A conflicting replay is rejected. Historical purchase prices are not market quotes, and the core does not invent a price feed. User-protected titles remain valid public release labels.
 
 ## Routing security
