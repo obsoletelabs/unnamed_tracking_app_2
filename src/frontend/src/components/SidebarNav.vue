@@ -289,7 +289,7 @@ let notificationTimer: number | undefined;
 onMounted(() => {
   void refreshInboxCount();
   void refreshPluginExtensions({ background: true });
-  void refreshMediaNotifications();
+  void refreshMediaNotifications({ shared: true });
   notificationTimer = window.setInterval(
     refreshMediaNotifications,
     5 * 60 * 1000,
