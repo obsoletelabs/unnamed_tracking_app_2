@@ -193,6 +193,10 @@ When adding a field to movies, TV shows and anime, look for the shared piece fir
 
 The Movie, TV and Anime list endpoints return `score_ranks`: the position of every rated title for that user across the whole library, highest score first, ties broken by sort title, deleted titles left out. It is computed on the server so a rank does not depend on which page or search result the browser holds.
 
+## Game statistics scope
+
+Current-library game aggregates use `active_owned_games(user_id)` from `features/game_stats.py`: the caller's games whose `deleted_at` is unset. `GET /api/stats/overview` and `GET /api/stats/weekly-digest` apply it to every query, including the achievement and metadata-change joins, so a game in Trash contributes nothing until it is restored. `api/routes/media_stats.py` already applies the equivalent filter inline. New game statistics, such as day-level activity details, should use the shared predicate instead of restating it. Soft delete keeps a game's rows, so numbers derived from them return unchanged on restore; purge removes them. The user-facing explanation is in [Library totals and Trash](../user-guide/games.md#library-totals-and-trash).
+
 ## Game page settings
 
 What a game's page shows is stored in two places: the user's defaults as the `game_page` preference, and a game's own overrides in `games.page_settings` (JSONB). `core/page_settings.py` validates both, and `utils/gamePage.ts` merges them (defaults, then the game's overrides) and decides which tabs are visible, tucked into the more menu, or hidden. Only what differs from the defaults is stored on a game.

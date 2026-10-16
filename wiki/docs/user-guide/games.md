@@ -383,6 +383,33 @@ library, being purchased, achievements unlocked, metadata updated, a price or
 status change, and media added. Things that happened together are grouped. The
 timeline can be switched off in the page settings while the numbers stay.
 
+## Library totals and Trash
+
+Library-wide numbers describe the games currently in your library. A game in
+Trash is left out of Settings > Storage & usage (game count, favorites, total
+playtime, storage used, total spent, average rating, most played and every
+breakdown), the Home **This week** widget, and the game figures on the
+Statistics page. Another account's games are never included.
+
+Trashing a game does not erase what was recorded about it. Its playtime, last
+played time, achievements and metadata history stay with the game while it is
+in Trash, and restoring it returns exactly the same values to every total.
+Trashing and restoring are not counted as activity themselves. When Trash is
+purged after seven days, the game and those records are removed permanently.
+
+These totals are built from what is recorded on each active game, not from a
+separate activity log:
+
+- **Total playtime** is the playtime each platform last reported for a game, not
+  the time played during a particular period.
+- **Games played** in **This week** counts each active game once if its most
+  recent recorded play is within the last seven days, however often it was
+  played that week.
+- **Achievements unlocked** and **Metadata changes** in **This week** count the
+  unlock and change times recorded on active games during those seven days.
+- A game's own Stats tab and history timeline are unavailable while it is in
+  Trash and return unchanged when it is restored.
+
 ## The library at a glance
 
 The library has card, list and shelf layouts. Covers are small local copies
