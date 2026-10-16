@@ -310,6 +310,7 @@ class UploadLimitRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     max_upload_size_mb: int | None = Field(default=None, ge=1, le=2147483647, strict=True)
+    max_doc_size_mb: int | None = Field(default=None, ge=1, le=2147483647, strict=True)
     max_save_archive_size_mb: int | None = Field(default=None, ge=1, le=2147483647, strict=True)
     max_clip_size_mb: int | None = Field(default=None, ge=1, le=2147483647, strict=True)
     max_world_save_size_mb: int | None = Field(default=None, ge=1, le=2147483647, strict=True)
