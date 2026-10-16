@@ -17,7 +17,7 @@ The happy-path sequence is:
 7. Confirm Nginx is using the production configuration.
 8. Confirm the compiled frontend is served rather than the startup page.
 9. Confirm FastAPI's internal `/health` endpoint is reachable.
-10. Log in through Nginx and call `/api/auth/me`, exercising a database-backed API request through the production edge.
+10. Log in through Nginx and call `/api/auth/me`, exercising a database-backed API request through the production edge. The same session then lowers the image cap to 1 MB and checks that an oversized screenshot is rejected, that a 1.5 MB Word document still uploads to a game's Docs tab and downloads byte for byte as an `application/octet-stream` attachment with `nosniff`, and that the separate documents cap rejects it once lowered to 1 MB.
 11. Exercise the shutdown cleanup path.
 
 ## Controlled failures
