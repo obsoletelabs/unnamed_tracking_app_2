@@ -1,0 +1,118 @@
+/* Fields inside the shared full editors (EditorShell): labelled sections,
+   two-column grids that collapse on phones, and the current form controls.
+   Shape, type and color come from the presentation tokens; classic.css only
+   adds the few Rosefall cues tokens cannot express. Include it scoped. */
+.editor-section {
+  margin: 20px 0 8px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ui-faint);
+}
+.editor-section:first-child {
+  margin-top: 0;
+}
+.editor-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.editor-grid.four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+.full {
+  grid-column: 1 / -1;
+}
+.field > span {
+  font-size: var(--ui-font-small);
+  font-weight: 600;
+  color: var(--ui-dim);
+}
+.field input,
+.field select,
+.field textarea,
+.editor-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--ui-control-height);
+  padding: 8px 11px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-control);
+  background: var(--ui-surface);
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 0.875rem;
+  transition: border-color var(--ui-motion-fast) ease;
+}
+.field textarea {
+  min-height: 76px;
+  resize: vertical;
+  line-height: 1.5;
+}
+.field input:focus,
+.field select:focus,
+.field textarea:focus,
+.editor-input:focus {
+  outline: none;
+  border-color: var(--ui-accent-line);
+  box-shadow: 0 0 0 1px var(--ui-accent-line);
+}
+.field select:disabled {
+  opacity: 0.55;
+}
+.checkbox-field {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 6px 0;
+  color: var(--ui-text);
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+.checkbox-field input[type="checkbox"] {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin-top: 3px;
+  accent-color: var(--ui-accent);
+}
+.checkbox-field > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.checkbox-field small,
+.field-hint,
+.hint {
+  color: var(--ui-dim);
+  font-size: 0.78rem;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.hint {
+  margin: 0;
+}
+.editor-grid + .hint,
+.editor-grid + .editor-grid {
+  margin-top: 10px;
+}
+@media (max-width: 720px) {
+  .editor-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .editor-grid.four {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 380px) {
+  .editor-grid.four {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
