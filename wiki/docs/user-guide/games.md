@@ -215,7 +215,7 @@ or reporting a missing achievement. Use Back to return to the achievement's game
 
 ## Documents and plugins
 
-The core file list allows normal downloads. Plugins with an approved `documents.read` grant can receive only safe document DTOs and supported PDF/plain-text content; they never receive host paths. See [Plugins](plugins.md).
+A game's **Docs** tab takes files of any type and always offers them as normal downloads; see [Game Media and Files](game-media.md#docs). Plugins with an approved `documents.read` grant can receive only safe document DTOs and the content of supported previews (PDF, UTF-8 text, HTML as text, and inactive `.docx`, `.pptx`, `.odt` and `.odp` files within the preview limits); they never receive host paths. See [Plugins](plugins.md).
 
 ## Adding a game
 
