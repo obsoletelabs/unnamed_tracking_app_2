@@ -126,6 +126,17 @@ uses its contribution ID directly, so `id: reader-settings` renders at
 `/settings?section=reader-settings`. This is separate from manager configuration
 in Plugin Manager and separate from `/plugins/<plugin-id>/<page-id>`.
 
+Settings search and the command palette read the same registry as the Settings
+sidebar (`state/settingsRegistry.ts`). A `settings_sections` entry, or a
+`settings.sidebar` navigation entry with a `page_id`, is searchable by its
+`label` and shown with its area and group; nothing else in the document is
+indexed, including settings fields, defaults and secret values. Entries follow
+the same rules as the sidebar: `admin_only` and Administration placements are
+offered only to administrators, IDs that collide with a built-in section are
+ignored, and contributions leave the index as soon as the plugin is disabled,
+stopped, incompatible or uninstalled. Built-in sections declare their search
+keywords and directly reachable tabs in that registry.
+
 `sessions` and `admin-sessions` are reserved built-in section IDs. Enhance these
 pages using `page_replacements` with `page: sessions` or `page: admin-sessions`
 and a declared plugin `page_id`, rather than duplicate settings sections. Each
