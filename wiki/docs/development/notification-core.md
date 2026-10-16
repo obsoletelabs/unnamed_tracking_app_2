@@ -197,6 +197,11 @@ plugin's stored value. `DELETE` immediately retires core routing and attempts
 plugin secret cleanup. `plugin_cleanup_complete: false` means that cleanup could
 not be confirmed (for example after uninstall); routing remains retired. Never
 hand an earlier installation's credential handles to a replacement installation.
+The same applies when a package is replaced by another verified signing identity: the
+installation ID continues, so the installer retires the plugin's destination proof,
+consent, queued work and registrations in the replacement transaction
+(`features/plugin_identity_retirement.py`; see
+[plugin administration](../administration/plugins.md)).
 
 Administrator-only `PUT .../plugin-server-configuration/{provider_id}` configures
 declared server fields. Server changes invalidate affected destinations; users
