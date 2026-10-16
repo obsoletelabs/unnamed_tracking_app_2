@@ -1,4 +1,10 @@
-"""Acceptance acquisition stays attached to the host's current download boundary."""
+"""Acceptance acquisition stays attached to the host's current download boundary.
+
+This is a repository-level test of ``tools/check_plugin_repository_lifecycle.py``.
+It needs the complete checkout rather than the backend-only ``/app`` container
+layout, so it lives beside the tool and runs from the repository root with
+``src/backend`` importable. See the development wiki for the commands.
+"""
 
 import importlib
 from pathlib import Path
@@ -7,14 +13,17 @@ import pytest
 
 from src.api.routes.plugin_manager import acquisition
 
+# The acceptance runner is the sibling ``tools`` directory of this test package.
+TOOLS = Path(__file__).resolve().parents[1]
+
 
 @pytest.mark.asyncio
 async def test_acceptance_substitutes_owned_files_and_delegates_remote_downloads(
     tmp_path, monkeypatch
 ):
-    tools = Path(__file__).resolve().parents[3] / "tools"
-    monkeypatch.syspath_prepend(str(tools))
+    monkeypatch.syspath_prepend(str(TOOLS))
     acceptance = importlib.import_module("check_plugin_repository_lifecycle")
+    assert Path(acceptance.__file__).resolve() == TOOLS / "check_plugin_repository_lifecycle.py"
     remote_calls = []
 
     async def remote_download(url, *, json_document=False):
