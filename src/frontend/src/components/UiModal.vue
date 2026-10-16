@@ -1,3 +1,10 @@
+<script lang="ts">
+// Modals can close in any order (a page may unmount beneath a confirm), so
+// only the first to open saves the page's overflow and the last restores it.
+let openModals = 0;
+let savedOverflow = "";
+</script>
+
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, useId } from "vue";
 import AppIcon from "./AppIcon.vue";
@@ -17,9 +24,16 @@ const emit = defineEmits<{ close: [] }>();
 const dialog = ref<HTMLDialogElement | null>(null);
 const titleId = useId();
 let previousFocus: HTMLElement | null = null;
-let previousOverflow = "";
+let active = false;
 function dismiss() {
   if (props.dismissible) emit("close");
+}
+// Browsers may close a <dialog> despite a prevented cancel (e.g. a repeated
+// Escape); keep the component and its parent in step with what's on screen.
+function closed() {
+  if (!active || !dialog.value || dialog.value.open) return;
+  if (props.dismissible) emit("close");
+  else dialog.value.showModal();
 }
 function backdrop(event: MouseEvent) {
   if (event.target !== dialog.value || !dialog.value) return;
@@ -37,13 +51,17 @@ onMounted(() => {
     document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null;
-  previousOverflow = document.body.style.overflow;
-  document.body.style.overflow = "hidden";
+  if (openModals++ === 0) {
+    savedOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+  }
+  active = true;
   dialog.value?.showModal();
 });
 onBeforeUnmount(() => {
+  active = false;
   dialog.value?.close();
-  document.body.style.overflow = previousOverflow;
+  if (--openModals === 0) document.body.style.overflow = savedOverflow;
   if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
 });
 </script>
@@ -57,6 +75,7 @@ onBeforeUnmount(() => {
       :class="{ 'ui-modal-wide': size === 'wide' }"
       :aria-labelledby="titleId"
       @cancel.prevent="dismiss"
+      @close="closed"
       @click="backdrop"
       @keydown="containModalTab($event, dialog)"
     >
