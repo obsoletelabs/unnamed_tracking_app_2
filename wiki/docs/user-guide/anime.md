@@ -8,6 +8,10 @@ You can import a public AniList anime list into your anime library. The import i
 
 See the [AniList Import guide](anilist.md) for configuration, supported schedule options, update behavior, and scheduling details.
 
+## Editing
+
+Add and Edit use the shared tabbed dialog described in [Media libraries](media-libraries.md#the-add-and-edit-dialogs). The Details tab also holds the anime's format (TV, Movie, OVA…) and its AniList and MAL scores; seasons and episode progress stay on the anime's page.
+
 ## Library features shared with TV shows and anime
 
 Ranks, clickable genres, local pictures and the Add and Edit dialog work the same way here. See

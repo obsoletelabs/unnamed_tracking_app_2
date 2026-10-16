@@ -194,7 +194,14 @@ Until then, PRs remain available for review with current validation and screensh
   reselection works and object URLs are released. Artwork failures keep the
   saved game and retry on it without another create. Playtime beyond the stored
   INTEGER range is now a validation error rather than a database failure.
-- **Remaining K (#144, #149) and L–O:** approved; not implemented yet. The
+- **K media editors / 26–27:** issue #144, stacked on #143 (PR #171). Movie, TV and
+  anime editors share `MediaFormShell` on `EditorShell`: Basics, Details, Tracking,
+  Artwork and Links tabs, pinned actions, and the staged lookup above every tab.
+  Rewatches, dates, source, subratings, tags, countries, languages, age rating,
+  features, anime format and validated provider IDs travel in each type's existing
+  create/update request (no new endpoint or migration). Seasons, progress, title
+  protection and immutable identity are untouched.
+- **Remaining K (#149) and L–O:** approved; not implemented yet. The
   package details below describe intended work, not completed behavior.
 
 ### Issue-by-issue execution order
@@ -202,7 +209,8 @@ Until then, PRs remain available for review with current validation and screensh
 The owner requested one issue at a time, most complex first, on 15 October 2026.
 [Tracker #141](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/141)
 contains the ordered queue, dependencies and existing related follow-ups #125,
-#132 and #138–140. #142 is merged in #155; #143 is the active issue.
+#132 and #138–140. #142 is merged in #155; #143 is in review (PR #171) and #144 is
+stacked on it.
 
 All 29 untouched approved matrix rows are assigned exactly once:
 
