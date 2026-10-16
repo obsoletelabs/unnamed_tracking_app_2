@@ -10,7 +10,7 @@ The backend owns the application-facing API, authentication, compatibility and p
 
 Compose connects the backend and runtime through an internal-only network. PostgreSQL and the frontend remain on the normal application network; the runtime is not attached to it and is not published to the host.
 
-The frontend plugin manager calls /api/plugins for lifecycle state and /api/plugins/{id}/ui, /settings and /actions for the declarative plugin host. There is no browser-to-runtime connection.
+The frontend plugin manager calls /api/plugins for lifecycle state and /api/plugins/{id}/ui, /settings (read and save) and /actions for the declarative plugin host. There is no browser-to-runtime connection.
 
 ## Repository structure
 
