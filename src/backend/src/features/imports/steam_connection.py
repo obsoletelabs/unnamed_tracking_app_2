@@ -293,6 +293,25 @@ async def submit_guard(
     return connection_status(user)
 
 
+async def link_verified_identity(db: AsyncSession, user_id: UUID, steam_id: str) -> None:
+    """Save a Steam profile proven through OpenID for the legacy API-key connection.
+
+    OpenID proves identity only: imports still need the person's Web API key, and an
+    account sign-in (which reads private data) is never replaced by it.
+    """
+    user = await locked_user(db, user_id)
+    if user.steam_refresh_token:
+        raise SteamConnectionError(
+            "Manage the signed-in Steam account in Connections. "
+            "Disconnect it before using legacy API credentials.",
+            409,
+        )
+    await check_library_owner(db, user, steam_id)
+    user.steam_id = steam_id
+    user.steam_login_state = None
+    await db.commit()
+
+
 async def credentials(db: AsyncSession, user: User) -> tuple[str, str | steam.SteamSession]:
     """Renew expiring browser sessions, retaining the existing API-key alternative."""
     user = await locked_user(db, user.id)

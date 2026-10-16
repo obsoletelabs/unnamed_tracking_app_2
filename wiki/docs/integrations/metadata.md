@@ -248,6 +248,17 @@ time it is used. A legacy credential save rechecks the connection after each
 Steam request; delayed results cannot undo a disconnect or overwrite a newer
 sign-in.
 
+**Verify profile with Steam** (in the same legacy section) signs you in on Steam's
+own page using Steam OpenID and fills in the profile ID Steam vouches for, instead
+of trusting a typed ID. OpenID proves identity only: it gives no access to private
+data, imports still need your Web API key and a public profile, and an existing
+Steam sign-in or a library imported from another Steam account is never replaced.
+Each attempt is bound to your signed browser session and account, expires after
+five minutes and is cleared when Steam's answer arrives; Steam re-checks its own
+signature before the profile is saved. This is not OAuth: Valve only issues OAuth clients for Steam
+Cloud/Workshop integrations, so account sign-in remains the way to import private
+progress.
+
 The Steam connection accepts a full `steamcommunity.com/id/...` or
 `steamcommunity.com/profiles/...` link, a vanity name, SteamID64, SteamID2
 (`STEAM_0:0:11101`) or SteamID3 (`[U:1:22202]`). Numeric identifiers are converted

@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
-import { RouterLink } from "vue-router";
+import { RouterLink, useRoute, useRouter } from "vue-router";
 import ConnectionManageDialog from "./ConnectionManageDialog.vue";
 import PluginConnectionDialog from "./PluginConnectionDialog.vue";
 import SteamConnectionDialog from "./SteamConnectionDialog.vue";
 import {
+  CONNECTION_BY_KEY,
   CONNECTIONS,
   isConnectionConnected,
+  steamOpenIdOutcome,
   useConnections,
 } from "../../composables/useConnections";
 import type { ConnectionConfig } from "../../composables/useConnections";
@@ -128,7 +130,23 @@ function closePlugin() {
   void loadPluginStatus();
 }
 
-onMounted(() => void state.loadCredentials());
+const route = useRoute();
+const router = useRouter();
+// Steam sends people back here after "Verify profile with Steam".
+function showSteamOpenIdOutcome() {
+  const outcome = steamOpenIdOutcome(route.query.steam_openid);
+  if (!outcome) return;
+  managing.value = CONNECTION_BY_KEY.Steam;
+  state.cardError.Steam = outcome.error ? outcome.message : null;
+  state.cardInfo.Steam = outcome.error ? null : outcome.message;
+  const query = { ...route.query };
+  delete query.steam_openid;
+  void router.replace({ query });
+}
+onMounted(() => {
+  void state.loadCredentials();
+  showSteamOpenIdOutcome();
+});
 watch(pluginConnections, () => void loadPluginStatus(), { immediate: true });
 </script>
 

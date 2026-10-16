@@ -142,10 +142,24 @@ async function disconnect() {
           :is="connection.signIn ? 'details' : 'div'"
           v-if="status?.connection_method !== 'account'"
           class="credential-fields"
+          :open="state.cardError[key] || state.cardInfo[key] ? true : undefined"
         >
           <summary v-if="connection.signIn">
             Legacy API credentials (public profiles)
           </summary>
+          <div v-if="key === 'Steam'" class="openid">
+            <a
+              class="ui-btn ui-btn-secondary"
+              href="/api/settings/steam/openid/start"
+              >Verify profile with Steam</a
+            >
+            <p class="hint">
+              Sign in on Steam's own page to fill in your profile ID. This
+              proves the profile is yours; imports still need your Web API key
+              and a public profile. Use Steam sign-in above for private
+              progress.
+            </p>
+          </div>
           <form
             class="connection-form"
             @submit.prevent="state.saveConnection(connection)"
@@ -274,6 +288,13 @@ async function disconnect() {
   align-self: flex-start;
   font-size: 0.85rem;
   color: var(--ui-accent);
+}
+.openid {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 12px 0;
 }
 .connection-form {
   display: flex;

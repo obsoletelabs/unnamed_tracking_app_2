@@ -118,6 +118,40 @@ export const CONNECTIONS: ConnectionConfig[] = [
   },
 ];
 
+const STEAM_OPENID_OUTCOMES: Record<
+  string,
+  { message: string; error: boolean }
+> = {
+  verified: {
+    message:
+      "Steam confirmed your profile. Add your Web API key to import your public library.",
+    error: false,
+  },
+  cancelled: { message: "Steam sign-in was cancelled.", error: true },
+  expired: {
+    message: "That Steam sign-in expired. Start it again.",
+    error: true,
+  },
+  conflict: {
+    message:
+      "This Steam profile can't replace your current Steam sign-in or the account your Steam imports belong to.",
+    error: true,
+  },
+  failed: {
+    message: "Steam did not confirm the sign-in. Try again.",
+    error: true,
+  },
+};
+
+// The result the backend reports after "Verify profile with Steam".
+export function steamOpenIdOutcome(
+  value: unknown,
+): { message: string; error: boolean } | null {
+  return typeof value === "string"
+    ? (STEAM_OPENID_OUTCOMES[value] ?? null)
+    : null;
+}
+
 export const CONNECTION_BY_KEY: Record<string, ConnectionConfig> =
   Object.fromEntries(
     CONNECTIONS.map((connection) => [connection.key, connection]),
