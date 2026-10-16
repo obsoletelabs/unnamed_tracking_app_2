@@ -178,8 +178,9 @@ Movies, TV shows and anime, and game collections and media lists, were near copi
 | --- | --- |
 | `MediaDetailHero`, `MediaDetailTabs`, `ExpandableDescription` | The Movie, TV and Anime detail pages. |
 | `MediaFormShell`, `MediaMetadataSearch`, `useMetadataSearch` | The three Add and Edit dialogs. |
-| `services/mediaApi.ts` | The movie, TV and anime services (list, get, create, update, delete, trash). |
+| `services/mediaApi.ts` | The movie, TV and anime services (list, get, create, update, delete, trash, empty trash). |
 | `api/routes/media_common.py` | The movie, TV and anime routes (library list, soft delete, trash, restore, purge, title search). |
+| `features/trash/media_titles.py` | Empty trash and opt-in retention for movies, TV shows and anime, called by their routes and by the existing trash sweep. |
 | `CollectionTile`, `useCardOrder` | The Collections and Lists overview pages. |
 | `CollectionDetailHeader`, `CollectionItemTile`, `CollectionAddDialog`, `useReorderGrid` | The collection and list detail pages. |
 | `GameMediaPanel`, `MediaTile`, `MediaEditDialog` | Screenshots, Clips, Soundtrack and Docs. |
