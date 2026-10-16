@@ -176,7 +176,9 @@ previous snapshot or imply completion.
 Refreshing achievements can advance a Backlog game, but does not establish
 ownership of a Wishlist game. Opening the achievements tab only reads saved
 data; it never changes status. Steam's deferred achievement batches follow the
-same rule, so a game already marked Played stays Played. Optional store plugins
+same rule, so a game already marked Played stays Played. When **Sync now** in
+Settings defers achievements, it saves Steam's playtime first and waits for the
+game's achievement batch to choose between Played and Mastered. Optional store plugins
 using the public game-import operation share the host's ownership/playtime policy.
 
 Provider settings show each source's active library game count and the time of

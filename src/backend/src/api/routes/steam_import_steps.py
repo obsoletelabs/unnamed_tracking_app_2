@@ -47,7 +47,8 @@ class EnrichRequest(BaseModel):
 
 
 class AchievementsRequest(EnrichRequest):
-    # Accepted for older clients; current locked status alone determines eligibility.
+    # Games whose library sync deferred progression to this batch; their playtime,
+    # saved from Steam by that sync, counts. Locked status still decides eligibility.
     status_game_ids: list[UUID] = Field(default_factory=list, max_length=25)
 
 
@@ -88,13 +89,14 @@ async def import_achievements(
         await steam_connection.recheck(db, current_user.id, steam_id, api_key)
     except steam_connection.SteamConnectionError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
-    return await _save_achievement_batch(db, current_user.id, fetched)
+    return await _save_achievement_batch(db, current_user.id, fetched, set(body.status_game_ids))
 
 
 async def _save_achievement_batch(
     db: AsyncSession,
     user_id: UUID,
     fetched: dict[UUID, tuple[str | None, SteamAchievementData]],
+    deferred_status: set[UUID],
 ) -> dict[str, Any]:
     """Apply snapshots only to identities still owned when the provider responds."""
     games = (
@@ -117,18 +119,21 @@ async def _save_achievement_batch(
         if snapshot is None or snapshot[0] != game.external_id:
             continue
         schema, unlocked, descriptions = snapshot[1]
+        total = unlocked_count = 0
         if unlocked is None:
             unavailable.append(game.title)
-            continue
-        rows = steam_achievement_rows(schema, unlocked, None, descriptions)
-        if schema:
+        elif schema:
+            rows = steam_achievement_rows(schema, unlocked, None, descriptions)
             await _replace_achievements(db, game.id, "Steam", rows)
             synced += len(rows)
-            apply_provider_progress(
-                game,
-                total_achievements=len(rows),
-                unlocked_achievements=sum(1 for row in rows if row["unlocked"]),
-            )
+            total = len(rows)
+            unlocked_count = sum(1 for row in rows if row["unlocked"])
+        apply_provider_progress(
+            game,
+            playtime_seconds=game.playtime_seconds if game.id in deferred_status else None,
+            total_achievements=total,
+            unlocked_achievements=unlocked_count,
+        )
     await db.commit()
     return {"achievements_synced": synced, "achievements_unavailable": unavailable}
 
@@ -154,19 +159,22 @@ async def import_wishlist(
     index = await LibraryIndex.load(db, current_user.id, "Steam")
     game_ids: list[str] = []
     for app_id in app_ids:
-        game, created = await _get_or_create_game(
+        placeholder = f"{_PLACEHOLDER}{app_id}"
+        if index.find(placeholder, str(app_id)) is not None:
+            # Already saved: a re-import must not rename it back to the placeholder.
+            continue
+        game, _created = await _get_or_create_game(
             db,
             current_user.id,
-            f"{_PLACEHOLDER}{app_id}",
+            placeholder,
             "Steam",
             external_id=str(app_id),
             index=index,
         )
-        if created:
-            game.status = GameStatus.WISHLIST
-            _add_source_tag_and_collection(game, "Steam")
-            await db.flush()
-            game_ids.append(str(game.id))
+        game.status = GameStatus.WISHLIST
+        _add_source_tag_and_collection(game, "Steam")
+        await db.flush()
+        game_ids.append(str(game.id))
     await db.commit()
     return {
         "enabled": True,

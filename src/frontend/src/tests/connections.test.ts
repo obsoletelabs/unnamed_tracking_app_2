@@ -12,8 +12,10 @@ const psn = vi.hoisted(() => ({
 }));
 vi.mock("../services/settings", () => settings);
 vi.mock("../services/psn", () => psn);
-vi.mock("../services/librarySync", () => ({ syncLibrary: vi.fn() }));
+const librarySync = vi.hoisted(() => ({ syncLibrary: vi.fn() }));
+vi.mock("../services/librarySync", () => librarySync);
 
+import { tasks } from "../state/taskProgress";
 import {
   CONNECTIONS,
   CONNECTION_BY_KEY,
@@ -114,5 +116,42 @@ describe("useConnections lifecycle", () => {
     expect(state.psnStatus.value.connected).toBe(false);
     // the Connections row reloads so it stops reporting a live account
     expect(settings.fetchProviderCredentials).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("library sync summary", () => {
+  it("names every Steam import step that did not finish", async () => {
+    settings.fetchProviderCredentials.mockResolvedValue({});
+    librarySync.syncLibrary.mockResolvedValue({
+      games_added: 2,
+      games_updated: 1,
+      achievements_synced: 7,
+      games: [],
+      wishlist_added: 0,
+      wishlist_failed: true,
+      wishlist_error: "Steam rejected the API key.",
+      enrich_failed: 3,
+      achievements_failed: 0,
+      achievements_unavailable: [],
+    });
+    await useConnections().handleSyncLibrary("steam");
+    expect(tasks.at(-1)?.detail).toBe(
+      "2 added, 1 updated, 7 achievements; wishlist not imported (Steam rejected the API key.); store details not filled in for 3 games",
+    );
+  });
+
+  it("counts wishlisted games when the import succeeds", async () => {
+    settings.fetchProviderCredentials.mockResolvedValue({});
+    librarySync.syncLibrary.mockResolvedValue({
+      games_added: 0,
+      games_updated: 4,
+      achievements_synced: 0,
+      games: [],
+      wishlist_added: 2,
+    });
+    await useConnections().handleSyncLibrary("steam");
+    expect(tasks.at(-1)?.detail).toBe(
+      "0 added, 4 updated, 2 wishlisted, 0 achievements",
+    );
   });
 });

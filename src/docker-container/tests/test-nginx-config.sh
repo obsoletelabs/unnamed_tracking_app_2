@@ -66,6 +66,29 @@ rendered="$work/https-redirect.conf"
 NGINX_TLS_ENABLED=true NGINX_TLS_REDIRECT_HTTP=true NGINX_TLS_CERTIFICATE="$work/tls/cert.pem" NGINX_TLS_PRIVATE_KEY="$work/tls/key.pem" "$render" /etc/nginx/readytlsredirect.conf "$rendered"
 grep -q 'listen 443 ssl;' "$rendered"
 grep -q 'return 301 https://$host$request_uri;' "$rendered"
+grep -q 'if ($uri = /api/plugins/runtime/gateway) { set $redirect_to_https no; }' "$rendered"
+nginx -t -c "$rendered"
+
+rendered="$work/https-redirect-port.conf"
+NGINX_TLS_ENABLED=true NGINX_TLS_REDIRECT_HTTP=true NGINX_TLS_REDIRECT_PORT=08443 NGINX_TLS_CERTIFICATE="$work/tls/cert.pem" NGINX_TLS_PRIVATE_KEY="$work/tls/key.pem" "$render" /etc/nginx/readytlsredirect.conf "$rendered"
+grep -q 'return 301 https://$host:8443$request_uri;' "$rendered"
+nginx -t -c "$rendered"
+for port in 0 65536 123456 8443x '443;include /tmp/evil;'; do
+  if NGINX_TLS_REDIRECT_PORT="$port" "$render" /etc/nginx/ready.conf "$work/invalid-port.conf"; then
+    echo "invalid redirect port $port unexpectedly succeeded" >&2
+    exit 1
+  fi
+done
+
+rendered="$work/forwarded-proto.conf"
+NGINX_REALIP_TRUSTED_PROXIES="10.0.0.0/8 unix:" "$render" /etc/nginx/ready.conf "$rendered"
+grep -q 'geo $realip_remote_addr $from_trusted_proxy {' "$rendered"
+grep -q '        10.0.0.0/8 1;' "$rendered"
+if grep -q 'unix: 1;' "$rendered"; then echo "unix: is not a geo address" >&2; exit 1; fi
+if grep -q 'X-Forwarded-Proto $scheme' "$rendered"; then
+  echo "untrusted X-Forwarded-Proto handling regressed" >&2
+  exit 1
+fi
 nginx -t -c "$rendered"
 
 rm -rf /run/unnamed-tracking/tls
@@ -142,8 +165,9 @@ fi
 grep -q 'X-Content-Type-Options "nosniff"' "$rendered"
 grep -q 'Referrer-Policy "strict-origin-when-cross-origin"' "$rendered"
 grep -q 'X-Frame-Options "SAMEORIGIN"' "$rendered"
-grep -q 'X-Forwarded-Proto $scheme' "$rendered"
-grep -q 'proxy_read_timeout 60s' "$rendered"
+grep -q 'X-Forwarded-Proto $forwarded_proto' "$rendered"
+grep -q 'proxy_read_timeout 600s' "$rendered"
+grep -q 'proxy_request_buffering off' "$rendered"
 
 echo "production Nginx/TLS configuration tests passed"
 PYTHONPATH=/app STARTUP_MODE=testing \

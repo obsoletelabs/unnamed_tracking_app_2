@@ -139,4 +139,44 @@ describe("Steam import steps", () => {
       true,
     );
   });
+
+  it("reports Steam's reason instead of the raw response", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ detail: "Steam rejected the API key." }),
+            { status: 502, statusText: "Bad Gateway" },
+          ),
+      ),
+    );
+    await expect(syncLibrary("steam")).rejects.toThrow(
+      /^Steam rejected the API key\.$/,
+    );
+  });
+
+  it("keeps the reason a wishlist import failed", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.includes("/steam?"))
+          return new Response(
+            JSON.stringify({ games_added: 0, games_updated: 0, games: [] }),
+          );
+        return new Response(
+          JSON.stringify({
+            detail:
+              "Steam rejected this session. Reconnect Steam in Connections.",
+          }),
+          { status: 502 },
+        );
+      }),
+    );
+    const result = await syncLibrary("steam");
+    expect(result.wishlist_failed).toBe(true);
+    expect(result.wishlist_error).toBe(
+      "Steam rejected this session. Reconnect Steam in Connections.",
+    );
+  });
 });

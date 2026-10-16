@@ -38,7 +38,12 @@ fail_startup() {
   write_status "$phase" "failed" "$database" "$migrations" "$backend" "$frontend" "$message"
   log "Detailed diagnostics remain available in container log output and /run/unnamed-tracking/"
   log "Entering failure hold-loop to keep Nginx alive"
-  while :; do sleep 3600; done
+  hold_forever
+}
+
+# sh runs traps only after a foreground command returns; wait returns on a signal.
+hold_forever() {
+  while :; do sleep 3600 & wait "$!"; done
 }
 
 cleanup() {
@@ -217,9 +222,15 @@ if ! nginx -s reload; then
 fi
 
 attempt=1
+# Probe HTTPS directly when enabled: an HTTP redirect may name a published port
+# that only exists outside the container.
+frontend_probe_url="http://127.0.0.1/"
+case "${NGINX_TLS_ENABLED:-false}" in
+  true|TRUE|1|yes|YES) frontend_probe_url="https://127.0.0.1/" ;;
+esac
 # Reload is asynchronous: startup workers can still answer HTTP 200. Publish
 # READY only after a request returns the actual compiled application document.
-while ! { curl -kfsSL http://127.0.0.1/ -o "$STATUS_DIR/frontend-probe.html" &&
+while ! { curl -kfsSL "$frontend_probe_url" -o "$STATUS_DIR/frontend-probe.html" &&
   cmp -s /srv/frontend/index.html "$STATUS_DIR/frontend-probe.html"; } 2>/dev/null; do
   log "Frontend not ready (attempt $attempt)"
   if [ "$attempt" -ge 15 ]; then fail_startup "FRONTEND_FAILED" "Nginx could not serve the production frontend. See Docker stderr for Nginx diagnostics." "ready" "ready" "ready" "failed"; fi
@@ -236,7 +247,7 @@ while :; do
     log "Backend crashed after startup"
     printf '%s\n' "The backend stopped unexpectedly. See /run/unnamed-tracking/backend.log for detailed backend output." > "$DETAILS_FILE"
     write_status "BACKEND_CRASHED" "failed" "ready" "ready" "failed" "ready" "The backend stopped unexpectedly. Detailed backend output is retained at /run/unnamed-tracking/backend.log."
-    while :; do sleep 3600; done
+    hold_forever
   fi
   sleep 2
 done

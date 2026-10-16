@@ -302,12 +302,20 @@ export function useConnections() {
       const unavailable =
         (result.achievements_unavailable?.length ?? 0) +
         (result.achievements_failed ?? 0);
-      const warning = unavailable
-        ? `; achievement progress unavailable for ${unavailable} games (stored progress kept)`
+      const warnings = [
+        unavailable &&
+          `achievement progress unavailable for ${unavailable} games (stored progress kept)`,
+        result.wishlist_failed &&
+          `wishlist not imported${result.wishlist_error ? ` (${result.wishlist_error})` : ""}`,
+        result.enrich_failed &&
+          `store details not filled in for ${result.enrich_failed} games`,
+      ].filter((warning): warning is string => !!warning);
+      const wishlisted = result.wishlist_added
+        ? `, ${result.wishlist_added} wishlisted`
         : "";
       completeTask(
         taskId,
-        `${result.games_added} added, ${result.games_updated} updated, ${result.achievements_synced} achievements${warning}`,
+        `${result.games_added} added, ${result.games_updated} updated${wishlisted}, ${result.achievements_synced} achievements${warnings.map((warning) => `; ${warning}`).join("")}`,
       );
       // the request itself wasn't live, but revealing the touched titles one
       // at a time still reads as a real "feed" once the result is in

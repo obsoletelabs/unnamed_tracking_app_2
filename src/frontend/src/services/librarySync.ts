@@ -1,3 +1,5 @@
+import { providerRequestError } from "./apiError";
+
 export interface LibrarySyncResult {
   games_added: number;
   games_updated: number;
@@ -11,6 +13,7 @@ export interface LibrarySyncResult {
   // artwork could not be filled in (they keep what they have)
   wishlist_added?: number;
   wishlist_failed?: boolean;
+  wishlist_error?: string;
   enrich_failed?: number;
   achievements_failed?: number;
   achievements_unavailable?: string[];
@@ -41,12 +44,7 @@ export async function syncLibrary(
     method: "POST",
     credentials: "include",
   });
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(
-      `Library sync failed: ${response.status} ${response.statusText} ${message}`,
-    );
-  }
+  if (!response.ok) throw await providerRequestError(response);
   const result: SteamImportResult = await response.json();
   if (provider === "steam") await finishSteamImport(result);
   return result;
@@ -65,8 +63,7 @@ async function postSteamStep<T>(path: string, body?: unknown): Promise<T> {
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!response.ok)
-    throw new Error(`Steam import step failed: ${response.status}`);
+  if (!response.ok) throw await providerRequestError(response);
   return (await response.json()) as T;
 }
 
@@ -99,8 +96,9 @@ async function finishSteamImport(result: SteamImportResult): Promise<void> {
     );
     result.wishlist_added = wishlist.added;
     ids.push(...wishlist.game_ids);
-  } catch {
+  } catch (e) {
     result.wishlist_failed = true;
+    result.wishlist_error = e instanceof Error ? e.message : undefined;
   }
   let failed = 0;
   for (let i = 0; i < ids.length; i += ENRICH_BATCH) {

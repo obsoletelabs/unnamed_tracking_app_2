@@ -56,7 +56,7 @@ _PROCESS_STARTED_AT = int(time.time())
 
 # provider key -> [(payload field name, User column name, is Fernet-encrypted)]
 PROVIDER_FIELD_MAP: dict[str, list[tuple[str, str, bool]]] = {
-    "Steam": [("steam_id", "steam_id", False), ("api_key", "steam_api_key", False)],
+    "Steam": [("steam_id", "steam_id", False), ("api_key", "steam_api_key", True)],
     "RetroAchievements": [
         ("api_key", "retroachievements_api_key", False),
         ("username", "retroachievements_username", False),
@@ -80,21 +80,24 @@ _ProviderClientError = (
 )
 
 
+def _validate_steam(steam_id_input: str, api_key: str) -> dict:
+    """Resolve the profile and read its library with candidate legacy credentials,
+    before anything is saved. Raises SteamLibraryError on failure."""
+    steam_id = steam.resolve_steam_id(steam_id_input, api_key)
+    games = steam.get_owned_games(steam_id, api_key)
+    summary = steam.get_player_summary(steam_id, api_key)
+    return {
+        "steam_id": steam_id,
+        "games_found": len(games),
+        "persona_name": summary.get("personaname"),
+        "avatar_url": summary.get("avatarfull"),
+    }
+
+
 def _validate_provider(provider: str, user: User) -> dict:
     """Builds the right client for `provider` from the user's stored
     credentials and calls its `.validate()`. Raises one of
     `_ProviderClientError` on failure."""
-    if provider == "Steam":
-        if not user.steam_id or not user.steam_api_key:
-            raise SteamLibraryError("Steam ID and API key are both required.")
-        games = steam.get_owned_games(user.steam_id, user.steam_api_key)
-        summary = steam.get_player_summary(user.steam_id, user.steam_api_key)
-        return {
-            "validated": True,
-            "games_found": len(games),
-            "persona_name": summary.get("personaname"),
-            "avatar_url": summary.get("avatarfull"),
-        }
     if provider == "RetroAchievements":
         client = RetroAchievementsClient(user.retroachievements_api_key or "")
         result = client.validate()
@@ -494,56 +497,44 @@ async def _save_steam_credentials(
         if steam.looks_like_api_key(steam_id_input) and not steam.looks_like_api_key(api_key_input):
             steam_id_input, api_key_input = api_key_input, steam_id_input
 
-    if steam_id_input:
-        steam_id_input = await _prepare_bound_steam_id(
-            db, current_user, steam_id_input, api_key_input or current_user.steam_api_key or ""
-        )
-        current_user.steam_id = steam_id_input
-    if api_key_input:
-        current_user.steam_api_key = api_key_input
-    current_user.steam_login_state = None
-    await db.commit()
-
-    if not current_user.steam_id or not current_user.steam_api_key:
-        missing = "profile ID" if not current_user.steam_id else "API key"
+    steam_id = steam_id_input or current_user.steam_id
+    api_key = api_key_input or steam_connection.stored_api_key(current_user)
+    if not steam_id or not api_key:
+        # One field cannot be checked yet; keep it for the second pass.
+        if steam_id_input:
+            current_user.steam_id = await _prepare_bound_steam_id(
+                db, current_user, steam_id_input, api_key or ""
+            )
+        steam_connection.store_api_key(current_user, api_key)
+        current_user.steam_login_state = None
+        await db.commit()
+        missing = "profile ID" if not steam_id else "API key"
         return {
             "provider": provider,
             "status": "saved",
             "detail": f"Saved: now add your {missing} to connect.",
         }
 
+    # Check the credentials before saving them, so a rejected key never replaces
+    # a working one or reports Steam as connected. Release the account lock first.
     previous = _steam_save_state(current_user)
+    await db.commit()
     try:
-        resolved = await asyncio.to_thread(
-            steam.resolve_steam_id, current_user.steam_id, current_user.steam_api_key
-        )
+        result = await asyncio.to_thread(_validate_steam, steam_id, api_key)
     except SteamLibraryError as exc:
         return {"provider": provider, "status": "error", "detail": str(exc)}
     current_user = await _recheck_steam_save(db, current_user.id, previous)
     try:
-        await steam_connection.check_library_owner(db, current_user, resolved)
+        await steam_connection.check_library_owner(db, current_user, result["steam_id"])
     except steam_connection.SteamConnectionError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
-    current_user.steam_id = resolved
-    # Release the account lock before another provider request.
+    current_user.steam_id = result["steam_id"]
+    steam_connection.store_api_key(current_user, api_key)
+    current_user.steam_login_state = None
+    current_user.steam_persona_name = result["persona_name"]
+    current_user.steam_avatar_url = result["avatar_url"]
     await db.commit()
-
-    previous = _steam_save_state(current_user)
-    try:
-        result = await asyncio.to_thread(_validate_provider, provider, current_user)
-    except _ProviderClientError as exc:
-        return {"provider": provider, "status": "error", "detail": str(exc)}
-    current_user = await _recheck_steam_save(db, current_user.id, previous)
-    connected = result.get("validated", True)
-    if connected:
-        current_user.steam_persona_name = result.get("persona_name")
-        current_user.steam_avatar_url = result.get("avatar_url")
-        await db.commit()
-    return {
-        "provider": provider,
-        "status": "connected" if connected else "saved",
-        "detail": None,
-    }
+    return {"provider": provider, "status": "connected", "detail": None}
 
 
 @router.put("/provider-credentials/{provider}")

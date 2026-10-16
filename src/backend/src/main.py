@@ -10,6 +10,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 
+from src.api.request_bodies import AnonymousBodyLimitMiddleware
 from src.api.routes import (
     achievement_icons,
     anime,
@@ -97,6 +98,8 @@ app.add_middleware(
 
 # The anime list alone is several MB of JSON; it compresses roughly tenfold.
 app.add_middleware(GZipMiddleware, minimum_size=1024)
+# Outermost, so an anonymous oversized body is refused before anything reads it.
+app.add_middleware(AnonymousBodyLimitMiddleware)
 
 # Pydantic's default 422 body echoes what was submitted (`input`, plus the
 # raw values in `ctx`), which puts plaintext passwords, tokens and API keys

@@ -56,21 +56,24 @@ async def test_steam_credentials_normalize_and_preserve_blank_fields(
 ):
     client, db, user = credentials
     user.steam_id, user.steam_api_key = existing_id, existing_key
-    resolver = Mock(return_value="76561198000000001")
     validator = Mock(
-        return_value={"validated": True, "persona_name": "Player", "avatar_url": "image"}
+        return_value={
+            "steam_id": "76561198000000001",
+            "persona_name": "Player",
+            "avatar_url": "image",
+        }
     )
-    monkeypatch.setattr(settings_routes.steam, "resolve_steam_id", resolver)
-    monkeypatch.setattr(settings_routes, "_validate_provider", validator)
+    monkeypatch.setattr(settings_routes, "_validate_steam", validator)
     response = await client.put("/api/settings/provider-credentials/Steam", json={"fields": fields})
     assert response.status_code == 200, response.text
     assert response.json() == {"provider": "Steam", "status": "connected", "detail": None}
-    resolver.assert_called_once_with("custom-profile", "a" * 32)
-    validator.assert_called_once_with("Steam", user)
+    validator.assert_called_once_with("custom-profile", "a" * 32)
     assert user.steam_id == "76561198000000001"
-    assert user.steam_api_key == "a" * 32
+    # Saved keys are encrypted at rest, including a key saved before encryption.
+    assert user.steam_api_key != "a" * 32
+    assert decrypt_secret(user.steam_api_key) == "a" * 32
     assert (user.steam_persona_name, user.steam_avatar_url) == ("Player", "image")
-    assert db.commit.await_count == 3
+    assert db.commit.await_count == 2
 
 
 async def test_incomplete_steam_credentials_are_saved_without_external_validation(
@@ -78,7 +81,7 @@ async def test_incomplete_steam_credentials_are_saved_without_external_validatio
 ):
     client, db, user = credentials
     validator = Mock(side_effect=AssertionError("Incomplete credentials must not reach a provider"))
-    monkeypatch.setattr(settings_routes, "_validate_provider", validator)
+    monkeypatch.setattr(settings_routes, "_validate_steam", validator)
     response = await client.put(
         "/api/settings/provider-credentials/Steam", json={"fields": {"steam_id": "profile"}}
     )
@@ -92,19 +95,32 @@ async def test_incomplete_steam_credentials_are_saved_without_external_validatio
     db.commit.assert_awaited_once()
 
 
-async def test_steam_resolution_failure_keeps_credentials_and_reports_error(
-    credentials, monkeypatch
-):
-    client, db, user = credentials
+async def test_lone_api_key_is_encrypted_until_a_profile_is_added(credentials, monkeypatch):
+    client, _db, user = credentials
     monkeypatch.setattr(
-        settings_routes.steam, "resolve_steam_id", Mock(side_effect=SteamLibraryError("Not found"))
+        settings_routes, "_validate_steam", Mock(side_effect=AssertionError("Not checked yet"))
+    )
+    response = await client.put(
+        "/api/settings/provider-credentials/Steam", json={"fields": {"api_key": "b" * 32}}
+    )
+    assert response.json()["detail"] == "Saved: now add your profile ID to connect."
+    assert decrypt_secret(user.steam_api_key) == "b" * 32
+
+
+@pytest.mark.parametrize("existing_key", [None, "a" * 32])
+async def test_rejected_steam_credentials_are_not_saved(credentials, monkeypatch, existing_key):
+    client, db, user = credentials
+    user.steam_id, user.steam_api_key = "76561198000000001", existing_key
+    monkeypatch.setattr(
+        settings_routes, "_validate_steam", Mock(side_effect=SteamLibraryError("Not found"))
     )
     response = await client.put(
         "/api/settings/provider-credentials/Steam",
-        json={"fields": {"steam_id": "profile", "api_key": "a" * 32}},
+        json={"fields": {"steam_id": "profile", "api_key": "b" * 32}},
     )
     assert response.json() == {"provider": "Steam", "status": "error", "detail": "Not found"}
-    assert (user.steam_id, user.steam_api_key) == ("profile", "a" * 32)
+    # A rejected key never replaces the saved connection or reads as configured.
+    assert (user.steam_id, user.steam_api_key) == ("76561198000000001", existing_key)
     db.commit.assert_awaited_once()
 
 

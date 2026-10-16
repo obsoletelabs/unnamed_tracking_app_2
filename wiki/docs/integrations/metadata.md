@@ -239,9 +239,14 @@ polling after closing the dialog, and layout at 390 and 1440 pixels.
 Existing Web API keys continue to work for public-profile imports. The optional
 legacy form remains under **Metadata/API → Steam → Legacy API credentials**.
 Account sign-in replaces this legacy connection; disconnect it in Connections
-before configuring a legacy key again. A legacy credential save rechecks the
-connection after each Steam request; delayed results cannot undo a disconnect
-or overwrite a newer sign-in.
+before configuring a legacy key again. Saving both the profile and the key first
+checks them with Steam (profile lookup, library and player summary); a rejected
+key is not saved and the previous connection stays as it was. Saving only one of
+the two keeps it until the other is added. The key is encrypted at rest with the
+deployment's `SECRET_KEY`; a key saved by an earlier version is encrypted the next
+time it is used. A legacy credential save rechecks the connection after each
+Steam request; delayed results cannot undo a disconnect or overwrite a newer
+sign-in.
 
 The Steam connection accepts a full `steamcommunity.com/id/...` or
 `steamcommunity.com/profiles/...` link, a vanity name, SteamID64, SteamID2
@@ -278,10 +283,11 @@ and `status_game_ids` for the subsequent authenticated
 `/api/library-sync/steam/achievements` requests. Each request accepts up to 25
 game IDs and rechecks ownership, source, deletion and provider identity before
 saving. The application's client sends five games per request.
-The legacy `status_game_ids` field remains accepted for older clients, but cannot
-override this policy: eligibility uses the current locked row, regardless of
-whether the client supplies that hint. A previously Played game does not settle
-to Mastered in a later batch. Achievement GET routes remain read-only.
+`status_game_ids` lists the games whose sync deferred status progression to the
+batch; for those, the playtime that sync saved from Steam counts alongside their
+achievements, so a played game with every achievement unlocked becomes Mastered.
+The field cannot override eligibility: it uses the current locked row, and a
+previously Played game does not settle to Mastered in a later batch. Achievement GET routes remain read-only.
 
 ![Steam import keeps saved games when achievement progress is unavailable](../assets/steam-batches/connections-390.png)
 

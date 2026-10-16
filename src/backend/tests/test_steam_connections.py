@@ -162,6 +162,33 @@ async def test_expired_attempt_and_rapid_poll_do_not_reach_steam(actors, monkeyp
     provider.assert_called_once()
 
 
+async def test_guard_code_is_not_paced_like_automatic_polls(actors, monkeypatch):
+    identities, clock = actors
+    attempt = await start_attempt(identities[0], clock)
+    monkeypatch.setattr(connection, "_poll_provider", Mock(return_value=({}, None)))
+    guard = Mock()
+    monkeypatch.setattr(connection, "_guard_provider", guard)
+    async with SessionLocal() as db:
+        # The dialog keeps polling while the person types the code.
+        await connection.poll(db, identities[0], attempt)
+        await connection.submit_guard(db, identities[0], attempt, "ABCDE", 3)
+        guard.assert_called_once()
+        # Polls still wait for Steam's interval after the code is sent.
+        with pytest.raises(connection.SteamConnectionError) as error:
+            await connection.poll(db, identities[0], attempt)
+        assert error.value.status_code == 429
+        user = await connection.locked_user(db, identities[0])
+        state = connection._pending(user)
+        state["phase"] = "checking"
+        connection._save_pending(user, state)
+        await db.commit()
+        # A provider request already in flight still blocks a code.
+        with pytest.raises(connection.SteamConnectionError) as error:
+            await connection.submit_guard(db, identities[0], attempt, "FGHIJ", 3)
+        assert error.value.status_code == 429
+    guard.assert_called_once()
+
+
 async def test_disconnect_preserves_library_and_blocks_other_account_progress(actors, monkeypatch):
     identities, clock = actors
     await connect_account(identities[0], clock, monkeypatch)
@@ -199,7 +226,10 @@ async def test_disconnect_preserves_library_and_blocks_other_account_progress(ac
     async with SessionLocal() as db:
         user = await db.get(User, identities[0])
         assert user.steam_refresh_token is None
+        # The refused sign-in ends, so the next one can start straight away.
+        assert user.steam_login_state is None
         assert (await db.get(Game, game_id)).playtime_seconds == 900
+        assert (await connection.begin(db, identities[0]))["pending"] is not None
 
 
 async def test_session_renewal_and_late_import_recheck(actors, monkeypatch):
@@ -239,16 +269,16 @@ async def test_renewal_cannot_persist_after_disconnect(actors, monkeypatch):
         assert (await db.get(User, identities[0])).steam_access_token is None
 
 
-@pytest.mark.parametrize("phase", ["bound", "resolve", "validate"])
+@pytest.mark.parametrize("phase", ["bound", "validate"])
 async def test_late_legacy_save_cannot_restore_disconnected_credentials(actors, monkeypatch, phase):
     identities, _clock = actors
-    resolver = Mock(return_value=OWNER)
-    validator = Mock(return_value={"validated": True, "persona_name": "Stale result"})
-    monkeypatch.setattr(settings_routes.steam, "resolve_steam_id", resolver)
-    monkeypatch.setattr(settings_routes, "_validate_provider", validator)
+    validator = Mock(
+        return_value={"steam_id": OWNER, "persona_name": "Stale result", "avatar_url": None}
+    )
+    monkeypatch.setattr(settings_routes, "_validate_steam", validator)
 
     async def delayed(function, *args):
-        if function is (validator if phase == "validate" else resolver):
+        if function is validator:
             async with SessionLocal() as other_db:
                 await connection.disconnect(other_db, identities[0])
         return function(*args)
@@ -274,9 +304,10 @@ async def test_legacy_save_reloads_actor_before_overwriting_a_new_owner_session(
     actors, monkeypatch
 ):
     identities, clock = actors
-    monkeypatch.setattr(settings_routes.steam, "resolve_steam_id", Mock(return_value=OWNER))
     monkeypatch.setattr(
-        settings_routes, "_validate_provider", Mock(return_value={"validated": True})
+        settings_routes,
+        "_validate_steam",
+        Mock(return_value={"steam_id": OWNER, "persona_name": None, "avatar_url": None}),
     )
     async with SessionLocal() as db:
         stale_user = await db.get(User, identities[0])
@@ -290,6 +321,26 @@ async def test_legacy_save_reloads_actor_before_overwriting_a_new_owner_session(
         user = await db.get(User, identities[0])
         assert user.steam_api_key is None
         assert decrypt_secret(user.steam_refresh_token) == "private-refresh"
+
+
+async def test_legacy_plain_api_key_still_works_and_is_encrypted_on_use(actors, monkeypatch):
+    identities, _clock = actors
+    monkeypatch.setattr(connection.steam, "resolve_steam_id", lambda sid, _key: sid)
+    async with SessionLocal() as db:
+        user = await db.get(User, identities[0])
+        # A key saved before keys were encrypted.
+        user.steam_id, user.steam_api_key = OWNER, "a" * 32
+        await db.commit()
+        steam_id, key = await connection.credentials(db, user)
+        assert (steam_id, key) == (OWNER, "a" * 32)
+    async with SessionLocal() as db:
+        user = await db.get(User, identities[0])
+        assert user.steam_api_key != "a" * 32
+        assert decrypt_secret(user.steam_api_key) == "a" * 32
+        assert connection.stored_api_key(user) == "a" * 32
+        # The encrypted key keeps working for later imports and their rechecks.
+        assert await connection.credentials(db, user) == (OWNER, "a" * 32)
+        await connection.recheck(db, identities[0], OWNER, "a" * 32)
 
 
 async def test_steam_validation_errors_do_not_echo_secrets(actors):
@@ -318,6 +369,42 @@ async def test_steam_validation_errors_do_not_echo_secrets(actors):
                 assert reply.headers["cache-control"] == "no-store"
     finally:
         app.dependency_overrides.pop(get_current_user, None)
+
+
+async def test_guard_route_accepts_steams_code_confirmation_types(actors, monkeypatch):
+    identities, _clock = actors
+    submitted = []
+
+    async def submit(_db, _user_id, _attempt, code, code_type):
+        submitted.append((code, code_type))
+        return {
+            "connected": False,
+            "method": None,
+            "display_name": None,
+            "expires_at": None,
+            "pending": None,
+        }
+
+    async def current_actor():
+        async with SessionLocal() as db:
+            return await db.get(User, identities[0])
+
+    monkeypatch.setattr(connection, "submit_guard", submit)
+    app.dependency_overrides[get_current_user] = current_actor
+    try:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            # Steam's EmailCode (2) and DeviceCode (3); 1 is "no Guard".
+            for code_type, expected in [(2, 200), (3, 200), (1, 400), (4, 400)]:
+                reply = await client.post(
+                    "/api/settings/steam/login/guard",
+                    json={"attempt_id": "attempt", "code": "ABCDE", "code_type": code_type},
+                )
+                assert reply.status_code == expected, reply.text
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+    assert submitted == [("ABCDE", 2), ("ABCDE", 3)]
 
 
 async def test_owner_bulk_and_batched_achievement_imports_need_no_api_key(

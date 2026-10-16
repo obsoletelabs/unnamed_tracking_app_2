@@ -68,9 +68,9 @@ def _plugin_management_scope(method: str, parts: list[str]) -> str | None:
     return None
 
 
-async def _management_user(request: Request, db: AsyncSession, authorization: str) -> User:
+async def management_key(db: AsyncSession, authorization: str) -> UserApiKey:
+    """The unrevoked management credential; scopes are checked by the caller."""
     token = authorization.removeprefix("Bearer ").strip()
-    required = management_scope(request.method, request.url.path)
     row = await db.scalar(
         select(UserApiKey).where(
             UserApiKey.key_hash == hash_token(token),
@@ -79,6 +79,12 @@ async def _management_user(request: Request, db: AsyncSession, authorization: st
     )
     if row is None:
         raise HTTPException(401, "Invalid plugin management token.")
+    return row
+
+
+async def _management_user(request: Request, db: AsyncSession, authorization: str) -> User:
+    required = management_scope(request.method, request.url.path)
+    row = await management_key(db, authorization)
     if required is None or required not in row.scopes:
         raise HTTPException(403, "Plugin management scope is not granted.")
     if required in {"plugins.install", "plugins.update"}:

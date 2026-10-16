@@ -1,3 +1,9 @@
+// Steam's EAuthSessionGuardType values for codes a person types in.
+export const STEAM_GUARD_EMAIL_CODE = 2;
+export const STEAM_GUARD_DEVICE_CODE = 3;
+export type SteamGuardCodeType =
+  typeof STEAM_GUARD_EMAIL_CODE | typeof STEAM_GUARD_DEVICE_CODE;
+
 export interface SteamLoginAttempt {
   attempt_id: string;
   expires_at: number;
@@ -58,7 +64,7 @@ export const pollSteamLogin = (attempt_id: string) =>
 export const submitSteamGuard = (
   attempt_id: string,
   code: string,
-  code_type: 1 | 2,
+  code_type: SteamGuardCodeType,
 ) => request("/login/guard", "POST", { attempt_id, code, code_type });
 export const cancelSteamLogin = (attempt_id: string) =>
   request("/login/cancel", "POST", { attempt_id });

@@ -65,6 +65,17 @@ export async function failedRequest(response: Response): Promise<Error> {
   return new Error(friendlyError(response.status, await response.text()));
 }
 
+// Provider sync routes answer 502 with the provider's reviewed reason (for
+// example a private Steam profile), which friendlyError hides as a server fault.
+export async function providerRequestError(response: Response): Promise<Error> {
+  const body = await response.text().catch(() => "");
+  const signedOut = response.status === 401 || response.status === 403;
+  return new Error(
+    (signedOut ? null : serverDetail(body)) ??
+      friendlyError(response.status, body),
+  );
+}
+
 // Plugin failures include capability and compatibility guidance from the host.
 // Only show the reviewed detail message, never validation input or raw bodies.
 export async function pluginRequestError(

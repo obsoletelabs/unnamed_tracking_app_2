@@ -4,8 +4,8 @@ services:
     restart: unless-stopped
     ports:
       - "${UNNAMED_TRACKING_APP_PORT:-8080}:80"
-      # Publish 443:443 only when embedded TLS is enabled.
-      # TLS is disabled by default.
+      # Used once embedded TLS is enabled (disabled by default).
+      - "${UNNAMED_TRACKING_APP_HTTPS_PORT:-8443}:443"
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-unnamed_tracking}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-unnamed_tracking}
       SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}
@@ -17,6 +17,8 @@ services:
       NGINX_TLS_CERTIFICATE: ${NGINX_TLS_CERTIFICATE:-}
       NGINX_TLS_PRIVATE_KEY: ${NGINX_TLS_PRIVATE_KEY:-}
       NGINX_TLS_REDIRECT_HTTP: ${NGINX_TLS_REDIRECT_HTTP:-false}
+      # The HTTP-to-HTTPS redirect targets the published HTTPS port.
+      NGINX_TLS_REDIRECT_PORT: ${NGINX_TLS_REDIRECT_PORT:-${UNNAMED_TRACKING_APP_HTTPS_PORT:-8443}}
       PLUGIN_RUNTIME_URL: http://plugin-runtime:8000
       PLUGIN_GATEWAY_URL: http://app
       PLUGIN_RUNTIME_TOKEN: ${PLUGIN_RUNTIME_TOKEN:?Set PLUGIN_RUNTIME_TOKEN in .env}

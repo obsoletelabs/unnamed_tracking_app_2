@@ -4,6 +4,8 @@ is the real test one, and the scratch user (with its games) is deleted after.
 """
 
 import io
+import secrets
+import time
 import uuid
 import wave
 from types import SimpleNamespace
@@ -26,7 +28,8 @@ from src.api.routes import (
 from src.api.routes import game_notes as game_notes_routes
 from src.api.routes.utils import games as game_route_helpers
 from src.api.schemas.game import GameCreate
-from src.core.auth import get_current_user
+from src.core.auth import get_current_user, hash_token, session_cookie_name
+from src.database.models.auth import UserSession
 from src.database.models.user import User
 from src.database.session import SessionLocal
 from src.main import app
@@ -52,6 +55,18 @@ async def game_flow(tmp_path, monkeypatch):
         db.add(user)
         await db.commit()
         user_id = user.id
+        # A real session too: large uploads are authenticated before routes run.
+        token, now = secrets.token_urlsafe(32), int(time.time())
+        db.add(
+            UserSession(
+                user_id=user_id,
+                token_hash=hash_token(token),
+                expires_at=now + 3600,
+                created_at=now,
+                last_seen_at=now,
+            )
+        )
+        await db.commit()
     app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=user_id)
     async with SessionLocal() as db:
         game = await games.create_game(
@@ -63,6 +78,7 @@ async def game_flow(tmp_path, monkeypatch):
         game_id = game.id
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        client.cookies.set(session_cookie_name("test"), token)
         yield SimpleNamespace(
             client=client,
             game=f"/api/game/{game_id}",

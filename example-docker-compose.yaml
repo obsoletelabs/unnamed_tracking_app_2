@@ -17,8 +17,13 @@ services:
     restart: unless-stopped
     ports:
       - "${UNNAMED_TRACKING_APP_PORT:-8080}:80"
+      # Used once HTTPS is enabled; nothing listens on it until then.
+      - "${UNNAMED_TRACKING_APP_HTTPS_PORT:-8443}:443"
     env_file:
       - .env
+    environment:
+      # The HTTP-to-HTTPS redirect targets the published HTTPS port.
+      NGINX_TLS_REDIRECT_PORT: ${NGINX_TLS_REDIRECT_PORT:-${UNNAMED_TRACKING_APP_HTTPS_PORT:-8443}}
     volumes:
       - ./data:/data
     networks:

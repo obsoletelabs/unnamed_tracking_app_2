@@ -59,8 +59,8 @@ line. See the wiki's
 Movie and TV details come from TMDB and OMDb, games from IGDB. Enter the keys
 as an administrator under Settings > Metadata Sources, or set them in `.env`
 (`TMDB_API_KEY`, `OMDB_API_KEY`, `TVDB_API_KEY`, `IGDB_CLIENT_ID`,
-`IGDB_CLIENT_SECRET`). A key saved in Settings wins over `.env`, and nothing
-ships with the app.
+`IGDB_CLIENT_SECRET`). A key set in `.env` wins and shows as locked in Settings,
+and nothing ships with the app.
 
 # Importing and exporting
 

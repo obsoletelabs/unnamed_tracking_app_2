@@ -41,8 +41,10 @@ RUN mkdir -p /run/unnamed-tracking /var/log/nginx \
     && chmod 0755 /run/unnamed-tracking
 
 EXPOSE 80 443
+# HTTPS first: with TLS on, HTTP may redirect to a port published only outside.
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=3 \
-    CMD curl -kfsSL http://127.0.0.1/_startup/status.json | grep -q '"overall":"ready"'
+    CMD { curl -kfsS https://127.0.0.1/_startup/status.json 2>/dev/null \
+      || curl -kfsSL http://127.0.0.1/_startup/status.json; } | grep -q '"overall":"ready"'
 
 STOPSIGNAL SIGTERM
 ENTRYPOINT ["./entrypoint.sh"]
