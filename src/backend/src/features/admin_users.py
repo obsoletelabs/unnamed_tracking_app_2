@@ -125,6 +125,7 @@ async def _locked_target(db: AsyncSession, user_id: UUID) -> User:
     return target
 
 
+# pylint: disable-next=too-many-positional-arguments
 async def _deny(db, admin, action, target, message, status_code, *, detail=""):
     record_audit(
         db,
