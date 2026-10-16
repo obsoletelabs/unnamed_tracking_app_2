@@ -127,12 +127,14 @@ export async function updateScanSettings(
 
 export interface UploadLimits {
   max_upload_size_mb: number;
+  max_doc_size_mb: number;
   max_save_archive_size_mb: number;
   max_clip_size_mb: number;
   max_world_save_size_mb: number;
 }
 const defaultUploadLimits: UploadLimits = {
   max_upload_size_mb: 15,
+  max_doc_size_mb: 500,
   max_save_archive_size_mb: 4096,
   max_clip_size_mb: 500,
   max_world_save_size_mb: 2000,
