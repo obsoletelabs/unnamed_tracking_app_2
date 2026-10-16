@@ -680,13 +680,16 @@ async def restore_game_screenshot(
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> dict:
     game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
+    # The trash sweep locks the row it purges; restore waits rather than racing it.
     item = await db.scalar(
-        select(MediaItem).where(
+        select(MediaItem)
+        .where(
             MediaItem.game_id == game_id,
             MediaItem.kind == kind,
             MediaItem.filename == filename,
             MediaItem.deleted_at.is_not(None),
         )
+        .with_for_update()
     )
     if item is None:
         raise HTTPException(
