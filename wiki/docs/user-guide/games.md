@@ -14,8 +14,9 @@ or resumes its saved import. Closing the dialog retains its checkpoint.
 **Autosync settings** opens Account → Background tasks. Configured Steam, PlayStation
 and RetroAchievements connections each have their own task alongside Epic Games and
 other plugins that declare personal tasks. Enable autosync and choose each connection's
-interval there to continue imports while the page is closed. Disconnecting pauses a
-saved task; reconnecting restores its settings and history.
+interval there to continue imports while the page is closed. Disconnecting turns the
+task off; reconnecting restores its interval and history. Each task can be paused,
+resumed or cancelled, and shows its last successful and next run.
 Autosync starts off, applies only to your account and uses your approved access.
 Notes, ratings and manual status retain the provider import's existing protections.
 

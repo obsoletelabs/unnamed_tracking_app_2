@@ -45,9 +45,9 @@ scrollbars use the active semantic palette.
 
 Account → Background tasks is available to every signed-in user. Configuring Steam,
 PlayStation or RetroAchievements makes a personal autosync task available automatically.
-New tasks start off, with a daily interval. Disconnecting pauses a saved task while
-retaining its switch, interval and history; reconnecting restores availability. A paused,
-enabled task can still be switched off. Xbox and GOG currently store credentials without
+New tasks start off, with a daily interval. Disconnecting turns the schedule off while
+retaining its interval and history; reconnecting restores availability, and you switch
+autosync on again yourself. Xbox and GOG currently store credentials without
 a library-sync workflow, so they do not have an executable autosync task.
 
 ![Personal autosync tasks for configured connections](../assets/connection-autosync/all-connections.jpg)
@@ -70,6 +70,29 @@ Personal plugin steps recheck the target account and its live permissions. Resum
 tasks can request a bounded continuation between 1 and 60 minutes; the ordinary
 interval applies after completion. Disabling autosync stops queued continuations.
 Disconnecting the provider or disabling/revoking the plugin preserves checkpoints
-and makes later work unavailable until access is restored.
+and turns the schedule off; enable it again after reconnecting. A runtime outage only
+pauses it.
+
+### Run controls and status
+
+Every task shows its state (Running now, Paused, Off, On), the last successful run,
+the next scheduled run and a short, safe status. **Pause** stops further steps without
+losing the saved checkpoint and **Resume** continues from it. **Cancel** ends the current
+run: a step in progress finishes, no further step starts, and the saved records and
+checkpoint are kept. **Run now** starts the next step immediately and is refused while a
+task is paused. Background steps run on the server, so closing the browser or leaving the
+page does not interrupt them, and a restarted host continues from the last saved step.
+
+A failed step is retried with backoff (1, 2, 4, 8, then 15 minutes, five attempts), or
+later when the provider reports a rate limit, before waiting for the chosen interval.
+A run that never completed an inventory does not change what is marked unavailable.
+Starts never overlap: a lease in the database blocks a second manual or scheduled run
+for the same account and task, including from another host process. Steam, PlayStation
+and RetroAchievements run as a single import per run; Pause or Cancel take effect before
+the next run rather than in the middle of one provider request.
 
 ![A disconnected account retains its paused schedule](../assets/connection-autosync/disconnected.jpg)
+
+![Personal autosync with run controls on desktop](../assets/background-sync/background-tasks-modern-desktop.png)
+
+![A paused task with Resume on a phone](../assets/background-sync/background-tasks-modern-phone.png)
