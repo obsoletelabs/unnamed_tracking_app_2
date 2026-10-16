@@ -198,8 +198,6 @@ Until then, PRs remain available for review with current validation and screensh
   reselection works and object URLs are released. Artwork failures keep the
   saved game and retry on it without another create. Playtime beyond the stored
   INTEGER range is now a validation error rather than a database failure.
-- **Remaining K (#144, #149) and L–O:** approved; not implemented yet. The
-  package details below describe intended work, not completed behavior.
 - **M / 45–46:** issue [#146](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/146)
   implements per-kind Empty trash (explicit `confirm: true`, confirmed deletion-time
   bound, 200-title batches, per-title savepoints and deleted/failed/remaining counts)
@@ -208,7 +206,13 @@ Until then, PRs remain available for review with current validation and screensh
   `features/trash/media_titles.py`, separate from the #151 game-file sweep paths.
   No migration. Modern/Classic screenshots are in the media library guide.
   Review, hosted checks and merge remain pending; row 53 stays with #152.
-- **K–O:** approved; not implemented yet. The package details below describe
+- **L / 43–44:** issue #148. Game artwork, normalized `?w=` variants and generated
+  covers carry content-derived `ETag`s with `304` handling; unversioned URLs have a
+  finite 60-second cache, `?v=<revision>` URLs are immutable, and saving artwork
+  invalidates every cached variant. Semantics are in the
+  [architecture guide](architecture.md).
+- **Remaining K (#144, #149), N and O:** approved; not implemented yet. The
+  package details below describe
   intended work, not completed behavior.
 
 ### Issue-by-issue execution order
