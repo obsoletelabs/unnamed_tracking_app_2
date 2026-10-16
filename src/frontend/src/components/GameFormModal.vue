@@ -844,7 +844,7 @@ async function submit() {
             class="metadata-result" @click="applyMetadata(result)">
             <span>{{ result.title }}</span>
             <small>{{ result.provider
-            }}<span v-if="result.release_date">
+              }}<span v-if="result.release_date">
                 · {{ result.release_date.slice(0, 4) }}</span></small>
           </button>
         </div>
