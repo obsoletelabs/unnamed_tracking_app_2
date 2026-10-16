@@ -26,8 +26,9 @@ from src.database.models.notification_delivery import NotificationDelivery
 from src.database.models.tv_show import TVEpisode, TVSeason, TVShow, TVShowStatus
 from src.features.game_notifications import generate_game_releases
 from src.features.notification_audit import change_notices
-from src.features.notification_controller import emit_legacy_rows
+from src.features.notification_controller import EVENT_TYPES, emit_legacy_rows
 from src.features.notification_inbox import retention_policy
+from src.features.notification_policy import preference_enabled
 
 # How far back "just aired" reaches. A week covers someone away for a few
 # days without turning first use into a flood of old episodes.
@@ -273,44 +274,181 @@ async def generate_for_user(db: AsyncSession, user_id: UUID) -> int:
     return created
 
 
-async def record_sequel_announcements(
+COMPLETED_ANIME = (AnimeStatus.WATCHED, AnimeStatus.FAVORITE)
+_SEASON_FORMATS = {"tv", "tv short", "ona"}
+_EXTRA_FORMATS = {"movie": "movie", "ova": "OVA", "special": "special"}
+
+
+def anilist_entry_id(value: Any) -> int | None:
+    """AniList identities are positive integers, in graphs or as stored library strings."""
+    if isinstance(value, str) and value.isdigit():
+        value = int(value)
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
+
+
+def franchise_entry_ids(cache: dict[str, Any] | None) -> set[int]:
+    """Every AniList entry a stored franchise graph has listed, including earlier fetches."""
+    if not isinstance(cache, dict):
+        return set()
+    listed = [
+        node.get("id")
+        for group in ("chain", "branches")
+        for node in cache.get(group) or []
+        if isinstance(node, dict)
+    ]
+    known = cache.get("known_ids")
+    ids = {
+        anilist_entry_id(value) for value in [*listed, *(known if isinstance(known, list) else [])]
+    }
+    return {value for value in ids if value is not None}
+
+
+def _enabled_kind(prefs: dict[str, Any], kinds: tuple[str, ...]) -> str | None:
+    """The first host type this account accepts, using the dispatcher's own preference gate."""
+    return next(
+        (
+            kind
+            for kind in kinds
+            if preference_enabled(Notification(kind=kind, event_type=EVENT_TYPES[kind]), prefs)
+        ),
+        None,
+    )
+
+
+async def _franchise_siblings(db: AsyncSession, show: Anime, entry_ids: list[int]) -> list[Any]:
+    """The owner's other active titles among a graph's listed entries."""
+    return list(
+        (
+            await db.execute(
+                select(
+                    Anime.id,
+                    Anime.title,
+                    Anime.poster_url,
+                    Anime.status,
+                    Anime.anilist_id,
+                    Anime.relations_cache,
+                ).where(
+                    Anime.user_id == show.user_id,
+                    Anime.deleted_at.is_(None),
+                    Anime.id != show.id,
+                    Anime.anilist_id.in_([str(entry_id) for entry_id in entry_ids]),
+                )
+            )
+        ).all()
+    )
+
+
+def _listing_notice(
+    prefs: dict[str, Any], node: dict[str, Any], *, in_sequence: bool, scheduled: bool
+) -> tuple[str | None, str, bool]:
+    """Classify one newly listed entry as (kind, body, deferred); kind None sends nothing."""
+    listing = str(node.get("format") or "").lower()
+    title = str(node.get("title") or "Untitled")
+    if listing in _SEASON_FORMATS and in_sequence:
+        kinds = ("franchise_season",) if scheduled else ("franchise_season", "sequel_announced")
+        kind = _enabled_kind(prefs, kinds)
+        deferred = kind is None and scheduled and bool(_enabled_kind(prefs, ("sequel_announced",)))
+        return kind, f"A new season is listed: {title}", deferred
+    if listing in _EXTRA_FORMATS:
+        kind = _enabled_kind(prefs, ("franchise_extra",))
+        return kind, f"A new {_EXTRA_FORMATS[listing]} is listed: {title}", False
+    return None, "", False
+
+
+@dataclass(frozen=True)
+class _FranchiseBaseline:
+    known: set[int | None]
+    # The completed title a notice links to; an ORM title or a selected sibling row.
+    anchor: Any
+
+
+async def _franchise_baseline(
     db: AsyncSession,
-    user_id: UUID,
     show: Anime,
-    old_chain: list[dict[str, Any]] | None,
-    new_chain: list[dict[str, Any]],
-) -> None:
-    """A finished anime whose franchise chain grew a new season since the
-    last look. Only fires for a chain that was fetched before (there is a
-    baseline to compare against) so the first fetch never notifies, and
-    only for shows the user completed. The time is when we learned of it,
-    since AniList does not say when a sequel was announced."""
-    prefs = await load_preferences(db, user_id)
-    if not prefs["notify_sequel_announced"] or "anime" not in prefs["notify_media_types"]:
-        return
-    if old_chain is None:
-        return
-    if show.status not in (AnimeStatus.WATCHED, AnimeStatus.FAVORITE):
-        return
-    known = {n["id"] for n in old_chain}
+    old_cache: dict[str, Any] | None,
+    listed: dict[int, dict[str, Any]],
+    position: dict[int, int],
+) -> _FranchiseBaseline | None:
+    """Unite the owner's stored graphs for this franchise; None when nothing may notify."""
+    siblings = await _franchise_siblings(db, show, list(listed))
+    if old_cache is None and all(row.relations_cache is None for row in siblings):
+        return None
+    # The ORM title and its siblings' selected rows share these attribute names.
+    titles: list[Any] = [show, *siblings]
+    completed = [row for row in titles if row.status in COMPLETED_ANIME]
+    if not completed:
+        return None
+    known = franchise_entry_ids(old_cache).union(
+        *(franchise_entry_ids(row.relations_cache) for row in siblings),
+        {anilist_entry_id(row.anilist_id) for row in titles},
+    )
+    # Attach notices to the completed title closest to the new entry in the sequence.
+    anchor = max(completed, key=lambda row: position.get(anilist_entry_id(row.anilist_id) or 0, -1))
+    return _FranchiseBaseline(known, anchor)
+
+
+def _franchise_rows(
+    prefs: dict[str, Any],
+    listed: dict[int, dict[str, Any]],
+    position: dict[int, int],
+    baseline: _FranchiseBaseline,
+    scheduled: bool,
+) -> tuple[list[dict[str, Any]], bool]:
     rows: list[dict[str, Any]] = []
-    for node in new_chain:
-        if node["id"] in known or node.get("is_current"):
+    deferred = False
+    for entry_id, node in listed.items():
+        if entry_id in baseline.known or node.get("is_current"):
             continue
-        fmt = (node.get("format") or "").lower()
-        if fmt not in ("tv", "ona", "tv short"):
-            continue
-        rows.append(
-            {
-                "kind": "sequel_announced",
-                "media_type": "anime",
-                "media_id": show.id,
-                "title": show.title,
-                "body": f"A new season is listed: {node['title']}",
-                "poster_url": show.poster_url,
-                "event_at": int(time.time()),
-                "dedupe_key": f"seq:{show.id}:{node['id']}",
-            }
+        kind, body, later = _listing_notice(
+            prefs, node, in_sequence=entry_id in position, scheduled=scheduled
         )
-    if await _insert(db, user_id, rows):
-        await db.commit()
+        deferred = deferred or later
+        if kind is not None:
+            rows.append(
+                {
+                    "kind": kind,
+                    "media_type": "anime",
+                    "media_id": baseline.anchor.id,
+                    "title": baseline.anchor.title,
+                    "body": body,
+                    "poster_url": baseline.anchor.poster_url,
+                    "event_at": int(time.time()),
+                    "dedupe_key": f"anime-franchise:{entry_id}",
+                }
+            )
+    return rows, deferred
+
+
+async def record_franchise_changes(
+    db: AsyncSession,
+    show: Anime,
+    old_cache: dict[str, Any] | None,
+    graph: dict[str, Any],
+    *,
+    scheduled: bool = False,
+) -> tuple[int, bool]:
+    """Announce entries newly listed in an anime franchise the owner completed.
+
+    The baseline unites every graph stored on the owner's titles in this franchise, and
+    the dedupe key names the new AniList entry, so one listing is announced once per
+    account whichever title or check finds it. A first fetch with no stored graph
+    anywhere in the franchise only records a baseline. Titles already in the library are
+    skipped. AniList does not date announcements, so the time is when it was learned.
+
+    New seasons use the opt-in franchise type, otherwise the existing sequel
+    announcement; movies, OVAs and specials have their own opt-in type. A scheduled check
+    never sends a sequel announcement on an account's behalf: it returns deferred=True so
+    the caller keeps the old graph and opening the title can still announce it. Returns
+    (created, deferred); the caller owns the transaction."""
+    prefs = await load_preferences(db, show.user_id)
+    if show.deleted_at is not None or "anime" not in prefs["notify_media_types"]:
+        return 0, False
+    chain = [node for node in graph.get("chain") or [] if anilist_entry_id(node.get("id"))]
+    branches = [node for node in graph.get("branches") or [] if anilist_entry_id(node.get("id"))]
+    listed = {node["id"]: node for node in [*branches, *chain]}
+    position = {node["id"]: index for index, node in enumerate(chain)}
+    baseline = await _franchise_baseline(db, show, old_cache, listed, position)
+    if baseline is None:
+        return 0, False
+    rows, deferred = _franchise_rows(prefs, listed, position, baseline, scheduled)
+    return await _insert(db, show.user_id, rows), deferred
