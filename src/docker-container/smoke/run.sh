@@ -291,7 +291,8 @@ curl --fail --silent --show-error "http://127.0.0.1:18081/_startup/status.json?t
 echo "Checking that a failed startup still stops promptly and cleans up."
 docker stop -t 10 "$INVALID_CONTAINER" >/dev/null
 [[ "$(docker inspect -f '{{.State.ExitCode}}' "$INVALID_CONTAINER")" == 0 ]]
-docker logs "$INVALID_CONTAINER" 2>&1 | grep -q 'Cleanup triggered'
+docker logs "$INVALID_CONTAINER" >"$ARTIFACT_DIR/invalid-config-logs.txt" 2>&1
+grep -q 'Cleanup triggered' "$ARTIFACT_DIR/invalid-config-logs.txt"
 docker rm -f "$INVALID_CONTAINER" >/dev/null
 
 echo "Controlled failure: database unavailable."
