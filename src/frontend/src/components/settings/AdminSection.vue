@@ -190,9 +190,11 @@ function openCreateForm() {
         <tbody>
           <tr v-for="user in users" :key="user.id">
             <td data-label="Sign-in username">
-              {{ user.username }}
-              <small v-if="user.display_name" class="muted display-name-line"
-                >Display name: {{ user.display_name }}</small
+              <span class="cell-value"
+                >{{ user.username }}
+                <small v-if="user.display_name" class="muted display-name-line"
+                  >Display name: {{ user.display_name }}</small
+                ></span
               >
             </td>
             <td data-label="Email">{{ user.email }}</td>
@@ -458,9 +460,8 @@ function openCreateForm() {
   }
   .user-table td[data-label]::before {
     content: attr(data-label);
-    width: 80px;
-    white-space: nowrap;
-    flex-shrink: 0;
+    flex: 0 0 104px;
+    white-space: normal;
     color: var(--ui-dim);
     font-size: var(--ui-font-small);
   }
@@ -468,6 +469,10 @@ function openCreateForm() {
     padding-top: 12px;
     border-top: 1px solid var(--ui-border-soft);
   }
+}
+.cell-value {
+  flex: 1 1 0;
+  min-width: 0;
 }
 .display-name-line {
   display: block;
