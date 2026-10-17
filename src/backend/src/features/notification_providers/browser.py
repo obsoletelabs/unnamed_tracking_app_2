@@ -2,12 +2,14 @@
 
 import asyncio
 import json
+from dataclasses import replace
 
 import aiohttp
 from py_vapid import Vapid
 from pywebpush import WebPushException, webpush_async
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.database.models.notification import Notification
 from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_provider_setting import NotificationProviderSetting
 from src.database.models.user import User
@@ -17,6 +19,11 @@ from src.features.notification_browser import (
     bound_subscription,
     browser_context,
     retire_browser,
+)
+from src.features.notification_browser_preview import (
+    build_envelope,
+    push_topic,
+    story_identity,
 )
 from src.features.notification_push_config import PUSH_PROVIDER
 
@@ -51,7 +58,11 @@ async def _bound_response(_session, _trace_context, params):
 
 
 async def send_push(
-    subscription: BrowserSubscription, context: BrowserContext, envelope: dict
+    subscription: BrowserSubscription,
+    context: BrowserContext,
+    envelope: dict,
+    *,
+    topic: str | None = None,
 ) -> DeliveryResult:
     trace = aiohttp.TraceConfig()
     trace.on_request_redirect.append(_reject_redirect)
@@ -71,7 +82,7 @@ async def send_push(
                 vapid_claims={"sub": context.configuration.subject},
                 ttl=60,
                 timeout=10,
-                headers={"Urgency": "normal"},
+                headers={"Urgency": "normal", **({"Topic": topic} if topic else {})},
                 aiohttp_session=session,
             )
     except WebPushException as exc:
@@ -114,6 +125,13 @@ class BrowserNotificationProvider:
         return ProviderDestination.for_endpoint(endpoint, self.name)
 
     async def deliver(self, db, destination: ProviderDestination, message: NotificationMessage):
+        return await self._push(db, destination, message)
+
+    async def edit(self, db, destination: ProviderDestination, message: NotificationMessage):
+        """Replace the story's earlier alert on the device (same tag) instead of adding another."""
+        return await self._push(db, destination, message)
+
+    async def _push(self, db, destination: ProviderDestination, message: NotificationMessage):
         if message.purpose not in {"standard", "test"}:
             return DeliveryResult(False, error="push_sensitive_denied")
         context = await browser_context(db)
@@ -123,17 +141,16 @@ class BrowserNotificationProvider:
         subscription = await bound_subscription(db, endpoint, context)
         if subscription is None:
             return DeliveryResult(False, error="push_session_changed")
+        notification = await db.get(Notification, message.id)
+        identity = story_identity(notification) if notification else None
         result = await send_push(
             subscription,
             context,
-            {
-                "version": 1,
-                "destination": str(endpoint.id),
-                "revision": endpoint.revision,
-                "generation": context.generation,
-            },
+            build_envelope(endpoint, context.generation, message, notification),
+            topic=push_topic(endpoint.id, identity) if identity else None,
         )
         if result.error == "push_subscription_expired":
             await retire_browser(db, endpoint, result.error)
             await db.commit()
-        return result
+        # The tag is the device-side "reference": a later revision replaces this alert in place.
+        return replace(result, remote_ref=identity) if result.success and identity else result

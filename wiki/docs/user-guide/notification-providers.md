@@ -163,10 +163,14 @@ a minute. Initial push services supported are Chromium/FCM, Mozilla, Apple and W
 notification hosts. Other/self-hosted push endpoints are rejected.
 
 Every preview says **New notification — Open Unnamed Tracking to view your
-notifications.** It contains no media/activity detail. The app must be reachable and
-the enrolled session eligible before a preview is displayed. Clicking opens this
-browser's own-origin notification centre; personal/destination link overrides do not
-change it. Browser permission, operating-system settings and the push service may
+notifications.** by default. It contains no media/activity detail. The app must be
+reachable and the enrolled session eligible before a preview is displayed. When a story you
+were already told about changes, the browser replaces its earlier alert instead of adding
+another. Clicking opens this browser's own-origin page for that story (or the notification
+centre); personal/destination link overrides do not change it. Administrators can allow
+the item's own title and summary on the device with `NOTIFICATION_BROWSER_PREVIEWS=story`;
+only do this where lock-screen previews are acceptable. Images and buttons appear only
+where the browser and operating system support them, and never change the message itself. Browser permission, operating-system settings and the push service may
 suppress or delay delivery. There is no guarantee that the device displays an alert.
 
 Use the destination toggle to pause future delivery, or **Remove browser** to erase its
