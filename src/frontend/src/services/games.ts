@@ -5,7 +5,12 @@ import { mockGames } from "../data/mockGames";
 import { failedRequest } from "./apiError";
 import { normalizeKind } from "../utils/achievements";
 import { createEntityCache } from "../utils/entityCache";
-import { POSTER_WIDTH, sizedAssetUrl } from "../utils/gameImages";
+import {
+  POSTER_WIDTH,
+  gameAssetUrl,
+  rememberUploadedRevision,
+  sizedAssetUrl,
+} from "../utils/gameImages";
 import type { ContentCounts, PageOverrides } from "../utils/gamePage";
 import type {
   Achievement,
@@ -142,11 +147,8 @@ export function mapBackendGame(raw: BackendGame): Game {
     coverColor: "#2a2a2a",
     // every place a cover is shown is a card or a poster well under 400 px
     // wide, and the stored cover is a PNG of up to a megabyte
-    coverImageUrl: sizedAssetUrl(
-      `/api/game/${raw.id}/assets/key_art`,
-      POSTER_WIDTH,
-    ),
-    bannerImageUrl: `/api/game/${raw.id}/assets/banner`,
+    coverImageUrl: sizedAssetUrl(gameAssetUrl(raw.id, "key_art"), POSTER_WIDTH),
+    bannerImageUrl: gameAssetUrl(raw.id, "banner"),
     status: normalizeStatus(raw.status),
     ratingOverall: toNumberOrNull(raw.rating_overall),
     ratingStory: toNumberOrNull(raw.rating_story),
@@ -1575,6 +1577,7 @@ export interface GameAssetUploadResponse {
   asset_kind: string;
   path: string;
   status: string;
+  revision?: string;
 }
 
 export async function uploadGameAsset(
@@ -1598,7 +1601,7 @@ export async function uploadGameAsset(
     );
   }
 
-  return await response.json();
+  return rememberUploadedRevision(gameId, assetKind, await response.json());
 }
 
 export async function attachGameAssetFromUrl(
@@ -1623,7 +1626,7 @@ export async function attachGameAssetFromUrl(
     );
   }
 
-  return await response.json();
+  return rememberUploadedRevision(gameId, assetKind, await response.json());
 }
 
 export interface GameRatings {
