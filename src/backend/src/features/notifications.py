@@ -452,3 +452,46 @@ async def record_franchise_changes(
         return 0, False
     rows, deferred = _franchise_rows(prefs, listed, position, baseline, scheduled)
     return await _insert(db, show.user_id, rows), deferred
+
+
+async def record_sequel_announcements(
+    db: AsyncSession,
+    user_id: UUID,
+    show: Anime,
+    old_chain: list[dict[str, Any]] | None,
+    new_chain: list[dict[str, Any]],
+) -> None:
+    """A finished anime whose franchise chain grew a new season since the
+    last look. Only fires for a chain that was fetched before (there is a
+    baseline to compare against) so the first fetch never notifies, and
+    only for shows the user completed. The time is when we learned of it,
+    since AniList does not say when a sequel was announced."""
+    prefs = await load_preferences(db, user_id)
+    if not prefs["notify_sequel_announced"] or "anime" not in prefs["notify_media_types"]:
+        return
+    if old_chain is None:
+        return
+    if show.status not in (AnimeStatus.WATCHED, AnimeStatus.FAVORITE):
+        return
+    known = {n["id"] for n in old_chain}
+    rows: list[dict[str, Any]] = []
+    for node in new_chain:
+        if node["id"] in known or node.get("is_current"):
+            continue
+        fmt = (node.get("format") or "").lower()
+        if fmt not in ("tv", "ona", "tv short"):
+            continue
+        rows.append(
+            {
+                "kind": "sequel_announced",
+                "media_type": "anime",
+                "media_id": show.id,
+                "title": show.title,
+                "body": f"A new season is listed: {node['title']}",
+                "poster_url": show.poster_url,
+                "event_at": int(time.time()),
+                "dedupe_key": f"seq:{show.id}:{node['id']}",
+            }
+        )
+    if await _insert(db, user_id, rows):
+        await db.commit()
