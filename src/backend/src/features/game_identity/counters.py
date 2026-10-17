@@ -369,6 +369,25 @@ async def sync_counters(
     await _sync(db, user_id, await merge_graph(db, user_id), game_id, _stamp(now))
 
 
+async def group_same_copy(
+    db: AsyncSession, user_id: UUID, first_id: UUID, second_id: UUID, *, now: int | None = None
+) -> int:
+    """After an automatic association (identical playtime and last played): count the
+    evidence metrics once instead of summing two reports of one copy. Returns groupings made."""
+    stamp = _stamp(now)
+    graph_ = await merge_graph(db, user_id)
+    await _sync(db, user_id, graph_, first_id, stamp)
+    data = await _load(db, user_id, {first_id, second_id})
+    made = 0
+    for metric in (_PLAYTIME, GameMetric.LAST_PLAYED.value):
+        mine = [d for d in data if d.counter.metric == metric and d.counter.game_id == first_id]
+        theirs = [d for d in data if d.counter.metric == metric and d.counter.game_id == second_id]
+        if len(mine) == 1 and len(theirs) == 1:
+            await group_counters(db, user_id, mine[0].counter.id, theirs[0].counter.id, now=stamp)
+            made += 1
+    return made
+
+
 async def follow_observation(
     db: AsyncSession, user_id: UUID, observation_id: UUID, *, now: int | None = None
 ) -> None:
