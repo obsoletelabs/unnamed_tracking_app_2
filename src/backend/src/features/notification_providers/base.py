@@ -38,6 +38,16 @@ class DigestItem:  # pylint: disable=too-many-instance-attributes
     event_at: int
     title: str
     body: str
+    # Link to the signed-in story page; only set for providers that can carry links.
+    url: str | None = None
+
+
+@dataclass(frozen=True)
+class MessageAction:
+    """A button the provider declared support for; always a plain, host-checked link."""
+
+    label: str
+    url: str
 
 
 @dataclass(frozen=True)
@@ -58,6 +68,18 @@ class NotificationMessage:  # pylint: disable=too-many-instance-attributes
     # Non-empty for a composed digest chunk; title/body already summarise these members.
     items: tuple[DigestItem, ...] = ()
     batch_id: UUID | None = None
+    # Capability-negotiated presentation (only populated for providers that declared support).
+    html: str | None = None
+    actions: tuple[MessageAction, ...] = ()
+    images: tuple[str, ...] = ()
+    link: str | None = None
+    # send | edit | follow_up. `remote_ref` is the provider's own opaque reference for the earlier
+    # message: set for an edit, and for a follow-up only when the provider threads replies.
+    operation: str = "send"
+    remote_ref: str | None = None
+    revision: int = 0
+    # Stable across retries of one obligation, so a provider can deduplicate a repeated send.
+    idempotency_key: str | None = None
 
 
 @dataclass(frozen=True)
@@ -88,6 +110,10 @@ class DeliveryResult:
     success: bool
     retryable: bool = False
     error: str | None = None
+    # Opaque identifier of the remote message created or edited; stored only by the host.
+    remote_ref: str | None = None
+    # The earlier remote message is gone or can no longer be edited (an edit was refused).
+    gone: bool = False
 
 
 class NotificationProvider(Protocol):
@@ -107,6 +133,11 @@ class NotificationProvider(Protocol):
         destination: ProviderDestination,
         message: NotificationMessage,
     ) -> DeliveryResult: ...
+
+    # Optional capabilities. A provider declares `capabilities` (NotificationProviderCapabilities)
+    # and, when it declares message updates, implements
+    # `async def edit(db, destination, message) -> DeliveryResult`; the host never trusts a
+    # declaration the adapter cannot back.
 
 
 def notification_message(

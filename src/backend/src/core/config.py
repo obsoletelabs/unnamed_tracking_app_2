@@ -60,6 +60,10 @@ class Settings(BaseSettings):
     # How producer-supplied images reach rich notification pages: re-encoded and cached by this
     # server ("proxied"), loaded directly by the viewer's browser ("external") or not shown ("off").
     NOTIFICATION_IMAGE_MODE: Literal["proxied", "external", "off"] = "proxied"
+    # What an external destination receives when a story it already saw changes and its provider
+    # cannot edit the earlier message: "all" sends a follow-up for every revision, "important"
+    # only for warning/error/critical revisions, "none" never. Edits are always allowed.
+    NOTIFICATION_FOLLOW_UPS: Literal["all", "important", "none"] = "important"
     NOTIFICATION_IMAGE_CACHE_DIR: str = "/data/cache/notification-images"
     NOTIFICATION_IMAGE_MAX_BYTES: int = Field(default=5 * 1024 * 1024, ge=1024, le=15 * 1024 * 1024)
     NOTIFICATION_IMAGE_FAILURE_SECONDS: int = Field(default=300, ge=0, le=86400)

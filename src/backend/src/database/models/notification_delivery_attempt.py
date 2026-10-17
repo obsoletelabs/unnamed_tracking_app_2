@@ -26,4 +26,8 @@ class NotificationDeliveryAttempt(Base):
     started_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
     finished_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     outcome: Mapped[str] = mapped_column(String(32), nullable=False, default="processing")
+    operation: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="send", server_default="send"
+    )
+    batch_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)

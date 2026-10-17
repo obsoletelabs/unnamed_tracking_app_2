@@ -13,6 +13,7 @@ from uuid import UUID
 
 from src.features.notification_contract import BUILTIN_PROFILES, TRANSPORT_PROFILES
 from src.features.notification_providers.base import DigestItem
+from src.features.notification_providers.capabilities import ResolvedProfile
 
 Strategy = Literal["immediate", "coalesce", "digest"]
 
@@ -101,10 +102,27 @@ class ProviderLimits:
     links: bool
 
 
-def provider_limits(provider_id: str, transport: str | None) -> ProviderLimits:
-    """Limits of one composed plain-text message, from the discovered capability profile."""
-    profile = BUILTIN_PROFILES.get(provider_id) or TRANSPORT_PROFILES.get(transport or "legacy")
-    caps = (profile or TRANSPORT_PROFILES["legacy"]).capabilities
+def provider_limits(
+    provider_id: str, transport: str | None, *, profile: ResolvedProfile | None = None
+) -> ProviderLimits:
+    """Limits of one composed message, from the live capability profile when one is known.
+
+    A provider that declared canonical capabilities decides how many items one message can carry
+    (a declaration of one means the digest falls back to individual messages). Legacy adapters
+    receive a host-composed plain-text digest, so only the text and payload limits apply.
+    """
+    if profile is not None:
+        caps = profile.capabilities
+        items = min(caps.max_batch_items, MAX_CHUNK_ITEMS) if profile.canonical else MAX_CHUNK_ITEMS
+        return ProviderLimits(
+            max_items=items,
+            max_title_chars=caps.max_title_chars,
+            max_text_chars=caps.max_text_chars,
+            max_payload_bytes=caps.max_payload_bytes,
+            links=caps.links,
+        )
+    fixed = BUILTIN_PROFILES.get(provider_id) or TRANSPORT_PROFILES.get(transport or "legacy")
+    caps = (fixed or TRANSPORT_PROFILES["legacy"]).capabilities
     return ProviderLimits(
         max_items=MAX_CHUNK_ITEMS,
         max_title_chars=caps.max_title_chars,
@@ -123,7 +141,8 @@ def item_line(item: DigestItem) -> str:
     text = " ".join(item.title.split())
     if len(text) > ITEM_LINE_LIMIT:
         text = text[: ITEM_LINE_LIMIT - 1] + "…"
-    return f"- {text}"
+    # Only providers that can carry links get one; the link never replaces the title.
+    return f"- {text}\n  {item.url}" if item.url else f"- {text}"
 
 
 def _size(lines: Iterable[str]) -> tuple[int, int]:
