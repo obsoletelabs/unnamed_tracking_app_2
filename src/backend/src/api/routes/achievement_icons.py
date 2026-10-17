@@ -1,21 +1,19 @@
 """Local copies of achievement and trophy icons."""
 
-import asyncio
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.image_responses import original_image_response
+from src.api.image_responses import cached_icon_response
 from src.core.auth import get_current_user
 from src.database.models.achievement import Achievement
 from src.database.models.game import Game
 from src.database.models.user import User
 from src.database.session import get_db
-from src.helpers.image_prefetch import ICON_ROOT, WIDTHS
-from src.helpers.remote_images import RemoteImageError, fetch_and_store, icon_cache_path
+from src.helpers.image_prefetch import ICON_ROOT
 
 router = APIRouter(
     prefix="/api/achievement-icon",
@@ -42,15 +40,4 @@ async def get_achievement_icon(
     )
     if not url:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such icon.")
-    target = icon_cache_path(_ICON_ROOT, url)
-    response = FileResponse(
-        target,
-        media_type="image/jpeg",
-        headers={"Cache-Control": "private, max-age=86400"},
-    )
-    if not target.is_file():
-        try:
-            await asyncio.to_thread(fetch_and_store, url, target, WIDTHS["icon"])
-        except RemoteImageError:
-            return original_image_response(url)
-    return response
+    return await cached_icon_response(_ICON_ROOT, url)
