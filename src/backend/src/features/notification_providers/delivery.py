@@ -20,6 +20,14 @@ from src.database.models.notification_delivery_attempt import NotificationDelive
 from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_provider_setting import NotificationProviderSetting
 from src.database.models.user import User
+from src.features.notification_aggregation import (
+    assign_window,
+    count_member,
+    maintain,
+    plan_batch,
+    settle_batch,
+    settle_finished_lead,
+)
 from src.features.notification_audit import change_deliveries, record_deliveries
 from src.features.notification_auth_secrets import recovery_message
 from src.features.notification_destinations import resolve_destinations
@@ -73,6 +81,17 @@ async def ensure_deliveries(
             if projection is None:
                 continue
             inbox = destination.provider_id == INBOX_PROVIDER
+            requested_urgency = route_choice(notification.event_type, str(destination.id), prefs)[
+                "urgency"
+            ]
+            # The in-app inbox is never delayed; external destinations follow the declared policy.
+            window_id = (
+                None
+                if inbox
+                else await assign_window(
+                    db, notification, destination, requested_urgency=requested_urgency, now=now
+                )
+            )
             delivery_id = await db.scalar(
                 pg_insert(NotificationDelivery)
                 .values(
@@ -81,16 +100,17 @@ async def ensure_deliveries(
                     destination_id=destination.id,
                     destination_revision=destination.revision,
                     projection=projection,
-                    requested_urgency=route_choice(
-                        notification.event_type, str(destination.id), prefs
-                    )["urgency"],
-                    status="sent" if inbox else "pending",
+                    requested_urgency=requested_urgency,
+                    window_id=window_id,
+                    status="sent" if inbox else "aggregating" if window_id else "pending",
                     attempts=0,
                     next_attempt_at=now,
                 )
                 .on_conflict_do_nothing(index_elements=["notification_id", "destination_id"])
                 .returning(NotificationDelivery.id)
             )
+            if delivery_id and window_id:
+                await count_member(db, window_id)
             await record_deliveries(db, [delivery_id] if delivery_id else [])
             if inbox:
                 notification.inbox_visible = True
@@ -181,6 +201,8 @@ async def _finish(
             next_attempt_at=int(time.time()) + 60,
         ),
     )
+    if status in {"suppressed", "cancelled", "failed_permanent"}:
+        await settle_finished_lead(db, delivery_id, status, error)
     await db.commit()
 
 
@@ -297,6 +319,34 @@ async def _resolve_work(
     return _DeliveryWork(notification, endpoint, provider, destination)
 
 
+async def _open_attempt(
+    db: AsyncSession,
+    work: _DeliveryWork,
+    delivery: NotificationDelivery,
+    token: UUID,
+    current_preferences: dict[str, Any],
+) -> NotificationDeliveryAttempt:
+    """Record urgency and persist a new attempt row before transport I/O."""
+    notification, endpoint = work.notification, work.endpoint
+    delivery.requested_urgency = route_choice(
+        notification.event_type, str(endpoint.id), current_preferences
+    )["urgency"]
+    delivery.effective_urgency = (
+        delivery.requested_urgency
+        if getattr(work.provider, "critical_supported", False) is True
+        else "normal"
+    )
+    delivery.attempts += 1
+    now = int(time.time())
+    delivery.attempted_at = now
+    attempt = NotificationDeliveryAttempt(
+        delivery_id=delivery.id, number=delivery.attempts, claim_token=token, started_at=now
+    )
+    db.add(attempt)
+    await db.flush()
+    return attempt
+
+
 # Separate exits ensure source revocation is rechecked before transport I/O.
 # pylint: disable-next=too-many-return-statements
 async def _dispatch(db: AsyncSession, delivery_id: UUID, token: UUID) -> bool:
@@ -338,28 +388,25 @@ async def _dispatch(db: AsyncSession, delivery_id: UUID, token: UUID) -> bool:
     if destination is None or not _transport_allowed(notification, destination):
         await _finish(db, delivery_id, token, "suppressed", "transport_security_required")
         return False
-    delivery.requested_urgency = route_choice(
-        notification.event_type, str(endpoint.id), current_preferences
-    )["urgency"]
-    delivery.effective_urgency = (
-        delivery.requested_urgency
-        if getattr(work.provider, "critical_supported", False) is True
-        else "normal"
-    )
-    delivery.attempts += 1
-    now = int(time.time())
-    delivery.attempted_at = now
-    attempt = NotificationDeliveryAttempt(
-        delivery_id=delivery.id, number=delivery.attempts, claim_token=token, started_at=now
-    )
-    db.add(attempt)
-    await db.flush()
+    attempt = await _open_attempt(db, work, delivery, token, current_preferences)
     message = notification_message(
         notification,
         projection=delivery.projection,
         attempt_id=attempt.id,
         urgency=delivery.effective_urgency,
     )
+    included: tuple[UUID, ...] = (delivery.id,)
+    if delivery.batch_id is not None:
+        plan = await plan_batch(
+            db,
+            delivery,
+            notification,
+            endpoint,
+            current_preferences,
+            base=message,
+            transport=getattr(work.provider, "transport", None),
+        )
+        message, included = plan.message, plan.included
     await db.commit()
     try:
         message = await recovery_message(db, notification, endpoint, message)
@@ -403,6 +450,7 @@ async def _dispatch(db: AsyncSession, delivery_id: UUID, token: UUID) -> bool:
             next_attempt_at=int(time.time()) + 60 * (2 ** (delivery.attempts - 1)),
         ),
     )
+    await settle_batch(db, delivery_id, included, state, attempt.error_code)
     await db.commit()
     return result.success
 
@@ -410,6 +458,12 @@ async def _dispatch(db: AsyncSession, delivery_id: UUID, token: UUID) -> bool:
 async def process_pending_deliveries(db: AsyncSession, limit: int = 5) -> int:
     """Bound work/time, isolate failures and retain ownership across worker crashes."""
     delivered = 0
+    try:
+        await maintain(db)
+    # Aggregation upkeep must never block deliveries that are already due.
+    except Exception:  # pylint: disable=broad-exception-caught
+        await db.rollback()
+        logger.warning("Notification aggregation upkeep failed: reason=maintenance_error")
     deadline = time.monotonic() + TRANSPORT_TIMEOUT_SECONDS
     for _ in range(limit):
         if time.monotonic() >= deadline:

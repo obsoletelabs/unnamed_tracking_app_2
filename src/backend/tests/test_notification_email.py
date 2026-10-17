@@ -28,6 +28,7 @@ from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_verification import NotificationVerification
 from src.database.models.user import User
 from src.database.session import SessionLocal, get_db
+from src.features.notification_aggregation import seal_due_windows
 from src.features.notification_controller import emit_legacy_rows
 from src.features.notification_enrollment import (
     EnrollmentError,
@@ -54,6 +55,17 @@ from src.features.notification_unsubscribe import (
     unsubscribe_link,
 )
 from src.features.smtp_configuration import SMTP_PROVIDER, SmtpConfiguration, normalize_email
+
+
+async def release_windows(db):
+    """Media events coalesce briefly; these tests exercise delivery, so close every window."""
+    await seal_due_windows(db, now=int(time.time()) + 2 * 86400)
+    await db.execute(
+        update(NotificationDelivery)
+        .values(next_attempt_at=0)
+        .where(NotificationDelivery.status == "pending")
+    )
+    await db.commit()
 
 
 @pytest.fixture
@@ -580,6 +592,7 @@ async def test_unsubscribe_header_and_get_post_destination_isolation(
         await emit_legacy_rows(db, email_account, [draft()])
         await emit_legacy_rows(db, email_account, [draft("season_started")])
         await db.commit()
+        await release_windows(db)
         endpoint = await db.get(NotificationDestination, first)
         revision = endpoint.revision
         encrypted = endpoint.encrypted_configuration
@@ -803,6 +816,7 @@ async def test_type_opt_out_preserves_security_other_routes_and_requested_urgenc
         for kind in ("plugin", "season_started", "session_anomaly"):
             notice_ids.extend(await emit_legacy_rows(db, email_account, [draft(kind)]))
         await db.commit()
+        await release_windows(db)
         endpoint = await db.get(NotificationDestination, identity)
         token = link_token(unsubscribe_link("https://app.example.test", endpoint, "plugin.notice"))
         assert await unsubscribe_email(db, token) == "plugin.notice"

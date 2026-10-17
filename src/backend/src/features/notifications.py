@@ -22,7 +22,7 @@ from src.core.preferences import load_preferences
 from src.database.models.anime import Anime, AnimeEpisode, AnimeSeason, AnimeStatus
 from src.database.models.movies import Movie, MovieStatus
 from src.database.models.notification import Notification
-from src.database.models.notification_delivery import NotificationDelivery
+from src.database.models.notification_delivery import ACTIVE_DELIVERY_STATUSES, NotificationDelivery
 from src.database.models.tv_show import TVEpisode, TVSeason, TVShow, TVShowStatus
 from src.features.game_notifications import generate_game_releases
 from src.features.notification_audit import change_notices
@@ -248,7 +248,7 @@ async def generate_for_user(db: AsyncSession, user_id: UUID) -> int:
                 Notification.event_at < cutoff,
                 ~Notification.id.in_(
                     select(NotificationDelivery.notification_id).where(
-                        NotificationDelivery.status.in_(("pending", "processing", "retry_wait"))
+                        NotificationDelivery.status.in_(ACTIVE_DELIVERY_STATUSES)
                     )
                 ),
             )

@@ -27,6 +27,20 @@ class EmailPresentation:
 
 
 @dataclass(frozen=True)
+class DigestItem:  # pylint: disable=too-many-instance-attributes
+    """One member of a composed digest; keeps per-item identity next to the summary text."""
+
+    id: UUID
+    kind: str
+    event_type: str
+    media_type: str
+    media_id: UUID
+    event_at: int
+    title: str
+    body: str
+
+
+@dataclass(frozen=True)
 class NotificationMessage:  # pylint: disable=too-many-instance-attributes
     id: UUID
     kind: str
@@ -41,6 +55,9 @@ class NotificationMessage:  # pylint: disable=too-many-instance-attributes
     event_type: str = ""
     action_url: str | None = None
     email_presentation: EmailPresentation | None = None
+    # Non-empty for a composed digest chunk; title/body already summarise these members.
+    items: tuple[DigestItem, ...] = ()
+    batch_id: UUID | None = None
 
 
 @dataclass(frozen=True)

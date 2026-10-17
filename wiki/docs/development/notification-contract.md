@@ -355,6 +355,69 @@ Rules for story revisions, batches and edits (implemented by #110):
   revision as far as the provider allows; exactly-once remote delivery is not
   claimed.
 
+## Aggregation windows and digests
+
+Implemented by #107 in `notification_aggregation_policy.py` (pure policy) and
+`notification_aggregation.py` (persistence). The grouping key is only a hint:
+aggregation never merges identities, receipts or stories. Replays are removed
+earlier by the receipt, so a window only ever contains distinct events.
+
+Policy is declared per event type and applies only to `standard` notifications
+and only to external destinations. Inbox rows, security, recovery, verification,
+invitation and test notifications are always immediate.
+
+| Event type | Strategy | Window | Scope |
+| --- | --- | --- | --- |
+| `media.episode.aired`, `media.season.started`, `media.sequel.announced`, `media.movie.released`, `game.released` | Coalesce | 15 minutes from the first member | One entity and one UTC day of the release or airing time |
+| `game.sale.started` | Digest | 6 hours, aligned to UTC | All sales for the destination |
+| `system.plugin.update` | Digest | 24 hours, aligned to UTC | App-wide, across plugins |
+| Producer events carrying a grouping key | Coalesce | 5 minutes from the first member | Event type and grouping key |
+| Everything else, including `game.price.threshold_hit` | Immediate | none | none |
+
+Legacy `plugin.notice` rows derive their grouping key from their own ID and are
+never aggregated. A delivery whose route requests `critical` urgency, or whose
+severity is `critical`, bypasses aggregation because every declared policy sets
+`urgent_bypass`; a policy with `urgent_bypass=False` would hold it.
+
+Persistent state:
+
+- `notification_aggregation_windows` holds one row per destination revision,
+  strategy and scope. A partial unique index allows a single `open` window per
+  key. Coalescing windows start at the first member, digest windows use fixed
+  UTC boundaries, so boundaries are a function of the arrival time only.
+- A held delivery has status `aggregating` and a `window_id`. `aggregating`
+  counts as active work everywhere deletion, revocation, destination revision
+  and retention cancel or protect deliveries.
+- A window holds at most 500 members. A full window is closed early (`full`)
+  and a new one opens. Sealed windows are pruned after seven days once none of
+  their deliveries is active.
+
+Sealing runs at the start of every dispatcher pass. One worker locks a due window
+(`FOR UPDATE SKIP LOCKED`), drops older revisions of a story that has a newer
+revision in the same window (`superseded`), orders the rest by occurrence time and
+notification ID and splits them into chunks. Chunk IDs are `uuid5(window, "chunk:N")`,
+so planning is deterministic. The first member of a chunk (the lead) becomes
+`pending` and runs through the normal claim, lease, retry and revalidation path.
+The other members stay `aggregating`.
+
+Dispatch revalidates every member (deletion, expiry, source grants, routing and
+proof projection) and leaves invalid ones out with their own terminal status. The
+digest is one plain-text message: a count title (`3 new episodes`, with `(part/total)`
+when split), one `- title` line per member that respects the destination's text,
+payload and item limits (`provider_capability_profile`, at most 50 items), and
+`NotificationMessage.items` carrying each member's ID, kind, event type, media
+reference, time, and the text the destination's projection permits. A chunk with a
+single member is sent as the ordinary message.
+
+Settlement is atomic with the lead: on `sent` all included members become `sent`
+in the same transaction. A retryable failure retries the lead with the existing
+attempt limit. `failed_permanent` and destination-level suppression end the whole
+chunk with the same status. Other lead outcomes (for example a deleted
+notification) promote the next member. Upkeep also re-leads any chunk left
+headless by a bulk cancellation or crash. Delivery stays at least once. Per-member
+attempt rows and remote references remain #110; the inbox keeps per-item history
+and actions, which is where digests point readers.
+
 ## Provider capabilities and discovery
 
 Schema `notification-provider-capabilities-v1` (`NotificationProviderCapabilities`):
@@ -494,7 +557,7 @@ These invariants hold for every adopter:
 | Issue | Builds on this contract by |
 | --- | --- |
 | #106 | Done: persisted with `decide_revision` under transactional locks, installation-scoped story identity, receipts separate from content, no reuse of replay statuses. See [Story persistence](#story-persistence-and-idempotency). |
-| #107 | Grouping by grouping key and declared policy without merging identities; batch ordering and chunking rules. |
+| #107 | Done: see [Aggregation windows and digests](#aggregation-windows-and-digests). |
 | #108 | Urgency as a request constrained by policy, never by trust. |
 | #109 | Markdown/HTML/URL enforcement, image proxying, host media resolution, action routes and live story links. |
 | #110 | Capability declarations and discovery, per-revision deliveries, batches, remote references and `reconciliation_operation`. |
