@@ -14,6 +14,7 @@ manual entries use `local` (never guessed, audit H5/H21).
 from __future__ import annotations
 
 import re
+import time
 from collections.abc import Collection, Iterable, Mapping
 from typing import Any
 from uuid import UUID
@@ -22,6 +23,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.database.models.game import Game
 from src.database.models.game_identity import (
     LEGACY_SOURCE_SCOPE,
     MANUAL_SOURCE_SCOPE,
@@ -30,6 +32,8 @@ from src.database.models.game_identity import (
     HostSource,
     SourceKind,
 )
+from src.features.game_identity import names
+from src.features.game_identity.names import ObservedName
 from src.features.game_ingestion.contract import (
     ObservationBatchV1,
     ObservedFacts,
@@ -151,7 +155,43 @@ async def record_observations(
                 attach={key: resolved[key][0] for key in chunk},
             )
         )
+    await _reconcile_names(db, user_id, resolved, results)
     return results
+
+
+async def _reconcile_names(
+    db: AsyncSession,
+    user_id: UUID,
+    resolved: Mapping[str, tuple[UUID, SourceObservationV1]],
+    results: Iterable[BatchResult],
+) -> None:
+    """Apply the name each source reported under the quality, provenance and lock rules
+    (#98). The raw name is already on the observation whatever happens here."""
+    observation_ids = {r.external_id: r.observation_id for b in results for r in b.results}
+    observed = {
+        game_id: ObservedName(observation.title, observation_ids.get(key), int(time.time()))
+        for key, (game_id, observation) in resolved.items()
+        if observation.title and key in observation_ids
+    }
+    if not observed:
+        return
+    # The import route has just resolved these rows, so they are normally already loaded.
+    games = [
+        obj
+        for obj in db.identity_map.values()
+        if isinstance(obj, Game) and obj.user_id == user_id and obj.id in observed
+    ]
+    missing = set(observed) - {game.id for game in games}
+    if missing:
+        games += (
+            await db.scalars(
+                select(Game)
+                .where(Game.user_id == user_id, Game.id.in_(missing))
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        ).all()
+    await names.reconcile_games(db, user_id, games, observed)
 
 
 async def record_complete_inventory(

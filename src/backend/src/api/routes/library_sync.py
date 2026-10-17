@@ -37,6 +37,7 @@ from src.database.models.game import Game, GameStatus
 from src.database.models.user import User
 from src.database.session import SessionLocal, get_db
 from src.features.connection_jobs import sync_scope
+from src.features.game_identity import names
 from src.features.game_ingestion import legacy as ingestion
 from src.features.game_ingestion.contract import SourceObservationV1
 from src.features.imports import steam_connection
@@ -160,10 +161,11 @@ async def _enrich_new_game(game: Game, user: User, preferences: dict) -> None:
         return
     match = game_result(record)
     game.provider_ids = {**(game.provider_ids or {}), **record.get("provider_ids", {})}
-    if game.title.startswith("Steam app ") and match.get("title"):
-        apply_metadata_updates(
-            game, {"title": match["title"], "sort_title": match["title"].lower()}
-        )
+    if match.get("title") and names.is_weak(
+        names.classify_title(game.title, source=game.source, external_id=game.external_id)
+    ):
+        # Trusted metadata upgrades a recognised placeholder; it never renames a real title.
+        names.apply_candidate_title(game, match["title"], trusted_metadata=True)
     for field in (
         "description",
         "developer",

@@ -5,6 +5,7 @@ import LibraryManagementSection from "./LibraryManagementSection.vue";
 import MediaPreferencesSection from "./MediaPreferencesSection.vue";
 import MediaTrashSection from "./MediaTrashSection.vue";
 import DuplicateGamesSection from "./DuplicateGamesSection.vue";
+import GameNameReviewSection from "./GameNameReviewSection.vue";
 
 const props = defineProps<{ initialTab?: string }>();
 
@@ -12,6 +13,7 @@ const TABS = [
   { id: "manage", label: "Library" },
   { id: "preferences", label: "Preferences" },
   { id: "duplicates", label: "Duplicates" },
+  { id: "names", label: "Names" },
   { id: "trash", label: "Trash" },
 ];
 const tab = ref(
@@ -25,6 +27,7 @@ const tab = ref(
     <LibraryManagementSection v-if="tab === 'manage'" />
     <MediaPreferencesSection v-else-if="tab === 'preferences'" />
     <DuplicateGamesSection v-else-if="tab === 'duplicates'" />
+    <GameNameReviewSection v-else-if="tab === 'names'" />
     <MediaTrashSection v-else />
   </div>
 </template>

@@ -74,7 +74,7 @@ an unmerge and assert that observations, revisions and links are identical.
 
 ## 3. Not in this change
 
-Counter reconciliation across a merge (#96), field quality (#98), the matching rules that
+Counter reconciliation across a merge (#96), field quality (#98, see [names](game-identity-names.md)), the matching rules that
 call `associate_automatically` (#99), the library UI (#101) and the backfill of earlier
 `owned_copy` groups and dismissals (#102). Library views still read `games` directly, so a
 merge does not yet change what the library shows.
