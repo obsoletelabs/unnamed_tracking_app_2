@@ -212,7 +212,7 @@ not change package format, SDK, gateway transport or installation identity.
 | `network.request` | `network.outbound` | Bounded JSON GET/POST through the host, outside worker network isolation |
 | `tasks.subscribe`, `tasks.unsubscribe` | `tasks.background` | Explicit authenticated UI action's own user; a worker cannot subscribe another user |
 | `tasks.subscribers` | `tasks.background` | Plugin's opted-in user IDs; bounded offset/limit, maximum 100 |
-| `tasks.request` | `tasks.background` | Delegates reviewed media sync or notifications to a subscribed target; checks both target grants live |
+| `tasks.request` | `tasks.background` | Delegates reviewed media sync, notifications, and (Plugin API 1.1.14) `notification_sources.register` / `notifications.publish` to a subscribed target; checks both target grants live |
 
 ### Media sync contract
 

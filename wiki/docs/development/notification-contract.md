@@ -914,6 +914,24 @@ for name, schema in plugin_notification_schemas().items():
 PY
 ```
 
+## Producer migration to stories
+
+Issue #116 moves the producers that existed before the contract onto it. The host owns routing, privacy,
+retention and delivery in every case; producers only describe what happened.
+
+| Producer | Story and phases | Content and actions | Grouping |
+|---|---|---|---|
+| Plugin updates (host) | One story per `update:<plugin>:<version>`: `available`, then `installed`, `failed` or `resolved`. The announcement is revised in place while unread; a read or dismissed item keeps its history and a linked item announces the change. Uninstalling the plugin, or a check that no longer offers the version, resolves open stories; nothing is deleted. | Facts for plugin, installed and target version; a `host_route` action to `/settings?area=administration&section=plugins&plugin=<id>` (relative, so it follows the installation origin). | `system.plugin.update` digest: several plugins become one message whose items each link to their own story page and carry their own action. |
+| Game sales and price hits (host) | One-item story per validated quote observation. | Money facts and market/platform come only from the validated quote; the private target stays in the owner's text and never in facts or the public copy. Action opens the game. | Sales digest app-wide; price hits are never delayed. Quote validation is unchanged (regular price required and above the sale price, decimal strings, downward threshold crossing). |
+| Game releases, episodes and movies (host) | Game releases are one-item stories; episode and movie rows keep their legacy items on the same dispatcher. | Game release: release-time fact and an action that opens the game. | Coalesced only for the same entity and release or airing day. |
+| Jellyfin sync problems (official plugin) | `sync:<account>`: `attention` (revised by a different problem), then `resolved` by the next successful sync. | Account and server facts, link to the plugin's accounts page. | Only one account's problems share a digest. |
+
+Background workers publish through `tasks.request`, which now delegates `notification_sources.register`
+(capability `notification_sources.register`) and `notifications.publish` (capability
+`notifications.canonical`) to a subscribed account in addition to `notifications.send` and
+`notifications.emit`; the target account's live grant is checked for each. Existing `notifications.send`
+and `notifications.emit` producers continue through the compatibility adapters below.
+
 ## Compatibility adapters
 
 Every existing notification gateway method and runtime operation has an explicit
