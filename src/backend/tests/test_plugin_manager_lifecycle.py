@@ -349,6 +349,13 @@ async def test_automatic_update_policy_downloads_without_unauthorized_activation
     if not install_update:
         assert store.read()["plugins"][gate.plugin_id]["staged_update"]["status"] == "downloaded"
         assert store.stage_path(gate.plugin_id).exists()
+        if not global_enabled and override == "follow":
+            from src.database.models.notification import Notification
+
+            notifications = await gate.db.scalars(
+                select(Notification).where(Notification.kind == "plugin_update")
+            )
+            assert any("Global automatic updates are disabled." in item.body for item in notifications)
     assert_owned_data(gate)
     if not healthy:
         from src.database.models.notification import Notification
