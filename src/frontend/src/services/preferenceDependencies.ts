@@ -18,11 +18,16 @@ export function unavailableText(item: Unavailable | null): string {
 
 // Media types and status filters each notification type needs. Mirrors the
 // scheduled checks in the backend (features/notifications.py).
-const MEDIA_NEEDS: Record<string, { media: string[]; statuses: boolean }> = {
+// Movies have no "watching" state, so a movie release only reaches a title in
+// the other selected buckets (as the scheduled check in the backend does).
+const MEDIA_NEEDS: Record<
+  string,
+  { media: string[]; statuses: boolean; movie?: boolean }
+> = {
   "media.episode.aired": { media: ["anime", "tv"], statuses: true },
   "media.season.started": { media: ["anime", "tv"], statuses: true },
   "media.sequel.announced": { media: ["anime", "tv"], statuses: false },
-  "media.movie.released": { media: ["movie"], statuses: true },
+  "media.movie.released": { media: ["movie"], statuses: true, movie: true },
   "media.franchise.season": { media: ["anime"], statuses: false },
   "media.franchise.extra": { media: ["anime"], statuses: false },
 };
@@ -47,6 +52,16 @@ export function notificationTypeUnavailable(
     return {
       reason: `No effect while ${names} is not followed.`,
       enable: `Turn on ${names} under Followed media (open Providers on any media type).`,
+    };
+  }
+  if (needs.movie && prefs.notify_statuses.some((s) => s !== "watching")) {
+    return null;
+  }
+  if (needs.movie && prefs.notify_statuses.length > 0) {
+    return {
+      reason:
+        "No effect while only Watching is selected, as movies are not watched in parts.",
+      enable: "Select Plan to Watch or On Hold under Followed media.",
     };
   }
   if (needs.statuses && prefs.notify_statuses.length === 0) {

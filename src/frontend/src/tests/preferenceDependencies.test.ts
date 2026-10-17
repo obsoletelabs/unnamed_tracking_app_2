@@ -97,3 +97,22 @@ it("disables calendar game layers only while all games are hidden", () => {
   ).toContain("Hide all Games layers");
   expect(calendarGameUnavailable({ calendar_hide_games: false })).toBeNull();
 });
+
+it("explains movie releases when only the Watching status is followed", () => {
+  const only = {
+    ...DEFAULT_PREFERENCES,
+    notify_statuses: ["watching" as const],
+  };
+  expect(
+    notificationTypeUnavailable("media.movie.released", only)?.enable,
+  ).toContain("Plan to Watch");
+  expect(notificationTypeUnavailable("media.episode.aired", only)).toBeNull();
+  const planned = { ...only, notify_statuses: ["plan" as const] };
+  expect(
+    notificationTypeUnavailable("media.movie.released", planned),
+  ).toBeNull();
+  const none = { ...only, notify_statuses: [] };
+  expect(
+    notificationTypeUnavailable("media.movie.released", none)?.reason,
+  ).toContain("no watch status");
+});
