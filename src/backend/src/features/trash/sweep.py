@@ -39,8 +39,8 @@ from src.features import game_folders
 from src.features.trash.archive_trash import purge_archive_trash, trash_files_dir, trash_root
 from src.features.trash.game_trash import game_trash_dir, purge_game_trash
 from src.features.trash.inbox_trash import purge_inbox_file
-from src.features.trash.media_trash import media_trash_dir, purge_media_file
 from src.features.trash.media_titles import purge_expired_media_titles
+from src.features.trash.media_trash import media_trash_dir, purge_media_file
 from src.helpers import save_game_asset
 from src.helpers.async_storage import finish_storage_operation
 
