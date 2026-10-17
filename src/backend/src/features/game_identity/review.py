@@ -31,8 +31,8 @@ from src.database.models.game_identity import (
     ObservationAvailability,
 )
 from src.features import game_duplicates
-from src.features.game_identity import decisions
-from src.features.game_identity.graph import IdentityConflict, merge_graph
+from src.features.game_identity import counters, decisions
+from src.features.game_identity.graph import IdentityConflict, IdentityError, merge_graph
 from src.features.game_identity.matching import (
     RULE,
     RULE_VERSION,
@@ -240,6 +240,11 @@ async def run_matching(
         if outcome.outcome == "associated":
             result.associated += 1
             result.pairs.append(pair)
+            try:
+                async with db.begin_nested():
+                    await counters.group_same_copy(db, user_id, first, second)
+            except IdentityError:
+                pass  # the merge stands; the user can still group the counters by hand
             graph = await merge_graph(db, user_id)
         elif outcome.outcome == "suggested":
             result.suggested += 1
@@ -405,6 +410,7 @@ async def undo_automatic(db: AsyncSession, user_id: UUID, decision_id: UUID) -> 
         decisions.Actor(reason="Undid an automatic association"),
         keep_separate=True,
     )
+    await counters.ungroup_games(db, user_id, *_members(decision))
     await game_duplicates.keep_both(db, user_id, *_members(decision))
 
 

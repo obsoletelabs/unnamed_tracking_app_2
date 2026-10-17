@@ -17,6 +17,9 @@ saved settings and cosmetic cookies remain compatible.
 | Shared semantic tokens | `styles/tokens.css` |
 | Classic typography, shape and presentation | `styles/classic.css` |
 | Shared modal, navigation and form behavior | Existing components and composables |
+| Full editor frame: hero, direct tabs, bounded body, pinned actions | `components/EditorShell.vue` on `UiModal.vue` |
+| Editor sections, grids, fields and hints | `styles/shared/editorForm.css` (included scoped) |
+| Staged artwork choices and object URL release | `composables/useStagedArtwork.ts`, `components/game/GameArtPicker.vue` |
 | Plugin iframe appearance | `services/pluginAppearance.ts` and public appearance messages |
 
 `data-ui-style="classic"` selects the centralized Classic rules. Palette
@@ -70,9 +73,84 @@ including the public lock name and artwork role when applicable. Preserve a
 populated form value until explicitly checked, and recheck current protection
 when applying.
 
-The game hero/eight-tab and richer editor layouts remain the next shared editor
-workstream (#143/#144). Keep new behavior in the current host components; no
-Classic page copies or independent provider clients are needed.
+## Full editors
+
+The Rosefall #469 game editor is ported as one shared editor (#143), not a
+Classic page. `GameFormModal.vue` keeps every field, the staged lookup and its
+existing services; `EditorShell.vue` only arranges them:
+
+- **Hero:** a cover button (it opens the artwork tab), the dialog title as a
+  kicker, the live title and a short subtitle. The kicker labels the dialog, so
+  dialog names such as "Edit Game" stay stable for assistive technology.
+- **Direct tabs:** a `tablist` of `tab` buttons with roving focus (arrow keys,
+  Home and End) controlling one `tabpanel`. There is no wizard; Save is always
+  in the pinned actions and submits the shell's form through `form=`.
+- **Bounded body:** `UiModal` `size="editor"` and `bounded` give one fixed
+  height, so switching tabs does not resize the dialog; only the body scrolls.
+  The tab row scrolls sideways on phones and keeps the active tab in view.
+- **Pinned actions and status:** the `actions` slot sits in the dialog footer;
+  the `status` slot shows a pinned error above it. The `lead` slot puts a lookup
+  or review above whichever tab is open.
+
+State that must survive tab changes lives in the editor's setup, not in panel
+components. Panels may use `v-if`, except a costly or stateful one: build it on
+first use and keep it with `v-show`, as the artwork tab does for its file inputs
+and offered images. Never key the lookup review by tab; it must not remount.
+Explicit artwork choices go through `useStagedArtwork`: the newest explicit
+choice wins, a cancelled picker keeps the current one, the input is cleared on
+click so the same file can be chosen again, and object URLs are revoked when a
+choice is replaced or the editor unmounts.
+
+Fields that belong to the record, such as favorite, collections, playtime and
+the resume note, travel in the editor's one create/update request, so a save
+cannot keep some and lose others. Work that needs another request after the
+record exists (artwork uploads) runs only after it is saved, never re-creates
+it, and reports a retry through the task notice.
+
+The movie, TV and anime editors (#144) adopt the same frame. `MediaFormShell.vue`
+is a thin wrapper that wires `EditorShell` for the three of them: the five tabs
+(`MEDIA_EDITOR_TABS`), the pinned Delete / Look up metadata / Cancel / Save actions
+(`styles/shared/editorActions.css`, shared with the game editor), the pinned error
+and a `lookup` slot placed in the shell's `lead` slot so the staged lookup is
+reachable from every tab. `MovieFormModal`, `TVShowFormModal` and `AnimeFormModal`
+keep their own fields, services, title protection, season staging and save logic.
+The parts the three share are typed and separate, not one large component:
+
+- `MediaTrackingFields.vue` (`part="status"` for Basics, `"journal"` for Tracking):
+  status, favorite, dates, rewatches, source, ratings, rank, tags and notes.
+- `MediaClassificationFields.vue`: genres, countries, languages, age rating and
+  features, with a slot for a media-specific field (anime format).
+- `MediaArtworkFields.vue` and `MediaProviderIds.vue`.
+- `utils/mediaEditorFields.ts`: the typed `TrackingFields` / `ClassificationFields`
+  state, their read/validate conversions (`trackingFrom`, `trackingToInput`,
+  `classificationToInput`) and provider-ID validation. These are flat on the
+  editor's `fields` object because the metadata comparison offers values by key.
+
+Personal tracking values (Tracking tab) stay separate from what a provider
+supplies (Details, Links), so a lookup can only offer provider fields and never
+overwrites a rating, date or note.
+
+To port an existing UI contribution into the shared editor:
+
+1. Decide whether it is personal (Tracking), provider metadata (Details), artwork
+   or identity (Artwork / Links); add it to the shared component when all three
+   media have the field, or to the editor's own panel when only one does.
+2. Add the value to the editor's `fields`, load it in `loadFrom...`, and send it in
+   the same `create...`/`update...` request. Do not add another save request.
+3. Validate with `numberOrNull` / the helpers in `mediaEditorFields.ts` and, if the
+   message concerns another tab, switch `tab` before showing the error.
+4. If the lookup can offer it, add it to the comparison definitions with its
+   locked-field name so manual edits stay protected.
+5. Use the tokens in `editorForm.css`; add Classic cues only under `.editor-shell`.
+6. Plugin-provided panels and actions attach to the media's page, not this dialog;
+   keep their slots in the detail views untouched.
+The movie, TV and anime editors (#144) should adopt `EditorShell` and
+`editorForm.css` the same way: keep each editor's own fields, services,
+protection and seasons/progress logic, and add their tabs as direct panels.
+
+Classic's only editor selectors live in `classic.css` under `.editor-shell`:
+filled fields on the secondary surface, outlined secondary/destructive footer
+actions and the tab weight. Everything else is tokens.
 
 ## Designing new UI for both presentations
 
@@ -86,6 +164,16 @@ sessions in composables. A new metadata feature belongs in the generic handler
 and public provider contract. An optional provider implementation belongs in the
 separate plugin repository. Plugin UI receives the resolved public color tokens,
 including Classic, without access to private host state.
+
+For Modern, use the current controls rather than recreating Rosefall's: tab rows
+look like `SegmentedTabs` (surface-2 track, accent selection with the on-accent
+foreground), fields use the `.ui-field` treatment (surface background, border,
+control height), filled primary and soft secondary buttons, and the shared
+radius, type and spacing tokens. A dialog that needs more than one screen of
+fields uses `EditorShell` with tabs and pinned actions instead of a longer
+scrolling page; short dialogs keep `UiModal`'s plain header. Keep primary
+actions visible on phones, keep 44px targets, and avoid horizontal page scroll:
+only a tab row or an image strip may scroll sideways.
 
 Visual tests should confirm the selected control, disabled state, focus ring and
 foreground contrast. Behavioral tests should exercise the shared workflow once,

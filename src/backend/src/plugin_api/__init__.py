@@ -100,6 +100,17 @@ from .lifecycle import (
     RuntimeUnavailable,
     Sha256PackageVerifier,
 )
+from .notification_story_contracts import (
+    NOTIFICATION_CONTRACT_VERSION,
+    CanonicalNotificationEvent,
+    NotificationContent,
+    NotificationProviderCapabilities,
+    RendererContribution,
+    StoryLifecycleDeclaration,
+    negotiate_notification_contract,
+    notification_contract_reason,
+    notification_contract_schemas,
+)
 from .permissions import (
     AuthorizationDecision,
     ClientIdentity,
@@ -165,6 +176,15 @@ __all__ = [
     "NotificationLifecycleQuery",
     "NotificationEventEmission",
     "NotificationTypeRegistration",
+    "NOTIFICATION_CONTRACT_VERSION",
+    "CanonicalNotificationEvent",
+    "NotificationContent",
+    "NotificationProviderCapabilities",
+    "RendererContribution",
+    "StoryLifecycleDeclaration",
+    "negotiate_notification_contract",
+    "notification_contract_reason",
+    "notification_contract_schemas",
     "PermissionDeclaration",
     "PluginDependency",
     "PluginBackendRoute",

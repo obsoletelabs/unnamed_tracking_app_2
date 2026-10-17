@@ -27,7 +27,6 @@ from src.database.models.game_identity import (
     GameSourceConnection,
     GameSourceObservation,
     GameSourceObservationLink,
-    GameUmbrella,
     IdentityKind,
     RecordOrigin,
 )
@@ -310,15 +309,7 @@ async def _place_group(  # pylint: disable=too-many-locals
             )
         )
     else:
-        umbrella = GameUmbrella(
-            user_id=p.user_id,
-            title=head.title.strip() or "Untitled game",
-            sort_title=head.sort_title or head.title.lower(),
-            created_at=stamp,
-            updated_at=stamp,
-        )
-        db.add(umbrella)
-        await db.flush()
+        umbrella = await manual.new_umbrella(db, p.user_id, head.title, head.sort_title, stamp)
         umbrella_id, has_primary = umbrella.id, False
         p.add("umbrellas_created")
     ids = {m.id for m in members}
@@ -432,8 +423,8 @@ async def dismissals(p: Progress, batch_size: int) -> None:
                     p.user_id,
                     DecisionSubject.IDENTITY_PAIR.value,
                     {"first_game_id": low, "second_game_id": high},
-                    DecisionOutcome.CONFIRMED_SEPARATE.value,
-                    decisions.Actor(
+                    outcome=DecisionOutcome.CONFIRMED_SEPARATE.value,
+                    actor=decisions.Actor(
                         ACTOR.kind, ACTOR.detail, "Kept separate in the earlier duplicate review"
                     ),
                     evidence={"migrated_from": "game_duplicate_dismissals"},

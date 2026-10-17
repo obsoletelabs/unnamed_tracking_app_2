@@ -7,17 +7,10 @@ import MediaTrashSection from "./MediaTrashSection.vue";
 import DuplicateGamesSection from "./DuplicateGamesSection.vue";
 import GameVersionDisplaySection from "./GameVersionDisplaySection.vue";
 import GameNameReviewSection from "./GameNameReviewSection.vue";
+import { LIBRARY_SETTINGS_TABS as TABS } from "../../state/settingsRegistry";
 
 const props = defineProps<{ initialTab?: string }>();
 
-const TABS = [
-  { id: "manage", label: "Library" },
-  { id: "preferences", label: "Preferences" },
-  { id: "duplicates", label: "Duplicates" },
-  { id: "versions", label: "Versions" },
-  { id: "names", label: "Names" },
-  { id: "trash", label: "Trash" },
-];
 const tab = ref(
   TABS.some((t) => t.id === props.initialTab) ? props.initialTab! : "manage",
 );

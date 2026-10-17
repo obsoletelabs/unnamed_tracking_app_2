@@ -138,6 +138,99 @@ Provider identity is an explicit choice, grouped with offered TV seasons. Select
 an unrelated description or picture cannot change the tracked provider identity.
 See [the shared lookup workflow](../integrations/metadata.md#review-metadata-before-saving).
 
+### The Add and Edit dialogs
+
+Movie, TV show and anime dialogs share one layout: a header with the poster,
+title and status, five direct tabs, and Delete, Look up metadata, Cancel and
+Save pinned below the scrolling body. Save is available on every tab.
+
+| Tab | What it holds |
+| --- | --- |
+| Basics | Title (with **Protect title from metadata updates** on saved items), status, favorite, description. |
+| Details | Provider metadata: dates, runtime, people and studios, scores, genres, countries, languages, age rating, features, and an anime's format. |
+| Tracking | Your own values: where you left off (movies), started and finished dates, rewatches, source, ratings (overall and story, performance, soundtrack), personal rank, tags and notes. |
+| Artwork | Poster and backdrop with their image URLs. |
+| Links | Provider IDs (for example `tmdb`, `imdb`, `tvmaze`, `anilist`, `mal`). |
+
+**Look up metadata** opens the search above whichever tab is showing; a result is
+reviewed there and nothing is saved until you press **Apply** and then **Save**
+(Save waits while a result is being reviewed). Every field is sent in the item's
+existing create or update request, so there is no second save. Fields the dialog
+does not show, such as priority and an anime's links to a series, keep their saved
+values, and the dialog never rewrites seasons or episode progress; that stays on
+the show's page.
+
+Numbers follow one rule: a cleared box saves nothing (or `0` for rewatches), a real
+`0` is kept, and values outside the allowed range are refused with a message that
+names the field. A finish date before the start date is refused. Provider IDs
+must use lowercase letters, digits, dots, dashes or underscores for the name
+(up to 50 characters), an ID of at most 256 characters, no duplicates and at most
+32 entries; a problem sends you to the **Links** tab. Editing a TVmaze, MyAnimeList
+or AniList ID also updates the matching stored ID that episode sync uses.
+Modern and Classic share the same dialog; Classic only changes fields and secondary
+actions to its filled/outlined style.
+## Trash, Empty trash and automatic deletion
+
+Deleting a movie, TV show or anime entry moves it to the trash. Open
+**Settings > Library > Trash** to see the three trashes. **Restore** brings a
+title back with its seasons, episodes, progress and ratings. **Delete forever**
+removes one title permanently.
+
+### Empty trash
+
+Each kind with something in its trash has an **Empty trash** button. It asks
+first, naming the exact number of titles, and says that shows and anime lose
+their seasons and episodes too. Emptying covers the whole kind, including titles
+hidden by the search box; the confirmation says so when a search is active.
+**Emptying is permanent and cannot be undone.**
+
+- Only titles that were in your trash when you confirmed are deleted. A title
+  trashed afterwards, a title restored meanwhile (on another device, for
+  example), your active library and other accounts' titles are never touched.
+- Large trashes are emptied in batches of 200; the page repeats them for you.
+- The result stays above the list. When something could not be deleted, it
+  names those titles, and they stay in the trash unchanged. Each title is
+  deleted on its own, so one failure never leaves a show without some of its
+  seasons. If the connection fails part-way, the message says how many were
+  already deleted; the rest are still in the trash.
+
+### Delete trashed titles automatically
+
+Choose **Never**, **After 7 days**, **After 14 days**, **After 30 days** or
+**After 90 days**. **Never** is the default for every account, including
+accounts that existed before this setting: nothing is deleted automatically
+until you choose a period.
+
+- With a period chosen, a title is deleted permanently, with its seasons and
+  episodes, once it has been in the trash that many days. The time counts from
+  when it was moved to the trash, so titles already older than the period go at
+  the next clean-up. Each row shows when that will happen.
+- Turning automatic deletion on, or shortening it, asks for confirmation first
+  and says how many titles already qualify. Keeping titles longer or choosing
+  **Never** saves straight away.
+- The server's regular trash clean-up applies the choice. It runs when the
+  server starts and every six hours, so a title can stay a few hours past its
+  date. It deletes at most 200 titles of each kind per account, and 2,000 in
+  total, per clean-up; anything left goes at the next one.
+- If saving the choice fails, the page shows the choice that is actually saved.
+  Choosing **Never** takes effect at once: the clean-up re-reads your choice
+  just before deleting anything from your trash.
+
+This is separate from game trash. Deleted games and game files keep their
+fixed seven-day retention, described in [Games](games.md) and
+[Game Media and Files](game-media.md).
+
+| Modern: turning on automatic deletion | Modern: 30 days chosen |
+| --- | --- |
+| ![Confirmation before automatic deletion is turned on](../assets/media-trash-retention/modern-dark-retention-confirm.jpg) | ![Media trash with 30-day automatic deletion and per-title dates](../assets/media-trash-retention/modern-dark-retention-30.jpg) |
+
+| Classic: Empty trash confirmation | Classic: a title that could not be deleted |
+| --- | --- |
+| ![Confirmation before emptying the TV show trash](../assets/media-trash-retention/classic-light-empty-confirm.jpg) | ![Result naming the TV show that stayed in the trash](../assets/media-trash-retention/classic-light-partial-failure.jpg) |
+
+[Classic dark with 14 days](../assets/media-trash-retention/classic-dark-retention-14.jpg)
+and [Modern phone width](../assets/media-trash-retention/modern-dark-phone.jpg).
+
 ## Metadata provider extension (1.1.1)
 
 Search and refresh use the hardcoded core providers and optional installed provider plugins

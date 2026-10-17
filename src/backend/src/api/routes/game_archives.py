@@ -34,7 +34,7 @@ from src.database.session import get_db
 from src.features import game_notes
 from src.features.trash import archive_trash
 from src.features.trash.sweep import RETENTION_SECONDS
-from src.helpers.media import safe_filename
+from src.helpers.media import UploadTooLargeError, save_upload_stream
 
 _DB_DEPENDENCY = Depends(get_db)
 _CURRENT_USER_DEPENDENCY = Depends(get_current_user)
@@ -46,34 +46,18 @@ router = APIRouter(
 
 ArchiveKind = Literal["save", "world_save"]
 
-_UPLOAD_CHUNK_SIZE = 1024 * 1024
-
 
 async def _save_upload_stream(
     file: UploadFile, dest_dir: Path, original_name: str, limit_mb: int
 ) -> tuple[Path, int]:
     """Stream an uploaded archive to disk without buffering it in memory."""
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    path = dest_dir / safe_filename(original_name)
-    limit_bytes = limit_mb * 1024 * 1024
-    size = 0
     try:
-        with path.open("wb") as output:
-            while True:
-                chunk = await file.read(_UPLOAD_CHUNK_SIZE)
-                if not chunk:
-                    break
-                size += len(chunk)
-                if size > limit_bytes:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Larger than {limit_mb} MB.",
-                    )
-                output.write(chunk)
-    except Exception:
-        path.unlink(missing_ok=True)
-        raise
-    return path, size
+        return await save_upload_stream(file, dest_dir, original_name, limit_mb * 1024 * 1024)
+    except UploadTooLargeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Larger than {limit_mb} MB.",
+        ) from exc
 
 
 _ARCHIVE_SUBDIRS: dict[ArchiveKind, str] = {"save": "saves", "world_save": "world_saves"}

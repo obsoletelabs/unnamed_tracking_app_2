@@ -132,6 +132,48 @@ opt-out. Registration, configuration editing and separate library-sync actions
 retain their existing boundaries. This adds no new SDK method or wire-schema
 requirement: existing official provider declarations and SDK helpers remain valid.
 
+### Account provider order
+
+`UserScanSettings.provider_order` (search and metadata authority) and
+`image_provider_order` (artwork authority) hold registered provider IDs, so core
+and optional providers share one order per account. No migration is needed: the
+JSON columns keep orders saved before optional providers became plugins, whose
+entries are the fixed legacy display names (`IGDB`, `GiantBomb`, `SteamGridDB` and
+the other five). Discovery matches an entry by provider ID; only those legacy
+names also match a declaration name, and a plugin declaration can never claim
+the name of a built-in provider. Providers absent from an order rank
+100, after every listed provider; ties use the provider ID. Unsaved accounts use
+the model defaults without creating a scan-settings row.
+
+`discover_providers` applies the saved orders on every path, including focus,
+refresh, library sync, related metadata and scheduled episode work, unless a
+caller passes explicit scan preferences. Metadata patches merge by provider rank.
+Artwork sorts by kind, the best artwork rank among the providers that supplied
+an asset, the provider's own asset priority, then URL.
+
+`PUT /api/settings/scan` accepts up to 256 unique entries per order. Each must be a
+provider ID matching `[a-z0-9][a-z0-9._-]{0,127}` or one of the legacy names
+for that order. IDs are not checked against current registrations, so an
+uninstalled plugin's position survives a reinstall. Each account can only change
+its own order. `GET /api/metadata/providers` adds the effective `priority` and
+`artwork_priority` to each entry. The Scan & providers tab builds its lists from
+that catalog. It shows account-enabled providers for one media type and moves an
+entry relative to its visible neighbour. Orders are sent only after a move.
+
+`provider_last_used` is keyed by provider ID. Selecting a progressive result,
+compatibility game search and game metadata refresh record the registered
+providers whose identity, metadata or artwork reached the chosen result. The
+local library identity is never recorded. Older display-name keys remain
+readable as a fallback.
+
+Plugin lifecycle needs no separate registry or hook. A disabled plugin's
+providers stay in discovery as `disabled`. A stopped or unreachable runtime
+reports `plugin_unavailable`. Uninstalling purges the plugin's grants, so its
+registrations leave discovery even though the registration row and encrypted
+configuration remain. A reinstall or update registers the same provider ID for
+the new installation and keeps its saved position. Account opt-outs keep a
+provider's position for re-enabling.
+
 ## Three phases
 
 `POST /api/metadata/sessions` returns an owner-scoped session immediately.

@@ -81,6 +81,22 @@ async def _live_game(db: AsyncSession, user_id: UUID, game_id: UUID, *, lock: bo
     return game
 
 
+async def new_umbrella(
+    db: AsyncSession, user_id: UUID, title: str, sort_title: str | None, stamp: int
+) -> GameUmbrella:
+    """Create the umbrella that groups a game's versions, titled after its head version."""
+    umbrella = GameUmbrella(
+        user_id=user_id,
+        title=title.strip() or "Untitled game",
+        sort_title=sort_title or title.lower(),
+        created_at=stamp,
+        updated_at=stamp,
+    )
+    db.add(umbrella)
+    await db.flush()
+    return umbrella
+
+
 async def _umbrella_of(db: AsyncSession, user_id: UUID, game_id: UUID) -> UUID:
     """The umbrella a game belongs to, placing it (and its merged group) on first use.
 
@@ -129,15 +145,7 @@ async def _umbrella_of(db: AsyncSession, user_id: UUID, game_id: UUID) -> UUID:
         primary = False
     else:
         head = games.get(merge.root(game_id)) or games[game_id]
-        umbrella = GameUmbrella(
-            user_id=user_id,
-            title=head.title.strip() or "Untitled game",
-            sort_title=head.sort_title or head.title.lower(),
-            created_at=stamp,
-            updated_at=stamp,
-        )
-        db.add(umbrella)
-        await db.flush()
+        umbrella = await new_umbrella(db, user_id, head.title, head.sort_title, stamp)
         umbrella_id, primary = umbrella.id, True
         if head.id != game_id:
             db.add(
@@ -324,11 +332,20 @@ def _entry_key_manual(row: GameManualAchievement) -> tuple[str, ...]:
 
 
 def _group_entries(
-    provider: Sequence[Achievement], manual: Sequence[GameManualAchievement]
+    provider: Sequence[Achievement],
+    manual: Sequence[GameManualAchievement],
+    sets: dict[UUID, str] | None = None,
 ) -> dict[tuple[str, ...], _Entry]:
+    """`sets` maps a game to its provider set (the app ID): generic provider IDs such as
+    ACH_1 in two different apps are two achievements, the same app on two rows is one."""
     entries: dict[tuple[str, ...], _Entry] = {}
     for row in provider:
-        key: tuple[str, ...] = ("provider", row.provider.casefold(), row.external_id)
+        key: tuple[str, ...] = (
+            "provider",
+            row.provider.casefold(),
+            (sets or {}).get(row.game_id, ""),
+            row.external_id,
+        )
         entry = entries.setdefault(key, _Entry(key, "provider", row.name))
         entry.unlocked = entry.unlocked or bool(row.unlocked)
         entry.versions[row.game_id] = entry.versions.get(row.game_id, False) or bool(row.unlocked)
@@ -408,7 +425,7 @@ async def achievements_view(db: AsyncSession, user_id: UUID, game_id: UUID) -> d
         )
     ).all()
 
-    entries = _group_entries(provider, manual)
+    entries = _group_entries(provider, manual, {g.id: g.external_id or "" for g in games})
     versions = _version_rows(games, provider, manual)
     total = len(entries)
     unlocked = sum(1 for e in entries.values() if e.unlocked)

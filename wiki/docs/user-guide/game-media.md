@@ -37,6 +37,37 @@ Invalid or oversized files are rejected individually; valid files in the same
 batch still save. Images use the general upload cap and a 40-million-pixel limit.
 Clips and soundtrack use the separate clip cap set in **Administration → Limits**.
 
+## Docs
+
+**Docs** takes manuals, guides and any other file: Word documents (`.docx` and
+`.doc`), PDFs, spreadsheets, presentations, text, archives, programs or files with
+no extension at all. The tab does not check a file's type or contents, so no file
+is refused for its format. Each file has the **Documents** cap in
+**Administration → Limits** (`MAX_DOC_SIZE_MB`, 500 MB by default), which is
+separate from the images/general cap. A file over it is rejected with
+"Larger than N MB." and the rest of the batch still saves. Modpacks in **Worlds**
+follow the world-save cap.
+
+Docs are stored byte for byte under a sanitised name in the game's own folder, and
+only their owner can list or download them. A download is always an attachment
+(`application/octet-stream` with `X-Content-Type-Options: nosniff` and a sandboxing
+Content-Security-Policy) under the preserved filename. An uploaded HTML or SVG file
+is therefore saved to disk, never opened as a page of the app.
+
+Reading a doc in the app is separate from storing it. When a document-reader
+plugin is enabled, a doc's name opens that plugin's reading preview in a new tab.
+Through the Plugin API a reader only receives previews of PDFs, UTF-8 text, HTML
+(as text) and inactive `.docx`, `.pptx`, `.odt` and `.odp` files within the
+preview limits. Other files, such as legacy `.doc`, spreadsheets, macro-enabled
+Office files and documents with embedded objects, are not handed to the reader as
+a preview, and the reader explains that instead. That never affects the upload:
+the file stays in Docs and its **Download** button still works.
+
+If an upload fails with a message about "a proxy in front of the app", a reverse
+proxy placed in front of the container refused the request before it reached the
+app. Raise that proxy's request body limit; see
+[Upload transport](../deployment/production-docker.md#upload-transport).
+
 New uploads preserve their Unicode filename separately from the safe name used
 on disk. That name follows a file from Upload into a game and through delete/restore.
 Changing its title only changes its label inside the app. Older files retain their
