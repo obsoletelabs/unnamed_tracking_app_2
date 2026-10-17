@@ -377,6 +377,37 @@ def _automatic_update_policy(
     return bool(eligible), bool(denied)
 
 
+def _automatic_update_block_reason(
+    plugin: dict[str, Any],
+    update: dict[str, Any],
+    inspected: InspectedPackage,
+    plan: InstallationPlan,
+    store: ManagerState,
+    denied: bool,
+) -> str | None:
+    """Explain the first policy gate that prevents unattended activation."""
+    if denied:
+        return "This exact release was previously denied and requires a new review."
+    mode = plugin.get("automatic_updates", "follow")
+    if mode == "disabled":
+        return "Automatic updates are disabled for this plugin."
+    if mode == "follow" and not store.settings()["automatic_updates"]:
+        return "Global automatic updates are disabled."
+    if plugin.get("version_pin"):
+        return "A version pin prevents automatic activation."
+    if not update.get("automatic_update") or not inspected.package.manifest.automatic_update:
+        return "The catalogue release or package manifest does not permit automatic updates."
+    if not inspected.package.distribution.get("automatic_update", True):
+        return "The package distribution policy does not permit automatic updates."
+    if not inspected.trust.is_verified:
+        return "The package publisher is not verified."
+    if not plan.dependencies.ready:
+        return "One or more dependencies are not ready."
+    if plan.permissions.newly_requested_grants:
+        return "The update requests new permissions that require administrator review."
+    return None
+
+
 def _validate_automatic_archive(
     path: Path, plugin: dict[str, Any], update: dict[str, Any]
 ) -> InspectedPackage:
@@ -425,6 +456,10 @@ async def _apply_automatic_update(
         }
         store.stage(plugin["plugin_id"], path.read_bytes(), stage)
         counts["staged"] += 1
+        if not eligible:
+            outcomes[plugin["plugin_id"]]["reason"] = _automatic_update_block_reason(
+                plugin, update, inspected, plan, store, denied
+            )
         if eligible:
             result = await acquisition.plugin_installer().install(
                 path.read_bytes(),
