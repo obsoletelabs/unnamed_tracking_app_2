@@ -27,6 +27,7 @@ from src.api.schemas.delegation import (
 from src.api.schemas.game import GameUpdate
 from src.core.auth import (
     AuthenticatedActor,
+    effective_display_name,
     get_current_actor,
     get_current_admin,
     get_current_user,
@@ -253,7 +254,7 @@ async def credential_status(actor: DelegatedActor = _ACTOR) -> dict:
 @router.get("/profile")
 async def profile(actor: DelegatedActor = _ACTOR) -> dict:
     actor.require("profile.read")
-    return {"id": str(actor.user.id), "display_name": actor.user.username}
+    return {"id": str(actor.user.id), "display_name": effective_display_name(actor.user)}
 
 
 @router.get("/games")
