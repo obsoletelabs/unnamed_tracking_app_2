@@ -21,6 +21,7 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.database.base import Base
+from src.database.models import notification_story  # noqa: F401  # pylint: disable=unused-import
 
 
 class Notification(Base):
@@ -31,6 +32,8 @@ class Notification(Base):
         UniqueConstraint(
             "pending_recipient_id", "dedupe_key", name="uq_notifications_pending_dedupe"
         ),
+        UniqueConstraint("story_id", "story_revision", name="uq_notifications_story_revision"),
+        Index("ix_notifications_story", "story_id"),
         CheckConstraint(
             "(user_id IS NULL) <> (pending_recipient_id IS NULL)",
             name="ck_notifications_recipient_owner",
@@ -79,4 +82,16 @@ class Notification(Base):
     public_body: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[int] = mapped_column(
         BigInteger, nullable=False, default=lambda: int(time.time())
+    )
+    # Story membership: NULL means the implicit single-item story of a legacy row.
+    story_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("notification_stories.id", ondelete="SET NULL", name="fk_notifications_story"),
+        nullable=True,
+    )
+    story_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    previous_notification_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("notifications.id", ondelete="SET NULL", name="fk_notifications_previous"),
+        nullable=True,
     )

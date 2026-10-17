@@ -28,23 +28,25 @@ through the [compatibility adapters](#compatibility-adapters).
 | Implemented in 1.0.0 | Adopted by |
 | --- | --- |
 | Typed, strict wire models with JSON Schemas and shared conformance fixtures | SDK/types (#115), producers (#116) |
-| Item, delivery and attempt transition tables verified against the current routes and dispatcher | Story persistence (#106), dispatcher (#110), full page (#113) |
-| Story revision decision (`decide_revision`) for read/dismissed items | Story persistence (#106) |
+| Item, delivery and attempt transition tables verified against the current routes and dispatcher | Dispatcher (#110), full page (#113) |
+| Story revision decision (`decide_revision`) for read/dismissed items | Persisted by the controller since 1.0.0 revision 2 ([Story persistence](#story-persistence-and-idempotency)); first host producer: plugin updates |
 | Capability model, discovery profiles for every current provider and the edit/follow-up fallback | Dispatcher (#110), SMTP (#111), Discord (#112), PWA (#114) |
 | Renderer contribution model and template rules | Rich rendering (#109), plugin contract (#115) |
 | Explicit adapters for every existing producer, record and notification Plugin API surface | All downstream issues until #118 retires adapters |
 
-Nothing in this version adds tables, columns, gateway methods, permissions or
-provider behaviour. Registered-source emission derives its unchanged receipt key
-through the shared `source_receipt_key` helper.
+The contract itself adds no gateway methods, permissions or provider behaviour.
+Registered-source emission derives its unchanged receipt key through the shared
+`source_receipt_key` helper. Story persistence (#106) adds the host tables and
+columns described in [Story persistence](#story-persistence-and-idempotency); it
+does not change any wire document, so the contract version stays 1.0.0.
 
 ## Responsibilities
 
 | Concept | Responsibility | Owner | Existing record today | Extended by |
 | --- | --- | --- | --- | --- |
-| Event | One immutable producer occurrence: type, producer-stable ID, time, optional story reference, grouping hint, urgency request and content. | Producer submits; host authenticates source, recipient and installation. | `NotificationReceipt` (identity, fingerprint, acceptance time) | #106 records story key/phase |
+| Event | One immutable producer occurrence: type, producer-stable ID, time, optional story reference, grouping hint, urgency request and content. | Producer submits; host authenticates source, recipient and installation. | `NotificationReceipt` (identity, fingerprint, acceptance time) | #106 records story key and phase on the receipt |
 | Story | The durable thing that evolves for one recipient (for example one plugin update) through declared phases and revisions. | Host | None: every `Notification` is an implicit single-item story | #106 |
-| Story item | One inbox/history entry presenting a story revision. Read, dismiss and delete apply here. | Host | `Notification` | #106 adds story ID, revision and previous-item link |
+| Story item | One inbox/history entry presenting a story revision. Read, dismiss and delete apply here. | Host | `Notification` | #106 adds `story_id`, `story_revision` and `previous_notification_id` |
 | Content | Canonical PRIVATE structured content of one revision. | Producer, validated by host | `Notification.title`, `body`, `poster_url` | #109 persists the canonical document |
 | Projection | Host-built copy for less-trusted destinations. | Host | `public_title`/`public_body`, `NotificationDelivery.projection` | Unchanged |
 | Destination | Concrete endpoint, revision, privacy, proof, consent and activation. | Host and owner | `NotificationDestination` | Unchanged |
@@ -59,7 +61,7 @@ through the shared `source_receipt_key` helper.
 | `event_id` | Producer | Unique per recipient, source and `event_type`; 1–64 opaque characters. | A replay with identical facts is a no-op; changed facts are rejected as a conflict. |
 | Receipt key | Host | `NotificationReceipt` unique per user. Plugin sources use `src:<sha256(source:event_type)>:<event_id>`; host producers keep their existing keys such as `plugin-update:<id>:<version>`. | Payload-free and currently never expires. |
 | Story key (`story.key`) | Producer | Unique per recipient, source installation (or host source), `event_type` and key; 1–128 printable characters. | Stable for the lifetime of the thing it names. A reinstalled installation cannot revise an earlier installation's stories. |
-| Story ID | Host | UUID per story. | Created by #106. |
+| Story ID | Host | UUID per story. | Created by the controller (#106) with the story. |
 | Story revision | Host | Integer from 1, incremented for each accepted revision. | Never chosen by producers. |
 | Grouping key | Producer hint | Per recipient, source and `event_type`; 1–64 characters. | Drives aggregation (#107) and presentation only. It never merges identities, receipts or stories. Persisted today as `<event_type>:<key>` (sources) or `<kind>:<media_id>` (legacy rows). |
 | Notification ID | Host | UUID of a story item. | Existing IDs and read state are preserved. |
@@ -141,7 +143,7 @@ permission at invocation (#109/#115). Content never contains executable code.
 
 Timestamps are the event's `occurred_at`, the host-assigned revision time and
 the content's `expires_at`; domain times such as an airing or sale end are
-`timestamp` facts. When canonical content is persisted (#106/#109), the existing
+`timestamp` facts. When canonical content is persisted (#109), the existing
 `Notification.expires_at` transport validity becomes the earlier of the content
 expiry and the existing purpose lifetime (one day for security, 30 days for
 standard notices), so queued work never sends stale content.
@@ -218,7 +220,7 @@ accepted a new event; #106 persists the outcome under the rules below.
 - **Update in place** keeps the notification ID, replaces its content, increments
   the revision, leaves it unread, sets `event_at` to the revision's occurrence and
   recomputes transport validity. Earlier revision content stays in the story's
-  revision history (#106).
+  revision history (`notification_story_revisions`).
 - **New linked item** creates a new unread notification linked to the previous
   item. The previous item keeps its content, read/dismissed state and retention.
   The story head moves to the new item.
@@ -232,6 +234,70 @@ makes it eligible again; dismissal is not reversible.
 Disable, uninstall, unregistration and grant revocation keep their existing
 semantics: future work stops, queued work is suppressed and stories, items and
 receipts remain in history. A reinstall creates new stories.
+
+### Story persistence and idempotency
+
+Implemented by `NotificationController._accept` and `src/features/notification_stories.py`
+(#106). Only host producers can reference a story today (`NotificationDraft.story`); no
+gateway operation accepts one until #115.
+
+| Record | Table | Contents |
+| --- | --- | --- |
+| Story | `notification_stories` | One row per (user, event type, scope, story key). `scope_key` is the source installation ID, or `host`. Holds current phase, revision and timestamps. Unique on the identity above. |
+| Story revision | `notification_story_revisions` | One row per accepted revision: phase, decision, presenting item, receipt key, occurrence and acceptance time, and that revision's title/body. Unique per (story, revision). Content is erased with the item. |
+| Story item | `notifications.story_id`, `story_revision`, `previous_notification_id` | Unique per (story, revision). `previous_notification_id` links a follow-up item to the item it supersedes. Rows without a story are implicit single-item stories. |
+| Receipt | `notification_receipts.story_key`, `story_phase` | Payload-free; kept separate from content. |
+
+Acceptance order, all in one transaction:
+
+1. Preference and ownership checks (unchanged).
+2. Inside a savepoint, insert the receipt with `ON CONFLICT DO NOTHING` on `(user_id, dedupe_key)`. The unique index serializes concurrent identical events: the loser waits for the winner, then sees a conflict. An identical replay (same fingerprint) is a no-op that creates no story, item, revision or delivery. A different fingerprint raises the existing "conflicting facts" error.
+3. Lock the story row (`SELECT ... FOR UPDATE`, creating it with `ON CONFLICT DO NOTHING` first), so different events for one story apply one at a time and revisions are sequential. Lock the head item.
+4. Run `decide_revision`. A rejection raises `StoryTransitionError` and rolls the savepoint back, so **a rejected event consumes no receipt**: it can be corrected and retried, and a rejected first event leaves no story row.
+5. Persist the decision: create the story and item; update the unread head in place (content, `event_at`, severity, revision and the item's `dedupe_key`, which follows the latest accepted event; the item ID and unread state stay); or insert a new unread item linked to the previous one. Append the revision row and advance the story.
+6. Record audit and create deliveries as before. `ensure_deliveries` is idempotent, so an in-place revision adds work only for a destination that has none yet; destinations that already received an earlier revision are not re-sent (per-revision edits and follow-ups arrive with #110). A new linked item is a new notification and is routed like any other.
+
+Event fingerprint: story events hash the story key, phase, title and body (never the
+occurrence time or grouping hint), so a producer that retries the same event is a
+replay, while a changed payload under one event ID is a conflict.
+
+The audit stream is unchanged. A new linked item records `created` like any item. An
+in-place revision records **no** new lifecycle status, because the pinned lifecycle
+replay statuses must not be reused with another meaning; a versioned status arrives
+with #115.
+
+Retention, deletion and uninstall:
+
+- Receipts have no expiry and are never deleted with content. Deleting an item erases its
+  title/body and its revisions' title/body but keeps the story, revision rows, links and
+  receipts, so a replay of an old event stays a no-op. Inbox retention only hides an item
+  and makes it ineligible for in-place updates (a linked item is created instead).
+- Receipt retention was assessed and deliberately left unlimited. A receipt is only safe to
+  drop once no producer can legitimately resend the identity. Registered sources accept
+  occurrences from the past 30 days, which bounds source replays, but host producers use
+  semantic keys that must stay unique forever (for example `plugin-update:<id>:<version>`),
+  and plugins may retry after any outage. A cap would need a per-source replay window
+  declared by the producer; that is not part of this contract.
+- Disable, uninstall and grant revocation keep their semantics: registrations are retired
+  and queued work is suppressed, while stories, items, revisions and receipts remain. The
+  story scope is the installation, so a reinstall starts new stories with the same keys.
+- Downgrading the migration refuses to drop populated story history.
+
+Adopting existing notifications: a `StoryReference` may name the receipt key of the
+pre-story notification that implicitly started the story. The first revision then adopts
+that row as revision 1 (same ID, read state and dedupe key) before applying the new
+phase, so existing unread "update available" notices turn into the story head.
+
+Plugin updates are the first story: type `system.plugin.update`, story key
+`update:<plugin>:<version>`, the reference lifecycle above (`available`, `installed`,
+`failed`, `resolved`), produced by `catalogues.notify_plugin_update`. Update-check cycles
+and automatic update runs do not emit one story per plugin: they send one consolidated
+batch notification per cycle (see [Plugin update notification batching](plugin-update-notification-batching.md)).
+A successful update through a manager route (`record_update_result`) emits `installed` on
+the version's story, which continues an adopted pre-batch `plugin-update:<id>:<version>`
+notice or a story started through `notify_plugin_update`. A transition that has no story to
+continue (an unannounced version) or a closed story is dropped silently and never affects
+the update itself. `resolved` is declared but has no producer yet.
 
 ### Item operations (read and dismiss)
 
@@ -248,7 +314,7 @@ State precedence is deleted, retention-expired, dismissed, read, then unread
 `created` and the delivery statuses below. Its status list is a pinned public
 schema: in-place revisions must not reuse an existing status with a different
 meaning, so they are published only after a versioned status is added with the
-companion schema (#106/#115).
+companion schema (#115).
 
 ## Delivery and attempts
 
@@ -427,7 +493,7 @@ These invariants hold for every adopter:
 
 | Issue | Builds on this contract by |
 | --- | --- |
-| #106 | Persisting stories, revisions and item links with `decide_revision` under transactional locks; story identity scope; receipt boundaries; no reuse of replay statuses. |
+| #106 | Done: persisted with `decide_revision` under transactional locks, installation-scoped story identity, receipts separate from content, no reuse of replay statuses. See [Story persistence](#story-persistence-and-idempotency). |
 | #107 | Grouping by grouping key and declared policy without merging identities; batch ordering and chunking rules. |
 | #108 | Urgency as a request constrained by policy, never by trust. |
 | #109 | Markdown/HTML/URL enforcement, image proxying, host media resolution, action routes and live story links. |

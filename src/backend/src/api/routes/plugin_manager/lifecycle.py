@@ -189,7 +189,7 @@ async def _perform_package_operation(
     source: dict | None = None,
 ) -> dict:
     try:
-        return await acquisition.plugin_installer().install(
+        result = await acquisition.plugin_installer().install(
             package,
             consent=InstallationConsent(
                 approved_permissions=tuple(payload.approved_permissions),
@@ -209,6 +209,9 @@ async def _perform_package_operation(
         )
     except InstallationError as exc:
         raise HTTPException(exc.status_code, exc.detail) from exc
+    if operation == "update":
+        await catalogues.record_update_result(db, plugin_id, result)
+    return result
 
 
 @router.post("/{plugin_id}/reinstall")
