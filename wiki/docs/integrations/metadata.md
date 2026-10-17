@@ -312,6 +312,39 @@ The QR and credentials are fixtures, not a live Steam authorization. The UI
 acceptance checks also cover Guard-code submission, cancellation, stopped
 polling after closing the dialog, and layout at 390 and 1440 pixels.
 
+### Steam redirect sign-in (OpenID)
+
+Steam does not offer an OAuth authorization-code flow to ordinary applications.
+OAuth needs a client issued by Valve, which is limited to Cloud sync and Workshop
+use cases. What Steam does support is OpenID 2.0, and the app uses it for
+identity only. In **Settings > Connections > Steam** choose **Sign in with Steam**.
+The browser goes to steamcommunity.com, where Steam handles the password and
+Steam Guard, then returns to the app.
+
+The app then:
+
+- accepts the return only for the app account that started it, once, within ten
+  minutes (a random one-time state is stored as a digest and cleared on first use);
+- checks the response locally (Steam endpoint, return address, a 17-digit
+  `steamcommunity.com/openid/id/` identity, signed fields, fresh response nonce);
+- asks Steam to confirm the response with `check_authentication`, and links
+  the SteamID only if Steam answers `is_valid:true`.
+
+When the return is refused, the callback redirects to Settings with a short
+reason code (`expired`, `invalid`, `cancelled`, `too_old`, `unreachable`,
+`unverified`, `different_account` or the generic `failed`), never message text.
+The page maps each code to fixed wording and shows a generic message for any
+other value, so a crafted link cannot display text of its own choosing.
+
+A verified SteamID is the same public-data link as a typed profile ID, but it
+cannot belong to someone else. It does **not** give the app a Steam session, so
+it cannot read a private library or private achievement progress. For those, use
+**Steam Guard QR** or **Account sign-in** above, or add a Web API key for public
+profiles. The existing one-account-per-app-user library rule still applies, and
+disconnecting Steam clears the verified identity. Set the public app URL under
+Administration when the app is reached through a proxy, so Steam returns to the
+right address.
+
 ### Legacy API credentials
 
 Existing Web API keys continue to work for public-profile imports. The optional

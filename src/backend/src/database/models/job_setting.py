@@ -31,6 +31,24 @@ class JobSetting(Base):
     )
     last_run_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     last_result: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # Run control and health. The lease makes overlap protection survive restarts and workers;
+    # an expired lease from a crashed process simply lets the saved checkpoint resume.
+    paused: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    cancel_requested: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="idle", server_default="idle"
+    )
+    last_success_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    failure_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    retry_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    lease_token: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    lease_expires_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     updated_at: Mapped[int] = mapped_column(
         BigInteger,
         nullable=False,

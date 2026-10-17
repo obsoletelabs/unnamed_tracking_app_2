@@ -1,7 +1,7 @@
 """Add the game identity backfill progress table.
 
 Revision ID: a3c5e7b9d102
-Revises: 50b007897f73
+Revises: 3a3fb6dccb3e
 Create Date: 2026-10-17 09:00:00.000000
 
 Phase 6 of the game identity overhaul (#102). The migration is additive: one
@@ -22,7 +22,7 @@ from sqlalchemy.dialects import postgresql
 from src.database import migration_helpers as h
 
 revision: str = "a3c5e7b9d102"
-down_revision: str | None = "50b007897f73"
+down_revision: str | None = "3a3fb6dccb3e"
 branch_labels: str | None = None
 depends_on: str | None = None
 

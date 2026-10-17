@@ -245,6 +245,24 @@ are redacted. Validation errors never echo submitted values.
 
 | Method | Path | Authority | Ownership and effect |
 | --- | --- | --- | --- |
+| GET | `/api/game-identity/backfill` | user | Own identity, review and backfill state; foreign identifiers are refused. |
+| GET | `/api/game-identity/backfill/plan` | user | Own identity, review and backfill state; foreign identifiers are refused. |
+| GET | `/api/game-identity/games/{game_id}/overview` | user | Own identity, review and backfill state; foreign identifiers are refused. |
+| GET | `/api/game-identity/games/{game_id}/sources` | user | Own identity, review and backfill state; foreign identifiers are refused. |
+| GET | `/api/game-identity/library` | user | Own identity, review and backfill state; foreign identifiers are refused. |
+| GET | `/api/game-identity/review/automatic` | user | Own identity, review and backfill state; foreign identifiers are refused. |
+| GET | `/api/game-identity/review/queue` | user | Own identity, review and backfill state; foreign identifiers are refused. |
+| POST | `/api/game-identity/backfill` | user | Own identity, review and backfill state; foreign identifiers are refused. |
+| POST | `/api/game-identity/review/automatic/{decision_id}/keep` | user | Own identity, review and backfill state; foreign identifiers are refused. |
+| POST | `/api/game-identity/review/automatic/{decision_id}/undo` | user | Own identity, review and backfill state; foreign identifiers are refused. |
+| POST | `/api/game-identity/review/queue/{decision_id}/keep-separate` | user | Own identity, review and backfill state; foreign identifiers are refused. |
+| POST | `/api/game-identity/review/queue/{decision_id}/merge` | user | Own identity, review and backfill state; foreign identifiers are refused. |
+| POST | `/api/game-identity/review/run` | user | Own identity, review and backfill state; foreign identifiers are refused. |
+| PUT | `/api/game-identity/relationships/{relationship_id}` | user | Own identity, review and backfill state; foreign identifiers are refused. |
+| PUT | `/api/game-identity/relationships/{relationship_id}/display` | user | Own identity, review and backfill state; foreign identifiers are refused. |
+
+| Method | Path | Authority | Ownership and effect |
+| --- | --- | --- | --- |
 | DELETE | `/api/game-identity/games/{game_id}/completion` | user | Own manual tracking; foreign identifiers are refused. |
 | DELETE | `/api/game-identity/manual-achievements/{achievement_id}` | user | Own manual tracking; foreign identifiers are refused. |
 | GET | `/api/game-identity/games/{game_id}/achievements` | user | Own manual tracking; foreign identifiers are refused. |

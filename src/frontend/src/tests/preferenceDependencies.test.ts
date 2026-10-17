@@ -94,7 +94,7 @@ it("orders route reasons by authority: policy, parent type, provider, account", 
 it("disables calendar game layers only while all games are hidden", () => {
   expect(
     calendarGameUnavailable({ calendar_hide_games: true })?.enable,
-  ).toContain("Hide all Games layers");
+  ).toContain("Hide all games layers");
   expect(calendarGameUnavailable({ calendar_hide_games: false })).toBeNull();
 });
 

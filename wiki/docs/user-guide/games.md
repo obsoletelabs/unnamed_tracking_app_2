@@ -14,12 +14,13 @@ or resumes its saved import. Closing the dialog retains its checkpoint.
 **Autosync settings** opens Account → Background tasks. Configured Steam, PlayStation
 and RetroAchievements connections each have their own task alongside Epic Games and
 other plugins that declare personal tasks. Enable autosync and choose each connection's
-interval there to continue imports while the page is closed. Disconnecting pauses a
-saved task; reconnecting restores its settings and history.
+interval there to continue imports while the page is closed. Disconnecting turns the
+task off; reconnecting restores its interval and history. Each task can be paused,
+resumed or cancelled, and shows its last successful and next run.
 Autosync starts off, applies only to your account and uses your approved access.
 Notes, ratings and manual status retain the provider import's existing protections.
 
-**Add Game** in the library opens Quick Add: search the existing metadata providers
+**Add game** in the library opens Quick Add: search the existing metadata providers
 or enter a title, choose a status and platform, then save. Metadata results retain
 their provider identities, including optional plugin providers. Duplicate and
 owned-copy review remains a separate confirmation step.
@@ -54,6 +55,25 @@ playtime, the resume note and artwork; see [Adding a game](#adding-a-game).
 Field-change history records supported metadata changes.
 
 Bulk edit changes selected records only. Locked fields are not overwritten by refresh operations.
+
+### Quick edit
+
+The Edit button on a game in the library opens a light editor for the status,
+platform, your rating and the cover. Saving sends only those fields, so
+everything else stored for the game is left alone, and the change is recorded
+in the game's history like any other edit. A rating outside 0 to 10 is
+refused with a message and nothing is saved; a failed save keeps the dialog
+open so you can retry. A cover you upload or link is sent after the game is
+saved, and if that step fails the game stays saved and the artwork can be
+retried.
+
+The cover shows what it is: **Current** for the saved cover, **Local file** or
+**Link** for one you chose, and **Search** for an image offered by a metadata
+lookup. **Edit more** opens the full editor with the status, platform, rating
+and the chosen cover still unsaved, so nothing typed is lost. Cancelling the
+full editor discards them. Offered search covers are in the full editor's
+Artwork tab. Opening a game from its own page or a collection still goes
+straight to the full editor.
 
 ## Completion estimates
 
@@ -218,7 +238,7 @@ A game's **Docs** tab takes files of any type and always offers them as normal d
 
 ## Adding a game
 
-**+ Add Game** opens Quick Add (above). **Full form**, adding a game from Home
+**+ Add game** opens Quick Add (above). **Full form**, adding a game from Home
 and a game page's **Edit** all open the same full editor. Its header shows the
 cover, the title as you type it and the developer, year and platform. Below it
 are eight tabs; click any of them in any order:
@@ -234,7 +254,7 @@ are eight tabs; click any of them in any order:
 | **Ownership** | Format, purchase date, price, currency and condition. |
 | **Advanced** | Parent game and relationship, multiple accounts and OSRS stats, and which parts this game's page shows. |
 
-**Add Game** or **Save Changes** stays at the bottom of every tab, and only the
+**Add game** or **Save changes** stays at the bottom of every tab, and only the
 tab's content scrolls. Nothing is saved until you click it, and switching tabs
 keeps everything you have typed or chosen, including staged files. **Cancel**
 discards the unsaved edits. Arrow keys, Home and End move between tabs once one
