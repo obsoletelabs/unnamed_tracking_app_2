@@ -96,59 +96,68 @@ async def ensure_deliveries(
                 and destination.provider_id not in enabled_providers
             ):
                 continue
-            projection = await delivery_projection(db, notification, destination, prefs)
-            if projection is None:
-                continue
-            inbox = destination.provider_id == INBOX_PROVIDER
-            requested_urgency = route_choice(notification.event_type, str(destination.id), prefs)[
-                "urgency"
-            ]
-            decision = decide_for(notification, destination, prefs, now=now)
-            if decision.action == "mute":
-                # A muted route leaves no queued work; the inbox keeps its history.
-                continue
-            # The inbox shows one evolving item; every external destination owes each revision.
-            revision = 0 if inbox or notification.story_id is None else notification.story_revision
-            revision = revision or 0
-            prior = False
-            if revision:
-                await supersede_unsent(db, notification.id, destination.id, revision)
-                prior = await has_prior_presentation(db, notification.id, destination.id, revision)
-            # The in-app inbox is never delayed; external destinations follow the timing policy.
-            # An edit or follow-up for a story the destination already saw is not a new item to
-            # hold in a digest window.
-            window_id = (
-                None
-                if inbox or prior
-                else await assign_window(db, notification, destination, decision=decision, now=now)
-            )
-            delivery_id = await db.scalar(
-                pg_insert(NotificationDelivery)
-                .values(
-                    notification_id=notification.id,
-                    provider_id=destination.provider_id,
-                    destination_id=destination.id,
-                    destination_revision=destination.revision,
-                    projection=projection,
-                    story_revision=revision,
-                    requested_urgency=requested_urgency,
-                    window_id=window_id,
-                    timing_reason=None if inbox or not window_id else decision.code[:64],
-                    status="sent" if inbox else "aggregating" if window_id else "pending",
-                    attempts=0,
-                    next_attempt_at=now,
-                )
-                .on_conflict_do_nothing(
-                    index_elements=["notification_id", "destination_id", "story_revision"]
-                )
-                .returning(NotificationDelivery.id)
-            )
-            if delivery_id and window_id:
-                await count_member(db, window_id)
-            await record_deliveries(db, [delivery_id] if delivery_id else [])
-            if inbox:
-                notification.inbox_visible = True
+            await _queue_destination(db, notification, destination, prefs, now)
     await db.flush()
+
+
+async def _queue_destination(
+    db: AsyncSession,
+    notification: Notification,
+    destination: NotificationDestination,
+    prefs: dict[str, Any],
+    now: int,
+) -> None:
+    """Persist the delivery row (and window membership) one destination owes a notification."""
+    projection = await delivery_projection(db, notification, destination, prefs)
+    if projection is None:
+        return
+    inbox = destination.provider_id == INBOX_PROVIDER
+    requested_urgency = route_choice(notification.event_type, str(destination.id), prefs)["urgency"]
+    decision = decide_for(notification, destination, prefs, now=now)
+    if decision.action == "mute":
+        # A muted route leaves no queued work; the inbox keeps its history.
+        return
+    # The inbox shows one evolving item; every external destination owes each revision.
+    revision = 0 if inbox or notification.story_id is None else notification.story_revision
+    revision = revision or 0
+    prior = False
+    if revision:
+        await supersede_unsent(db, notification.id, destination.id, revision)
+        prior = await has_prior_presentation(db, notification.id, destination.id, revision)
+    # The in-app inbox is never delayed; external destinations follow the timing policy.
+    # An edit or follow-up for a story the destination already saw is not a new item to
+    # hold in a digest window.
+    window_id = (
+        None
+        if inbox or prior
+        else await assign_window(db, notification, destination, decision=decision, now=now)
+    )
+    delivery_id = await db.scalar(
+        pg_insert(NotificationDelivery)
+        .values(
+            notification_id=notification.id,
+            provider_id=destination.provider_id,
+            destination_id=destination.id,
+            destination_revision=destination.revision,
+            projection=projection,
+            story_revision=revision,
+            requested_urgency=requested_urgency,
+            window_id=window_id,
+            timing_reason=None if inbox or not window_id else decision.code[:64],
+            status="sent" if inbox else "aggregating" if window_id else "pending",
+            attempts=0,
+            next_attempt_at=now,
+        )
+        .on_conflict_do_nothing(
+            index_elements=["notification_id", "destination_id", "story_revision"]
+        )
+        .returning(NotificationDelivery.id)
+    )
+    if delivery_id and window_id:
+        await count_member(db, window_id)
+    await record_deliveries(db, [delivery_id] if delivery_id else [])
+    if inbox:
+        notification.inbox_visible = True
 
 
 async def _ensure_pending_deliveries(db, notice):

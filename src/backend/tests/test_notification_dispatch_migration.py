@@ -93,7 +93,7 @@ def test_dispatch_migration_keeps_deliveries_and_is_reversible():
                 (second, notice, endpoint),
             )
             refused = migrate("downgrade", PREVIOUS_HEAD, expect=1)
-            assert "Refusing to merge per-revision deliveries" in refused.stderr
+            assert "Refusing to drop" in refused.stderr
             assert connection.execute(
                 "SELECT count(*) FROM notification_deliveries"
             ).fetchone() == (2,)
