@@ -2,6 +2,8 @@
 
 Notification orchestration lives in `features/notification_controller.py`, with adjacent destination, policy, lifecycle and provider modules. Existing media, season, session, plugin-update and plugin-send producers pass through this boundary. It flushes within the caller's transaction and never performs network delivery. UI polling and bounded offline discovery share deduplication; the existing job loop scans up to four active users per tick with a per-user time limit and a rotating cursor.
 
+Overhaul status, merge order and invariants: see the [coordination board](notification-overhaul.md).
+
 ## Objects and ownership
 
 | Object | Responsibility |
