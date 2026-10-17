@@ -46,6 +46,7 @@ nav:
       - TV Shows: user-guide/tv-shows.md
       - Movies: user-guide/movies.md
       - Calendar & ICS: user-guide/calendar.md
+      - Statistics Activity: user-guide/statistics.md
   - Integrations:
       - Overview: integrations/index.md
       - Playnite: integrations/playnite.md
