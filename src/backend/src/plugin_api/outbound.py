@@ -211,12 +211,12 @@ def _outbound_request(payload: dict[str, Any]) -> Request:
     url = _validated_url(payload.get("url"))
     headers = _validated_headers(payload.get("headers", {}))
     method = payload.get("method", "GET")
-    if method not in {"GET", "POST"}:
-        raise ValueError("Outbound method must be GET or POST.")
+    if method not in {"GET", "POST", "PATCH"}:
+        raise ValueError("Outbound method must be GET, POST or PATCH.")
     body_data = None
     if "body" in payload:
-        if method != "POST" or not isinstance(payload["body"], dict):
-            raise ValueError("Only POST supports an object JSON body.")
+        if method not in {"POST", "PATCH"} or not isinstance(payload["body"], dict):
+            raise ValueError("Only POST and PATCH support an object JSON body.")
         try:
             body_data = json.dumps(payload["body"], allow_nan=False).encode()
         except (ValueError, TypeError) as exc:
@@ -242,7 +242,7 @@ def _outbound_request(payload: dict[str, Any]) -> Request:
 
 
 def outbound_json(payload: dict[str, Any]) -> dict[str, Any]:
-    """Bounded JSON/text GET/POST; never return remote error bodies or credentials."""
+    """Bounded JSON/text GET/POST/PATCH; never return remote error bodies or credentials."""
     response_format = payload.get("response_format", "json")
     if response_format not in {"json", "text"}:
         raise ValueError("Unsupported outbound response format.")

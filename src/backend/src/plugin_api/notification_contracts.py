@@ -188,6 +188,22 @@ class PluginDeliveryAction(ContractModel):
     url: str = Field(min_length=1, max_length=2048)
 
 
+class PluginDeliveryFact(ContractModel):
+    """One host-formatted fact (label and display text) for providers that declared embeds."""
+
+    label: str = Field(min_length=1, max_length=100)
+    text: str = Field(min_length=1, max_length=500)
+
+
+class PluginDeliveryItem(ContractModel):
+    """One member of a digest message. Text is what the destination's projection may show."""
+
+    title: str = Field(min_length=1, max_length=500)
+    body: str = Field(default="", max_length=10_000)
+    event_at: StrictInt = Field(ge=0)
+    url: str | None = Field(default=None, max_length=2048)
+
+
 class PluginCanonicalDelivery(PluginNotificationContent):
     """Capability-narrowed delivery for providers that declared canonical capabilities (1.1.14).
 
@@ -205,6 +221,10 @@ class PluginCanonicalDelivery(PluginNotificationContent):
     html: str | None = Field(default=None, max_length=200_000)
     actions: tuple[PluginDeliveryAction, ...] = Field(default=(), max_length=10)
     images: tuple[str, ...] = Field(default=(), max_length=10)
+    # Additive optional fields: facts only for providers that declared ``rich_embeds`` and only
+    # in the private canonical projection; items only for a digest of several members.
+    facts: tuple[PluginDeliveryFact, ...] = Field(default=(), max_length=25)
+    items: tuple[PluginDeliveryItem, ...] = Field(default=(), max_length=50)
 
     @model_validator(mode="after")
     def edits_name_their_message(self) -> Self:
