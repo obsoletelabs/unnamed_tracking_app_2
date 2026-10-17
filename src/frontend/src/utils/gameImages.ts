@@ -17,6 +17,16 @@ export function rememberArtworkRevision(
   }
 }
 
+// Records the revision an upload or download answered with.
+export function rememberUploadedRevision<T extends { revision?: string }>(
+  gameId: string,
+  kind: GameAssetKind,
+  result: T,
+): T {
+  rememberArtworkRevision(gameId, kind, result.revision);
+  return result;
+}
+
 export function gameAssetUrl(gameId: string, kind: GameAssetKind): string {
   const base = `/api/game/${gameId}/assets/${kind}`;
   const revision = knownRevisions.get(`${gameId}/${kind}`);

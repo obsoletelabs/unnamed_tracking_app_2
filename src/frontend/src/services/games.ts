@@ -6,9 +6,8 @@ import { normalizeKind } from "../utils/achievements";
 import { createEntityCache } from "../utils/entityCache";
 import {
   POSTER_WIDTH,
-  type GameAssetKind,
   gameAssetUrl,
-  rememberArtworkRevision,
+  rememberUploadedRevision,
   sizedAssetUrl,
 } from "../utils/gameImages";
 import type { ContentCounts, PageOverrides } from "../utils/gamePage";
@@ -1595,13 +1594,12 @@ export interface GameAssetUploadResponse {
   asset_kind: string;
   path: string;
   status: string;
-  // identifies the stored bytes; see utils/gameImages
   revision?: string;
 }
 
 export async function uploadGameAsset(
   gameId: string,
-  assetKind: GameAssetKind,
+  assetKind: "key_art" | "banner" | "logo" | "icon",
   file: File,
 ): Promise<GameAssetUploadResponse> {
   const formData = new FormData();
@@ -1620,21 +1618,12 @@ export async function uploadGameAsset(
     );
   }
 
-  return rememberRevision(gameId, assetKind, await response.json());
-}
-
-function rememberRevision(
-  gameId: string,
-  assetKind: GameAssetKind,
-  result: GameAssetUploadResponse,
-): GameAssetUploadResponse {
-  rememberArtworkRevision(gameId, assetKind, result.revision);
-  return result;
+  return rememberUploadedRevision(gameId, assetKind, await response.json());
 }
 
 export async function attachGameAssetFromUrl(
   gameId: string,
-  assetKind: GameAssetKind,
+  assetKind: "key_art" | "banner" | "logo" | "icon",
   url: string,
 ): Promise<GameAssetUploadResponse> {
   const response = await fetch(
@@ -1654,7 +1643,7 @@ export async function attachGameAssetFromUrl(
     );
   }
 
-  return rememberRevision(gameId, assetKind, await response.json());
+  return rememberUploadedRevision(gameId, assetKind, await response.json());
 }
 
 export interface GameRatings {
