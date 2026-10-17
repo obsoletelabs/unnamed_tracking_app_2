@@ -3,14 +3,15 @@
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.api.routes.game_identity import run_action
 from src.core.auth import get_current_user
 from src.database.models.user import User
 from src.database.session import get_db
-from src.features.game_identity import graph, review
+from src.features.game_identity import review
 
 router = APIRouter(prefix="/api/game-identity/review", tags=["game"])
 Db = Annotated[AsyncSession, Depends(get_db)]
@@ -29,18 +30,7 @@ class RunOut(BaseModel):
 
 
 async def _act(db: AsyncSession, action) -> Response:
-    try:
-        await action
-        await db.commit()
-    except LookupError as exc:
-        await db.rollback()
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except graph.IdentityConflict as exc:
-        await db.rollback()
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except graph.IdentityInvalid as exc:
-        await db.rollback()
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    await run_action(db, action)
     return Response(status_code=204)
 
 

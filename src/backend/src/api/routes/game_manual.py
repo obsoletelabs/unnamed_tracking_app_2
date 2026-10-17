@@ -1,24 +1,22 @@
 """Manual achievements and completion alongside imported data (#97)."""
 
-import asyncio
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import Response
 from pydantic import Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.image_responses import original_image_response
-from src.api.routes.game_identity import Db, Owner, _Body, _run
+from src.api.image_responses import cached_icon_response
+from src.api.routes.game_identity import Db, Owner, _Body, run_action
 from src.core.auth import get_current_user
 from src.database.models.game import GameStatus
 from src.database.models.game_identity_tracking import GameManualAchievement
 from src.database.session import get_db
 from src.features.game_identity import manual
-from src.helpers.image_prefetch import ICON_ROOT, WIDTHS
-from src.helpers.remote_images import RemoteImageError, fetch_and_store, icon_cache_path
+from src.helpers.image_prefetch import ICON_ROOT
 
 router = APIRouter(prefix="/api/game-identity", tags=["game"])
 
@@ -61,12 +59,12 @@ class CompletionInput(_Body):
 @router.get("/games/{game_id}/tracking")
 async def tracking(game_id: UUID, db: Db, user: Owner) -> dict[str, Any]:
     """Completion and achievements of an identity group, manual and imported."""
-    return await _run(db, manual.tracking_view(db, user.id, game_id))
+    return await run_action(db, manual.tracking_view(db, user.id, game_id))
 
 
 @router.get("/games/{game_id}/achievements")
 async def achievements(game_id: UUID, db: Db, user: Owner) -> dict[str, Any]:
-    return await _run(db, manual.achievements_view(db, user.id, game_id))
+    return await run_action(db, manual.achievements_view(db, user.id, game_id))
 
 
 @router.post("/games/{game_id}/manual-achievements", status_code=201)
@@ -74,7 +72,7 @@ async def create_achievement(
     game_id: UUID, body: AchievementCreate, db: Db, user: Owner
 ) -> dict[str, Any]:
     values = body.model_dump(exclude={"scope"})
-    row = await _run(
+    row = await run_action(
         db,
         manual.create_achievement(db, user.id, game_id, values, umbrella=body.scope == "umbrella"),
     )
@@ -88,7 +86,7 @@ async def update_achievement(
     changes = body.model_dump(exclude_unset=True)
     if changes.get("title", "x") is None or changes.get("achieved", True) is None:
         raise HTTPException(status_code=422, detail="title and achieved cannot be cleared.")
-    row = await _run(db, manual.update_achievement(db, user.id, achievement_id, changes))
+    row = await run_action(db, manual.update_achievement(db, user.id, achievement_id, changes))
     return manual.achievement_out(row)
 
 
@@ -96,7 +94,7 @@ async def update_achievement(
 async def set_earned(
     achievement_id: UUID, body: EarnedInput, db: Db, user: Owner
 ) -> dict[str, Any]:
-    row = await _run(
+    row = await run_action(
         db, manual.set_earned(db, user.id, achievement_id, body.achieved, body.achieved_at)
     )
     return manual.achievement_out(row)
@@ -104,7 +102,7 @@ async def set_earned(
 
 @router.delete("/manual-achievements/{achievement_id}", status_code=204)
 async def remove_achievement(achievement_id: UUID, db: Db, user: Owner) -> None:
-    await _run(db, manual.remove_achievement(db, user.id, achievement_id))
+    await run_action(db, manual.remove_achievement(db, user.id, achievement_id))
 
 
 @router.get("/manual-achievements/{achievement_id}/icon")
@@ -124,21 +122,12 @@ async def achievement_icon(
     )
     if not url:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such icon.")
-    target = icon_cache_path(ICON_ROOT, url)
-    response = FileResponse(
-        target, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"}
-    )
-    if not target.is_file():
-        try:
-            await asyncio.to_thread(fetch_and_store, url, target, WIDTHS["icon"])
-        except RemoteImageError:
-            return original_image_response(url)
-    return response
+    return await cached_icon_response(ICON_ROOT, url)
 
 
 @router.get("/games/{game_id}/completion")
 async def completion(game_id: UUID, db: Db, user: Owner) -> dict[str, Any]:
-    return await _run(db, manual.completion_view(db, user.id, game_id))
+    return await run_action(db, manual.completion_view(db, user.id, game_id))
 
 
 @router.put("/games/{game_id}/completion")
@@ -146,17 +135,17 @@ async def set_completion(
     game_id: UUID, body: CompletionInput, db: Db, user: Owner
 ) -> dict[str, Any]:
     """Set the status of one version by hand; imports and sync leave it alone."""
-    await _run(db, manual.set_completion(db, user.id, game_id, body.status))
-    return await _run(db, manual.completion_view(db, user.id, game_id))
+    await run_action(db, manual.set_completion(db, user.id, game_id, body.status))
+    return await run_action(db, manual.completion_view(db, user.id, game_id))
 
 
 @router.delete("/games/{game_id}/completion")
 async def release_completion(game_id: UUID, db: Db, user: Owner) -> dict[str, Any]:
     """Let imports update this version's status again."""
-    await _run(db, manual.release_completion(db, user.id, game_id))
-    return await _run(db, manual.completion_view(db, user.id, game_id))
+    await run_action(db, manual.release_completion(db, user.id, game_id))
+    return await run_action(db, manual.completion_view(db, user.id, game_id))
 
 
 @router.get("/games/{game_id}/completion/history")
 async def completion_history(game_id: UUID, db: Db, user: Owner) -> list[dict[str, Any]]:
-    return await _run(db, manual.completion_history(db, user.id, game_id))
+    return await run_action(db, manual.completion_history(db, user.id, game_id))

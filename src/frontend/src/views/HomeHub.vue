@@ -16,6 +16,7 @@ import CollectionPickerModal from "../components/CollectionPickerModal.vue";
 import RandomGamePicker from "../components/RandomGamePicker.vue";
 import { pluginSlots } from "../state/pluginExtensions";
 import { currentUser } from "../state/auth";
+import { accountDisplayName } from "../services/auth";
 import {
   preferences,
   preferencesLoaded,
@@ -324,7 +325,7 @@ async function confirmDelete() {
       </p>
       <PageHeader
         title="Home"
-        :eyebrow="`Welcome back, ${currentUser?.username ?? ''}`"
+        :eyebrow="`Welcome back, ${accountDisplayName(currentUser)}`"
         description="Your library, at your own pace."
       >
         <template #actions>

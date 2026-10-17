@@ -16,6 +16,7 @@ from src.core.auth import (
     SESSION_TTL_SECONDS,
     AuthenticatedActor,
     create_api_key,
+    effective_display_name,
     get_current_actor,
     get_current_admin,
     get_current_user,
@@ -25,6 +26,7 @@ from src.core.auth import (
     revoke_session,
     session_cookie_name,
     set_password_policy_override,
+    validate_display_name,
     validate_password,
     validate_username,
     verify_password,
@@ -37,6 +39,7 @@ from src.database.models.app_integration_settings import AppIntegrationSettings
 from src.database.models.auth import UserApiKey
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features.admin_users import is_primary_user, record_audit
 from src.features.game_ingestion.legacy import PLAYSTATION, record_disconnect
 from src.features.metadata.games.psn import PSNClient, PSNError
 from src.features.notification_urls import remember_app_url
@@ -60,6 +63,12 @@ class UserCreateRequest(BaseModel):
     email: str = Field(min_length=3, max_length=320)
     password: str = Field(min_length=1)
     is_admin: bool = False
+    display_name: str | None = Field(default=None, max_length=200)
+
+    @field_validator("display_name")
+    @classmethod
+    def validate_new_display_name(cls, value: str | None) -> str | None:
+        return validate_display_name(value) if value is not None else None
 
     @field_validator("username")
     @classmethod
@@ -83,11 +92,18 @@ class PsnConnectRequest(BaseModel):
 class UserProfileUpdateRequest(BaseModel):
     username: str | None = Field(default=None, min_length=1, max_length=100)
     email: str | None = Field(default=None, min_length=3, max_length=320)
+    # Omitted keeps the current value; blank clears it so the username is shown again.
+    display_name: str | None = Field(default=None, max_length=200)
     # only required when actually setting a new password — everything else
     # here (username/email/steamgriddb key) doesn't need it
     current_password: str | None = Field(default=None, min_length=1)
     new_password: str | None = Field(default=None, min_length=1)
     steamgriddb_api_key: str | None = Field(default=None, max_length=64)
+
+    @field_validator("display_name")
+    @classmethod
+    def validate_profile_display_name(cls, value: str | None) -> str | None:
+        return validate_display_name(value) if value is not None else None
 
     @field_validator("new_password")
     @classmethod
@@ -214,6 +230,8 @@ async def current_user(
     return {
         "id": str(user.id),
         "username": user.username,
+        "display_name": user.display_name,
+        "effective_display_name": effective_display_name(user),
         "email": user.email,
         "is_admin": user.is_admin,
         "steamgriddb_api_key": user.steamgriddb_api_key,
@@ -248,6 +266,8 @@ async def update_current_user(
             user.username = validate_username(payload.username)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if "display_name" in payload.model_fields_set:
+        user.display_name = payload.display_name
     if payload.email is not None:
         user.email = payload.email.strip().lower()
     if payload.new_password is not None:
@@ -279,6 +299,8 @@ async def update_current_user(
     return {
         "id": str(user.id),
         "username": user.username,
+        "display_name": user.display_name,
+        "effective_display_name": effective_display_name(user),
         "email": user.email,
         "is_admin": user.is_admin,
         "steamgriddb_api_key": user.steamgriddb_api_key,
@@ -346,16 +368,19 @@ async def psn_status(user: User = Depends(get_current_user)) -> dict[str, bool |
 async def list_users(
     admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
-) -> list[dict[str, str | bool | int]]:
+) -> list[dict[str, str | bool | int | None]]:
     del admin
     users = await db.scalars(select(User).order_by(User.username))
     return [
         {
             "id": str(user.id),
             "username": user.username,
+            "display_name": user.display_name,
             "email": user.email,
             "is_admin": user.is_admin,
             "is_active": user.is_active,
+            "auth_source": "sso" if user.oidc_subject else "local",
+            "is_primary": is_primary_user(user),
             "created_at": user.created_at,
         }
         for user in users
@@ -414,7 +439,7 @@ async def create_user(
     payload: UserCreateRequest,
     admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
-) -> dict[str, str | bool]:
+) -> dict[str, str | bool | None]:
     del admin
     username = payload.username.strip()
     email = payload.email.strip().lower()
@@ -425,6 +450,7 @@ async def create_user(
 
     user = User(
         username=username,
+        display_name=payload.display_name,
         email=email,
         password_hash=hash_password(payload.password),
         is_active=True,
@@ -443,6 +469,7 @@ async def create_user(
     return {
         "id": str(user.id),
         "username": user.username,
+        "display_name": user.display_name,
         "email": user.email,
         "is_admin": user.is_admin,
     }
@@ -454,7 +481,7 @@ async def update_user_admin_status(
     payload: UserAdminUpdateRequest,
     admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
-) -> dict[str, str | bool]:
+) -> dict[str, str | bool | None]:
     user = await db.scalar(select(User).where(User.id == user_id))
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
@@ -473,11 +500,19 @@ async def update_user_admin_status(
         )
 
     user.is_admin = payload.is_admin
+    record_audit(
+        db,
+        admin,
+        "role.promote" if payload.is_admin else "role.demote",
+        target_id=user.id,
+        target_label=user.username,
+    )
     await db.commit()
     await db.refresh(user)
     return {
         "id": str(user.id),
         "username": user.username,
+        "display_name": user.display_name,
         "email": user.email,
         "is_admin": user.is_admin,
     }
@@ -504,6 +539,7 @@ async def delete_user(
             status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot delete your own account."
         )
 
+    record_audit(db, admin, "account.delete", target_id=user.id, target_label=user.username)
     await db.delete(user)
     await db.commit()
     shutil.rmtree(Path("/data/user") / str(user_id), ignore_errors=True)

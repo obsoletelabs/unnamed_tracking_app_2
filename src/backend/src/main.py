@@ -13,6 +13,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from src.api.request_bodies import AnonymousBodyLimitMiddleware
 from src.api.routes import (
     achievement_icons,
+    admin_users,
     anime,
     api_keys,
     app_integrations,
@@ -147,6 +148,7 @@ app.include_router(game_page.router)
 app.include_router(users.router)
 app.include_router(api_keys.router)
 app.include_router(auth.router)
+app.include_router(admin_users.router)
 app.include_router(delegation.router)
 app.include_router(public_apps.router)
 app.include_router(password_recovery.router)

@@ -321,7 +321,8 @@ class GameFieldValue(Base):
             name="ck_game_field_values_observation",
         ),
         CheckConstraint(
-            f"locked = (lock_origin IS NOT NULL) AND (lock_origin IS NULL OR lock_origin IN ({sql_values(LockOrigin)}))",
+            f"locked = (lock_origin IS NOT NULL) AND "
+            f"(lock_origin IS NULL OR lock_origin IN ({sql_values(LockOrigin)}))",
             name="ck_game_field_values_lock",
         ),
         CheckConstraint(

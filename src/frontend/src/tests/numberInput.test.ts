@@ -139,7 +139,7 @@ describe("game editor", () => {
         expect(label).toBeDefined();
         await label!.get("input").setValue(value);
       };
-      await tab("General");
+      await tab("Play");
       for (const name of [
         "Main story",
         "Main + extras",
@@ -147,7 +147,7 @@ describe("game editor", () => {
         "All play styles",
       ])
         await setField(name);
-      await tab("Ratings & Tags");
+      await tab("Ratings and tags");
       for (const name of ["Atmosphere", "Story", "Gameplay", "Sound"])
         await setField(name);
       await tab("Ownership");
@@ -280,21 +280,32 @@ describe.each([
     await wrapper.get('input[type="text"]').setValue("Numeric preview");
     return wrapper;
   }
+  async function openTab(wrapper: VueWrapper, name: string) {
+    await wrapper
+      .findAll('[role="tab"]')
+      .find((tab) => tab.text() === name)!
+      .trigger("click");
+  }
   function save(wrapper: VueWrapper) {
-    return wrapper.get("button.ui-btn-primary").trigger("click");
+    return wrapper.get("form").trigger("submit");
   }
   it.each(["", "0"])(
     "submits cleared/zero fields as typed values (%s)",
     async (value) => {
       const wrapper = await editor();
-      for (const input of wrapper.findAll('input[type="number"]'))
-        await input.setValue(value);
+      for (const name of ["Details", "Tracking"]) {
+        await openTab(wrapper, name);
+        for (const input of wrapper.findAll('input[type="number"]'))
+          await input.setValue(value);
+      }
       await save(wrapper);
       await flushPromises();
       expect(create).toHaveBeenCalledWith(
         expect.objectContaining({
           ratingOverall: value === "" ? null : 0,
+          ratingStory: value === "" ? null : 0,
           personalRank: value === "" ? null : 0,
+          rewatches: 0,
         }),
       );
       expect(wrapper.emitted("saved")).toHaveLength(1);
@@ -302,6 +313,7 @@ describe.each([
   );
   it("keeps invalid runtime edits open and explains how to fix them", async () => {
     const wrapper = await editor();
+    await openTab(wrapper, "Details");
     await wrapper.get('input[type="number"]').setValue("1.5");
     await save(wrapper);
     await flushPromises();
@@ -310,7 +322,7 @@ describe.each([
       "enter a whole number",
     );
     expect(
-      wrapper.get("button.ui-btn-primary").attributes("disabled"),
+      wrapper.get("button.primary-button").attributes("disabled"),
     ).toBeUndefined();
     await wrapper.get('input[type="number"]').setValue("0");
     await save(wrapper);

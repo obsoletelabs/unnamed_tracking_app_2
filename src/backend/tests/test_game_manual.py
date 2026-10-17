@@ -461,3 +461,24 @@ async def test_import_reports_bad_and_foreign_manual_rows_and_stays_owned(users,
     state = await _manual_state(user)
     assert [r[1] for r in state[1]] == ["ok"]
     assert (await _manual_state(other))[1] == []
+
+
+async def test_same_provider_achievement_id_in_two_apps_is_two_achievements(users):  # noqa: F811
+    user = await users()
+    a, b = await make_game(user, "Game"), await make_game(user, "Game Sequel")
+    async with SessionLocal() as db:
+        for game, app_id in ((a, "100"), (b, "200")):
+            row_ = await db.get(Game, game)
+            row_.external_id = app_id
+        await db.commit()
+    await seed(a, "Steam", row("ACH_1", "First", True))
+    await seed(b, "Steam", row("ACH_1", "First"))
+    await merge(user, b, a)
+    view = await tracked(user, a)
+    assert view["umbrella"]["total"] == 2 and view["umbrella"]["unlocked"] == 1
+
+    async with SessionLocal() as db:  # the same app on both versions is one achievement
+        (await db.get(Game, b)).external_id = "100"
+        await db.commit()
+    view = await tracked(user, a)
+    assert view["umbrella"]["total"] == 1 and view["umbrella"]["unlocked"] == 1

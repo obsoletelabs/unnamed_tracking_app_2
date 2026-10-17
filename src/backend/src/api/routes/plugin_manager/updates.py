@@ -17,6 +17,7 @@ from src.plugin_api.installer import (
     InspectedPackage,
     InstallationConsent,
     InstallationError,
+    signing_identity_replaced,
 )
 from src.plugin_api.management_auth import get_plugin_manager_admin
 
@@ -141,6 +142,7 @@ def update_preview(
         {**permission, "new": permission["key"] in new_keys}
         for permission in preview["permissions"]
     ]
+    identity_replaced = signing_identity_replaced(inspected, installed)
     preview.update(
         {
             "operation": "update",
@@ -150,8 +152,16 @@ def update_preview(
             "permission_delta": permission_delta.model_dump(mode="json"),
             "new_permission_keys": sorted(new_keys),
             "existing_grants_retained": can_retain_grants,
+            "signing_identity_replaced": identity_replaced,
             "identity_warning": (
-                None
+                (
+                    "This package is signed by a different publisher identity. Notification "
+                    "destinations, their verification and recovery consent, queued sensitive "
+                    "deliveries and authentication registrations for this plugin will be "
+                    "retired and must be set up and verified again."
+                )
+                if identity_replaced
+                else None
                 if can_retain_grants
                 else (
                     "Unverified updates cannot inherit existing permission grants; "
