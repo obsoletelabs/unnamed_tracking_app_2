@@ -55,6 +55,25 @@ Field-change history records supported metadata changes.
 
 Bulk edit changes selected records only. Locked fields are not overwritten by refresh operations.
 
+### Quick edit
+
+The Edit button on a game in the library opens a light editor for the status,
+platform, your rating and the cover. Saving sends only those fields, so
+everything else stored for the game is left alone, and the change is recorded
+in the game's history like any other edit. A rating outside 0 to 10 is
+refused with a message and nothing is saved; a failed save keeps the dialog
+open so you can retry. A cover you upload or link is sent after the game is
+saved, and if that step fails the game stays saved and the artwork can be
+retried.
+
+The cover shows what it is: **Current** for the saved cover, **Local file** or
+**Link** for one you chose, and **Search** for an image offered by a metadata
+lookup. **Edit more** opens the full editor with the status, platform, rating
+and the chosen cover still unsaved, so nothing typed is lost. Cancelling the
+full editor discards them. Offered search covers are in the full editor's
+Artwork tab. Opening a game from its own page or a collection still goes
+straight to the full editor.
+
 ## Completion estimates
 
 The full editor's **Play** tab has four estimates in hours: **Main story**,

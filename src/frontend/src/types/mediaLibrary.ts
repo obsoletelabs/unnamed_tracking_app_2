@@ -42,6 +42,9 @@ export interface LibraryCardVM {
   addedAt?: number | null;
   // other spellings of the title, so search finds any of them
   altTitles?: string[];
+  // personal dates (YYYY-MM-DD), shown and edited in the quick editor
+  startDate?: string | null;
+  endDate?: string | null;
 }
 
 export interface QuickAddForm {
@@ -59,4 +62,7 @@ export interface EditForm {
   watched: number;
   totalEpisodes: number | null;
   seen: boolean;
+  // undefined leaves the saved date alone
+  startDate?: string | null;
+  endDate?: string | null;
 }

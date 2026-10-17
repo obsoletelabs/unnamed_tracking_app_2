@@ -21,6 +21,8 @@ defineProps<{
   mediaType: "movie" | "tv" | "anime";
   mediaId: string;
   badges: { text: string; tone?: "good" }[];
+  // priority and personal dates, shown the same way on every media page
+  facts?: { label: string; value: string }[];
   // the native-title line is lighter on Anime pages
   brightNativeTitle?: boolean;
 }>();
@@ -84,6 +86,12 @@ const emit = defineEmits<{
             >{{ badge.text }}</span
           >
         </div>
+        <dl v-if="facts?.length" class="tracking-facts">
+          <div v-for="fact in facts" :key="fact.label">
+            <dt>{{ fact.label }}</dt>
+            <dd>{{ fact.value }}</dd>
+          </div>
+        </dl>
         <slot name="below-badges" />
         <div class="action-row">
           <button class="edit-btn" type="button" @click="emit('edit')">
@@ -223,6 +231,27 @@ const emit = defineEmits<{
   gap: 8px;
   flex-wrap: wrap;
   margin-bottom: 16px;
+}
+
+.tracking-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin: -6px 0 16px;
+  font-size: 0.8rem;
+}
+.tracking-facts div {
+  display: flex;
+  gap: 6px;
+}
+.tracking-facts dt {
+  color: var(--ui-faint);
+}
+.tracking-facts dd {
+  margin: 0;
+  color: var(--ui-text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .badge {

@@ -209,7 +209,16 @@ Until then, PRs remain available for review with current validation and screensh
 - **K / #144, #149 and L–O:** see the status board below for live PR state; only
   merged rows are complete.
 - **K media editors / 26–27:** issue #144, in review in [PR #181](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/181), stacked on the merged #143 editor. Movie, TV and anime editors share `MediaFormShell` on `EditorShell`: Basics, Details, Tracking, Artwork and Links tabs, pinned actions, and staged metadata lookup above every tab. Rewatches, dates, source, subratings, tags, countries, languages, age rating, features, anime format and validated provider IDs use each type's existing create/update request. Seasons, progress, title protection and immutable identity remain unchanged.
-- **Remaining K (#149) and L–O:** approved; not implemented yet. The package details below describe intended work, not completed behavior.
+- **K quick editors / 20–21, 37–38:** issue #149. The game
+  library's Edit opens `GameQuickEditModal` (status, platform, rating, cover) on
+  `EditorShell`; it PATCHes only those fields and shares artwork transfer and
+  retry with the full editor (`useGameArtworkTransfer`). **Edit more** passes a
+  `GameEditDraft` (values plus the staged cover file or link) to `GameFormModal`.
+  The artwork picker keeps the Current / Local file / Link / Search labels. The
+  media quick edit gains start/end dates and uses `resolveStatus`, so an
+  unchanged visible bucket keeps a stored Favorite or Rewatch status. Detail
+  pages list priority and formatted dates through `mediaTrackingFacts`. No
+  endpoint, schema or migration changes.
 - **M / 45–46:** issue [#146](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/146)
   implements per-kind Empty trash (explicit `confirm: true`, confirmed deletion-time
   bound, 200-title batches, per-title savepoints and deleted/failed/remaining counts)
@@ -230,7 +239,7 @@ Until then, PRs remain available for review with current validation and screensh
   and pointer access and one shared Modern/Classic dialog are implemented; see
   [Statistics activity](../user-guide/statistics.md) and the architecture notes. Settings
   search (68) and selective copy (71) in package O are separate.
-- **K, N and the rest of O:** approved; not implemented yet. The package details below describe
+- **N and the rest of O:** approved; not implemented yet. The package details below describe
   intended work, not completed behavior.
 
 ### Issue-by-issue execution order

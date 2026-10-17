@@ -29,6 +29,7 @@ import MediaTopBar from "../components/MediaTopBar.vue";
 import BackButton from "../components/BackButton.vue";
 import PluginExtensionSlot from "../components/plugins/PluginExtensionSlot.vue";
 import PluginContextualActions from "../components/plugins/PluginContextualActions.vue";
+import { mediaTrackingFacts } from "../utils/mediaTrackingFacts";
 import { statusBucket, bucketToReal } from "../utils/mediaStatus";
 import {
   formatProgressMinutes,
@@ -478,6 +479,7 @@ async function onRatingChange(value: number | null) {
       :favorite="movie.favorite"
       media-type="movie"
       :media-id="movie.id"
+      :facts="mediaTrackingFacts(movie)"
       :badges="[
         ...(releaseYear ? [{ text: releaseYear }] : []),
         ...(runtimeLabel ? [{ text: runtimeLabel }] : []),

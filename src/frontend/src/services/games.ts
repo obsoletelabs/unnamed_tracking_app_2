@@ -134,7 +134,7 @@ function normalizeStatus(raw: string): GameStatus {
   return raw.toLowerCase().replace(/_/g, " ") as GameStatus;
 }
 // inverse of normalizeStatus, 'on hold' -> 'ON_HOLD'
-function denormalizeStatus(status: GameStatus): string {
+export function denormalizeStatus(status: GameStatus): string {
   return status.toUpperCase().replace(/ /g, "_");
 }
 

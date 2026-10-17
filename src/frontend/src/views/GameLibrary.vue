@@ -23,6 +23,9 @@ const RandomGamePicker = defineAsyncComponent(
 const CollectionPickerModal = defineAsyncComponent(
   () => import("../components/CollectionPickerModal.vue"),
 );
+const GameQuickEditModal = defineAsyncComponent(
+  () => import("../components/game/GameQuickEditModal.vue"),
+);
 const GameFormModal = defineAsyncComponent(
   () => import("../components/GameFormModal.vue"),
 );
@@ -114,6 +117,10 @@ const {
   setView,
   openAddModal,
   openEditModal,
+  quickEditingGame,
+  editDraft,
+  openFullEditor,
+  onQuickEdited,
   onGameSaved,
   onDeleteFromModal,
   toggleFavorite,
@@ -1122,10 +1129,20 @@ const compactPreview = computed(
         </div>
       </template>
 
+      <GameQuickEditModal
+        v-if="quickEditingGame"
+        :key="quickEditingGame.id"
+        :game="quickEditingGame"
+        @close="quickEditingGame = null"
+        @saved="onQuickEdited"
+        @more="openFullEditor(quickEditingGame, $event)"
+      />
+
       <GameFormModal
         v-if="showFormModal"
         :game="editingGame"
         :quick-add="!editingGame"
+        :draft="editDraft"
         @close="showFormModal = false"
         @saved="onGameSaved"
         @delete="onDeleteFromModal"
