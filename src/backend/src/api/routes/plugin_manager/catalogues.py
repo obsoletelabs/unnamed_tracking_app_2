@@ -306,14 +306,16 @@ async def notify_plugin_updates(
         new_version = str(update.get("available_version") or update.get("new_version") or "unknown")
         if not plugin_id or new_version == "unknown":
             continue
-        items.append(
-            {
-                "plugin_id": plugin_id,
-                "old_version": old_version,
-                "new_version": new_version,
-                "status": status,
-            }
-        )
+        item = {
+            "plugin_id": plugin_id,
+            "old_version": old_version,
+            "new_version": new_version,
+            "status": status,
+        }
+        reason = update.get("reason")
+        if isinstance(reason, str) and reason.strip():
+            item["reason"] = reason.strip()[:300]
+        items.append(item)
     if not items:
         return
 
@@ -333,6 +335,7 @@ async def notify_plugin_updates(
     lines = [
         f"- {statuses[item['status']]}: {item['plugin_id']} "
         f"({item['old_version']} → {item['new_version']})"
+        + (f" — {item['reason']}" if item.get("reason") else "")
         for item in items
     ]
     body = (
