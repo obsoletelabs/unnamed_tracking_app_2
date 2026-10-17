@@ -81,8 +81,12 @@ export function groupNotifications(items: MediaNotification[]): {
 }
 
 export function notificationDestination(
-  n: Pick<MediaNotification, "mediaType" | "mediaId">,
+  n: Pick<MediaNotification, "mediaType" | "mediaId"> &
+    Partial<Pick<MediaNotification, "kind">>,
 ): string | null {
+  if (n.kind === "plugin_update") {
+    return "/settings?area=administration&section=plugins";
+  }
   if (!n.mediaId) return null;
   const roots: Record<string, string> = {
     game: "/games",

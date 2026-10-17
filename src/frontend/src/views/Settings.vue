@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   computed,
+  defineAsyncComponent,
   nextTick,
   onBeforeUnmount,
   onMounted,
@@ -14,36 +15,7 @@ import { startTrackingSaves, stopTrackingSaves } from "../state/saveStatus";
 import SettingsNav from "../components/settings/SettingsNav.vue";
 import SettingsSearch from "../components/settings/SettingsSearch.vue";
 import SaveStatus from "../components/settings/SaveStatus.vue";
-import ProfileSection from "../components/settings/ProfileSection.vue";
-import GamePageSection from "../components/settings/GamePageSection.vue";
-import AppearanceSection from "../components/settings/AppearanceSection.vue";
-import BrandingSection from "../components/settings/BrandingSection.vue";
-import LibrarySettings from "../components/settings/LibrarySettings.vue";
-import MetadataSettings from "../components/settings/MetadataSettings.vue";
-import AdminSection from "../components/settings/AdminSection.vue";
-import OidcSettingsSection from "../components/settings/OidcSettingsSection.vue";
-import PasswordPolicySection from "../components/settings/PasswordPolicySection.vue";
-import ServerIntegrationsSection from "../components/settings/ServerIntegrationsSection.vue";
-import AppSettingsSection from "../components/settings/AppSettingsSection.vue";
-import LimitsSection from "../components/settings/LimitsSection.vue";
-import DevToolsSection from "../components/settings/DevToolsSection.vue";
-import TasksSection from "../components/settings/TasksSection.vue";
-import StatsSection from "../components/settings/StatsSection.vue";
-import ExportImportSection from "../components/settings/ExportImportSection.vue";
-import CalendarSettingsSection from "../components/settings/CalendarSettingsSection.vue";
-import NotificationSettingsSection from "../components/settings/NotificationSettingsSection.vue";
-import AdminNotificationSettings from "../components/settings/AdminNotificationSettings.vue";
-import KeyboardShortcutsSection from "../components/settings/KeyboardShortcutsSection.vue";
-import ConnectionsSection from "../components/settings/ConnectionsSection.vue";
-import AniListImportSection from "../components/settings/AniListImportSection.vue";
-import ApiKeysSection from "../components/settings/ApiKeysSection.vue";
-import ConnectedAppsSection from "../components/settings/ConnectedAppsSection.vue";
-import IntegrationPolicySection from "../components/settings/IntegrationPolicySection.vue";
-import SessionsSection from "../components/settings/SessionsSection.vue";
 import ToggleButton from "../components/settings/ToggleButton.vue";
-import PluginManagerSection from "../components/settings/PluginManagerSection.vue";
-import ThemesSection from "../components/settings/ThemesSection.vue";
-import PwaSettingsSection from "../components/settings/PwaSettingsSection.vue";
 import PluginContributionHost from "../components/plugins/PluginContributionHost.vue";
 import {
   pageReplacement,
@@ -63,6 +35,95 @@ import AccountChip from "../components/AccountChip.vue";
 import PageHeader from "../components/PageHeader.vue";
 import AppIcon from "../components/AppIcon.vue";
 import { usePageTitle } from "../state/pageTitle";
+
+// Settings sections load on demand; only the selected area's code is fetched.
+const ProfileSection = defineAsyncComponent(
+  () => import("../components/settings/ProfileSection.vue"),
+);
+const GamePageSection = defineAsyncComponent(
+  () => import("../components/settings/GamePageSection.vue"),
+);
+const AppearanceSection = defineAsyncComponent(
+  () => import("../components/settings/AppearanceSection.vue"),
+);
+const BrandingSection = defineAsyncComponent(
+  () => import("../components/settings/BrandingSection.vue"),
+);
+const LibrarySettings = defineAsyncComponent(
+  () => import("../components/settings/LibrarySettings.vue"),
+);
+const MetadataSettings = defineAsyncComponent(
+  () => import("../components/settings/MetadataSettings.vue"),
+);
+const AdminSection = defineAsyncComponent(
+  () => import("../components/settings/AdminSection.vue"),
+);
+const OidcSettingsSection = defineAsyncComponent(
+  () => import("../components/settings/OidcSettingsSection.vue"),
+);
+const PasswordPolicySection = defineAsyncComponent(
+  () => import("../components/settings/PasswordPolicySection.vue"),
+);
+const ServerIntegrationsSection = defineAsyncComponent(
+  () => import("../components/settings/ServerIntegrationsSection.vue"),
+);
+const AppSettingsSection = defineAsyncComponent(
+  () => import("../components/settings/AppSettingsSection.vue"),
+);
+const LimitsSection = defineAsyncComponent(
+  () => import("../components/settings/LimitsSection.vue"),
+);
+const DevToolsSection = defineAsyncComponent(
+  () => import("../components/settings/DevToolsSection.vue"),
+);
+const TasksSection = defineAsyncComponent(
+  () => import("../components/settings/TasksSection.vue"),
+);
+const StatsSection = defineAsyncComponent(
+  () => import("../components/settings/StatsSection.vue"),
+);
+const ExportImportSection = defineAsyncComponent(
+  () => import("../components/settings/ExportImportSection.vue"),
+);
+const CalendarSettingsSection = defineAsyncComponent(
+  () => import("../components/settings/CalendarSettingsSection.vue"),
+);
+const NotificationSettingsSection = defineAsyncComponent(
+  () => import("../components/settings/NotificationSettingsSection.vue"),
+);
+const AdminNotificationSettings = defineAsyncComponent(
+  () => import("../components/settings/AdminNotificationSettings.vue"),
+);
+const KeyboardShortcutsSection = defineAsyncComponent(
+  () => import("../components/settings/KeyboardShortcutsSection.vue"),
+);
+const ConnectionsSection = defineAsyncComponent(
+  () => import("../components/settings/ConnectionsSection.vue"),
+);
+const AniListImportSection = defineAsyncComponent(
+  () => import("../components/settings/AniListImportSection.vue"),
+);
+const ApiKeysSection = defineAsyncComponent(
+  () => import("../components/settings/ApiKeysSection.vue"),
+);
+const ConnectedAppsSection = defineAsyncComponent(
+  () => import("../components/settings/ConnectedAppsSection.vue"),
+);
+const IntegrationPolicySection = defineAsyncComponent(
+  () => import("../components/settings/IntegrationPolicySection.vue"),
+);
+const SessionsSection = defineAsyncComponent(
+  () => import("../components/settings/SessionsSection.vue"),
+);
+const PluginManagerSection = defineAsyncComponent(
+  () => import("../components/settings/PluginManagerSection.vue"),
+);
+const ThemesSection = defineAsyncComponent(
+  () => import("../components/settings/ThemesSection.vue"),
+);
+const PwaSettingsSection = defineAsyncComponent(
+  () => import("../components/settings/PwaSettingsSection.vue"),
+);
 
 const router = useRouter();
 const route = useRoute();

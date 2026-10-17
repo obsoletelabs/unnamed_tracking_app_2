@@ -168,6 +168,21 @@ Container identifiers follow the [Ogg framing specification](https://xiph.org/og
 
 `services/games.ts` keeps every game it has fetched in an entity cache (`peekGame`). Opening a game from the library draws it from that cache straight away and refreshes it from the server behind it. Its achievements, variants and parent game are requested in parallel with the game, and fill in when they arrive instead of holding the page back. The hero and poster downloads start before the game's details have returned. When there is nothing cached (opening the address directly), a loading screen is shown whose hero, poster and tab bar match the real page's sizes, so the page does not jump when it replaces it.
 
+## Keeping page loads small
+
+Every routed view in `router/index.ts` is a dynamic `import()`, so opening a page only downloads that page's code. Inside a page, anything that is not on screen at first is loaded the same way:
+
+- Settings builds each section with `defineAsyncComponent`, so opening Settings downloads the section list and the one section the person picked, not all thirty.
+- Game detail loads the Notes, Stats, Accounts, Worlds, Saves, Docs and media panels and the edit dialogs when their tab or dialog is first shown. `GameFormModal`, the bulk editor, the random picker and the collection picker are loaded by the Games library and Home when first opened.
+- Statistics requests only the selected tab (`/api/media-stats?section=...`) and keeps the answer for the tab it came from; switching back does not ask again.
+- The calendar fetches the three media libraries (for poster thumbnails) only when its history or linked events refer to a title, or when the title picker is opened.
+
+Requests that several components make at the same moment are shared. `refreshMediaNotifications({ shared: true })` joins an unfinished request for the same account, and a background `refreshPluginExtensions` is skipped for two seconds after another one finished. Explicit refreshes (opening the bell, installing or removing a plugin) never take the shared path. The five-second session and plugin check in `App.vue` pauses while the browser tab is hidden and runs once when the tab becomes visible again.
+
+The game list is read in pages of 200 (`GET /api/game/list?skip=&limit=`). The body is still a plain array, and the response also carries `X-Total-Count`, the number of games matching the filters. `services/gamePages.ts` uses it to request the remaining pages four at a time instead of one after another, and falls back to sequential reads when the header is missing. The Games library, Home and the collection views still read the whole list because filtering, sorting, grouping of owned copies and duplicate review run in the browser over the full set.
+
+`src/tests/routeSplitting.test.ts` fails if a route, a Settings section or a Game detail panel goes back to being a static import.
+
 ## Shared building blocks
 
 Game duplicate review is host-owned in `features/game_duplicates.py`. The authenticated `GET /api/game-duplicates` reads compact active entries across all import sources without provider calls, suggests conservative title or shared-identity matches, and bounds each response to at most 100 pairs. Known conflicting years, platforms and identities are excluded. `POST /api/game-duplicates/keep-both` records a canonical, user-owned pair in `game_duplicate_dismissals`; repeat/reversed requests are idempotent and ordinary provider replays retain the decision. Neither endpoint merges or deletes library entries.
@@ -193,6 +208,15 @@ When adding a field to movies, TV shows and anime, look for the shared piece fir
 ## Library ranks
 
 The Movie, TV and Anime list endpoints return `score_ranks`: the position of every rated title for that user across the whole library, highest score first, ties broken by sort title, deleted titles left out. It is computed on the server so a rank does not depend on which page or search result the browser holds.
+
+## Activity days
+
+`features/activity_stats.py` owns the Statistics heatmap data and its day detail, so both use one rule. `GET /api/media-stats?section=overview&tz=<IANA zone>` returns the 52-week window (whole Sunday-first weeks ending today in that zone) and per-day `count`, `episodes`, `achievements` and `history`. `GET /api/media-stats/activity/day?date=YYYY-MM-DD&tz=<zone>&offset=&limit=` returns the same totals for one day plus a page of entries (`limit` is 1 to 100, default 50; entries are ordered episodes, achievements, other history).
+
+- **Day boundary.** `ActivityLog` stores a calendar `event_date` with no time, so those rows stay on their recorded day in every zone. Achievements store a unix instant and belong to the local day of that instant in `tz` (UTC when omitted). `day_bounds(day, zone)` returns the `[start, end)` seconds of a local day, handling 23 and 25 hour days and midnights skipped by daylight saving; the heatmap places unlocks with the same boundaries. Unknown names, `localtime` and path-like names are rejected with 422 by checking against the IANA database, which the `tzdata` requirement keeps complete on slim images.
+- **Ownership.** `ActivityLog.media_id` has no foreign key, so `owned_activity()` joins it to the movie, TV or anime table with the owner and `deleted_at IS NULL` in the join, dropping rows that name another account's, trashed or purged titles. Achievements join games through `active_owned_games(user_id)` from `features/game_stats.py`, so trashed games match the game statistics scope below exactly. Both endpoints keep `get_current_user`, so integration (`utd_`), plugin (`utp_`) and management (`utpm_`) credentials are refused rather than granted a new read scope.
+- **No invention.** Entries carry only what was recorded: per-title episode counts, achievement unlock instants, history labels. Missing unlock times and locked achievements are on no day.
+- **Frontend.** `components/stats/ActivityHeatmap.vue` renders the grid (month labels, roving-tabindex buttons, horizontal scroll) and `ActivityDayDialog.vue` renders the dialog inside `UiModal`. Classic and Modern share both; Classic only changes shape tokens.
 
 ## Game statistics scope
 
