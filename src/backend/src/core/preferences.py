@@ -56,6 +56,10 @@ DEFAULTS: dict[str, Any] = {
     "notification_retention_days": 30,
     "notification_retention_inherit": True,
     "library_default_layout": "list",
+    # one entry per logical game ("grouped") or every version on its own ("separate")
+    "library_version_display": "grouped",
+    # relationship kind -> "link" | "nest" | "hidden" for edges left on "default"
+    "library_relationship_display": {},
     "title_language": "english",
     "lists_default_sort": "custom",
     "stats_include_plan": True,
@@ -85,6 +89,7 @@ _CHOICES: dict[str, tuple[Any, ...]] = {
     "calendar_week_start": (0, 1),
     "notification_retention_days": (0, 7, 14, 30, 90, 180, 365),
     "library_default_layout": ("list", "shelf", "board"),
+    "library_version_display": ("grouped", "separate"),
     "lists_default_sort": ("custom", "name", "count", "recent"),
     "title_language": ("english", "romaji", "native"),
 }
@@ -143,6 +148,39 @@ def _validate_anilist_last_run(value: Any) -> int | None:
     if value is not None and (not isinstance(value, int) or isinstance(value, bool) or value < 0):
         raise ValueError("anilist_import_last_run_at must be a Unix timestamp or null")
     return value
+
+
+_RELATIONSHIP_RULE_KINDS = frozenset(
+    {
+        "version_of",
+        "remake_of",
+        "remaster_of",
+        "port_of",
+        "dlc_of",
+        "expansion_of",
+        "standalone_expansion_of",
+        "mod_of",
+        "modpack_of",
+        "total_conversion_of",
+        "series_member",
+        "collection_member",
+        "related_to",
+        "custom",
+    }
+)
+
+
+def _validate_relationship_display(value: Any) -> dict[str, str]:
+    """Per relationship kind: show beside (link), under the parent (nest) or not at all."""
+    if (
+        not isinstance(value, dict)
+        or any(kind not in _RELATIONSHIP_RULE_KINDS for kind in value)
+        or any(rule not in ("link", "nest", "hidden") for rule in value.values())
+    ):
+        raise ValueError(
+            "library_relationship_display maps a relationship kind to link, nest or hidden"
+        )
+    return dict(value)
 
 
 def _validate_theme_package(value: Any) -> str:
@@ -320,6 +358,7 @@ _VALUE_VALIDATORS: dict[str, Callable[[Any], Any]] = {
     "ui_custom_palette": _validate_custom_palette,
     "keyboard_shortcut_overrides": validate_shortcut_overrides,
     "game_page": partial(validate_page_settings, partial=False),
+    "library_relationship_display": _validate_relationship_display,
     "anilist_import_username": _validate_anilist_username,
     "anilist_import_interval_minutes": _validate_anilist_interval,
     "anilist_import_last_run_at": _validate_anilist_last_run,
