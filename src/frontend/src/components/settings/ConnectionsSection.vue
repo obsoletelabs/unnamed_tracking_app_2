@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
-import { RouterLink } from "vue-router";
+import { RouterLink, useRoute, useRouter } from "vue-router";
 import ConnectionManageDialog from "./ConnectionManageDialog.vue";
 import PluginConnectionDialog from "./PluginConnectionDialog.vue";
 import SteamConnectionDialog from "./SteamConnectionDialog.vue";
@@ -11,6 +11,7 @@ import {
 } from "../../composables/useConnections";
 import type { ConnectionConfig } from "../../composables/useConnections";
 import { SOURCE_VISUALS } from "../../composables/useMetadataSources";
+import { steamOpenIdOutcome } from "../../services/steamOpenId";
 import { dispatchPluginAction } from "../../services/pluginUi";
 import { pluginConnectionStatus } from "../../services/pluginConnections";
 import type { PluginConnectionStatus } from "../../services/pluginConnections";
@@ -18,6 +19,9 @@ import { pluginConnections } from "../../state/pluginExtensions";
 import type { PluginConnectionContribution } from "../../state/pluginExtensions";
 
 const state = useConnections();
+const route = useRoute();
+const router = useRouter();
+const steamOpenIdResult = ref<{ ok: boolean; message: string } | null>(null);
 const managing = ref<ConnectionConfig | null>(null);
 const managingPlugin = ref<PluginConnectionContribution | null>(null);
 const steamSignIn = ref(false);
@@ -128,7 +132,14 @@ function closePlugin() {
   void loadPluginStatus();
 }
 
-onMounted(() => void state.loadCredentials());
+onMounted(() => {
+  void state.loadCredentials();
+  const outcome = steamOpenIdOutcome(route.query);
+  if (!outcome) return;
+  steamOpenIdResult.value = outcome;
+  // The callback URL carries only a status; drop it so a reload does not repeat it.
+  void router.replace({ query: { section: "connections" } });
+});
 watch(pluginConnections, () => void loadPluginStatus(), { immediate: true });
 </script>
 
@@ -147,6 +158,13 @@ watch(pluginConnections, () => void loadPluginStatus(), { immediate: true });
       {{ state.loadError.value }}
     </p>
 
+    <p
+      v-if="steamOpenIdResult"
+      :class="steamOpenIdResult.ok ? 'hint' : 'error'"
+      :role="steamOpenIdResult.ok ? 'status' : 'alert'"
+    >
+      {{ steamOpenIdResult.message }}
+    </p>
     <p v-if="state.credentialsLoading.value" class="hint">Loading…</p>
     <ul v-else class="rows">
       <li v-for="row in rows" :key="row.key" class="row">

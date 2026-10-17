@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import UiModal from "../UiModal.vue";
 import PasswordInput from "../PasswordInput.vue";
+import SteamOpenIdLink from "./SteamOpenIdLink.vue";
 import { useConfirm } from "../../state/dialog";
 import {
   beginSteamAccount,
@@ -264,6 +265,11 @@ onBeforeUnmount(() => {
     <p v-if="loading" class="hint">Loading connection…</p>
     <p v-if="error" class="error" role="alert">{{ error }}</p>
     <template v-if="!loading">
+      <SteamOpenIdLink
+        v-if="!pending"
+        :verified-steam-id="connection?.verified_steam_id ?? null"
+        :has-library-access="!!connection?.connected"
+      />
       <div v-if="connection?.connected && !pending" class="connected">
         <strong
           >{{ connection.display_name || "Steam account" }} connected</strong
