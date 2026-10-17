@@ -28,7 +28,8 @@ The application accepts either the individual PostgreSQL variables or the legacy
 | `DEBUG` | BOTH | `false` | Enables backend debug mode. |
 | `STARTUP_MODE` | ENV | Empty/default | Selects startup defaults and whether the setup UI is shown. |
 | `DEFAULT_UI_STYLE` | BOTH | `modern` | Default built-in presentation: `modern` or `classic`. Nonempty ENV locks Setup → General; saved account/browser choices take priority. Leave empty to choose it in Setup. |
-| `MAX_UPLOAD_SIZE_MB` | BOTH | `15` | General upload limit in MB. |
+| `MAX_UPLOAD_SIZE_MB` | BOTH | `15` | Image and general upload limit in MB. |
+| `MAX_DOC_SIZE_MB` | BOTH | `500` | Limit in MB for each file added to a game's Docs tab, of any file type. |
 | `MAX_SAVE_ARCHIVE_SIZE_MB` | BOTH | `4096` | Game save archive limit in MB. |
 | `MAX_CLIP_SIZE_MB` | BOTH | `500` | Clip upload limit in MB. |
 | `MAX_WORLD_SAVE_SIZE_MB` | BOTH | `2000` | Game world-save limit in MB. |

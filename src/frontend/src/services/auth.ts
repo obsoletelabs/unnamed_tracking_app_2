@@ -193,6 +193,26 @@ export async function uploadProfilePicture(
   return result.profile_picture_version ?? null;
 }
 
+export async function removeProfilePicture(
+  userId: string,
+): Promise<string | null> {
+  const response = await fetch(
+    `/api/user/${encodeURIComponent(userId)}/profile-picture`,
+    { method: "DELETE", credentials: "include" },
+  );
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(
+      typeof body?.detail === "string"
+        ? body.detail
+        : `Failed to remove profile picture (${response.status}).`,
+    );
+  }
+  const result: { profile_picture_version?: string | null } =
+    await response.json();
+  return result.profile_picture_version ?? null;
+}
+
 export function profilePictureUrl(userId: string, version: string): string {
   return `/api/user/${encodeURIComponent(userId)}/profile-picture?v=${encodeURIComponent(version)}`;
 }

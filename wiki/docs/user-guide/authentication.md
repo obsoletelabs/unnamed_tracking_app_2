@@ -79,6 +79,12 @@ Accounts without a picture show initials immediately. Existing pictures reuse a
 stable private cache URL across page loads; uploading a replacement updates all
 profile surfaces. No database migration or re-upload is needed for saved pictures.
 
+Choose **Remove picture** in Settings > Profile to delete the stored picture. The
+sidebar account, the account menu and the profile page (Modern and Classic) then show
+initials immediately and after a reload. Only you, or an administrator, can remove your
+picture; repeating the removal is harmless. A picture whose file cannot be loaded also
+falls back to initials rather than a broken image.
+
 ## API keys
 
 Users can create API keys for integrations that need to authenticate without a browser session.

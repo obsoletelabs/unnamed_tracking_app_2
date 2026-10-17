@@ -36,6 +36,27 @@ export interface TrashedMedia {
   deleted_at: number;
 }
 
+// One batch of POST {base}/trash/empty.
+interface EmptyTrashBatch {
+  deleted: number;
+  failed: number;
+  failed_items: TrashedMedia[];
+  remaining: number;
+  deleted_through: number;
+}
+
+// What emptying one kind's trash did, over every batch it took.
+export interface EmptyTrashResult {
+  // permanently deleted, with any seasons and episodes
+  deleted: number;
+  // could not be deleted and are still in the trash, unchanged
+  failedItems: TrashedMedia[];
+  // still in the trash within what was confirmed, failed titles included
+  remaining: number;
+  // set when a request failed; what was deleted before it stays deleted
+  error: string | null;
+}
+
 export interface MediaPage<T> {
   items: T[];
   total: number;
@@ -190,6 +211,47 @@ export function createMediaApi<
     return item;
   }
 
+  // Permanently deletes every title in this kind's trash that was deleted at
+  // or before `deletedThrough` (the newest deletion time the person saw when
+  // confirming), so nothing trashed afterwards is included. The server works
+  // in bounded batches; this repeats them until nothing unprocessed is left.
+  async function emptyTrash(deletedThrough: number): Promise<EmptyTrashResult> {
+    const result: EmptyTrashResult = {
+      deleted: 0,
+      failedItems: [],
+      remaining: 0,
+      error: null,
+    };
+    try {
+      for (;;) {
+        const response = await fetch(`${base}/trash/empty`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            confirm: true,
+            deleted_through: deletedThrough,
+          }),
+        });
+        const batch = await handle<EmptyTrashBatch>(
+          response,
+          `empty the ${noun} trash`,
+        );
+        result.deleted += batch.deleted;
+        result.failedItems = batch.failed_items;
+        result.remaining = batch.remaining;
+        // stop once only failed titles are left, or a batch made no progress
+        if (batch.remaining <= batch.failed || batch.deleted === 0) break;
+      }
+    } catch (e) {
+      result.error =
+        e instanceof Error ? e.message : `Could not empty the ${noun} trash`;
+    } finally {
+      if (result.deleted) markMutation();
+    }
+    return result;
+  }
+
   async function purge(id: string): Promise<void> {
     const response = await fetch(`${base}/${id}/purge`, {
       method: "DELETE",
@@ -213,5 +275,6 @@ export function createMediaApi<
     fetchTrash,
     restore,
     purge,
+    emptyTrash,
   };
 }

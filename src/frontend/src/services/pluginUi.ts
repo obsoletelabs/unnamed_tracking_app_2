@@ -706,7 +706,75 @@ export function pluginPathForPage(
   );
 }
 
-export function buildInitialValues(document: PluginUiDocument): UiValues {
+/** Read saved ordinary settings; the host never returns write-only secrets. */
+export async function fetchPluginSettings(
+  pluginId: string,
+): Promise<Record<string, unknown>> {
+  const response = await fetch(
+    `/api/plugins/${encodeURIComponent(pluginId)}/settings`,
+    { credentials: "include" },
+  );
+  if (!response.ok)
+    throw new PluginActionError(
+      response.status,
+      (
+        await pluginRequestError(
+          response,
+          "Saved plugin settings could not be loaded",
+        )
+      ).message,
+    );
+  const body = (await response.json()) as { values?: unknown };
+  return body.values &&
+    typeof body.values === "object" &&
+    !Array.isArray(body.values)
+    ? (body.values as Record<string, unknown>)
+    : {};
+}
+
+function fitsFieldControl(field: UiField, value: unknown): value is UiValue {
+  if (field.type === "number")
+    return (
+      (typeof value === "number" && Number.isFinite(value)) ||
+      (value === "" && !field.required)
+    );
+  if (field.type === "boolean") return typeof value === "boolean";
+  if (field.type === "multiselect")
+    return (
+      Array.isArray(value) && value.every((item) => typeof item === "string")
+    );
+  return typeof value === "string";
+}
+
+/** Saved values the declarative controls can show; secret fields stay empty. */
+export function savedFieldValues(
+  document: PluginUiDocument,
+  saved: Record<string, unknown>,
+): UiValues {
+  const fields = document.settings.flatMap((section) => section.fields);
+  const concealed = new Set(
+    fields
+      .filter((field) => field.secret || field.type === "password")
+      .map((field) => field.id),
+  );
+  const values: UiValues = {};
+  for (const field of fields) {
+    const value = saved[field.id];
+    if (
+      !concealed.has(field.id) &&
+      Object.hasOwn(saved, field.id) &&
+      fitsFieldControl(field, value)
+    )
+      values[field.id] = value;
+  }
+  return values;
+}
+
+/** Saved values win; declared defaults apply only to fields with no saved value. */
+export function buildInitialValues(
+  document: PluginUiDocument,
+  saved: Record<string, unknown> = {},
+): UiValues {
   const values: UiValues = {};
   for (const section of document.settings) {
     for (const field of section.fields) {
@@ -714,7 +782,7 @@ export function buildInitialValues(document: PluginUiDocument): UiValues {
         values[field.id] = field.default;
     }
   }
-  return values;
+  return { ...values, ...savedFieldValues(document, saved) };
 }
 
 /** Honor only declared external navigation and credential-free HTTP(S) targets. */
