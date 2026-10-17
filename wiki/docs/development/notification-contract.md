@@ -16,6 +16,9 @@ core and [plugin notification providers](notification-providers.md).
 | Shared conformance cases and reviewed schema snapshots | `src/backend/tests/fixtures/notification_contract/` |
 | Contract tests | `tests/test_notification_contract.py`, `tests/test_notification_contract_adapters.py` |
 
+Pull request status, merge order and verification for the whole overhaul are on the
+[coordination board](notification-overhaul.md).
+
 The contract version is `NOTIFICATION_CONTRACT_VERSION = "1.0.0"`. It is
 independent of the Plugin API wire version. Plugin API **1.1.14** (#115) is the
 first version whose gateway accepts these documents: see
