@@ -332,6 +332,7 @@ are redacted. Validation errors never echo submitted values.
 | GET | `/api/anime/metadata/by-id/{anilist_id}` | user | Lookup using provider data or the caller's configured credentials; no stored object is addressed. |
 | GET | `/api/anime/metadata/search` | user | Lookup using provider data or the caller's configured credentials; no stored object is addressed. |
 | GET | `/api/anime/trash` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
+| POST | `/api/anime/trash/empty` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
 | PATCH | `/api/anime/update/{show_id}` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
 | DELETE | `/api/anime/{show_id}/purge` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
 | GET | `/api/anime/{show_id}/recommended` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
@@ -397,6 +398,7 @@ are redacted. Validation errors never echo submitted values.
 | GET | `/api/movie/list` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
 | GET | `/api/movie/metadata/search` | user | Lookup using provider data or the caller's configured credentials; no stored object is addressed. |
 | GET | `/api/movie/trash` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
+| POST | `/api/movie/trash/empty` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
 | PATCH | `/api/movie/update/{movie_id}` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
 | DELETE | `/api/movie/{movie_id}/purge` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
 | GET | `/api/movie/{movie_id}/recommended` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
@@ -415,6 +417,7 @@ are redacted. Validation errors never echo submitted values.
 | GET | `/api/tv/list` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
 | GET | `/api/tv/metadata/search` | user | Lookup using provider data or the caller's configured credentials; no stored object is addressed. |
 | GET | `/api/tv/trash` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
+| POST | `/api/tv/trash/empty` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
 | PATCH | `/api/tv/update/{show_id}` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
 | DELETE | `/api/tv/{show_id}/purge` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
 | GET | `/api/tv/{show_id}/recommended` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
@@ -598,6 +601,7 @@ are redacted. Validation errors never echo submitted values.
 | POST | `/api/plugins/{plugin_id}/retry` | plugin-admin | Plugin lifecycle; administrator (or a management token scoped to the operation). |
 | POST | `/api/plugins/{plugin_id}/rollback` | plugin-admin | Plugin lifecycle; administrator (or a management token scoped to the operation). |
 | PUT | `/api/plugins/{plugin_id}/secrets/{key}` | user | Caller's own plugin state; execution still needs the installation's granted capabilities. |
+| GET | `/api/plugins/{plugin_id}/settings` | user | Caller's own plugin state; execution still needs the installation's granted capabilities. |
 | PUT | `/api/plugins/{plugin_id}/settings` | user | Caller's own plugin state; execution still needs the installation's granted capabilities. |
 | POST | `/api/plugins/{plugin_id}/start` | plugin-admin | Plugin lifecycle; administrator (or a management token scoped to the operation). |
 | POST | `/api/plugins/{plugin_id}/stop` | plugin-admin | Plugin lifecycle; administrator (or a management token scoped to the operation). |
