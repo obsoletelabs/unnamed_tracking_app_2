@@ -141,6 +141,7 @@ from src.database.models.user import User
 from src.database.session import get_db
 from src.features import game_folders, game_ownership
 from src.features.game_identity import manual
+from src.features.game_ingestion import playnite
 from src.features.game_ingestion.legacy import (
     has_manual_observation,
     record_manual_fields,
@@ -571,6 +572,7 @@ async def update_game(
 
     sent = payload.model_dump(exclude_unset=True)
     updates = _drop_nulls_for_required_fields(dict(sent))
+    kept_locks = playnite.guard_update(game, updates, actor)
     authorize_title_update(game, updates, actor)
     old_folder = game.folder_location
     manual_status = manual.guard_status_update(
@@ -584,9 +586,12 @@ async def update_game(
 
     if "parent_game_id" in updates or "relationship_type" in updates:
         effective_parent = updates.get("parent_game_id", game.parent_game_id)
-        effective_relationship = updates.get("relationship_type", game.relationship_type)
         await _validate_game_relationship(
-            effective_parent, effective_relationship, db, current_user.id, game_id
+            effective_parent,
+            updates.get("relationship_type", game.relationship_type),
+            db,
+            current_user.id,
+            game_id,
         )
 
     if "folder_location" in updates:

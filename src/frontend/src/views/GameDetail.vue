@@ -23,9 +23,8 @@ import {
 import type { AchFilter } from "../composables/useGameAchievements";
 import GamePlayPanel from "../components/game/GamePlayPanel.vue";
 import GameOwnedCopiesPanel from "../components/game/GameOwnedCopiesPanel.vue";
-import GameWorldsPanel from "../components/game/GameWorldsPanel.vue";
 import GameManualTrackingPanel from "../components/game/GameManualTrackingPanel.vue";
-import { provide } from "vue";
+import { provide, defineAsyncComponent } from "vue";
 import { useGameDetail } from "../composables/useGameDetail";
 import { gameDetailKey } from "../composables/gameDetailContext";
 
