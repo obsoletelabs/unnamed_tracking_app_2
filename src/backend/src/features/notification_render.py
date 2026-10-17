@@ -21,6 +21,7 @@ from src.database.models.notification import Notification
 from src.database.models.notification_story import NotificationStoryRevision
 from src.features.notification_contract import content_from_notification
 from src.features.notification_contributions import contributed_text, selected_contribution
+from src.features.notification_diagnostic_fixtures import test_content, variant_of
 from src.features.notification_providers.base import MessageAction, NotificationMessage
 from src.features.notification_providers.capabilities import ResolvedProfile
 from src.features.notification_rich import render_email_html, render_plain
@@ -54,6 +55,9 @@ async def _content(
     """Canonical content of the notification's current revision (private projection only)."""
     if projection != "canonical":
         return None
+    if notification.purpose == "test":
+        # Host-authored fixture content, so test sends exercise the real renderer richly.
+        return test_content(variant_of(notification.group_key))
     if notification.story_id is not None:
         stored = await db.scalar(
             select(NotificationStoryRevision.content).where(
