@@ -107,6 +107,43 @@ cannot keep some and lose others. Work that needs another request after the
 record exists (artwork uploads) runs only after it is saved, never re-creates
 it, and reports a retry through the task notice.
 
+The movie, TV and anime editors (#144) adopt the same frame. `MediaFormShell.vue`
+is a thin wrapper that wires `EditorShell` for the three of them: the five tabs
+(`MEDIA_EDITOR_TABS`), the pinned Delete / Look up metadata / Cancel / Save actions
+(`styles/shared/editorActions.css`, shared with the game editor), the pinned error
+and a `lookup` slot placed in the shell's `lead` slot so the staged lookup is
+reachable from every tab. `MovieFormModal`, `TVShowFormModal` and `AnimeFormModal`
+keep their own fields, services, title protection, season staging and save logic.
+The parts the three share are typed and separate, not one large component:
+
+- `MediaTrackingFields.vue` (`part="status"` for Basics, `"journal"` for Tracking):
+  status, favorite, dates, rewatches, source, ratings, rank, tags and notes.
+- `MediaClassificationFields.vue`: genres, countries, languages, age rating and
+  features, with a slot for a media-specific field (anime format).
+- `MediaArtworkFields.vue` and `MediaProviderIds.vue`.
+- `utils/mediaEditorFields.ts`: the typed `TrackingFields` / `ClassificationFields`
+  state, their read/validate conversions (`trackingFrom`, `trackingToInput`,
+  `classificationToInput`) and provider-ID validation. These are flat on the
+  editor's `fields` object because the metadata comparison offers values by key.
+
+Personal tracking values (Tracking tab) stay separate from what a provider
+supplies (Details, Links), so a lookup can only offer provider fields and never
+overwrites a rating, date or note.
+
+To port an existing UI contribution into the shared editor:
+
+1. Decide whether it is personal (Tracking), provider metadata (Details), artwork
+   or identity (Artwork / Links); add it to the shared component when all three
+   media have the field, or to the editor's own panel when only one does.
+2. Add the value to the editor's `fields`, load it in `loadFrom...`, and send it in
+   the same `create...`/`update...` request. Do not add another save request.
+3. Validate with `numberOrNull` / the helpers in `mediaEditorFields.ts` and, if the
+   message concerns another tab, switch `tab` before showing the error.
+4. If the lookup can offer it, add it to the comparison definitions with its
+   locked-field name so manual edits stay protected.
+5. Use the tokens in `editorForm.css`; add Classic cues only under `.editor-shell`.
+6. Plugin-provided panels and actions attach to the media's page, not this dialog;
+   keep their slots in the detail views untouched.
 The movie, TV and anime editors (#144) should adopt `EditorShell` and
 `editorForm.css` the same way: keep each editor's own fields, services,
 protection and seasons/progress logic, and add their tabs as direct panels.
