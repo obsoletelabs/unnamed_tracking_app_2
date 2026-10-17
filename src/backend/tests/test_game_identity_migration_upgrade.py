@@ -18,6 +18,7 @@ from src.core.config import settings
 from src.database.base import Base
 
 BASELINE = "c10098e58426"
+PREVIOUS_HEAD = "e4a0157eef4b"
 IDENTITY = "716a1e2c451d"
 NEW_TABLES = {
     "game_umbrellas",
@@ -49,7 +50,7 @@ def test_identity_migration_follows_the_previous_head_and_adds_only_tables():
     module = importlib.import_module(
         "src.database.migrations.versions.716a1e2c451d_add_canonical_game_identity_model"
     )
-    assert module.down_revision == BASELINE
+    assert module.down_revision == PREVIOUS_HEAD
     assert set(module.NEW_TABLES) == NEW_TABLES
     source = Path(module.__file__).read_text(encoding="utf-8")
     upgrade = source.split("def upgrade()", 1)[1].split("def downgrade()", 1)[0]

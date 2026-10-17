@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.routes.settings import get_or_create_scan_settings
-from src.api.routes.utils.games import _scan_settings_to_preferences
+from src.api.routes.utils.games import _record_provider_use, _scan_settings_to_preferences
 from src.core.auth import get_current_admin, get_current_user
 from src.core.preferences import load_preferences
 from src.database.models.plugin_metadata_provider import PluginMetadataProviderRegistration
@@ -206,11 +206,21 @@ async def cancel_search(session_id: str, user: CurrentUser) -> None:
 
 
 @router.post("/sessions/{session_id}/selection")
-async def select_candidate(session_id: str, payload: SelectionInput, user: CurrentUser) -> dict:
+async def select_candidate(
+    session_id: str, payload: SelectionInput, db: Database, user: CurrentUser
+) -> dict:
+    session = _owned(session_id, user)
     try:
-        return handler.select(_owned(session_id, user), str(payload.candidate_id))
+        selected = dict(handler.select(session, str(payload.candidate_id)))
     except LookupError as exc:
         raise HTTPException(404, "Metadata candidate not found.") from exc
+    # Scan settings show when each provider last supplied a result the account chose.
+    _record_provider_use(
+        await get_or_create_scan_settings(user.id, db),
+        handler.contributors(session, session.selected),
+    )
+    await db.commit()
+    return selected
 
 
 @router.post("/sessions/{session_id}/artwork")
@@ -247,6 +257,9 @@ async def providers_status(db: Database, user: CurrentUser) -> dict:
                 "plugin_id": provider.plugin_id,
                 "included": provider.id in CORE_PROVIDERS,
                 "account_enabled": provider.account_enabled,
+                # Effective ranks from the account's saved orders; lower runs first.
+                "priority": provider.priority,
+                "artwork_priority": provider.artwork_priority,
                 "state": status.state,
                 "checked_at": status.checked_at or None,
                 "failure": status.failure,

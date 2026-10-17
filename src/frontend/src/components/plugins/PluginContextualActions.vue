@@ -4,7 +4,9 @@ import { useRouter } from "vue-router";
 import {
   approvePluginAction,
   dispatchPluginAction,
+  openExternalDestination,
   pluginExternalDestination,
+  reserveExternalTab,
   type PluginActionContext,
 } from "../../services/pluginUi";
 import {
@@ -37,6 +39,8 @@ async function run(index: number) {
   if (!contribution) return;
   if (!approvePluginAction(contribution.action, window.confirm)) return;
   error.value = "";
+  const tab = reserveExternalTab(contribution.action);
+  let destination: string | null = null;
   try {
     const result = await dispatchPluginAction(
       contribution.pluginId,
@@ -52,13 +56,14 @@ async function run(index: number) {
           : "Plugin action unavailable.";
       return;
     }
-    const destination = pluginExternalDestination(contribution.action, result);
-    if (destination) window.location.assign(destination);
+    destination = pluginExternalDestination(contribution.action, result);
   } catch (cause) {
     error.value =
       cause instanceof Error
         ? cause.message
         : "Plugin action could not be completed.";
+  } finally {
+    openExternalDestination(destination, tab);
   }
 }
 

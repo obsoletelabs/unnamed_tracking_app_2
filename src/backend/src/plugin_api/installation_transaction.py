@@ -24,6 +24,7 @@ from src.database.models.plugin_permissions import (
     PluginPermissionGrant,
     PluginPermissionRequest,
 )
+from src.features.plugin_identity_retirement import retire_replaced_identity
 
 from .capabilities import permission_key
 from .contracts import PluginManifest, parse_semver
@@ -121,6 +122,10 @@ async def _record_permissions(
             )
             .values(revoked_at=state.now, revoked_by_operation=UUID(state.operation_id))
         )
+    if state.plan.installed is not None and state.plan.identity_replaced:
+        # Same database transaction as the receipt: a failed prepare or commit leaves the
+        # previous publisher's destinations, proof and queued work untouched.
+        await retire_replaced_identity(db, state.plugin_id, state.plan.installation_id)
     rows: list[Any] = []
     for ref in state.plan.permissions.newly_requested_grants:
         allowed = permission_key(ref) in approved

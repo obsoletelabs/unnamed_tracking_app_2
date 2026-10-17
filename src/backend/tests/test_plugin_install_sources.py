@@ -61,6 +61,7 @@ def package_bytes(
     dependencies=(),
     trust="unsigned",
     key=None,
+    key_id=None,
     broken=None,
     api_contract_version="1.1.0",
     sdk_range="*",
@@ -75,7 +76,7 @@ def package_bytes(
             signature = b"x" * 64
         integrity.update(
             signature=base64.b64encode(signature).decode("ascii"),
-            key_id="unknown" if trust == "unknown_publisher" else "known",
+            key_id=key_id or ("unknown" if trust == "unknown_publisher" else "known"),
         )
     if broken == "malformed_signature":
         integrity.update(signature="not-base64!", key_id="unknown")

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+from collections.abc import Sequence
 from typing import Any, Protocol
 from uuid import UUID
 
@@ -17,7 +18,18 @@ from src.database.models.plugin_metadata_provider import (
     PluginMetadataProviderRegistration,
     PluginProviderConfiguration,
 )
+from src.database.models.user_scan_settings import (
+    DEFAULT_IMAGE_PROVIDER_ORDER,
+    DEFAULT_PROVIDER_ORDER,
+    LEGACY_DATA_PROVIDER_NAMES,
+    LEGACY_IMAGE_PROVIDER_NAMES,
+    UserScanSettings,
+)
 from src.plugin_api.metadata_contracts import MetadataProviderRegistration
+
+# Providers absent from a saved order rank after every listed provider.
+UNRANKED = 100
+_LEGACY_NAMES = LEGACY_DATA_PROVIDER_NAMES | LEGACY_IMAGE_PROVIDER_NAMES
 
 
 class ConfigurationProvider(Protocol):
@@ -37,10 +49,51 @@ async def provider_enabled(db: AsyncSession, user_id: UUID, provider_id: str) ->
     return preferences["metadata_providers_enabled"].get(provider_id, True) is not False
 
 
-def provider_priority(name: str, preferences: dict[str, Any] | None) -> int:
-    """Core and optional providers use the same saved name-based authority order."""
-    order = (preferences or {}).get("provider_order", [])
-    return order.index(name) if name in order else 100
+async def provider_orders(
+    db: AsyncSession, user_id: UUID, preferences: dict[str, Any] | None = None
+) -> dict[str, list[str]]:
+    """Every discovery path uses the account's saved orders unless the caller supplies them.
+
+    Reading never creates the scan-settings row; an account without one uses the defaults.
+    """
+    if preferences is not None and "provider_order" in preferences:
+        return {
+            "provider_order": list(preferences.get("provider_order") or []),
+            "image_provider_order": list(
+                preferences.get("image_provider_order", DEFAULT_IMAGE_PROVIDER_ORDER) or []
+            ),
+        }
+    row = await db.scalar(select(UserScanSettings).where(UserScanSettings.user_id == user_id))
+    if row is None:
+        return {
+            "provider_order": list(DEFAULT_PROVIDER_ORDER),
+            "image_provider_order": list(DEFAULT_IMAGE_PROVIDER_ORDER),
+        }
+    return {
+        "provider_order": list(row.provider_order or []),
+        "image_provider_order": list(row.image_provider_order or []),
+    }
+
+
+def provider_priority(
+    provider_id: str,
+    name: str,
+    order: Sequence[str] | None,
+    reserved_names: frozenset[str] = frozenset(),
+) -> int:
+    """Core and optional providers share one saved order, keyed by registered provider ID.
+
+    Orders saved before optional providers became plugins contain the fixed legacy
+    display names ("IGDB", "GiantBomb"). They keep their meaning until the account
+    saves a new order. Only those names match by display name, and a plugin can
+    never claim the legacy entry of a core provider's name.
+    """
+    for index, entry in enumerate(order or ()):
+        if entry == provider_id or (
+            entry == name and entry in _LEGACY_NAMES and name not in reserved_names
+        ):
+            return index
+    return UNRANKED
 
 
 async def configuration_values(

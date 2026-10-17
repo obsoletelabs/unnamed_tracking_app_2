@@ -11,10 +11,12 @@ import { fetchMoviesPage } from "../services/movies";
 import { fetchTVShowsPage } from "../services/tvShows";
 import { fetchAnimePage } from "../services/anime";
 import { currentUser } from "../state/auth";
+import { pluginNavigation } from "../state/pluginExtensions";
 import {
-  pluginNavigation,
-  pluginSettingsSections,
-} from "../state/pluginExtensions";
+  searchSettings,
+  settingsSearchIndex,
+  settingsSearchLocation,
+} from "../state/settingsRegistry";
 import UiModal from "./UiModal.vue";
 
 const router = useRouter();
@@ -62,47 +64,6 @@ interface Result {
   sublabel?: string;
   action: () => void;
 }
-
-const SETTINGS_SHORTCUTS: {
-  label: string;
-  section: string;
-  adminOnly?: boolean;
-}[] = [
-  { label: "Profile", section: "profile" },
-  { label: "Appearance & interface", section: "appearance" },
-  { label: "App installation", section: "app-installation" },
-  { label: "Game page", section: "game-page" },
-  { label: "Notifications", section: "notifications" },
-  { label: "Calendar", section: "calendar" },
-  { label: "Keyboard Shortcuts", section: "shortcuts" },
-  { label: "Connections", section: "connections" },
-  { label: "Library", section: "library" },
-  { label: "Media Trash", section: "media-trash" },
-  { label: "Metadata", section: "metadata" },
-  { label: "Metadata API keys", section: "sources" },
-  { label: "Storage & usage", section: "stats" },
-  { label: "Export / Import", section: "export" },
-  { label: "API Keys", section: "api-keys" },
-  { label: "Users", section: "users", adminOnly: true },
-  { label: "Single sign-on", section: "oidc", adminOnly: true },
-  { label: "Password policy", section: "password-policy", adminOnly: true },
-  {
-    label: "Server notifications & SMTP",
-    section: "admin-notifications",
-    adminOnly: true,
-  },
-  { label: "Application & TLS", section: "app-settings", adminOnly: true },
-  {
-    label: "Server integrations",
-    section: "server-integrations",
-    adminOnly: true,
-  },
-  { label: "Limits", section: "limits", adminOnly: true },
-  { label: "App branding", section: "branding", adminOnly: true },
-  { label: "Plugins", section: "plugins", adminOnly: true },
-  { label: "Background tasks", section: "background-tasks" },
-  { label: "Server background tasks", section: "tasks", adminOnly: true },
-];
 
 const PAGE_SHORTCUTS: { label: string; to: string }[] = [
   { label: "Home", to: "/" },
@@ -205,32 +166,17 @@ const results = computed<Result[]>(() => {
   out.push(...mediaResults.value);
   out.push(...pluginResults.value);
 
-  for (const s of SETTINGS_SHORTCUTS) {
-    if (s.adminOnly && !currentUser.value?.is_admin) continue;
-    if (s.label.toLowerCase().includes(q)) {
-      out.push({
-        key: "settings:" + s.section,
-        kind: "page",
-        label: s.label,
-        sublabel: "Settings",
-        action: () => go(`/settings?section=${s.section}`),
-      });
-    }
-  }
-
-  for (const item of pluginSettingsSections.value) {
-    if (
-      (item.adminOnly && !currentUser.value?.is_admin) ||
-      !item.label.toLowerCase().includes(q)
-    )
-      continue;
+  // Settings results share the Settings page index: the same permission,
+  // plugin lifecycle and alias rules, never field values or secrets.
+  for (const entry of searchSettings(settingsSearchIndex.value, q, 10)) {
+    const location = settingsSearchLocation(entry);
     out.push({
-      key: "plugin-settings:" + item.contributionId,
+      key: "settings:" + entry.key,
       kind: "page",
-      label: item.label,
-      sublabel: "Extension settings",
+      label: entry.label,
+      sublabel: `Settings · ${entry.context}`,
       action: () =>
-        go(`/settings?section=${encodeURIComponent(item.contributionId)}`),
+        go(`${location.path}?${new URLSearchParams(location.query)}`),
     });
   }
   for (const item of pluginNavigation.value) {
@@ -246,6 +192,8 @@ const results = computed<Result[]>(() => {
       item.location !== "administration"
     )
       continue;
+    // Settings sidebar pages are already part of the settings index above.
+    if (item.location === "settings.sidebar" && item.pageId) continue;
     if (item.location === "administration" && !currentUser.value?.is_admin)
       continue;
     const destination = item.settingsSectionId
