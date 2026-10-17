@@ -7,6 +7,7 @@ object identifiers behave as that matrix says.
 """
 
 import re
+import sys
 from pathlib import Path
 from uuid import uuid4
 
@@ -37,6 +38,14 @@ CATCH_ALL = "route_path"
 NOT_USER_CREDENTIAL = {"public", "plugin-runtime", "plugin-route", "public-app-session"}
 # Authorities that ordinary user credentials can never satisfy.
 ADMIN_CLASSES = {"admin", "plugin-admin"}
+
+
+@pytest.fixture(autouse=True)
+def isolated_data_root(tmp_path, monkeypatch):
+    """Keep every handler that writes under the data root out of the real /data."""
+    for name, module in list(sys.modules.items()):
+        if name.startswith("src.") and hasattr(module, "_DATA_ROOT"):
+            monkeypatch.setattr(module, "_DATA_ROOT", tmp_path)
 
 
 @pytest.fixture
