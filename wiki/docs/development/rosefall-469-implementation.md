@@ -185,6 +185,10 @@ Until then, PRs remain available for review with current validation and screensh
   passed. Live Steam/TVmaze checks and Modern/Classic desktop screenshots passed;
   fresh phone visual verification remains unavailable because the integrated
   browser ignored its viewport override. Full hosted checks/merge remain pending.
+- **#140 compact tag filters:** the Games filter panel replaces per-tag include/exclude
+  chip walls with one searchable, keyboard-operable picker (counts, include/exclude
+  modes, merged-spelling hints) plus deterministic tag normalization in
+  `utils/genres.ts`, documented in the games guide. Classic and Modern share it.
 - **K game editor / 6–7, 14, 18–19:** active issue #143, in review. One shared
   `GameFormModal` on the new `EditorShell` frame serves Modern and Classic: hero,
   eight direct tabs, a bounded body and pinned actions, with no add wizard.

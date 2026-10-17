@@ -82,20 +82,18 @@ Examples also show [Classic details](../assets/game-time-estimates/classic-dark-
 
 ## Excluding games
 
-Open **Filters** to exclude statuses, tags/genres or platform families. Choose
-**Not …** to hide matching games while retaining your include filters. Exclusions
-take precedence; a game selected by both an include and an exclusion stays hidden.
-Platform exclusions also check owned copies, such as PS4 and PS5 within PlayStation.
+Open **Filters** to exclude statuses, tags/genres or platform families. Status
+and platform exclusions are **Not …** chips. Tags and genres use the searchable
+picker described below, in **Exclude** mode. Exclusions take precedence; a game
+matching both an include and an exclusion stays hidden. Platform exclusions also
+check owned copies, such as PS4 and PS5 within PlayStation.
 
-Each exclusion has a removable **Not …** chip. **Clear advanced filters** and
+Each exclusion has a removable chip. **Clear advanced filters** and
 **Clear all** remove exclusions too. Saved presets and shared filter links retain
 them; older presets start with no exclusions. Counts describe the matching games.
 These controls filter the loaded library without contacting metadata providers.
 
-![Classic exclusion controls](../assets/library-query-controls/classic-light-exclusions.jpg)
-
-The [Modern phone controls](../assets/library-query-controls/modern-dark-phone-exclusions.jpg)
-use the same selection and keyboard behavior.
+![Classic exclusion controls before the compact picker](../assets/library-query-controls/classic-light-exclusions.jpg)
 
 ## Card updates and priority
 
@@ -311,16 +309,79 @@ title.
 
 ## Filtering and sharing
 
-The Filters panel has one **Tags & genres (any of)** picker. Selected tags are
-highlighted there and shown as removable pills above the results. Metadata labels
-such as `Genre: Indie` and `Indie` match the same choice. Selecting multiple tags
-shows games matching any selected tag; the other filters narrow that selection.
+The Filters panel has one **Tags & genres** picker instead of a chip for every
+tag, so a library with hundreds of Steam player tags stays about one screen tall
+on desktop and phone. Focus the search box (or press the Down arrow) to open a
+list of every tag with the number of games it matches. Shared genres are listed
+first, then your other tags, most used first. Type to narrow the list.
+
+- **Include** (default) shows games with any included tag. **Exclude** hides
+  games with any excluded tag. Click a row, or press Enter, to use the selected
+  mode; **Shift+Enter** uses the other one. The Up and Down arrows move through
+  the list, Escape closes it. Choosing a tag in the other mode moves it, so a tag
+  is never in both lists.
+- Chosen tags appear as chips under the box (**Not …** for exclusions) and in the
+  pills above the results. Click a chip to remove it.
+- A row shows what it also matches, for example **Also matches Race, Steam: race**
+  or **Counts as Action**. Searching finds a tag by any raw spelling it merges, so
+  `steam: race` finds **Racing** and `science fic` finds **Sci-fi**.
+
+Selecting multiple included tags shows games matching any of them; the other
+filters narrow that selection.
+
+![Compact tag picker, Modern dark, searching "rac"](../assets/library-tag-filters/after-modern-dark-search.jpg)
+
+### Tag normalization
+
+Tags are stored exactly as the provider, import or you wrote them. Nothing is
+rewritten, so a game's own tag list and its page always show the raw tags. Filters
+compare tags through three fixed, deterministic rules that run on your device with
+no provider requests and no language model:
+
+1. **Spelling.** Case, accents, spacing and punctuation are ignored, `&` reads as
+   `and`, and a leading `Genre:`, `Tag:`, `Theme:`, `Steam:`, `IGDB:` or `GOG:`
+   label is dropped. `Rogue-like`, `roguelike` and `Steam: Roguelike` are one
+   choice. `Roguelite` stays separate.
+2. **Synonyms.** A short fixed list of names for exactly the same thing share one
+   choice: `Race` → **Racing**, `Role-playing (RPG)` → **RPG**, `Platform` →
+   **Platformer**, `Simulator` → **Simulation**, `Sport` → **Sports**, `FPS` →
+   **First-Person Shooter**, `RTS` and `Real Time Strategy (RTS)` →
+   **Real-Time Strategy**, `Turn-Based Strategy (TBS)` →
+   **Turn-Based Strategy**, `Science Fiction` → **Sci-fi**, `Shmup` → **Shoot 'Em Up**, `Soccer` → **Football (Soccer)** and a
+   few more.
+3. **Broader genres.** A narrower tag keeps its own choice and also counts as the
+   broader genres it belongs to (`Hack and slash/Beat 'em up` also counts as
+   **Action**; `Twin Stick Shooter` as **Shooter**, which counts as **Action**).
+   This is one-way: choosing **Action** finds the narrower tag, never the reverse.
+
+Related but different tags are deliberately **not** merged: `Roguelike` and
+`Roguelite`, `Souls-like` and `Action RPG`, `Driving` and `Racing`. A tag the rules
+do not know stays its own choice, spelled as most of your games spell it.
+Existing links, presets and saved filters keep working; their tags are read through
+the same rules when loaded.
+
+To roll a rule back, remove its entry from `TAG_SYNONYMS` or `BROADER_GENRES` in
+`src/frontend/src/utils/genres.ts`. Because stored tags and URLs keep the raw or
+canonical text, no data migration is needed; the affected tags simply return to
+separate choices (the spelling rule is the only one that cannot be switched off
+per tag).
 
 Changing tags, genres, sorting or other query filters on the current page keeps
 your scroll position. The URL still updates for sharing. Navigating to another
 page starts at the top, and browser back/forward restores its saved position.
 
 ![Selecting another genre keeps the filter panel in the same viewport](../assets/filter-scroll/after.jpg)
+
+| Before: a chip per tag and per exclusion | After: one searchable picker |
+| --- | --- |
+| ![Modern dark filter panel before, 2,287 px tall](../assets/library-tag-filters/before-modern-dark.jpg) | ![Modern dark filter panel after, 557 px tall](../assets/library-tag-filters/after-modern-dark.jpg) |
+| ![Classic light filter panel before](../assets/library-tag-filters/before-classic-light.jpg) | ![Classic light filter panel after](../assets/library-tag-filters/after-classic-light.jpg) |
+| ![Phone filter panel before, 6,757 px tall](../assets/library-tag-filters/before-modern-dark-phone.jpg) | ![Phone filter panel after, 1,037 px tall](../assets/library-tag-filters/after-modern-dark-phone.jpg) |
+
+On a phone the panel uses two columns and the picker's list scrolls inside a
+bounded area; the Classic presentation shares the same controls
+([Classic phone search](../assets/library-tag-filters/after-classic-dark-phone-search.jpg),
+[Classic desktop search](../assets/library-tag-filters/after-classic-light-search.jpg)).
 
 The game total reflects the visible results. All and each status tab count games
 matching the current search and other filters, so switching status remains useful.
@@ -357,7 +418,8 @@ Genre filters, here and in the Games library, match a game whichever
 metadata provider named its genre. IGDB, for example, has no "Action" genre
 and files Devil May Cry under "Hack and slash/Beat 'em up", which still
 counts as Action; "Role-playing (RPG)" counts as RPG and "Platform" as
-Platformer. Letter case doesn't matter.
+Platformer. Letter case doesn't matter. See
+[Tag normalization](#tag-normalization) for the exact rules.
 
 ## Bulk edit
 
