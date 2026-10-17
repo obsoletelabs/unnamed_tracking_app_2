@@ -30,6 +30,7 @@ from src.database.models.job_setting import JobSetting
 from src.database.models.user import User
 from src.database.session import SessionLocal
 from src.features.anime_franchise import run_franchise_check
+from src.features.backup.scheduler import run_all_backups
 from src.features.metadata import refresh_job
 from src.features.metadata.refresh import check_airing_episodes
 from src.features.notification_audit import publish_lifecycle
@@ -38,6 +39,7 @@ from src.features.notification_enrollment import expire_verification_secrets
 from src.features.notification_providers.delivery import process_pending_deliveries
 from src.features.notification_scans import scan_notification_users
 from src.features.password_recovery import expire_recovery_secrets
+from src.features.trash.sweep import run_sweep_once
 from src.features.user_invitations import expire_invitations
 
 logger = logging.getLogger(__name__)
@@ -100,13 +102,54 @@ def _summarize_airing(r: dict[str, Any]) -> str:
     return ", ".join(parts)
 
 
+_running = {
+    "airing_check": False,
+    "plugin_updates": False,
+    "anime_franchise_check": False,
+    "library_backups": False,
+    "trash_sweep": False,
+}
+
+
+def _start_maintenance(
+    job_id: str, work: Callable[[], Awaitable[dict[str, Any]]]
+) -> dict[str, Any]:
+    """Run an async maintenance pass in the background, never overlapping itself."""
+    if not _running[job_id]:
+        _running[job_id] = True
+        asyncio.get_running_loop().create_task(_run_maintenance(job_id, work))
+    return {"running": True}
+
+
+async def _maintenance_result(work: Callable[[], Awaitable[dict[str, Any]]]) -> dict[str, Any]:
+    result = await work()
+    if result.get("failed") or result.get("failed_parts"):
+        result = {**result, "completed": False, "error": "Part of the run failed"}
+    return result
+
+
+async def _run_maintenance(job_id: str, work: Callable[[], Awaitable[dict[str, Any]]]) -> None:
+    try:
+        await _record_outcome(job_id, _maintenance_result(work), "The run failed")
+    finally:
+        _running[job_id] = False
+
+
+def _summarize_backups(r: dict[str, Any]) -> str:
+    text = f"{r.get('written') or 0} snapshot(s) written for {r.get('accounts') or 0} account(s)"
+    return f"{text}, {r['failed']} failed" if r.get("failed") else text
+
+
+def _summarize_sweep(r: dict[str, Any]) -> str:
+    purged = sum(v for k, v in r.items() if k.startswith("purged_") and isinstance(v, int))
+    text = f"{purged} expired item(s) purged, {r.get('expired_sessions_removed') or 0} session(s)"
+    return f"{text}, {r['failed_parts']} step(s) failed" if r.get("failed_parts") else text
+
+
 def _summarize_plugin_updates(r: dict[str, Any]) -> str:
     if r.get("error"):
         return str(r["error"])
     return f"{r.get('checked', 0)} checked, {r.get('installed', 0)} installed"
-
-
-_running = {"airing_check": False, "plugin_updates": False, "anime_franchise_check": False}
 
 
 async def _record_outcome(job_id: str, work: Awaitable[dict[str, Any]], failure: str) -> None:
@@ -275,6 +318,30 @@ JOBS: dict[str, JobSpec] = {
         refresh_job.start,
         refresh_job.is_running,
         _summarize_refresh,
+    ),
+    "library_backups": JobSpec(
+        "library_backups",
+        "Library backups",
+        "Writes a rolling JSON snapshot of each account's library (the last 7 are kept).",
+        60,
+        7 * 24 * 60,
+        24 * 60,
+        True,
+        lambda _mode: _start_maintenance("library_backups", run_all_backups),
+        lambda: _running["library_backups"],
+        _summarize_backups,
+    ),
+    "trash_sweep": JobSpec(
+        "trash_sweep",
+        "Trash and session cleanup",
+        "Permanently removes trash past its retention period and expired sign-in sessions.",
+        15,
+        7 * 24 * 60,
+        6 * 60,
+        True,
+        lambda _mode: _start_maintenance("trash_sweep", run_sweep_once),
+        lambda: _running["trash_sweep"],
+        _summarize_sweep,
     ),
 }
 
