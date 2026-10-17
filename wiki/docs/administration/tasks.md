@@ -8,6 +8,10 @@ Current deployment-wide jobs are:
 - **Airing episode check** — enabled by default, normally every 30 minutes; checks TV/anime airing data and can be manually forced. A title whose provider cannot answer is reported as unavailable in the summary, not as checked, and is asked again on the next run.
 - **Anime franchise check** — enabled by default, normally daily; checks completed anime franchises only for accounts that opted in to franchise notifications (see below). With no opted-in account it makes no provider requests.
 - **Media refresh** — disabled by default, normally daily; fills missing episode metadata and corrects stale media data.
+- **Library backups** — enabled by default, normally daily (1 hour to 7 days); writes each account's rolling JSON snapshot and keeps the last seven. A partial failure is recorded on the task. Settings → Import & export shows the schedule, or that backups are switched off.
+- **Trash and session cleanup** — enabled by default, normally every 6 hours (15 minutes to 7 days); permanently removes trash past its retention period and expired sign-in sessions.
+
+These two used to run on fixed private timers; they now use the same schedule, switch, last-run and failure record as every other task, with no second scheduler. A run starts on the first minute after the server starts, then follows the interval. Runs of one task never overlap. Provider health discovery, expiry of public-app and verification secrets, notification delivery and session retention remain fixed internal housekeeping, because they protect correctness or security and are not meant to be paused.
 
 The per-user AniList import is a personal task in Account → Background tasks and runs through this same loop: due tasks start oldest run first, at most four imports run at once, and tasks that are not due never take a slot from tasks that are. External notification deliveries use the same loop, but their retry schedule is owned by the notification delivery coordinator rather than the task settings page.
 
