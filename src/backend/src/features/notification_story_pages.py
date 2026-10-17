@@ -31,7 +31,11 @@ from src.database.models.user import User
 from src.features.notification_images import effective_image_mode, resolve_images
 from src.features.notification_rich import build_view, humanize_phase, public_projection
 from src.plugin_api.grants import has_capability_grant
-from src.plugin_api.notification_story_contracts import NotificationContent, PluginActionTarget
+from src.plugin_api.notification_story_contracts import (
+    NotificationContent,
+    PluginActionTarget,
+    RendererContribution,
+)
 from src.plugin_api.runtime_client import (
     PluginRuntimeClient,
     PluginRuntimeRequestError,
@@ -369,3 +373,42 @@ async def invoke_story_action(
         "ok": True,
         "message": message[:300] if isinstance(message, str) and message.isprintable() else None,
     }
+
+
+async def contribution_authorised(
+    db: AsyncSession,
+    contribution: RendererContribution,
+    *,
+    plugin_id: str,
+    installation_id: UUID,
+    user_id: UUID,
+) -> bool:
+    """Whether a producer may present its own event type with this template.
+
+    The type must be an active registration of this installation and the installation needs its
+    emit grant; HTML templates additionally need the explicit high-risk `notifications.sensitive`
+    grant (until #115 defines a dedicated one). Contributions never reach PUBLIC projections.
+    """
+    registered = await db.scalar(
+        select(PluginNotificationTypeRegistration.id).where(
+            PluginNotificationTypeRegistration.plugin_id == plugin_id,
+            PluginNotificationTypeRegistration.installation_id == installation_id,
+            PluginNotificationTypeRegistration.event_type == contribution.event_type,
+            PluginNotificationTypeRegistration.revoked_at.is_(None),
+        )
+    )
+    required = [ACTION_CAPABILITY]
+    if contribution.kind == "html_template":
+        required.append("notifications.sensitive")
+    if registered is None:
+        return False
+    for capability in required:
+        if not await has_capability_grant(
+            db,
+            plugin_id=plugin_id,
+            installation_id=installation_id,
+            capability=capability,
+            user_id=user_id,
+        ):
+            return False
+    return True

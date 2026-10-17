@@ -189,6 +189,18 @@ const router = createRouter({
       component: () => import("../views/Notifications.vue"),
     },
     {
+      path: "/notifications/stories/:id",
+      name: "notification-story",
+      meta: { title: "Notification" },
+      component: () => import("../views/NotificationStory.vue"),
+    },
+    {
+      path: "/notifications/live/:token",
+      name: "notification-live",
+      meta: { title: "Notification" },
+      component: () => import("../views/NotificationStory.vue"),
+    },
+    {
       path: "/media/collections",
       name: "media-lists",
       meta: { title: "Collections" },
