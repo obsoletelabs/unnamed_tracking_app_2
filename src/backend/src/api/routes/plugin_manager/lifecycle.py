@@ -389,6 +389,8 @@ def _automatic_update_block_reason(
     if denied:
         return "This exact release was previously denied and requires a new review."
     mode = plugin.get("automatic_updates", "follow")
+    if mode not in {"follow", "enabled", "disabled"}:
+        return "The plugin automatic-update policy is invalid; review its settings."
     if mode == "disabled":
         return "Automatic updates are disabled for this plugin."
     if mode == "follow" and not store.settings()["automatic_updates"]:
