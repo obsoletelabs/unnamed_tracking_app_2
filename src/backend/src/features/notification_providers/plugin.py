@@ -29,7 +29,11 @@ from src.plugin_api.contracts import (
     PluginNotificationDestination,
 )
 from src.plugin_api.grants import has_capability_grant, installation_is_executable
-from src.plugin_api.notification_contracts import PluginDeliveryAction
+from src.plugin_api.notification_contracts import (
+    PluginDeliveryAction,
+    PluginDeliveryFact,
+    PluginDeliveryItem,
+)
 from src.plugin_api.notification_story_contracts import NOTIFICATION_CONTRACT_VERSION
 from src.plugin_api.runtime_client import (
     PluginRuntimeClient,
@@ -276,6 +280,16 @@ class PluginNotificationProvider:  # pylint: disable=too-many-instance-attribute
                 PluginDeliveryAction(label=item.label, url=item.url) for item in message.actions
             ),
             images=message.images,
+            facts=tuple(PluginDeliveryFact(label=f.label, text=f.text) for f in message.facts),
+            items=tuple(
+                PluginDeliveryItem(
+                    title=item.title[:500],
+                    body=item.body[:10_000],
+                    event_at=item.event_at,
+                    url=item.url,
+                )
+                for item in message.items
+            ),
         )
 
     async def _deliver_generic(self, db, destination, message) -> DeliveryResult:
