@@ -12,14 +12,13 @@ import {
   addGameToCollection,
   removeGameFromCollection,
 } from "../services/games";
-import { smartCollections } from "../state/smartCollections";
+import { manualCollectionNames } from "../state/collectionMeta";
 import { blurOnLeave } from "../utils/blurOnLeave";
 import type { Game } from "../types/game";
 
 const props = defineProps<{ game: Game }>();
 const emit = defineEmits<{ changed: [collections: string[]] }>();
 
-const MANUAL_KEY = "manualCollections";
 const COVER_KEY = "collectionCoverPicks";
 
 const router = useRouter();
@@ -61,15 +60,11 @@ async function load() {
     for (const g of games) {
       for (const c of g.collections) counts.set(c, (counts.get(c) ?? 0) + 1);
     }
-    for (const n of readJson<string[]>(MANUAL_KEY, [])) {
-      if (!counts.has(n)) counts.set(n, 0);
-    }
     // smart collections fill themselves from a rule, so they are never an add target
-    const smart = new Set(smartCollections.value.map((c) => c.name));
-    rows.value = [...counts.entries()]
-      .filter(([name]) => !smart.has(name))
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+    rows.value = manualCollectionNames(games).map((name) => ({
+      name,
+      count: counts.get(name) ?? 0,
+    }));
     covers.value = readJson<Record<string, string>>(COVER_KEY, {});
     loaded.value = true;
   } catch (e) {
