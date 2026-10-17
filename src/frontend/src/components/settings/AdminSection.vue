@@ -77,6 +77,7 @@ onMounted(async () => {
 
 const showCreateForm = ref(false);
 const newUsername = ref("");
+const newDisplayName = ref("");
 const newEmail = ref("");
 const newPassword = ref("");
 const confirmPassword = ref("");
@@ -101,11 +102,13 @@ async function handleCreateUser() {
   try {
     await createUser({
       username: newUsername.value.trim(),
+      displayName: newDisplayName.value.trim() || undefined,
       email: newEmail.value.trim(),
       password: newPassword.value,
       isAdmin: newIsAdmin.value,
     });
     newUsername.value = "";
+    newDisplayName.value = "";
     newEmail.value = "";
     newPassword.value = "";
     confirmPassword.value = "";
@@ -155,6 +158,7 @@ async function toggleAdmin(user: AdminUser) {
 
 function openCreateForm() {
   newUsername.value = "";
+  newDisplayName.value = "";
   newEmail.value = "";
   newPassword.value = "";
   confirmPassword.value = "";
@@ -176,7 +180,7 @@ function openCreateForm() {
       <table class="user-table">
         <thead>
           <tr>
-            <th scope="col">Username</th>
+            <th scope="col">Sign-in username</th>
             <th scope="col">Email</th>
             <th scope="col">Role</th>
             <th scope="col">Joined</th>
@@ -185,7 +189,12 @@ function openCreateForm() {
         </thead>
         <tbody>
           <tr v-for="user in users" :key="user.id">
-            <td data-label="Username">{{ user.username }}</td>
+            <td data-label="Sign-in username">
+              {{ user.username }}
+              <small v-if="user.display_name" class="muted display-name-line"
+                >Display name: {{ user.display_name }}</small
+              >
+            </td>
             <td data-label="Email">{{ user.email }}</td>
             <td data-label="Role">
               <span class="role-badge" :class="{ admin: user.is_admin }">{{
@@ -285,6 +294,19 @@ function openCreateForm() {
           /><small id="new-user-username-help"
             >Use 1–100 ASCII letters, digits, underscores, hyphens or dots. No
             spaces.</small
+          ></label
+        >
+        <label class="field"
+          ><span>Display name (optional)</span
+          ><input
+            v-model="newDisplayName"
+            type="text"
+            maxlength="64"
+            aria-label="Display name"
+            aria-describedby="new-user-display-name-help"
+          /><small id="new-user-display-name-help"
+            >Shown instead of the username. Spaces and any language are fine; it
+            is not used to sign in.</small
           ></label
         >
         <label class="field"
@@ -446,6 +468,14 @@ function openCreateForm() {
     padding-top: 12px;
     border-top: 1px solid var(--ui-border-soft);
   }
+}
+.display-name-line {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.muted {
+  color: var(--ui-text-muted, var(--ui-text));
+  opacity: 0.7;
 }
 .role-badge {
   white-space: nowrap;
