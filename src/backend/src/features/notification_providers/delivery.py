@@ -65,6 +65,11 @@ LEASE_SECONDS = 90
 TRANSPORT_TIMEOUT_SECONDS = 35
 
 
+def retry_delay(attempts: int) -> int:
+    """Seconds before the next try after ``attempts`` failed sends (exponential, from one minute)."""
+    return 60 * (2 ** (attempts - 1))
+
+
 async def ensure_deliveries(
     db: AsyncSession, notification_ids: list[UUID], *, preferences: dict[str, Any] | None = None
 ) -> None:
@@ -603,7 +608,7 @@ async def _dispatch(db: AsyncSession, delivery_id: UUID, token: UUID) -> bool:
             else "failed_permanent"
         )
     )
-    next_attempt = int(time.time()) + 60 * (2 ** (delivery.attempts - 1))
+    next_attempt = int(time.time()) + retry_delay(delivery.attempts)
     if refused:
         # The remote message cannot be edited: stop pretending, and follow up instead.
         await mark_edit_failed(db, plan.reference)
