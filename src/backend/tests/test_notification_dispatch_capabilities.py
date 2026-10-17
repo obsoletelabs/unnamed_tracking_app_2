@@ -14,6 +14,7 @@ from src.database.models.notification_delivery_attempt import NotificationDelive
 from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_provider_setting import NotificationProviderSetting
 from src.database.models.notification_remote_reference import NotificationRemoteReference
+from src.database.models.notification_story import NotificationStoryRevision
 from src.database.models.user import User
 from src.database.session import SessionLocal
 from src.features import notification_aggregation_policy as policy
@@ -414,6 +415,37 @@ async def test_a_failed_destination_does_not_block_another(account, monkeypatch)
     await drain()
     assert [name for name, _ in working.calls] == ["send", "edit"]
     assert [name for name, _ in failing.calls].count("edit") == 0
+
+
+async def test_a_delivery_that_always_errors_ends_instead_of_retrying_forever(account, monkeypatch):
+    remote = Remote(capabilities=declared(message_updates="edit"))
+    install(monkeypatch, remote)
+    await add_destination(account, remote.id)
+    monkeypatch.setattr(dispatcher, "render_message", AsyncMock(side_effect=RuntimeError("boom")))
+    await accept(account, row("available"))
+    await drain(rounds=dispatcher.MAX_ATTEMPTS + 3)
+    [work] = await external(account)
+    assert (work.status, work.last_error) == ("failed_permanent", "dispatch_error")
+    assert work.attempts == dispatcher.MAX_ATTEMPTS
+    assert remote.calls == []
+
+
+async def test_stored_content_from_an_older_contract_falls_back_to_the_item_text(
+    account, monkeypatch
+):
+    remote = Remote(capabilities=declared(message_updates="edit"))
+    install(monkeypatch, remote)
+    await add_destination(account, remote.id)
+    [notice] = await accept(account, row("available", title="Plain title"))
+    async with SessionLocal() as db:
+        await db.execute(
+            update(NotificationStoryRevision).values(content={"title": "", "unknown": True})
+        )
+        await db.commit()
+    assert await drain() == 1
+    [(_, message)] = remote.calls
+    assert message.title == "Plain title"
+    assert notice is not None
 
 
 async def test_crash_after_send_resends_with_the_same_idempotency_key(account, monkeypatch):

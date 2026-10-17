@@ -4,14 +4,16 @@ from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.functions import count as sql_count
 
 from src.core.config import settings
 from src.database.models.notification import Notification
+from src.database.models.notification_delivery import NotificationDelivery
 from src.database.models.notification_story import NotificationStory, NotificationStoryRevision
 from src.features.notification_lifecycle import visible_inbox
+from src.features.notification_policy import INBOX_PROVIDER
 
 CATEGORY_KINDS = {
     "episodes": ("episode_aired",),
@@ -56,6 +58,15 @@ def retention_policy(preferences: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _was_in_inbox():
+    """The item reached the in-app inbox: an item the user routed away from it (muted or
+    disabled for the inbox) has no inbox delivery and must not appear as expired history."""
+    return exists().where(
+        NotificationDelivery.notification_id == Notification.id,
+        NotificationDelivery.provider_id == INBOX_PROVIDER,
+    )
+
+
 def state_scope(user_id: UUID, state: str):
     """Owner-scoped predicate for one lifecycle slice. Dismissal hides, never erases."""
     owned = Notification.user_id == user_id
@@ -67,11 +78,16 @@ def state_scope(user_id: UUID, state: str):
             & Notification.deleted_at.is_(None)
         )
     if state == "expired":
-        return owned & Notification.inbox_visible.is_(False) & Notification.deleted_at.is_(None)
+        return (
+            owned
+            & Notification.inbox_visible.is_(False)
+            & Notification.deleted_at.is_(None)
+            & _was_in_inbox()
+        )
     if state == "deleted":
         return owned & Notification.deleted_at.is_not(None)
     if state == "history":
-        return owned
+        return owned & (Notification.inbox_visible.is_(True) | _was_in_inbox())
     return visible_inbox(user_id)
 
 

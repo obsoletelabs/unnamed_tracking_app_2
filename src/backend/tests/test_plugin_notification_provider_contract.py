@@ -373,3 +373,30 @@ def test_fields_contributions_arrange_only_existing_content():
     body, note = contributed_text(contribution, content, profile())
     assert body == "Version: 2.0\n\nUpdate available" and note is None
     assert time.time() > 0
+
+
+@pytest.mark.parametrize(
+    "template",
+    [
+        "![pixel](https://tracker.example.com/p.png) {title}",
+        "[open](javascript:alert(1)) {title}",
+        "[open](http://plain.example.com/) {title}",
+        "<script>alert(1)</script> {title}",
+    ],
+)
+def test_markdown_template_text_is_checked_before_a_provider_receives_it_as_markdown(template):
+    content = NotificationContent.model_validate(event("example.test")["content"])
+    contribution = SimpleNamespace(kind="markdown_template", template=template, fields=())
+    body, note = contributed_text(contribution, content, profile("markdown"))
+    assert note == "contribution_unsafe_markdown"
+    # The fallback is plain text: no image or link syntax survives for a Markdown provider.
+    assert "![" not in body and "](" not in body
+    assert content.title in body
+
+
+def test_safe_markdown_template_text_is_passed_through_as_markdown():
+    content = NotificationContent.model_validate(event("example.test")["content"])
+    template = "**{title}** [notes](https://example.com/notes)"
+    contribution = SimpleNamespace(kind="markdown_template", template=template, fields=())
+    body, note = contributed_text(contribution, content, profile("markdown"))
+    assert note is None and body.startswith("**") and "(https://example.com/notes)" in body

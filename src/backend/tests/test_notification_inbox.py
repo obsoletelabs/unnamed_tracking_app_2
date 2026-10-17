@@ -9,6 +9,7 @@ from sqlalchemy import delete
 
 from src.core.preferences import load_preferences, save_preferences
 from src.database.models.notification import Notification
+from src.database.models.notification_delivery import NotificationDelivery
 from src.database.models.notification_story import NotificationStory, NotificationStoryRevision
 from src.database.models.user import User
 from src.database.models.user_preferences import UserPreferences
@@ -19,6 +20,7 @@ from src.features.notification_inbox import (
     query_inbox,
     retention_policy,
 )
+from src.features.notification_policy import INBOX_PROVIDER
 from src.features.notifications import generate_for_user
 
 
@@ -255,14 +257,31 @@ async def test_lifecycle_history_slices_page_and_stay_owner_scoped(inbox_owner):
     owner, stranger = inbox_owner
     now = int(time.time())
     async with SessionLocal() as db:
+        expired = notification(owner, title="expired", inbox_visible=False)
+        deleted = notification(owner, title="", body="", deleted_at=now, inbox_visible=False)
         db.add_all(
             [
                 notification(owner, title="active"),
                 notification(owner, title="dismissed", dismissed_at=now),
-                notification(owner, title="expired", inbox_visible=False),
-                notification(owner, title="", body="", deleted_at=now, inbox_visible=False),
+                expired,
+                deleted,
+                # Routed away from the inbox (muted or disabled): it never was inbox history.
+                notification(owner, title="never in the inbox", inbox_visible=False),
                 notification(stranger, title="theirs", dismissed_at=now),
             ]
+        )
+        await db.flush()
+        db.add_all(
+            NotificationDelivery(
+                notification_id=item.id,
+                provider_id=INBOX_PROVIDER,
+                destination_revision=1,
+                projection="canonical",
+                status="sent",
+                attempts=0,
+                next_attempt_at=now,
+            )
+            for item in (expired, deleted)
         )
         await db.commit()
         for state, expected in (("active", 1), ("dismissed", 1), ("expired", 1), ("deleted", 1)):
