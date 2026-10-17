@@ -1,7 +1,7 @@
 """add admin user audit
 
 Revision ID: e4a0157eef4b
-Revises: c10098e58426
+Revises: b87b7429ece2
 Create Date: 2026-10-16 22:14:45.783663
 
 """
@@ -13,7 +13,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "e4a0157eef4b"
-down_revision: Union[str, None] = "c10098e58426"
+down_revision: Union[str, None] = "b87b7429ece2"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
