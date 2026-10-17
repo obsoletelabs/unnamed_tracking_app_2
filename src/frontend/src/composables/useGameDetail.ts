@@ -23,6 +23,7 @@ import {
   HERO_WIDTH,
   POSTER_WIDTH,
   preloadImage,
+  gameAssetUrl,
   sizedAssetUrl,
 } from "../utils/gameImages";
 import {
@@ -315,8 +316,8 @@ export function useGameDetail() {
     error.value = null;
     // the hero picture is big, so it starts downloading now rather than once the
     // game's details have come back
-    preloadImage(sizedAssetUrl(`/api/game/${id}/assets/banner`, HERO_WIDTH));
-    preloadImage(sizedAssetUrl(`/api/game/${id}/assets/key_art`, POSTER_WIDTH));
+    preloadImage(sizedAssetUrl(gameAssetUrl(id, "banner"), HERO_WIDTH));
+    preloadImage(sizedAssetUrl(gameAssetUrl(id, "key_art"), POSTER_WIDTH));
     // true when this only refreshes the game already on screen (after an edit)
     const refresh = game.value?.id === id;
     // everything the page fills in on its own is asked for at once, so none of
