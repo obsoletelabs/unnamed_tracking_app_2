@@ -15,6 +15,7 @@ from src.features.notification_canonical_registry import active_canonical_regist
 from src.features.notification_markdown import plain_text, render_markdown
 from src.features.notification_providers.capabilities import ResolvedProfile
 from src.features.notification_rich import apply_template, format_fact
+from src.features.notification_safety import markdown_is_safe
 from src.features.notification_story_pages import contribution_authorised
 from src.plugin_api.notification_story_contracts import (
     NotificationContent,
@@ -90,6 +91,8 @@ def contributed_text(
     if contribution.kind == "markdown_template":
         source = apply_template(contribution, content)
         if "markdown" in profile.capabilities.text_formats:
-            return source, None
+            if markdown_is_safe(source):
+                return source, None
+            return plain_text(render_markdown(source)), "contribution_unsafe_markdown"
         return plain_text(render_markdown(source)), "contribution_markdown_to_plain"
     return None, "contribution_unsupported"
