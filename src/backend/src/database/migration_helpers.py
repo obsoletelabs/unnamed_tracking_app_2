@@ -16,11 +16,15 @@ import sqlalchemy as sa
 from alembic import op
 
 
+def _bind() -> sa.engine.Connection:
+    """The connection of the running migration."""
+    return op.get_bind()  # pylint: disable=no-member
+
+
 def _inspector() -> sa.engine.Inspector:
     # a fresh inspector per call: Inspector caches what it has read, and
     # the schema changes between calls inside one migration
-    # pylint: disable-next=no-member
-    return sa.inspect(op.get_bind())
+    return sa.inspect(_bind())
 
 
 def has_table(table: str) -> bool:
@@ -48,8 +52,7 @@ def has_constraint(table: str, name: str) -> bool:
     The table is resolved through the search_path, exactly as the op.* call
     that follows resolves it. A constraint with the same name on another
     table, or in another schema, does not count."""
-    # pylint: disable-next=no-member
-    row = op.get_bind().execute(
+    row = _bind().execute(
         sa.text(
             "SELECT 1 FROM pg_constraint "
             "WHERE conname = :name AND conrelid = to_regclass(quote_ident(:table))"
@@ -126,7 +129,7 @@ def refuse_if_populated(table: str, what: str, where: str = "true") -> None:
     if not has_table(table):
         return
     # Identifiers and predicates are literals supplied by migrations, never user input.
-    if op.get_bind().scalar(sa.text(f"SELECT EXISTS (SELECT 1 FROM {table} WHERE {where})")):  # noqa: S608
+    if _bind().scalar(sa.text(f"SELECT EXISTS (SELECT 1 FROM {table} WHERE {where})")):  # noqa: S608
         raise RuntimeError(
             f"Refusing to drop populated {what}; retain the schema or remove the rows "
             "explicitly (within retention rules) before downgrading."
