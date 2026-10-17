@@ -537,6 +537,7 @@ are redacted. Validation errors never echo submitted values.
 | GET | `/api/settings/jobs` | admin | Instance schedule; administrator. |
 | PUT | `/api/settings/jobs/{job_id}` | admin | Instance schedule; administrator. |
 | POST | `/api/settings/jobs/{job_id}/run` | admin | Instance schedule; administrator. |
+| POST | `/api/settings/jobs/{job_id}/{control}` | admin | Instance schedule; administrator. |
 | GET | `/api/settings/provider-credentials` | user | Own settings and provider credentials; secrets are never returned. |
 | DELETE | `/api/settings/provider-credentials/{provider}` | user | Own settings and provider credentials; secrets are never returned. |
 | PUT | `/api/settings/provider-credentials/{provider}` | user | Own settings and provider credentials; secrets are never returned. |
@@ -559,6 +560,7 @@ are redacted. Validation errors never echo submitted values.
 | GET | `/api/settings/user-jobs` | user | Per-user job preferences; the job must be one the caller can see. |
 | PUT | `/api/settings/user-jobs/{job_id}` | user | Per-user job preferences; the job must be one the caller can see. |
 | POST | `/api/settings/user-jobs/{job_id}/run` | user | Per-user job preferences; the job must be one the caller can see. |
+| POST | `/api/settings/user-jobs/{job_id}/{control}` | user | Per-user job preferences; the job must be one the caller can see. |
 | PUT | `/api/themes/default` | admin | Instance themes; administrator. |
 | POST | `/api/themes/install` | admin | Instance themes; administrator. |
 | POST | `/api/themes/install/preview` | admin | Instance themes; administrator. |
