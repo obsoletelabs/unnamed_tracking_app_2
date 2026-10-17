@@ -118,8 +118,10 @@ rotation and revocation protocol. Regression coverage in `test_delegation.py`,
 `test_public_apps.py`, `test_public_catalogue.py`, the authentication tests and
 runtime limit tests covers manipulated owners/IDs, rejected ordinary/admin paths,
 revocation, provider-local reports, source isolation, malformed avatars and image
-transport. The matrix documents the integration boundary; it is not a claim of an
-unrelated whole-application penetration test.
+transport. The matrix documents the integration boundary. The route-by-route audit of the
+ordinary application API, including administrator-only operations and manipulated
+object IDs, is the [API access matrix](api-access-matrix.md); neither page is a
+claim of a whole-application penetration test.
 
 ## Saved participant administration
 
