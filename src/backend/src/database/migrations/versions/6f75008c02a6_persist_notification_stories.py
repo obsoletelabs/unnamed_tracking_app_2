@@ -68,22 +68,22 @@ def upgrade() -> None:
     h.add_column_if_missing("notifications", sa.Column("previous_notification_id", sa.UUID(), nullable=True))
     if not h.has_constraint("notifications", "fk_notifications_story"):
         op.create_foreign_key(
-            "fk_notifications_story",
-        "notifications",
-        "notification_stories",
-        ["story_id"],
-        ["id"],
-        ondelete="SET NULL",
-    )
+                "fk_notifications_story",
+            "notifications",
+            "notification_stories",
+            ["story_id"],
+            ["id"],
+            ondelete="SET NULL",
+        )
     if not h.has_constraint("notifications", "fk_notifications_previous"):
         op.create_foreign_key(
-            "fk_notifications_previous",
-        "notifications",
-        "notifications",
-        ["previous_notification_id"],
-        ["id"],
-        ondelete="SET NULL",
-    )
+                "fk_notifications_previous",
+            "notifications",
+            "notifications",
+            ["previous_notification_id"],
+            ["id"],
+            ondelete="SET NULL",
+        )
     h.create_index_if_missing("ix_notifications_story", "notifications", ["story_id"])
     h.create_unique_constraint_if_missing(
         "uq_notifications_story_revision", "notifications", ["story_id", "story_revision"]
