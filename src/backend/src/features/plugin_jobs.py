@@ -265,6 +265,26 @@ def _declared_tasks(
     return installation_id, declarations, api_version
 
 
+def _declaration_job(
+    plugin: dict[str, Any],
+    installation_id: UUID,
+    declaration: PluginScheduledTask,
+    availability: tuple[frozenset[str], dict[str, UiAction], str, bool],
+    user_id: UUID | None,
+) -> JobSpec:
+    """Combine installation-wide and per-action availability into one job."""
+    capabilities, actions, shared_reason, shared_revoked = availability
+    action_reason = _action_unavailable_reason(actions.get(declaration.action_id), capabilities)
+    return _job_spec(
+        plugin,
+        installation_id,
+        declaration,
+        shared_reason or action_reason,
+        user_id=user_id,
+        revoked=shared_revoked or (bool(action_reason) and not shared_reason),
+    )
+
+
 async def _plugin_task_jobs(
     db: AsyncSession,
     plugin: dict[str, Any],
@@ -274,26 +294,13 @@ async def _plugin_task_jobs(
 ) -> list[JobSpec]:
     """Build the jobs one installation contributes for the server or one account."""
     installation_id, declarations, api_version = declared
-    jobs: list[JobSpec] = []
     availability = await _task_availability(db, plugin, installation_id, runtime_available, user_id)
-    capabilities, actions, shared_reason, shared_revoked = availability
-    for declaration in declarations:
-        if (declaration.scope == "user") != (user_id is not None):
-            continue
-        if declaration.scope == "user" and api_version < (1, 1, 11):
-            continue
-        action_reason = _action_unavailable_reason(actions.get(declaration.action_id), capabilities)
-        jobs.append(
-            _job_spec(
-                plugin,
-                installation_id,
-                declaration,
-                shared_reason or action_reason,
-                user_id=user_id,
-                revoked=shared_revoked or (bool(action_reason) and not shared_reason),
-            )
-        )
-    return jobs
+    return [
+        _declaration_job(plugin, installation_id, declaration, availability, user_id)
+        for declaration in declarations
+        if (declaration.scope == "user") == (user_id is not None)
+        and not (declaration.scope == "user" and api_version < (1, 1, 11))
+    ]
 
 
 async def get_plugin_jobs(db: AsyncSession, user_id: UUID | None = None) -> list[JobSpec]:
