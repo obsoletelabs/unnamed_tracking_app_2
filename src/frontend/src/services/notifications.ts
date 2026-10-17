@@ -29,6 +29,11 @@ export interface MediaNotification {
   link?: string | null;
 }
 
+export type NotificationState =
+  "unread" | "read" | "dismissed" | "expired" | "deleted";
+export type InboxState =
+  "active" | "dismissed" | "expired" | "deleted" | "history";
+
 interface BackendNotification {
   id: string;
   kind: string;
@@ -64,6 +69,7 @@ export interface InboxOptions {
   search?: string;
   source?: string;
   severity?: "" | "info" | "warning" | "error";
+  state?: InboxState;
   offset?: number;
 }
 export interface InboxPage {
@@ -73,6 +79,7 @@ export interface InboxPage {
   counts: Partial<Record<InboxFilter, number>>;
   nextOffset: number | null;
   sources: string[];
+  states: Partial<Record<InboxState, number>>;
 }
 export interface InboxRetentionPolicy {
   default_days: number;
@@ -110,6 +117,7 @@ export async function fetchMediaNotifications(
     counts?: Partial<Record<InboxFilter, number>>;
     next_offset?: number | null;
     sources?: string[];
+    states?: Partial<Record<InboxState, number>>;
   };
   return {
     unread: raw.unread,
@@ -117,6 +125,7 @@ export async function fetchMediaNotifications(
     counts: raw.counts ?? {},
     nextOffset: raw.next_offset ?? null,
     sources: raw.sources ?? [],
+    states: raw.states ?? {},
     items: raw.items.map((n) => ({
       id: n.id,
       kind: n.kind,

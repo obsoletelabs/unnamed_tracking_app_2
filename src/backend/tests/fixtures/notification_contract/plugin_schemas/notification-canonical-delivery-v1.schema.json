@@ -23,6 +23,72 @@
       ],
       "title": "PluginDeliveryAction",
       "type": "object"
+    },
+    "PluginDeliveryFact": {
+      "additionalProperties": false,
+      "description": "One host-formatted fact (label and display text) for providers that declared embeds.",
+      "properties": {
+        "label": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "text"
+      ],
+      "title": "PluginDeliveryFact",
+      "type": "object"
+    },
+    "PluginDeliveryItem": {
+      "additionalProperties": false,
+      "description": "One member of a digest message. Text is what the destination's projection may show.",
+      "properties": {
+        "title": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "body": {
+          "default": "",
+          "maxLength": 10000,
+          "title": "Body",
+          "type": "string"
+        },
+        "event_at": {
+          "minimum": 0,
+          "title": "Event At",
+          "type": "integer"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Url"
+        }
+      },
+      "required": [
+        "title",
+        "event_at"
+      ],
+      "title": "PluginDeliveryItem",
+      "type": "object"
     }
   },
   "additionalProperties": false,
@@ -148,6 +214,24 @@
       },
       "maxItems": 10,
       "title": "Images",
+      "type": "array"
+    },
+    "facts": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/PluginDeliveryFact"
+      },
+      "maxItems": 25,
+      "title": "Facts",
+      "type": "array"
+    },
+    "items": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/PluginDeliveryItem"
+      },
+      "maxItems": 50,
+      "title": "Items",
       "type": "array"
     }
   },

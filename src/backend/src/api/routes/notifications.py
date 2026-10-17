@@ -20,7 +20,13 @@ from src.database.models.user import User
 from src.database.session import get_db
 from src.features.notification_audit import change_notices
 from src.features.notification_controller import emit_legacy_rows
-from src.features.notification_inbox import InboxQuery, query_inbox, retention_policy
+from src.features.notification_inbox import (
+    InboxQuery,
+    lifecycle_state,
+    query_inbox,
+    retention_policy,
+    story_details,
+)
 from src.features.notification_lifecycle import delete_notice, dismiss, visible_inbox
 from src.features.notification_producer_content import plugin_update_route_from_dedupe
 from src.features.notifications import generate_for_user
@@ -110,8 +116,16 @@ async def list_notifications(
     await generate_for_user(db, current_user.id)
     rows, summary = await query_inbox(db, current_user.id, filters)
     titles = await _display_titles(db, current_user.id, rows)
+    stories = await story_details(db, rows)
+    now = int(time.time())
     return {
-        "items": [{**_read(n), "title": titles.get(n.id, n.title)} for n in rows],
+        "items": [
+            {
+                **_read(n, now, stories.get(n.story_id) if n.story_id else None),
+                "title": titles.get(n.id, n.title),
+            }
+            for n in rows
+        ],
         **summary,
     }
 

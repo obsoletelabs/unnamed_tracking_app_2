@@ -466,6 +466,9 @@ async def test_core_dispatch_encrypts_only_generic_envelope_and_valid_vapid(
             "destination": str(endpoint_id),
             "revision": 1,
             "generation": push_account.context.generation,
+            "notification": str(notice_id),
+            "operation": "send",
+            "story_revision": 0,
         }
         assert b"Private" not in decoded and b"reset-secret" not in decoded
         assert str(push_account.user_id).encode() not in decoded

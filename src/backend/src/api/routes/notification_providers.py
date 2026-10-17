@@ -16,6 +16,7 @@ from src.core.auth import get_current_admin, get_current_user
 from src.core.config import settings
 from src.core.preferences import load_preferences
 from src.core.public_url import normalize_public_url
+from src.database.models.notification import Notification
 from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_provider_setting import NotificationProviderSetting
 from src.database.models.user import User
@@ -27,6 +28,7 @@ from src.features.notification_browser import (
     browser_session,
 )
 from src.features.notification_browser_enrollment import enroll_browser, update_browser
+from src.features.notification_browser_preview import preview_for
 from src.features.notification_destinations import (
     resolve_destinations,
     retire_provider_destinations,
@@ -376,13 +378,15 @@ async def remove_browser_destination(
 
 
 @router.get("/browser-destinations/{destination_id}/status")
-async def browser_destination_status(
+async def browser_destination_status(  # pylint: disable=too-many-positional-arguments
     request: Request,
     destination_id: UUID,
     revision: int = Query(ge=1),
+    notification: UUID | None = None,
     db: AsyncSession = _NOTIFICATION_DB,
     current_user: User = _NOTIFICATION_USER,
 ) -> JSONResponse:
+    """Live gate for the service worker; with `notification` it also returns the safe preview."""
     endpoint = await db.scalar(
         select(NotificationDestination).where(
             NotificationDestination.id == destination_id,
@@ -412,13 +416,15 @@ async def browser_destination_status(
         and settings.NOTIFICATION_MINIMUM_TRUST < 2
         and await bound_subscription(db, endpoint, context) is not None
     )
-    return JSONResponse(
-        {
-            "enabled": enabled,
-            "generation": context.generation if context and enabled else None,
-        },
-        headers={"Cache-Control": "no-store"},
-    )
+    body: dict = {
+        "enabled": enabled,
+        "generation": context.generation if context and enabled else None,
+    }
+    if notification is not None:
+        item = await db.get(Notification, notification) if enabled and endpoint else None
+        shown = await preview_for(db, endpoint, item) if item and endpoint else None
+        body["preview"] = shown.as_json() if shown else None
+    return JSONResponse(body, headers={"Cache-Control": "no-store"})
 
 
 @router.post("/webhook-destinations", status_code=201)
