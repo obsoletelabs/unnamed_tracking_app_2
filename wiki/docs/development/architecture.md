@@ -179,6 +179,8 @@ Every routed view in `router/index.ts` is a dynamic `import()`, so opening a pag
 
 Requests that several components make at the same moment are shared. `refreshMediaNotifications({ shared: true })` joins an unfinished request for the same account, and a background `refreshPluginExtensions` is skipped for two seconds after another one finished. Explicit refreshes (opening the bell, installing or removing a plugin) never take the shared path. The five-second session and plugin check in `App.vue` pauses while the browser tab is hidden and runs once when the tab becomes visible again.
 
+The game list is read in pages of 200 (`GET /api/game/list?skip=&limit=`). The body is still a plain array, and the response also carries `X-Total-Count`, the number of games matching the filters. `services/gamePages.ts` uses it to request the remaining pages four at a time instead of one after another, and falls back to sequential reads when the header is missing. The Games library, Home and the collection views still read the whole list because filtering, sorting, grouping of owned copies and duplicate review run in the browser over the full set.
+
 `src/tests/routeSplitting.test.ts` fails if a route, a Settings section or a Game detail panel goes back to being a static import.
 
 ## Shared building blocks
