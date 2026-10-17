@@ -5,8 +5,8 @@ Coordination page for the epic
 issues, pull requests, invariants, contracts, merge order and open risks. The detail lives in the
 per-phase pages listed in section 9; this page does not repeat it.
 
-Status was read from GitHub on 2026-10-17 (`main` at `7d90dc7b`). It is a snapshot: re-check
-before merging.
+Status was read from GitHub on 2026-10-17 (`main` at `f8452cd6`, after #180 and the Alembic
+merge revision #237). It is a snapshot: re-check before merging.
 
 ## 1. Dependency graph
 
@@ -27,8 +27,8 @@ on #96. #101 needs all four. Each is stacked on the pull request before it.
 | Issue | Scope | Pull request | State | Based on | Page |
 | --- | --- | --- | --- | --- | --- |
 | [#92](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/92) | Audit | [#164](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/164) | **merged** (issue closed) | `main` | [Audit](game-library-identity-audit.md) |
-| [#93](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/93) | Canonical data model | [#180](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/180) | open, ready | `main` | [Model](game-identity-model.md) |
-| [#94](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/94) | Idempotent ingestion | [#196](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/196) | open, ready | #180 | [Ingestion](game-ingestion.md) |
+| [#93](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/93) | Canonical data model | [#180](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/180) | **merged** | `main` | [Model](game-identity-model.md) |
+| [#94](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/94) | Idempotent ingestion | [#196](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/196) | open, ready | `main` | [Ingestion](game-ingestion.md) |
 | [#95](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/95) | Reversible merges, decisions | [#202](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/202) | open, ready | #196 | [Decisions](game-identity-decisions.md) |
 | [#96](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/96) | Counter groups, adjustments | [#205](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/205) | open, ready | #202 | [Counters](game-identity-counters.md) |
 | [#97](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/97) | Manual achievements, completion | [#209](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/209) | open, ready | #205 | [Manual](game-identity-manual.md) |
@@ -41,9 +41,9 @@ on #96. #101 needs all four. Each is stacked on the pull request before it.
 | [#103](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/103) | Acceptance, performance, operations | [#222](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/222) | open, **draft** | #216 | [Acceptance](game-identity-acceptance.md) |
 | #91 | This board | the pull request that adds this page | open, stacked on #222 | #222 | this page |
 
-Only #92 is on `main`. The next unblocked work is to review and merge #180; nothing else can
-land first because every other pull request is stacked on it. #103 stays a draft until the
-verification listed in section 8 is done.
+#92 and #93 are on `main`. The next unblocked work is to review and merge #196; every other
+pull request is stacked on it. #103's pull request (#222) stays a draft until the verification
+listed in section 8 is done.
 
 Existing issues the epic told us to coordinate, checked on the same date:
 
@@ -95,26 +95,24 @@ No plugin-repo change is required by any child.
 ## 6. Merge order and Alembic chain
 
 Merge strictly in this order, retargeting each pull request to `main` after its base merges:
-**#180, #196, #202, #205, then #209, #210, #213 and #212 (any order among them, but #213 before
+**#196, #202, #205, then #209, #210, #213 and #212 (any order among them, but #213 before
 #214), #214, #216, #222, then this page**; the extension #2 after the host pull requests.
 
 Migration chain (files under `src/backend/src/database/migrations/versions/`):
 
 ```text
-<main head> -> 716a1e2c451d (#93 canonical model) -> a3c5e7b9d102 (#102 backfill progress) -> c4e8a1f6b3d7 (#103 library list index)
+<main head> -> a3c5e7b9d102 (#102 backfill progress) -> c4e8a1f6b3d7 (#103 library list index)
 ```
 
-Only these three revisions are new; #94 to #101 add none. `alembic upgrade head` on the #222 branch
-gives the single head `c4e8a1f6b3d7`.
-
-**`main`'s head has moved.** On `main` today the head is `a7d3c91e5b20` (display name, #201), after
-`e4a0157eef4b` (admin audit) and `b87b7429ece2`. `716a1e2c451d` declares
-`down_revision = "e4a0157eef4b"` in #180 and `"c10098e58426"` from #196 onward (the stack was
-written before `b87b7429ece2`, `e4a0157eef4b` and `a7d3c91e5b20` landed). Merging as is would create
-a second head and fail the CI migration-graph job. Before merging #180, rebase it and set
-`down_revision` of `716a1e2c451d` to the then-current `main` head, and keep that value on every
-later branch of the stack. Re-check `alembic heads` after each merge; if another migration lands
-meanwhile, repeat. This page changes no migration.
+`716a1e2c451d` (#93 canonical model) is already on `main`, and the merge revision
+`50b007897f73` (#237) joined it with the display name revision `a7d3c91e5b20`, so `main` has one
+head today. #94 to #101 add no migration. Only `a3c5e7b9d102` (#102) and `c4e8a1f6b3d7` (#103) are
+still to land. The stack branches were written before #180 merged, so their `a3c5e7b9d102`
+declares `716a1e2c451d` as its `down_revision`; merging it as is would create a second head next
+to `50b007897f73` and fail the CI migration-graph job. Before merging #216, merge `main` into the
+stack and set the `down_revision` of `a3c5e7b9d102` to the then-current `main` head (and keep that
+on every later branch of the stack). Other open pull requests that add a migration will do the
+same, so re-check `alembic heads` after each merge. This page changes no migration.
 
 ## 7. Verification per child
 
