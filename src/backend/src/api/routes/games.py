@@ -400,8 +400,7 @@ async def create_game(
     reconciles rather than erroring (#184). A manual create (no GUID) still
     gets 409 for a folder name that's taken."""
     sent = payload.model_dump(exclude_unset=True)
-    # Read once: the rollback in the race handler below expires `current_user`, and an expired
-    # attribute cannot be lazily loaded in async code.
+    # A rollback expires ORM attributes; retain the owner ID for the create-race retry.
     user_id = current_user.id
     if payload.playnite_guid is not None:
         existing = await _find_playnite_game(payload, user_id, db)
@@ -457,7 +456,9 @@ async def create_game(
         if payload.playnite_guid is not None:
             existing = await _find_playnite_game(payload, user_id, db)
             if existing is not None:
-                await record_playnite_fields(db, user_id, existing.id, payload.playnite_guid, sent)
+                await record_playnite_fields(
+                    db, user_id, existing.id, payload.playnite_guid, sent
+                )
                 await db.commit()
                 response.status_code = status.HTTP_200_OK
                 return existing
@@ -470,6 +471,7 @@ async def create_game(
 # pylint: disable=too-many-positional-arguments
 @router.get("/list", response_model=list[GameRead])
 async def list_games(
+    response: Response,
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
     status_filter: GameStatus | None = _NONE_QUERY_STATUS,
@@ -478,7 +480,11 @@ async def list_games(
     skip: int = _SKIP_DEFAULT,
     limit: int = _LIMIT_DEFAULT_2,
 ) -> list[Game]:
-    """Return games filtered by status, favorite flag, or title search."""
+    """Return one page of games filtered by status, favorite flag, or title search.
+
+    The body stays a plain array. `X-Total-Count` carries the number of games
+    matching the filters so a client can request the remaining pages together.
+    """
     stmt = select(Game).where(Game.user_id == current_user.id, Game.deleted_at.is_(None))
 
     if status_filter is not None:
@@ -488,6 +494,8 @@ async def list_games(
     if search:
         stmt = stmt.where(Game.title.ilike(f"%{search}%"))
 
+    total = await db.scalar(select(sql_count()).select_from(stmt.subquery()))
+    response.headers["X-Total-Count"] = str(total or 0)
     stmt = stmt.order_by(Game.sort_title).offset(skip).limit(limit)
 
     result = await db.execute(stmt)
@@ -580,9 +588,12 @@ async def update_game(
 
     if "parent_game_id" in updates or "relationship_type" in updates:
         effective_parent = updates.get("parent_game_id", game.parent_game_id)
-        effective_relationship = updates.get("relationship_type", game.relationship_type)
         await _validate_game_relationship(
-            effective_parent, effective_relationship, db, current_user.id, game_id
+            effective_parent,
+            updates.get("relationship_type", game.relationship_type),
+            db,
+            current_user.id,
+            game_id,
         )
 
     if "folder_location" in updates:
@@ -620,13 +631,6 @@ async def update_game(
 
     await _record_update_observation(db, game, actor, sent)
 
-    await _save_game_update(db, game, old_folder)
-
-    return game
-
-
-async def _save_game_update(db: AsyncSession, game: Game, old_folder: str) -> None:
-    """Commit an update, moving the game folder first when its name changed."""
     target_folder = game.folder_location
     try:
         if target_folder != old_folder:
@@ -641,6 +645,8 @@ async def _save_game_update(db: AsyncSession, game: Game, old_folder: str) -> No
             status_code=409,
             detail=f"Could not save the game folder. {exc} Retry saving its folder name to recover.",
         ) from exc
+
+    return game
 
 
 async def _record_update_observation(

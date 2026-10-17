@@ -62,7 +62,7 @@ class GameArchive(Base):
 class GameArchiveVersion(Base):
     """One uploaded file within an archive's history. `filename` is the
     on-disk name (already sanitized/uniqued by save_media_bytes) under
-    /data/games/{folder}/{saves|world_saves}/{archive_id}/{filename}."""
+    /data/users/{user_id}/games/{folder}/{saves|world_saves}/{archive_id}/{filename}."""
 
     __tablename__ = "game_archive_versions"
 
