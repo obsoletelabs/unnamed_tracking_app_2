@@ -1,7 +1,7 @@
 """Persist notification stories, revisions and item links.
 
 Revision ID: 6f75008c02a6
-Revises: a7d3c91e5b20, 716a1e2c451d
+Revises: 50b007897f73
 Create Date: 2026-10-16 22:15:32.215123
 """
 
@@ -13,7 +13,7 @@ from alembic import op
 from src.database import migration_helpers as h
 
 revision: str = "6f75008c02a6"
-down_revision: Union[str, Sequence[str], None] = ("a7d3c91e5b20", "716a1e2c451d")
+down_revision: Union[str, None] = "50b007897f73"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
