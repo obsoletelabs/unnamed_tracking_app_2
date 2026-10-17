@@ -284,22 +284,21 @@ async def check_plugin_update(
     }
 
 
-async def notify_plugin_updates(
-    db: AsyncSession,
-    updates: list[dict[str, Any]],
-) -> None:
-    """Send one idempotent summary for a complete update-check/update batch."""
-    statuses = {
-        "updated": "Updated automatically",
-        "failed": "Automatic update failed",
-        "available": "Update still available",
-    }
+_PLUGIN_UPDATE_STATUS_LABELS = {
+    "updated": "Updated automatically",
+    "failed": "Automatic update failed",
+    "available": "Update still available",
+}
+
+
+def _normalized_plugin_update_items(updates: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """Keep only actionable update outcomes and normalize them for stable deduplication."""
     items: list[dict[str, str]] = []
     for update in updates:
         status = str(
             update.get("status") or ("available" if update.get("update_available") else "")
         )
-        if status not in statuses:
+        if status not in _PLUGIN_UPDATE_STATUS_LABELS:
             continue
         plugin_id = str(update.get("plugin_id") or "").strip()
         old_version = str(update.get("current_version") or "unknown")
@@ -316,6 +315,30 @@ async def notify_plugin_updates(
         if isinstance(reason, str) and reason.strip():
             item["reason"] = reason.strip()[:300]
         items.append(item)
+    return items
+
+
+def _plugin_update_message(
+    items: list[dict[str, str]], action_url: str
+) -> tuple[str, str]:
+    """Render a stable, bounded summary for administrators."""
+    lines = [
+        f"- {_PLUGIN_UPDATE_STATUS_LABELS[item['status']]}: {item['plugin_id']} "
+        f"({item['old_version']} → {item['new_version']})"
+        + (f" — {item['reason']}" if item.get("reason") else "")
+        for item in items
+    ]
+    body = "Plugin update batch results:\n" + "\n".join(lines) + f"\n\nManage plugins: {action_url}"
+    title = f"Plugin updates: {len(items)} plugin(s) updated or need attention"
+    return title, body
+
+
+async def notify_plugin_updates(
+    db: AsyncSession,
+    updates: list[dict[str, Any]],
+) -> None:
+    """Send one idempotent summary for a complete update-check/update batch."""
+    items = _normalized_plugin_update_items(updates)
     if not items:
         return
 
@@ -332,14 +355,7 @@ async def notify_plugin_updates(
     route = "/settings?area=administration&section=plugins"
     public_url = str(settings.PUBLIC_APP_URL or "").strip().rstrip("/")
     action_url = f"{public_url}{route}" if public_url else route
-    lines = [
-        f"- {statuses[item['status']]}: {item['plugin_id']} "
-        f"({item['old_version']} → {item['new_version']})"
-        + (f" — {item['reason']}" if item.get("reason") else "")
-        for item in items
-    ]
-    body = "Plugin update batch results:\n" + "\n".join(lines) + f"\n\nManage plugins: {action_url}"
-    title = f"Plugin updates: {len(items)} plugin(s) updated or need attention"
+    title, body = _plugin_update_message(items, action_url)
     now = int(time.time())
     media_id = uuid5(NAMESPACE_URL, f"urn:unnamed-tracking:plugin-update-batch:{dedupe_key}")
     for user_id in admin_ids:
