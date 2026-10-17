@@ -84,6 +84,10 @@ The application requires authentication for the game API and scopes game lookups
 
 `src/backend/tests/test_playnite_contract.py` exercises these endpoints over HTTP with a real `utk_` key. The [game library identity audit](../development/game-library-identity-audit.md#6-playnite-integration) lists the behaviours that must stay supported while the game model changes.
 
+### Observation API and compatibility
+
+Newer extensions also report what Playnite holds through a versioned evidence API (`GET /api/playnite/contract`, `POST /api/playnite/observations`, `POST /api/playnite/inventory`): platform, last played, installed state and the complete list of library IDs. Playnite only reports; it never creates, merges or splits identities, and entries missing from a partial, failed or cancelled sync are never treated as removed. A name or completion status you locked in the application is kept when Playnite syncs, the rest of the update still applies, and Playnite's own changes no longer lock fields. Extensions that do not use the evidence API keep working unchanged. See [Playnite observations](../development/playnite-observations.md).
+
 ## Ignoring games
 
 The extension can skip games carrying its configured ignore tag. The default tag is:

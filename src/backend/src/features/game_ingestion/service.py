@@ -159,10 +159,11 @@ async def find_connection(
 def _initial_values(item: SourceObservationV1, stamp: int) -> dict[str, Any]:
     reported = item.reported()
     unavailable = reported.get("available") is False
+    # Every row of a multi-row insert needs the same columns, so unreported
+    # scalars are written as NULL (unknown) rather than left out.
     values: dict[str, Any] = {
-        column: _column_value(name, reported[name])
+        column: _column_value(name, reported[name]) if name in reported else None
         for name, column in _SCALARS.items()
-        if name in reported
     }
     values.update(
         observed_provider_ids=reported.get("provider_ids", {}),
