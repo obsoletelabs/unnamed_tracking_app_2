@@ -15,8 +15,6 @@ import {
   pluginExternalDestination,
   reserveExternalTab,
   fetchPluginSettings,
-  PluginActionError,
-  pluginExternalDestination,
   savedFieldValues,
   validateField,
   type PluginUiDocument,
