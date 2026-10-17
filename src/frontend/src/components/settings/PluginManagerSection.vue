@@ -77,27 +77,7 @@ import {
 const plugins = ref<PluginSummary[]>([]);
 const catalog = ref<PluginCatalogEntry[]>([]);
 const loading = ref(true);
-const route = useRoute();
-const focusedPluginId = computed(() => deepLinkedPluginId(route.query.plugin));
-const focusedMissing = ref(false);
-watch(
-  [() => loading.value, focusedPluginId, () => entries.value],
-  async ([isLoading, id]) => {
-    if (isLoading || !id) {
-      focusedMissing.value = false;
-      return;
-    }
-    focusedMissing.value = !hasPluginEntry(entries.value, id);
-    if (focusedMissing.value) return;
-    await nextTick();
-    const row = Array.from(
-      document.querySelectorAll<HTMLElement>("[data-plugin-id]"),
-    ).find((el) => el.dataset.pluginId === id);
-    row?.scrollIntoView?.({ behavior: "smooth", block: "center" });
-    row?.focus?.({ preventScroll: true });
-  },
-  { immediate: true },
-);
+
 const cataloguesLoading = ref(false);
 const error = ref("");
 const operationError = ref("");
@@ -234,6 +214,27 @@ const tags = computed(() =>
 );
 const installedEntries = computed(() =>
   entries.value.filter((item): item is PluginSummary => "status" in item),
+);
+const route = useRoute();
+const focusedPluginId = computed(() => deepLinkedPluginId(route.query.plugin));
+const focusedMissing = ref(false);
+watch(
+  [() => loading.value, focusedPluginId, () => entries.value],
+  async ([isLoading, id]) => {
+    if (isLoading || !id) {
+      focusedMissing.value = false;
+      return;
+    }
+    focusedMissing.value = !hasPluginEntry(entries.value, id);
+    if (focusedMissing.value) return;
+    await nextTick();
+    const row = Array.from(
+      document.querySelectorAll<HTMLElement>("[data-plugin-id]"),
+    ).find((el) => el.dataset.pluginId === id);
+    row?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+    row?.focus?.({ preventScroll: true });
+  },
+  { immediate: true },
 );
 const catalogueEntries = computed(() =>
   entries.value.filter(
