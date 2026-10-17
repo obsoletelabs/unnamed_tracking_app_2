@@ -388,6 +388,35 @@ async def group_same_copy(
     return made
 
 
+async def ungroup_games(
+    db: AsyncSession, user_id: UUID, first_id: UUID, second_id: UUID, *, now: int | None = None
+) -> int:
+    """After two games were split: give each game's observations their own counters again.
+
+    Reverses `group_same_copy` (and any manual grouping across the pair), so each game
+    reports its own playtime. Returns how many observations were separated."""
+    stamp = _stamp(now)
+    separated = 0
+    for owner, other in ((first_id, second_id), (second_id, first_id)):
+        data = await _load(db, user_id, {owner})
+        links = await _open_links(
+            db, user_id, observations={m.observation_id for d in data for m in d.members}
+        )
+        for item in data:
+            if item.counter.game_id != owner:
+                continue
+            for member in item.members:
+                if links.get(member.observation_id) == other:
+                    await ungroup_observation(
+                        db, user_id, item.counter.id, member.observation_id, now=stamp
+                    )
+                    separated += 1
+    graph_ = await merge_graph(db, user_id)
+    for game_id in (first_id, second_id):
+        await _sync(db, user_id, graph_, game_id, stamp)
+    return separated
+
+
 async def follow_observation(
     db: AsyncSession, user_id: UUID, observation_id: UUID, *, now: int | None = None
 ) -> None:
