@@ -232,6 +232,16 @@ Until then, PRs remain available for review with current validation and screensh
   features, anime format and validated provider IDs travel in each type's existing
   create/update request (no new endpoint or migration). Seasons, progress, title
   protection and immutable identity are untouched.
+- **K quick editors / 20–21, 37–38:** issue #149, stacked on #144 (PR #181). The game
+  library's Edit opens `GameQuickEditModal` (status, platform, rating, cover) on
+  `EditorShell`; it PATCHes only those fields and shares artwork transfer and
+  retry with the full editor (`useGameArtworkTransfer`). **Edit more** passes a
+  `GameEditDraft` (values plus the staged cover file or link) to `GameFormModal`.
+  The artwork picker keeps the Current / Local file / Link / Search labels. The
+  media quick edit gains start/end dates and uses `resolveStatus`, so an
+  unchanged visible bucket keeps a stored Favorite or Rewatch status. Detail
+  pages list priority and formatted dates through `mediaTrackingFacts`. No
+  endpoint, schema or migration changes.
 - **Remaining K (#149) and L–O:** approved; not implemented yet. The
   package details below describe intended work, not completed behavior.
 
