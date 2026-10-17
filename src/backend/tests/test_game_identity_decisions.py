@@ -195,8 +195,8 @@ async def test_user_decisions_outrank_automatic_matching(users):  # noqa: F811
                 user,
                 "identity_pair",
                 {"first_game_id": min(a, _c), "second_game_id": max(a, _c)},
-                "automatic_same",
-                decisions.Actor("automatic", "rule", "r"),
+                outcome="automatic_same",
+                actor=decisions.Actor("automatic", "rule", "r"),
                 rule_version="1",
                 confidence=0.5,
             )

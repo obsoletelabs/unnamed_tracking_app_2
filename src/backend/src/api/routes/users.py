@@ -106,6 +106,28 @@ async def upload_profile_picture(
     }
 
 
+@router.delete("/{user_id}/profile-picture")
+async def remove_profile_picture(
+    user_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, str | None]:
+    """Remove the stored picture so initials are shown again; repeating the call is harmless."""
+    await _get_authorized_user(user_id, db, current_user)
+    try:
+        profile_picture_path(user_id).unlink(missing_ok=True)
+    except OSError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not remove profile picture.",
+        ) from exc
+    return {
+        "user_id": str(user_id),
+        "status": "removed",
+        "profile_picture_version": await profile_picture_version(user_id),
+    }
+
+
 @router.get("/{user_id}/profile-picture", response_class=FileResponse)
 async def get_profile_picture(
     user_id: UUID,

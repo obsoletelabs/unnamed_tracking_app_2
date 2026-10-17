@@ -6,7 +6,7 @@ import asyncio
 import logging
 import time
 from collections import OrderedDict
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Iterable, Sequence
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Protocol
@@ -22,6 +22,7 @@ from src.plugin_api.metadata_contracts import (
     ProviderResponse,
 )
 
+from .configuration import UNRANKED
 from .core import CoreMetadataProvider
 from .deadlines import bounded
 from .identity import candidate_id, identities, rank_key, same_entity
@@ -538,10 +539,36 @@ class MetadataHandler:
                 session.redirects[old_id] = item["id"]
                 if session.selected == old_id:
                     session.selected = item["id"]
-        item["assets"] = sorted(
-            {asset["kind"] + "|" + asset["url"]: asset for asset in assets}.values(),
-            key=lambda asset: (asset["kind"], asset.get("priority", 100), asset["url"]),
+        item["assets"] = MetadataHandler._sorted_assets(session, assets)
+
+    @staticmethod
+    def _sorted_assets(session: SearchSession, assets: Iterable[dict]) -> list[dict[str, Any]]:
+        """The account's artwork order decides between providers; each ranks its own assets."""
+        ranks = {
+            provider.id: getattr(provider, "artwork_priority", UNRANKED)
+            for provider in session.providers
+        }
+
+        def order(asset: dict) -> tuple:
+            sources = session.asset_providers.get((asset["kind"], asset["url"]), ())
+            rank = min(
+                (ranks.get(provider_id, UNRANKED) for provider_id in sources), default=UNRANKED
+            )
+            return (asset["kind"], rank, asset.get("priority", 100), asset["url"])
+
+        return sorted(
+            {asset["kind"] + "|" + asset["url"]: asset for asset in assets}.values(), key=order
         )
+
+    @staticmethod
+    def contributors(session: SearchSession, group_id: str | None) -> list[str]:
+        """Registered providers whose identity, metadata or artwork reached this result."""
+        group = session.groups.get(group_id or "", ())
+        used = {session.sources[key].candidate.provider for key in group}
+        used.update(provider_id for key in group for provider_id in session.sources[key].metadata)
+        for asset in session.candidates.get(group_id or "", {}).get("assets", []):
+            used.update(session.asset_providers.get((asset["kind"], asset["url"]), ()))
+        return sorted(used & {provider.id for provider in session.providers})
 
     def _rank(self, session: SearchSession) -> None:
         previous, previous_groups = session.candidates, session.groups
@@ -796,10 +823,7 @@ class MetadataHandler:
             session.asset_providers.setdefault((asset.kind, str(asset.url)), set()).add(provider_id)
         item = session.candidates[group_id]
         assets = item["assets"] + [asset.model_dump(mode="json") for asset in response.assets]
-        item["assets"] = sorted(
-            {asset["kind"] + "|" + asset["url"]: asset for asset in assets}.values(),
-            key=lambda asset: (asset["kind"], asset.get("priority", 100), asset["url"]),
-        )
+        item["assets"] = MetadataHandler._sorted_assets(session, assets)
         session.emit("result_updated", result=item)
 
     async def enrich(
@@ -820,6 +844,8 @@ class MetadataHandler:
         except TimeoutError:
             session.emit("provider_failed", message="Metadata providers are unavailable")
         record = session.candidates.get(session.selected or "", {})
+        if record:
+            record = {**record, "contributors": self.contributors(session, session.selected)}
         failures = list(
             dict.fromkeys(
                 event["message"] for event in session.events if event["event"] == "provider_failed"

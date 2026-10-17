@@ -65,6 +65,116 @@ def test_migration_environment_accepts_url_encoded_database_credentials(monkeypa
     assert "CREATE TABLE alembic_version" in output.getvalue()
 
 
+def test_migration_environment_registers_every_model_module():
+    """Autogenerate only sees tables whose model module env.py imports; an
+    omitted module makes it propose dropping that module's live tables."""
+    import ast
+    from pathlib import Path
+
+    tree = ast.parse((Path(_script().dir) / "env.py").read_text(encoding="utf-8"))
+    registered = {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module == "src.database.models"
+        for alias in node.names
+    }
+    models = Path(__file__).parents[1] / "src" / "database" / "models"
+    assert {path.stem for path in models.glob("*.py")} - registered == set()
+
+
+# Runs in a fresh interpreter: models imported elsewhere in the test process
+# register their tables globally and would hide one missing from env.py.
+_AUTOGENERATE_REPORT = """
+import json
+import sys
+
+from alembic.autogenerate import compare_metadata
+from alembic.config import Config
+from alembic.runtime.environment import EnvironmentContext
+from alembic.script import ScriptDirectory
+
+config = Config("alembic.ini")
+script = ScriptDirectory.from_config(config)
+report = {}
+
+
+def compare(_heads, context):
+    metadata = context.opts["target_metadata"]
+    diffs = compare_metadata(context, metadata)
+    report["tables"] = sorted(metadata.tables)
+    report["diffs"] = [
+        [op[0], repr(op[1:])] for diff in diffs for op in (diff if isinstance(diff, list) else [diff])
+    ]
+    return []
+
+
+with EnvironmentContext(config, script, fn=compare):
+    script.run_env()
+with open(sys.argv[1], "w", encoding="utf-8") as output:
+    json.dump(report, output)
+"""
+
+
+def test_autogenerate_on_a_migrated_database_keeps_every_live_table(tmp_path):
+    """Compare the real migration environment against a freshly migrated schema.
+    Autogenerate must not propose removing anything the migrations created,
+    such as the game note metadata and history tables and their indexes."""
+    import json
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+    from uuid import uuid4
+
+    import psycopg
+    from psycopg import sql
+    from sqlalchemy.engine import make_url
+
+    from src.core.config import settings
+
+    schema = "autogenerate_" + uuid4().hex
+    base = make_url(settings.DATABASE_URL)
+    connection_url = base.set(drivername="postgresql").render_as_string(hide_password=False)
+    scoped = base.update_query_dict({"options": f"-csearch_path={schema}"})
+    environment = {**os.environ, "DATABASE_URL": scoped.render_as_string(hide_password=False)}
+    for key in ("POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB"):
+        environment.pop(key, None)
+    report_path = tmp_path / "autogenerate.json"
+
+    def run(*arguments):
+        result = subprocess.run(
+            [sys.executable, *arguments],
+            cwd=Path(__file__).parents[1],
+            env=environment,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+
+    with psycopg.connect(connection_url, autocommit=True) as connection:
+        connection.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
+        try:
+            run("-m", "alembic", "-c", "alembic.ini", "upgrade", "head")
+            run("-c", _AUTOGENERATE_REPORT, str(report_path))
+            live = {
+                row[0]
+                for row in connection.execute(
+                    "SELECT tablename FROM pg_tables WHERE schemaname = %s", (schema,)
+                )
+            }
+        finally:
+            connection.execute(sql.SQL("DROP SCHEMA {} CASCADE").format(sql.Identifier(schema)))
+
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    note_tables = {"game_note_details", "game_note_versions"}
+    assert note_tables <= live
+    removals = [diff for diff in report["diffs"] if diff[0].startswith("remove_")]
+    assert removals == [], f"autogenerate would drop live schema objects: {removals}"
+    assert note_tables <= set(report["tables"])
+
+
 def test_empty_database_is_built_from_the_migrations():
     assert decide(set(), {"a"}, has_tables=False).action == "fresh"
 

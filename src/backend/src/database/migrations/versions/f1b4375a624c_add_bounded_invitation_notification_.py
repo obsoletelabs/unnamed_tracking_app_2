@@ -20,21 +20,6 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
-def _has_constraint(table: str, name: str) -> bool:
-    # A matching name in another schema is not evidence for this relation.
-    return (
-        op.get_bind()
-        .execute(
-            sa.text(
-                "SELECT 1 FROM pg_constraint WHERE conname = :name AND conrelid = to_regclass(:table)"
-            ),
-            {"name": name, "table": table},
-        )
-        .first()
-        is not None
-    )
-
-
 def upgrade() -> None:
     # Generated with Compose/Alembic, reviewed and made adoption-safe.
     # Excludes unrelated game-note drops from the separately reported env import issue.
@@ -87,13 +72,13 @@ def upgrade() -> None:
         "notification_destinations", sa.Column("pending_recipient_id", sa.UUID(), nullable=True)
     )
     op.alter_column("notification_destinations", "user_id", existing_type=sa.UUID(), nullable=True)
-    if not _has_constraint("notification_destinations", "uq_notification_pending_endpoint"):
+    if not h.has_constraint("notification_destinations", "uq_notification_pending_endpoint"):
         op.create_unique_constraint(
             "uq_notification_pending_endpoint",
             "notification_destinations",
             ["pending_recipient_id", "provider_id", "endpoint_key"],
         )
-    if not _has_constraint(
+    if not h.has_constraint(
         "notification_destinations", "fk_notification_destinations_pending_recipient"
     ):
         op.create_foreign_key(
@@ -104,7 +89,7 @@ def upgrade() -> None:
             ["id"],
             ondelete="CASCADE",
         )
-    if not _has_constraint(
+    if not h.has_constraint(
         "notification_destinations", "ck_notification_destination_recipient_owner"
     ):
         op.create_check_constraint(
@@ -116,13 +101,13 @@ def upgrade() -> None:
         "notifications", sa.Column("pending_recipient_id", sa.UUID(), nullable=True)
     )
     op.alter_column("notifications", "user_id", existing_type=sa.UUID(), nullable=True)
-    if not _has_constraint("notifications", "uq_notifications_pending_dedupe"):
+    if not h.has_constraint("notifications", "uq_notifications_pending_dedupe"):
         op.create_unique_constraint(
             "uq_notifications_pending_dedupe",
             "notifications",
             ["pending_recipient_id", "dedupe_key"],
         )
-    if not _has_constraint("notifications", "fk_notifications_pending_recipient"):
+    if not h.has_constraint("notifications", "fk_notifications_pending_recipient"):
         op.create_foreign_key(
             "fk_notifications_pending_recipient",
             "notifications",
@@ -131,7 +116,7 @@ def upgrade() -> None:
             ["id"],
             ondelete="CASCADE",
         )
-    if not _has_constraint("notifications", "ck_notifications_recipient_owner"):
+    if not h.has_constraint("notifications", "ck_notifications_recipient_owner"):
         op.create_check_constraint(
             "ck_notifications_recipient_owner",
             "notifications",

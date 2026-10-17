@@ -27,6 +27,10 @@ _TRANSFER_URLS = {
 }
 
 
+class SteamSignInUnavailable(steam_session.SteamLibraryError):
+    """Steam was unreachable or rate limiting; the same attempt can be retried."""
+
+
 def _request(client: requests.Session, method: str, values: dict, *, get: bool = False) -> dict:
     url = f"{steam_session.WEB_API_BASE}/IAuthenticationService/{method}/v1/"
     try:
@@ -43,14 +47,18 @@ def _request(client: requests.Session, method: str, values: dict, *, get: bool =
                 allow_redirects=False,
             )
     except requests.RequestException:
-        raise steam_session.SteamLibraryError("Could not reach Steam. Try again shortly.") from None
+        raise SteamSignInUnavailable("Could not reach Steam. Try again shortly.") from None
     result = response.headers.get("x-eresult")
     if result == "5":
         raise steam_session.SteamLibraryError("Steam did not accept the account name or password.")
-    if result == "84" or response.status_code == 429:
+    # InvalidLoginAuthCode (65) and TwoFactorCodeMismatch (88): a mistyped code
+    # leaves the attempt usable, so say what to fix instead of a generic failure.
+    if result in {"65", "88"}:
         raise steam_session.SteamLibraryError(
-            "Steam is limiting sign-in requests. Try again later."
+            "That Steam Guard code is incorrect. Enter the current code."
         )
+    if result == "84" or response.status_code == 429:
+        raise SteamSignInUnavailable("Steam is limiting sign-in requests. Try again later.")
     if response.status_code != 200 or result != "1":
         raise steam_session.SteamLibraryError(
             "Steam did not accept this sign-in attempt. Try again."
@@ -200,6 +208,8 @@ def submit_guard(client: requests.Session, pending: dict, code: str, code_type: 
         or not pending.get("steamid")
     ):
         raise steam_session.SteamLibraryError("This sign-in does not accept that Steam Guard code.")
+    # Pasted or autofilled codes often carry spaces; Steam's codes are uppercase.
+    code = "".join(code.split()).upper()
     if not 0 < len(code) <= 10 or not code.isascii() or not code.isalnum():
         raise steam_session.SteamLibraryError("Enter the Steam Guard code shown by Steam.")
     _request(

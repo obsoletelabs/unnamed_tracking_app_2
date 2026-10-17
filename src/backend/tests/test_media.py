@@ -1,4 +1,16 @@
-from src.helpers.media import classify_media, list_media, media_subdir, safe_filename
+import io
+
+import pytest
+from starlette.datastructures import UploadFile
+
+from src.helpers.media import (
+    UploadTooLargeError,
+    classify_media,
+    list_media,
+    media_subdir,
+    safe_filename,
+    save_upload_stream,
+)
 
 
 def test_classify_media_uses_extensions_instead_of_sender_content_type() -> None:
@@ -90,3 +102,16 @@ def test_ranged_file_response_serves_partial_content(tmp_path) -> None:
     refused = get("bytes=500-")
     assert refused.status_code == 416
     assert refused.headers["content-range"] == "bytes */100"
+
+
+async def test_save_upload_stream_keeps_files_up_to_the_cap_and_nothing_past_it(tmp_path) -> None:
+    data = b"x" * (3 * 1024 * 1024)  # several read chunks
+    exact = UploadFile(io.BytesIO(data), filename="../Manual.docx")
+    path, size = await save_upload_stream(exact, tmp_path / "docs", "../Manual.docx", len(data))
+    assert size == len(data) and path.read_bytes() == data
+    assert path.parent == tmp_path / "docs" and path.name.endswith("_Manual.docx")
+
+    over = UploadFile(io.BytesIO(data + b"!"), filename="Manual.docx")
+    with pytest.raises(UploadTooLargeError):
+        await save_upload_stream(over, tmp_path / "docs", "Manual.docx", len(data))
+    assert list((tmp_path / "docs").iterdir()) == [path]
