@@ -66,7 +66,7 @@ def upgrade() -> None:
     h.add_column_if_missing("notifications", sa.Column("story_id", sa.UUID(), nullable=True))
     h.add_column_if_missing("notifications", sa.Column("story_revision", sa.Integer(), nullable=True))
     h.add_column_if_missing("notifications", sa.Column("previous_notification_id", sa.UUID(), nullable=True))
-    if not h.has_constraint("notifications", "fk_notifications_story"):
+    if not h.has_constraint("fk_notifications_story"):
         op.create_foreign_key(
             "fk_notifications_story",
             "notifications",
@@ -75,7 +75,7 @@ def upgrade() -> None:
             ["id"],
             ondelete="SET NULL",
         )
-    if not h.has_constraint("notifications", "fk_notifications_previous"):
+    if not h.has_constraint("fk_notifications_previous"):
         op.create_foreign_key(
             "fk_notifications_previous",
             "notifications",
@@ -99,12 +99,12 @@ def downgrade() -> None:
             "Refusing to drop populated notification story history; retain the schema or "
             "remove the stories explicitly before downgrading."
         )
-    if h.has_constraint("notifications", "uq_notifications_story_revision"):
+    if h.has_constraint("uq_notifications_story_revision"):
         op.drop_constraint("uq_notifications_story_revision", "notifications", type_="unique")
-    h.drop_index_if_exists("ix_notifications_story", table_name="notifications")
-    if h.has_constraint("notifications", "fk_notifications_previous"):
+    h.drop_index_if_exists("ix_notifications_story", "notifications")
+    if h.has_constraint("fk_notifications_previous"):
         op.drop_constraint("fk_notifications_previous", "notifications", type_="foreignkey")
-    if h.has_constraint("notifications", "fk_notifications_story"):
+    if h.has_constraint("fk_notifications_story"):
         op.drop_constraint("fk_notifications_story", "notifications", type_="foreignkey")
     if h.has_column("notifications", "previous_notification_id"):
         op.drop_column("notifications", "previous_notification_id")

@@ -1,7 +1,6 @@
 """Game metadata routes, composed by the games router."""
 
 import asyncio
-import time
 from uuid import UUID
 
 from fastapi import (
@@ -21,6 +20,7 @@ from src.api.routes.utils.games import (
     _DATA_ROOT,
     _get_game_or_404,
     _record_field_changes,
+    _record_provider_use,
     _scan_settings_to_preferences,
 )
 from src.core.app_integrations import get_max_upload_size_mb
@@ -105,12 +105,8 @@ async def search_metadata(
     del include_images
     result = await search_games(db, current_user.id, query.strip(), limit, preferences=preferences)
 
-    if result.get("providers"):
-        now = int(time.time())
-        last_used = dict(scan_settings.provider_last_used)
-        for provider_name in result["providers"]:
-            last_used[provider_name] = now
-        scan_settings.provider_last_used = last_used
+    if result.get("used_provider_ids"):
+        _record_provider_use(scan_settings, result["used_provider_ids"])
         await db.commit()
     return result
 
@@ -182,14 +178,8 @@ async def refresh_game_metadata(
         "results": [game_result(record)] if record else [],
     }
 
-    providers = result.get("providers", [])
     provider_errors = result.get("provider_errors", [])
-    if providers:
-        last_used = dict(scan_settings.provider_last_used)
-        now = int(time.time())
-        for provider_name in providers:
-            last_used[provider_name] = now
-        scan_settings.provider_last_used = last_used
+    _record_provider_use(scan_settings, record.get("contributors", []))
 
     match = next(
         (
