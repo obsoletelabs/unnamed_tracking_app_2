@@ -6,6 +6,7 @@ import {
   validateField,
   pluginPathForPage,
   resolvePluginPageId,
+  savedFieldValues,
   type PluginUiDocument,
 } from "../services/pluginUi";
 
@@ -137,6 +138,76 @@ describe("plugin UI host contract", () => {
 
   it("does not expose secret defaults", () => {
     expect(buildInitialValues(document)).toEqual({});
+  });
+
+  it("initializes fields from saved values and defaults only missing fields", () => {
+    const settingsDocument: PluginUiDocument = {
+      ...document,
+      settings: [
+        {
+          ...document.settings[0],
+          fields: [
+            ...document.settings[0].fields,
+            {
+              id: "token_lifetime_seconds",
+              label: "Link lifetime",
+              type: "number",
+              description: "",
+              required: true,
+              secret: false,
+              default: 1200,
+              options: [],
+            },
+            {
+              id: "label",
+              label: "Label",
+              type: "text",
+              description: "",
+              required: false,
+              secret: false,
+              default: "Default label",
+              options: [],
+            },
+            {
+              id: "constructor",
+              label: "Mode",
+              type: "boolean",
+              description: "",
+              required: false,
+              secret: false,
+              options: [],
+            },
+          ],
+        },
+      ],
+    };
+    expect(buildInitialValues(settingsDocument)).toEqual({
+      token_lifetime_seconds: 1200,
+      label: "Default label",
+    });
+    expect(
+      buildInitialValues(settingsDocument, { token_lifetime_seconds: 900 }),
+    ).toEqual({ token_lifetime_seconds: 900, label: "Default label" });
+    // A saved empty value is not a missing value.
+    expect(
+      buildInitialValues(settingsDocument, {
+        token_lifetime_seconds: 900,
+        label: "",
+      }),
+    ).toEqual({ token_lifetime_seconds: 900, label: "" });
+    // Secrets, undeclared keys and values a control cannot show are ignored.
+    expect(
+      buildInitialValues(settingsDocument, {
+        token: "leaked-secret",
+        unknown: "runtime-only",
+        token_lifetime_seconds: "900",
+        label: { value: "object" },
+      }),
+    ).toEqual({ token_lifetime_seconds: 1200, label: "Default label" });
+    expect(savedFieldValues(settingsDocument, {})).toEqual({});
+    expect(
+      savedFieldValues(settingsDocument, { constructor: true, token: "x" }),
+    ).toEqual({ constructor: true });
   });
 
   it("validates required fields", () => {

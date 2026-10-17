@@ -21,6 +21,11 @@ const saving = ref(false);
 const error = ref<string | null>(null);
 const saved = ref(false);
 const loading = ref(true);
+// Previews of files that no longer load are replaced by a notice, never a broken image.
+const brokenPreviews = ref<Set<string>>(new Set());
+function markBroken(src: string) {
+  brokenPreviews.value = new Set(brokenPreviews.value).add(src);
+}
 async function initialize() {
   loading.value = true;
   await loadBranding();
@@ -119,10 +124,20 @@ async function upload(kind: BrandingAsset, event: Event) {
             </p>
           </div>
           <img
-            v-if="kind === 'favicon' || branding.logo_url"
+            v-if="
+              (kind === 'favicon' || branding.logo_url) &&
+              !brokenPreviews.has(
+                kind === 'logo' ? branding.logo_url! : branding.favicon_url,
+              )
+            "
             :src="kind === 'logo' ? branding.logo_url! : branding.favicon_url"
             alt=""
             class="asset-preview"
+            @error="
+              markBroken(
+                kind === 'logo' ? branding.logo_url! : branding.favicon_url,
+              )
+            "
           />
           <input
             :id="`branding-${kind}`"

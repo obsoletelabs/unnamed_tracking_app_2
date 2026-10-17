@@ -87,6 +87,60 @@ The preferences are scoped to individual users rather than deployments.
 
 The frontend presents the interval as Hourly, Every 6 hours, Twice daily, Daily, or Weekly, with a custom interval from 1 to 720 hours.
 
+## Media trash
+
+Movies, TV shows and anime share one trash life cycle (`api/routes/media_common.py`):
+`DELETE /api/{kind}/delete/{id}` soft-deletes, `GET /api/{kind}/trash` lists,
+`POST /api/{kind}/{id}/restore` restores and `DELETE /api/{kind}/{id}/purge`
+permanently deletes one trashed title. `{kind}` is `movie`, `tv` or `anime`.
+
+`POST /api/{kind}/trash/empty` permanently deletes the caller's titles in that
+kind's trash:
+
+```json
+{"confirm": true, "deleted_through": 1792185461}
+```
+
+- `confirm` must be the JSON boolean `true`; a missing, `false`, `1` or `"true"`
+  value is rejected with 422 before anything is deleted.
+- `deleted_through` (optional Unix seconds) is the newest deletion time the user
+  saw when confirming. Titles trashed later are kept. Omitted, it means now.
+- Only the caller's rows with `deleted_at` set and at or before
+  `deleted_through` qualify, oldest first, at most 200 per request. Rows are
+  locked before deletion, so a concurrent restore either wins (the title is
+  skipped) or waits. Each title is deleted with its seasons and episodes in its
+  own savepoint: a database failure rolls back only that title, which remains
+  in the trash and is reported.
+
+```json
+{
+  "deleted": 199,
+  "failed": 1,
+  "failed_items": [{"id": "…", "title": "Dark", "deleted_at": 1792000000}],
+  "remaining": 3,
+  "deleted_through": 1792185461
+}
+```
+
+`remaining` counts what is still in the trash up to `deleted_through`, failed
+titles included. Repeat the request with the same `deleted_through` while
+`remaining` is larger than `failed`; the frontend does this automatically.
+Purging keeps the existing per-title semantics: activity history and list
+membership rows are not rewritten.
+
+The `media_trash_retention_days` preference (`0`, `7`, `14`, `30` or `90`;
+default `0`, Never) opts an account into automatic deletion. Any other value,
+including `true`, `30.0` and `"30"`, is rejected with 422. The existing trash
+sweep (`features/trash/sweep.py`, at startup and every six hours) calls
+`purge_expired_media_titles` in `features/trash/media_titles.py` after the game
+file pass. It selects accounts whose stored value is one of the offered periods,
+re-reads the choice under a share lock inside each account's transaction, and
+purges titles whose `deleted_at` is at least that many days old through the same
+per-title function as Empty trash. Work is bounded to 200 titles per kind and
+account and 2,000 titles per sweep. A failed account transaction is logged and
+retried by the next sweep. The game-file trash and its fixed seven-day retention
+are separate and unchanged.
+
 ## Playnite API surface
 
 The Playnite extension currently uses these authenticated endpoints:

@@ -34,6 +34,7 @@ from src.api.schemas.anime import (
     SeasonCreate,
     SeasonUpdate,
 )
+from src.api.schemas.media_trash import MediaTrashEmptyRequest, MediaTrashEmptyResult
 from src.api.schemas.metadata import MetadataSearchResponse
 from src.api.schemas.pagination import LibraryQuery, PaginatedResponse
 from src.core.auth import AuthenticatedActor, get_current_actor, get_current_user
@@ -72,6 +73,8 @@ from src.features.metadata.service import (
     media_result,
     search_media,
 )
+from src.features.notifications import record_sequel_announcements
+from src.features.trash.media_titles import empty_trash
 from src.plugin_api.metadata_contracts import MediaType
 
 _DB_DEFAULT = Depends(get_db)
@@ -378,11 +381,22 @@ async def list_anime_trash(
     db: AsyncSession = _DB_DEFAULT,
     current_user: User = _CURRENT_USER_DEFAULT,
 ) -> list[dict]:
-    """Deleted anime entries, most recently deleted first. No purge job
-    runs against these — unlike Game's on-disk folders, an entry is just
-    a row (plus its seasons/episodes), so there's nothing to clean up
-    and it stays here until an admin either restores it or purges it."""
+    """Deleted anime entries, most recently deleted first. An entry is just
+    a row (plus its seasons/episodes), so it stays here until it is
+    restored, purged, the trash is emptied, or the owner's opt-in retention
+    period passes (never by default)."""
     return await trash_listing(db, Anime, current_user.id)
+
+
+@router.post("/trash/empty", response_model=MediaTrashEmptyResult)
+async def empty_anime_trash(
+    payload: MediaTrashEmptyRequest,
+    db: AsyncSession = _DB_DEFAULT,
+    current_user: User = _CURRENT_USER_DEFAULT,
+) -> dict:
+    """Permanently delete the anime entries (with their seasons and episodes)
+    in the caller's trash, in bounded batches."""
+    return await empty_trash(db, Anime, current_user.id, deleted_through=payload.deleted_through)
 
 
 @router.post("/{show_id}/restore", response_model=AnimeRead)

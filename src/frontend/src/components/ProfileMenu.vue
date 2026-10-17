@@ -6,25 +6,15 @@
 // here, not slotted, on purpose: the badge is positioned relative to
 // the avatar alone, and that only stays correct if this component
 // controls the avatar's markup instead of trusting a slot's DOM order.
-import { computed, ref, watch, onMounted, onBeforeUnmount } from "vue";
+import { ref, watch, onMounted, onBeforeUnmount } from "vue";
 import { useRouter } from "vue-router";
 import { openTopbarPopover } from "../state/topbarPopover";
 import { currentUser } from "../state/auth";
-import { logout, profilePictureUrl } from "../services/auth";
+import { logout } from "../services/auth";
+import ProfileAvatar from "./ProfileAvatar.vue";
 import { useConfirm } from "../state/dialog";
 
 defineProps<{ initials: string }>();
-
-const avatarUrl = computed(() =>
-  currentUser.value?.profile_picture_version
-    ? profilePictureUrl(
-        currentUser.value.id,
-        currentUser.value.profile_picture_version,
-      )
-    : "",
-);
-const avatarFailed = ref(false);
-watch(avatarUrl, () => (avatarFailed.value = false));
 
 const router = useRouter();
 const root = ref<HTMLElement | null>(null);
@@ -150,14 +140,9 @@ onBeforeUnmount(() => {
       <slot />
       <div class="profile-menu-avatar-wrap">
         <div class="profile-menu-avatar">
-          <img
-            v-if="avatarUrl && !avatarFailed"
-            :src="avatarUrl"
-            alt=""
-            class="profile-menu-avatar-img"
-            @error="avatarFailed = true"
-          />
-          <template v-else>{{ initials }}</template>
+          <ProfileAvatar class="profile-menu-avatar-img">{{
+            initials
+          }}</ProfileAvatar>
         </div>
         <div class="profile-menu-chevron-badge">
           <svg

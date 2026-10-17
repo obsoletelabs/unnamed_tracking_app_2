@@ -35,13 +35,20 @@ from src.plugin_api.runtime_client import (
 
 from .automatic_search import automatic_search_status
 from .configuration import (
+    UNRANKED,
     configuration_presence,
     configuration_values,
     provider_enabled,
+    provider_orders,
     provider_priority,
     save_configuration,
 )
-from .core import CORE_PROVIDERS, CoreMetadataProvider, discover_core_providers
+from .core import (
+    CORE_PROVIDER_NAMES,
+    CORE_PROVIDERS,
+    CoreMetadataProvider,
+    discover_core_providers,
+)
 from .deadlines import bounded
 
 logger = logging.getLogger(__name__)
@@ -163,7 +170,8 @@ class PluginMetadataProvider:
     user_id: UUID
     revision: str
     state: ProviderHealth
-    priority: int = 100
+    priority: int = UNRANKED
+    artwork_priority: int = UNRANKED
     automatic_search_enabled: bool = True
     account_enabled: bool = True
 
@@ -272,7 +280,12 @@ async def discover_providers(
     media_type: MediaType | None = None,
     preferences: dict[str, Any] | None = None,
 ) -> list[PluginMetadataProvider | CoreMetadataProvider]:
-    """Derive discovery from durable registrations, current lifecycle and scoped grants."""
+    """Derive discovery from durable registrations, current lifecycle and scoped grants.
+
+    Core and optional providers rank by the account's saved orders whether or not the
+    caller passes scan preferences, so selection, refresh and scheduled work agree.
+    """
+    preferences = await provider_orders(db, user_id, preferences)
     providers: list[PluginMetadataProvider | CoreMetadataProvider] = list(
         await discover_core_providers(db, user_id, media_type, preferences)
     )
@@ -319,8 +332,19 @@ async def discover_providers(
                 user_id,
                 revision,
                 state if enabled else ProviderHealth.DISABLED,
-                provider_priority(declaration.name, preferences),
+                provider_priority(
+                    row.provider_id,
+                    declaration.name,
+                    preferences["provider_order"],
+                    CORE_PROVIDER_NAMES,
+                ),
                 account_enabled=enabled,
+                artwork_priority=provider_priority(
+                    row.provider_id,
+                    declaration.name,
+                    preferences["image_provider_order"],
+                    CORE_PROVIDER_NAMES,
+                ),
             )
         )
     return providers

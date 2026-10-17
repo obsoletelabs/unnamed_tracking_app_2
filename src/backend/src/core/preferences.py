@@ -59,6 +59,9 @@ DEFAULTS: dict[str, Any] = {
     "notify_media_types": ["anime", "tv", "movie"],
     "notification_retention_days": 30,
     "notification_retention_inherit": True,
+    # Never (0) by default: trashed movies, shows and anime are only removed for
+    # good when their owner deletes them or chooses one of the periods below
+    "media_trash_retention_days": 0,
     "library_default_layout": "list",
     "title_language": "english",
     "lists_default_sort": "custom",
@@ -95,6 +98,9 @@ _CHOICES: dict[str, tuple[Any, ...]] = {
     "lists_default_sort": ("custom", "name", "count", "recent"),
     "title_language": ("english", "romaji", "native"),
 }
+
+# Days a trashed movie/show/anime stays before the scheduled sweep deletes it.
+MEDIA_TRASH_RETENTION_DAYS = (0, 7, 14, 30, 90)
 
 _SET_CHOICES: dict[str, tuple[str, ...]] = {
     "notify_statuses": ("watching", "plan", "hold"),
@@ -155,6 +161,19 @@ def _validate_anilist_timestamp(key: str, value: Any) -> int | None:
 def _validate_anilist_error(value: Any) -> str:
     if not isinstance(value, str) or len(value) > 300:
         raise ValueError("anilist_import_last_error must be a string of at most 300 characters")
+    return value
+
+
+def _validate_media_trash_retention(value: Any) -> int:
+    # strict: True/False/7.0 would otherwise compare equal to a listed choice
+    if (
+        not isinstance(value, int)
+        or isinstance(value, bool)
+        or value not in MEDIA_TRASH_RETENTION_DAYS
+    ):
+        raise ValueError(
+            f"media_trash_retention_days must be one of {list(MEDIA_TRASH_RETENTION_DAYS)}"
+        )
     return value
 
 
@@ -342,6 +361,7 @@ _VALUE_VALIDATORS: dict[str, Callable[[Any], Any]] = {
         _validate_anilist_timestamp, "anilist_import_last_attempt_at"
     ),
     "anilist_import_last_error": _validate_anilist_error,
+    "media_trash_retention_days": _validate_media_trash_retention,
 }
 
 
