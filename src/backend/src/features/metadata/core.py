@@ -37,12 +37,20 @@ from src.plugin_api.metadata_contracts import (
 )
 
 from .automatic_search import automatic_search_status
-from .configuration import configuration_values, provider_enabled, provider_priority
+from .configuration import (
+    UNRANKED,
+    configuration_values,
+    provider_enabled,
+    provider_orders,
+    provider_priority,
+)
 
 CORE_PROVIDERS: dict[str, ModuleType] = {
     module.PROVIDER_ID: module
     for module in (steam, igdb, steamgriddb, tvmaze, anilist, anizip, omdb)
 }
+# Legacy display-name order entries always refer to these host providers.
+CORE_PROVIDER_NAMES = frozenset(module.DECLARATION["name"] for module in CORE_PROVIDERS.values())
 _LEGACY_FIELDS = {
     "core.steamgriddb": {"api_key": "steamgriddb_api_key"},
     "core.igdb": {"client_id": "igdb_client_id", "client_secret": "igdb_client_secret"},
@@ -137,7 +145,8 @@ class CoreMetadataProvider:
     revision: str
     state: ProviderHealth
     values: dict[str, str] = field(repr=False)
-    priority: int = 100
+    priority: int = UNRANKED
+    artwork_priority: int = UNRANKED
     plugin_id: str = "host.metadata"  # Shared storage owner; there is no installed plugin.
     automatic_search_enabled: bool = True
     account_enabled: bool = True
@@ -212,6 +221,8 @@ async def discover_core_providers(
 ) -> list[CoreMetadataProvider]:
     providers = []
     account_preferences = await load_preferences(db, user_id)
+    # Callers may pass scan preferences; otherwise the account's saved orders apply.
+    preferences = await provider_orders(db, user_id, preferences)
     for provider_id, module in CORE_PROVIDERS.items():
         declaration = MetadataProviderRegistration.model_validate(module.DECLARATION)
         if media_type is not None and media_type not in declaration.media_types:
@@ -235,8 +246,11 @@ async def discover_core_providers(
                 revision,
                 state if enabled else ProviderHealth.DISABLED,
                 values,
-                provider_priority(declaration.name, preferences),
+                provider_priority(provider_id, declaration.name, preferences["provider_order"]),
                 account_enabled=enabled,
+                artwork_priority=provider_priority(
+                    provider_id, declaration.name, preferences["image_provider_order"]
+                ),
             )
         )
     return providers

@@ -87,6 +87,8 @@ onMounted(async () => {
         <p>
           Requests access to <strong>{{ instanceOrigin }}</strong> as
           <strong>{{ currentUser?.username }}</strong
+          ><template v-if="currentUser?.display_name">
+            (shown as {{ currentUser.display_name }})</template
           >.
         </p>
       </div>

@@ -1,20 +1,10 @@
-// strictly separated, a data provider never contributes art and an image
-// provider never contributes data (see backend search.py)
-export type DataProvider =
-  | "Steam"
-  | "IGDB"
-  | "RetroAchievements"
-  | "GiantBomb"
-  | "GOG"
-  | "HowLongToBeat";
-export type ImageProvider = "SteamGridDB" | "ScreenScraper";
-export type ScanProvider = DataProvider | ImageProvider;
-
 export interface ScanSettings {
   id: string;
   user_id: string;
-  provider_order: DataProvider[];
-  image_provider_order: ImageProvider[];
+  // Metadata provider IDs ("core.igdb", "<plugin>.<provider>") shared by core and
+  // plugin providers; orders saved before plugin providers may hold display names.
+  provider_order: string[];
+  image_provider_order: string[];
   save_developer: boolean;
   save_publisher: boolean;
   save_series: boolean;
@@ -28,8 +18,8 @@ export interface ScanSettings {
   save_banner: boolean;
   save_logo: boolean;
   save_icon: boolean;
-  // {provider name: epoch seconds}, last time that provider actually
-  // returned a result during a search; read-only, not part of ScanSettingsUpdate
+  // {provider ID: epoch seconds} (older rows may use display names), last time
+  // that provider supplied a chosen result; read-only, not in ScanSettingsUpdate
   provider_last_used: Record<string, number>;
   created_at: number;
   updated_at: number;

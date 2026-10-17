@@ -176,7 +176,7 @@ Until then, PRs remain available for review with current validation and screensh
   independent tab counts; screenshots are in the media library guide. The
   temporary approval-service limit is resolved. All seven full hosted workflows
   passed before the authorized squash merge into main.
-- **J / 15, 17, 28–29:** active issue #142 in [PR #155](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/155).
+- **J / 15, 17, 28–29:** issue #142, merged as [PR #155](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/155).
   Shared checked add/edit comparison, current protection/manual-edit handling,
   identity-bound verified artwork and staged TV seasons are committed/pushed.
   Game Repull no longer persists before Save. The actual Add media flow also
@@ -185,6 +185,21 @@ Until then, PRs remain available for review with current validation and screensh
   passed. Live Steam/TVmaze checks and Modern/Classic desktop screenshots passed;
   fresh phone visual verification remains unavailable because the integrated
   browser ignored its viewport override. Full hosted checks/merge remain pending.
+- **#140 compact tag filters:** the Games filter panel replaces per-tag include/exclude
+  chip walls with one searchable, keyboard-operable picker (counts, include/exclude
+  modes, merged-spelling hints) plus deterministic tag normalization in
+  `utils/genres.ts`, documented in the games guide. Classic and Modern share it.
+- **K game editor / 6–7, 14, 18–19:** active issue #143, in review. One shared
+  `GameFormModal` on the new `EditorShell` frame serves Modern and Classic: hero,
+  eight direct tabs, a bounded body and pinned actions, with no add wizard.
+  Favorite, manual collections, manual playtime and the resume note travel in
+  the game's own create/update request. Artwork is built on first use and kept;
+  an explicit local file wins until another explicit choice, same-file
+  reselection works and object URLs are released. Artwork failures keep the
+  saved game and retry on it without another create. Playtime beyond the stored
+  INTEGER range is now a validation error rather than a database failure.
+- **Remaining K (#144, #149) and L–O:** approved; not implemented yet. The
+  package details below describe intended work, not completed behavior.
 - **M / 45–46:** issue [#146](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/146)
   implements per-kind Empty trash (explicit `confirm: true`, confirmed deletion-time
   bound, 200-title batches, per-title savepoints and deleted/failed/remaining counts)
@@ -201,7 +216,7 @@ Until then, PRs remain available for review with current validation and screensh
 The owner requested one issue at a time, most complex first, on 15 October 2026.
 [Tracker #141](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/141)
 contains the ordered queue, dependencies and existing related follow-ups #125,
-#132 and #138–140. #137 is merged; finish #142 in #155, then start only #143.
+#132 and #138–140. #142 is merged in #155; #143 is the active issue.
 
 All 29 untouched approved matrix rows are assigned exactly once:
 

@@ -242,7 +242,7 @@
 .platform-genre-group {
   grid-column: 1 / -1;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   flex-wrap: wrap;
 }
@@ -1395,6 +1395,13 @@
   }
   .library.locked .status-tabs {
     margin-top: 8px;
+  }
+  /* Two filter columns keep the panel near one phone screen; tags and
+     exclusions still span the full width. */
+  .advanced-panel {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px 10px;
+    padding: 12px;
   }
   .library.compact-controls :is(.head-actions, .advanced-panel),
   .library.compact-controls .toolbar > :not(.search-wrap):not(.density-toggle),
