@@ -97,7 +97,7 @@ def downgrade() -> None:
         )
     ):
         raise RuntimeError(
-            "Refusing to merge per-revision deliveries; retain the schema or remove the "
+            "Refusing to drop superseded per-revision deliveries; retain the schema or remove the "
             "superseded revisions' deliveries explicitly before downgrading."
         )
     h.drop_index_if_exists(
