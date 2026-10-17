@@ -400,8 +400,11 @@ async def create_game(
     reconciles rather than erroring (#184). A manual create (no GUID) still
     gets 409 for a folder name that's taken."""
     sent = payload.model_dump(exclude_unset=True)
+    # Read once: the rollback in the race handler below expires `current_user`, and an expired
+    # attribute cannot be lazily loaded in async code.
+    user_id = current_user.id
     if payload.playnite_guid is not None:
-        existing = await _find_playnite_game(payload, current_user.id, db)
+        existing = await _find_playnite_game(payload, user_id, db)
         if existing is not None:
             await record_playnite_fields(
                 db, current_user.id, existing.id, payload.playnite_guid, sent
@@ -452,11 +455,9 @@ async def create_game(
         # another sync created the same Playnite game between the check
         # above and this insert: hand back the row that won the race
         if payload.playnite_guid is not None:
-            existing = await _find_playnite_game(payload, current_user.id, db)
+            existing = await _find_playnite_game(payload, user_id, db)
             if existing is not None:
-                await record_playnite_fields(
-                    db, current_user.id, existing.id, payload.playnite_guid, sent
-                )
+                await record_playnite_fields(db, user_id, existing.id, payload.playnite_guid, sent)
                 await db.commit()
                 response.status_code = status.HTTP_200_OK
                 return existing
