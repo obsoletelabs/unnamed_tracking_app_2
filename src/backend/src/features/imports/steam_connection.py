@@ -27,9 +27,11 @@ _RENEW_BEFORE_SECONDS = 60
 class SteamConnectionError(steam.SteamLibraryError):
     """A safe local validation/conflict message, rather than a provider failure."""
 
-    def __init__(self, message: str, status_code: int = 400):
+    def __init__(self, message: str, status_code: int = 400, code: str | None = None):
         super().__init__(message)
         self.status_code = status_code
+        # Machine-readable reason (see steam_openid.ERROR_CODES); never shown to people as-is.
+        self.code = code
 
 
 async def locked_user(db: AsyncSession, user_id: UUID) -> User:

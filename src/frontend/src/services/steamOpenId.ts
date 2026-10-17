@@ -28,6 +28,23 @@ export async function beginSteamOpenId(): Promise<string> {
   return url;
 }
 
+// The callback redirects with a short code, never text. Only these codes are
+// understood and each maps to fixed wording; anything else (for example a
+// crafted link) gets the generic message, so a URL cannot put its own words on
+// the page.
+const GENERIC_ERROR = "Steam sign-in could not be verified. Try again.";
+const ERROR_MESSAGES: Record<string, string> = {
+  expired: "This Steam sign-in expired or was already used.",
+  invalid: "Steam returned an invalid sign-in response.",
+  cancelled: "Steam sign-in was cancelled.",
+  too_old: "This Steam sign-in response is too old.",
+  unreachable: "Could not reach Steam. Try again shortly.",
+  unverified: "Steam could not verify this sign-in.",
+  different_account:
+    "A different Steam account is signed in. Disconnect it before linking another.",
+  failed: GENERIC_ERROR,
+};
+
 export function steamOpenIdOutcome(query: {
   [key: string]: unknown;
 }): { ok: boolean; message: string } | null {
@@ -40,12 +57,7 @@ export function steamOpenIdOutcome(query: {
         "Steam account verified. Add a Web API key or sign in to Steam to import your library.",
     };
   if (status !== "failed") return null;
-  const reason = first(query.steam_openid_error);
-  return {
-    ok: false,
-    message:
-      typeof reason === "string" && reason
-        ? reason.slice(0, 300)
-        : "Steam sign-in could not be verified. Try again.",
-  };
+  const code = first(query.steam_openid_error);
+  const known = typeof code === "string" && Object.hasOwn(ERROR_MESSAGES, code);
+  return { ok: false, message: known ? ERROR_MESSAGES[code] : GENERIC_ERROR };
 }

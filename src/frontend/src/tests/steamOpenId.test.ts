@@ -56,10 +56,34 @@ it("reads the callback outcome from the query", () => {
   expect(steamOpenIdOutcome({})).toBeNull();
   expect(steamOpenIdOutcome({ steam_openid: "linked" })?.ok).toBe(true);
   expect(
-    steamOpenIdOutcome({ steam_openid: "failed", steam_openid_error: "Nope" }),
-  ).toEqual({ ok: false, message: "Nope" });
+    steamOpenIdOutcome({
+      steam_openid: "failed",
+      steam_openid_error: "cancelled",
+    }),
+  ).toEqual({ ok: false, message: "Steam sign-in was cancelled." });
   expect(steamOpenIdOutcome({ steam_openid: "failed" })?.ok).toBe(false);
   expect(steamOpenIdOutcome({ steam_openid: "other" })).toBeNull();
+});
+
+it("never renders arbitrary text from the error parameter", () => {
+  const generic = "Steam sign-in could not be verified. Try again.";
+  for (const crafted of [
+    "Your account is locked. Call 555-0100",
+    "<img src=x onerror=alert(1)>",
+    "__proto__",
+    "constructor",
+    "toString",
+    "",
+    ["cancelled-ish"],
+    undefined,
+  ]) {
+    expect(
+      steamOpenIdOutcome({
+        steam_openid: "failed",
+        steam_openid_error: crafted,
+      }),
+    ).toEqual({ ok: false, message: generic });
+  }
 });
 
 it("redirects the browser to Steam and states the limits", async () => {

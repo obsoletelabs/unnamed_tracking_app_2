@@ -77,6 +77,27 @@ async def begin(db: AsyncSession, user_id: UUID, origin: str) -> str:
     return authorization_url(origin, state)
 
 
+# The only reasons the callback ever reports back to the browser. The Settings page maps each to
+# fixed wording, so the redirect URL can never carry text that gets displayed.
+ERROR_CODES = frozenset(
+    {
+        "expired",
+        "invalid",
+        "cancelled",
+        "too_old",
+        "unreachable",
+        "unverified",
+        "different_account",
+        "failed",
+    }
+)
+
+
+def error_code(exc: SteamConnectionError) -> str:
+    """The redirect code for a failure; anything unclassified is the generic ``failed``."""
+    return exc.code if exc.code in ERROR_CODES else "failed"
+
+
 def _take_state(user: User, state: str) -> str:
     """Consume the one-time state, returning the origin it was issued for."""
     stored, user.steam_openid_state = user.steam_openid_state, None
@@ -86,15 +107,17 @@ def _take_state(user: User, state: str) -> str:
     except ValueError:
         valid = False
     if not valid:
-        raise SteamConnectionError("This Steam sign-in expired or was already used.", 409)
+        raise SteamConnectionError(
+            "This Steam sign-in expired or was already used.", 409, "expired"
+        )
     return origin
 
 
 def _verify_assertion(params: dict[str, str], return_to: str) -> str:
     """Local checks on the positive assertion; returns the claimed SteamID64."""
-    invalid = SteamConnectionError("Steam returned an invalid sign-in response.", 400)
+    invalid = SteamConnectionError("Steam returned an invalid sign-in response.", 400, "invalid")
     if params.get("openid.mode") == "cancel":
-        raise SteamConnectionError("Steam sign-in was cancelled.", 400)
+        raise SteamConnectionError("Steam sign-in was cancelled.", 400, "cancelled")
     if len(params) > _MAX_PARAMS or any(len(value) > _MAX_VALUE for value in params.values()):
         raise invalid
     expected = {
@@ -118,7 +141,7 @@ def _verify_assertion(params: dict[str, str], return_to: str) -> str:
     except ValueError:
         raise invalid from None
     if abs(time.time() - issued.timestamp()) > _NONCE_SKEW_SECONDS:
-        raise SteamConnectionError("This Steam sign-in response is too old.", 400)
+        raise SteamConnectionError("This Steam sign-in response is too old.", 400, "too_old")
     return claimed.group(1)
 
 
@@ -133,7 +156,9 @@ def _check_authentication(params: dict[str, str]) -> bool:
         content = response.raw.read(4096, decode_content=True)
         response.close()
     except requests.RequestException:
-        raise SteamConnectionError("Could not reach Steam. Try again shortly.", 502) from None
+        raise SteamConnectionError(
+            "Could not reach Steam. Try again shortly.", 502, "unreachable"
+        ) from None
     if response.status_code != 200:
         return False
     fields = dict(
@@ -155,11 +180,13 @@ async def complete(db: AsyncSession, user_id: UUID, query: dict[str, str]) -> st
     params = {key: value for key, value in query.items() if key.startswith("openid.")}
     steam_id = _verify_assertion(params, _return_to(origin, query["state"]))
     if not await asyncio.to_thread(_check_authentication, params):
-        raise SteamConnectionError("Steam could not verify this sign-in.", 400)
+        raise SteamConnectionError("Steam could not verify this sign-in.", 400, "unverified")
     user = await locked_user(db, user_id)
     if user.steam_refresh_token and user.steam_id != steam_id:
         raise SteamConnectionError(
-            "A different Steam account is signed in. Disconnect it before linking another.", 409
+            "A different Steam account is signed in. Disconnect it before linking another.",
+            409,
+            "different_account",
         )
     await check_library_owner(db, user, steam_id)
     if user.steam_id != steam_id:

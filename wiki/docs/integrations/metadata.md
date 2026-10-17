@@ -330,6 +330,12 @@ The app then:
 - asks Steam to confirm the response with `check_authentication`, and links
   the SteamID only if Steam answers `is_valid:true`.
 
+When the return is refused, the callback redirects to Settings with a short
+reason code (`expired`, `invalid`, `cancelled`, `too_old`, `unreachable`,
+`unverified`, `different_account` or the generic `failed`), never message text.
+The page maps each code to fixed wording and shows a generic message for any
+other value, so a crafted link cannot display text of its own choosing.
+
 A verified SteamID is the same public-data link as a typed profile ID, but it
 cannot belong to someone else. It does **not** give the app a Steam session, so
 it cannot read a private library or private achievement progress. For those, use

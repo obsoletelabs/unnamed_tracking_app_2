@@ -314,3 +314,35 @@ async def test_http_begin_and_callback_round_trip(client, actor, steam):
     assert replay.status_code == 303 and "steam_openid=failed" in replay.headers["location"]
     status = (await client.get("/api/settings/steam")).json()
     assert status["verified_steam_id"] == OWNER and status["connected"] is False
+
+
+def _error_query(location: str) -> dict[str, list[str]]:
+    return parse_qs(urlsplit(location).query)
+
+
+async def test_callback_redirects_with_a_known_code_never_message_text(client, actor, steam):
+    await start(actor)
+    replay = await client.get(steam_openid.CALLBACK_PATH, params={"state": "forged"})
+    query = _error_query(replay.headers["location"])
+    assert query["steam_openid"] == ["failed"]
+    assert query["steam_openid_error"] == ["expired"]
+    assert "expired" not in replay.headers["location"].replace("steam_openid_error=expired", "")
+
+
+@pytest.mark.parametrize(
+    ("raised", "expected"),
+    [
+        (steam_connection.SteamConnectionError("Visit evil.example now", 400), "failed"),
+        (steam_connection.SteamConnectionError("Visit evil.example now", 400, "made_up"), "failed"),
+        (steam_connection.SteamConnectionError("x", 400, "cancelled"), "cancelled"),
+    ],
+)
+async def test_only_known_error_codes_are_emitted(client, actor, monkeypatch, raised, expected):
+    async def fail(*_args, **_kwargs):
+        raise raised
+
+    monkeypatch.setattr(steam_openid, "complete", fail)
+    response = await client.get(steam_openid.CALLBACK_PATH)
+    assert _error_query(response.headers["location"])["steam_openid_error"] == [expected]
+    assert "evil" not in response.headers["location"]
+    assert expected in steam_openid.ERROR_CODES

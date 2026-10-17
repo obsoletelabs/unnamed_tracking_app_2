@@ -62,5 +62,5 @@ async def callback(
     try:
         await steam_openid.complete(db, current_user.id, dict(request.query_params))
     except steam_connection.SteamConnectionError as exc:
-        return _finish(steam_openid="failed", steam_openid_error=str(exc)[:300])
+        return _finish(steam_openid="failed", steam_openid_error=steam_openid.error_code(exc))
     return _finish(steam_openid="linked")
