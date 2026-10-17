@@ -88,14 +88,19 @@ def reserved_names(data_root: Path, user_id: UUID | str) -> set[str]:
     return names
 
 
-def ensure_storage_ready(data_root: Path, game: Game) -> None:
-    """Call while holding the game row lock, before using any stored paths."""
-    owned_folder(data_root, game.user_id, game.folder_location)
+def ensure_no_pending_move(data_root: Path, game: Game) -> None:
+    """A recorded move must be reconciled before this game's storage is used or purged."""
     marker = _journal_dir(data_root, game.user_id) / f"{game.id}.json"
     if marker.exists() or marker.is_symlink():
         raise FolderStorageError(
             "This game's folder move needs recovery. Retry saving its folder name first."
         )
+
+
+def ensure_storage_ready(data_root: Path, game: Game) -> None:
+    """Call while holding the game row lock, before using any stored paths."""
+    owned_folder(data_root, game.user_id, game.folder_location)
+    ensure_no_pending_move(data_root, game)
     ensure_name_available(data_root, game.user_id, game.folder_location)
 
 

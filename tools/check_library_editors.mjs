@@ -35,7 +35,7 @@ export async function checkLibraryEditors({ admin, origin, evidenceRoot, report,
           await page.keyboard.press('Escape'); await edit.waitFor({ state: 'hidden' });
           await json(await admin.request.patch(`${origin}/api/${kind}/update/${item.id}`, { data: { note: null } }));
         }
-        await page.goto(origin + '/games'); await page.getByRole('heading', { name: 'Games', exact: true }).waitFor(); await page.keyboard.press('n'); const game = await inspect('Add Game', 'game/create', true);
+        await page.goto(origin + '/games'); await page.getByRole('heading', { name: 'Games', exact: true }).waitFor(); await page.keyboard.press('n'); const game = await inspect('Add game', 'game/create', true);
         if (width === 1440 && theme === 'light') await page.screenshot({ path: path.join(evidenceRoot, 'stage-game-editor-desktop.png') });
         await page.keyboard.press('Escape'); await game.waitFor({ state: 'hidden' });
       }

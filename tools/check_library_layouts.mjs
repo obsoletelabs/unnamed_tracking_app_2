@@ -92,7 +92,7 @@ export async function checkLibraryLayouts({ browser, admin, origin, evidenceRoot
                   await page.locator("#main-content").focus(); await page.keyboard.press("/");
                   assert.equal(await page.locator('[data-shortcut="search"]').evaluate(element => element === document.activeElement), true);
                   await page.keyboard.press("Escape"); await page.keyboard.press("n");
-                  const create = page.getByRole("dialog", { name: "Add Game", exact: true }); await create.waitFor();
+                  const create = page.getByRole("dialog", { name: "Add game", exact: true }); await create.waitFor();
                   await page.keyboard.press("Escape"); await create.waitFor({ state: "hidden" });
                   await page.getByRole("button", { name: "Library controls", exact: true }).click();
                   await page.getByRole("button", { name: "Random", exact: true }).waitFor();

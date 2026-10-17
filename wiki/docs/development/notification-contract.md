@@ -290,10 +290,14 @@ phase, so existing unread "update available" notices turn into the story head.
 
 Plugin updates are the first story: type `system.plugin.update`, story key
 `update:<plugin>:<version>`, the reference lifecycle above (`available`, `installed`,
-`failed`, `resolved`). Checks emit `available`, automatic updates emit `failed`, and a
-successful update through any manager route emits `installed`. A transition that has no
-story to continue (an unannounced version) or a closed story is dropped silently and never
-affects the update itself. `resolved` is declared but has no producer yet.
+`failed`, `resolved`), produced by `catalogues.notify_plugin_update`. Update-check cycles
+and automatic update runs do not emit one story per plugin: they send one consolidated
+batch notification per cycle (see [Plugin update notification batching](plugin-update-notification-batching.md)).
+A successful update through a manager route (`record_update_result`) emits `installed` on
+the version's story, which continues an adopted pre-batch `plugin-update:<id>:<version>`
+notice or a story started through `notify_plugin_update`. A transition that has no story to
+continue (an unannounced version) or a closed story is dropped silently and never affects
+the update itself. `resolved` is declared but has no producer yet.
 
 ### Item operations (read and dismiss)
 

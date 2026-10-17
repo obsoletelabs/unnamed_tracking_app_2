@@ -66,6 +66,9 @@ export interface Preferences {
   notify_season_started: boolean;
   notify_sequel_announced: boolean;
   notify_movie_released: boolean;
+  // completed anime franchise checks; each is opt-in and starts off
+  notify_franchise_season: boolean;
+  notify_franchise_extra: boolean;
   notify_game_released: boolean;
   notify_game_sale: boolean;
   notify_game_price_hit: boolean;
@@ -90,11 +93,8 @@ export interface Preferences {
   lists_default_sort: "custom" | "name" | "count" | "recent";
   title_language: "english" | "romaji" | "native";
   stats_include_plan: boolean;
-  anilist_import_enabled: boolean;
   anilist_import_username: string;
-  anilist_import_interval_minutes: number;
   anilist_import_update_existing: boolean;
-  anilist_import_last_run_at: number | null;
   // genres from the tags Steam players vote on, not just Steam's broad ones
   steam_user_tags: boolean;
   // also add the Steam wishlist, as Wishlist games, when importing from Steam
@@ -131,6 +131,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   notify_season_started: true,
   notify_sequel_announced: true,
   notify_movie_released: true,
+  notify_franchise_season: false,
+  notify_franchise_extra: false,
   notify_game_released: true,
   notify_game_sale: true,
   notify_game_price_hit: true,
@@ -149,11 +151,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   lists_default_sort: "custom",
   title_language: "english",
   stats_include_plan: true,
-  anilist_import_enabled: false,
   anilist_import_username: "",
-  anilist_import_interval_minutes: 1440,
   anilist_import_update_existing: false,
-  anilist_import_last_run_at: null,
   steam_user_tags: true,
   steam_import_wishlist: false,
   metadata_automatic_search_enabled: true,

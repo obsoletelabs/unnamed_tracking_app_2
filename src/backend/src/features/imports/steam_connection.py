@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.crypto import decrypt_secret, encrypt_secret
 from src.database.models.game import Game
 from src.database.models.user import User
+from src.features.game_ingestion.legacy import STEAM, record_disconnect
 from src.features.metadata.games import steam, steam_login
 
 _ATTEMPT_SECONDS = 300
@@ -27,9 +28,11 @@ _RENEW_BEFORE_SECONDS = 60
 class SteamConnectionError(steam.SteamLibraryError):
     """A safe local validation/conflict message, rather than a provider failure."""
 
-    def __init__(self, message: str, status_code: int = 400):
+    def __init__(self, message: str, status_code: int = 400, code: str | None = None):
         super().__init__(message)
         self.status_code = status_code
+        # Machine-readable reason (see steam_openid.ERROR_CODES); never shown to people as-is.
+        self.code = code
 
 
 async def locked_user(db: AsyncSession, user_id: UUID) -> User:
@@ -99,6 +102,11 @@ def connection_status(user: User) -> dict:
         "display_name": user.steam_persona_name if has_session or legacy else None,
         "expires_at": user.steam_token_expires_at if has_session else None,
         "pending": public_pending,
+        "verified_steam_id": (
+            user.steam_verified_id
+            if user.steam_verified_id and user.steam_verified_id == user.steam_id
+            else None
+        ),
     }
 
 
@@ -176,10 +184,14 @@ async def disconnect(db: AsyncSession, user_id: UUID) -> dict:
         "steam_refresh_token",
         "steam_token_expires_at",
         "steam_login_state",
+        "steam_verified_id",
+        "steam_openid_state",
         "steam_persona_name",
         "steam_avatar_url",
     ):
         setattr(user, field, None)
+    # Records the disconnect only; observations and their history are kept.
+    await record_disconnect(db, user_id, STEAM)
     await db.commit()
     return connection_status(user)
 

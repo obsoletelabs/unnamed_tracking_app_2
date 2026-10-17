@@ -227,7 +227,7 @@ describe.each(kinds)("$name editor", (kind) => {
     ]);
     for (const name of ["Details", "Tracking", "Artwork", "Links"]) {
       await openTab(wrapper, name);
-      expect(wrapper.get("button.primary-button").text()).toBe("Save Changes");
+      expect(wrapper.get("button.primary-button").text()).toBe("Save changes");
     }
   });
 

@@ -60,7 +60,7 @@ export async function checkMovieProgressInput({ browser, member, origin, evidenc
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
       await page.screenshot({ path: path.join(evidenceRoot, "movie-progress-detail-" + width + ".png"), fullPage: false });
       await page.getByRole("button", { name: "✎ Edit", exact: true }).click();
-      const dialog = page.getByRole("dialog", { name: "Edit Movie", exact: true });
+      const dialog = page.getByRole("dialog", { name: "Edit movie", exact: true });
       const formPosition = dialog.getByLabel("Left off at", { exact: true });
       assert.equal(await formPosition.getAttribute("inputmode"), "text");
       await formPosition.fill("45m");
@@ -68,7 +68,7 @@ export async function checkMovieProgressInput({ browser, member, origin, evidenc
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
       await page.screenshot({ path: path.join(evidenceRoot, "movie-progress-edit-" + width + ".png"), fullPage: false });
       const formSave = saved();
-      await dialog.getByRole("button", { name: "Save Changes", exact: true }).click();
+      await dialog.getByRole("button", { name: "Save changes", exact: true }).click();
       assert.equal((await formSave).status(), 200); await dialog.waitFor({ state: "hidden" });
       const edited = await read();
       assert.equal(edited.progress_minutes, 45); assert.equal(edited.note, "Keep review note");

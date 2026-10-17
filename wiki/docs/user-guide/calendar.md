@@ -37,3 +37,7 @@ Manual all-day entries are exported as all-day `VALUE=DATE` events. Manual timed
 External `.ics` importing is **not implemented by this feature**. A separate design issue, **#243**, tracks the future importer architecture. The current calendar model is designed around application-owned events and per-user manual entries, while an external importer would require a separate source/synchronization model.
 
 A safe server-side importer would need persistent source ownership, credentials, refresh scheduling, ETag/Last-Modified handling, UID/upsert rules, cancellation/deletion semantics, timezone conversion, malformed-feed behavior, request timeouts/size limits, and SSRF protection for user-supplied URLs. The application currently does not have a shared outbound-calendar-fetching security boundary for those requests, so remote ICS fetching is intentionally deferred rather than accepting arbitrary URLs.
+
+## Unavailable calendar settings
+
+While **Hide all games layers** is on, **Game releases** and **Games history** are disabled with a note saying why and how to turn them back on. Their saved choices are not changed and apply again when you turn off **Hide all games layers**. The note is also announced to screen readers.

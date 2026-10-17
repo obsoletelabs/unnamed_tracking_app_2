@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchJobs, updateJob, runJobNow } from "../services/settings";
+import {
+  fetchJobs,
+  updateJob,
+  runJobNow,
+  controlJob,
+} from "../services/settings";
 
 afterEach(() => vi.unstubAllGlobals());
 const job = {
@@ -63,6 +68,49 @@ describe("personal background task transport", () => {
     );
     expect(fetcher.mock.calls[0][0]).toBe(
       `/api/settings/user-jobs/${job.id}/run`,
+    );
+  });
+
+  it("maps run health and sends pause, resume and cancel to the owner's endpoint", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ...job,
+          enabled: true,
+          paused: true,
+          status: "paused",
+          last_success_at: 100,
+          next_run_at: null,
+          failure_count: 2,
+        }),
+      ),
+    );
+    vi.stubGlobal("fetch", fetcher);
+    const saved = await controlJob(job.id, "pause", true);
+    expect(fetcher).toHaveBeenCalledWith(
+      `/api/settings/user-jobs/${job.id}/pause`,
+      { method: "POST", credentials: "include" },
+    );
+    expect(saved).toMatchObject({
+      paused: true,
+      status: "paused",
+      lastSuccessAt: 100,
+      nextRunAt: null,
+      failureCount: 2,
+    });
+  });
+
+  it("reports a refused control with the host's reason", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ detail: "No such job." }), {
+          status: 404,
+        }),
+      ),
+    );
+    await expect(controlJob("x", "cancel", true)).rejects.toThrow(
+      "No such job.",
     );
   });
 });
