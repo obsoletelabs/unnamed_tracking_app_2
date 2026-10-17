@@ -39,7 +39,7 @@ def upgrade() -> None:
             "user_id", "event_type", "scope_key", "story_key", name="uq_notification_story_identity"
         ),
     )
-    op.create_table(
+    h.create_table_if_missing(
         "notification_story_revisions",
         sa.Column("id", sa.UUID(), nullable=False),
         sa.Column("story_id", sa.UUID(), nullable=False),
@@ -60,12 +60,12 @@ def upgrade() -> None:
     h.add_column_if_missing(
         "notification_receipts", sa.Column("story_key", sa.String(length=128), nullable=True)
     )
-    op.add_column(
+    h.add_column_if_missing(
         "notification_receipts", sa.Column("story_phase", sa.String(length=64), nullable=True)
     )
-    op.add_column("notifications", sa.Column("story_id", sa.UUID(), nullable=True))
-    op.add_column("notifications", sa.Column("story_revision", sa.Integer(), nullable=True))
-    op.add_column("notifications", sa.Column("previous_notification_id", sa.UUID(), nullable=True))
+    h.add_column_if_missing("notifications", sa.Column("story_id", sa.UUID(), nullable=True))
+    h.add_column_if_missing("notifications", sa.Column("story_revision", sa.Integer(), nullable=True))
+    h.add_column_if_missing("notifications", sa.Column("previous_notification_id", sa.UUID(), nullable=True))
     if not h.has_constraint("notifications", "fk_notifications_story"):
         op.create_foreign_key(
             "fk_notifications_story",
