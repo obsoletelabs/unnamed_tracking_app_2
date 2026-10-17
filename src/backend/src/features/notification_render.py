@@ -127,6 +127,39 @@ def _embed_facts(content: NotificationContent) -> tuple[MessageFact, ...]:
     )
 
 
+def _action_buttons(
+    content: NotificationContent, limit: int, base: str | None
+) -> tuple[MessageAction, ...]:
+    """Link and host-route actions that fit the provider's button budget."""
+    buttons: list[MessageAction] = []
+    for action in content.actions:
+        target = action.target
+        url = (
+            target.url
+            if target.kind == "link"
+            else f"{base.rstrip('/')}{target.path}"
+            if target.kind == "host_route" and base
+            else None
+        )
+        if url and len(buttons) < limit:
+            buttons.append(MessageAction(action.label, url))
+    return tuple(buttons)
+
+
+def _image_urls(content: NotificationContent, caps: Any) -> tuple[str, ...]:
+    """External image URLs the provider may embed, when the deployment allows them."""
+    images: list[str] = []
+    if (
+        caps.images is not None
+        and caps.images.external_urls
+        and settings.NOTIFICATION_IMAGE_MODE == "external"
+    ):
+        for image in content.images:
+            if image.source.kind == "external" and len(images) < caps.images.max_images:
+                images.append(image.source.url)
+    return tuple(images)
+
+
 def _presentation(
     content: NotificationContent,
     profile: ResolvedProfile,
@@ -146,34 +179,15 @@ def _presentation(
         if len(content.facts) > MAX_EMBED_FACTS:
             fallbacks.append("facts_truncated")
     fallbacks += _body_fields(content, profile, base, contribution, fields)
-    buttons: list[MessageAction] = []
-    for action in content.actions:
-        target = action.target
-        url = (
-            target.url
-            if target.kind == "link"
-            else f"{base.rstrip('/')}{target.path}"
-            if target.kind == "host_route" and base
-            else None
-        )
-        if url and len(buttons) < caps.action_buttons:
-            buttons.append(MessageAction(action.label, url))
+    buttons = _action_buttons(content, caps.action_buttons, base)
     if content.actions and len(buttons) < len(content.actions):
         # Plugin actions never leave the signed-in app; the story page offers every action.
         fallbacks.append("actions_via_story_link" if link else "actions_dropped")
-    fields["actions"] = tuple(buttons)
-    images: list[str] = []
-    if (
-        caps.images is not None
-        and caps.images.external_urls
-        and settings.NOTIFICATION_IMAGE_MODE == "external"
-    ):
-        for image in content.images:
-            if image.source.kind == "external" and len(images) < caps.images.max_images:
-                images.append(image.source.url)
+    fields["actions"] = buttons
+    images = _image_urls(content, caps)
     if content.images and len(images) < len(content.images):
         fallbacks.append("images_dropped")
-    fields["images"] = tuple(images)
+    fields["images"] = images
     return fields, fallbacks
 
 
