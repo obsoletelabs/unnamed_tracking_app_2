@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.game import Game, GameStatus
 from src.database.models.game_identity import SourceKind
+from src.features.game_identity.review import run_matching
 from src.features.game_ingestion import legacy
 from src.features.game_ingestion.contract import SourceConnectionRef
 from src.features.game_ingestion.service import (
@@ -298,6 +299,9 @@ async def record_inventory(
         result.applied,
         result.marked_unavailable,
     )
+    if result.applied:
+        # A confirmed-complete inventory is the only moment automatic matching may merge (#99).
+        await run_matching(db, user_id)
     return result
 
 
