@@ -169,6 +169,67 @@ must use lowercase letters, digits, dots, dashes or underscores for the name
 or AniList ID also updates the matching stored ID that episode sync uses.
 Modern and Classic share the same dialog; Classic only changes fields and secondary
 actions to its filled/outlined style.
+## Trash, Empty trash and automatic deletion
+
+Deleting a movie, TV show or anime entry moves it to the trash. Open
+**Settings > Library > Trash** to see the three trashes. **Restore** brings a
+title back with its seasons, episodes, progress and ratings. **Delete forever**
+removes one title permanently.
+
+### Empty trash
+
+Each kind with something in its trash has an **Empty trash** button. It asks
+first, naming the exact number of titles, and says that shows and anime lose
+their seasons and episodes too. Emptying covers the whole kind, including titles
+hidden by the search box; the confirmation says so when a search is active.
+**Emptying is permanent and cannot be undone.**
+
+- Only titles that were in your trash when you confirmed are deleted. A title
+  trashed afterwards, a title restored meanwhile (on another device, for
+  example), your active library and other accounts' titles are never touched.
+- Large trashes are emptied in batches of 200; the page repeats them for you.
+- The result stays above the list. When something could not be deleted, it
+  names those titles, and they stay in the trash unchanged. Each title is
+  deleted on its own, so one failure never leaves a show without some of its
+  seasons. If the connection fails part-way, the message says how many were
+  already deleted; the rest are still in the trash.
+
+### Delete trashed titles automatically
+
+Choose **Never**, **After 7 days**, **After 14 days**, **After 30 days** or
+**After 90 days**. **Never** is the default for every account, including
+accounts that existed before this setting: nothing is deleted automatically
+until you choose a period.
+
+- With a period chosen, a title is deleted permanently, with its seasons and
+  episodes, once it has been in the trash that many days. The time counts from
+  when it was moved to the trash, so titles already older than the period go at
+  the next clean-up. Each row shows when that will happen.
+- Turning automatic deletion on, or shortening it, asks for confirmation first
+  and says how many titles already qualify. Keeping titles longer or choosing
+  **Never** saves straight away.
+- The server's regular trash clean-up applies the choice. It runs when the
+  server starts and every six hours, so a title can stay a few hours past its
+  date. It deletes at most 200 titles of each kind per account, and 2,000 in
+  total, per clean-up; anything left goes at the next one.
+- If saving the choice fails, the page shows the choice that is actually saved.
+  Choosing **Never** takes effect at once: the clean-up re-reads your choice
+  just before deleting anything from your trash.
+
+This is separate from game trash. Deleted games and game files keep their
+fixed seven-day retention, described in [Games](games.md) and
+[Game Media and Files](game-media.md).
+
+| Modern: turning on automatic deletion | Modern: 30 days chosen |
+| --- | --- |
+| ![Confirmation before automatic deletion is turned on](../assets/media-trash-retention/modern-dark-retention-confirm.jpg) | ![Media trash with 30-day automatic deletion and per-title dates](../assets/media-trash-retention/modern-dark-retention-30.jpg) |
+
+| Classic: Empty trash confirmation | Classic: a title that could not be deleted |
+| --- | --- |
+| ![Confirmation before emptying the TV show trash](../assets/media-trash-retention/classic-light-empty-confirm.jpg) | ![Result naming the TV show that stayed in the trash](../assets/media-trash-retention/classic-light-partial-failure.jpg) |
+
+[Classic dark with 14 days](../assets/media-trash-retention/classic-dark-retention-14.jpg)
+and [Modern phone width](../assets/media-trash-retention/modern-dark-phone.jpg).
 
 ## Metadata provider extension (1.1.1)
 

@@ -6,6 +6,7 @@ import time
 from unittest.mock import Mock
 
 import pytest
+import requests
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
 from src.features.metadata.games import steam_login, steam_session
@@ -114,6 +115,37 @@ def test_guard_codes_use_steams_confirmation_types(allowed, code_type, accepted)
         with pytest.raises(steam_session.SteamLibraryError):
             steam_login.submit_guard(client, state, "ABCDE", code_type)
         client.post.assert_not_called()
+
+
+def test_pasted_guard_codes_are_normalised():
+    client = Mock()
+    client.post.return_value = reply({})
+    steam_login.submit_guard(client, pending(), " ab c12 ", steam_login.GUARD_DEVICE_CODE)
+    values = json.loads(client.post.call_args.kwargs["data"]["input_json"])
+    assert values["code"] == "ABC12"
+
+
+@pytest.mark.parametrize("result", ["65", "88"])
+def test_wrong_guard_code_is_reported_as_such(result):
+    client = Mock()
+    client.post.return_value = reply({}, result=result)
+    with pytest.raises(steam_session.SteamLibraryError, match="code is incorrect"):
+        steam_login.submit_guard(client, pending(), "ABCDE", steam_login.GUARD_DEVICE_CODE)
+
+
+def test_unreachable_or_rate_limited_steam_is_retryable():
+    client = Mock()
+    client.post.side_effect = requests.ConnectionError()
+    with pytest.raises(steam_login.SteamSignInUnavailable):
+        steam_login.poll(client, pending())
+    client.post.side_effect = None
+    client.post.return_value = reply({}, result="84")
+    with pytest.raises(steam_login.SteamSignInUnavailable):
+        steam_login.poll(client, pending())
+    client.post.return_value = reply({}, result="5")
+    with pytest.raises(steam_session.SteamLibraryError) as error:
+        steam_login.poll(client, pending())
+    assert not isinstance(error.value, steam_login.SteamSignInUnavailable)
 
 
 def test_provider_sign_in_errors_do_not_echo_response_secrets():

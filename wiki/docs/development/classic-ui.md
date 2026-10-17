@@ -144,6 +144,9 @@ To port an existing UI contribution into the shared editor:
 5. Use the tokens in `editorForm.css`; add Classic cues only under `.editor-shell`.
 6. Plugin-provided panels and actions attach to the media's page, not this dialog;
    keep their slots in the detail views untouched.
+The movie, TV and anime editors (#144) should adopt `EditorShell` and
+`editorForm.css` the same way: keep each editor's own fields, services,
+protection and seasons/progress logic, and add their tabs as direct panels.
 
 Classic's only editor selectors live in `classic.css` under `.editor-shell`:
 filled fields on the secondary surface, outlined secondary/destructive footer

@@ -19,7 +19,9 @@ async function read(response: Response): Promise<Branding> {
 }
 
 export async function fetchBranding(): Promise<Branding> {
-  return read(await fetch("/api/branding", { credentials: "include" }));
+  return read(
+    await fetch("/api/branding", { credentials: "include", cache: "no-store" }),
+  );
 }
 
 export async function saveBrandingName(appName: string): Promise<Branding> {

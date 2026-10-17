@@ -185,6 +185,10 @@ Until then, PRs remain available for review with current validation and screensh
   passed. Live Steam/TVmaze checks and Modern/Classic desktop screenshots passed;
   fresh phone visual verification remains unavailable because the integrated
   browser ignored its viewport override. Full hosted checks/merge remain pending.
+- **#140 compact tag filters:** the Games filter panel replaces per-tag include/exclude
+  chip walls with one searchable, keyboard-operable picker (counts, include/exclude
+  modes, merged-spelling hints) plus deterministic tag normalization in
+  `utils/genres.ts`, documented in the games guide. Classic and Modern share it.
 - **K game editor / 6–7, 14, 18–19:** active issue #143, in review. One shared
   `GameFormModal` on the new `EditorShell` frame serves Modern and Classic: hero,
   eight direct tabs, a bounded body and pinned actions, with no add wizard.
@@ -203,6 +207,18 @@ Until then, PRs remain available for review with current validation and screensh
   protection and immutable identity are untouched.
 - **Remaining K (#149) and L–O:** approved; not implemented yet. The
   package details below describe intended work, not completed behavior.
+- **Remaining K (#144, #149) and L–O:** approved; not implemented yet. The
+  package details below describe intended work, not completed behavior.
+- **M / 45–46:** issue [#146](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/146)
+  implements per-kind Empty trash (explicit `confirm: true`, confirmed deletion-time
+  bound, 200-title batches, per-title savepoints and deleted/failed/remaining counts)
+  and opt-in `media_trash_retention_days` (Never default; 7/14/30/90) in the existing
+  trash sweep with a bounded budget and an in-transaction recheck. Purging stays in
+  `features/trash/media_titles.py`, separate from the #151 game-file sweep paths.
+  No migration. Modern/Classic screenshots are in the media library guide.
+  Review, hosted checks and merge remain pending; row 53 stays with #152.
+- **K–O:** approved; not implemented yet. The package details below describe
+  intended work, not completed behavior.
 
 ### Issue-by-issue execution order
 

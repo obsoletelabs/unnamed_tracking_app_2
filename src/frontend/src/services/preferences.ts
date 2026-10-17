@@ -45,6 +45,9 @@ export interface Preferences {
   notify_media_types: ("anime" | "tv" | "movie")[];
   notification_retention_days: 0 | 7 | 14 | 30 | 90 | 180 | 365;
   notification_retention_inherit: boolean;
+  // days a trashed movie, show or anime stays before it is deleted for good;
+  // 0 (the default) never deletes it automatically
+  media_trash_retention_days: 0 | 7 | 14 | 30 | 90;
   library_default_layout: "list" | "shelf" | "board";
   lists_default_sort: "custom" | "name" | "count" | "recent";
   title_language: "english" | "romaji" | "native";
@@ -102,6 +105,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   notify_media_types: ["anime", "tv", "movie"],
   notification_retention_days: 30,
   notification_retention_inherit: true,
+  media_trash_retention_days: 0,
   library_default_layout: "list",
   lists_default_sort: "custom",
   title_language: "english",

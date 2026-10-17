@@ -55,6 +55,13 @@ export function friendlyError(status: number, body: string): string {
     return "That could not be found. It may have been deleted.";
   if (status === 422)
     return serverDetail(body) ?? "That is not a valid address or value.";
+  // The app answers 413 with its own reason; a reverse proxy in front of it
+  // answers with an HTML page instead, once a body passes its size limit.
+  if (status === 413)
+    return (
+      serverDetail(body) ??
+      "The upload is larger than a proxy in front of the app accepts. Ask the administrator to raise that proxy's request size limit."
+    );
   if (status >= 500) {
     return "The server had a problem. Wait a moment and try again.";
   }
