@@ -219,14 +219,14 @@ async def record_disconnect(
 
 _IDENTITY_FIELDS = ("title", "platform", "release_date")
 _GAME_FACT_FIELDS = (
-    "description",
-    "developer",
-    "publisher",
-    "series",
-    "tags",
-    "features",
     "favorite",
     "playtime_seconds",
+    "description",
+    "tags",
+    "features",
+    "series",
+    "developer",
+    "publisher",
 )
 
 

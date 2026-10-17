@@ -5,6 +5,7 @@ import LibraryManagementSection from "./LibraryManagementSection.vue";
 import MediaPreferencesSection from "./MediaPreferencesSection.vue";
 import MediaTrashSection from "./MediaTrashSection.vue";
 import DuplicateGamesSection from "./DuplicateGamesSection.vue";
+<<<<<<< HEAD
 import GameNameReviewSection from "./GameNameReviewSection.vue";
 
 const props = defineProps<{ initialTab?: string }>();
@@ -16,6 +17,12 @@ const TABS = [
   { id: "names", label: "Names" },
   { id: "trash", label: "Trash" },
 ];
+=======
+import { LIBRARY_SETTINGS_TABS as TABS } from "../../state/settingsRegistry";
+
+const props = defineProps<{ initialTab?: string }>();
+
+>>>>>>> origin/claude/issue-96-per-metric-counter-groups-and-persistent-adjustments
 const tab = ref(
   TABS.some((t) => t.id === props.initialTab) ? props.initialTab! : "manage",
 );

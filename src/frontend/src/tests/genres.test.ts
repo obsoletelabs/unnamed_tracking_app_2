@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { gameGenres, genreOptionsFor, hasGenre } from "../utils/genres";
+import {
+  canonicalTag,
+  gameGenres,
+  genreOptionsFor,
+  hasGenre,
+  sameTag,
+  tagFilterOptions,
+  tagKey,
+} from "../utils/genres";
 
 describe("gameGenres", () => {
   it("treats provider-prefixed genres as the same picker choice", () => {
@@ -14,9 +22,19 @@ describe("gameGenres", () => {
       "Action",
       "Adventure",
     ]);
-    expect(gameGenres(["Role-playing (RPG)"])).toEqual([
-      "Role-playing (RPG)",
-      "RPG",
+    expect(gameGenres(["Devil May Cry", "Twin Stick Shooter"])).toEqual([
+      "Devil May Cry",
+      "Twin Stick Shooter",
+      "Shooter",
+      "Action",
+    ]);
+  });
+
+  it("reads another provider's name for a shared genre as that genre", () => {
+    expect(gameGenres(["Role-playing (RPG)"])).toEqual(["RPG"]);
+    expect(gameGenres(["Platform", "Simulator"])).toEqual([
+      "Platformer",
+      "Simulation",
     ]);
   });
 
@@ -49,5 +67,80 @@ describe("genreOptionsFor", () => {
     ]);
     expect(options.filter((o) => o === "Indie")).toHaveLength(1);
     expect(options).toContain("RPG");
+  });
+});
+
+describe("tag normalization", () => {
+  it("ignores case, accents, spacing, punctuation and known source labels", () => {
+    expect(sameTag("Rogue-like", "roguelike")).toBe(true);
+    expect(sameTag("Steam: Roguelike", "Roguelike")).toBe(true);
+    expect(sameTag("Hack & Slash", "Hack and Slash")).toBe(true);
+    expect(sameTag("Pokémon", "pokemon")).toBe(true);
+    expect(sameTag("  Turn-Based  ", "turn based")).toBe(true);
+    expect(sameTag("Tag: Genre: Indie", "indie")).toBe(true);
+  });
+
+  it("keeps semantically different tags apart", () => {
+    expect(sameTag("Roguelike", "Roguelite")).toBe(false);
+    expect(sameTag("Souls-like", "Action RPG")).toBe(false);
+    expect(sameTag("Driving", "Racing")).toBe(false);
+    expect(hasGenre(["Roguelite"], "Roguelike")).toBe(false);
+    expect(hasGenre(["Walking Simulator"], "Simulation")).toBe(false);
+    // a colon inside an ordinary tag is not a source label
+    expect(canonicalTag("Warhammer: 40K")).toBe("Warhammer: 40K");
+  });
+
+  it("merges the issue's racing spellings into one choice", () => {
+    for (const tag of ["racing", "Race", "Steam: race", "RACING"])
+      expect(canonicalTag(tag)).toBe("Racing");
+    expect(hasGenre(["Steam: race"], "Racing")).toBe(true);
+    expect(sameTag("Science Fiction", "Sci-fi")).toBe(true);
+    expect(sameTag("FPS", "First-Person Shooter")).toBe(true);
+  });
+
+  it("keeps tags in non-Latin scripts findable", () => {
+    expect(tagKey("ロールプレイング")).not.toBe("");
+    expect(gameGenres(["ロールプレイング"])).toEqual(["ロールプレイング"]);
+    expect(tagKey("!!!")).toBe("");
+  });
+});
+
+describe("tagFilterOptions", () => {
+  const library = [
+    ["Racing", "Steam"],
+    ["racing", "Steam: race", "Steam"],
+    ["Race"],
+    ["Hack & Slash", "Turn-Based"],
+    ["Hack and Slash", "Turn-Based"],
+    ["Turn-based", "Roguelite"],
+  ];
+
+  it("offers one choice per tag with game counts, shared genres first", () => {
+    const options = tagFilterOptions(library);
+    expect(options.map((o) => [o.value, o.count, o.shared])).toEqual([
+      ["Action", 2, true],
+      ["Racing", 3, true],
+      ["Turn-Based", 3, false],
+      ["Hack & Slash", 2, false],
+      ["Steam", 2, false],
+      ["Roguelite", 1, false],
+    ]);
+  });
+
+  it("says which spellings and broader genres a choice covers", () => {
+    const options = tagFilterOptions(library);
+    const find = (value: string) => options.find((o) => o.value === value)!;
+    expect(find("Racing").spellings).toEqual(["Race", "Steam: race"]);
+    expect(find("Hack & Slash")).toMatchObject({
+      spellings: ["Hack and Slash"],
+      broader: ["Action"],
+    });
+    expect(find("Turn-Based").spellings).toEqual([]);
+  });
+
+  it("stays deterministic whatever order the library arrives in", () => {
+    const forward = tagFilterOptions(library);
+    const backward = tagFilterOptions([...library].reverse());
+    expect(backward).toEqual(forward);
   });
 });

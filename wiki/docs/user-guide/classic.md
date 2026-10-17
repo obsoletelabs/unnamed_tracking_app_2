@@ -31,8 +31,10 @@ The default also styles a fresh sign-in screen after its public theme catalogue
 loads. Existing choices remain intact when an administrator changes the default.
 
 Classic is built into the host and requires no plugin or theme installation.
-The current shared editor keeps its existing workflows; the Rosefall #469
-form/lookup behavior is reviewed separately in the feature reconciliation.
+The full game editor follows Rosefall's layout in both presentations: cover and
+title header, eight tabs, a scrolling body and pinned actions. Classic adds the
+original filled fields and outlined secondary buttons; see
+[Adding a game](games.md#adding-a-game).
 
 ![Classic dark preferences](../assets/classic/appearance-dark.jpg)
 
