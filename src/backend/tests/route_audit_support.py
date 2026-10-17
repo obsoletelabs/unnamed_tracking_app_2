@@ -22,6 +22,7 @@ from src.database.models.game import Game, GameStatus
 from src.database.models.game_archive import GameArchive, GameArchiveVersion
 from src.database.models.game_checklist_item import GameChecklistItem
 from src.database.models.game_file_item import GameFileItem
+from src.database.models.game_identity_tracking import GameFieldValue
 from src.database.models.game_note_detail import GameNoteDetail
 from src.database.models.game_profile import GameProfile
 from src.database.models.inbox_item import InboxItem
@@ -114,7 +115,18 @@ async def seed_owner(db, tenant: Tenant) -> None:
     file_item = GameFileItem(game_id=game.id, kind="doc", filename="owner.txt")
     shot = MediaItem(game_id=game.id, kind="screenshot", filename="owner.png")
     note = GameNoteDetail(game_id=game.id, name="owner-note")
-    db.add_all([list_item, profile, checklist, achievement, archive, file_item, shot, note])
+    name_review = GameFieldValue(
+        user_id=uid,
+        game_id=game.id,
+        field="title",
+        value="Proposed owner game",
+        origin="system",
+        state="proposed",
+        quality="standard",
+    )
+    db.add_all(
+        [list_item, profile, checklist, achievement, archive, file_item, shot, note, name_review]
+    )
     await db.flush()
     version = GameArchiveVersion(archive_id=archive.id, filename="v1.zip", size=1)
     rewatch = RewatchLog(
@@ -177,6 +189,7 @@ async def seed_owner(db, tenant: Tenant) -> None:
         profile_id=profile.id,
         checklist_id=checklist.id,
         achievement_id=achievement.id,
+        review_id=name_review.id,
         archive_id=archive.id,
         archive_version_id=version.id,
         file_item_id=file_item.id,
@@ -320,6 +333,7 @@ def resolve_path(template: str, ids: dict[str, str]) -> str | None:
         "entry_id": ids["activity_id"],
         "rewatch_id": ids["rewatch_id"],
         "achievement_id": ids["achievement_id"],
+        "review_id": ids["review_id"],
         "user_id": ids["user_id"],
         "key_id": ids["key_id"],
         "client_id": ids["client_id"],

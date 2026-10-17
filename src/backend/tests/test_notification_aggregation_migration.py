@@ -12,7 +12,7 @@ from sqlalchemy.engine import make_url
 
 from src.core.config import settings
 
-PREVIOUS_HEAD = "6f75008c02a6"
+PREVIOUS_HEAD = "9d4b2e6f1a35"
 
 
 def test_aggregation_migration_preserves_queued_deliveries():

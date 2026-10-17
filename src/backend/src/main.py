@@ -27,6 +27,11 @@ from src.api.routes import (
     game_archives,
     game_duplicates,
     game_identity,
+    game_identity_backfill,
+    game_identity_overview,
+    game_identity_review,
+    game_manual,
+    game_names,
     game_notes,
     game_ownership,
     game_page,
@@ -51,6 +56,7 @@ from src.api.routes import (
     notification_verification,
     notifications,
     password_recovery,
+    playnite,
     preferences,
     public_apps,
     session_manager,
@@ -128,6 +134,12 @@ app.include_router(default_game_assets.router)
 app.include_router(games.router)
 app.include_router(game_duplicates.router)
 app.include_router(game_identity.router)
+app.include_router(game_identity_backfill.router)
+app.include_router(game_identity_overview.router)
+app.include_router(game_identity_review.router)
+app.include_router(game_manual.router)
+app.include_router(game_names.router)
+app.include_router(playnite.router)
 app.include_router(game_ownership.router)
 app.include_router(metadata.router)
 app.include_router(movies.router)
