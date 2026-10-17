@@ -374,6 +374,24 @@ game.
 - Screenshots, clips and notes can be tied to an achievement, and the
   achievement's page lists what is tied to it.
 
+### Your own achievements and completion
+
+Open the **Achievements** tab and choose **Add achievement** to track one the
+game does not report, for example on a platform with no integration. Give it a
+title and, optionally, a description, category and icon address. Tick it when you
+earn it and untick it to undo; edit or remove it any time. Your achievements are
+kept apart from imported ones: a Steam, PlayStation or Playnite sync never
+changes, hides or replaces them, and an imported achievement with the same name
+is still a separate entry. Choose "Every version of this game" to share one with
+all versions grouped under the same game.
+
+The **Overview** tab has a **Completion** section listing every tracked version
+with its own status. Pick a status per version; the summary says, for example,
+"Completed on 1 of 2 tracked versions" rather than claiming every copy is done.
+A status you set is marked "Set by you" and imports will not change it; choose
+**Let imports update** to hand it back. Changing a game's status in its edit form
+counts as setting it yourself.
+
 ## Stats and history
 
 The Stats tab shows playtime, achievements, score and dates. Below the numbers
