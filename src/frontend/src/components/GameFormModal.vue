@@ -12,13 +12,7 @@ import EditorShell from "./EditorShell.vue";
 import GamePlayFields from "./game/GamePlayFields.vue";
 import GameArtPicker from "./game/GameArtPicker.vue";
 import GameCollectionsField from "./game/GameCollectionsField.vue";
-import {
-  attachGameAssetFromUrl,
-  createGame,
-  fetchGames,
-  updateGame,
-  uploadGameAsset,
-} from "../services/games";
+import { createGame, fetchGames, updateGame } from "../services/games";
 import type { MetadataSearchResult } from "../services/games";
 import type {
   Game,
@@ -38,28 +32,29 @@ import { fetchMetadataProviders } from "../services/metadata";
 import type { MetadataProviderStatus } from "../services/metadata";
 import { localDateInputToUnixSeconds, toLocalDateInput } from "../utils/dates";
 import { PRIORITY_OPTIONS, isFinished } from "../utils/priority";
-import { RETRO_PLATFORM_OPTIONS } from "../utils/platforms";
+import { PLATFORM_SUGGESTIONS } from "../utils/platforms";
 import { sizedAssetUrl } from "../utils/gameImages";
 
 import { useMetadataSearch } from "../composables/useMetadataSearch";
 import { useMetadataComparison } from "../composables/useMetadataComparison";
 import { useMetadataArtwork } from "../composables/useMetadataArtwork";
+import type { GameEditDraft } from "../utils/gameEditDraft";
 import { useStagedArtwork } from "../composables/useStagedArtwork";
 import MetadataComparison from "./MetadataComparison.vue";
 import { gameMetadataResult } from "../utils/metadataCandidate";
 import { useTitleProtection } from "../utils/titleProtection";
 import { numberOrNull } from "../utils/numberInput";
 import {
-  startTask,
-  updateTask,
-  completeTask,
-  errorTask,
-  setTaskRetry,
-} from "../state/taskProgress";
+  attachArtwork,
+  stagedArtworkList,
+} from "../composables/useGameArtworkTransfer";
 
 const props = defineProps<{
   game?: Game | null;
   quickAdd?: boolean;
+  // Unsaved values handed over by the quick editor's "Edit more"; they take
+  // the place of the saved ones until this editor saves or is cancelled.
+  draft?: GameEditDraft | null;
 }>();
 
 const compact = ref(!!props.quickAdd && !props.game);
@@ -119,30 +114,6 @@ function openFullForm() {
   lookupOpen.value = !title.value.trim();
   void loadFullFormChoices();
 }
-
-// suggestions only: any other system can still be typed in
-const PLATFORM_SUGGESTIONS = [
-  "PC",
-  "PlayStation 5",
-  "PlayStation 4",
-  "PlayStation 3",
-  "PS Vita",
-  "Xbox Series X|S",
-  "Xbox One",
-  "Xbox 360",
-  "Nintendo Switch",
-  "Nintendo Switch 2",
-  "Wii U",
-  "Wii",
-  "Nintendo 3DS",
-  "Nintendo DS",
-  "Steam Deck",
-  "Mac",
-  "Linux",
-  "Android",
-  "iOS",
-  ...RETRO_PLATFORM_OPTIONS,
-];
 
 const emit = defineEmits<{
   close: [];
@@ -218,13 +189,15 @@ const { titleProtected, titleLockOverride } = useTitleProtection(
 
 // the saved custom sorting name, blank when the library sorts by the title
 const sortTitle = ref(props.game?.sortTitle ?? "");
-const platform = ref(props.game?.platform ?? "");
+const platform = ref(props.draft?.platform ?? props.game?.platform ?? "");
 const playCompatibility = ref<GamePlayCompatibility | null>(
   props.game?.playCompatibility ? { ...props.game.playCompatibility } : null,
 );
 const priority = ref(props.game?.priority ?? "");
 const folderLocation = ref(props.game?.folderLocation ?? "");
-const status = ref<GameStatus>(props.game?.status ?? "backlog");
+const status = ref<GameStatus>(
+  props.draft?.status ?? props.game?.status ?? "backlog",
+);
 const favorite = ref(props.game?.favorite ?? false);
 const collections = ref<string[]>([...(props.game?.collections ?? [])]);
 const developer = ref(props.game?.developer ?? "");
@@ -318,7 +291,9 @@ watch(profilesEnabled, (enabled) => {
   if (!enabled) osrsStatsEnabled.value = false;
 });
 
-const ratingOverall = ref<number | null>(props.game?.ratingOverall ?? null);
+const ratingOverall = ref<number | string | null>(
+  props.draft ? props.draft.ratingOverall : (props.game?.ratingOverall ?? null),
+);
 const ratingStory = ref<number | null>(props.game?.ratingStory ?? null);
 const ratingGameplay = ref<number | null>(props.game?.ratingGameplay ?? null);
 const ratingSound = ref<number | null>(props.game?.ratingSound ?? null);
@@ -327,7 +302,10 @@ const featuresInput = ref(props.game?.features.join(", ") ?? "");
 
 // Pending artwork per role. A chosen file, link or offered image is staged
 // here (with its own object URL) until Save; the saved artwork stays shown.
-const cover = useStagedArtwork(() => props.game?.coverImageUrl ?? null);
+const cover = useStagedArtwork(
+  () => props.game?.coverImageUrl ?? null,
+  props.draft?.cover ?? null,
+);
 const banner = useStagedArtwork(() =>
   props.game ? sizedAssetUrl(props.game.bannerImageUrl, 640) : null,
 );
@@ -719,8 +697,6 @@ function buildInput() {
   };
 }
 
-// The staged artwork, captured when Save starts. An explicit local file is
-// uploaded; a link or offered image is fetched by the server.
 function stagedArtwork() {
   return [
     { kind: "key_art" as const, label: "cover", choice: cover.staged.value },
@@ -769,6 +745,10 @@ async function attachArtwork(
     }
   };
   await attempt();
+  return stagedArtworkList([
+    { kind: "key_art", label: "cover", choice: cover.staged.value },
+    { kind: "banner", label: "banner", choice: banner.staged.value },
+  ]);
 }
 
 // A game created by this editor; a later Save updates it rather than
@@ -796,7 +776,7 @@ async function submit() {
     if (!props.game) createdGame = savedGame;
 
     if (import.meta.env.VITE_USE_MOCK_DATA !== "true" && pendingArtwork.length)
-      await attachArtwork(savedGame, pendingArtwork);
+      await attachArtwork(savedGame.id, savedGame.title, pendingArtwork);
 
     emit("saved", savedGame.id);
   } catch (err) {
@@ -844,7 +824,7 @@ async function submit() {
             class="metadata-result" @click="applyMetadata(result)">
             <span>{{ result.title }}</span>
             <small>{{ result.provider
-              }}<span v-if="result.release_date">
+            }}<span v-if="result.release_date">
                 · {{ result.release_date.slice(0, 4) }}</span></small>
           </button>
         </div>
