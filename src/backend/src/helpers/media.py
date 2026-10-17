@@ -10,6 +10,7 @@ import uuid
 from pathlib import Path
 from typing import Literal
 
+from fastapi import UploadFile
 from PIL import Image, UnidentifiedImageError
 
 from src.helpers.remote_images import MAX_PIXELS
@@ -195,6 +196,37 @@ def save_media_bytes(data: bytes, dest_dir: Path, original_name: str) -> Path:
     path = dest_dir / filename
     path.write_bytes(data)
     return path
+
+
+_UPLOAD_CHUNK_SIZE = 1024 * 1024
+
+
+class UploadTooLargeError(ValueError):
+    """An upload passed its size cap; nothing of it was kept on disk."""
+
+
+async def save_upload_stream(
+    upload: UploadFile, dest_dir: Path, original_name: str, max_bytes: int
+) -> tuple[Path, int]:
+    """Stream an upload to a new safe name without holding it in memory.
+
+    Raises UploadTooLargeError, after removing the partial file, once more than
+    ``max_bytes`` arrive.
+    """
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    path = dest_dir / safe_filename(original_name)
+    size = 0
+    try:
+        with path.open("wb") as output:
+            while chunk := await upload.read(_UPLOAD_CHUNK_SIZE):
+                size += len(chunk)
+                if size > max_bytes:
+                    raise UploadTooLargeError(path.name)
+                output.write(chunk)
+    except BaseException:
+        path.unlink(missing_ok=True)
+        raise
+    return path, size
 
 
 def list_media(dir_path: Path) -> list[str]:

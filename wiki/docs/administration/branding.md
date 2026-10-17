@@ -6,6 +6,8 @@ Names contain 1–64 printable characters. Saving **Archive** restores the defau
 
 The logo appears in navigation, sign-in and setup. A separate browser icon takes precedence in browser tabs; otherwise the app logo is used. Removing both restores the built-in icon. Image URLs include a content revision so browsers do not keep showing an earlier image after it changes. Previously issued URLs stop serving the removed or replaced image.
 
+Use **Remove logo** or **Remove browser icon** to clear either image independently; removal is repeatable, administrator-only and survives a reload. The branding document is never cached by the browser, and every surface that shows the logo (navigation in Modern and Classic, sign-in, setup and the settings preview) falls back to the built-in mark if the image is removed or its file cannot be loaded.
+
 When a healthy PWA provider has its site-wide permission, a custom name also appears in the installed app's manifest. Its icons use the custom logo, with the browser icon as a fallback, centered inside the maskable safe area. Branding changes update the PWA cache generation. Revoking, disabling or uninstalling the provider still withdraws its manifest and icons; branding does not enable PWA installation by itself. Existing OS launchers may refresh their labels and icons on a browser-managed schedule.
 
 Branding is stored in the existing deployment settings row and follows database backups. Migration `c2a9e6f4b801` adds three nullable columns after the published merge revision, preserving provider configuration and personal preferences. Existing installations retain their configured integrations and receive the default identity until an administrator changes it.

@@ -21,12 +21,12 @@ export async function checkGameArtworkRetry({ member, origin, report }) {
     const quick = page.getByRole("button", { name: "Full form", exact: true });
     if (await quick.count()) await quick.click();
     const dialog = page.getByRole("dialog", { name: "Add Game", exact: true });
-    await dialog.getByRole("button", { name: "General", exact: true }).click();
+    await dialog.getByRole("tab", { name: "Basics", exact: true }).click();
     await dialog.getByLabel("Title", { exact: true }).fill("Artwork retry review");
     await dialog.getByLabel("Folder name", { exact: true }).fill("artwork-retry-" + Date.now());
-    await dialog.getByRole("button", { name: "Media", exact: true }).click();
+    await dialog.getByRole("tab", { name: "Artwork", exact: true }).click();
     await dialog.locator('input[type="file"]').first().setInputFiles({ name: "review.png", mimeType: "image/png", buffer: png });
-    await dialog.getByRole("button", { name: "Page", exact: true }).click();
+    await dialog.getByRole("tab", { name: "Advanced", exact: true }).click();
     await dialog.getByRole("button", { name: "Add Game", exact: true }).click();
     await dialog.waitFor({ state: "hidden", timeout: 5000 });
     assert.equal(creates, 1, "Artwork failure does not keep a create form open");
@@ -103,7 +103,7 @@ export async function checkGameQuickAdd({ member, origin, evidenceRoot, report }
       await page.getByRole("button", { name: "+ Add Game", exact: true }).first().click();
       const dialog = page.getByRole("dialog", { name: "Quick Add Game", exact: true });
       await dialog.getByRole("textbox", { name: "Title", exact: true }).waitFor();
-      assert.equal(await dialog.getByRole("navigation").count(), 0);
+      assert.equal(await dialog.getByRole("tablist").count(), 0);
       assert.equal(requests.filter(url => url.includes("/api/game/list?")).length, before);
       assert.equal(requests.filter(url => url.endsWith("/api/currency-codes")).length, 0);
       await dialog.getByRole("searchbox").fill("Orbit");
@@ -128,11 +128,11 @@ export async function checkGameQuickAdd({ member, origin, evidenceRoot, report }
       assert.equal(await full.getByLabel("Title", { exact: true }).inputValue(), "Orbit Archive Review " + width + " edited");
       assert.equal(await full.getByLabel("Status").inputValue(), "wishlist");
       assert.equal(await full.getByLabel("Platform", { exact: true }).inputValue(), "Nintendo Switch");
-      await full.getByRole("button", { name: "Find", exact: true }).click();
+      await full.getByRole("button", { name: "Look up metadata", exact: true }).click();
       assert.equal(await full.getByRole("searchbox").inputValue(), "Orbit");
-      await full.getByRole("button", { name: "General", exact: true }).click();
+      await full.getByRole("tab", { name: "Basics", exact: true }).click();
       await page.screenshot({ path: path.join(evidenceRoot, `full-form-${width}.png`) });
-      await full.getByRole("button", { name: "Page", exact: true }).click();
+      await full.getByRole("tab", { name: "Advanced", exact: true }).click();
       const saved = page.waitForResponse(response => response.url().endsWith("/api/game/create") && response.request().method() === "POST");
       await full.locator("form").evaluate(form => { form.requestSubmit(); form.requestSubmit(); form.requestSubmit(); });
       const response = await saved;
@@ -208,7 +208,7 @@ export async function checkManualQuickAdd({ member, origin, report }) {
     await compact.getByRole("button", { name: "Full form", exact: true }).click();
     const full = page.getByRole("dialog", { name: "Add Game", exact: true });
     await full.getByLabel("Folder name", { exact: true }).fill("manual-reviewed-copy");
-    await full.getByRole("button", { name: "Page", exact: true }).click();
+    await full.getByRole("tab", { name: "Advanced", exact: true }).click();
     const separated = page.waitForResponse(response => response.url().endsWith("/api/game/create") && response.request().method() === "POST");
     await full.getByRole("button", { name: "Add Game", exact: true }).click();
     assert.equal((await separated).status(), 201);

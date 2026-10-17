@@ -6,6 +6,8 @@ export interface AdminUser {
   email: string;
   is_admin: boolean;
   is_active?: boolean;
+  auth_source?: "local" | "sso";
+  is_primary?: boolean;
   created_at?: number;
 }
 

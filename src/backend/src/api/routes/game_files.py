@@ -23,14 +23,20 @@ from src.api.routes.utils.games import (
     _DATA_ROOT,
     _get_game_or_404,
 )
-from src.core.app_integrations import get_max_upload_size_mb, get_upload_limits_mb
+from src.core.app_integrations import get_upload_limits_mb
 from src.core.auth import get_current_user
 from src.database.models.game_file_item import GameFileItem
 from src.database.models.user import User
 from src.database.session import get_db
 from src.features.trash.media_trash import move_media_file_to_trash, restore_media_file_from_trash
 from src.features.trash.sweep import RETENTION_SECONDS
-from src.helpers.media import display_filename, list_media, original_filename, save_media_bytes
+from src.helpers.media import (
+    UploadTooLargeError,
+    display_filename,
+    list_media,
+    original_filename,
+    save_upload_stream,
+)
 from src.helpers.media_dates import detect_date
 from src.helpers.range_response import SAFE_FILE_HEADERS
 
@@ -58,6 +64,11 @@ GameFileKind = Literal["doc", "modpack"]
 _GAME_FILE_SUBDIRS: dict[GameFileKind, str] = {
     "doc": "docs",
     "modpack": "modpacks",
+}
+# The Administration -> Limits cap for each kind; neither follows the image cap.
+_GAME_FILE_LIMITS: dict[GameFileKind, str] = {
+    "doc": "max_doc_size_mb",
+    "modpack": "max_world_save_size_mb",
 }
 
 
@@ -124,22 +135,19 @@ async def upload_game_files(
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> dict[str, list[dict]]:
-    """Generic file attachments for a game — docs/manuals and modpacks can
-    be almost any format, so unlike screenshots/clips there's no
-    content-type validation, just a size cap."""
+    """Generic file attachments for a game. Docs/manuals and modpacks can be
+    any format, so unlike screenshots/clips there's no content-type
+    validation, only a size cap of their own: a manual or an illustrated Word
+    file is often larger than a screenshot, and a modpack zip is routinely
+    hundreds of MB to a few GB. They only ever download as inert attachments
+    (see get_game_file)."""
     game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     if not game.folder_location:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Game folder_location is missing."
         )
 
-    # a modpack zip is routinely hundreds of MB to a few GB — far past a
-    # doc-sized limit
-    limit_mb = (
-        (await get_upload_limits_mb(db))["max_world_save_size_mb"]
-        if kind == "modpack"
-        else await get_max_upload_size_mb(db)
-    )
+    limit_mb = (await get_upload_limits_mb(db))[_GAME_FILE_LIMITS[kind]]
     max_bytes = limit_mb * 1024 * 1024
     # Initializing deployment limits can commit; take a fresh storage lock afterward.
     game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
@@ -153,10 +161,17 @@ async def upload_game_files(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="At least one file is required.",
         )
+    dest_dir = (
+        _DATA_ROOT / str(game.user_id) / "games" / game.folder_location / _game_file_subdir(kind)
+    )
     results: list[dict] = []
     for index, upload in enumerate(uploads):
-        data = await upload.read(max_bytes + 1)
-        if len(data) > max_bytes:
+        # Streamed to disk: these caps are far larger than is sensible to hold in memory.
+        try:
+            saved_path, size = await save_upload_stream(
+                upload, dest_dir, upload.filename or "file", max_bytes
+            )
+        except UploadTooLargeError:
             results.append(
                 {
                     "filename": upload.filename,
@@ -165,16 +180,9 @@ async def upload_game_files(
                 }
             )
             continue
-        dest_dir = (
-            _DATA_ROOT
-            / str(game.user_id)
-            / "games"
-            / game.folder_location
-            / _game_file_subdir(kind)
-        )
-        saved_path = save_media_bytes(data, dest_dir, upload.filename or "file")
+        # A doc has no photo or video date of its own: only its name or modified time.
         taken_at, taken_source = detect_date(
-            data,
+            b"",
             upload.filename or "",
             "doc",
             last_modified[index] if last_modified and index < len(last_modified) else None,
@@ -189,7 +197,7 @@ async def upload_game_files(
                 taken_source=taken_source,
             )
         )
-        results.append({"filename": saved_path.name, "status": "saved", "size": len(data)})
+        results.append({"filename": saved_path.name, "status": "saved", "size": size})
 
     await db.commit()
     return {"results": results}

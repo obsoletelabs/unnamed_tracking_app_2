@@ -55,6 +55,9 @@ DEFAULTS: dict[str, Any] = {
     "notify_media_types": ["anime", "tv", "movie"],
     "notification_retention_days": 30,
     "notification_retention_inherit": True,
+    # Never (0) by default: trashed movies, shows and anime are only removed for
+    # good when their owner deletes them or chooses one of the periods below
+    "media_trash_retention_days": 0,
     "library_default_layout": "list",
     "title_language": "english",
     "lists_default_sort": "custom",
@@ -85,6 +88,9 @@ _CHOICES: dict[str, tuple[Any, ...]] = {
     "lists_default_sort": ("custom", "name", "count", "recent"),
     "title_language": ("english", "romaji", "native"),
 }
+
+# Days a trashed movie/show/anime stays before the scheduled sweep deletes it.
+MEDIA_TRASH_RETENTION_DAYS = (0, 7, 14, 30, 90)
 
 _SET_CHOICES: dict[str, tuple[str, ...]] = {
     "notify_statuses": ("watching", "plan", "hold"),
@@ -128,6 +134,31 @@ def _validate_anilist_username(value: Any) -> str:
     if not isinstance(value, str) or len(value.strip()) > 100:
         raise ValueError("anilist_import_username must be a string of at most 100 characters")
     return value.strip()
+
+
+def _validate_anilist_interval(value: Any) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or not 60 <= value <= 30 * 24 * 60:
+        raise ValueError("anilist_import_interval_minutes must be between 60 and 43200")
+    return value
+
+
+def _validate_anilist_last_run(value: Any) -> int | None:
+    if value is not None and (not isinstance(value, int) or isinstance(value, bool) or value < 0):
+        raise ValueError("anilist_import_last_run_at must be a Unix timestamp or null")
+    return value
+
+
+def _validate_media_trash_retention(value: Any) -> int:
+    # strict: True/False/7.0 would otherwise compare equal to a listed choice
+    if (
+        not isinstance(value, int)
+        or isinstance(value, bool)
+        or value not in MEDIA_TRASH_RETENTION_DAYS
+    ):
+        raise ValueError(
+            f"media_trash_retention_days must be one of {list(MEDIA_TRASH_RETENTION_DAYS)}"
+        )
+    return value
 
 
 def _validate_theme_package(value: Any) -> str:
@@ -306,6 +337,9 @@ _VALUE_VALIDATORS: dict[str, Callable[[Any], Any]] = {
     "keyboard_shortcut_overrides": validate_shortcut_overrides,
     "game_page": partial(validate_page_settings, partial=False),
     "anilist_import_username": _validate_anilist_username,
+    "anilist_import_interval_minutes": _validate_anilist_interval,
+    "anilist_import_last_run_at": _validate_anilist_last_run,
+    "media_trash_retention_days": _validate_media_trash_retention,
 }
 
 
