@@ -19,6 +19,7 @@ from src.database.models import (
     auth,  # noqa: F401
     calendar_event,  # noqa: F401
     delegation,  # noqa: F401
+    destination_scope,  # noqa: F401
     game,  # noqa: F401
     game_archive,  # noqa: F401
     game_checklist_item,  # noqa: F401
