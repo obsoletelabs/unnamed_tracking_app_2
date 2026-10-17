@@ -19,6 +19,8 @@ was produced in this change's working copy; nothing is quoted from memory. Backe
 
 ## 2. Children of #91 and their pull requests
 
+The live status board, merge order and migration-head notes are kept in the [coordination board](game-identity-overhaul.md); this table is the record as of this report.
+
 Stacked: each pull request is based on the one before it, so they merge in this order.
 
 | Issue | Pull request | Based on |
