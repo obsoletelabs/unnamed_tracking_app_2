@@ -314,7 +314,6 @@ def registration(transport, critical=False):
 @pytest.mark.parametrize(
     "provider",
     [
-        SmtpNotificationProvider(),
         BrowserNotificationProvider(),
         *(
             PluginNotificationProvider(registration(transport, critical), runtime=object())
@@ -326,7 +325,7 @@ def registration(transport, critical=False):
             )
         ),
     ],
-    ids=["smtp", "browser", "legacy", "discord_webhook", "plugin", "plugin_critical"],
+    ids=["browser", "legacy", "discord_webhook", "plugin", "plugin_critical"],
 )
 def test_existing_providers_have_discoverable_legacy_profiles(provider):
     profile = provider_capability_profile(
@@ -357,7 +356,11 @@ def test_profiles_match_existing_transport_limits():
     assert "link" not in NotificationDeliveryRepresentation.model_fields
     assert not contract.TRANSPORT_PROFILES["legacy"].capabilities.links
     assert BUILTIN_PROFILES["core.browser"].generic_preview_only
-    assert BUILTIN_PROFILES["core.smtp"].capabilities.links
+    smtp = BUILTIN_PROFILES["core.smtp"]
+    # Built-in email was upgraded to the canonical renderer (#111); it still cannot edit.
+    assert smtp.renderer == "canonical" and smtp.critical_supported
+    assert smtp.capabilities.links and smtp.capabilities.message_updates == "none"
+    assert SmtpNotificationProvider.critical_supported
     assert BUILTIN_PROFILES[INBOX_PROVIDER].capabilities.images.proxied_urls
 
 

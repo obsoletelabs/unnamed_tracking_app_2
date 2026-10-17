@@ -69,12 +69,12 @@ async def _content(
         return None
 
 
-def story_link(base: str | None, notification: Notification) -> str | None:
+def story_link(base: str | None, notification: Notification | None) -> str | None:
     if not base:
         return None
     suffix = (
         f"/notifications/stories/{notification.story_id}"
-        if notification.story_id
+        if notification is not None and notification.story_id
         else "/notifications"
     )
     return base.rstrip("/") + suffix
@@ -160,7 +160,17 @@ async def render_message(
     caps = profile.capabilities
     fallbacks: list[str] = list(profile.notes)
     link = story_link(link_base, notification) if caps.links else None
-    content = await _content(db, notification, projection)
+    # Host-composed digests, recovery, invitation, test and verification messages keep their own
+    # text: rich content of one story must neither replace a digest nor reach a sensitive mail.
+    if message.items:
+        link = story_link(link_base, None) if caps.links else None
+    content = (
+        None
+        if message.items
+        or message.purpose != "standard"
+        or message.kind == "destination_verification"
+        else await _content(db, notification, projection)
+    )
     changes: dict = {}
     if content is not None and profile.canonical:
         fields, notes = _presentation(
