@@ -472,6 +472,8 @@ async def check_plugin_updates(
         store.patch(plugin_id, available_update=update)
         if update.get("update_available"):
             notification_batch.append({**update, "status": "available"})
+        else:
+            store.patch(plugin_id, last_notified_update_state=None)
     if notification_batch and plugin_update_batch_changed(notification_batch):
         await notify_plugin_updates(db, notification_batch)
         await db.commit()
