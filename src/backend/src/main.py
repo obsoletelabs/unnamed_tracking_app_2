@@ -28,6 +28,7 @@ from src.api.routes import (
     game_identity,
     game_identity_review,
     game_manual,
+    game_names,
     game_notes,
     game_ownership,
     game_page,
@@ -128,6 +129,7 @@ app.include_router(game_duplicates.router)
 app.include_router(game_identity.router)
 app.include_router(game_identity_review.router)
 app.include_router(game_manual.router)
+app.include_router(game_names.router)
 app.include_router(game_ownership.router)
 app.include_router(metadata.router)
 app.include_router(movies.router)
