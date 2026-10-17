@@ -13,19 +13,20 @@ from src.database.base import Base
 from src.database.models import (
     achievement,  # noqa: F401
     achievement_override,  # noqa: F401
+    admin_user_audit,  # noqa: F401
     anime,  # noqa: F401
     app_integration_settings,  # noqa: F401
     auth,  # noqa: F401
     calendar_event,  # noqa: F401
     delegation,  # noqa: F401
     game,  # noqa: F401
+    game_identity,  # noqa: F401
+    game_identity_tracking,  # noqa: F401
     game_archive,  # noqa: F401
     game_checklist_item,  # noqa: F401
     game_duplicate_dismissal,  # noqa: F401
     game_field_change,  # noqa: F401
     game_file_item,  # noqa: F401
-    game_identity,  # noqa: F401
-    game_identity_tracking,  # noqa: F401
     game_note_detail,  # noqa: F401
     game_profile,  # noqa: F401
     game_profile_stat_snapshot,  # noqa: F401
