@@ -31,6 +31,7 @@ export interface MediaNotification {
   deletedAt?: number | null;
   expiresAt?: number | null;
   story?: { phase: string; resolved: boolean; revisions: number } | null;
+  link?: string | null;
 }
 
 export type NotificationState =
@@ -62,6 +63,7 @@ interface BackendNotification {
   deleted_at?: number | null;
   expires_at?: number | null;
   story?: { phase: string; resolved: boolean; revisions: number } | null;
+  link?: string | null;
 }
 
 export type InboxFilter =
@@ -158,6 +160,7 @@ export async function fetchMediaNotifications(
       deletedAt: n.deleted_at ?? null,
       expiresAt: n.expires_at ?? null,
       story: n.story ?? null,
+      link: n.link ?? null,
     })),
   };
 }
