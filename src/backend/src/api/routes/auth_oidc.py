@@ -15,7 +15,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import RedirectResponse
 
-from src.core.auth import SESSION_TTL_SECONDS, hash_password, session_cookie_name, validate_username
+from src.core.auth import (
+    SESSION_TTL_SECONDS,
+    hash_password,
+    session_cookie_name,
+    validate_display_name,
+    validate_username,
+)
 from src.core.config import settings
 from src.core.crypto import decrypt_secret
 from src.core.oidc import OidcConfig, begin_oidc, env_oidc_config, oauth, register_oidc_provider
@@ -264,8 +270,18 @@ def _groups(claims: dict[str, Any], name: str) -> set[str]:
 
 def _match_value(claims: dict[str, Any], field: str, email: str) -> str:
     if field == "username":
-        return str(claims.get("preferred_username") or claims.get("name") or "").strip()
+        # Only the sign-in style claim may link an existing account. "name" is a free-form,
+        # non-unique display value and must never select (merge into) an account.
+        return str(claims.get("preferred_username") or "").strip()
     return email
+
+
+def _claim_display_name(claims: dict[str, Any]) -> str | None:
+    """Best-effort display name for a NEW account; invalid values are simply ignored."""
+    try:
+        return validate_display_name(str(claims.get("name") or ""))
+    except ValueError:
+        return None
 
 
 def _safe_username(value: str, email: str) -> str:
@@ -298,6 +314,7 @@ async def _create_oidc_user(
         username = f"{base[: 100 - len(str(suffix)) - 1]}-{suffix}"
     user = User(
         username=username,
+        display_name=_claim_display_name(claims),
         email=email,
         password_hash=hash_password(secrets.token_urlsafe(48) + "A!a"),
         is_active=True,
@@ -345,6 +362,8 @@ async def _resolve_oidc_identity(
         identity_conflict = user.oidc_subject and user.oidc_subject not in {linked_subject, subject}
         if not user.is_active or identity_conflict:
             return "identity_conflict" if user.is_active else "account_disabled"
+        # Linking only ever sets the subject/email. The sign-in username and the
+        # user-chosen display name are never rewritten from provider claims.
         user.oidc_subject = linked_subject
         user.email = email
         if config.admin_group:

@@ -3,6 +3,7 @@ import { failedRequest } from "./apiError";
 export interface AdminUser {
   id: string;
   username: string;
+  display_name?: string | null;
   email: string;
   is_admin: boolean;
   is_active?: boolean;
@@ -13,6 +14,7 @@ export interface AdminUser {
 
 export interface CreateUserPayload {
   username: string;
+  displayName?: string;
   email: string;
   password: string;
   isAdmin: boolean;
@@ -48,6 +50,7 @@ export async function createUser(
     const user: AdminUser = {
       id: crypto.randomUUID(),
       username: payload.username,
+      display_name: payload.displayName?.trim() || null,
       email: payload.email,
       is_admin: payload.isAdmin,
     };
@@ -61,6 +64,7 @@ export async function createUser(
     credentials: "include",
     body: JSON.stringify({
       username: payload.username,
+      display_name: payload.displayName?.trim() || undefined,
       email: payload.email,
       password: payload.password,
       is_admin: payload.isAdmin,
