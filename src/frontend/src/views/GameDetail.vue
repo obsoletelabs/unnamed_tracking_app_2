@@ -32,6 +32,7 @@ import GameAccountsPanel from "../components/game/GameAccountsPanel.vue";
 import GamePlayPanel from "../components/game/GamePlayPanel.vue";
 import GameOwnedCopiesPanel from "../components/game/GameOwnedCopiesPanel.vue";
 import GameWorldsPanel from "../components/game/GameWorldsPanel.vue";
+import GameManualTrackingPanel from "../components/game/GameManualTrackingPanel.vue";
 import { provide } from "vue";
 import { useGameDetail } from "../composables/useGameDetail";
 import { gameDetailKey } from "../composables/gameDetailContext";
@@ -486,6 +487,12 @@ const {
         :copies="ownedCopies"
         @changed="onGameSaved"
       />
+      <GameManualTrackingPanel
+        :key="`completion-${game.id}`"
+        :game-id="game.id"
+        part="completion"
+        @changed="onGameSaved"
+      />
       <div v-if="overviewFacts.length" class="meta-block">
         <div v-if="overviewFacts.length" class="meta-grid">
           <div
@@ -861,6 +868,11 @@ const {
     </section>
 
     <section v-else-if="activeTab === 'Achievements'" class="achievements">
+      <GameManualTrackingPanel
+        :key="`achievements-${game.id}`"
+        :game-id="game.id"
+        part="achievements"
+      />
       <div class="ach-head">
         <h2 class="ach-title">Achievements</h2>
         <span class="ach-count"
