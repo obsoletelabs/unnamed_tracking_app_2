@@ -31,7 +31,7 @@ const emit = defineEmits<{
         class="text-input"
         :placeholder="`Search by ${noun} title`"
         :aria-label="`Search by ${noun} title`"
-        @keyup.enter="emit('search')"
+        @keydown.enter.prevent="emit('search')"
       />
       <button
         type="button"
@@ -102,7 +102,7 @@ const emit = defineEmits<{
 
 .metadata-result:hover {
   border-color: var(--ui-accent-text);
-  background: #282828;
+  background: color-mix(in srgb, var(--ui-accent) 12%, var(--ui-surface));
 }
 
 .metadata-result small {
