@@ -1,0 +1,20 @@
+{
+  "additionalProperties": false,
+  "description": "What a plugin SDK supports; the host answers with the version both sides will use.",
+  "properties": {
+    "contract_version": {
+      "maxLength": 32,
+      "minLength": 1,
+      "title": "Contract Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "contract_version"
+  ],
+  "title": "ContractNegotiationRequest",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "x-api-contract-version": "1.1.14",
+  "x-notification-contract-version": "1.0.0"
+}

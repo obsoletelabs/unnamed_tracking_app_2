@@ -379,7 +379,7 @@ def test_only_generic_plugin_providers_declare_canonical_capabilities():
 
 def test_every_notification_operation_has_an_explicit_adapter():
     operations = {name for name in _METHOD_CAPABILITIES if "notification" in name}
-    runtime = {"notification-deliveries", "notification-layouts"}
+    runtime = {"notification-deliveries", "notification-layouts", "notification-story-actions"}
     assert set(LEGACY_ADAPTERS) == operations | runtime
     for adapter in LEGACY_ADAPTERS.values():
         assert parse_semver(adapter.introduced_in) <= parse_semver(PLUGIN_API_CONTRACT_VERSION)
