@@ -310,6 +310,7 @@ class UploadLimitRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     max_upload_size_mb: int | None = Field(default=None, ge=1, le=2147483647, strict=True)
+    max_doc_size_mb: int | None = Field(default=None, ge=1, le=2147483647, strict=True)
     max_save_archive_size_mb: int | None = Field(default=None, ge=1, le=2147483647, strict=True)
     max_clip_size_mb: int | None = Field(default=None, ge=1, le=2147483647, strict=True)
     max_world_save_size_mb: int | None = Field(default=None, ge=1, le=2147483647, strict=True)
@@ -365,6 +366,11 @@ async def get_provider_credentials(
     ):
         result["Steam"]["status"] = "configured"
         result["Steam"]["connection_method"] = "account"
+    # PlayStation uses its own npsso flow rather than PROVIDER_FIELD_MAP; without
+    # this the Connections list and sync menu always showed it as not connected.
+    result["PlayStation"] = {
+        "status": "configured" if current_user.psn_npsso_token else "not_configured"
+    }
     app_integrations = resolve_integrations(await get_or_create_app_integration_settings(db))
     result["IGDB"] = {
         "status": "configured" if app_integrations.igdb_configured else "not_configured"

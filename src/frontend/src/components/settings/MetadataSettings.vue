@@ -6,14 +6,10 @@ import ScanSettingsSection from "./ScanSettingsSection.vue";
 import SteamTagsSection from "./SteamTagsSection.vue";
 import SteamWishlistSection from "./SteamWishlistSection.vue";
 import MediaRefreshSection from "./MediaRefreshSection.vue";
+import { METADATA_SETTINGS_TABS as TABS } from "../../state/settingsRegistry";
 
 const props = defineProps<{ initialTab?: string }>();
 
-const TABS = [
-  { id: "sources", label: "Sources & API keys" },
-  { id: "scan", label: "Scan & providers" },
-  { id: "refresh", label: "Refresh media" },
-];
 const tab = ref(
   TABS.some((t) => t.id === props.initialTab) ? props.initialTab! : "sources",
 );

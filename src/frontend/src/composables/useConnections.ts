@@ -215,6 +215,13 @@ export function useConnections() {
     }
   }
 
+  // messages from an earlier dialog visit don't describe the current state
+  function clearMessages(key: string) {
+    cardError[key] = null;
+    cardInfo[key] = null;
+    psnError.value = null;
+  }
+
   async function clearConnection(connection: ConnectionConfig) {
     try {
       await deleteProviderCredentials(connection.key);
@@ -237,8 +244,15 @@ export function useConnections() {
   const psnError = ref<string | null>(null);
 
   async function loadPsn() {
+    // a stale status from an earlier open must not show as current
+    psnLoading.value = true;
     try {
       psnStatus.value = await fetchPsnStatus();
+    } catch (err) {
+      psnError.value =
+        err instanceof Error
+          ? err.message
+          : "Couldn't load the PlayStation connection.";
     } finally {
       psnLoading.value = false;
     }
@@ -249,6 +263,7 @@ export function useConnections() {
       psnError.value = "Paste your npsso token first.";
       return;
     }
+    if (psnConnecting.value) return;
     psnConnecting.value = true;
     psnError.value = null;
     try {
@@ -362,6 +377,7 @@ export function useConnections() {
     cardInfo,
     passwordPlaceholder,
     saveConnection,
+    clearMessages,
     clearConnection,
     psnStatus,
     psnLoading,

@@ -27,7 +27,7 @@ report their loading, success and errors inside the active plugin UI rather than
 the host's Settings save indicator. Ordinary plugin settings writes still use
 the shared saving feedback.
 
-The v1 contract covers settings fields, validation, secrets, select options, actions, tables, dialogs, menus, and pages. Secret values are write-only and never included in schema defaults.
+The v1 contract covers settings fields, validation, secrets, select options, actions, tables, dialogs, menus, and pages. Secret values are write-only and never included in schema defaults or [saved settings responses](#saved-declarative-settings).
 
 Installed plugins are managed through a per-plugin dialog with Overview, Settings, Permissions, and Diagnostics tabs. Its Settings tab controls Plugin Manager update policy and package history. Plugin-provided application pages contain the plugin's functionality and endpoint/profile configuration; the manager links to these pages when available. A plugin may contribute a Settings application section using `settings_sections`; this remains separate from manager permissions, lifecycle and runtime administration.
 
@@ -126,6 +126,17 @@ uses its contribution ID directly, so `id: reader-settings` renders at
 `/settings?section=reader-settings`. This is separate from manager configuration
 in Plugin Manager and separate from `/plugins/<plugin-id>/<page-id>`.
 
+Settings search and the command palette read the same registry as the Settings
+sidebar (`state/settingsRegistry.ts`). A `settings_sections` entry, or a
+`settings.sidebar` navigation entry with a `page_id`, is searchable by its
+`label` and shown with its area and group; nothing else in the document is
+indexed, including settings fields, defaults and secret values. Entries follow
+the same rules as the sidebar: `admin_only` and Administration placements are
+offered only to administrators, IDs that collide with a built-in section are
+ignored, and contributions leave the index as soon as the plugin is disabled,
+stopped, incompatible or uninstalled. Built-in sections declare their search
+keywords and directly reachable tabs in that registry.
+
 `sessions` and `admin-sessions` are reserved built-in section IDs. Enhance these
 pages using `page_replacements` with `page: sessions` or `page: admin-sessions`
 and a declared plugin `page_id`, rather than duplicate settings sections. Each
@@ -160,6 +171,32 @@ See the [Plugin API v1](plugin-api-v1.md) and [Plugin Permissions & Scoped Ident
 ## Runtime integration
 
 The production `/api/plugins` routes mediate UI documents, frontend assets, ordinary settings, write-only secrets, and declared actions through the authenticated runtime. Browser code never connects to a plugin process directly.
+
+### Saved declarative settings
+
+`PUT /api/plugins/{plugin_id}/settings` merges ordinary values into the
+installation's runtime configuration. `GET /api/plugins/{plugin_id}/settings`
+reads them back as `{"plugin_id": "…", "values": {…}}` with
+`Cache-Control: private, no-store`. Both routes require a live, executable
+installation and the same `plugin.settings` grant for the signed-in user, so
+anyone who may save the form may reload it; members and administrators are
+treated alike, and a user-scoped grant does not authorize other users. Values are
+installation-wide rather than per user.
+
+`values` contains only fields declared in the current UI document's `settings`
+that are neither `secret` nor `password`, and only when the saved value still
+fits the field type and options (an emptied optional number or select is
+returned as `""`). Undeclared keys, values stored before a field became secret
+and values an update made unrepresentable are omitted. Secret values are never
+returned: they are written only through `PUT /api/plugins/{plugin_id}/secrets/{key}`,
+and an ordinary save that names a secret field is rejected with 422.
+
+The declarative renderer reads saved values when a page shows ordinary settings
+fields. It uses a field's `default` only when no saved value is returned, keeps
+fields, Save and actions disabled while loading, and leaves secret fields empty.
+If the read fails, for example without the `plugin.settings` grant, the page
+reports the reason and shows the declared defaults. Sandboxed and native
+frontends manage their own forms and do not trigger this read.
 
 The browser treats Plugin UI documents as untrusted data. Bundled custom frontends
 run in a sandboxed iframe on their dedicated plugin page and cannot be mounted into

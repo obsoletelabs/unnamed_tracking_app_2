@@ -25,7 +25,7 @@ from sqlalchemy.dialects import postgresql
 from src.database import migration_helpers as h
 
 revision: str = "716a1e2c451d"
-down_revision: str | None = "c10098e58426"
+down_revision: str | None = "e4a0157eef4b"
 branch_labels: str | None = None
 depends_on: str | None = None
 

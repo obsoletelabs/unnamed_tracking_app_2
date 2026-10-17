@@ -1,6 +1,6 @@
 import type { LocationQuery, LocationQueryRaw } from "vue-router";
 import type { GameStatus } from "../types/game";
-import { gameGenres } from "./genres";
+import { canonicalTag, tagKey } from "./genres";
 import { normalizePlatformFamily } from "./platforms";
 
 export const GAME_SORT_KEYS = [
@@ -99,15 +99,16 @@ const QUERY_KEYS = [
 ];
 
 // Old presets and provider labels may contain both "Genre: Indie" and "Indie".
-// Use the same spelling as the picker, without expanding a selection into aliases.
+// Use the same spelling as the picker, without expanding a selection into
+// broader genres. Synonyms such as "Race" are read as their shared choice.
 export function normalizeGameTags(tags: string[], genre = "all"): string[] {
   const values = genre && genre !== "all" ? [...tags, genre] : tags;
-  const normalized = values
-    .map((tag) => gameGenres([tag])[0])
-    .filter((tag): tag is string => !!tag);
-  return [
-    ...new Map(normalized.map((tag) => [tag.toLowerCase(), tag])).values(),
-  ];
+  const byKey = new Map<string, string>();
+  for (const tag of values) {
+    const label = canonicalTag(tag);
+    if (label && !byKey.has(tagKey(label))) byKey.set(tagKey(label), label);
+  }
+  return [...byKey.values()];
 }
 
 export function normalizeGameExclusions(filters: {

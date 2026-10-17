@@ -113,7 +113,7 @@ def upgrade() -> None:
     h.create_index_if_missing(
         "ix_anime_episodes_season_watched", "anime_episodes", ["season_id", "watched"], unique=False
     )
-    if not h.has_constraint("uq_anime_episodes_season_id_episode_number"):
+    if not h.has_constraint("anime_episodes", "uq_anime_episodes_season_id_episode_number"):
         h.delete_duplicate_episodes("anime_episodes")
         op.create_unique_constraint(
             "uq_anime_episodes_season_id_episode_number",
@@ -166,7 +166,7 @@ def upgrade() -> None:
     h.create_index_if_missing(
         "ix_tv_episodes_season_watched", "tv_episodes", ["season_id", "watched"], unique=False
     )
-    if not h.has_constraint("uq_tv_episodes_season_id_episode_number"):
+    if not h.has_constraint("tv_episodes", "uq_tv_episodes_season_id_episode_number"):
         h.delete_duplicate_episodes("tv_episodes")
         op.create_unique_constraint(
             "uq_tv_episodes_season_id_episode_number",

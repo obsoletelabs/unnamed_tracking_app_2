@@ -1,0 +1,701 @@
+{
+  "$defs": {
+    "BooleanFactValue": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "boolean",
+          "title": "Kind",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "value"
+      ],
+      "title": "BooleanFactValue",
+      "type": "object"
+    },
+    "ContentAction": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[a-z][a-z0-9_]{0,31}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 40,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "style": {
+          "default": "default",
+          "enum": [
+            "default",
+            "primary",
+            "danger"
+          ],
+          "title": "Style",
+          "type": "string"
+        },
+        "target": {
+          "discriminator": {
+            "mapping": {
+              "host_route": "#/$defs/HostRouteTarget",
+              "link": "#/$defs/LinkTarget",
+              "plugin_action": "#/$defs/PluginActionTarget"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/LinkTarget"
+            },
+            {
+              "$ref": "#/$defs/HostRouteTarget"
+            },
+            {
+              "$ref": "#/$defs/PluginActionTarget"
+            }
+          ],
+          "title": "Target"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "target"
+      ],
+      "title": "ContentAction",
+      "type": "object"
+    },
+    "ContentAttribution": {
+      "additionalProperties": false,
+      "description": "Display attribution only; the verified source always comes from host records.",
+      "properties": {
+        "label": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Url"
+        }
+      },
+      "required": [
+        "label"
+      ],
+      "title": "ContentAttribution",
+      "type": "object"
+    },
+    "ContentFact": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,31}$",
+          "title": "Key",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "value": {
+          "discriminator": {
+            "mapping": {
+              "boolean": "#/$defs/BooleanFactValue",
+              "decimal": "#/$defs/DecimalFactValue",
+              "integer": "#/$defs/IntegerFactValue",
+              "money": "#/$defs/MoneyFactValue",
+              "text": "#/$defs/TextFactValue",
+              "timestamp": "#/$defs/TimestampFactValue"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/TextFactValue"
+            },
+            {
+              "$ref": "#/$defs/IntegerFactValue"
+            },
+            {
+              "$ref": "#/$defs/DecimalFactValue"
+            },
+            {
+              "$ref": "#/$defs/MoneyFactValue"
+            },
+            {
+              "$ref": "#/$defs/TimestampFactValue"
+            },
+            {
+              "$ref": "#/$defs/BooleanFactValue"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "key",
+        "label",
+        "value"
+      ],
+      "title": "ContentFact",
+      "type": "object"
+    },
+    "ContentImage": {
+      "additionalProperties": false,
+      "properties": {
+        "alt": {
+          "default": "",
+          "maxLength": 300,
+          "title": "Alt",
+          "type": "string"
+        },
+        "role": {
+          "default": "artwork",
+          "enum": [
+            "artwork",
+            "thumbnail",
+            "hero",
+            "icon"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "source": {
+          "discriminator": {
+            "mapping": {
+              "external": "#/$defs/ExternalImage",
+              "host_media": "#/$defs/HostMediaImage"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/HostMediaImage"
+            },
+            {
+              "$ref": "#/$defs/ExternalImage"
+            }
+          ],
+          "title": "Source"
+        }
+      },
+      "required": [
+        "source"
+      ],
+      "title": "ContentImage",
+      "type": "object"
+    },
+    "DecimalFactValue": {
+      "additionalProperties": false,
+      "description": "Exact decimal strings; binary floating point is never used for displayed facts.",
+      "properties": {
+        "kind": {
+          "const": "decimal",
+          "title": "Kind",
+          "type": "string"
+        },
+        "value": {
+          "pattern": "^-?(?:0|[1-9][0-9]{0,14})(?:\\.[0-9]{1,6})?$",
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "value"
+      ],
+      "title": "DecimalFactValue",
+      "type": "object"
+    },
+    "ExternalImage": {
+      "additionalProperties": false,
+      "description": "Public image URL; host policy chooses direct use, proxy/cache or fallback artwork.",
+      "properties": {
+        "kind": {
+          "const": "external",
+          "title": "Kind",
+          "type": "string"
+        },
+        "url": {
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "url"
+      ],
+      "title": "ExternalImage",
+      "type": "object"
+    },
+    "HostMediaImage": {
+      "additionalProperties": false,
+      "description": "Host-resolved artwork for a record the recipient owns; unresolvable references drop.",
+      "properties": {
+        "kind": {
+          "const": "host_media",
+          "title": "Kind",
+          "type": "string"
+        },
+        "media_id": {
+          "format": "uuid",
+          "title": "Media Id",
+          "type": "string"
+        },
+        "media_type": {
+          "pattern": "^[a-z][a-z0-9_]{0,31}$",
+          "title": "Media Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "media_type",
+        "media_id"
+      ],
+      "title": "HostMediaImage",
+      "type": "object"
+    },
+    "HostRouteTarget": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "host_route",
+          "title": "Kind",
+          "type": "string"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "path"
+      ],
+      "title": "HostRouteTarget",
+      "type": "object"
+    },
+    "IntegerFactValue": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "integer",
+          "title": "Kind",
+          "type": "string"
+        },
+        "value": {
+          "maximum": 9007199254740991,
+          "minimum": -9007199254740991,
+          "title": "Value",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "kind",
+        "value"
+      ],
+      "title": "IntegerFactValue",
+      "type": "object"
+    },
+    "LinkTarget": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "link",
+          "title": "Kind",
+          "type": "string"
+        },
+        "url": {
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "url"
+      ],
+      "title": "LinkTarget",
+      "type": "object"
+    },
+    "MarkdownBlock": {
+      "additionalProperties": false,
+      "description": "CommonMark subset; raw HTML is shown as text and only https/app links are linked.",
+      "properties": {
+        "markdown": {
+          "maxLength": 10000,
+          "minLength": 1,
+          "title": "Markdown",
+          "type": "string"
+        },
+        "type": {
+          "const": "markdown",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "markdown"
+      ],
+      "title": "MarkdownBlock",
+      "type": "object"
+    },
+    "MoneyFactValue": {
+      "additionalProperties": false,
+      "properties": {
+        "amount": {
+          "pattern": "^(?:0|[1-9][0-9]{0,14})(?:\\.[0-9]{1,6})?$",
+          "title": "Amount",
+          "type": "string"
+        },
+        "currency": {
+          "pattern": "^[A-Z]{3}$",
+          "title": "Currency",
+          "type": "string"
+        },
+        "kind": {
+          "const": "money",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "amount",
+        "currency"
+      ],
+      "title": "MoneyFactValue",
+      "type": "object"
+    },
+    "NotificationContent": {
+      "additionalProperties": false,
+      "description": "Canonical PRIVATE content for one story revision; projections are separate host copies.",
+      "properties": {
+        "actions": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ContentAction"
+          },
+          "maxItems": 5,
+          "title": "Actions",
+          "type": "array"
+        },
+        "attribution": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ContentAttribution"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "blocks": {
+          "default": [],
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "markdown": "#/$defs/MarkdownBlock",
+                "text": "#/$defs/TextBlock"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/TextBlock"
+              },
+              {
+                "$ref": "#/$defs/MarkdownBlock"
+              }
+            ]
+          },
+          "maxItems": 32,
+          "title": "Blocks",
+          "type": "array"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires At"
+        },
+        "facts": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ContentFact"
+          },
+          "maxItems": 24,
+          "title": "Facts",
+          "type": "array"
+        },
+        "images": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ContentImage"
+          },
+          "maxItems": 4,
+          "title": "Images",
+          "type": "array"
+        },
+        "summary": {
+          "maxLength": 10000,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "summary"
+      ],
+      "title": "NotificationContent",
+      "type": "object"
+    },
+    "PluginActionTarget": {
+      "additionalProperties": false,
+      "description": "A declared action invoked only through a host-authorised route after revalidation.",
+      "properties": {
+        "action_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9._-]*$",
+          "title": "Action Id",
+          "type": "string"
+        },
+        "input": {
+          "maxProperties": 8,
+          "patternProperties": {
+            "^[a-z][a-z0-9_]{0,31}$": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            }
+          },
+          "title": "Input",
+          "type": "object"
+        },
+        "kind": {
+          "const": "plugin_action",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "action_id"
+      ],
+      "title": "PluginActionTarget",
+      "type": "object"
+    },
+    "StoryReference": {
+      "additionalProperties": false,
+      "description": "Producer-stable story identity plus the lifecycle phase this event asserts.",
+      "properties": {
+        "key": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "phase": {
+          "pattern": "^[a-z][a-z0-9_]{0,31}$",
+          "title": "Phase",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "phase"
+      ],
+      "title": "StoryReference",
+      "type": "object"
+    },
+    "TextBlock": {
+      "additionalProperties": false,
+      "description": "Plain text paragraph(s); renderers escape it for every surface.",
+      "properties": {
+        "text": {
+          "maxLength": 10000,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "type": {
+          "const": "text",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "text"
+      ],
+      "title": "TextBlock",
+      "type": "object"
+    },
+    "TextFactValue": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "text",
+          "title": "Kind",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 1000,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "value"
+      ],
+      "title": "TextFactValue",
+      "type": "object"
+    },
+    "TimestampFactValue": {
+      "additionalProperties": false,
+      "description": "Unix seconds; renderers format it in the recipient's locale/time zone.",
+      "properties": {
+        "kind": {
+          "const": "timestamp",
+          "title": "Kind",
+          "type": "string"
+        },
+        "value": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Value",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "kind",
+        "value"
+      ],
+      "title": "TimestampFactValue",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One producer occurrence. The gateway supplies recipient, source and installation.",
+  "properties": {
+    "content": {
+      "$ref": "#/$defs/NotificationContent"
+    },
+    "contract_version": {
+      "title": "Contract Version",
+      "type": "string"
+    },
+    "event_id": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Event Id",
+      "type": "string"
+    },
+    "event_type": {
+      "maxLength": 128,
+      "minLength": 3,
+      "pattern": "^[a-z0-9][a-z0-9._-]*$",
+      "title": "Event Type",
+      "type": "string"
+    },
+    "grouping_key": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Grouping Key"
+    },
+    "occurred_at": {
+      "maximum": 9007199254740991,
+      "minimum": 0,
+      "title": "Occurred At",
+      "type": "integer"
+    },
+    "story": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/StoryReference"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "urgency": {
+      "default": "normal",
+      "enum": [
+        "normal",
+        "critical"
+      ],
+      "title": "Urgency",
+      "type": "string"
+    }
+  },
+  "required": [
+    "contract_version",
+    "event_type",
+    "event_id",
+    "occurred_at",
+    "content"
+  ],
+  "title": "CanonicalNotificationEvent",
+  "type": "object",
+  "x-notification-contract-version": "1.0.0"
+}
