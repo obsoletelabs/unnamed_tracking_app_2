@@ -105,7 +105,7 @@ def downgrade() -> None:
         )
     if h.has_constraint("notifications", "uq_notifications_story_revision"):
         op.drop_constraint("uq_notifications_story_revision", "notifications", type_="unique")
-    h.drop_index_if_exists("ix_notifications_story", table_name="notifications")
+    h.drop_index_if_exists("ix_notifications_story", "notifications")
     if h.has_constraint("notifications", "fk_notifications_previous"):
         op.drop_constraint("fk_notifications_previous", "notifications", type_="foreignkey")
     if h.has_constraint("notifications", "fk_notifications_story"):

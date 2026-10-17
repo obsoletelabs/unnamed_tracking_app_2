@@ -26,6 +26,7 @@ import { isCommandPaletteOpen } from "../state/commandPalette";
 import { pluginNavigationTarget } from "../utils/pluginNavigation";
 import AppIcon from "./AppIcon.vue";
 import AppBrand from "./AppBrand.vue";
+import ProfileAvatar from "./ProfileAvatar.vue";
 import { branding } from "../state/branding";
 import { containModalTab } from "../services/focus";
 import { useConfirm } from "../state/dialog";
@@ -553,9 +554,10 @@ onUnmounted(() => {
               :title="currentUser?.username"
               aria-label="Your account"
               @click="close"
-              ><span class="nav-avatar">{{
-                currentUser?.username.slice(0, 2).toUpperCase()
-              }}</span
+              ><span class="nav-avatar"
+                ><ProfileAvatar class="nav-avatar-img">{{
+                  currentUser?.username.slice(0, 2).toUpperCase()
+                }}</ProfileAvatar></span
               ><span class="nav-label account-label"
                 ><strong>{{ currentUser?.username }}</strong
                 ><small>Your account</small></span
@@ -895,6 +897,12 @@ dialog.navigation {
   font-size: 11px;
   font-weight: 600;
   flex-shrink: 0;
+}
+.nav-avatar-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
 }
 .account-label {
   display: flex;

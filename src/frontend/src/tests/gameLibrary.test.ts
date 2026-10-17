@@ -167,6 +167,63 @@ describe("game library filtering", () => {
     expect(view.excludedPlatforms.value).toEqual([]);
   });
 
+  it("keeps a tag in one picker list and moves it between include and exclude", async () => {
+    const view = await library();
+    view.toggleTagChoice("Indie", "include");
+    expect(view.tagsFilter.value).toEqual(["Indie"]);
+    expect(view.filteredGames.value.map((item) => item.id)).toEqual([
+      "Alpha",
+      "Beta",
+    ]);
+    view.toggleTagChoice("Genre: Indie", "exclude");
+    expect(view.tagsFilter.value).toEqual([]);
+    expect(view.excludedTags.value).toEqual(["Indie"]);
+    expect(view.filteredGames.value.map((item) => item.id)).toEqual(["Gamma"]);
+    view.toggleTagChoice("indie", "exclude");
+    expect(view.excludedTags.value).toEqual([]);
+    view.toggleTagChoice("RPG", "exclude");
+    view.removeTagChoice("RPG", "include");
+    expect(view.excludedTags.value).toEqual(["RPG"]);
+    view.removeTagChoice("rpg", "exclude");
+    expect(view.excludedTags.value).toEqual([]);
+  });
+
+  it("resolves an older link naming a tag in both lists to the chosen mode", async () => {
+    routing.route.query = { tag: "Indie", not_tag: "Indie" };
+    routing.route.fullPath = "/games?tag=Indie&not_tag=Indie";
+    const view = await library();
+    // exclusions still win until the person chooses
+    expect(view.filteredGames.value).toEqual([]);
+    view.toggleTagChoice("Indie", "include");
+    expect(view.tagsFilter.value).toEqual(["Indie"]);
+    expect(view.excludedTags.value).toEqual([]);
+    expect(view.filteredGames.value.map((item) => item.id)).toEqual([
+      "Alpha",
+      "Beta",
+    ]);
+  });
+
+  it("offers each library tag once with counts, whatever its spelling", async () => {
+    const view = await library();
+    view.games.value = [
+      ...view.games.value,
+      game("Delta", "backlog", ["Steam: race"]),
+      game("Epsilon", "backlog", ["Racing"]),
+    ];
+    expect(
+      view.tagOptions.value.map((option) => [option.value, option.count]),
+    ).toEqual([
+      ["Racing", 2],
+      ["RPG", 1],
+      ["Indie", 2],
+    ]);
+    view.toggleTagChoice("Race", "include");
+    expect(view.filteredGames.value.map((item) => item.id)).toEqual([
+      "Delta",
+      "Epsilon",
+    ]);
+  });
+
   it("reconciles a saved card status across filters, counts and the current preview", async () => {
     const view = await library();
     const selected = view.games.value[0]!;
