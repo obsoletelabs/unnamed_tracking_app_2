@@ -73,7 +73,6 @@ from src.features.metadata.service import (
     media_result,
     search_media,
 )
-from src.features.notifications import record_sequel_announcements
 from src.features.trash.media_titles import empty_trash
 from src.plugin_api.metadata_contracts import MediaType
 
