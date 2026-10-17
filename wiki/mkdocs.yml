@@ -106,6 +106,7 @@ nav:
       - Game Identity Decisions: development/game-identity-decisions.md
       - Game Identity Counters: development/game-identity-counters.md
       - Game Identity Matching: development/game-identity-matching.md
+      - Game Manual Tracking: development/game-identity-manual.md
       - Plugin Palettes & Appearance: development/plugin-themes.md
       - Plugin Home Widgets: development/plugin-home-widgets.md
       - Custom Plugin Frontend Sandbox: development/plugin-ui-sandbox.md
