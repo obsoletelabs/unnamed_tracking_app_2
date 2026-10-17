@@ -54,11 +54,20 @@ async def search_records(
     try:
         if session.search_task:
             await session.search_task
+        results = list(session.candidates.values())[:limit]
         return {
             "query": query,
             "providers": [
                 provider.name for provider in providers if provider.id in session.provider_states
             ],
+            # Registered IDs that supplied a returned result; callers record provider use.
+            "used_provider_ids": sorted(
+                {
+                    provider_id
+                    for record in results
+                    for provider_id in handler.contributors(session, record["id"])
+                }
+            ),
             "provider_errors": list(
                 dict.fromkeys(
                     event["message"]
@@ -66,7 +75,7 @@ async def search_records(
                     if event["event"] == "provider_failed"
                 )
             ),
-            "results": list(session.candidates.values())[:limit],
+            "results": results,
         }
     finally:
         handler.cancel(session)
@@ -306,6 +315,7 @@ async def search_media(
     db: AsyncSession, user_id: UUID, query: str, media_type: MediaType, limit: int = 20
 ) -> dict[str, Any]:
     response = await search_records(db, user_id, query, media_type, limit)
+    response.pop("used_provider_ids", None)
     return {
         **response,
         "results": [media_result(record, media_type) for record in response["results"]],

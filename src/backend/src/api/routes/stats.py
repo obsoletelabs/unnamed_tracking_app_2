@@ -18,6 +18,7 @@ from src.database.models.game import Game
 from src.database.models.game_field_change import GameFieldChange
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features.game_stats import active_owned_games
 
 router = APIRouter(prefix="/api/stats", tags=["stats"], dependencies=[Depends(get_current_user)])
 
@@ -57,8 +58,9 @@ def _folder_size_bytes(folder_location: str | None) -> int:
 
 
 def _overview_queries(user_id: UUID) -> dict[str, Select[Any]]:
-    """All dashboard queries stay scoped to the caller and run on one session."""
-    user_filter = Game.user_id == user_id
+    """All dashboard queries stay scoped to the caller's active (not trashed)
+    games and run on one session."""
+    user_filter = active_owned_games(user_id)
 
     totals_stmt = select(
         sql_count(Game.id),
@@ -198,9 +200,10 @@ async def get_weekly_digest(
 ) -> dict:
     """Counts for "the last 7 days" across a few tables the Home Hub recap
     can't reach client-side (achievements and metadata changes both need a
-    per-game fetch there, an aggregate query here is much cheaper)."""
+    per-game fetch there, an aggregate query here is much cheaper). Only the
+    caller's active games count; a trashed game's activity returns on restore."""
     week_ago = int(time.time()) - 7 * 86_400
-    user_filter = Game.user_id == current_user.id
+    user_filter = active_owned_games(current_user.id)
 
     games_played_stmt = select(sql_count(Game.id)).where(
         user_filter, Game.last_played_at.is_not(None), Game.last_played_at >= week_ago

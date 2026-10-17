@@ -5,6 +5,7 @@ import ConnectionManageDialog from "./ConnectionManageDialog.vue";
 import PluginConnectionDialog from "./PluginConnectionDialog.vue";
 import SteamConnectionDialog from "./SteamConnectionDialog.vue";
 import {
+  CONNECTION_BY_KEY,
   CONNECTIONS,
   isConnectionConnected,
   useConnections,
@@ -132,6 +133,29 @@ function closePlugin() {
   void loadPluginStatus();
 }
 
+function open(row: Row) {
+  if (row.plugin) {
+    managingPlugin.value = row.plugin;
+    return;
+  }
+  // a new Steam connection goes straight to sign-in; Manage still opens the
+  // full dialog with import, legacy credentials and disconnect
+  if (row.connection?.signIn && !row.connected) steamSignIn.value = true;
+  else managing.value = row.connection ?? null;
+}
+
+function openSteamLegacy() {
+  steamSignIn.value = false;
+  managing.value = CONNECTION_BY_KEY.Steam ?? null;
+}
+
+function pillText(row: Row): string {
+  if (row.error) return "Error";
+  if (!row.connected) return "Not connected";
+  // nothing is pulled from deferred providers yet, so don't claim a link
+  return row.connection?.deferred ? "Saved" : "Connected";
+}
+
 onMounted(() => {
   void state.loadCredentials();
   const outcome = steamOpenIdOutcome(route.query);
@@ -170,6 +194,7 @@ watch(pluginConnections, () => void loadPluginStatus(), { immediate: true });
       <li v-for="row in rows" :key="row.key" class="row">
         <span
           class="mark"
+          aria-hidden="true"
           :style="{
             background: markFor(row.label).bg,
             color: markFor(row.label).fg,
@@ -181,7 +206,7 @@ watch(pluginConnections, () => void loadPluginStatus(), { immediate: true });
           <span class="detail" :title="row.detail">{{ row.detail }}</span>
         </span>
         <span class="pill" :class="{ ok: row.connected, bad: row.error }">{{
-          row.error ? "Error" : row.connected ? "Connected" : "Not connected"
+          pillText(row)
         }}</span>
         <span class="controls">
           <button
@@ -201,11 +226,7 @@ watch(pluginConnections, () => void loadPluginStatus(), { immediate: true });
             type="button"
             class="btn ghost"
             :aria-label="`${row.connected ? 'Manage' : 'Connect'} ${row.label}`"
-            @click="
-              row.plugin
-                ? (managingPlugin = row.plugin)
-                : (managing = row.connection ?? null)
-            "
+            @click="open(row)"
           >
             {{ row.connected ? "Manage" : "Connect" }}
           </button>
@@ -227,10 +248,12 @@ watch(pluginConnections, () => void loadPluginStatus(), { immediate: true });
       v-if="steamSignIn"
       @close="steamSignIn = false"
       @changed="state.loadCredentials()"
+      @legacy="openSteamLegacy"
     />
     <PluginConnectionDialog
       v-if="managingPlugin"
       :connection="managingPlugin"
+      :connected="pluginStatus[pluginKey(managingPlugin)]?.connected ?? false"
       @close="closePlugin"
     />
   </section>
@@ -267,7 +290,7 @@ watch(pluginConnections, () => void loadPluginStatus(), { immediate: true });
   gap: 12px;
   padding: 10px 12px;
   background: var(--ui-surface);
-  border: 1px solid #262626;
+  border: 1px solid var(--ui-border-soft);
   border-radius: var(--ui-radius-control);
 }
 .mark {

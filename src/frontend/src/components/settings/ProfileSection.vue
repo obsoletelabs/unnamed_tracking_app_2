@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from "vue";
+import ProfileAvatar from "../ProfileAvatar.vue";
 import PasswordInput from "../PasswordInput.vue";
 import { currentUser, checkAuth } from "../../state/auth";
 import PasswordRequirements from "./PasswordRequirements.vue";
@@ -11,21 +12,10 @@ import {
 import {
   updateProfile,
   uploadProfilePicture,
-  profilePictureUrl,
+  removeProfilePicture,
 } from "../../services/auth";
 
 const isMock = computed(() => currentUser.value?.id === "mock");
-
-const avatarUrl = computed(() =>
-  currentUser.value?.profile_picture_version
-    ? profilePictureUrl(
-        currentUser.value.id,
-        currentUser.value.profile_picture_version,
-      )
-    : "",
-);
-const avatarFailed = ref(false);
-watch(avatarUrl, () => (avatarFailed.value = false));
 
 const username = ref("");
 const email = ref("");
@@ -129,7 +119,6 @@ async function onAvatarFileChange(e: Event) {
         ...currentUser.value,
         profile_picture_version: version,
       };
-      avatarFailed.value = false;
     }
   } catch (err) {
     uploadError.value =
@@ -141,6 +130,27 @@ async function onAvatarFileChange(e: Event) {
     input.value = "";
   }
 }
+
+async function onRemoveAvatar() {
+  if (!currentUser.value) return;
+  uploading.value = true;
+  uploadError.value = null;
+  const userId = currentUser.value.id;
+  try {
+    const version = await removeProfilePicture(userId);
+    if (currentUser.value?.id === userId) {
+      currentUser.value = {
+        ...currentUser.value,
+        profile_picture_version: version,
+      };
+    }
+  } catch (err) {
+    uploadError.value =
+      err instanceof Error ? err.message : "Failed to remove picture";
+  } finally {
+    uploading.value = false;
+  }
+}
 </script>
 
 <template>
@@ -148,16 +158,11 @@ async function onAvatarFileChange(e: Event) {
     <h2>Profile</h2>
 
     <div class="avatar-row">
-      <img
-        v-if="!isMock && avatarUrl && !avatarFailed"
-        :src="avatarUrl"
-        alt=""
-        class="avatar-image"
-        @error="avatarFailed = true"
-      />
-      <div v-else class="avatar-fallback">
-        {{ (currentUser?.username ?? "?").slice(0, 2).toUpperCase() }}
-      </div>
+      <ProfileAvatar class="avatar-image"
+        ><div class="avatar-fallback">
+          {{ (currentUser?.username ?? "?").slice(0, 2).toUpperCase() }}
+        </div></ProfileAvatar
+      >
 
       <div class="avatar-meta">
         <div class="avatar-name">{{ currentUser?.username }}</div>
@@ -173,6 +178,15 @@ async function onAvatarFileChange(e: Event) {
           />
           {{ uploading ? "Uploading…" : "Change picture" }}
         </label>
+        <button
+          v-if="!isMock && currentUser?.profile_picture_version"
+          type="button"
+          class="remove-picture"
+          :disabled="uploading"
+          @click="onRemoveAvatar"
+        >
+          Remove picture
+        </button>
         <p v-if="isMock" class="mock-note">
           Profile pictures aren't available in mock mode.
         </p>
@@ -300,8 +314,20 @@ async function onAvatarFileChange(e: Event) {
   font-weight: 600;
   cursor: pointer;
 }
-.upload-label:hover {
+.upload-label:hover,
+.remove-picture:hover {
   text-decoration: underline;
+}
+.remove-picture {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ui-dim);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
 }
 .mock-note {
   color: var(--ui-faint);

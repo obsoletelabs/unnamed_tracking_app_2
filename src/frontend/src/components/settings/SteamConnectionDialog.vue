@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from "vue";
 import UiModal from "../UiModal.vue";
 import PasswordInput from "../PasswordInput.vue";
 import SteamOpenIdLink from "./SteamOpenIdLink.vue";
@@ -21,19 +28,27 @@ import type {
   SteamGuardCodeType,
 } from "../../services/steamConnection";
 
-const emit = defineEmits<{ close: []; changed: [] }>();
+const emit = defineEmits<{ close: []; changed: []; legacy: [] }>();
 const connection = ref<SteamConnection | null>(null);
 const method = ref<"qr" | "account">("qr");
 const accountName = ref("");
 const password = ref("");
 const guardCode = ref("");
 const guardType = ref<SteamGuardCodeType>(STEAM_GUARD_DEVICE_CODE);
+// `busy` is for user actions only; background polls must not disable the
+// Guard code field while someone is typing into it.
 const busy = ref(false);
 const loading = ref(true);
 const error = ref("");
+// Steam was unreachable or rate limiting; the same attempt is retried.
+const retrying = ref(false);
+// An account session can be replaced, e.g. after Steam revokes it.
+const signingInAgain = ref(false);
 const qrImage = ref("");
+const guardInput = ref<HTMLInputElement | null>(null);
 const confirm = useConfirm();
 let timer: ReturnType<typeof setTimeout> | undefined;
+let inFlight: Promise<void> | null = null;
 let closed = false;
 let revision = 0;
 
@@ -70,10 +85,37 @@ watch(
     }
   },
 );
-watch(guardTypes, (types) => {
-  guardType.value = types.includes(STEAM_GUARD_DEVICE_CODE)
-    ? STEAM_GUARD_DEVICE_CODE
-    : STEAM_GUARD_EMAIL_CODE;
+// Every poll yields a new array, so watch its contents and keep the person's
+// choice while Steam still offers it.
+watch(
+  () => guardTypes.value.join(","),
+  async () => {
+    const types = guardTypes.value;
+    if (!types.length) return;
+    if (!types.includes(guardType.value))
+      guardType.value = types.includes(STEAM_GUARD_DEVICE_CODE)
+        ? STEAM_GUARD_DEVICE_CODE
+        : STEAM_GUARD_EMAIL_CODE;
+    await nextTick();
+    guardInput.value?.focus();
+  },
+);
+const statusText = computed(() =>
+  retrying.value
+    ? "Steam isn't responding. Retrying…"
+    : pending.value?.phase === "waiting"
+      ? "Waiting for Steam approval…"
+      : "Checking sign-in…",
+);
+const approvalHint = computed(() => {
+  const types = pending.value?.confirmation_types ?? [];
+  const app = types.includes(4);
+  const email = types.includes(5);
+  if (app && email)
+    return "Approve the sign-in in the Steam mobile app or from Steam's email.";
+  if (app) return "Approve the sign-in in the Steam mobile app.";
+  if (email) return "Approve the sign-in from the email Steam sent you.";
+  return "";
 });
 
 function stopPolling() {
@@ -96,11 +138,25 @@ async function accept(value: SteamConnection, requestRevision: number) {
   }
   const wasPending = !!connection.value?.pending;
   connection.value = value;
-  if (wasPending && !value.pending && value.connected) emit("changed");
+  if (!value.pending) retrying.value = false;
+  if (wasPending && !value.pending && value.connected) {
+    error.value = "";
+    signingInAgain.value = false;
+    emit("changed");
+  }
   schedule();
 }
-async function check() {
-  if (!pending.value || closed || busy.value) return;
+// After a failure the server may already have ended the attempt; show its
+// real state instead of a QR or code form that can no longer complete.
+async function resync(requestRevision: number) {
+  try {
+    await accept(await fetchSteamConnection(), requestRevision);
+  } catch {
+    stopPolling();
+  }
+}
+async function poll() {
+  if (!pending.value || closed) return;
   const requestRevision = revision;
   if (pending.value.expires_at * 1000 <= Date.now()) {
     stopPolling();
@@ -111,24 +167,33 @@ async function check() {
     if (expired) await accept(expired, requestRevision);
     return;
   }
-  busy.value = true;
   try {
-    await accept(
+    const value =
       pending.value.phase === "waiting"
         ? await pollSteamLogin(pending.value.attempt_id)
-        : await fetchSteamConnection(),
-      requestRevision,
-    );
+        : await fetchSteamConnection();
+    retrying.value = false;
+    await accept(value, requestRevision);
   } catch (e) {
     if (closed || requestRevision !== revision) return;
     if (e instanceof SteamConnectionError && e.status === 429) schedule();
-    else {
+    else if (e instanceof SteamConnectionError && e.status === 503) {
+      retrying.value = true;
+      schedule();
+    } else {
+      retrying.value = false;
       error.value = e instanceof Error ? e.message : "Steam sign-in failed.";
       stopPolling();
+      await resync(requestRevision);
     }
-  } finally {
-    if (requestRevision === revision) busy.value = false;
   }
+}
+function check() {
+  // a user action owns the attempt; it reschedules polling when done
+  if (inFlight || busy.value) return;
+  inFlight = poll().finally(() => {
+    inFlight = null;
+  });
 }
 
 async function signIn() {
@@ -153,13 +218,20 @@ async function signIn() {
   }
 }
 async function sendGuard() {
-  if (!pending.value) return;
+  if (!pending.value || busy.value) return;
   const requestRevision = revision;
   busy.value = true;
   error.value = "";
   stopPolling();
-  const transientCode = guardCode.value;
-  guardCode.value = "";
+  // the server rejects a code while a poll is still with Steam
+  if (inFlight) await inFlight;
+  if (!pending.value || closed || requestRevision !== revision) {
+    busy.value = false;
+    return;
+  }
+  stopPolling();
+  // pasted or autofilled codes often carry spaces; Steam's codes are uppercase
+  const transientCode = guardCode.value.replace(/\s+/g, "").toUpperCase();
   try {
     await accept(
       await submitSteamGuard(
@@ -169,20 +241,18 @@ async function sendGuard() {
       ),
       requestRevision,
     );
+    guardCode.value = "";
   } catch (e) {
     if (closed || requestRevision !== revision) return;
     error.value =
       e instanceof Error ? e.message : "Steam did not accept the code.";
-    try {
-      await accept(await fetchSteamConnection(), requestRevision);
-    } catch {
-      stopPolling();
-    }
+    await resync(requestRevision);
   } finally {
     if (requestRevision === revision) busy.value = false;
   }
 }
 async function cancel() {
+  if (busy.value) return;
   const requestRevision = ++revision;
   stopPolling();
   busy.value = true;
@@ -193,9 +263,12 @@ async function cancel() {
         requestRevision,
       );
     error.value = "";
+    retrying.value = false;
   } catch (e) {
     error.value =
       e instanceof Error ? e.message : "Couldn't cancel Steam sign-in.";
+    // keep tracking the attempt rather than freezing on a stale QR
+    await resync(requestRevision);
   } finally {
     busy.value = false;
   }
@@ -213,9 +286,11 @@ async function disconnect() {
     return;
   ++revision;
   busy.value = true;
+  error.value = "";
   stopPolling();
   try {
     connection.value = await disconnectSteam();
+    signingInAgain.value = false;
     emit("changed");
   } catch (e) {
     error.value = e instanceof Error ? e.message : "Couldn't disconnect Steam.";
@@ -223,16 +298,10 @@ async function disconnect() {
     busy.value = false;
   }
 }
-async function close() {
+// Unmounting cancels any pending attempt, so closing never waits on the network.
+function close() {
   closed = true;
-  ++revision;
   stopPolling();
-  password.value = guardCode.value = "";
-  if (pending.value) {
-    connection.value = await cancelSteamLogin(pending.value.attempt_id).catch(
-      () => connection.value,
-    );
-  }
   emit("close");
 }
 onMounted(async () => {
@@ -258,11 +327,11 @@ onBeforeUnmount(() => {
 
 <template>
   <UiModal
-    title="Connect Steam"
+    :title="connection?.connected ? 'Steam sign-in' : 'Connect Steam'"
     description="Import your library and achievements by signing in to Steam."
     @close="close"
   >
-    <p v-if="loading" class="hint">Loading connection…</p>
+    <p v-if="loading" class="hint" role="status">Loading connection…</p>
     <p v-if="error" class="error" role="alert">{{ error }}</p>
     <template v-if="!loading">
       <SteamOpenIdLink
@@ -281,16 +350,27 @@ onBeforeUnmount(() => {
               : "Your session is renewed when you import. Private achievement progress uses your signed-in account."
           }}
         </p>
-        <button
-          class="ui-btn ui-btn-ghost"
-          type="button"
-          :disabled="busy"
-          @click="disconnect"
-        >
-          Disconnect
-        </button>
+        <div class="connected-actions">
+          <button
+            v-if="connection.method === 'account' && !signingInAgain"
+            class="ui-btn ui-btn-secondary"
+            type="button"
+            :disabled="busy"
+            @click="signingInAgain = true"
+          >
+            Sign in again
+          </button>
+          <button
+            class="ui-btn ui-btn-ghost"
+            type="button"
+            :disabled="busy"
+            @click="disconnect"
+          >
+            Disconnect
+          </button>
+        </div>
       </div>
-      <div v-if="pending" class="pending" aria-live="polite">
+      <div v-if="pending" class="pending">
         <template v-if="pending.challenge_url">
           <img
             v-if="qrImage"
@@ -300,15 +380,13 @@ onBeforeUnmount(() => {
             height="256"
             alt="Steam sign-in QR code"
           />
+          <div v-else class="qr qr-placeholder" aria-hidden="true"></div>
           <p>
             Scan with Steam Guard in the Steam mobile app, then approve the
             sign-in to Unnamed Tracking App.
           </p>
         </template>
-        <p v-else class="hint">
-          Approve the sign-in in Steam Guard or through Steam's email
-          confirmation.
-        </p>
+        <p v-else-if="approvalHint" class="hint">{{ approvalHint }}</p>
         <form
           v-if="guardTypes.length"
           class="login-form"
@@ -325,31 +403,38 @@ onBeforeUnmount(() => {
           <label
             >{{ guardDescription
             }}<input
+              ref="guardInput"
               v-model="guardCode"
               class="ui-field"
               type="text"
               autocomplete="one-time-code"
-              maxlength="10"
+              autocapitalize="characters"
+              autocorrect="off"
+              spellcheck="false"
+              maxlength="16"
               required
               :disabled="busy"
           /></label>
           <button class="ui-btn ui-btn-primary" type="submit" :disabled="busy">
-            Submit Steam Guard code
+            {{ busy ? "Checking code…" : "Submit Steam Guard code" }}
           </button>
         </form>
-        <p class="hint">
-          {{
-            busy || pending.phase !== "waiting"
-              ? "Checking sign-in…"
-              : "Waiting for Steam approval…"
-          }}
-        </p>
-        <button class="ui-btn ui-btn-ghost" type="button" @click="cancel">
+        <p class="hint" role="status">{{ statusText }}</p>
+        <button
+          class="ui-btn ui-btn-ghost"
+          type="button"
+          :disabled="busy"
+          @click="cancel"
+        >
           Cancel sign-in
         </button>
       </div>
       <form
-        v-else-if="!connection?.connected || connection.method === 'api_key'"
+        v-else-if="
+          !connection?.connected ||
+          connection.method === 'api_key' ||
+          signingInAgain
+        "
         class="login-form"
         @submit.prevent="signIn"
       >
@@ -410,6 +495,14 @@ onBeforeUnmount(() => {
                 : "Sign in to Steam"
           }}
         </button>
+        <button
+          v-if="!connection?.connected"
+          class="link-btn"
+          type="button"
+          @click="emit('legacy')"
+        >
+          Use a Web API key for a public profile instead
+        </button>
       </form>
     </template>
     <template #footer
@@ -448,8 +541,30 @@ onBeforeUnmount(() => {
   height: auto;
   background: white;
 }
+.qr-placeholder {
+  width: 256px;
+  aspect-ratio: 1;
+  border-radius: var(--ui-radius-control);
+  background: color-mix(in srgb, var(--ui-text) 6%, transparent);
+}
 .connected {
   margin-bottom: 20px;
+}
+.connected-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.link-btn {
+  justify-self: start;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--ui-accent);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  text-decoration: underline;
 }
 .pending p {
   margin: 0;

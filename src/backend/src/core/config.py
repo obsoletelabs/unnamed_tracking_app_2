@@ -56,6 +56,7 @@ class Settings(BaseSettings):
     NOTIFICATION_AUDIT_RETENTION_DAYS: int = Field(default=90, ge=1, le=3650)
     NOTIFICATION_RETENTION_MAXIMUM_DAYS: int = Field(default=0, ge=0, le=3650)
     MAX_UPLOAD_SIZE_MB: int = 15
+    MAX_DOC_SIZE_MB: int = 500
     MAX_SAVE_ARCHIVE_SIZE_MB: int = 4096
     MAX_CLIP_SIZE_MB: int = 500
     MAX_WORLD_SAVE_SIZE_MB: int = 2000

@@ -233,10 +233,25 @@ async def check_library_owner(db: AsyncSession, user: User, steam_id: str) -> No
     user.steam_library_owner_id = steam_id
 
 
+async def _release(db: AsyncSession, user_id: UUID, attempt: str, delay: float) -> None:
+    """Return a claimed attempt to waiting so the same QR or Guard step stays usable."""
+    user = await locked_user(db, user_id)
+    state = _require_attempt(user, attempt)
+    state["next_action_at"] = time.time() + delay
+    state["phase"] = "waiting"
+    _save_pending(user, state)
+    await db.commit()
+
+
 async def poll(db: AsyncSession, user_id: UUID, attempt: str) -> dict:
     state = await _claim(db, user_id, attempt)
     try:
         result, session = await asyncio.to_thread(_poll_provider, state)
+    except steam_login.SteamSignInUnavailable as exc:
+        # A timeout or rate limit says nothing about the sign-in itself; ending
+        # the attempt here left a QR on screen that could never complete.
+        await _release(db, user_id, attempt, max(10, state["interval"] * 2))
+        raise SteamConnectionError(str(exc), 503) from None
     except steam.SteamLibraryError:
         await cancel(db, user_id, attempt)
         raise
@@ -268,6 +283,9 @@ async def poll(db: AsyncSession, user_id: UUID, attempt: str) -> dict:
                 or not value.isdigit()
                 or not 0 < int(value) < 2**64
             ):
+                # End the attempt rather than leaving it claimed until expiry.
+                user.steam_login_state = None
+                await db.commit()
                 raise steam.SteamLibraryError("Steam returned an invalid sign-in response.")
             state["client_id"] = value
         if result.get("new_challenge_url"):
