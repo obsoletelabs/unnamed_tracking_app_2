@@ -619,6 +619,13 @@ async def update_game(
 
     await _record_update_observation(db, game, actor, sent)
 
+    await _save_game_update(db, game, old_folder)
+
+    return game
+
+
+async def _save_game_update(db: AsyncSession, game: Game, old_folder: str) -> None:
+    """Commit an update, moving the game folder first when its name changed."""
     target_folder = game.folder_location
     try:
         if target_folder != old_folder:
@@ -633,8 +640,6 @@ async def update_game(
             status_code=409,
             detail=f"Could not save the game folder. {exc} Retry saving its folder name to recover.",
         ) from exc
-
-    return game
 
 
 async def _record_update_observation(
