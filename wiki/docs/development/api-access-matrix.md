@@ -470,6 +470,7 @@ are redacted. Validation errors never echo submitted values.
 | POST | `/api/notifications/stories/live-links/revoke-all` | user | Revokes only the caller's own live links. |
 | GET | `/api/notifications/stories/{story_id}` | user | Story must belong to the caller (404 otherwise). |
 | POST | `/api/notifications/stories/{story_id}/actions/{action_id}` | user | Story must belong to the caller (404 otherwise); the host rechecks plugin grants before running the action. |
+| GET | `/api/notifications/stories/{story_id}/deliveries` | user | Story must belong to the caller (404 otherwise); delivery diagnostics for the caller's own destinations. |
 | GET | `/api/notifications/stories/{story_id}/images/{index}` | user | Story must belong to the caller (404 otherwise); host-proxied image. |
 | GET | `/api/notifications/stories/{story_id}/live-links` | user | Story must belong to the caller (404 otherwise). |
 | POST | `/api/notifications/stories/{story_id}/live-links` | user | Story must belong to the caller (404 otherwise). |
