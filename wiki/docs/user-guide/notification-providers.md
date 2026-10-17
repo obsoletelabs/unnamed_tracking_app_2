@@ -33,6 +33,19 @@ Successful verification makes that exact address revision SECURE until it change
 
 Normal is the default urgency. Critical email adds high-priority headers; the mail client decides whether to alert differently. Urgency never changes trust or sensitive-delivery eligibility.
 
+## Quiet hours and timing
+
+Below the routing choices, **Quiet hours and timing** controls when external notifications are sent. It never changes who may receive a notification, what a destination may see, or the in-app inbox.
+
+- **Time zone** sets the clock for quiet hours and digests. Daylight-saving changes are handled for you: a quiet night ends at the local time you chose even when the night is an hour shorter or longer. Empty means UTC.
+- **Quiet hours** hold external notifications and deliver them together as one message when the period ends. Security alerts, sign-in codes and other account messages are never held.
+- **Digest times** are the local times used by rules that send a daily digest.
+- **Rules** choose how a category (TV, anime and movies, games, system updates, plugins) is sent: the default for that type, immediately, grouped briefly, as a daily digest, or muted outside the inbox. A rule can target one destination and can override quiet hours or urgent requests. The most specific rule wins: category on a destination, then destination, then category, then everything.
+- **Urgent requests** let a Critical route or alert interrupt quiet hours and grouping. Choose Never to stop all interruptions. Plugins can request urgency, but it is honoured only if you enable it here and your administrator allows it. An urgent request never gives a destination more access.
+- **Check what happens** explains the result for a notification type and destination, step by step.
+
+A route you disabled stays disabled: nothing is queued for it, and re-enabling it does not send what arrived meanwhile. Administrators can limit this with `NOTIFICATION_TIMING_ENABLED` and `NOTIFICATION_URGENT_BYPASS_ENABLED` (both default to true).
+
 ## Email unsubscribe
 
 Notification links follow destination URL preference → personal notification URL → shared public app URL → your last-used app origin. Configure your preferences under **Settings → Notifications → Notification links**; blank overrides inherit the default. Configure the shared URL under **Settings → Administration → Application**, setup, or `PUBLIC_APP_URL` through the existing ENV handler. That shared value must use HTTPS and a public fully qualified domain name. Its public DNS is managed by the administrator. The app remembers each user's origin when they open it while signed in, including a local IP or different domain. API-key/plugin traffic cannot change it. All of these URLs are independent of OIDC sign-in callbacks. Ordinary email receives no unsubscribe link until at least one usable URL exists.

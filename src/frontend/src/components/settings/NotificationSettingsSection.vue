@@ -5,6 +5,7 @@
 import { ref, computed, onMounted } from "vue";
 import SegmentedControl from "./SegmentedControl.vue";
 import NotificationRoutingSection from "./NotificationRoutingSection.vue";
+import NotificationTimingSection from "./NotificationTimingSection.vue";
 import {
   DEFAULT_PREFERENCES,
   fetchPreferences,
@@ -100,6 +101,11 @@ function chooseRetention(value: string) {
     <p v-if="error" class="error" role="alert">{{ error }}</p>
 
     <NotificationRoutingSection
+      :prefs="prefs"
+      :loaded="loaded"
+      @change="change"
+    />
+    <NotificationTimingSection
       :prefs="prefs"
       :loaded="loaded"
       @change="change"
