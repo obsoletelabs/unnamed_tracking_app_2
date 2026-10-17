@@ -38,7 +38,7 @@ Delivery states are `pending`, `processing`, `sent`, `retry_wait`, `failed_perma
 
 External delivery is at least once: a crash after a remote send and before local acknowledgement can produce a duplicate. Delete cancels unclaimed work and invalidates claims; cancellation after transport starts is best-effort. Dismiss only hides the inbox entry. Group keys are persisted with individual notifications and deliveries. External destinations additionally batch related deliveries through durable aggregation windows; see [Aggregation windows and digests](notification-contract.md#aggregation-windows-and-digests). The in-app inbox is never delayed.
 
-Content retention is independent of transport validity and deduplication. Security work expires after one day and ordinary work after 30 days. Inbox retention remains user-configurable. Minimal receipts currently have no expiry; story state and revisions are persisted separately (see the [contract](notification-contract.md#story-persistence-and-idempotency)).
+Content retention is independent of transport validity and deduplication. Security work expires after one day and ordinary work after 30 days. Inbox retention remains user-configurable. Rich content, live story links and the image proxy are described in [Rich content, live story pages and actions](notification-contract.md#rich-content-live-story-pages-and-actions); erasing an item also erases its stored document and revokes its live links. Minimal receipts currently have no expiry; story state and revisions are persisted separately (see the [contract](notification-contract.md#story-persistence-and-idempotency)).
 
 ## Migration and validation
 

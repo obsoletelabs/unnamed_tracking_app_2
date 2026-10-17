@@ -1,9 +1,11 @@
-"""Keep bearer proof, opt-out, calendar-feed and OIDC exchange values out of the access log."""
+"""Keep bearer proof, opt-out, live-link, calendar-feed and OIDC exchange values out of the access log."""
 
 import logging
 import re
 
 _CALENDAR_FEED_PATH = re.compile(r"^(/api/calendar/feed/)[^/?]+(\.ics)$")
+_LIVE_LINK_PREFIXES = ("/api/notifications/live/", "/api/notifications/stories/by-link/")
+_REDACTED_LIVE_LINK = "/api/notifications/live/<redacted>"
 _QUERY_SECRET_PATHS = (
     "/api/notifications/email-verify",
     "/api/notifications/email-unsubscribe",
@@ -12,7 +14,9 @@ _QUERY_SECRET_PATHS = (
 
 
 def redact_request_target(target: str) -> str:
-    """Drop credential-bearing query strings and the calendar feed token from a logged path."""
+    """Drop live-link tokens, credential-bearing query strings and the calendar feed token from a logged path."""
+    if target.startswith(_LIVE_LINK_PREFIXES):
+        return _REDACTED_LIVE_LINK
     path, _, _query = target.partition("?")
     if path in _QUERY_SECRET_PATHS or path.startswith("/api/auth/oidc/callback/"):
         return path

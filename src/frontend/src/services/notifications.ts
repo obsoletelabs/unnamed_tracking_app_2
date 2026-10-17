@@ -25,6 +25,7 @@ export interface MediaNotification {
   groupKey?: string | null;
   createdAt?: number;
   readAt?: number | null;
+  storyId?: string | null;
 }
 
 interface BackendNotification {
@@ -45,6 +46,7 @@ interface BackendNotification {
   group_key?: string | null;
   created_at?: number;
   read_at?: number | null;
+  story_id?: string | null;
 }
 
 export type InboxFilter =
@@ -131,6 +133,7 @@ export async function fetchMediaNotifications(
       groupKey: n.group_key ?? null,
       createdAt: n.created_at ?? n.event_at,
       readAt: n.read_at ?? null,
+      storyId: n.story_id ?? null,
     })),
   };
 }
