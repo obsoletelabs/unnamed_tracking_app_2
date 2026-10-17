@@ -80,26 +80,13 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Per-revision deliveries and remote message references cannot be represented by the older
-    # one-delivery-per-destination schema; erasing them would also erase delivery history.
-    connection = op.get_bind()
-    if h.has_table("notification_remote_references") and connection.scalar(
-        sa.text("SELECT EXISTS (SELECT 1 FROM notification_remote_references)")
-    ):
-        raise RuntimeError(
-            "Refusing to drop stored remote message references; retain the schema or "
-            "remove them explicitly before downgrading."
-        )
-    if h.has_column("notification_deliveries", "story_revision") and connection.scalar(
-        sa.text(
-            "SELECT EXISTS (SELECT 1 FROM notification_deliveries WHERE destination_id IS NOT NULL "
-            "GROUP BY notification_id, destination_id HAVING count(*) > 1)"
-        )
-    ):
-        raise RuntimeError(
-            "Refusing to drop superseded per-revision deliveries; retain the schema or remove the "
-            "superseded revisions' deliveries explicitly before downgrading."
-        )
+    h.refuse_if_populated(
+        "notification_remote_references", "remote notification message references"
+    )
+    h.refuse_if_populated(
+        "notification_deliveries", "per-revision notification deliveries", "story_revision > 0"
+    )
+
     h.drop_index_if_exists(
         "ix_notification_remote_reference_story", "notification_remote_references"
     )

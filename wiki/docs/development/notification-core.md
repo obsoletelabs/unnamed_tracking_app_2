@@ -310,6 +310,7 @@ Browser/PWA push is story-aware: the push carries identities only, the worker re
 for the same story by tag, shows a generic message unless `NOTIFICATION_BROWSER_PREVIEWS=story`,
 and opens the same-origin story page. See
 [Browser and PWA notifications](notification-contract.md#browser-and-pwa-notifications).
+
 ## Diagnostics, previews and test sends
 
 The existing administrator test tools (Settings > Administration > Dev Tools) and each person's delivery history share one API, `/api/settings/notification-diagnostics`, implemented in `features/notification_diagnostics.py` (pure fixtures, reason catalogue and redaction in `notification_diagnostic_fixtures.py`).
