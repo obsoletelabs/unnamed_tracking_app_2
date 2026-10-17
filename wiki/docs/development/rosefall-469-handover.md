@@ -63,6 +63,7 @@ the shared game editor with eight direct tabs is #143; the movie/TV/anime editor
 the same frame and five tabs in #144; quick editors (#149) remain pending. Classic does not imply all #469 features exist.
 the shared game editor with eight direct tabs is #143; media editor sections (#144)
 and quick editors (#149) remain pending. Classic does not imply all #469 features exist.
+the same frame and five tabs in #144; quick editors (#149) share it; the final wording review (#154, [copy review](rosefall-copy-review.md)) closes the queue. Classic does not imply all #469 features exist.
 
 ## Accepted constraints for resumption
 

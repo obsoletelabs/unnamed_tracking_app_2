@@ -163,11 +163,11 @@ const compactPreview = computed(
     'compact-preview': compactPreview,
     'compact-controls': compactControls,
   }" :data-shortcut-context="viewMode === 'detail'
-        ? 'games.preview'
-        : viewMode === 'cards'
-          ? 'games.cards'
-          : undefined
-      ">
+    ? 'games.preview'
+    : viewMode === 'cards'
+      ? 'games.cards'
+      : undefined
+    ">
     <GameTopBar active="games">
       <template #actions>
         <SegmentedTabs :options="VIEW_OPTIONS" :model-value="viewMode" aria-label="View"
@@ -591,7 +591,7 @@ const compactPreview = computed(
                   </span>
                   <span class="preview-badge">{{
                     totalPlaytime(selectedGame)
-                    }}</span>
+                  }}</span>
                 </div>
                 <div class="preview-details">
                   <div v-if="selectedGame.developer" class="preview-detail-row">
@@ -618,19 +618,19 @@ const compactPreview = computed(
                     <span class="preview-detail-label">Released</span>
                     <span>{{
                       formatDisplayDate(selectedGame.releaseDate)
-                      }}</span>
+                    }}</span>
                   </div>
                   <div v-if="activePriority(selectedGame) !== null" class="preview-detail-row">
                     <span class="preview-detail-label">Priority</span>
                     <span>{{
                       priorityLabel(activePriority(selectedGame)!)
-                      }}</span>
+                    }}</span>
                   </div>
                   <div v-if="selectedGame.dateAdded" class="preview-detail-row">
                     <span class="preview-detail-label">Added</span>
                     <span>{{
                       new Date(selectedGame.dateAdded).toLocaleDateString()
-                      }}</span>
+                    }}</span>
                   </div>
                   <div v-if="selectedGame.platforms.length" class="preview-detail-row">
                     <span class="preview-detail-label">Platforms</span>
@@ -699,8 +699,8 @@ const compactPreview = computed(
                     </svg>
                   </button>
                   <button type="button" class="icon-button" :class="{ active: selectedGame.favorite }" :title="selectedGame.favorite
-                      ? 'Remove from favorites'
-                      : 'Add to favorites'
+                    ? 'Remove from favorites'
+                    : 'Add to favorites'
                     " @click="toggleFavorite(selectedGame)">
                     <HeartIcon :filled="selectedGame.favorite" />
                   </button>

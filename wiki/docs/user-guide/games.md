@@ -19,7 +19,7 @@ saved task; reconnecting restores its settings and history.
 Autosync starts off, applies only to your account and uses your approved access.
 Notes, ratings and manual status retain the provider import's existing protections.
 
-**Add Game** in the library opens Quick Add: search the existing metadata providers
+**Add game** in the library opens Quick Add: search the existing metadata providers
 or enter a title, choose a status and platform, then save. Metadata results retain
 their provider identities, including optional plugin providers. Duplicate and
 owned-copy review remains a separate confirmation step.
@@ -237,7 +237,7 @@ A game's **Docs** tab takes files of any type and always offers them as normal d
 
 ## Adding a game
 
-**+ Add Game** opens Quick Add (above). **Full form**, adding a game from Home
+**+ Add game** opens Quick Add (above). **Full form**, adding a game from Home
 and a game page's **Edit** all open the same full editor. Its header shows the
 cover, the title as you type it and the developer, year and platform. Below it
 are eight tabs; click any of them in any order:
@@ -253,7 +253,7 @@ are eight tabs; click any of them in any order:
 | **Ownership** | Format, purchase date, price, currency and condition. |
 | **Advanced** | Parent game and relationship, multiple accounts and OSRS stats, and which parts this game's page shows. |
 
-**Add Game** or **Save Changes** stays at the bottom of every tab, and only the
+**Add game** or **Save changes** stays at the bottom of every tab, and only the
 tab's content scrolls. Nothing is saved until you click it, and switching tabs
 keeps everything you have typed or chosen, including staged files. **Cancel**
 discards the unsaved edits. Arrow keys, Home and End move between tabs once one

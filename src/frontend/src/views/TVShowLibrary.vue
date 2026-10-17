@@ -214,7 +214,7 @@ function detailRoute(id: string): string {
 <template>
   <MediaLibraryView
     kind="tv"
-    add-label="+ Add Show"
+    add-label="+ Add show"
     :items="items"
     :total="total"
     :status-counts="statusCounts"

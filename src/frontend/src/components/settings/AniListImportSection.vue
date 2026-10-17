@@ -37,7 +37,8 @@ onMounted(async () => {
       (o) => Number(o.value) === prefs.value.anilist_import_interval_minutes,
     );
   } catch (e) {
-    error.value = e instanceof Error ? e.message : "Failed to load settings.";
+    error.value =
+      e instanceof Error ? e.message : "Could not load the settings.";
   } finally {
     loaded.value = true;
   }
@@ -52,7 +53,8 @@ async function change(changes: Partial<Preferences>) {
     saved.value = true;
     setTimeout(() => (saved.value = false), 1500);
   } catch (e) {
-    error.value = e instanceof Error ? e.message : "Failed to save.";
+    error.value =
+      e instanceof Error ? e.message : "Could not save the settings.";
   }
 }
 

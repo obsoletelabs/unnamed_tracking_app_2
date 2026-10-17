@@ -334,7 +334,7 @@ const heroSubtitle = computed(() =>
     .join(" · "),
 );
 const dialogTitle = computed(() =>
-  isEditing.value ? "Edit Game" : compact.value ? "Quick Add Game" : "Add Game",
+  isEditing.value ? "Edit game" : compact.value ? "Quick add game" : "Add game",
 );
 
 const saving = ref(false);
@@ -780,7 +780,8 @@ async function submit() {
 
     emit("saved", savedGame.id);
   } catch (err) {
-    error.value = err instanceof Error ? err.message : "Failed to save game";
+    error.value =
+      err instanceof Error ? err.message : "Could not save the game.";
   } finally {
     saving.value = false;
   }
@@ -824,7 +825,7 @@ async function submit() {
             class="metadata-result" @click="applyMetadata(result)">
             <span>{{ result.title }}</span>
             <small>{{ result.provider
-            }}<span v-if="result.release_date">
+              }}<span v-if="result.release_date">
                 · {{ result.release_date.slice(0, 4) }}</span></small>
           </button>
         </div>
@@ -1181,7 +1182,7 @@ async function submit() {
           " :staged="banner.staged.value" :candidates="bannerCandidates" :disabled="saving" @file="banner.chooseFile"
           @url="banner.chooseUrl" @reset="banner.reset" />
         <p class="hint">
-          Nothing is uploaded until you click Add Game or Save Changes. If the
+          Nothing is uploaded until you click Add game or Save changes. If the
           game saves but artwork cannot be attached, the game stays saved and
           you can retry the artwork.
         </p>
