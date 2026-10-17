@@ -7,7 +7,6 @@ separate worker.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import time
 from pathlib import Path
@@ -218,23 +217,28 @@ async def purge_expired_trash() -> dict[str, int]:
     return counts
 
 
-async def run_sweep_loop() -> None:
-    while True:
-        try:
-            await purge_expired_trash()
-        # Keep the periodic cleanup boundary alive after an unexpected failed pass.
-        # pylint: disable-next=broad-exception-caught
-        except Exception:
-            logger.exception("Trash sweep failed")
-        # a failed cleanup only means expired rows wait for the next sweep;
-        # it never affects startup or signing in
-        try:
-            async with SessionLocal() as db:
-                removed = await purge_expired_sessions(db)
-            if removed:
-                logger.info("Removed %d expired login session(s)", removed)
-        # Keep the periodic cleanup boundary alive after an unexpected failed pass.
-        # pylint: disable-next=broad-exception-caught
-        except Exception:
-            logger.exception("Expired session cleanup failed")
-        await asyncio.sleep(SWEEP_INTERVAL_SECONDS)
+async def run_sweep_once() -> dict[str, int]:
+    """One maintenance pass, run by the central schedule manager (features/jobs.py).
+
+    A failure in either half is logged and reported through the count of failed parts,
+    so expired rows simply wait for the next pass and sign-in is never affected."""
+    result: dict[str, int] = {"failed_parts": 0}
+    try:
+        result.update(await purge_expired_trash())
+    # Keep the periodic cleanup boundary alive after an unexpected failed pass.
+    # pylint: disable-next=broad-exception-caught
+    except Exception:
+        logger.exception("Trash sweep failed")
+        result["failed_parts"] += 1
+    try:
+        async with SessionLocal() as db:
+            removed = await purge_expired_sessions(db)
+        result["expired_sessions_removed"] = removed
+        if removed:
+            logger.info("Removed %d expired login session(s)", removed)
+    # Keep the periodic cleanup boundary alive after an unexpected failed pass.
+    # pylint: disable-next=broad-exception-caught
+    except Exception:
+        logger.exception("Expired session cleanup failed")
+        result["failed_parts"] += 1
+    return result

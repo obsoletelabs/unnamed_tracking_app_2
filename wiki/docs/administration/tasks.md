@@ -7,6 +7,10 @@ Current deployment-wide jobs are:
 - **Plugin updates** — enabled by default, normally daily; follows each installed plugin's update policy and version pin.
 - **Airing episode check** — enabled by default, normally every 30 minutes; checks TV/anime airing data and can be manually forced.
 - **Media refresh** — disabled by default, normally daily; fills missing episode metadata and corrects stale media data.
+- **Library backups** — enabled by default, normally daily (1 hour to 7 days); writes each account's rolling JSON snapshot and keeps the last seven. A partial failure is recorded on the task. Settings → Import & export shows the schedule, or that backups are switched off.
+- **Trash and session cleanup** — enabled by default, normally every 6 hours (15 minutes to 7 days); permanently removes trash past its retention period and expired sign-in sessions.
+
+These two used to run on fixed private timers; they now use the same schedule, switch, last-run and failure record as every other task, with no second scheduler. A run starts on the first minute after the server starts, then follows the interval. Runs of one task never overlap. Provider health discovery, expiry of public-app and verification secrets, notification delivery and session retention remain fixed internal housekeeping, because they protect correctness or security and are not meant to be paused.
 
 The per-user AniList import is a personal task in Account → Background tasks and runs through this same loop (at most four imports at once). External notification deliveries use the same loop, but their retry schedule is owned by the notification delivery coordinator rather than the task settings page.
 
