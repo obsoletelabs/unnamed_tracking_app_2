@@ -1494,6 +1494,7 @@ async function submit() {
 </template>
 
 <style scoped src="../styles/shared/editorForm.css"></style>
+<style scoped src="../styles/shared/editorActions.css"></style>
 <style scoped>
 .tab-panel {
   display: flex;
@@ -1695,26 +1696,9 @@ async function submit() {
     background 0.15s ease,
     transform 0.05s ease;
 }
-.primary-button {
-  background: var(--ui-accent);
-  color: var(--ui-on-accent);
-}
-.primary-button:hover:not(:disabled) {
-  filter: brightness(1.08);
-}
-.primary-button:active:not(:disabled) {
-  transform: scale(0.98);
-}
-.primary-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.secondary-button {
-  background: color-mix(in srgb, var(--ui-text) 8%, transparent);
-  color: var(--ui-text);
-}
-.secondary-button:hover {
-  background: color-mix(in srgb, var(--ui-text) 15%, transparent);
+.remove-button:focus-visible {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 2px;
 }
 .secondary-button[aria-expanded="true"] {
   background: var(--ui-accent-soft);

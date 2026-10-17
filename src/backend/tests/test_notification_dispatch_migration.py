@@ -28,7 +28,7 @@ def test_dispatch_migration_keeps_deliveries_and_is_reversible():
         environment.pop(key, None)
     directory = Path(__file__).resolve().parents[1]
 
-    def migrate(*arguments):
+    def migrate(*arguments, expect=0):
         result = subprocess.run(
             [sys.executable, "-m", "alembic", "-c", "alembic.ini", *arguments],
             cwd=directory,
@@ -37,7 +37,8 @@ def test_dispatch_migration_keeps_deliveries_and_is_reversible():
             text=True,
             timeout=120,
         )
-        assert result.returncode == 0, result.stderr
+        assert (result.returncode == 0) == (expect == 0), result.stderr
+        return result
 
     url = base.set(drivername="postgresql").render_as_string(hide_password=False)
     with psycopg.connect(url, autocommit=True) as connection:
@@ -70,6 +71,33 @@ def test_dispatch_migration_keeps_deliveries_and_is_reversible():
             assert connection.execute(
                 "SELECT story_revision, operation, fallback, status FROM notification_deliveries"
             ).fetchone() == (0, "send", None, "sent")
+            # A second revision of the same item at one destination has no place in the old
+            # one-delivery schema, so the downgrade must refuse instead of deleting history.
+            endpoint, second = uuid4(), uuid4()
+            connection.execute(
+                """INSERT INTO notification_destinations (id, user_id, provider_id, endpoint_key,
+                   kind, channel_context, privacy, revision, enabled, active, recovery_allowed,
+                   created_at) VALUES (%s, %s, 'rich', 'k', 'email', 'external', 1, 1, true,
+                   true, false, 1)""",
+                (endpoint, owner),
+            )
+            connection.execute(
+                "UPDATE notification_deliveries SET destination_id = %s WHERE id = %s",
+                (endpoint, delivery),
+            )
+            connection.execute(
+                """INSERT INTO notification_deliveries (id, notification_id, provider_id,
+                   destination_id, destination_revision, projection, status, attempts,
+                   next_attempt_at, story_revision)
+                   VALUES (%s, %s, 'rich', %s, 1, 'canonical', 'sent', 0, 1, 2)""",
+                (second, notice, endpoint),
+            )
+            refused = migrate("downgrade", PREVIOUS_HEAD, expect=1)
+            assert "Refusing to drop" in refused.stderr
+            assert connection.execute(
+                "SELECT count(*) FROM notification_deliveries"
+            ).fetchone() == (2,)
+            connection.execute("DELETE FROM notification_deliveries WHERE id = %s", (second,))
             migrate("downgrade", PREVIOUS_HEAD)
             tables = {
                 row[0]
