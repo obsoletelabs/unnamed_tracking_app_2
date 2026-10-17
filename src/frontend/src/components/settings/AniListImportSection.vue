@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
-import SegmentedControl from "./SegmentedControl.vue";
+import { onMounted, ref } from "vue";
 import ToggleButton from "./ToggleButton.vue";
 import {
   DEFAULT_PREFERENCES,
@@ -14,30 +13,12 @@ const loaded = ref(false);
 const error = ref<string | null>(null);
 const saved = ref(false);
 
-const cadenceOptions = [
-  { value: "60", label: "Hourly" },
-  { value: "360", label: "Every 6 hours" },
-  { value: "720", label: "Twice daily" },
-  { value: "1440", label: "Daily" },
-  { value: "10080", label: "Weekly" },
-];
-const customCadence = ref(false);
-const customHours = computed({
-  get: () => Math.round(prefs.value.anilist_import_interval_minutes / 60),
-  set: (hours: number) => {
-    prefs.value.anilist_import_interval_minutes =
-      Math.min(720, Math.max(1, Math.round(hours))) * 60;
-  },
-});
-
 onMounted(async () => {
   try {
     prefs.value = await fetchPreferences();
-    customCadence.value = !cadenceOptions.some(
-      (o) => Number(o.value) === prefs.value.anilist_import_interval_minutes,
-    );
   } catch (e) {
-    error.value = e instanceof Error ? e.message : "Failed to load settings.";
+    error.value =
+      e instanceof Error ? e.message : "Could not load the settings.";
   } finally {
     loaded.value = true;
   }
@@ -52,19 +33,9 @@ async function change(changes: Partial<Preferences>) {
     saved.value = true;
     setTimeout(() => (saved.value = false), 1500);
   } catch (e) {
-    error.value = e instanceof Error ? e.message : "Failed to save.";
+    error.value =
+      e instanceof Error ? e.message : "Could not save the settings.";
   }
-}
-
-async function setCadence(value: string) {
-  customCadence.value = false;
-  await change({ anilist_import_interval_minutes: Number(value) });
-}
-
-async function setCustomCadence(hours: number) {
-  customCadence.value = true;
-  const minutes = Math.min(30 * 24 * 60, Math.max(60, Math.round(hours * 60)));
-  await change({ anilist_import_interval_minutes: minutes });
 }
 </script>
 
@@ -72,20 +43,11 @@ async function setCustomCadence(hours: number) {
   <section class="settings-section">
     <h2>AniList Import</h2>
     <p class="section-hint">
-      Automatically import your public AniList anime list into this library. The
-      import only reads AniList and never changes it.
+      Import your public AniList anime list into this library. The import only
+      reads AniList and never changes it.
       <span v-if="saved" class="saved">Saved</span>
     </p>
     <p v-if="error" class="error">{{ error }}</p>
-    <ToggleButton
-      :model-value="prefs.anilist_import_enabled"
-      label="Automatic AniList import"
-      :disabled="!loaded"
-      @update:model-value="change({ anilist_import_enabled: $event })"
-    >
-      <strong>Automatic import</strong>: periodically sync the public list below
-      into your anime library
-    </ToggleButton>
     <div class="field">
       <label for="anilist-username">AniList username</label>
       <input
@@ -101,37 +63,6 @@ async function setCustomCadence(hours: number) {
         "
       />
     </div>
-    <div class="field">
-      <span>Import frequency</span>
-      <SegmentedControl
-        v-if="!customCadence"
-        :model-value="String(prefs.anilist_import_interval_minutes)"
-        :options="cadenceOptions"
-        @update:model-value="setCadence"
-      />
-      <button
-        v-else
-        type="button"
-        class="custom-button"
-        @click="customCadence = false"
-      >
-        Custom: every {{ customHours }} hour{{ customHours === 1 ? "" : "s" }}
-      </button>
-    </div>
-    <div class="field custom-field">
-      <label for="anilist-hours">Or use a custom interval (hours)</label>
-      <input
-        id="anilist-hours"
-        type="number"
-        min="1"
-        max="720"
-        :value="customHours"
-        :disabled="!loaded"
-        @change="
-          setCustomCadence(Number(($event.target as HTMLInputElement).value))
-        "
-      />
-    </div>
     <ToggleButton
       :model-value="prefs.anilist_import_update_existing"
       label="Update existing titles"
@@ -142,8 +73,12 @@ async function setCustomCadence(hours: number) {
       titles already in the library
     </ToggleButton>
     <p class="section-hint">
-      The scheduler runs in the app background once a minute. Imports are
-      bounded so a large multi-user deployment cannot monopolize the worker.
+      The schedule lives in
+      <RouterLink to="/settings?section=background-tasks"
+        >Background tasks</RouterLink
+      >
+      under "AniList import". Turn it on there to import automatically, choose
+      how often, run it now and see the last result.
     </p>
   </section>
 </template>
@@ -170,6 +105,15 @@ async function setCustomCadence(hours: number) {
   color: var(--ui-error);
   font-size: 0.82rem;
 }
+.import-status {
+  margin: 14px 0;
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: var(--ui-text);
+}
+.import-status.failed {
+  color: var(--ui-error);
+}
 .field {
   display: flex;
   flex-direction: column;
@@ -186,18 +130,6 @@ async function setCustomCadence(hours: number) {
   border-radius: 7px;
   background: var(--ui-bg);
   color: var(--ui-text);
-}
-.custom-field {
-  max-width: 420px;
-}
-.custom-button {
-  align-self: flex-start;
-  padding: 8px 12px;
-  border: 1px solid var(--ui-border-strong);
-  border-radius: 7px;
-  background: var(--ui-surface-2);
-  color: var(--ui-text);
-  cursor: pointer;
 }
 .settings-section :deep(.toggle-button) {
   margin: 12px 0;

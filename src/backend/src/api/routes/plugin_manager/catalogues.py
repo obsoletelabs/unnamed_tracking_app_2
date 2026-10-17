@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -17,6 +18,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.config import settings
 from src.database.models.notification_story import NotificationStory
 from src.database.models.user import User
 from src.database.session import get_db
@@ -293,6 +295,97 @@ async def check_plugin_update(
     }
 
 
+_PLUGIN_UPDATE_STATUS_LABELS = {
+    "updated": "Updated automatically",
+    "failed": "Automatic update failed",
+    "available": "Update still available",
+}
+
+
+def _normalized_plugin_update_items(updates: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """Keep only actionable update outcomes and normalize them for stable deduplication."""
+    items: list[dict[str, str]] = []
+    for update in updates:
+        status = str(
+            update.get("status") or ("available" if update.get("update_available") else "")
+        )
+        if status not in _PLUGIN_UPDATE_STATUS_LABELS:
+            continue
+        plugin_id = str(update.get("plugin_id") or "").strip()
+        old_version = str(update.get("current_version") or "unknown")
+        new_version = str(update.get("available_version") or update.get("new_version") or "unknown")
+        if not plugin_id or new_version == "unknown":
+            continue
+        item = {
+            "plugin_id": plugin_id,
+            "old_version": old_version,
+            "new_version": new_version,
+            "status": status,
+        }
+        reason = update.get("reason")
+        if isinstance(reason, str) and reason.strip():
+            item["reason"] = reason.strip()[:300]
+        items.append(item)
+    return items
+
+
+def _plugin_update_message(items: list[dict[str, str]], action_url: str) -> tuple[str, str]:
+    """Render a stable, bounded summary for administrators."""
+    lines = [
+        f"- {_PLUGIN_UPDATE_STATUS_LABELS[item['status']]}: {item['plugin_id']} "
+        f"({item['old_version']} → {item['new_version']})"
+        + (f" — {item['reason']}" if item.get("reason") else "")
+        for item in items
+    ]
+    body = "Plugin update batch results:\n" + "\n".join(lines) + f"\n\nManage plugins: {action_url}"
+    title = f"Plugin updates: {len(items)} plugin(s) updated or need attention"
+    return title, body
+
+
+async def notify_plugin_updates(
+    db: AsyncSession,
+    updates: list[dict[str, Any]],
+) -> None:
+    """Send one idempotent summary for a complete update-check/update batch."""
+    items = _normalized_plugin_update_items(updates)
+    if not items:
+        return
+
+    # Sorting makes retries of the same batch idempotent regardless of runtime plugin order.
+    items.sort(key=lambda item: (item["plugin_id"], item["status"], item["new_version"]))
+    fingerprint = json.dumps(items, sort_keys=True, separators=(",", ":"))
+    dedupe_key = "plugin-update-batch:" + hashlib.sha256(fingerprint.encode("utf-8")).hexdigest()
+    admin_ids = list(
+        await db.scalars(select(User.id).where(User.is_admin.is_(True), User.is_active.is_(True)))
+    )
+    if not admin_ids:
+        return
+
+    route = "/settings?area=administration&section=plugins"
+    public_url = str(settings.PUBLIC_APP_URL or "").strip().rstrip("/")
+    action_url = f"{public_url}{route}" if public_url else route
+    title, body = _plugin_update_message(items, action_url)
+    now = int(time.time())
+    media_id = uuid5(NAMESPACE_URL, f"urn:unnamed-tracking:plugin-update-batch:{dedupe_key}")
+    for user_id in admin_ids:
+        await emit_legacy_rows(
+            db,
+            user_id,
+            [
+                {
+                    "kind": "plugin_update",
+                    "media_type": "plugin",
+                    "media_id": media_id,
+                    "title": title,
+                    "body": body,
+                    "poster_url": None,
+                    "event_at": now,
+                    "dedupe_key": dedupe_key,
+                }
+            ],
+        )
+
+
 def _update_story(plugin_id: str, version: str, phase: str) -> StoryReference:
     """One story per plugin version; a pre-story "available" notice is adopted as revision 1."""
     return StoryReference(
@@ -440,12 +533,91 @@ async def record_update_result(db: AsyncSession, plugin_id: str, result: dict[st
         logger.warning("Plugin update story not advanced: plugin_id=%s error=%s", plugin_id, exc)
 
 
+async def notify_single_plugin_update(
+    db: AsyncSession,
+    update: dict[str, Any],
+    *,
+    failed: bool = False,
+) -> None:
+    """Compatibility adapter for older single-update callers; producers submit a batch."""
+    if not update.get("update_available"):
+        return
+    await notify_plugin_updates(
+        db,
+        [{**update, "status": "failed" if failed else "available"}],
+    )
+
+
+def _update_notification_state(update: dict[str, Any]) -> str:
+    """Stable per-plugin state used to suppress unchanged update-check cycles."""
+    return json.dumps(
+        {
+            "status": str(update.get("status") or "available"),
+            "current_version": str(update.get("current_version") or "unknown"),
+            "available_version": str(
+                update.get("available_version") or update.get("new_version") or "unknown"
+            ),
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def adopt_legacy_update_notification(
+    plugin_id: str,
+    previous_update: dict[str, Any] | None,
+    current_update: dict[str, Any],
+) -> None:
+    """Avoid a rollout duplicate when the legacy per-plugin notice already existed."""
+    if not current_update.get("update_available") or not isinstance(previous_update, dict):
+        return
+    if (
+        not previous_update.get("update_available")
+        or previous_update.get("current_version") != current_update.get("current_version")
+        or previous_update.get("available_version") != current_update.get("available_version")
+    ):
+        return
+    store = manager_state()
+    record = store.read().get("plugins", {}).get(plugin_id, {})
+    if record.get("last_notified_update_state") is None:
+        store.patch(
+            plugin_id,
+            last_notified_update_state=_update_notification_state(
+                {**current_update, "status": "available"}
+            ),
+        )
+
+
+def plugin_update_batch_changed(updates: list[dict[str, Any]]) -> bool:
+    """Return whether any plugin's notification-worthy update state changed."""
+    records = manager_state().read().get("plugins", {})
+    return any(
+        records.get(str(item.get("plugin_id") or ""), {}).get("last_notified_update_state")
+        != _update_notification_state(item)
+        for item in updates
+        if item.get("plugin_id")
+    )
+
+
+def mark_plugin_update_batch_notified(updates: list[dict[str, Any]]) -> None:
+    """Persist the batch's per-plugin state after its notification transaction commits."""
+    store = manager_state()
+    for item in updates:
+        plugin_id = str(item.get("plugin_id") or "")
+        if plugin_id:
+            store.patch(
+                plugin_id,
+                last_notified_update_state=_update_notification_state(item),
+            )
+
+
 @router.post("/updates/check")
 async def check_plugin_updates(
     admin: User = Depends(get_plugin_manager_admin),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     updates: list[dict[str, Any]] = []
+    notification_batch: list[dict[str, Any]] = []
     for plugin in await runtime.installed_plugins():
         try:
             update = await check_plugin_update(plugin, admin)
@@ -457,11 +629,25 @@ async def check_plugin_updates(
                 "error": str(exc.detail),
             }
         updates.append(update)
-        manager_state().patch(str(plugin["plugin_id"]), available_update=update)
-        await notify_plugin_update(db, update)
-        if not update.get("update_available") and "error" not in update:
-            await resolve_plugin_update_stories(db, str(plugin["plugin_id"]))
-    await db.commit()
+        store = manager_state()
+        plugin_id = str(plugin["plugin_id"])
+        previous_update = store.read().get("plugins", {}).get(plugin_id, {}).get("available_update")
+        adopt_legacy_update_notification(plugin_id, previous_update, update)
+        store.patch(plugin_id, available_update=update)
+        if update.get("update_available"):
+            notification_batch.append({**update, "status": "available"})
+        elif not update.get("error"):
+            # Only clear deduplication after a successful check confirms resolution.
+            # A transient catalogue/network error must not cause a repeat alert.
+            store.patch(plugin_id, last_notified_update_state=None)
+            # The announced version is no longer pending: close its open stories.
+            await resolve_plugin_update_stories(db, plugin_id)
+    if notification_batch and plugin_update_batch_changed(notification_batch):
+        await notify_plugin_updates(db, notification_batch)
+        await db.commit()
+        mark_plugin_update_batch_notified(notification_batch)
+    else:
+        await db.commit()
     return {
         "updates": updates,
         "available": sum(bool(item.get("update_available")) for item in updates),

@@ -20,7 +20,7 @@ export async function checkLibraryWorkflows({ admin, origin, evidenceRoot, repor
       await page.setViewportSize({ width, height: 1050 });
       await page.goto(origin + "/games"); await page.getByRole("heading", { name: "Games", exact: true }).waitFor();
       await page.locator("#main-content").focus(); await page.keyboard.press("n");
-      const create = await dialog("Add Game");
+      const create = await dialog("Add game");
       const title = `The Quest for a Working Save Button ${width} ${theme}`;
       await create.getByLabel("Title", { exact: true }).fill(title);
       await create.getByLabel("Folder name", { exact: true }).fill(`ui-workflow-${width}-${theme}-${Date.now()}`);
@@ -29,12 +29,12 @@ export async function checkLibraryWorkflows({ admin, origin, evidenceRoot, repor
       await create.getByRole("spinbutton", { name: "Story", exact: true }).fill("7.5");
       await create.getByRole("tab", { name: "Advanced", exact: true }).click();
       const saved = page.waitForResponse(response => new URL(response.url()).pathname === "/api/game/create" && response.request().method() === "POST");
-      await create.getByRole("button", { name: "Add Game", exact: true }).click();
+      await create.getByRole("button", { name: "Add game", exact: true }).click();
       const response = await saved; assert.equal(response.status(), 201, await response.text());
       const game = await response.json(); games.push(game.id); await create.waitFor({ state: "hidden" });
       await page.goto(origin + "/games/" + game.id); await page.getByRole("heading", { name: title, exact: true }).waitFor();
       await page.getByRole("button", { name: /^(?:✎\s*)?Edit$/ }).first().click();
-      const edit = await dialog("Edit Game");
+      const edit = await dialog("Edit game");
       await edit.getByRole("tab", { name: "Basics", exact: true }).click();
       await edit.getByLabel(/^Status/).selectOption("beaten");
       await edit.getByRole("tab", { name: "Ratings and tags", exact: true }).click();
@@ -42,7 +42,7 @@ export async function checkLibraryWorkflows({ admin, origin, evidenceRoot, repor
       await edit.getByRole("tab", { name: "Play", exact: true }).click();
       await edit.getByLabel("100% completion date", { exact: true }).fill("2026-10-05");
       const updated = page.waitForResponse(response => response.url().includes("/api/game/update/" + game.id) && response.request().method() === "PATCH");
-      await edit.getByRole("button", { name: "Save Changes", exact: true }).click();
+      await edit.getByRole("button", { name: "Save changes", exact: true }).click();
       assert.equal((await updated).status(), 200); await edit.waitFor({ state: "hidden" });
       const persisted = await (await admin.request.get(origin + "/api/game/get/" + game.id)).json();
       assert.equal(persisted.status, "BEATEN"); assert.equal(Number(persisted.rating_gameplay), 9.2); assert(persisted.completion_date);

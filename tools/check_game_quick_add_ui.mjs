@@ -17,17 +17,17 @@ export async function checkGameArtworkRetry({ member, origin, report }) {
   });
   try {
     await page.goto(origin + "/games");
-    await page.getByRole("button", { name: "+ Add Game", exact: true }).first().click();
+    await page.getByRole("button", { name: "+ Add game", exact: true }).first().click();
     const quick = page.getByRole("button", { name: "Full form", exact: true });
     if (await quick.count()) await quick.click();
-    const dialog = page.getByRole("dialog", { name: "Add Game", exact: true });
+    const dialog = page.getByRole("dialog", { name: "Add game", exact: true });
     await dialog.getByRole("tab", { name: "Basics", exact: true }).click();
     await dialog.getByLabel("Title", { exact: true }).fill("Artwork retry review");
     await dialog.getByLabel("Folder name", { exact: true }).fill("artwork-retry-" + Date.now());
     await dialog.getByRole("tab", { name: "Artwork", exact: true }).click();
     await dialog.locator('input[type="file"]').first().setInputFiles({ name: "review.png", mimeType: "image/png", buffer: png });
     await dialog.getByRole("tab", { name: "Advanced", exact: true }).click();
-    await dialog.getByRole("button", { name: "Add Game", exact: true }).click();
+    await dialog.getByRole("button", { name: "Add game", exact: true }).click();
     await dialog.waitFor({ state: "hidden", timeout: 5000 });
     assert.equal(creates, 1, "Artwork failure does not keep a create form open");
     await page.getByText(/Game saved\. Artwork/).waitFor();
@@ -98,10 +98,10 @@ export async function checkGameQuickAdd({ member, origin, evidenceRoot, report }
       } })).status(), 200);
       await page.goto(origin + "/games");
       if (width < 760) await page.getByRole("button", { name: "Library controls", exact: true }).click();
-      await page.getByRole("button", { name: "+ Add Game", exact: true }).first().waitFor();
+      await page.getByRole("button", { name: "+ Add game", exact: true }).first().waitFor();
       const before = requests.filter(url => url.includes("/api/game/list?")).length;
-      await page.getByRole("button", { name: "+ Add Game", exact: true }).first().click();
-      const dialog = page.getByRole("dialog", { name: "Quick Add Game", exact: true });
+      await page.getByRole("button", { name: "+ Add game", exact: true }).first().click();
+      const dialog = page.getByRole("dialog", { name: "Quick add game", exact: true });
       await dialog.getByRole("textbox", { name: "Title", exact: true }).waitFor();
       assert.equal(await dialog.getByRole("tablist").count(), 0);
       assert.equal(requests.filter(url => url.includes("/api/game/list?")).length, before);
@@ -109,13 +109,13 @@ export async function checkGameQuickAdd({ member, origin, evidenceRoot, report }
       await dialog.getByRole("searchbox").fill("Orbit");
       await dialog.getByRole("button", { name: /Orbit Archive Review/ }).click();
       await started;
-      assert(await dialog.getByRole("button", { name: "Add Game", exact: true }).isDisabled(),
+      assert(await dialog.getByRole("button", { name: "Add game", exact: true }).isDisabled(),
         "Cannot save before the selected identity response");
       await dialog.getByLabel("Title", { exact: true }).fill("Orbit Archive Review " + width + " edited");
       await dialog.getByLabel("Status").selectOption("wishlist");
       await dialog.getByLabel("Platform", { exact: true }).fill("Nintendo Switch");
       releaseSelection();
-      await dialog.getByRole("button", { name: "Add Game", exact: true }).waitFor();
+      await dialog.getByRole("button", { name: "Add game", exact: true }).waitFor();
       await page.waitForFunction(() => !document.querySelector('dialog .primary-button[type="submit"]').disabled);
       const box = await dialog.boundingBox();
       assert(box.width <= 640 && box.x >= 0 && box.x + box.width <= width + 1);
@@ -124,7 +124,7 @@ export async function checkGameQuickAdd({ member, origin, evidenceRoot, report }
 
       // Full form preserves the selected identity, query and manual tracking edits.
       await dialog.getByRole("button", { name: "Full form", exact: true }).click();
-      const full = page.getByRole("dialog", { name: "Add Game", exact: true });
+      const full = page.getByRole("dialog", { name: "Add game", exact: true });
       assert.equal(await full.getByLabel("Title", { exact: true }).inputValue(), "Orbit Archive Review " + width + " edited");
       assert.equal(await full.getByLabel("Status").inputValue(), "wishlist");
       assert.equal(await full.getByLabel("Platform", { exact: true }).inputValue(), "Nintendo Switch");
@@ -166,9 +166,9 @@ export async function checkManualQuickAdd({ member, origin, report }) {
     await page.setViewportSize({ width: 390, height: 1000 });
     await page.goto(origin + "/games");
     await page.getByRole("button", { name: "Library controls", exact: true }).click();
-    const trigger = page.getByRole("button", { name: "+ Add Game", exact: true }).first();
+    const trigger = page.getByRole("button", { name: "+ Add game", exact: true }).first();
     await trigger.click();
-    const compact = page.getByRole("dialog", { name: "Quick Add Game", exact: true });
+    const compact = page.getByRole("dialog", { name: "Quick add game", exact: true });
     await compact.getByLabel("Title", { exact: true }).fill("Discarded quick draft");
     await page.keyboard.press("Escape");
     await compact.waitFor({ state: "hidden" });
@@ -202,22 +202,22 @@ export async function checkManualQuickAdd({ member, origin, report }) {
     await trigger.click();
     await compact.getByLabel("Title", { exact: true }).fill("Manual Quick Entry review");
     const collision = page.waitForResponse(response => response.url().endsWith("/api/game/create") && response.request().method() === "POST");
-    await compact.getByRole("button", { name: "Add Game", exact: true }).click();
+    await compact.getByRole("button", { name: "Add game", exact: true }).click();
     assert.equal((await collision).status(), 409);
     await compact.getByText(/already exists/).waitFor();
     await compact.getByRole("button", { name: "Full form", exact: true }).click();
-    const full = page.getByRole("dialog", { name: "Add Game", exact: true });
+    const full = page.getByRole("dialog", { name: "Add game", exact: true });
     await full.getByLabel("Folder name", { exact: true }).fill("manual-reviewed-copy");
     await full.getByRole("tab", { name: "Advanced", exact: true }).click();
     const separated = page.waitForResponse(response => response.url().endsWith("/api/game/create") && response.request().method() === "POST");
-    await full.getByRole("button", { name: "Add Game", exact: true }).click();
+    await full.getByRole("button", { name: "Add game", exact: true }).click();
     assert.equal((await separated).status(), 201);
     await full.waitFor({ state: "hidden" });
 
     const before = creates;
     await trigger.click();
     await compact.getByLabel("Title", { exact: true }).fill("都市建设");
-    await compact.getByRole("button", { name: "Add Game", exact: true }).click();
+    await compact.getByRole("button", { name: "Add game", exact: true }).click();
     await full.getByText("Folder name is required.", { exact: true }).waitFor();
     assert.equal(await full.getByLabel("Title", { exact: true }).inputValue(), "都市建设");
     assert.equal(creates, before, "Missing generated folders are reviewed before creation");

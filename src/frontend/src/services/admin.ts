@@ -70,9 +70,6 @@ export async function createUser(
       is_admin: payload.isAdmin,
     }),
   });
-  if (response.status === 409) {
-    throw new Error("That username or email is already taken.");
-  }
   if (!response.ok) {
     throw await failedRequest(response);
   }

@@ -4,10 +4,12 @@ import io
 import uuid
 
 from PIL import Image
+from sqlalchemy import delete
 
 from src.api.routes import achievement_icons
 from src.database.models.achievement import Achievement
 from src.database.models.game import Game
+from src.database.models.game_identity import GameSourceObservation
 from src.database.models.user import User
 from src.database.session import SessionLocal
 from src.helpers import remote_images
@@ -51,6 +53,11 @@ async def test_icon_cache_and_foreign_user_access(flow, monkeypatch):
         )
         db.add(stranger)
         await db.flush()
+        # Source records are tied to their owner by composite keys, so they cannot
+        # follow a game to another user; drop them before reassigning the row.
+        await db.execute(
+            delete(GameSourceObservation).where(GameSourceObservation.user_id == flow.user_id)
+        )
         game = await db.get(Game, flow.game_id)
         game.user_id = stranger.id
         await db.commit()

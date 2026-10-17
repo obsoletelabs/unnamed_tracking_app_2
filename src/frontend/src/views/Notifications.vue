@@ -221,6 +221,12 @@ const TYPE_LABEL: Record<string, string> = {
 function stateOf(n: MediaNotification) {
   return n.state ?? (n.read ? "read" : "unread");
 }
+// Listings carry the time they were learned; AniList does not date announcements.
+const NOTICED_KINDS = new Set([
+  "sequel_announced",
+  "franchise_season",
+  "franchise_extra",
+]);
 function toggleGroup(key: string) {
   const next = new Set(expandedGroups.value);
   if (next.has(key)) next.delete(key);
@@ -545,9 +551,7 @@ function toggleOpen(n: MediaNotification) {
                       <div>
                         <dt>
                           {{
-                            n.kind === "sequel_announced"
-                              ? "Noticed"
-                              : "Exact time"
+                            NOTICED_KINDS.has(n.kind) ? "Noticed" : "Exact time"
                           }}
                         </dt>
                         <dd>{{ exactTime(n.eventAt) }}</dd>

@@ -81,7 +81,7 @@ existing services; `EditorShell.vue` only arranges them:
 
 - **Hero:** a cover button (it opens the artwork tab), the dialog title as a
   kicker, the live title and a short subtitle. The kicker labels the dialog, so
-  dialog names such as "Edit Game" stay stable for assistive technology.
+  dialog names such as "Edit game" stay stable for assistive technology.
 - **Direct tabs:** a `tablist` of `tab` buttons with roving focus (arrow keys,
   Home and End) controlling one `tabpanel`. There is no wizard; Save is always
   in the pinned actions and submits the shell's form through `form=`.
@@ -151,6 +151,18 @@ protection and seasons/progress logic, and add their tabs as direct panels.
 Classic's only editor selectors live in `classic.css` under `.editor-shell`:
 filled fields on the secondary surface, outlined secondary/destructive footer
 actions and the tab weight. Everything else is tokens.
+
+## Wording in shared UI
+
+Modern and Classic share one template and one string set, so copy is reviewed
+once. Use sentence case for titles, buttons and labels (proper names such as TV
+and AniList stay as written), say what a saved or empty state means, and phrase
+failures as "Could not &lt;action&gt;." with the server's own message taking
+precedence over the fallback. Destructive controls name the consequence and ask
+first. Keep accessibility names, permission reasons and diagnostics. Never add
+copy in `classic.css`. The review record, with before and after screenshots, is
+the [Rosefall copy review](rosefall-copy-review.md); `copyConsistency.test.ts`
+guards the reviewed screens.
 
 ## Designing new UI for both presentations
 

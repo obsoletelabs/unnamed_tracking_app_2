@@ -9,11 +9,12 @@ number. Game time is the playtime the game platforms reported."""
 
 from collections import Counter
 from contextvars import ContextVar
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from decimal import Decimal
-from typing import Any, Literal, NamedTuple, TypedDict
+from typing import Annotated, Any, Literal, NamedTuple, TypedDict
+from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer, raiseload
@@ -27,11 +28,20 @@ from src.core.titles import display_title
 from src.database.models.achievement import Achievement
 from src.database.models.anime import Anime, AnimeEpisode, AnimeSeason
 from src.database.models.game import Game, GameStatus
-from src.database.models.media_extras import ActivityEventType, ActivityLog, MediaType, RewatchLog
+from src.database.models.media_extras import MediaType, RewatchLog
 from src.database.models.movies import Movie
 from src.database.models.tv_show import TVEpisode, TVSeason, TVShow
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features.activity_stats import (
+    DAY_PAGE_LIMIT,
+    EARLIEST_DAY,
+    LATEST_DAY,
+    ActivityTimezoneError,
+    activity_day,
+    activity_section,
+    resolve_timezone,
+)
 from src.features.game_stats import game_stats
 
 router = APIRouter(
@@ -525,93 +535,6 @@ async def _games_section(
     }
 
 
-def _activity_streaks(all_days: set[date]) -> tuple[int, int]:
-    longest = run = 0
-    previous = None
-    for d in sorted(all_days):
-        run = run + 1 if previous and d - previous == timedelta(days=1) else 1
-        longest = max(longest, run)
-        previous = d
-    current = 0
-    cursor = date.today() if date.today() in all_days else date.today() - timedelta(days=1)
-    while cursor in all_days:
-        current += 1
-        cursor -= timedelta(days=1)
-    return current, longest
-
-
-async def _activity_section(db: AsyncSession, user_id: Any) -> dict[str, Any]:
-    """Per-day episode counts for the heatmap plus streaks, from the
-    history log (exact: it records what was checked off, and when)."""
-    since = date.today() - timedelta(days=364)
-    rows = (
-        await db.execute(
-            select(ActivityLog.event_date, sql_sum(ActivityLog.count))
-            .where(
-                ActivityLog.user_id == user_id,
-                ActivityLog.event_type == ActivityEventType.EPISODES_WATCHED,
-                ActivityLog.event_date >= since,
-            )
-            .group_by(ActivityLog.event_date)
-        )
-    ).all()
-    episodes_per_day = {d: int(c) for d, c in rows}
-    unlocked_ts = (
-        (
-            await db.execute(
-                select(Achievement.unlocked_at)
-                .join(Game, Game.id == Achievement.game_id)
-                .where(
-                    Game.user_id == user_id,
-                    Game.deleted_at.is_(None),
-                    Achievement.unlocked.is_(True),
-                    Achievement.unlocked_at.is_not(None),
-                )
-            )
-        )
-        .scalars()
-        .all()
-    )
-    unlocked_days = Counter(date.fromtimestamp(ts) for ts in unlocked_ts if ts is not None)
-    per_day = {
-        d: episodes_per_day.get(d, 0) + n
-        for d in set(episodes_per_day) | {d for d in unlocked_days if d >= since}
-        for n in [unlocked_days.get(d, 0)]
-    }
-    all_days = set(unlocked_days) | {
-        d
-        for (d,) in (
-            await db.execute(
-                select(ActivityLog.event_date).where(ActivityLog.user_id == user_id).distinct()
-            )
-        ).all()
-    }
-    current, longest = _activity_streaks(all_days)
-    busiest = max(per_day.items(), key=lambda kv: kv[1], default=None)
-    return {
-        "per_day": [
-            {
-                "date": d.isoformat(),
-                "count": c,
-                "episodes": episodes_per_day.get(d, 0),
-                "achievements": unlocked_days.get(d, 0),
-            }
-            for d, c in sorted(per_day.items())
-        ],
-        "active_days_total": len(all_days),
-        "current_streak": current,
-        "longest_streak": longest,
-        "busiest_day": {
-            "date": busiest[0].isoformat(),
-            "count": busiest[1],
-            "episodes": episodes_per_day.get(busiest[0], 0),
-            "achievements": unlocked_days.get(busiest[0], 0),
-        }
-        if busiest
-        else None,
-    }
-
-
 def _watching_now(
     items: list[Any], progress: dict[str, dict[str, int]], kind: str
 ) -> list[dict[str, Any]]:
@@ -823,12 +746,29 @@ async def _selected_episodic_section(
     )
 
 
+def _zone(tz: str | None) -> ZoneInfo:
+    try:
+        return resolve_timezone(tz)
+    except ActivityTimezoneError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+        ) from exc
+
+
+# The viewer's IANA timezone for activity days; UTC when omitted.
+_TIMEZONE = Query(max_length=64)
+
+
+# The section endpoint keeps its established single-pass workflow.
+# pylint: disable=too-many-locals
 @router.get("")
 async def get_media_stats(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     section: Literal["overview", "games", "movie", "tv", "anime"] | None = None,
+    tz: Annotated[str | None, _TIMEZONE] = None,
 ) -> dict[str, Any]:
+    zone = _zone(tz)
     uid = current_user.id
     prefs = await load_preferences(db, uid)
     include_plan = bool(prefs["stats_include_plan"])
@@ -875,7 +815,7 @@ async def get_media_stats(
         sections,
         in_progress=in_progress + playing_rows,
         needs_score=_needs_score(movies, tv, anime),
-        activity=await _activity_section(db, uid),
+        activity=await activity_section(db, uid, zone),
     )
     if section == "overview":
         return {"overview": overview}
@@ -886,3 +826,35 @@ async def get_media_stats(
         "tv": sections["tv"],
         "anime": sections["anime"],
     }
+
+
+# pylint: enable=too-many-locals
+
+
+@router.get("/activity/day")
+async def get_activity_day(
+    *,
+    day: Annotated[date, Query(alias="date")],
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    tz: Annotated[str | None, _TIMEZONE] = None,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=DAY_PAGE_LIMIT)] = 50,
+) -> dict[str, Any]:
+    """What one heatmap square counts, using the same day rule as the overview."""
+    zone = _zone(tz)
+    if not EARLIEST_DAY <= day <= LATEST_DAY:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"Choose a day from {EARLIEST_DAY.isoformat()} to {LATEST_DAY.isoformat()}.",
+        )
+    prefs = await load_preferences(db, current_user.id)
+    return await activity_day(
+        db,
+        current_user.id,
+        day,
+        zone,
+        offset=offset,
+        limit=limit,
+        language=str(prefs["title_language"]),
+    )

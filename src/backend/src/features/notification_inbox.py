@@ -17,8 +17,14 @@ from src.features.notification_policy import INBOX_PROVIDER
 
 CATEGORY_KINDS = {
     "episodes": ("episode_aired",),
-    "seasons": ("season_started", "sequel_announced"),
-    "releases": ("movie_released", "game_released", "game_sale", "game_price_hit"),
+    "seasons": ("season_started", "sequel_announced", "franchise_season"),
+    "releases": (
+        "movie_released",
+        "franchise_extra",
+        "game_released",
+        "game_sale",
+        "game_price_hit",
+    ),
     "security": ("session_anomaly",),
     "plugins": ("plugin", "plugin_update"),
 }

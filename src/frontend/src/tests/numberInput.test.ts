@@ -236,6 +236,8 @@ describe("shared quick editor", () => {
           totalEpisodes: null,
           score: null,
           seen: true,
+          startDate: null,
+          endDate: null,
         },
       ],
     ]);
