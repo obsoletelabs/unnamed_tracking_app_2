@@ -3,6 +3,11 @@ import { onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import AppBrand from "../components/AppBrand.vue";
 import PasswordInput from "../components/PasswordInput.vue";
+import UsernameField from "../components/UsernameField.vue";
+import {
+  usernameFieldError,
+  usernameServerError,
+} from "../services/usernameValidation";
 import { authLinkCredential } from "../services/passwordRecovery";
 import {
   acceptInvitation,
@@ -18,6 +23,11 @@ const confirmation = ref("");
 const available = ref<boolean | null>(null);
 const busy = ref(false);
 const error = ref("");
+const usernameServerMessage = ref<{ message: string; value: string } | null>(
+  null,
+);
+const usernameField = ref<InstanceType<typeof UsernameField> | null>(null);
+const submitAttempted = ref(false);
 const message = ref("");
 
 watch(
@@ -46,10 +56,17 @@ onMounted(async () => {
 async function submit() {
   if (!credential.value) return;
   error.value = "";
+  submitAttempted.value = true;
+  usernameServerMessage.value = null;
+  if (usernameFieldError(username.value)) {
+    usernameField.value?.focus();
+    return;
+  }
   if (password.value !== confirmation.value) {
     error.value = "The passwords do not match.";
     return;
   }
+  const submittedUsername = username.value;
   busy.value = true;
   try {
     message.value = await acceptInvitation(
@@ -61,8 +78,13 @@ async function submit() {
     credential.value = null;
     password.value = confirmation.value = "";
   } catch (err) {
-    error.value =
-      err instanceof Error ? err.message : "Unable to accept this invitation.";
+    const reason = err instanceof Error ? err.message : null;
+    const usernameReply = usernameServerError(reason);
+    usernameServerMessage.value = usernameReply
+      ? { message: usernameReply, value: submittedUsername }
+      : null;
+    if (usernameServerMessage.value) usernameField.value?.focus();
+    else error.value = reason ?? "Unable to accept this invitation.";
   } finally {
     busy.value = false;
   }
@@ -87,20 +109,14 @@ async function submit() {
           Choose a username and password. Your account will use the email
           address that received this invitation.
         </p>
-        <label class="field"
-          ><span>Username</span
-          ><input
-            v-model="username"
-            autocomplete="username"
-            aria-label="Username"
-            aria-describedby="invite-username-help"
-            maxlength="100"
-            required
-          /><small id="invite-username-help"
-            >Use 1–100 ASCII letters, digits, underscores, hyphens or dots. No
-            spaces.</small
-          ></label
-        >
+        <UsernameField
+          ref="usernameField"
+          v-model="username"
+          autocomplete="username"
+          required
+          :server-error="usernameServerMessage"
+          :show-errors="submitAttempted"
+        />
         <label class="field"
           ><span>Password</span
           ><PasswordInput

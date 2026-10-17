@@ -87,32 +87,47 @@ onUnmounted(() => {
 const disposeNavigationViewport = initializeNavigationViewport();
 onUnmounted(disposeNavigationViewport);
 let pluginRefreshTimer: ReturnType<typeof setInterval> | undefined;
+let pluginRefreshUser: string | undefined;
+// Session and plugin state is re-checked every few seconds, but only while
+// the page is visible: a background tab has nobody to show the result to.
+async function pollSessionAndPlugins(id: string) {
+  if (document.visibilityState === "hidden") return;
+  try {
+    const user = await fetchCurrentUser();
+    if (currentUser.value?.id !== id) return;
+    if (!user) {
+      currentUser.value = null;
+      await router.replace("/login");
+      return;
+    }
+    await refreshPluginExtensions({ background: true });
+  } catch {
+    // Preserve the current screen during transient connectivity failures.
+  }
+}
+function onPageVisible() {
+  if (document.visibilityState === "visible" && pluginRefreshUser)
+    void pollSessionAndPlugins(pluginRefreshUser);
+}
+document.addEventListener("visibilitychange", onPageVisible);
 watch(
   () => currentUser.value?.id,
   (id) => {
     clearInterval(pluginRefreshTimer);
     clearPluginExtensions();
+    pluginRefreshUser = id;
     if (id) {
       void refreshPluginExtensions({ background: true });
-      pluginRefreshTimer = setInterval(async () => {
-        try {
-          const user = await fetchCurrentUser();
-          if (currentUser.value?.id !== id) return;
-          if (!user) {
-            currentUser.value = null;
-            await router.replace("/login");
-            return;
-          }
-          await refreshPluginExtensions({ background: true });
-        } catch {
-          // Preserve the current screen during transient connectivity failures.
-        }
-      }, 5000);
+      pluginRefreshTimer = setInterval(
+        () => void pollSessionAndPlugins(id),
+        5000,
+      );
     }
   },
   { immediate: true },
 );
 onUnmounted(() => {
+  document.removeEventListener("visibilitychange", onPageVisible);
   clearInterval(pluginRefreshTimer);
   clearPluginExtensions();
 });

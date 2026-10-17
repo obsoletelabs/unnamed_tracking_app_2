@@ -202,6 +202,9 @@ async def _reconcile_names(
     await names.reconcile_games(db, user_id, games, observed, reviewed_renames=reviewed)
 
 
+    return results
+
+
 async def record_complete_inventory(
     db: AsyncSession,
     user_id: UUID,
