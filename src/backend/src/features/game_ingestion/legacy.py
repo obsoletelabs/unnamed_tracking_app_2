@@ -201,7 +201,6 @@ async def _reconcile_names(
         ).all()
     await names.reconcile_games(db, user_id, games, observed, reviewed_renames=reviewed)
 
-
     return results
 
 
