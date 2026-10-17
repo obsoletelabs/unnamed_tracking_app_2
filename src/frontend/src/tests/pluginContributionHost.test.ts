@@ -130,11 +130,24 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-it.each(["declared", "undeclared", "failed"])(
-  "handles %s external navigation from a declarative plugin action",
-  async (mode) => {
+it.each([
+  ["declared", true],
+  ["declared", false],
+  ["undeclared", true],
+  ["failed", true],
+])(
+  "handles %s external navigation from a declarative plugin action (new tab: %s)",
+  async (mode, tabAvailable) => {
     const assign = vi.fn();
-    vi.stubGlobal("window", { location: { assign } });
+    const tab = {
+      opener: {} as unknown,
+      closed: false,
+      close: vi.fn(),
+      location: { href: "about:blank" },
+    };
+    // a popup blocker makes window.open return null
+    const open = vi.fn(() => (tabAvailable ? tab : null));
+    vi.stubGlobal("window", { location: { assign }, open });
     vi.mocked(dispatchPluginAction).mockResolvedValueOnce({
       redirect_url: "https://www.epicgames.com/id/login",
       ...(mode === "failed" ? { ok: false } : {}),
@@ -170,12 +183,20 @@ it.each(["declared", "undeclared", "failed"])(
     try {
       (findButton(root)!.props.onClick as () => void)();
       await nextTick();
+      await nextTick();
       expect(dispatchPluginAction).toHaveBeenCalledOnce();
-      if (mode === "declared")
+      if (mode === "declared" && tabAvailable) {
+        // the app tab, and any open connection popup, stays where it is
+        expect(tab.location.href).toBe("https://www.epicgames.com/id/login");
+        expect(tab.opener).toBeNull();
+        expect(assign).not.toHaveBeenCalled();
+      } else if (mode === "declared")
         expect(assign).toHaveBeenCalledExactlyOnceWith(
           "https://www.epicgames.com/id/login",
         );
       else expect(assign).not.toHaveBeenCalled();
+      if (mode === "undeclared") expect(open).not.toHaveBeenCalled();
+      if (mode === "failed") expect(tab.close).toHaveBeenCalledOnce();
     } finally {
       app.unmount();
     }

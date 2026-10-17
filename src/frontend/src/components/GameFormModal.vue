@@ -1,7 +1,17 @@
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, watch, proxyRefs } from "vue";
-import UiModal from "./UiModal.vue";
+import {
+  ref,
+  computed,
+  nextTick,
+  onMounted,
+  watch,
+  proxyRefs,
+  useId,
+} from "vue";
+import EditorShell from "./EditorShell.vue";
 import GamePlayFields from "./game/GamePlayFields.vue";
+import GameArtPicker from "./game/GameArtPicker.vue";
+import GameCollectionsField from "./game/GameCollectionsField.vue";
 import {
   attachGameAssetFromUrl,
   createGame,
@@ -21,6 +31,7 @@ import type { GameLink, GameOwnership } from "../types/game";
 
 import PageSettingsEditor from "./PageSettingsEditor.vue";
 import { preferences } from "../state/preferences";
+import { manualCollectionNames } from "../state/collectionMeta";
 import { resolvePage } from "../utils/gamePage";
 import type { PageOverrides, PageSettings } from "../utils/gamePage";
 import { fetchMetadataProviders } from "../services/metadata";
@@ -28,10 +39,12 @@ import type { MetadataProviderStatus } from "../services/metadata";
 import { localDateInputToUnixSeconds, toLocalDateInput } from "../utils/dates";
 import { PRIORITY_OPTIONS, isFinished } from "../utils/priority";
 import { RETRO_PLATFORM_OPTIONS } from "../utils/platforms";
+import { sizedAssetUrl } from "../utils/gameImages";
 
 import { useMetadataSearch } from "../composables/useMetadataSearch";
 import { useMetadataComparison } from "../composables/useMetadataComparison";
 import { useMetadataArtwork } from "../composables/useMetadataArtwork";
+import { useStagedArtwork } from "../composables/useStagedArtwork";
 import MetadataComparison from "./MetadataComparison.vue";
 import { gameMetadataResult } from "../utils/metadataCandidate";
 import { useTitleProtection } from "../utils/titleProtection";
@@ -56,15 +69,20 @@ const compact = ref(!!props.quickAdd && !props.game);
 // GameDetail, CollectionDetail, HomeHub), so it works consistently
 // regardless of caller
 const availableParentGames = ref<Game[]>([]);
+// manual collections this game can join; its own memberships until the
+// library list arrives
+const collectionChoices = ref<string[]>(
+  manualCollectionNames(props.game ? [props.game] : []),
+);
 // the ISO 4217 codes the API accepts (#11), so a typo can't fail the save
 const currencyCodes = ref<string[]>([]);
 async function loadFullFormChoices() {
   try {
-    availableParentGames.value = (await fetchGames()).filter(
-      (g) => g.id !== props.game?.id,
-    );
+    const games = await fetchGames();
+    availableParentGames.value = games.filter((g) => g.id !== props.game?.id);
+    collectionChoices.value = manualCollectionNames(games);
   } catch {
-    // parent picker just stays empty, not worth failing the whole form
+    // the pickers just keep what they have, not worth failing the whole form
   }
   if (import.meta.env.VITE_USE_MOCK_DATA === "true") return;
   try {
@@ -97,7 +115,8 @@ onMounted(() => {
 function openFullForm() {
   if (!compact.value) return;
   compact.value = false;
-  activeTab.value = title.value.trim() ? "General" : "Find";
+  activeTab.value = "Basics";
+  lookupOpen.value = !title.value.trim();
   void loadFullFormChoices();
 }
 
@@ -144,67 +163,51 @@ const statuses: GameStatus[] = [
   "wishlist",
 ];
 
-const EDIT_TABS = [
-  "General",
-  "Ratings & Tags",
-  "Media",
+// One shared editor (#143): every section is a direct tab, adding and editing
+// alike, and Save is always available. The lookup sits above any tab.
+const TABS = [
+  "Basics",
+  "Details",
+  "Play",
+  "Ratings and tags",
+  "Artwork",
   "Links",
   "Ownership",
-  "Page",
+  "Advanced",
 ] as const;
-type Tab = "Find" | (typeof EDIT_TABS)[number];
-// Adding a game is a step-by-step flow (#55): a skippable metadata search
-// first, then each tab in turn with Next, and Add Game only on the last one.
-// Editing keeps the tabs as a plain form with the search on General.
-const tabs = computed<Tab[]>(() =>
-  isEditing.value ? [...EDIT_TABS] : ["Find", ...EDIT_TABS],
-);
-const activeTab = ref<Tab>(isEditing.value ? "General" : "Find");
-const stepIndex = computed(() => tabs.value.indexOf(activeTab.value));
-const isLastStep = computed(() => stepIndex.value === tabs.value.length - 1);
+type Tab = (typeof TABS)[number];
+const activeTab = ref<Tab>("Basics");
 const metadataApplied = ref(false);
+// The artwork tab is built the first time it is opened, then kept, so its
+// file inputs, previews and offered images survive switching tabs.
+const artworkOpened = ref(false);
+watch(activeTab, (tab) => {
+  if (tab === "Artwork") artworkOpened.value = true;
+});
+const shell = ref<{ scrollToTop: () => void } | null>(null);
+const lookupId = useId();
+const lookupOpen = ref(!props.game && !compact.value);
+const lookupInput = ref<HTMLInputElement | null>(null);
+function toggleLookup() {
+  lookupOpen.value = !lookupOpen.value;
+  if (!lookupOpen.value) return;
+  shell.value?.scrollToTop();
+  void nextTick(() => lookupInput.value?.focus());
+}
 
-// keep the current step's tab in view when the tab row scrolls (phones)
-const tabsEl = ref<HTMLElement | null>(null);
-watch(activeTab, () =>
-  nextTick(() =>
-    tabsEl.value
-      ?.querySelector(".modal-tab.active")
-      ?.scrollIntoView({ block: "nearest", inline: "nearest" }),
-  ),
-);
-
-function validateGeneral(): boolean {
-  if (!title.value.trim()) {
-    error.value = "Title is required.";
-    activeTab.value = "General";
-    return false;
-  }
-  if (!isEditing.value && !folderLocation.value.trim()) {
+const FOLDER_PATTERN = /^[A-Za-z0-9_-]+$/;
+function validateBasics(): boolean {
+  const folder = folderLocation.value.trim();
+  if (!title.value.trim()) error.value = "Title is required.";
+  else if (!isEditing.value && !folder)
     error.value = "Folder name is required.";
-    openFullForm();
-    activeTab.value = "General";
-    return false;
-  }
-  return true;
-}
-
-function goToStep(offset: number) {
-  if (offset > 0 && activeTab.value === "General" && !validateGeneral()) return;
-  error.value = null;
-  const next = tabs.value[stepIndex.value + offset];
-  if (next) activeTab.value = next;
-}
-
-// Only the last step (or the edit form) has a submit button, so Enter in a
-// field can't create a half-filled game early; if a submit does arrive
-// before the last step it moves on instead
-function onFormSubmit() {
-  if (!compact.value && !isEditing.value && !isLastStep.value) {
-    goToStep(1);
-    return;
-  }
-  void submit();
+  else if (folder && !FOLDER_PATTERN.test(folder))
+    error.value =
+      "Folder name: use only letters, numbers, underscores and hyphens.";
+  else return true;
+  openFullForm();
+  activeTab.value = "Basics";
+  return false;
 }
 
 const title = ref(props.game?.title ?? "");
@@ -222,6 +225,8 @@ const playCompatibility = ref<GamePlayCompatibility | null>(
 const priority = ref(props.game?.priority ?? "");
 const folderLocation = ref(props.game?.folderLocation ?? "");
 const status = ref<GameStatus>(props.game?.status ?? "backlog");
+const favorite = ref(props.game?.favorite ?? false);
+const collections = ref<string[]>([...(props.game?.collections ?? [])]);
 const developer = ref(props.game?.developer ?? "");
 const publisher = ref(props.game?.publisher ?? "");
 const series = ref(props.game?.series ?? "");
@@ -276,6 +281,18 @@ const completionEstimateInputs = [
     input: timeToBeatAllHours,
   },
 ] as const;
+// The manual playtime total, in hours to one decimal. It is only sent when
+// changed, so opening and saving the editor never rounds a synced total.
+const MAX_PLAYTIME_HOURS = 596523;
+const savedPlaytimeMinutes = (props.game?.platforms ?? []).reduce(
+  (sum, entry) => sum + entry.playtimeMinutes,
+  0,
+);
+const initialPlaytime = savedPlaytimeMinutes
+  ? String(Math.round(savedPlaytimeMinutes / 6) / 10)
+  : "";
+const playtimeHours = ref<string | number>(initialPlaytime);
+const resumeNote = ref(props.game?.resumeNote ?? "");
 const region = ref(props.game?.region ?? "");
 const language = ref(props.game?.language ?? "");
 const achievementsProvider = ref<AchievementsProvider>(
@@ -308,8 +325,12 @@ const ratingSound = ref<number | null>(props.game?.ratingSound ?? null);
 const tagsInput = ref(props.game?.tags.join(", ") ?? "");
 const featuresInput = ref(props.game?.features.join(", ") ?? "");
 
-const coverFile = ref<File | null>(null);
-const bannerFile = ref<File | null>(null);
+// Pending artwork per role. A chosen file, link or offered image is staged
+// here (with its own object URL) until Save; the saved artwork stays shown.
+const cover = useStagedArtwork(() => props.game?.coverImageUrl ?? null);
+const banner = useStagedArtwork(() =>
+  props.game ? sizedAssetUrl(props.game.bannerImageUrl, 640) : null,
+);
 
 const links = ref<GameLink[]>(props.game?.links ? [...props.game.links] : []);
 function addLink() {
@@ -328,6 +349,16 @@ const price = ref<number | null>(props.game?.ownership.price ?? null);
 const priceCurrency = ref(props.game?.ownership.priceCurrency ?? "USD");
 const condition = ref(props.game?.ownership.condition ?? "");
 
+const heroTitle = computed(() => title.value.trim() || "Untitled game");
+const heroSubtitle = computed(() =>
+  [developer.value.trim(), releaseDate.value.slice(0, 4), platform.value.trim()]
+    .filter(Boolean)
+    .join(" · "),
+);
+const dialogTitle = computed(() =>
+  isEditing.value ? "Edit Game" : compact.value ? "Quick Add Game" : "Add Game",
+);
+
 const saving = ref(false);
 const error = ref<string | null>(null);
 const metadataQuery = ref("");
@@ -342,14 +373,12 @@ const metadataResults = computed(() =>
 );
 const searchingMetadata = progressiveSearch.searching;
 const metadataMessage = ref<string | null>(null);
+const appliedNote = ref<string | null>(null);
 const metadataProviders = ref<MetadataProviderStatus[]>([]);
 const metadataProvidersLoaded = ref(false);
 const providerWarnings = progressiveSearch.warnings;
 
-// picked from the selected metadata result, attached to the game as real
-// assets once it's actually saved (see submit())
-const pickedKeyArtUrl = ref<string | null>(null);
-const pickedBannerUrl = ref<string | null>(null);
+// offered by the selected metadata result; choosing one only stages it
 const keyArtCandidates = ref<string[]>([]);
 const bannerCandidates = ref<string[]>([]);
 const searchingMedia = progressiveSearch.enrichingMedia;
@@ -367,6 +396,7 @@ const hasMediaProvider = computed(() =>
 
 async function searchMetadata() {
   metadataApplied.value = false;
+  appliedNote.value = null;
   await progressiveSearch.search();
 }
 
@@ -415,25 +445,18 @@ const artwork = useMetadataArtwork(
   progressiveSearch.selected,
   progressiveSearch.previewArtwork,
 );
+// The comparison reads and stages artwork through the same choices as the
+// Artwork tab: ticking an offered image is an explicit choice, while a staged
+// local file counts as a current value, so it is not ticked by default.
 const lookupCover = computed({
-  get: () =>
-    coverFile.value
-      ? `Local file: ${coverFile.value.name}`
-      : (pickedKeyArtUrl.value ?? props.game?.coverImageUrl ?? null),
-  set: (url: string | null) => {
-    pickedKeyArtUrl.value = url;
-    coverFile.value = null;
-  },
+  get: () => cover.preview.value,
+  set: (url: string | null) =>
+    url ? cover.chooseUrl(url, "provider") : cover.reset(),
 });
 const lookupBanner = computed({
-  get: () =>
-    bannerFile.value
-      ? `Local file: ${bannerFile.value.name}`
-      : (pickedBannerUrl.value ?? props.game?.bannerImageUrl ?? null),
-  set: (url: string | null) => {
-    pickedBannerUrl.value = url;
-    bannerFile.value = null;
-  },
+  get: () => banner.preview.value,
+  set: (url: string | null) =>
+    url ? banner.chooseUrl(url, "provider") : banner.reset(),
 });
 const lookupIds = computed({
   get: () => selectedProviderIds.value ?? props.game?.providerIds ?? {},
@@ -534,6 +557,10 @@ watch([progressiveSearch.selected, artwork.urls], ([candidate]) => {
   keyArtCandidates.value = result.key_art_urls;
   bannerCandidates.value = result.banner_urls;
 });
+// A new review opens at the top of the body, whichever tab is showing.
+watch(progressiveSearch.selected, (candidate, previous) => {
+  if (candidate && !previous) shell.value?.scrollToTop();
+});
 function cancelLookup() {
   comparison.clear();
   progressiveSearch.stop();
@@ -546,7 +573,10 @@ function applyLookup() {
   metadataApplied.value = true;
   metadataMessage.value = `Applied ${applied.size} changes from ${candidate.provider_name}. Save to keep them.`;
   progressiveSearch.stop();
-  if (!compact.value && !isEditing.value) activeTab.value = "General";
+  if (!compact.value) {
+    appliedNote.value = metadataMessage.value;
+    lookupOpen.value = false;
+  }
 }
 async function applyMetadata(result: MetadataSearchResult) {
   if (saving.value) return;
@@ -580,176 +610,193 @@ function suggestFolderFromTitle() {
     .replace(/^-+|-+$/g, "");
 }
 
-function resetFileInputOnClick(e: Event) {
-  // Clear before the picker opens so selecting the same file again still
-  // fires change, while keeping the selected filename visible afterwards.
-  (e.currentTarget as HTMLInputElement).value = "";
+function buildInput() {
+  const purchasePrice = numberOrNull(price.value, "Purchase price", {
+    min: 0,
+  });
+  const playtimeChanged =
+    String(playtimeHours.value).trim() !== initialPlaytime;
+  const playtime = playtimeChanged
+    ? (numberOrNull(playtimeHours.value, "Playtime", {
+        min: 0,
+        max: MAX_PLAYTIME_HOURS,
+      }) ?? 0)
+    : null;
+  return {
+    title: title.value.trim(),
+    titleLock: isEditing.value ? titleLockOverride.value : undefined,
+    sortTitle: sortTitle.value.trim() || null,
+    folderLocation: folderLocation.value.trim(),
+    status: status.value,
+    description: description.value.trim() || null,
+    developer: developer.value.trim() || null,
+    publisher: publisher.value.trim() || null,
+    series: series.value.trim() || null,
+    parentGameId: parentGameId.value || null,
+    relationshipType: parentGameId.value
+      ? relationshipType.value || null
+      : null,
+    releaseDate: releaseDate.value || null,
+    dateAdded: dateAdded.value || null,
+    createdAt:
+      dateAdded.value && dateAdded.value !== initialDateAdded
+        ? localDateInputToUnixSeconds(dateAdded.value)
+        : null,
+    completionDate: completionDate.value || null,
+    source: source.value.trim() || null,
+    providerIds: selectedProviderIds.value ?? props.game?.providerIds,
+    platform: platform.value.trim() || null,
+    playCompatibility: playCompatibility.value,
+    priority: priority.value || null,
+    ageRating: ageRating.value.trim() || null,
+    timeToBeatHours: numberOrNull(timeToBeatHours.value, "Time to beat", {
+      min: 0,
+      max: 99999.9,
+    }),
+    timeToBeatExtrasHours: numberOrNull(
+      timeToBeatExtrasHours.value,
+      "Main + extras",
+      { min: 0, max: 99999.9 },
+    ),
+    timeToBeatCompletionistHours: numberOrNull(
+      timeToBeatCompletionistHours.value,
+      "Completionist",
+      { min: 0, max: 99999.9 },
+    ),
+    timeToBeatAllHours: numberOrNull(
+      timeToBeatAllHours.value,
+      "All play styles",
+      { min: 0, max: 99999.9 },
+    ),
+    region: region.value.trim() || null,
+    language: language.value.trim() || null,
+    achievementsProvider: achievementsProvider.value,
+    ratingOverall: numberOrNull(ratingOverall.value, "Overall rating", {
+      min: 0,
+      max: 10,
+    }),
+    ratingStory: numberOrNull(ratingStory.value, "Story rating", {
+      min: 0,
+      max: 10,
+    }),
+    ratingGameplay: numberOrNull(ratingGameplay.value, "Gameplay rating", {
+      min: 0,
+      max: 10,
+    }),
+    ratingSound: numberOrNull(ratingSound.value, "Soundtrack rating", {
+      min: 0,
+      max: 10,
+    }),
+    tags: tagsInput.value
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean),
+    features: featuresInput.value
+      .split(",")
+      .map((f) => f.trim())
+      .filter(Boolean),
+    links: links.value.filter((l) => l.label.trim() && l.url.trim()),
+    ownership: {
+      format: ownershipFormat.value,
+      purchaseDate: purchaseDate.value || null,
+      price: purchasePrice,
+      priceCurrency:
+        purchasePrice !== null
+          ? priceCurrency.value.trim().toUpperCase() || "USD"
+          : null,
+      condition: condition.value.trim() || null,
+    },
+    // Tracking fields travel in the same validated game write as the rest,
+    // so they cannot be saved without the game or the game without them.
+    favorite: favorite.value,
+    collections: collections.value,
+    resumeNote: resumeNote.value.trim() || null,
+    playtimeSeconds:
+      playtime === null ? undefined : Math.round(playtime * 3600),
+    profilesEnabled: profilesEnabled.value,
+    pageSettings: pageOverrides.value,
+    osrsStatsEnabled: osrsStatsEnabled.value,
+  };
 }
 
-function onCoverFileChange(e: Event) {
-  const input = e.target as HTMLInputElement;
-  coverFile.value = input.files?.[0] ?? null;
+// The staged artwork, captured when Save starts. An explicit local file is
+// uploaded; a link or offered image is fetched by the server.
+function stagedArtwork() {
+  return [
+    { kind: "key_art" as const, label: "cover", choice: cover.staged.value },
+    { kind: "banner" as const, label: "banner", choice: banner.staged.value },
+  ].flatMap(({ kind, label, choice }) =>
+    choice
+      ? [
+          choice.source === "file"
+            ? { kind, label, file: choice.file, url: null }
+            : { kind, label, file: null, url: choice.url },
+        ]
+      : [],
+  );
 }
-function onBannerFileChange(e: Event) {
-  const input = e.target as HTMLInputElement;
-  bannerFile.value = input.files?.[0] ?? null;
+
+// Artwork is transferred after the game is saved. A failure leaves the game
+// saved and offers a retry of the remaining artwork on that same game only.
+async function attachArtwork(
+  savedGame: Game,
+  artwork: ReturnType<typeof stagedArtwork>,
+) {
+  const taskId = startTask(`Artwork for ${savedGame.title}`, artwork.length);
+  let done = 0;
+  let running = false;
+  const attempt = async () => {
+    if (running || done === artwork.length) return;
+    running = true;
+    try {
+      while (done < artwork.length) {
+        const asset = artwork[done]!;
+        if (asset.file)
+          await uploadGameAsset(savedGame.id, asset.kind, asset.file);
+        else if (asset.url)
+          await attachGameAssetFromUrl(savedGame.id, asset.kind, asset.url);
+        updateTask(taskId, ++done);
+      }
+      completeTask(taskId, "Artwork saved.");
+    } catch {
+      errorTask(
+        taskId,
+        `Game saved. Artwork could not be attached (${artwork[done]!.label}). Retry artwork or edit it later.`,
+      );
+      setTaskRetry(taskId, () => void attempt());
+    } finally {
+      running = false;
+    }
+  };
+  await attempt();
 }
+
+// A game created by this editor; a later Save updates it rather than
+// creating another copy.
+let createdGame: Game | null = null;
 
 async function submit() {
   if (progressiveSearch.selected.value) return;
   if (saving.value || selectingMetadata.value) return;
   if (compact.value) suggestFolderFromTitle();
-  if (!validateGeneral()) return;
+  if (!validateBasics()) return;
 
   saving.value = true;
   error.value = null;
 
   try {
-    const purchasePrice = numberOrNull(price.value, "Purchase price", {
-      min: 0,
-    });
-    const input = {
-      title: title.value.trim(),
-      titleLock: isEditing.value ? titleLockOverride.value : undefined,
-      sortTitle: sortTitle.value.trim() || null,
-      folderLocation: folderLocation.value.trim(),
-      status: status.value,
-      description: description.value.trim() || null,
-      developer: developer.value.trim() || null,
-      publisher: publisher.value.trim() || null,
-      series: series.value.trim() || null,
-      parentGameId: parentGameId.value || null,
-      relationshipType: parentGameId.value
-        ? relationshipType.value || null
-        : null,
-      releaseDate: releaseDate.value || null,
-      dateAdded: dateAdded.value || null,
-      createdAt:
-        dateAdded.value && dateAdded.value !== initialDateAdded
-          ? localDateInputToUnixSeconds(dateAdded.value)
-          : null,
-      completionDate: completionDate.value || null,
-      source: source.value.trim() || null,
-      providerIds: selectedProviderIds.value ?? props.game?.providerIds,
-      platform: platform.value.trim() || null,
-      playCompatibility: playCompatibility.value,
-      priority: priority.value || null,
-      ageRating: ageRating.value.trim() || null,
-      timeToBeatHours: numberOrNull(timeToBeatHours.value, "Time to beat", {
-        min: 0,
-        max: 99999.9,
-      }),
-      timeToBeatExtrasHours: numberOrNull(
-        timeToBeatExtrasHours.value,
-        "Main + extras",
-        { min: 0, max: 99999.9 },
-      ),
-      timeToBeatCompletionistHours: numberOrNull(
-        timeToBeatCompletionistHours.value,
-        "Completionist",
-        { min: 0, max: 99999.9 },
-      ),
-      timeToBeatAllHours: numberOrNull(
-        timeToBeatAllHours.value,
-        "All play styles",
-        { min: 0, max: 99999.9 },
-      ),
-      region: region.value.trim() || null,
-      language: language.value.trim() || null,
-      achievementsProvider: achievementsProvider.value,
-      ratingOverall: numberOrNull(ratingOverall.value, "Overall rating", {
-        min: 0,
-        max: 10,
-      }),
-      ratingStory: numberOrNull(ratingStory.value, "Story rating", {
-        min: 0,
-        max: 10,
-      }),
-      ratingGameplay: numberOrNull(ratingGameplay.value, "Gameplay rating", {
-        min: 0,
-        max: 10,
-      }),
-      ratingSound: numberOrNull(ratingSound.value, "Soundtrack rating", {
-        min: 0,
-        max: 10,
-      }),
-      tags: tagsInput.value
-        .split(",")
-        .map((t) => t.trim())
-        .filter(Boolean),
-      features: featuresInput.value
-        .split(",")
-        .map((f) => f.trim())
-        .filter(Boolean),
-      links: links.value.filter((l) => l.label.trim() && l.url.trim()),
-      ownership: {
-        format: ownershipFormat.value,
-        purchaseDate: purchaseDate.value || null,
-        price: purchasePrice,
-        priceCurrency:
-          purchasePrice !== null
-            ? priceCurrency.value.trim().toUpperCase() || "USD"
-            : null,
-        condition: condition.value.trim() || null,
-      },
-      favorite: props.game?.favorite ?? false,
-      collections: props.game?.collections ?? [],
-      profilesEnabled: profilesEnabled.value,
-      pageSettings: pageOverrides.value,
-      osrsStatsEnabled: osrsStatsEnabled.value,
-    };
-
+    const input = buildInput();
     // Capture artwork before awaiting the save. Retries only attach remaining assets
     // to this saved game, even after the dialog has closed or another one is opened.
-    const artwork = [
-      {
-        kind: "key_art" as const,
-        file: coverFile.value,
-        url: pickedKeyArtUrl.value,
-      },
-      {
-        kind: "banner" as const,
-        file: bannerFile.value,
-        url: pickedBannerUrl.value,
-      },
-    ].filter((asset) => asset.file || asset.url);
-    const savedGame = isEditing.value
-      ? await updateGame(props.game!.id, input)
+    const pendingArtwork = stagedArtwork();
+    const targetId = createdGame?.id ?? props.game?.id;
+    const savedGame = targetId
+      ? await updateGame(targetId, input)
       : await createGame(input);
+    if (!props.game) createdGame = savedGame;
 
-    if (import.meta.env.VITE_USE_MOCK_DATA !== "true" && artwork.length) {
-      const taskId = startTask(
-        `Artwork for ${savedGame.title}`,
-        artwork.length,
-      );
-      let done = 0;
-      let running = false;
-      const attempt = async () => {
-        if (running || done === artwork.length) return;
-        running = true;
-        try {
-          while (done < artwork.length) {
-            const asset = artwork[done];
-            if (asset.file) {
-              await uploadGameAsset(savedGame.id, asset.kind, asset.file);
-            } else if (asset.url) {
-              await attachGameAssetFromUrl(savedGame.id, asset.kind, asset.url);
-            }
-            updateTask(taskId, ++done);
-          }
-          completeTask(taskId, "Artwork saved.");
-        } catch {
-          errorTask(
-            taskId,
-            "Game saved. Artwork could not be attached. Retry artwork or edit it later.",
-          );
-          setTaskRetry(taskId, () => void attempt());
-        } finally {
-          running = false;
-        }
-      };
-      await attempt();
-    }
+    if (import.meta.env.VITE_USE_MOCK_DATA !== "true" && pendingArtwork.length)
+      await attachArtwork(savedGame, pendingArtwork);
 
     emit("saved", savedGame.id);
   } catch (err) {
@@ -761,779 +808,719 @@ async function submit() {
 </script>
 
 <template>
-  <UiModal
-    :title="isEditing ? 'Edit Game' : compact ? 'Quick Add Game' : 'Add Game'"
-    :size="compact ? 'standard' : 'wide'"
+  <EditorShell
+    ref="shell"
+    v-model:tab="activeTab"
+    :title="dialogTitle"
+    :heading="compact ? undefined : heroTitle"
+    :subtitle="heroSubtitle"
+    :cover="cover.preview.value"
+    cover-label="Show artwork"
+    :tabs="compact ? [] : TABS"
+    tabs-label="Game details"
+    :size="compact ? 'standard' : 'editor'"
     :dismissible="!saving"
+    class="game-editor"
+    :class="{ 'quick-add': compact }"
     @close="emit('close')"
+    @submit="submit"
+    @cover="activeTab = 'Artwork'"
   >
-    <div class="game-editor" :class="{ 'quick-add': compact }">
-      <nav v-if="!compact" ref="tabsEl" class="modal-tabs">
-        <button
-          v-for="tab in tabs"
-          :key="tab"
-          type="button"
-          class="modal-tab"
-          :class="{ active: activeTab === tab }"
-          @click="activeTab = tab"
+    <template #lead>
+      <p
+        v-if="!compact && !lookupOpen && appliedNote"
+        class="lookup-note"
+        role="status"
+      >
+        {{ appliedNote }}
+      </p>
+      <MetadataComparison
+        v-if="progressiveSearch.selected.value"
+        :changes="comparison.changes.value"
+        :reason="comparison.reason.value"
+        :provider="progressiveSearch.selected.value.provider_name"
+        :busy="artwork.busy.value || searchingMedia"
+        :previews="artwork.previews.value"
+        @toggle="comparison.toggle"
+        @apply="applyLookup"
+        @cancel="cancelLookup"
+      />
+      <div v-if="compact || lookupOpen" :id="lookupId" class="metadata-search">
+        <div class="search-heading">
+          <strong>Find game metadata</strong>
+          <span
+            >Search external providers and choose a match to review its
+            fields.</span
+          >
+        </div>
+        <p
+          v-if="metadataProvidersLoaded && !hasMediaProvider"
+          class="steamgriddb-hint"
         >
-          {{ tab }}
-        </button>
-      </nav>
-
-      <form class="modal-form" @submit.prevent="onFormSubmit">
-        <div class="editor-body">
-          <MetadataComparison
-            v-if="progressiveSearch.selected.value"
-            :changes="comparison.changes.value"
-            :reason="comparison.reason.value"
-            :provider="progressiveSearch.selected.value.provider_name"
-            :busy="artwork.busy.value || searchingMedia"
-            :previews="artwork.previews.value"
-            @toggle="comparison.toggle"
-            @apply="applyLookup"
-            @cancel="cancelLookup"
+          Configure the built-in artwork providers in
+          <router-link to="/settings?section=sources" @click="emit('close')"
+            >Settings &rsaquo; Metadata/API</router-link
+          >
+          to receive cover and hero artwork after choosing a game.
+        </p>
+        <div class="search-row">
+          <input
+            ref="lookupInput"
+            v-model="metadataQuery"
+            type="search"
+            placeholder="Search by game title"
+            aria-label="Search game metadata by title"
+            @keydown.enter.prevent="searchMetadata"
           />
-          <div
-            v-if="compact || activeTab === 'General' || activeTab === 'Find'"
-            class="tab-panel"
+          <button
+            type="button"
+            class="secondary-button"
+            :disabled="searchingMetadata"
+            @click="searchMetadata"
           >
-            <div
-              v-if="compact || activeTab === 'Find' || isEditing"
-              class="metadata-search"
+            {{ searchingMetadata ? "Searching…" : "Search" }}
+          </button>
+        </div>
+        <div v-if="metadataResults.length" class="metadata-results">
+          <button
+            v-for="result in metadataResults"
+            :key="`${result.provider}-${result.provider_id}`"
+            type="button"
+            class="metadata-result"
+            @click="applyMetadata(result)"
+          >
+            <span>{{ result.title }}</span>
+            <small
+              >{{ result.provider
+              }}<span v-if="result.release_date">
+                · {{ result.release_date.slice(0, 4) }}</span
+              ></small
             >
-              <div class="search-heading">
-                <strong>Find game metadata</strong>
-                <span
-                  >Search external providers and choose a match to prefill this
-                  form.</span
-                >
-              </div>
-              <p
-                v-if="metadataProvidersLoaded && !hasMediaProvider"
-                class="steamgriddb-hint"
-              >
-                Configure the built-in artwork providers in
-                <router-link
-                  to="/settings?section=sources"
-                  @click="emit('close')"
-                  >Settings &rsaquo; Metadata/API</router-link
-                >
-                to receive cover and hero artwork after choosing a game.
-              </p>
-              <div class="search-row">
-                <input
-                  v-model="metadataQuery"
-                  type="search"
-                  placeholder="Search by game title"
-                  aria-label="Search game metadata by title"
-                  @keydown.enter.prevent="searchMetadata"
-                />
-                <button
-                  type="button"
-                  class="secondary-button"
-                  :disabled="searchingMetadata"
-                  @click="searchMetadata"
-                >
-                  {{ searchingMetadata ? "Searching…" : "Search" }}
-                </button>
-              </div>
-              <div v-if="metadataResults.length" class="metadata-results">
-                <button
-                  v-for="result in metadataResults"
-                  :key="`${result.provider}-${result.provider_id}`"
-                  type="button"
-                  class="metadata-result"
-                  @click="applyMetadata(result)"
-                >
-                  <span>{{ result.title }}</span>
-                  <small
-                    >{{ result.provider
-                    }}<span v-if="result.release_date">
-                      · {{ result.release_date.slice(0, 4) }}</span
-                    ></small
-                  >
-                </button>
-              </div>
-              <p v-if="metadataMessage" class="hint">{{ metadataMessage }}</p>
-              <ul v-if="providerWarnings.length" class="provider-warnings">
-                <li v-for="warning in providerWarnings" :key="warning">
-                  {{ warning }}
-                </li>
-              </ul>
-              <p v-if="!compact && activeTab === 'Find'" class="hint">
-                Pick a match to fill in the next steps for you, or skip this and
-                enter everything by hand.
-              </p>
-            </div>
+          </button>
+        </div>
+        <p v-if="metadataMessage" class="hint">{{ metadataMessage }}</p>
+        <ul v-if="providerWarnings.length" class="provider-warnings">
+          <li v-for="warning in providerWarnings" :key="warning">
+            {{ warning }}
+          </li>
+        </ul>
+        <p v-if="!compact && !isEditing" class="hint">
+          Pick a match to review what it fills in, or enter everything by hand
+          in the tabs below.
+        </p>
+      </div>
+    </template>
 
-            <template v-if="compact">
-              <label class="field">
-                <span>Title</span>
-                <input
-                  v-model="title"
-                  type="text"
-                  required
-                  @blur="suggestFolderFromTitle"
-                />
-              </label>
-              <div class="field-row">
-                <label class="field">
-                  <span>Status</span>
-                  <select v-model="status">
-                    <option v-for="s in statuses" :key="s" :value="s">
-                      {{ s }}
-                    </option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span>Platform</span>
-                  <input
-                    v-model="platform"
-                    type="text"
-                    list="quick-game-platforms"
-                    placeholder="PC, Switch..."
-                  />
-                  <datalist id="quick-game-platforms">
-                    <option
-                      v-for="option in PLATFORM_SUGGESTIONS"
-                      :key="option"
-                      :value="option"
-                    />
-                  </datalist>
-                </label>
-              </div>
-              <p class="hint">
-                Choose a search result or enter a title. Use the full form for
-                artwork, ownership and more fields.
-              </p>
-            </template>
-
-            <template v-if="!compact && activeTab === 'General'">
-              <div class="field-row">
-                <label class="field">
-                  <span>Title</span>
-                  <input
-                    v-model="title"
-                    type="text"
-                    required
-                    @blur="suggestFolderFromTitle"
-                  />
-                </label>
-                <label class="field">
-                  <span>Sorting Name</span>
-                  <input
-                    v-model="sortTitle"
-                    type="text"
-                    placeholder="defaults to Title"
-                  />
-                </label>
-              </div>
-
-              <label v-if="isEditing" class="checkbox-field">
-                <input v-model="titleProtected" type="checkbox" />
-                <span>Protect title from metadata updates</span>
-              </label>
-
-              <div class="field-row">
-                <label class="field">
-                  <span>Folder name</span>
-                  <input
-                    v-model="folderLocation"
-                    type="text"
-                    :required="!isEditing"
-                    pattern="[A-Za-z0-9_\-]+"
-                    title="Letters, numbers, underscores and hyphens only"
-                    :placeholder="
-                      isEditing ? 'leave blank to keep current' : ''
-                    "
-                    @input="folderTouched = true"
-                  />
-                </label>
-                <label class="field">
-                  <span>Status</span>
-                  <select v-model="status">
-                    <option v-for="s in statuses" :key="s" :value="s">
-                      {{ s }}
-                    </option>
-                  </select>
-                </label>
-              </div>
-
-              <div class="field-row">
-                <label class="field">
-                  <span>Developer</span>
-                  <input v-model="developer" type="text" />
-                </label>
-                <label class="field">
-                  <span>Publisher</span>
-                  <input v-model="publisher" type="text" />
-                </label>
-              </div>
-
-              <div class="field-row">
-                <label class="field">
-                  <span>Series</span>
-                  <input v-model="series" type="text" />
-                </label>
-                <label class="field">
-                  <span>Source</span>
-                  <input
-                    v-model="source"
-                    type="text"
-                    placeholder="Steam, GOG, physical..."
-                  />
-                </label>
-              </div>
-
-              <div class="field-row">
-                <label class="field">
-                  <span>Platform</span>
-                  <input
-                    v-model="platform"
-                    type="text"
-                    list="game-platform-suggestions"
-                    placeholder="PC, PlayStation 5, Switch..."
-                  />
-                  <datalist id="game-platform-suggestions">
-                    <option
-                      v-for="option in PLATFORM_SUGGESTIONS"
-                      :key="option"
-                      :value="option"
-                    />
-                  </datalist>
-                </label>
-                <label class="field">
-                  <span>Priority</span>
-                  <select v-model="priority">
-                    <option value="">None</option>
-                    <option
-                      v-for="option in PRIORITY_OPTIONS"
-                      :key="option.value"
-                      :value="option.value"
-                    >
-                      {{ option.label }}
-                    </option>
-                  </select>
-                  <small
-                    v-if="priority && isFinished(status)"
-                    class="field-hint"
-                    >Finished games are left out of priority sorting and the
-                    random picker.</small
-                  >
-                </label>
-              </div>
-
-              <div class="field-row">
-                <label class="field">
-                  <span>Parent game</span>
-                  <select v-model="parentGameId">
-                    <option value="">None: this is its own game</option>
-                    <option
-                      v-for="g in availableParentGames"
-                      :key="g.id"
-                      :value="g.id"
-                    >
-                      {{ g.title }}
-                    </option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span>Relationship</span>
-                  <select v-model="relationshipType" :disabled="!parentGameId">
-                    <option value="">N/A</option>
-                    <option
-                      v-for="opt in RELATIONSHIP_TYPE_OPTIONS"
-                      :key="opt.value"
-                      :value="opt.value"
-                    >
-                      {{ opt.label }}
-                    </option>
-                  </select>
-                </label>
-              </div>
-
-              <div class="field-row">
-                <label class="checkbox-field">
-                  <input v-model="profilesEnabled" type="checkbox" />
-                  <span>
-                    Track multiple accounts on this game
-                    <small
-                      >Adds an account switcher with its own checklist and media
-                      for each account, useful for any game with multiple
-                      characters/accounts, not just OSRS.</small
-                    >
-                  </span>
-                </label>
-              </div>
-
-              <div v-if="profilesEnabled" class="field-row">
-                <label class="checkbox-field">
-                  <input v-model="osrsStatsEnabled" type="checkbox" />
-                  <span>
-                    Use OSRS stats (WiseOldMan)
-                    <small
-                      >Adds skill/boss syncing from wiseoldman.net, real skill
-                      icons, and dated stat history to each account. Only makes
-                      sense for Old School RuneScape.</small
-                    >
-                  </span>
-                </label>
-              </div>
-
-              <div class="field-row">
-                <label class="field">
-                  <span>Age Rating</span>
-                  <input
-                    v-model="ageRating"
-                    type="text"
-                    placeholder="ESRB M, PEGI 18..."
-                  />
-                </label>
-                <label class="field">
-                  <span>Release Date</span>
-                  <input v-model="releaseDate" type="date" />
-                </label>
-              </div>
-
-              <div class="field-row">
-                <label
-                  v-for="estimate in completionEstimateInputs"
-                  :key="estimate.key"
-                  class="field"
-                >
-                  <span>{{ estimate.label }}</span>
-                  <input
-                    v-model="estimate.input.value"
-                    type="number"
-                    min="0"
-                    max="99999.9"
-                    step="0.1"
-                    placeholder="e.g. 12.5"
-                  />
-                </label>
-              </div>
-              <p class="hint">Estimates in hours; playtime stays separate.</p>
-
-              <div class="field-row">
-                <label class="field">
-                  <span>Region</span>
-                  <input
-                    v-model="region"
-                    type="text"
-                    placeholder="NA, PAL, JP..."
-                  />
-                </label>
-                <label class="field">
-                  <span>Language</span>
-                  <input
-                    v-model="language"
-                    type="text"
-                    placeholder="English, Japanese..."
-                  />
-                </label>
-              </div>
-
-              <label class="field">
-                <span>Date added to library</span>
-                <input v-model="dateAdded" type="date" />
-              </label>
-
-              <label class="field">
-                <span>Description</span>
-                <textarea v-model="description" rows="3"></textarea>
-              </label>
-            </template>
-          </div>
-
-          <div v-else-if="activeTab === 'Ratings & Tags'" class="tab-panel">
-            <div class="field-row ratings-row">
-              <label class="field">
-                <span>Atmosphere</span>
-                <input
-                  v-model.number="ratingOverall"
-                  type="number"
-                  min="0"
-                  max="10"
-                  step="0.1"
-                />
-              </label>
-              <label class="field">
-                <span>Story</span>
-                <input
-                  v-model.number="ratingStory"
-                  type="number"
-                  min="0"
-                  max="10"
-                  step="0.1"
-                />
-              </label>
-              <label class="field">
-                <span>Gameplay</span>
-                <input
-                  v-model.number="ratingGameplay"
-                  type="number"
-                  min="0"
-                  max="10"
-                  step="0.1"
-                />
-              </label>
-              <label class="field">
-                <span>Sound</span>
-                <input
-                  v-model.number="ratingSound"
-                  type="number"
-                  min="0"
-                  max="10"
-                  step="0.1"
-                />
-              </label>
-            </div>
-
-            <label class="field">
-              <span>Tags (comma separated)</span>
-              <input
-                v-model="tagsInput"
-                type="text"
-                placeholder="Action RPG, Souls-Like"
-              />
-            </label>
-
-            <label class="field">
-              <span>Features (comma separated)</span>
-              <input
-                v-model="featuresInput"
-                type="text"
-                placeholder="Achievements, Cloud Saves"
-              />
-            </label>
-            <GamePlayFields v-model="playCompatibility" />
-          </div>
-
-          <div v-else-if="activeTab === 'Media'" class="tab-panel">
-            <div class="media-search-panel">
-              <div>
-                <strong>Find artwork</strong>
-                <p class="hint">
-                  Search SteamGridDB and other configured media sources for
-                  cover and banner choices.
-                </p>
-              </div>
-              <button
-                type="button"
-                class="secondary-button"
-                :disabled="searchingMedia || saving"
-                @click="searchMedia"
-              >
-                {{ searchingMedia ? "Searching artwork…" : "Search artwork" }}
-              </button>
-              <p v-if="metadataMessage" class="hint" role="status">
-                {{ metadataMessage }}
-              </p>
-            </div>
-
-            <label class="field">
-              <span>Cover image (portrait)</span>
-              <input
-                type="file"
-                accept="image/*"
-                @click="resetFileInputOnClick"
-                @change="onCoverFileChange"
-              />
-            </label>
-
-            <div v-if="keyArtCandidates.length > 1" class="media-candidates">
-              <span class="candidates-label">Or pick from metadata search</span>
-              <div class="candidates-grid">
-                <button
-                  v-for="url in keyArtCandidates"
-                  :key="url"
-                  type="button"
-                  class="candidate-thumb"
-                  :class="{ active: pickedKeyArtUrl === url }"
-                  @click="
-                    pickedKeyArtUrl = url;
-                    coverFile = null;
-                  "
-                >
-                  <img :src="url" alt="" />
-                </button>
-              </div>
-            </div>
-
-            <label class="field">
-              <span>Banner image (landscape)</span>
-              <input
-                type="file"
-                accept="image/*"
-                @click="resetFileInputOnClick"
-                @change="onBannerFileChange"
-              />
-            </label>
-
-            <div v-if="bannerCandidates.length > 1" class="media-candidates">
-              <span class="candidates-label">Or pick from metadata search</span>
-              <div class="candidates-grid banner-grid">
-                <button
-                  v-for="url in bannerCandidates"
-                  :key="url"
-                  type="button"
-                  class="candidate-thumb banner-thumb"
-                  :class="{ active: pickedBannerUrl === url }"
-                  @click="
-                    pickedBannerUrl = url;
-                    bannerFile = null;
-                  "
-                >
-                  <img :src="url" alt="" />
-                </button>
-              </div>
-            </div>
-
-            <p class="hint">
-              Choose a file here to stage it for upload. The image is uploaded
-              when you click Add Game or Save Changes; it is not sent
-              immediately when selected.
-            </p>
-          </div>
-
-          <div v-else-if="activeTab === 'Links'" class="tab-panel">
-            <div
-              v-for="(link, index) in links"
-              :key="index"
-              class="field-row link-row"
-            >
-              <label class="field">
-                <span>Label</span>
-                <input
-                  v-model="link.label"
-                  type="text"
-                  placeholder="Steam Store Page"
-                />
-              </label>
-              <label class="field">
-                <span>URL</span>
-                <input
-                  v-model="link.url"
-                  type="url"
-                  placeholder="https://..."
-                />
-              </label>
-              <button
-                type="button"
-                class="remove-button"
-                @click="removeLink(index)"
-              >
-                ✕
-              </button>
-            </div>
-            <button type="button" class="secondary-button" @click="addLink">
-              + Add Link
-            </button>
-          </div>
-
-          <div v-else-if="activeTab === 'Page'" class="tab-panel">
-            <p class="hint">
-              What this game's page shows. Anything left on Default follows
-              Settings > Game Page.
-            </p>
-            <PageSettingsEditor
-              :model-value="pageOverrides"
-              :defaults="pageDefaults"
-              @update:model-value="pageOverrides = $event as PageOverrides"
+    <template v-if="compact">
+      <div class="editor-grid">
+        <label class="field full">
+          <span>Title</span>
+          <input
+            v-model="title"
+            type="text"
+            required
+            @blur="suggestFolderFromTitle"
+          />
+        </label>
+        <label class="field">
+          <span>Status</span>
+          <select v-model="status">
+            <option v-for="s in statuses" :key="s" :value="s">
+              {{ s }}
+            </option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Platform</span>
+          <input
+            v-model="platform"
+            type="text"
+            list="quick-game-platforms"
+            placeholder="PC, Switch..."
+          />
+          <datalist id="quick-game-platforms">
+            <option
+              v-for="option in PLATFORM_SUGGESTIONS"
+              :key="option"
+              :value="option"
             />
-          </div>
+          </datalist>
+        </label>
+      </div>
+      <p class="hint">
+        Choose a search result or enter a title. Use the full form for artwork,
+        ownership and more fields.
+      </p>
+    </template>
 
-          <div v-else-if="activeTab === 'Ownership'" class="tab-panel">
-            <label class="field">
-              <span>Format</span>
-              <select v-model="ownershipFormat">
-                <option :value="null">Unspecified</option>
-                <option value="digital">Digital</option>
-                <option value="physical">Physical</option>
-              </select>
-            </label>
-
-            <div class="field-row">
-              <label class="field">
-                <span>Purchase date</span>
-                <input v-model="purchaseDate" type="date" />
-              </label>
-              <label class="field">
-                <span>100% completion date</span>
-                <input v-model="completionDate" type="date" />
-              </label>
-              <label class="field">
-                <span>Price</span>
-                <input
-                  v-model.number="price"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                />
-              </label>
-              <label class="field">
-                <span>Currency</span>
-                <select v-if="currencyCodes.length" v-model="priceCurrency">
-                  <option
-                    v-for="code in currencyCodes"
-                    :key="code"
-                    :value="code"
-                  >
-                    {{ code }}
-                  </option>
-                </select>
-                <input
-                  v-else
-                  v-model="priceCurrency"
-                  type="text"
-                  placeholder="USD"
-                  maxlength="3"
-                />
-              </label>
-            </div>
-
-            <label v-if="ownershipFormat === 'physical'" class="field">
-              <span>Condition / notes</span>
-              <input
-                v-model="condition"
-                type="text"
-                placeholder="CIB, disc only, box wear..."
+    <template v-else>
+      <div v-if="activeTab === 'Basics'" class="tab-panel">
+        <p class="editor-section">Identity</p>
+        <div class="editor-grid">
+          <label class="field full">
+            <span>Title</span>
+            <input
+              v-model="title"
+              type="text"
+              required
+              @blur="suggestFolderFromTitle"
+            />
+          </label>
+          <label v-if="isEditing" class="checkbox-field full">
+            <input v-model="titleProtected" type="checkbox" />
+            <span>Protect title from metadata updates</span>
+          </label>
+          <label class="field">
+            <span>Sorting name</span>
+            <input
+              v-model="sortTitle"
+              type="text"
+              placeholder="Defaults to the title"
+            />
+          </label>
+          <label class="field">
+            <span>Folder name</span>
+            <input
+              v-model="folderLocation"
+              type="text"
+              :required="!isEditing"
+              pattern="[A-Za-z0-9_\-]+"
+              title="Letters, numbers, underscores and hyphens only"
+              :placeholder="isEditing ? 'Leave blank to keep current' : ''"
+              @input="folderTouched = true"
+            />
+          </label>
+        </div>
+        <p class="editor-section">Library</p>
+        <div class="editor-grid">
+          <label class="field">
+            <span>Status</span>
+            <select v-model="status">
+              <option v-for="s in statuses" :key="s" :value="s">
+                {{ s }}
+              </option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Priority</span>
+            <select v-model="priority">
+              <option value="">None</option>
+              <option
+                v-for="option in PRIORITY_OPTIONS"
+                :key="option.value"
+                :value="option.value"
+              >
+                {{ option.label }}
+              </option>
+            </select>
+            <small v-if="priority && isFinished(status)" class="field-hint"
+              >Finished games are left out of priority sorting and the random
+              picker.</small
+            >
+          </label>
+          <label class="field">
+            <span>Platform</span>
+            <input
+              v-model="platform"
+              type="text"
+              list="game-platform-suggestions"
+              placeholder="PC, PlayStation 5, Switch..."
+            />
+            <datalist id="game-platform-suggestions">
+              <option
+                v-for="option in PLATFORM_SUGGESTIONS"
+                :key="option"
+                :value="option"
               />
-            </label>
-          </div>
-
-          <div v-if="error" class="form-error">{{ error }}</div>
+            </datalist>
+          </label>
+          <label class="field">
+            <span>Source</span>
+            <input
+              v-model="source"
+              type="text"
+              placeholder="Steam, GOG, physical..."
+            />
+          </label>
+          <label class="field">
+            <span>Date added to library</span>
+            <input v-model="dateAdded" type="date" />
+          </label>
+          <label class="checkbox-field favorite-field">
+            <input v-model="favorite" type="checkbox" />
+            <span>
+              Favorite
+              <small>Shown in the Favorites collection.</small>
+            </span>
+          </label>
         </div>
+      </div>
 
-        <div class="modal-actions">
-          <button
-            v-if="isEditing"
-            type="button"
-            class="danger-button"
-            @click="emit('delete', props.game!.id)"
+      <div v-else-if="activeTab === 'Details'" class="tab-panel">
+        <p class="editor-section">About</p>
+        <div class="editor-grid">
+          <label class="field full">
+            <span>Description</span>
+            <textarea v-model="description" rows="5"></textarea>
+          </label>
+          <label class="field">
+            <span>Developer</span>
+            <input v-model="developer" type="text" />
+          </label>
+          <label class="field">
+            <span>Publisher</span>
+            <input v-model="publisher" type="text" />
+          </label>
+          <label class="field">
+            <span>Series</span>
+            <input v-model="series" type="text" />
+          </label>
+          <label class="field">
+            <span>Release date</span>
+            <input v-model="releaseDate" type="date" />
+          </label>
+        </div>
+        <p class="editor-section">Release details</p>
+        <div class="editor-grid">
+          <label class="field">
+            <span>Age rating</span>
+            <input
+              v-model="ageRating"
+              type="text"
+              placeholder="ESRB M, PEGI 18..."
+            />
+          </label>
+          <label class="field">
+            <span>Region</span>
+            <input v-model="region" type="text" placeholder="NA, PAL, JP..." />
+          </label>
+          <label class="field">
+            <span>Language</span>
+            <input
+              v-model="language"
+              type="text"
+              placeholder="English, Japanese..."
+            />
+          </label>
+        </div>
+      </div>
+
+      <div v-else-if="activeTab === 'Play'" class="tab-panel">
+        <p class="editor-section">Progress</p>
+        <div class="editor-grid">
+          <label class="field">
+            <span>Playtime (hours)</span>
+            <input
+              v-model="playtimeHours"
+              type="number"
+              min="0"
+              :max="MAX_PLAYTIME_HOURS"
+              step="0.1"
+              placeholder="0"
+            />
+          </label>
+          <label class="field">
+            <span>100% completion date</span>
+            <input v-model="completionDate" type="date" />
+          </label>
+          <label class="field full">
+            <span>Where you left off</span>
+            <textarea
+              v-model="resumeNote"
+              rows="3"
+              maxlength="2000"
+              placeholder="What to do when you pick this game back up"
+            ></textarea>
+          </label>
+        </div>
+        <p class="hint">
+          Your own playtime total. A connected library sync can replace it with
+          the store's total.
+        </p>
+        <p class="editor-section">Time to beat (hours)</p>
+        <div class="editor-grid four">
+          <label
+            v-for="estimate in completionEstimateInputs"
+            :key="estimate.key"
+            class="field"
           >
-            Delete Game
-          </button>
+            <span>{{ estimate.label }}</span>
+            <input
+              v-model="estimate.input.value"
+              type="number"
+              min="0"
+              max="99999.9"
+              step="0.1"
+              placeholder="e.g. 12.5"
+            />
+          </label>
+        </div>
+        <p class="hint">
+          Community estimates; they never add to your playtime.
+        </p>
+        <GamePlayFields v-model="playCompatibility" />
+      </div>
+
+      <div v-else-if="activeTab === 'Ratings and tags'" class="tab-panel">
+        <p class="editor-section">Your ratings (0 to 10)</p>
+        <div class="editor-grid four">
+          <label class="field">
+            <span>Atmosphere</span>
+            <input
+              v-model.number="ratingOverall"
+              type="number"
+              min="0"
+              max="10"
+              step="0.1"
+            />
+          </label>
+          <label class="field">
+            <span>Story</span>
+            <input
+              v-model.number="ratingStory"
+              type="number"
+              min="0"
+              max="10"
+              step="0.1"
+            />
+          </label>
+          <label class="field">
+            <span>Gameplay</span>
+            <input
+              v-model.number="ratingGameplay"
+              type="number"
+              min="0"
+              max="10"
+              step="0.1"
+            />
+          </label>
+          <label class="field">
+            <span>Sound</span>
+            <input
+              v-model.number="ratingSound"
+              type="number"
+              min="0"
+              max="10"
+              step="0.1"
+            />
+          </label>
+        </div>
+        <p class="editor-section">Organize</p>
+        <div class="editor-grid">
+          <label class="field full">
+            <span>Tags (comma separated)</span>
+            <input
+              v-model="tagsInput"
+              type="text"
+              placeholder="Action RPG, Souls-Like"
+            />
+          </label>
+          <label class="field full">
+            <span>Features (comma separated)</span>
+            <input
+              v-model="featuresInput"
+              type="text"
+              placeholder="Achievements, Cloud Saves"
+            />
+          </label>
+          <GameCollectionsField
+            v-model="collections"
+            class="full"
+            :available="collectionChoices"
+          />
+        </div>
+      </div>
+
+      <div v-else-if="activeTab === 'Links'" class="tab-panel">
+        <p class="editor-section">Links</p>
+        <div
+          v-for="(link, index) in links"
+          :key="index"
+          class="editor-grid link-row"
+        >
+          <label class="field">
+            <span>Label</span>
+            <input
+              v-model="link.label"
+              type="text"
+              placeholder="Steam Store Page"
+            />
+          </label>
+          <label class="field">
+            <span>URL</span>
+            <input v-model="link.url" type="url" placeholder="https://..." />
+          </label>
           <button
-            v-if="compact"
             type="button"
-            class="secondary-button"
-            :disabled="saving"
-            @click="openFullForm"
+            class="remove-button"
+            :aria-label="`Remove link ${index + 1}`"
+            @click="removeLink(index)"
           >
-            Full form
+            ✕
           </button>
-          <span v-if="!compact && !isEditing" class="step-count">
-            Step {{ stepIndex + 1 }} of {{ tabs.length }}
+        </div>
+        <p v-if="!links.length" class="hint">No links yet.</p>
+        <button type="button" class="secondary-button" @click="addLink">
+          + Add Link
+        </button>
+      </div>
+
+      <div v-else-if="activeTab === 'Ownership'" class="tab-panel">
+        <p class="editor-section">Purchase</p>
+        <div class="editor-grid">
+          <label class="field">
+            <span>Format</span>
+            <select v-model="ownershipFormat">
+              <option :value="null">Unspecified</option>
+              <option value="digital">Digital</option>
+              <option value="physical">Physical</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Purchase date</span>
+            <input v-model="purchaseDate" type="date" />
+          </label>
+          <label class="field">
+            <span>Price</span>
+            <input v-model.number="price" type="number" min="0" step="0.01" />
+          </label>
+          <label class="field">
+            <span>Currency</span>
+            <select v-if="currencyCodes.length" v-model="priceCurrency">
+              <option v-for="code in currencyCodes" :key="code" :value="code">
+                {{ code }}
+              </option>
+            </select>
+            <input
+              v-else
+              v-model="priceCurrency"
+              type="text"
+              placeholder="USD"
+              maxlength="3"
+            />
+          </label>
+          <label v-if="ownershipFormat === 'physical'" class="field full">
+            <span>Condition / notes</span>
+            <input
+              v-model="condition"
+              type="text"
+              placeholder="CIB, disc only, box wear..."
+            />
+          </label>
+        </div>
+      </div>
+
+      <div v-else-if="activeTab === 'Advanced'" class="tab-panel">
+        <p class="editor-section">Related games</p>
+        <div class="editor-grid">
+          <label class="field">
+            <span>Parent game</span>
+            <select v-model="parentGameId">
+              <option value="">None: this is its own game</option>
+              <option
+                v-for="g in availableParentGames"
+                :key="g.id"
+                :value="g.id"
+              >
+                {{ g.title }}
+              </option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Relationship</span>
+            <select v-model="relationshipType" :disabled="!parentGameId">
+              <option value="">N/A</option>
+              <option
+                v-for="opt in RELATIONSHIP_TYPE_OPTIONS"
+                :key="opt.value"
+                :value="opt.value"
+              >
+                {{ opt.label }}
+              </option>
+            </select>
+            <small v-if="!parentGameId" class="field-hint"
+              >Choose a parent game first.</small
+            >
+          </label>
+        </div>
+        <p class="editor-section">Accounts</p>
+        <label class="checkbox-field">
+          <input v-model="profilesEnabled" type="checkbox" />
+          <span>
+            Track multiple accounts on this game
+            <small
+              >Adds an account switcher with its own checklist and media for
+              each account, useful for any game with multiple
+              characters/accounts, not just OSRS.</small
+            >
           </span>
-          <div class="modal-actions-spacer"></div>
+        </label>
+        <label v-if="profilesEnabled" class="checkbox-field">
+          <input v-model="osrsStatsEnabled" type="checkbox" />
+          <span>
+            Use OSRS stats (WiseOldMan)
+            <small
+              >Adds skill/boss syncing from wiseoldman.net, real skill icons,
+              and dated stat history to each account. Only makes sense for Old
+              School RuneScape.</small
+            >
+          </span>
+        </label>
+        <p class="editor-section">Game page</p>
+        <p class="hint page-hint">
+          What this game's page shows. Anything left on Default follows Settings
+          > Game Page.
+        </p>
+        <PageSettingsEditor
+          :model-value="pageOverrides"
+          :defaults="pageDefaults"
+          @update:model-value="pageOverrides = $event as PageOverrides"
+        />
+      </div>
+
+      <div
+        v-if="artworkOpened"
+        v-show="activeTab === 'Artwork'"
+        class="tab-panel"
+      >
+        <div class="media-search-panel">
+          <div>
+            <strong>Find artwork</strong>
+            <p class="hint">
+              Search the configured artwork sources for cover and banner
+              choices. Offered images never replace a file you chose.
+            </p>
+          </div>
           <button
             type="button"
             class="secondary-button"
-            :disabled="saving"
-            @click="emit('close')"
+            :disabled="searchingMedia || saving"
+            @click="searchMedia"
           >
-            Cancel
+            {{ searchingMedia ? "Searching artwork…" : "Search artwork" }}
           </button>
-          <template v-if="!compact && !isEditing">
-            <button
-              v-if="stepIndex > 0"
-              type="button"
-              class="secondary-button"
-              @click="goToStep(-1)"
-            >
-              Back
-            </button>
-            <button
-              v-if="!isLastStep"
-              type="button"
-              class="primary-button"
-              @click="goToStep(1)"
-            >
-              {{ activeTab === "Find" && !metadataApplied ? "Skip" : "Next" }}
-            </button>
-          </template>
-          <button
-            v-if="compact || isEditing || isLastStep"
-            type="submit"
-            class="primary-button"
-            :disabled="
-              saving ||
-              selectingMetadata ||
-              !!progressiveSearch.selected.value ||
-              (compact && !title.trim())
-            "
-          >
-            {{ saving ? "Saving…" : isEditing ? "Save Changes" : "Add Game" }}
-          </button>
+          <p v-if="metadataMessage" class="hint" role="status">
+            {{ metadataMessage }}
+          </p>
         </div>
-      </form>
-    </div>
-  </UiModal>
+        <GameArtPicker
+          label="Cover"
+          shape="tall"
+          :current="props.game?.coverImageUrl ?? null"
+          :staged="cover.staged.value"
+          :candidates="keyArtCandidates"
+          :disabled="saving"
+          @file="cover.chooseFile"
+          @url="cover.chooseUrl"
+          @reset="cover.reset"
+        />
+        <GameArtPicker
+          label="Banner"
+          shape="wide"
+          :current="
+            props.game ? sizedAssetUrl(props.game.bannerImageUrl, 640) : null
+          "
+          :staged="banner.staged.value"
+          :candidates="bannerCandidates"
+          :disabled="saving"
+          @file="banner.chooseFile"
+          @url="banner.chooseUrl"
+          @reset="banner.reset"
+        />
+        <p class="hint">
+          Nothing is uploaded until you click Add Game or Save Changes. If the
+          game saves but artwork cannot be attached, the game stays saved and
+          you can retry the artwork.
+        </p>
+      </div>
+    </template>
+
+    <template v-if="error" #status>
+      <div class="form-error" role="alert">{{ error }}</div>
+    </template>
+
+    <template #actions="{ formId }">
+      <button
+        v-if="isEditing"
+        type="button"
+        class="danger-button"
+        @click="emit('delete', props.game!.id)"
+      >
+        Delete Game
+      </button>
+      <button
+        v-if="compact"
+        type="button"
+        class="secondary-button"
+        :disabled="saving"
+        @click="openFullForm"
+      >
+        Full form
+      </button>
+      <button
+        v-else
+        type="button"
+        class="secondary-button"
+        :aria-expanded="lookupOpen"
+        :aria-controls="lookupId"
+        @click="toggleLookup"
+      >
+        Look up metadata
+      </button>
+      <span class="modal-actions-spacer"></span>
+      <button
+        type="button"
+        class="secondary-button"
+        :disabled="saving"
+        @click="emit('close')"
+      >
+        Cancel
+      </button>
+      <button
+        type="submit"
+        :form="formId"
+        class="primary-button"
+        :disabled="
+          saving ||
+          selectingMetadata ||
+          !!progressiveSearch.selected.value ||
+          (compact && !title.trim())
+        "
+      >
+        {{ saving ? "Saving…" : isEditing ? "Save Changes" : "Add Game" }}
+      </button>
+    </template>
+  </EditorShell>
 </template>
 
+<style scoped src="../styles/shared/editorForm.css"></style>
 <style scoped>
-.game-editor {
-  width: 100%;
-  min-width: 0;
-}
-.quick-add .tab-panel {
-  min-height: 0;
-}
-.modal-tabs {
-  display: flex;
-  gap: 4px;
-  padding: 0;
-  border-bottom: 1px solid var(--ui-border);
-  flex-shrink: 0;
-  overflow-x: auto;
-}
-.modal-tab {
-  background: none;
-  border: none;
-  color: var(--ui-dim);
-  padding: 9px 16px;
-  min-height: var(--ui-control-height);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  border-radius: var(--ui-radius-control) 8px 0 0;
-  white-space: nowrap;
-  border-bottom: 2px solid transparent;
-  transition:
-    color 0.15s ease,
-    background 0.15s ease;
-}
-.modal-tab:hover {
-  color: var(--ui-text);
-  background: color-mix(in srgb, var(--ui-text) 5%, transparent);
-}
-.modal-tab.active {
-  color: var(--ui-text);
-  background: color-mix(in srgb, var(--ui-accent) 10%, transparent);
-  border-bottom-color: var(--ui-accent-text);
-}
-.modal-form {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-}
-.editor-body {
-  padding: 20px 0;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
-}
 .tab-panel {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  min-height: 380px;
+  gap: 12px;
+  min-width: 0;
+}
+.tab-panel > .editor-section {
+  margin-bottom: -4px;
+}
+.tab-panel > .editor-section:not(:first-child) {
+  margin-top: 8px;
+}
+.favorite-field {
+  align-self: end;
+}
+.page-hint {
+  margin-bottom: 4px;
+}
+.lookup-note {
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--ui-accent-line);
+  border-radius: var(--ui-radius-control);
+  background: var(--ui-accent-soft);
+  color: var(--ui-text);
+  font-size: 0.82rem;
 }
 .media-search-panel {
   flex-wrap: wrap;
@@ -1631,101 +1618,8 @@ async function submit() {
   border-color: var(--ui-accent-line);
   background: var(--ui-surface-2);
 }
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 0.85rem;
-  color: var(--ui-text);
-  flex: 1;
-  min-width: 0;
-}
-.tab-panel > .field {
-  flex: none;
-}
-.checkbox-field {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  font-size: 0.85rem;
-  color: var(--ui-text);
-  flex: 1;
-  cursor: pointer;
-}
-.checkbox-field input[type="checkbox"] {
-  margin-top: 3px;
-  width: 16px;
-  height: 16px;
-  accent-color: var(--ui-accent-text);
-  flex-shrink: 0;
-}
-.checkbox-field span {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.checkbox-field small {
-  color: var(--ui-dim);
-  font-size: 0.75rem;
-  font-weight: 400;
-}
-.field input,
-.field select,
-.field textarea {
-  background: var(--ui-surface);
-  border: 1px solid var(--ui-border);
-  border-radius: var(--ui-radius-control);
-  color: var(--ui-text);
-  padding: 9px 11px;
-  font: inherit;
-  transition: border-color 0.15s ease;
-}
-.field input:focus,
-.field select:focus,
-.field textarea:focus {
-  outline: none;
-  border-color: var(--ui-accent-line);
-}
-.field-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-.field-row > .field {
-  flex: 1 1 150px;
-}
-.ratings-row > .field {
-  flex-basis: 90px;
-}
-.link-row {
-  flex-wrap: nowrap;
-  align-items: flex-end;
-}
-.link-row > .field {
-  flex-basis: 0;
-}
-.remove-button {
-  background: color-mix(in srgb, var(--ui-error) 15%, transparent);
-  color: var(--ui-error);
-  border: none;
-  border-radius: var(--ui-radius-control);
-  width: 38px;
-  height: 38px;
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-.remove-button:hover {
-  background: color-mix(in srgb, var(--ui-error) 30%, transparent);
-}
-.hint {
-  color: var(--ui-dim);
-  font-size: 0.8rem;
-  margin: 0;
-}
-.field-hint {
-  color: var(--ui-dim);
-  font-size: 0.75rem;
-  font-weight: 400;
+.metadata-search .hint {
+  margin-top: 8px;
 }
 .provider-warnings {
   list-style: none;
@@ -1739,44 +1633,25 @@ async function submit() {
   color: var(--ui-warning);
   font-size: 0.78rem;
 }
-.media-candidates {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: -6px;
+.link-row {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto;
+  align-items: end;
 }
-.candidates-label {
-  color: var(--ui-dim);
-  font-size: 0.78rem;
-}
-.candidates-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.candidate-thumb {
-  width: 60px;
-  height: 90px;
-  padding: 0;
-  border: 2px solid transparent;
-  border-radius: 6px;
-  overflow: hidden;
+.remove-button {
+  background: color-mix(in srgb, var(--ui-error) 15%, transparent);
+  color: var(--ui-error);
+  border: none;
+  border-radius: var(--ui-radius-control);
+  width: var(--ui-control-height);
+  height: var(--ui-control-height);
   cursor: pointer;
-  background: var(--ui-surface);
-  flex-shrink: 0;
+  transition: background 0.15s ease;
 }
-.candidate-thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
+.remove-button:hover {
+  background: color-mix(in srgb, var(--ui-error) 30%, transparent);
 }
-.candidate-thumb.active {
-  border-color: var(--ui-accent-line);
-}
-.banner-thumb {
-  width: 120px;
-  height: 45px;
+.tab-panel > .secondary-button {
+  align-self: flex-start;
 }
 .form-error {
   color: var(--ui-error);
@@ -1786,24 +1661,11 @@ async function submit() {
   border-radius: var(--ui-radius-control);
   padding: 10px 12px;
 }
-.modal-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 22px;
-  border-top: 1px solid var(--ui-border);
-  flex-shrink: 0;
+.quick-add .form-error {
+  margin-top: 14px;
 }
 .modal-actions-spacer {
   flex: 1;
-}
-.step-count {
-  color: var(--ui-dim);
-  font-size: 0.8rem;
-  white-space: nowrap;
-}
-.modal-actions button {
-  white-space: nowrap;
 }
 .danger-button {
   background: color-mix(in srgb, var(--ui-error) 15%, transparent);
@@ -1813,6 +1675,7 @@ async function submit() {
   padding: 10px 20px;
   font-weight: 600;
   font-size: 0.9rem;
+  white-space: nowrap;
   cursor: pointer;
   transition: background 0.15s ease;
 }
@@ -1826,6 +1689,7 @@ async function submit() {
   padding: 10px 20px;
   font-weight: 600;
   font-size: 0.9rem;
+  white-space: nowrap;
   cursor: pointer;
   transition:
     background 0.15s ease,
@@ -1852,24 +1716,30 @@ async function submit() {
 .secondary-button:hover {
   background: color-mix(in srgb, var(--ui-text) 15%, transparent);
 }
+.secondary-button[aria-expanded="true"] {
+  background: var(--ui-accent-soft);
+  color: var(--ui-accent-text);
+}
+:is(
+  .primary-button,
+  .secondary-button,
+  .danger-button,
+  .remove-button
+):focus-visible {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 2px;
+}
 @media (max-width: 480px) {
-  .editor-body {
-    padding-inline: 0;
+  .link-row {
+    grid-template-columns: minmax(0, 1fr) auto;
   }
-  .modal-tabs {
-    padding-left: 12px;
-    padding-right: 12px;
+  .link-row > .field:nth-child(2) {
+    grid-column: 1 / -1;
+    order: 3;
   }
-  .modal-actions {
-    flex-wrap: wrap;
-    padding: 12px 16px;
-  }
-  .step-count {
-    flex-basis: 100%;
-  }
-  .modal-actions .primary-button,
-  .modal-actions .secondary-button,
-  .modal-actions .danger-button {
+  .primary-button,
+  .secondary-button,
+  .danger-button {
     padding: 10px 14px;
   }
 }

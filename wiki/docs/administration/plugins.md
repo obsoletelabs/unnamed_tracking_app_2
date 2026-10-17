@@ -36,6 +36,32 @@ Uploads, direct URLs, and catalogue entries all use the same inspection and conf
 
 Installed URL/catalogue plugins retain source metadata for update checks. The update review shows release notes, dependency changes, and the exact permission delta before replacement. New permissions default to denied. Unverified updates inherit no prior grants and require every requested permission to be reviewed again. A discovered update can be reviewed and applied from its recorded source, and availability is also added to the existing administrator notification feed.
 
+### Replacing a package with another publisher's signature
+
+A package signed by a different verified publisher key than the installed one
+(including moving between unsigned and verified) keeps the same lifecycle instance
+and plugin-owned storage, but it does not inherit notification trust. Ordinary
+updates from another publisher are still rejected; this applies to an explicit
+administrator replacement, to the first verified update of an unverified install,
+and to a rollback onto a retained release from another publisher. The review shows
+a warning first. When the replacement is committed, in the same database
+transaction as the grant changes, the host:
+
+* clears SECURE verification, recovery and media consent on the plugin's
+  notification destinations, disables them, clears host-held endpoint values and
+  retires their endpoint key, so users create and verify them again;
+* suppresses queued deliveries, pending verification links and unused recovery
+  or invitation credentials;
+* revokes the plugin's notification type, provider and authentication-flow
+  registrations; the replacement registers them again and server-level provider
+  configuration must be repeated.
+
+A replacement signed by the same publisher key keeps all of this. If the commit
+or runtime preparation fails nothing changes. If the new release is installed and
+then fails its startup health check, the previous package and grants are restored
+but the destination state stays retired, because the candidate had run. Plugin
+storage and settings are not erased; use uninstall or reinstall-with-purge for that.
+
 ## Diagnostics and recovery
 
 Stop retains enablement but leaves the plugin stopped after restart. Disable

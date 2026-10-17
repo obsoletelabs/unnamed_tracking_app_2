@@ -744,10 +744,23 @@ export interface NewGameInput {
   ownership: GameOwnership;
   favorite: boolean;
   collections: string[];
+  // undefined leaves the saved value alone; a null resume note clears it
+  resumeNote?: string | null;
+  playtimeSeconds?: number;
   profilesEnabled: boolean;
   // undefined leaves the saved overrides alone; {} clears them
   pageSettings?: PageOverrides | null;
   osrsStatsEnabled: boolean;
+}
+
+// Mock mode keeps the one synthesized playtime row mapBackendGame builds.
+function mockPlatforms(input: NewGameInput, saved: Game["platforms"]) {
+  if (input.playtimeSeconds === undefined) return saved;
+  const platform = input.platform || input.source || "PC";
+  const playtimeMinutes = Math.round(input.playtimeSeconds / 60);
+  return [
+    { platform, playtimeMinutes, completionPercent: null, lastPlayedAt: null },
+  ];
 }
 
 export async function createGame(input: NewGameInput): Promise<Game> {
@@ -773,7 +786,7 @@ export async function createGame(input: NewGameInput): Promise<Game> {
       parentGameId: input.parentGameId,
       relationshipType: input.relationshipType,
       dateAdded: input.dateAdded,
-      resumeNote: null,
+      resumeNote: input.resumeNote ?? null,
       lastPlayedAt: null,
       staleSince: null,
       profilesEnabled: input.profilesEnabled,
@@ -796,7 +809,7 @@ export async function createGame(input: NewGameInput): Promise<Game> {
       achievementsProvider: input.achievementsProvider,
       links: input.links,
       ownership: input.ownership,
-      platforms: [],
+      platforms: mockPlatforms(input, []),
       favorite: input.favorite,
       collections: input.collections,
     };
@@ -814,6 +827,9 @@ export async function createGame(input: NewGameInput): Promise<Game> {
       folder_location: input.folderLocation,
       status: denormalizeStatus(input.status),
       favorite: input.favorite,
+      collections: input.collections,
+      resume_note: input.resumeNote ?? null,
+      playtime_seconds: input.playtimeSeconds ?? 0,
       profiles_enabled: input.profilesEnabled,
       osrs_stats_enabled: input.osrsStatsEnabled,
       description: input.description,
@@ -918,6 +934,10 @@ export async function updateGame(
         input.playCompatibility === undefined
           ? mockGames[index].playCompatibility
           : input.playCompatibility,
+      favorite: input.favorite,
+      collections: input.collections,
+      ...(input.resumeNote !== undefined && { resumeNote: input.resumeNote }),
+      platforms: mockPlatforms(input, mockGames[index].platforms),
     };
     mockGames[index] = updated;
     return updated;
@@ -961,6 +981,8 @@ export async function updateGame(
     play_compatibility: playCompatibilityPayload(input.playCompatibility),
     links: input.links,
     collections: input.collections,
+    resume_note: input.resumeNote,
+    playtime_seconds: input.playtimeSeconds,
     purchase_date: dateInputToUnixSeconds(input.ownership.purchaseDate),
     completion_date: dateInputToUnixSeconds(input.completionDate),
     purchase_price: input.ownership.price,

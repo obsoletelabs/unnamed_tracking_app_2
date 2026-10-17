@@ -158,3 +158,21 @@ def test_animated_images_are_rejected():
     frames[0].save(output, format="PNG", save_all=True, append_images=frames[1:])
     with pytest.raises(ValueError, match="static"):
         normalize_branding_image(output.getvalue())
+
+
+@pytest.mark.asyncio
+async def test_branding_document_is_never_cached_and_removal_is_idempotent(boundary):
+    app, row, _, user = boundary
+    user.is_admin = True
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        assert (await client.get("/api/branding")).headers["cache-control"] == "no-store"
+        logo = (
+            await client.post("/api/branding/assets/logo", files={"file": ("logo.png", png())})
+        ).json()
+        for _ in range(2):
+            removed = await client.delete("/api/branding/assets/logo")
+            assert removed.status_code == 200
+            assert removed.json()["logo_url"] is None
+        assert row.branding_logo_png is None
+        assert (await client.get("/api/branding")).json()["logo_url"] is None
+        assert (await client.get(logo["logo_url"])).status_code == 404

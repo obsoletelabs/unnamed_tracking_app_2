@@ -139,7 +139,7 @@ describe("game editor", () => {
         expect(label).toBeDefined();
         await label!.get("input").setValue(value);
       };
-      await tab("General");
+      await tab("Play");
       for (const name of [
         "Main story",
         "Main + extras",
@@ -147,7 +147,7 @@ describe("game editor", () => {
         "All play styles",
       ])
         await setField(name);
-      await tab("Ratings & Tags");
+      await tab("Ratings and tags");
       for (const name of ["Atmosphere", "Story", "Gameplay", "Sound"])
         await setField(name);
       await tab("Ownership");

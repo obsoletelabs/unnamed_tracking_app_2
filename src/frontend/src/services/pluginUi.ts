@@ -805,3 +805,29 @@ export function pluginExternalDestination(
     throw new Error("Plugin returned an invalid external destination.");
   return url.href;
 }
+
+/**
+ * Reserve a blank tab for a declared external navigation action. It must be
+ * opened while the click's user activation is still valid, i.e. before the
+ * action's request; the plugin frame itself never gains popup permission.
+ */
+export function reserveExternalTab(action: UiAction): Window | null {
+  if (!action.external_navigation) return null;
+  const tab = window.open("about:blank", "_blank");
+  if (tab) tab.opener = null;
+  return tab;
+}
+
+/**
+ * Open an external destination in the reserved tab so the app, and any
+ * connection popup the person needs to come back to, stays where it is.
+ * Without a tab (e.g. a popup blocker) this keeps the same-tab navigation.
+ */
+export function openExternalDestination(
+  destination: string | null,
+  tab: Window | null,
+): void {
+  if (!destination) tab?.close();
+  else if (tab && !tab.closed) tab.location.href = destination;
+  else window.location.assign(destination);
+}
