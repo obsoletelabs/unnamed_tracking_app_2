@@ -61,6 +61,7 @@ _CREDENTIALS = (
     ),
     re.compile(r"\b(?:otp|passcode)\b[^\n0-9]{0,12}[0-9]{4,10}\b", re.IGNORECASE),
 )
+CREDENTIAL_PATTERNS = _CREDENTIALS
 _SECRET_QUERY = re.compile(
     r"^(?:pass(?:word|wd)?|secret|api[_-]?key|apikey|key|access[_-]?token|auth|token|sig|signature"
     r"|code|session|sid|jwt|credential|bearer)$",

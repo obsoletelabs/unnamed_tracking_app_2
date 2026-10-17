@@ -591,6 +591,10 @@ class PluginSupervisor:
                 "media.sync": "media.write",
                 "notifications.send": "notifications.send",
                 "notifications.emit": "notifications.emit",
+                # Plugin API 1.1.14: a worker declares and publishes story events for the
+                # subscribed account; the host still validates, routes and authorises each one.
+                "notification_sources.register": "notification_sources.register",
+                "notifications.publish": "notifications.canonical",
             }
             if payload.get("method") not in operations or operations[
                 payload["method"]

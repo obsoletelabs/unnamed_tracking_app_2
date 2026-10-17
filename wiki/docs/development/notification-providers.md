@@ -125,3 +125,23 @@ Plugin pages can link to host-owned controls using
 a provider with `notification_provider=<provider-id>`. The host opens that owner's actual
 provider, reveals the requested retained endpoint and focuses its existing verification
 and recovery controls. Administrator provider links use `area=administration` instead.
+
+## Provider settings listing
+
+Account -> Notifications lists providers by lifecycle state
+(`src/frontend/src/utils/notificationProviders.ts`):
+
+- **Active** providers (supported, addable or working) get a collapsed panel.
+- **Disabled** providers that still hold configured destinations show one
+  compact status line ("Temporarily disabled - N destinations and routing
+  choices kept"); opening the panel exposes the enable toggle, so saved
+  destinations, trust, verification and routing choices are never lost.
+- **Unavailable** providers (not installed or not granted) are hidden, or, when
+  they still have saved destinations, folded into an "Unavailable providers"
+  disclosure. Reinstalling does not reactivate old destinations.
+- Per-notification-type choices offer only routable destinations (active,
+  available, enabled, provider enabled). A "Show disabled or unavailable
+  providers" button reveals the rest so saved choices stay inspectable.
+
+Administrator server configuration is unchanged and remains admin-only.
+Screenshots: `wiki/docs/assets/notification-provider-folding/`.

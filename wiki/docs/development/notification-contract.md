@@ -16,6 +16,9 @@ core and [plugin notification providers](notification-providers.md).
 | Shared conformance cases and reviewed schema snapshots | `src/backend/tests/fixtures/notification_contract/` |
 | Contract tests | `tests/test_notification_contract.py`, `tests/test_notification_contract_adapters.py` |
 
+Pull request status, merge order and verification for the whole overhaul are on the
+[coordination board](notification-overhaul.md).
+
 The contract version is `NOTIFICATION_CONTRACT_VERSION = "1.0.0"`. It is
 independent of the Plugin API wire version. Plugin API **1.1.14** (#115) is the
 first version whose gateway accepts these documents: see
@@ -586,7 +589,7 @@ Discovery (`provider_capability_profile`):
 | --- | --- | --- |
 | `core.inbox` | legacy | Plain text, one host-proxied artwork image, no external links |
 | `core.smtp` | canonical | Sanitised standalone HTML plus equivalent plain text, links, live story link, up to 20 items per digest, no edits, critical supported |
-| `core.browser` | legacy | Constant generic preview only, 4,096-byte Web Push payload |
+| `core.browser` | legacy | Generic preview by default (opt-in story previews), `replace` by stable tag, 4,096-byte Web Push payload |
 | `legacy` plugin transport | legacy | Title/body DTO, no links |
 | `discord_webhook` | legacy | Approved fields as embed, links, 256-character title, 4,096-character text |
 | `plugin` (generic) | legacy | Title/body DTO with the host link, critical per declaration |
@@ -880,7 +883,26 @@ support. A generic provider that declares them receives `PluginCanonicalDelivery
 (`send`, `edit`, `follow_up`), `revision`, `remote_ref`, `idempotency_key` and the
 host-sanitised `html`, link buttons and image URLs). The adapter exposes `edit` only
 when updates were declared, so the dispatcher's capability narrowing (#110) works on
-real plugins. Verification and test messages keep the minimal payload. A plugin
+real plugins. Verification and test messages keep the minimal payload.
+
+**Rich chat deliveries (#112).** A provider that declared `rich_embeds` also receives, in
+the private canonical projection only, `facts` (at most 25 host-formatted label/text pairs,
+clipped to 100/500 characters; the body then omits them and `facts_truncated` is recorded
+when more existed) and, for a digest of several members (`max_batch_items` above 1), `items`
+(title, body, optional signed-in story link and time per member, at most 50). Both are
+additive optional fields of `PluginCanonicalDelivery`; the public and media-shared
+projections never carry facts and digest members only carry their projection-approved text.
+The presented facts are part of the rendering hash, so a changed fact is an edit or a
+follow-up and an unchanged one is not re-sent. `network.request` accepts `PATCH` with a JSON
+object body (Discord edits are `PATCH`).
+
+The maintained Discord providers (`official.discord-notifications` webhook and
+`official.discord-bot-notifications` account DM and server channel) use these fields to
+build embeds. Their message reference is an opaque `channel:message` (or webhook message id)
+bound to the exact destination revision and checked again by the provider before every edit;
+Discord limits (10 embeds and 6,000 characters per message, 256/4,096/1,024 characters per
+title, description and field value, 25 fields, 5 buttons) are enforced deterministically in
+the package and the cut is always followed by the live story link. A plugin
 result may add an opaque `remote_ref` (stored only by the host) and `gone: true` when
 an earlier message cannot be edited, which makes the host send a follow-up. Plugin
 error text is never stored. Providers without a declaration keep the legacy payload.
@@ -946,6 +968,24 @@ for name, schema in plugin_notification_schemas().items():
     path.write_text(json.dumps(schema, indent=2, ensure_ascii=False) + "\n")
 PY
 ```
+
+## Producer migration to stories
+
+Issue #116 moves the producers that existed before the contract onto it. The host owns routing, privacy,
+retention and delivery in every case; producers only describe what happened.
+
+| Producer | Story and phases | Content and actions | Grouping |
+|---|---|---|---|
+| Plugin updates (host) | One story per `update:<plugin>:<version>`: `available`, then `installed`, `failed` or `resolved`. The announcement is revised in place while unread; a read or dismissed item keeps its history and a linked item announces the change. Uninstalling the plugin, or a check that no longer offers the version, resolves open stories; nothing is deleted. | Facts for plugin, installed and target version; a `host_route` action to `/settings?area=administration&section=plugins&plugin=<id>` (relative, so it follows the installation origin). | `system.plugin.update` digest: several plugins become one message whose items each link to their own story page and carry their own action. |
+| Game sales and price hits (host) | One-item story per validated quote observation. | Money facts and market/platform come only from the validated quote; the private target stays in the owner's text and never in facts or the public copy. Action opens the game. | Sales digest app-wide; price hits are never delayed. Quote validation is unchanged (regular price required and above the sale price, decimal strings, downward threshold crossing). |
+| Game releases, episodes and movies (host) | Game releases are one-item stories; episode and movie rows keep their legacy items on the same dispatcher. | Game release: release-time fact and an action that opens the game. | Coalesced only for the same entity and release or airing day. |
+| Jellyfin sync problems (official plugin) | `sync:<account>`: `attention` (revised by a different problem), then `resolved` by the next successful sync. | Account and server facts, link to the plugin's accounts page. | Only one account's problems share a digest. |
+
+Background workers publish through `tasks.request`, which now delegates `notification_sources.register`
+(capability `notification_sources.register`) and `notifications.publish` (capability
+`notifications.canonical`) to a subscribed account in addition to `notifications.send` and
+`notifications.emit`; the target account's live grant is checked for each. Existing `notifications.send`
+and `notifications.emit` producers continue through the compatibility adapters below.
 
 ## Compatibility adapters
 
@@ -1051,3 +1091,57 @@ Regenerate snapshots after an intentional schema change from `src/backend`:
 ```bash
 python -c "import json, pathlib; from src.plugin_api import notification_contract_schemas as s; [pathlib.Path(f'tests/fixtures/notification_contract/schemas/{n}.schema.json').write_text(json.dumps(v, indent=2, sort_keys=True) + '\n') for n, v in s().items()]"
 ```
+
+## Browser and PWA notifications
+
+`core.browser` keeps its conservative model: the encrypted Web Push payload never contains a
+title, body, link or address. It carries identities only (under 512 bytes):
+
+```json
+{"version": 1, "destination": "…", "revision": 1, "generation": "…",
+ "notification": "…", "operation": "send|edit|follow_up", "story": "…", "story_revision": 2}
+```
+
+`story` is omitted for an item outside a story. The provider declares `message_updates:
+"replace"` and implements `edit`, so the dispatcher plans later revisions of a story like any
+other provider:
+
+| Situation | Operation | Result on the device |
+| --- | --- | --- |
+| First revision | `send` | New alert under the tag `…:story:<id>` (`renotify`) |
+| Later revision, reference current | `edit` | Same tag replaces the alert quietly (`silent`, no `renotify`) |
+| No reference (for example the destination was re-enrolled) | `follow_up` | Subject to `NOTIFICATION_FOLLOW_UPS`; shown under the same tag |
+| Identical presentation, replayed event | none | No push; the dispatcher's `unchanged`/receipt rules apply |
+
+The remote reference is the story identity (`story:<id>` or `notification:<id>`), held by the
+host like any other. A `Topic` header (a 32-character hash of destination and story identity,
+RFC 8030) lets the push service replace an alert that was not yet delivered, so a device that
+was offline does not receive a burst. The worker also skips a push whose notification and
+revision it already shows or has superseded.
+
+The service worker fetches `GET /api/settings/notification-providers/browser-destinations/{id}/status?revision=N&notification=ID`
+with the signed-in cookie. That endpoint repeats the existing gate (session, consent,
+blocked providers, trust floor, VAPID/subscription binding) and adds a `preview`. `preview` is
+`null` (nothing is shown) when the item is deleted, expired, owned by another account or has no
+live delivery for this destination revision.
+
+`NOTIFICATION_BROWSER_PREVIEWS` selects what a visible preview contains:
+
+| Mode | Content |
+| --- | --- |
+| `generic` (default) | Constant title and body, safe on a locked screen. Replacement and click-through are still story-specific. |
+| `story` | Title and summary (control and bidirectional characters removed, 80/240 characters, credential-shaped text withheld) plus at most one `external` HTTPS image (only when `NOTIFICATION_IMAGE_MODE=external`; the OS loads notification images without the session) and up to two `host_route` actions. |
+
+A delivery whose projection is not `canonical`, or a notification whose purpose is not
+`standard`, is always generic.
+
+Capability limits are honoured on the device: actions need `Notification.maxActions`,
+images need `image` support in `Notification.prototype`, and `getNotifications` is optional.
+An unsupported field is omitted and the title/body still show. Link and plugin-action
+targets are never rendered as buttons; the story page offers them after authorization.
+
+Clicking opens only a path on the worker's own origin (the story page, or the chosen action's
+route) in an existing same-origin window or a new one; a value that is not an absolute
+same-origin path falls back to `/notifications`. The application route then applies the normal
+host authorization, so a revoked or foreign story simply does not load. Retirement, disabled
+PWA, subscription expiry and revocation behave as before.
