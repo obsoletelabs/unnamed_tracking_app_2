@@ -6,7 +6,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.notification import Notification
-from src.database.models.notification_delivery import NotificationDelivery
+from src.database.models.notification_delivery import ACTIVE_DELIVERY_STATUSES, NotificationDelivery
 from src.database.models.plugin_notification_type import PluginNotificationTypeRegistration
 from src.features.notification_audit import change_deliveries
 from src.features.notification_auth_secrets import active_recovery_token
@@ -74,7 +74,7 @@ async def retire_sources(
         update(NotificationDelivery)
         .where(
             NotificationDelivery.notification_id.in_(notices),
-            NotificationDelivery.status.in_(("pending", "processing", "retry_wait")),
+            NotificationDelivery.status.in_(ACTIVE_DELIVERY_STATUSES),
         )
         .values(
             status="suppressed", last_error="source_revoked", claim_token=None, lease_until=None

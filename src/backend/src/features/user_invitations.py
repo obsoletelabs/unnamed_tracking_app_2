@@ -16,7 +16,7 @@ from src.core.auth import hash_password, hash_token, validate_password, validate
 from src.core.config import settings
 from src.core.crypto import decrypt_secret, encrypt_secret
 from src.core.public_url import normalize_public_url
-from src.database.models.notification_delivery import NotificationDelivery
+from src.database.models.notification_delivery import ACTIVE_DELIVERY_STATUSES, NotificationDelivery
 from src.database.models.notification_destination import NotificationDestination
 from src.database.models.user import User
 from src.database.models.user_invitation import NotificationPendingRecipient, UserInvitation
@@ -238,7 +238,7 @@ async def _retire(db, row, *, revoked=False):
         update(NotificationDelivery)
         .where(
             NotificationDelivery.notification_id == row.notification_id,
-            NotificationDelivery.status.in_(("pending", "processing", "retry_wait")),
+            NotificationDelivery.status.in_(ACTIVE_DELIVERY_STATUSES),
         )
         .values(status="cancelled", claim_token=None, lease_until=None),
     )

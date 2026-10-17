@@ -8,7 +8,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
-from src.database.models.notification_delivery import NotificationDelivery
+from src.database.models.notification_delivery import ACTIVE_DELIVERY_STATUSES, NotificationDelivery
 from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_provider_setting import NotificationProviderSetting
 from src.database.models.notification_verification import NotificationVerification
@@ -45,7 +45,7 @@ async def withdraw_provider_work(
         update(NotificationDelivery)
         .where(
             NotificationDelivery.destination_id.in_(destination_ids),
-            NotificationDelivery.status.in_(("pending", "processing", "retry_wait")),
+            NotificationDelivery.status.in_(ACTIVE_DELIVERY_STATUSES),
         )
         .values(
             status="suppressed", last_error="provider_revoked", claim_token=None, lease_until=None
@@ -151,7 +151,7 @@ async def invalidate_legacy_configuration(db: AsyncSession, installation_id: UUI
             update(NotificationDelivery)
             .where(
                 NotificationDelivery.destination_id.in_(destination_ids),
-                NotificationDelivery.status.in_(("pending", "processing", "retry_wait")),
+                NotificationDelivery.status.in_(ACTIVE_DELIVERY_STATUSES),
             )
             .values(
                 status="suppressed",

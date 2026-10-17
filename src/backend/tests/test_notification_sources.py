@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from pydantic import ValidationError
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 
 from src.core.preferences import save_preferences
 from src.database.models.notification import Notification
@@ -16,6 +16,7 @@ from src.database.models.plugin_notification_type import PluginNotificationTypeR
 from src.database.models.plugin_permissions import PluginPermissionGrant
 from src.database.models.user import User
 from src.database.session import SessionLocal
+from src.features.notification_aggregation import seal_due_windows
 from src.features.notification_enrollment import create_email, update_email
 from src.features.notification_policy import INBOX_PROVIDER, Trust, select_projection
 from src.features.notification_providers.delivery import (
@@ -398,6 +399,13 @@ async def test_emit_revocation_stops_builtin_transport_before_lookup(source, mon
         monkeypatch.setattr(
             "src.features.notification_providers.delivery.get_notification_providers",
             forbidden_lookup,
+        )
+        # The producer's group hint holds the delivery in a short window; close it first.
+        await seal_due_windows(db, now=int(time.time()) + 3600)
+        await db.execute(
+            update(NotificationDelivery)
+            .where(NotificationDelivery.status == "pending")
+            .values(next_attempt_at=0)
         )
         claim = await _claim(db)
         assert claim is not None

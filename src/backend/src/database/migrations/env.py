@@ -13,6 +13,7 @@ from src.database.base import Base
 from src.database.models import (
     achievement,  # noqa: F401
     achievement_override,  # noqa: F401
+    admin_user_audit,  # noqa: F401
     anime,  # noqa: F401
     app_integration_settings,  # noqa: F401
     auth,  # noqa: F401
@@ -34,6 +35,7 @@ from src.database.models import (
     media_provider,  # noqa: F401
     movies,  # noqa: F401
     notification,  # noqa: F401
+    notification_aggregation,  # noqa: F401
     notification_audit,  # noqa: F401
     notification_delivery,  # noqa: F401
     notification_delivery_attempt,  # noqa: F401

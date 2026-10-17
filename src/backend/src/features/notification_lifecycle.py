@@ -7,7 +7,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.notification import Notification
-from src.database.models.notification_delivery import NotificationDelivery
+from src.database.models.notification_delivery import ACTIVE_DELIVERY_STATUSES, NotificationDelivery
 from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_story import NotificationStoryRevision
 from src.database.models.notification_verification import NotificationVerification
@@ -26,7 +26,7 @@ async def retire_destination_work(db: AsyncSession, destination_id: UUID, reason
         update(NotificationDelivery)
         .where(
             NotificationDelivery.destination_id == destination_id,
-            NotificationDelivery.status.in_(("pending", "processing", "retry_wait")),
+            NotificationDelivery.status.in_(ACTIVE_DELIVERY_STATUSES),
         )
         .values(status="suppressed", last_error=reason, claim_token=None, lease_until=None),
     )
@@ -58,7 +58,7 @@ async def retire_destination_type_work(
             NotificationDelivery.notification_id.in_(
                 select(Notification.id).where(Notification.event_type == event_type)
             ),
-            NotificationDelivery.status.in_(("pending", "processing", "retry_wait")),
+            NotificationDelivery.status.in_(ACTIVE_DELIVERY_STATUSES),
         )
         .values(
             status="suppressed",
@@ -117,7 +117,7 @@ async def delete_notice(db: AsyncSession, user_id: UUID, notification_id: UUID) 
         update(NotificationDelivery)
         .where(
             NotificationDelivery.notification_id == notification_id,
-            NotificationDelivery.status.in_(("pending", "processing", "retry_wait")),
+            NotificationDelivery.status.in_(ACTIVE_DELIVERY_STATUSES),
         )
         .values(status="cancelled", claim_token=None, lease_until=None),
     )

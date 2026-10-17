@@ -6,7 +6,7 @@ from uuid import UUID
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.database.models.notification_delivery import NotificationDelivery
+from src.database.models.notification_delivery import ACTIVE_DELIVERY_STATUSES, NotificationDelivery
 from src.database.models.plugin_auth_flow import AuthRecoveryToken, PluginAuthFlowRegistration
 from src.database.models.plugin_permissions import PluginPermissionGrant
 from src.database.models.user import User
@@ -261,7 +261,7 @@ async def retire_auth_flows(
         update(NotificationDelivery)
         .where(
             NotificationDelivery.notification_id.in_(tokens),
-            NotificationDelivery.status.in_(("pending", "processing", "retry_wait")),
+            NotificationDelivery.status.in_(ACTIVE_DELIVERY_STATUSES),
         )
         .values(
             status="suppressed", last_error="source_revoked", claim_token=None, lease_until=None
