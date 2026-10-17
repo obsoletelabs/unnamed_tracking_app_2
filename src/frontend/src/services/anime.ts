@@ -228,6 +228,7 @@ export type TrashedAnime = TrashedMedia;
 export const fetchAnimeTrash = api.fetchTrash;
 export const restoreAnime = api.restore;
 export const purgeAnime = api.purge;
+export const emptyAnimeTrash = api.emptyTrash;
 export interface SeasonInput {
   seasonNumber: number;
   name?: string | null;

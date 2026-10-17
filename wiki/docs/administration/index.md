@@ -8,9 +8,9 @@ Administration separates **Users**, **Single sign-on**, **Server integrations**,
 
 ## Upload limits
 
-Open **Administration → Limits** to change all four environment-backed caps: images/general files (`MAX_UPLOAD_SIZE_MB`), save archives (`MAX_SAVE_ARCHIVE_SIZE_MB`), video clips and soundtracks (`MAX_CLIP_SIZE_MB`), and world saves/modpacks (`MAX_WORLD_SAVE_SIZE_MB`). Values are whole megabytes, saved for the deployment and enforced on new uploads immediately. Existing files are retained. **Reset all to server defaults** clears the overrides and uses the current environment configuration.
+Open **Administration → Limits** to change all five environment-backed caps: images/general files (`MAX_UPLOAD_SIZE_MB`), documents in a game's Docs tab (`MAX_DOC_SIZE_MB`), save archives (`MAX_SAVE_ARCHIVE_SIZE_MB`), video clips and soundtracks (`MAX_CLIP_SIZE_MB`), and world saves/modpacks (`MAX_WORLD_SAVE_SIZE_MB`). Values are whole megabytes, saved for the deployment and enforced on new uploads immediately. Existing files are retained. **Reset all to server defaults** clears the overrides and uses the current environment configuration.
 
-The nullable migration preserves existing provider credentials, branding and the earlier general-upload override. Unconfigured limits keep their environment values. This page edits application upload caps; plugin package verification and per-plugin runtime quotas retain their existing security boundaries.
+The nullable migrations preserve existing provider credentials, branding and the earlier general-upload override. Unconfigured limits keep their environment values. Docs used to share the images/general cap; they now follow the documents cap only, so a deployment that lowered the general cap to restrict Docs should set the documents cap as well. This page edits application upload caps; plugin package verification and per-plugin runtime quotas retain their existing security boundaries.
 
 ## Operational checklist
 

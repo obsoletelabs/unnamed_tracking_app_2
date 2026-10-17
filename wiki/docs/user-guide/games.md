@@ -49,14 +49,15 @@ records, real game saves and synthetic provider responses. The
 and tracking edits.
 
 Editing supports title and sort title, platform, status, dates, rating,
-genres/tags/features, description, time-to-beat data, and artwork. Field-change
-history records supported metadata changes.
+genres/tags/features, description, time-to-beat data, favorite, collections,
+playtime, the resume note and artwork; see [Adding a game](#adding-a-game).
+Field-change history records supported metadata changes.
 
 Bulk edit changes selected records only. Locked fields are not overwritten by refresh operations.
 
 ## Completion estimates
 
-The full editor's **General** tab has four estimates in hours: **Main story**,
+The full editor's **Play** tab has four estimates in hours: **Main story**,
 **Main + extras**, **Completionist** and **All play styles**. Leave a field empty
 when its estimate is unknown. These community estimates are separate from your
 logged playtime and never add to it.
@@ -213,22 +214,81 @@ or reporting a missing achievement. Use Back to return to the achievement's game
 
 ## Documents and plugins
 
-The core file list allows normal downloads. Plugins with an approved `documents.read` grant can receive only safe document DTOs and supported PDF/plain-text content; they never receive host paths. See [Plugins](plugins.md).
+A game's **Docs** tab takes files of any type and always offers them as normal downloads; see [Game Media and Files](game-media.md#docs). Plugins with an approved `documents.read` grant can receive only safe document DTOs and the content of supported previews (PDF, UTF-8 text, HTML as text, and inactive `.docx`, `.pptx`, `.odt` and `.odp` files within the preview limits); they never receive host paths. See [Plugins](plugins.md).
 
 ## Adding a game
 
-**+ Add Game** in the Games library walks through the game in steps:
+**+ Add Game** opens Quick Add (above). **Full form**, adding a game from Home
+and a game page's **Edit** all open the same full editor. Its header shows the
+cover, the title as you type it and the developer, year and platform. Below it
+are eight tabs; click any of them in any order:
 
-1. **Find**: search the metadata providers by title and pick a match to fill
-   in the following steps. Press Enter or **Search** to search. Exact title
-   matches are listed first. **Skip** leaves every field for you to fill in.
-2. **General**: title, folder name, status, platform, priority and the rest.
-   **Next** won't continue without a title and a folder name.
-3. **Ratings & Tags**, **Media**, **Links**, **Ownership**: move through them
-   with **Next** and **Back**, or click a tab to jump to it.
+| Tab | What it holds |
+| --- | --- |
+| **Basics** | Title, title protection, sorting name, folder name, status, priority, platform, source, date added and **Favorite**. |
+| **Details** | Description, developer, publisher, series, release date, age rating, region and language. |
+| **Play** | Your playtime in hours, the 100% completion date, **Where you left off**, the four completion estimates and multiplayer settings. |
+| **Ratings and tags** | Your four ratings, tags, features and manual **Collections**. |
+| **Artwork** | The cover and banner: the saved artwork, an uploaded file, an image link or a search result. |
+| **Links** | Store pages and other links. |
+| **Ownership** | Format, purchase date, price, currency and condition. |
+| **Advanced** | Parent game and relationship, multiple accounts and OSRS stats, and which parts this game's page shows. |
 
-The game is only created with **Add Game** on the last step. Editing an
-existing game shows the same tabs as one form with **Save Changes**.
+**Add Game** or **Save Changes** stays at the bottom of every tab, and only the
+tab's content scrolls. Nothing is saved until you click it, and switching tabs
+keeps everything you have typed or chosen, including staged files. **Cancel**
+discards the unsaved edits. Arrow keys, Home and End move between tabs once one
+has focus; selecting the cover in the header opens **Artwork**.
+
+**Look up metadata** opens the provider search above whichever tab is showing;
+adding a game opens it straight away. Choosing a result shows the
+[field-by-field review](../integrations/metadata.md#review-metadata-before-saving):
+nothing changes until you **Apply** checked values, and the game is only
+written when you save.
+
+![The shared full editor in Modern dark](../assets/game-editor/modern-dark-basics.jpg)
+
+### Favorite, collections, playtime and notes
+
+**Favorite** adds the game to the Favorites collection. **Collections** lists
+your manual collections as checkboxes; type a name and **Add** to start a new
+one (an existing name in different letter case is reused). Smart collections and
+Favorites fill themselves from their rules, so they are not offered here.
+**Playtime (hours)** is your total and **Where you left off** is the same note
+shown on the game's Overview. These values are saved together with the rest of
+the game in one request, so a save never keeps some of them and loses others.
+Playtime is only sent when you change it; a connected library sync can later
+replace it with the store's total. Totals above 596,523 hours are rejected.
+
+![Tracking fields in Classic light](../assets/game-editor/classic-light-play.jpg)
+
+### Artwork
+
+The **Artwork** tab is built the first time you open it and then kept while the
+editor is open. For the cover and the banner you can upload a file, paste an
+`http` or `https` image link and choose **Use**, or pick one of the images
+offered by **Search artwork** or a metadata lookup. The preview is labelled
+**Current**, **Local file**, **Link** or **Search**, and **Keep current**
+discards the staged choice. The most recent explicit choice wins: an uploaded
+file is never replaced by search results that arrive later, only by choosing
+another image yourself. Choosing the same file again works, and local previews
+are released when they are replaced or the editor closes.
+
+Artwork is uploaded or fetched only after the game itself saves. If that
+transfer fails, the game stays saved and the editor closes; the task notice
+names the artwork that failed and **Retry** attaches the remaining artwork to
+that same game without creating another copy.
+
+![A staged local cover in Classic dark](../assets/game-editor/classic-dark-artwork.jpg)
+
+Modern and Classic use the same editor, fields and saving. Classic follows
+Rosefall's editor with filled fields and outlined secondary buttons, and both
+keep your palette, custom colors, light or dark mode and phone layout:
+[adding in Modern](../assets/game-editor/modern-dark-add.jpg),
+[collections in Modern light](../assets/game-editor/modern-light-collections.jpg),
+[a custom palette in Classic](../assets/game-editor/classic-custom-dark-advanced.jpg),
+[Classic on a phone](../assets/game-editor/classic-dark-phone.jpg) and
+[artwork on a phone in Modern light](../assets/game-editor/modern-light-phone-artwork.jpg).
 
 ### Fields worth knowing
 
@@ -239,6 +299,8 @@ existing game shows the same tabs as one form with **Save Changes**.
 | Platform | The system you play it on (PC, PlayStation 5, Nintendo Switch...). Suggestions are offered but anything can be typed. Without a platform, the source is shown instead. |
 | Priority | 1 (highest) to 5 (lowest). Finished games (beaten, mastered, played, dropped) are left out of priority sorting and the random picker. |
 | Date added to library | Defaults to today. Change it to back-date a game you've had for a while. |
+| Playtime (hours) | Your own total, to one decimal place. Leave it empty for none. |
+| Where you left off | Up to 2,000 characters; also shown and editable on the Overview. |
 | Region, Language | Edition details, used by the library's Region and Language filters. |
 | Currency | Chosen from the currencies the server accepts. |
 
@@ -444,6 +506,33 @@ summary, and opens to show the details. Entries cover being added to the
 library, being purchased, achievements unlocked, metadata updated, a price or
 status change, and media added. Things that happened together are grouped. The
 timeline can be switched off in the page settings while the numbers stay.
+
+## Library totals and Trash
+
+Library-wide numbers describe the games currently in your library. A game in
+Trash is left out of Settings > Storage & usage (game count, favorites, total
+playtime, storage used, total spent, average rating, most played and every
+breakdown), the Home **This week** widget, and the game figures on the
+Statistics page. Another account's games are never included.
+
+Trashing a game does not erase what was recorded about it. Its playtime, last
+played time, achievements and metadata history stay with the game while it is
+in Trash, and restoring it returns exactly the same values to every total.
+Trashing and restoring are not counted as activity themselves. When Trash is
+purged after seven days, the game and those records are removed permanently.
+
+These totals are built from what is recorded on each active game, not from a
+separate activity log:
+
+- **Total playtime** is the playtime each platform last reported for a game, not
+  the time played during a particular period.
+- **Games played** in **This week** counts each active game once if its most
+  recent recorded play is within the last seven days, however often it was
+  played that week.
+- **Achievements unlocked** and **Metadata changes** in **This week** count the
+  unlock and change times recorded on active games during those seven days.
+- A game's own Stats tab and history timeline are unavailable while it is in
+  Trash and return unchanged when it is restored.
 
 ## The library at a glance
 

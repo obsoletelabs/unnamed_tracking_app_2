@@ -163,10 +163,13 @@ than leaving the page.
 
 ![SteamGridDB system configuration with the stored secret hidden](../assets/plugin-metadata/provider-configuration.jpg)
 
-The Add Game editor retains its Find, General, Ratings & Tags, Media, Links,
-Ownership and Page tabs. Identity results appear before artwork; failed optional
+The full game editor's **Look up metadata** opens the same search above any of
+its eight tabs. Identity results appear before artwork; failed optional
 providers produce a short warning while successful results stay selectable.
-Selecting a result populates the existing fields and starts artwork lookup.
+Selecting a result opens the review and starts artwork lookup; offered covers
+and banners are then available on the **Artwork** tab. These screenshots predate
+the tabbed editor; see the [games guide](../user-guide/games.md#adding-a-game)
+for the current layout.
 
 ![Portal 2 search with built-in Steam results](../assets/plugin-metadata/game-search.jpg)
 

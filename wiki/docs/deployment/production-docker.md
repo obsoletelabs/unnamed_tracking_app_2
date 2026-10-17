@@ -185,8 +185,12 @@ applying its default 1 MB ceiling or buffering them to disk; other paths keep th
 size, the application requires a valid session, API key, plugin management token,
 integration grant or plugin-runtime token; otherwise it discards the body without
 storing it and answers 413. The host
-still enforces each saved image/file, clip, save archive, world-save and
+still enforces each saved image/file, document, clip, save archive, world-save and
 plugin-package limit. This keeps administrator overrides and large supported
 archives usable and returns native JSON validation results. HTTP and HTTPS use the
 same limits; operator backend/migration logs remain private in both modes. An
-additional external proxy must allow the configured upload size.
+additional external proxy must allow the configured upload size: for example
+`client_max_body_size` in an outer Nginx (its default is 1 MB), or the request
+body limit of a CDN in front of the app. When such a proxy refuses an upload with
+413, the app reports that a proxy in front of it refused the file rather than
+showing the proxy's error page.
