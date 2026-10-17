@@ -351,16 +351,16 @@ async def run_sweep_loop() -> None:
     while True:
         try:
             await purge_expired_trash()
+        # Keep the periodic cleanup boundary alive after an unexpected failed pass.
+        # pylint: disable-next=broad-exception-caught
+        except Exception:
+            logger.exception("Trash sweep failed")
         try:
             await purge_expired_media_titles()
         # Keep media-title retention independent of game-file cleanup.
         # pylint: disable-next=broad-exception-caught
         except Exception:
             logger.exception("Media-title trash sweep failed")
-        # Keep the periodic cleanup boundary alive after an unexpected failed pass.
-        # pylint: disable-next=broad-exception-caught
-        except Exception:
-            logger.exception("Trash sweep failed")
         # a failed cleanup only means expired rows wait for the next sweep;
         # it never affects startup or signing in
         try:
