@@ -55,6 +55,10 @@ RECHECK_SCHEDULED_SECONDS = 24 * 60 * 60
 _last_checked: dict[str, float] = {}
 
 
+class AiringUnavailable(RuntimeError):
+    """A scheduled airing lookup could not reach its providers; reported, not hidden."""
+
+
 def _add_episode(
     model: type[AnimeEpisode] | type[TVEpisode],
     season_id,
@@ -227,13 +231,16 @@ async def refresh_anime_season_now(
     return added, enriched
 
 
-async def quick_check_anime_season(show: Anime, season: AnimeSeason) -> int:
+async def quick_check_anime_season(
+    show: Anime, season: AnimeSeason, *, strict: bool = False
+) -> int:
     """The cheap check for one anime: asks AniList how many episodes have
     aired (and whether it is still airing at all), and if the count has gone
     up, adds bare numbered placeholder rows (no title or thumbnail yet) so
     there is something to check off right away. The full refresh fills in real
     titles and images later. Only works for anime: MyAnimeList/Jikan has no
-    comparably cheap endpoint."""
+    comparably cheap endpoint. `strict` raises AiringUnavailable when the
+    providers cannot answer, so the scheduled check can report it."""
     if not show.anilist_id:
         return 0
     aired_total, is_airing, air_at, next_number, errors = await fetch_airing_status(
@@ -243,6 +250,8 @@ async def quick_check_anime_season(show: Anime, season: AnimeSeason) -> int:
         logger.warning(
             "Airing check couldn't reach AniList for %r: %s", show.title, "; ".join(errors)
         )
+        if strict:
+            raise AiringUnavailable(show.title)
         return 0
     return await _apply_airing(
         show,
@@ -310,7 +319,7 @@ async def _fill_recent_episodes(show: Anime, season: AnimeSeason) -> None:
             _enrich_episode(episode, entry)
 
 
-async def quick_check_tv_season(show: TVShow, season: TVSeason, db) -> int:
+async def quick_check_tv_season(show: TVShow, season: TVSeason, db, *, strict: bool = False) -> int:
     """The frequent, cheap check for TV: first asks TVmaze just the
     show's status (a single small object) and persists `show.is_airing`
     from it. Only when it's actually still running does it bother with
@@ -326,6 +335,8 @@ async def quick_check_tv_season(show: TVShow, season: TVSeason, db) -> int:
         logger.warning(
             "Airing check couldn't reach TVmaze for %r: %s", show.title, "; ".join(errors)
         )
+        if strict:
+            raise AiringUnavailable(show.title)
         return 0
     if is_airing is not None:
         show.is_airing = is_airing
@@ -502,8 +513,8 @@ def airing_due(
     return last_checked is None or now - last_checked >= limit
 
 
-async def _check_anime_airing(db, force: bool, now: float) -> tuple[int, int, int]:
-    anime_added = checked = 0
+async def _check_anime_airing(db, force: bool, now: float) -> tuple[int, int, int, int]:
+    anime_added = checked = failed = 0
     anime_rows = (
         await db.execute(
             select(Anime.id, Anime.anilist_id, Anime.is_airing, Anime.next_episode_air_at).where(
@@ -530,19 +541,22 @@ async def _check_anime_airing(db, force: bool, now: float) -> tuple[int, int, in
             if season is None or not season.episodes:
                 continue
             try:
-                anime_added += await quick_check_anime_season(anime_show, season)
+                anime_added += await quick_check_anime_season(anime_show, season, strict=True)
                 _last_checked[str(anime_show.id)] = now
                 checked += 1
+            except AiringUnavailable:
+                failed += 1
             # Isolate unexpected provider data failures to this show while continuing the sweep.
             # pylint: disable-next=broad-exception-caught
             except Exception:
+                failed += 1
                 logger.exception("Airing check failed for anime %s", anime_show.title)
 
-    return anime_added, checked, len(anime_rows)
+    return anime_added, checked, len(anime_rows), failed
 
 
-async def _check_tv_airing(db, force: bool, now: float) -> tuple[int, int, int]:
-    tv_added = checked = 0
+async def _check_tv_airing(db, force: bool, now: float) -> tuple[int, int, int, int]:
+    tv_added = checked = failed = 0
     tv_rows = (
         await db.execute(
             select(TVShow.id, TVShow.is_airing, TVShow.next_episode_air_at).where(
@@ -565,15 +579,18 @@ async def _check_tv_airing(db, force: bool, now: float) -> tuple[int, int, int]:
             if tv_season is None or not tv_season.episodes:
                 continue
             try:
-                tv_added += await quick_check_tv_season(tv_show, tv_season, db)
+                tv_added += await quick_check_tv_season(tv_show, tv_season, db, strict=True)
                 _last_checked[str(tv_show.id)] = now
                 checked += 1
+            except AiringUnavailable:
+                failed += 1
             # Isolate unexpected provider data failures to this show while continuing the sweep.
             # pylint: disable-next=broad-exception-caught
             except Exception:
+                failed += 1
                 logger.exception("Airing check failed for TV show %s", tv_show.title)
 
-    return tv_added, checked, len(tv_rows)
+    return tv_added, checked, len(tv_rows), failed
 
 
 async def check_airing_episodes(force: bool = False) -> dict[str, int]:
@@ -583,13 +600,16 @@ async def check_airing_episodes(force: bool = False) -> dict[str, int]:
     `airing_due`, or all of them with `force`) are asked about: anime in one
     AniList request per 50 shows, TV one show at a time. Their episodes are
     loaded only then, not for every airing show on every pass. Neither does the
-    TMDB backfill, which stays on the slower full refresh."""
+    TMDB backfill, which stays on the slower full refresh. A show whose
+    providers cannot answer is counted as unavailable and asked again on the
+    next run, rather than reported as checked."""
     now = time.time()
     async with SessionLocal() as db:
-        anime_added, anime_checked, anime_candidates = await _check_anime_airing(db, force, now)
-        tv_added, tv_checked, tv_candidates = await _check_tv_airing(db, force, now)
-        checked = anime_checked + tv_checked
-        candidates = anime_candidates + tv_candidates
+        anime = await _check_anime_airing(db, force, now)
+        tv = await _check_tv_airing(db, force, now)
+        anime_added, tv_added = anime[0], tv[0]
+        checked = anime[1] + tv[1]
+        failed = anime[3] + tv[3]
         await db.commit()
 
     if anime_added or tv_added:
@@ -600,5 +620,6 @@ async def check_airing_episodes(force: bool = False) -> dict[str, int]:
         "anime_episodes_added": anime_added,
         "tv_episodes_added": tv_added,
         "checked": checked,
-        "not_due": max(0, candidates - checked),
+        "not_due": max(0, anime[2] + tv[2] - checked - failed),
+        "failed": failed,
     }

@@ -194,23 +194,70 @@ export interface OverviewStats {
       posterUrl: string | null;
     }[];
   };
-  activity: {
-    per_day: {
-      date: string;
+  activity: ActivitySummary;
+}
+
+export interface ActivityDayCounts {
+  date: string;
+  count: number;
+  episodes: number;
+  achievements: number;
+  // other recorded history (status changes, rewatches); listed, not counted
+  history: number;
+}
+export interface ActivitySummary {
+  // the IANA zone the server placed achievements in, and the days shown
+  timezone: string;
+  start: string;
+  end: string;
+  per_day: ActivityDayCounts[];
+  active_days_total: number;
+  current_streak: number;
+  longest_streak: number;
+  busiest_day: {
+    date: string;
+    count: number;
+    episodes: number;
+    achievements: number;
+  } | null;
+}
+
+export type ActivityDayItem =
+  | {
+      kind: "episodes";
+      media_type: "movie" | "tv" | "anime";
+      id: string;
+      title: string;
       count: number;
-      episodes: number;
-      achievements: number;
-    }[];
-    active_days_total: number;
-    current_streak: number;
-    longest_streak: number;
-    busiest_day: {
-      date: string;
+    }
+  | {
+      kind: "history";
+      media_type: "movie" | "tv" | "anime";
+      id: string;
+      title: string;
       count: number;
-      episodes: number;
-      achievements: number;
-    } | null;
-  };
+      event_type: string;
+      detail: string | null;
+    }
+  | {
+      kind: "achievement";
+      id: string;
+      name: string;
+      unlocked_at: number;
+      game_id: string;
+      game_title: string;
+    };
+
+export interface ActivityDay extends ActivityDayCounts {
+  timezone: string;
+  starts_at: number;
+  ends_at: number;
+  items: ActivityDayItem[];
+  total: number;
+  offset: number;
+  limit: number;
+  next_offset: number;
+  complete: boolean;
 }
 
 export interface MediaStats {
@@ -228,6 +275,16 @@ export type MediaStatsSection = keyof MediaStats;
 let cachedActor: string | null = null;
 let cached: Partial<MediaStats> = {};
 let generation = 0;
+
+// The device's IANA zone. The heatmap and the day detail both send it, so the
+// server places every achievement on the same local day in both views.
+export function viewerTimeZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
+}
 
 export function peekMediaStats(actor: string | null): Partial<MediaStats> {
   if (actor !== cachedActor || actor === null) {
@@ -254,10 +311,13 @@ export async function fetchMediaStats(
 ): Promise<Partial<MediaStats>> {
   peekMediaStats(actor);
   const requestGeneration = generation;
-  const response = await fetch(`/api/media-stats?section=${section}`, {
-    credentials: "include",
-    signal,
-  });
+  const response = await fetch(
+    `/api/media-stats?section=${section}&tz=${encodeURIComponent(viewerTimeZone())}`,
+    {
+      credentials: "include",
+      signal,
+    },
+  );
   if (!response.ok)
     throw new Error(`Failed to load statistics: ${response.status}`);
   const raw = (await response.json()) as Partial<MediaStats>;
@@ -282,4 +342,27 @@ export async function fetchMediaStats(
   const result: Partial<MediaStats> = { [section]: selected };
   cached = { ...cached, ...result };
   return result;
+}
+
+// One heatmap day, a page at a time (the server bounds `limit`).
+export async function fetchActivityDay(
+  day: string,
+  timezone: string,
+  signal: AbortSignal,
+  offset = 0,
+  limit = 50,
+): Promise<ActivityDay> {
+  const query = new URLSearchParams({
+    date: day,
+    tz: timezone,
+    offset: String(offset),
+    limit: String(limit),
+  });
+  const response = await fetch(`/api/media-stats/activity/day?${query}`, {
+    credentials: "include",
+    signal,
+  });
+  if (!response.ok)
+    throw new Error(`Failed to load this day's activity: ${response.status}`);
+  return (await response.json()) as ActivityDay;
 }

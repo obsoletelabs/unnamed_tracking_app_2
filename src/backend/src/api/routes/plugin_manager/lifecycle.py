@@ -380,6 +380,47 @@ def _automatic_update_policy(
     return bool(eligible), bool(denied)
 
 
+def _automatic_update_block_reason(
+    plugin: dict[str, Any],
+    *,
+    update: dict[str, Any],
+    inspected: InspectedPackage,
+    plan: InstallationPlan,
+    store: ManagerState,
+    denied: bool,
+) -> str | None:
+    """Explain the first policy gate that prevents unattended activation."""
+    mode = plugin.get("automatic_updates", "follow")
+    checks = (
+        (denied, "This exact release was previously denied and requires a new review."),
+        (
+            mode not in {"follow", "enabled", "disabled"},
+            "The plugin automatic-update policy is invalid; review its settings.",
+        ),
+        (mode == "disabled", "Automatic updates are disabled for this plugin."),
+        (
+            mode == "follow" and not store.settings()["automatic_updates"],
+            "Global automatic updates are disabled.",
+        ),
+        (bool(plugin.get("version_pin")), "A version pin prevents automatic activation."),
+        (
+            not update.get("automatic_update") or not inspected.package.manifest.automatic_update,
+            "The catalogue release or package manifest does not permit automatic updates.",
+        ),
+        (
+            not inspected.package.distribution.get("automatic_update", True),
+            "The package distribution policy does not permit automatic updates.",
+        ),
+        (not inspected.trust.is_verified, "The package publisher is not verified."),
+        (not plan.dependencies.ready, "One or more dependencies are not ready."),
+        (
+            bool(plan.permissions.newly_requested_grants),
+            "The update requests new permissions that require administrator review.",
+        ),
+    )
+    return next((reason for blocked, reason in checks if blocked), None)
+
+
 def _validate_automatic_archive(
     path: Path, plugin: dict[str, Any], update: dict[str, Any]
 ) -> InspectedPackage:
@@ -399,33 +440,55 @@ def _validate_automatic_archive(
 
 async def _apply_automatic_update(
     db: AsyncSession,
+    *,
     admin: User,
     plugin: dict[str, Any],
     counts: dict[str, int],
     store: ManagerState,
+    outcomes: dict[str, dict[str, Any]],
 ) -> None:
     path = None
     try:
         update = await catalogues.check_plugin_update(plugin, admin)
+        catalogues.adopt_legacy_update_notification(
+            plugin["plugin_id"],
+            store.read().get("plugins", {}).get(plugin["plugin_id"], {}).get("available_update"),
+            update,
+        )
         store.patch(plugin["plugin_id"], available_update=update)
         if not update.get("update_available"):
+            store.patch(plugin["plugin_id"], last_notified_update_state=None)
             return
-        await catalogues.notify_plugin_update(db, update)
+        outcomes[plugin["plugin_id"]] = {**update, "status": "available"}
         path, _, _ = await acquisition.download_remote_file(update["url"])
         inspected = _validate_automatic_archive(path, plugin, update)
         plan = await acquisition.plugin_installer().plan_update(plugin["plugin_id"], inspected, db)
         eligible, denied = _automatic_update_policy(plugin, update, inspected, plan, store)
-        stage = {
-            **update,
-            "digest": inspected.package.manifest.integrity.sha256,
-            "status": "denied"
-            if denied
-            else (
-                "awaiting_permissions" if plan.permissions.newly_requested_grants else "downloaded"
-            ),
-        }
-        store.stage(plugin["plugin_id"], path.read_bytes(), stage)
+        store.stage(
+            plugin["plugin_id"],
+            path.read_bytes(),
+            {
+                **update,
+                "digest": inspected.package.manifest.integrity.sha256,
+                "status": "denied"
+                if denied
+                else (
+                    "awaiting_permissions"
+                    if plan.permissions.newly_requested_grants
+                    else "downloaded"
+                ),
+            },
+        )
         counts["staged"] += 1
+        if not eligible:
+            outcomes[plugin["plugin_id"]]["reason"] = _automatic_update_block_reason(
+                plugin,
+                update=update,
+                inspected=inspected,
+                plan=plan,
+                store=store,
+                denied=denied,
+            )
         if eligible:
             result = await acquisition.plugin_installer().install(
                 path.read_bytes(),
@@ -437,10 +500,16 @@ async def _apply_automatic_update(
             )
             if result["status"] == "rolled_back":
                 counts["failed"] += 1
-                await catalogues.notify_plugin_update(db, update, failed=True)
+                outcomes[plugin["plugin_id"]] = {**update, "status": "failed"}
             else:
                 counts["installed"] += 1
-                await catalogues.record_update_result(db, plugin["plugin_id"], result)
+                outcomes[plugin["plugin_id"]] = {**update, "status": "updated"}
+                # A successful activation must clear the stale "update available" cache.
+                store.patch(
+                    plugin["plugin_id"],
+                    available_update=None,
+                    last_update_error=None,
+                )
     # Keep one failed update isolated while recording its rollback and notifying administrators.
     # pylint: disable-next=broad-exception-caught
     except Exception as exc:
@@ -452,7 +521,7 @@ async def _apply_automatic_update(
         )
         failure = store.read()["plugins"][plugin["plugin_id"]].get("available_update")
         if failure and failure.get("update_available"):
-            await catalogues.notify_plugin_update(db, failure, failed=True)
+            outcomes[plugin["plugin_id"]] = {**failure, "status": "failed"}
     finally:
         if path is not None:
             path.unlink(missing_ok=True)
@@ -462,6 +531,7 @@ async def run_automatic_plugin_updates(db: AsyncSession, admin: User) -> dict[st
     """Discover, validate and stage releases, then apply policy without granting scopes."""
     counts = {"checked": 0, "installed": 0, "staged": 0, "failed": 0}
     store = manager_state()
+    notification_batch: dict[str, dict[str, Any]] = {}
     for plugin in await runtime.installed_plugins():
         source = plugin.get("source", {})
         if source.get("type") != "catalogue":
@@ -477,8 +547,16 @@ async def run_automatic_plugin_updates(db: AsyncSession, admin: User) -> dict[st
         if configured is None:
             continue
         counts["checked"] += 1
-        await _apply_automatic_update(db, admin, plugin, counts, store)
-    await db.commit()
+        await _apply_automatic_update(
+            db, admin=admin, plugin=plugin, counts=counts, store=store, outcomes=notification_batch
+        )
+    batch = list(notification_batch.values())
+    if batch and catalogues.plugin_update_batch_changed(batch):
+        await catalogues.notify_plugin_updates(db, batch)
+        await db.commit()
+        catalogues.mark_plugin_update_batch_notified(batch)
+    else:
+        await db.commit()
     return counts
 
 

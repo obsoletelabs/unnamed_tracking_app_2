@@ -60,7 +60,7 @@ from .plugin_manager.catalogues import (
 )
 from .plugin_manager.catalogues import catalogue_store as _catalogue_store
 from .plugin_manager.catalogues import check_plugin_update as _check_plugin_update
-from .plugin_manager.catalogues import notify_plugin_update as _notify_plugin_update
+from .plugin_manager.catalogues import notify_single_plugin_update as _notify_plugin_update
 from .plugin_manager.contributions import (
     _DOCUMENT_DATA_ROOT,
     _GATEWAY_DISPATCH_TIMEOUT,

@@ -23,6 +23,11 @@ import {
   isRoutable,
   providerListing,
 } from "../../utils/notificationProviders";
+import {
+  notificationTypeUnavailable,
+  routeUnavailable,
+  unavailableText,
+} from "../../services/preferenceDependencies";
 
 const props = defineProps<{ prefs: Preferences; loaded: boolean }>();
 const route = useRoute();
@@ -109,6 +114,21 @@ function typeEnabled(type: NotificationRoutingType) {
   return (
     legacy !== false &&
     props.prefs.notification_types[type.event_type] !== false
+  );
+}
+function typeUnavailable(type: NotificationRoutingType) {
+  return notificationTypeUnavailable(type.event_type, props.prefs);
+}
+function destinationUnavailable(
+  type: NotificationRoutingType,
+  destination: NotificationRoutingDestination,
+) {
+  return routeUnavailable(
+    type.label,
+    typeEnabled(type),
+    destination,
+    type.event_type,
+    personalEnabled(destination),
   );
 }
 const mediaChoices = [
@@ -446,7 +466,12 @@ async function testDestination(destination: NotificationRoutingDestination) {
           <ToggleButton
             :model-value="typeEnabled(type)"
             :label="type.label"
-            :disabled="!loaded"
+            :disabled="!loaded || !!typeUnavailable(type)"
+            :aria-describedby="
+              typeUnavailable(type)
+                ? `type-reason-${type.event_type}`
+                : undefined
+            "
             @update:model-value="setType(type, $event)"
           >
             <strong>{{ type.label }}</strong>
@@ -463,13 +488,22 @@ async function testDestination(destination: NotificationRoutingDestination) {
           </button>
         </div>
         <p class="hint description">{{ type.description }}</p>
+        <p
+          v-if="typeUnavailable(type)"
+          :id="`type-reason-${type.event_type}`"
+          class="restriction"
+          role="status"
+        >
+          {{ unavailableText(typeUnavailable(type)) }}
+        </p>
         <div
           v-if="expanded[type.event_type]"
           :id="`route-${type.event_type}`"
           class="route-list"
         >
           <p v-if="!typeEnabled(type)" class="hint">
-            This type is off. Choices below are saved for when you enable it.
+            This type is off. Choices below are kept and apply again when you
+            turn it on.
           </p>
           <fieldset
             v-if="type.event_type.startsWith('media.')"
@@ -535,10 +569,12 @@ async function testDestination(destination: NotificationRoutingDestination) {
                 :label="`${type.label} / ${destinationName(destination)}`"
                 :aria-label="`${type.label} / ${destinationName(destination)}`"
                 :disabled="
-                  !loaded ||
-                  !destination.eligible_types.includes(type.event_type) ||
-                  !destination.active ||
-                  !destination.available
+                  !loaded || !!destinationUnavailable(type, destination)
+                "
+                :aria-describedby="
+                  destinationUnavailable(type, destination)
+                    ? `route-reason-${type.event_type}-${destination.id}`
+                    : undefined
                 "
                 @update:model-value="
                   setRoute(type, destination, { enabled: $event })
@@ -552,11 +588,12 @@ async function testDestination(destination: NotificationRoutingDestination) {
                 · {{ availability(destination) }}
               </p>
               <p
-                v-if="!destination.eligible_types.includes(type.event_type)"
+                v-if="destinationUnavailable(type, destination)"
+                :id="`route-reason-${type.event_type}-${destination.id}`"
                 class="restriction"
+                role="status"
               >
-                This destination does not meet this type's trust or server
-                policy requirements.
+                {{ unavailableText(destinationUnavailable(type, destination)) }}
               </p>
             </div>
             <label class="urgency">
@@ -565,10 +602,7 @@ async function testDestination(destination: NotificationRoutingDestination) {
                 :aria-label="`${type.label} / ${destinationName(destination)} urgency`"
                 :value="choice(type, destination).urgency"
                 :disabled="
-                  !loaded ||
-                  !destination.eligible_types.includes(type.event_type) ||
-                  !destination.active ||
-                  !destination.available
+                  !loaded || !!destinationUnavailable(type, destination)
                 "
                 @change="
                   setRoute(type, destination, {

@@ -304,7 +304,7 @@ async function submit() {
       : await createAnime(input);
     emit("saved", saved);
   } catch (e) {
-    error.value = e instanceof Error ? e.message : "Failed to save anime.";
+    error.value = e instanceof Error ? e.message : "Could not save the anime.";
   } finally {
     saving.value = false;
   }
@@ -318,7 +318,8 @@ async function remove() {
     await deleteAnime(props.show.id);
     emit("deleted", props.show.id);
   } catch (e) {
-    error.value = e instanceof Error ? e.message : "Failed to delete anime.";
+    error.value =
+      e instanceof Error ? e.message : "Could not delete the anime.";
   } finally {
     deleting.value = false;
   }
@@ -328,7 +329,7 @@ async function remove() {
 <template>
   <MediaFormShell
     v-model:tab="tab"
-    noun="Anime"
+    noun="anime"
     :editing="!!show"
     :saving="saving"
     :lookup-pending="!!search.selected.value"

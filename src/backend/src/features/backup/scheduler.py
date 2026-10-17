@@ -1,6 +1,6 @@
-"""Scheduled automatic backups, an in-process asyncio loop, same pattern as
-the trash sweep (src/features/trash/sweep.py): no new worker container, no
-new dependency. Runs once at startup and then on a fixed interval, writing
+"""Scheduled automatic backups with no new worker container and no
+new dependency. The central schedule manager (src/features/jobs.py) runs it, so the
+interval and the on/off switch are administrator settings. It writes
 one JSON snapshot per user in the same shape as the manual Export/Import
 feature (src/api/routes/export_import.py), so a backup file can be fed
 straight back through POST /api/import/library if it's ever needed.
@@ -8,7 +8,6 @@ straight back through POST /api/import/library if it's ever needed.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 from pathlib import Path
@@ -52,11 +51,12 @@ async def run_backup_for_user(user_id) -> Path | None:
         return backup_path
 
 
-async def run_all_backups() -> int:
+async def run_all_backups() -> dict[str, int]:
     async with SessionLocal() as db:
         user_ids = [row[0] for row in (await db.execute(select(User.id))).all()]
 
     written = 0
+    failed = 0
     for user_id in user_ids:
         try:
             if await run_backup_for_user(user_id):
@@ -65,18 +65,8 @@ async def run_all_backups() -> int:
         # pylint: disable-next=broad-exception-caught
         except Exception:
             logger.exception("Backup failed for user %s", user_id)
+            failed += 1
 
     if written:
         logger.info("Automatic backup wrote %d user snapshot(s)", written)
-    return written
-
-
-async def run_backup_loop() -> None:
-    while True:
-        try:
-            await run_all_backups()
-        # Isolate failures between users and keep the periodic backup worker alive.
-        # pylint: disable-next=broad-exception-caught
-        except Exception:
-            logger.exception("Automatic backup loop failed")
-        await asyncio.sleep(BACKUP_INTERVAL_SECONDS)
+    return {"accounts": len(user_ids), "written": written, "failed": failed}

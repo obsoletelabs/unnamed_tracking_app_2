@@ -3,17 +3,19 @@
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import get_current_admin, get_current_user
 from src.database.models.user import User
 from src.database.session import get_db
-from src.features.jobs import JOBS, JobSpec, describe, get_setting, get_user_jobs
+from src.features.job_runs import CONTROLS
+from src.features.jobs import JOBS, JobSpec, control_job, describe, get_setting, get_user_jobs
 from src.features.plugin_jobs import get_plugin_jobs
 
 _JOB_DB = Depends(get_db)
+_JOB_CONTROL = Path(pattern="^(" + "|".join(CONTROLS) + ")$")
 _JOB_MODE = Query(default=None, pattern="^(needed|all)$")
 
 router = APIRouter(
@@ -65,6 +67,9 @@ async def _update_schedule(spec: JobSpec, payload: JobUpdate, db: AsyncSession) 
             )
         row.interval_minutes = payload.interval_minutes
     if payload.enabled is not None:
+        if payload.enabled and not row.enabled:
+            row.failure_count, row.retry_at = 0, None
+            row.status = "paused" if row.paused else "idle"
         row.enabled = payload.enabled
     await db.commit()
     return await describe(db, spec)
@@ -80,9 +85,23 @@ async def run_job(
     by hand unless a mode is given. If one is already running, its progress is
     returned instead."""
     spec = await _spec(job_id, db)
+    await _require_runnable(spec, db)
+    return spec.start(mode or spec.manual_mode)
+
+
+async def _require_runnable(spec: JobSpec, db: AsyncSession) -> None:
     if not spec.available:
         raise HTTPException(status_code=409, detail=spec.unavailable_reason)
-    return spec.start(mode or spec.manual_mode)
+    if (await get_setting(db, spec)).paused:
+        raise HTTPException(status_code=409, detail="This task is paused. Resume it first.")
+
+
+@router.post("/{job_id}/{control}")
+async def control_server_job(
+    job_id: str, control: str = _JOB_CONTROL, db: AsyncSession = _JOB_DB
+) -> dict[str, Any]:
+    """Pause, resume or cancel one server job's run; saved records are never discarded."""
+    return await control_job(db, await _spec(job_id, db), control)
 
 
 @user_router.get("")
@@ -108,6 +127,13 @@ async def run_user_job(
     job_id: str, db: AsyncSession = _JOB_DB, user: User = _JOB_USER
 ) -> dict[str, Any]:
     spec = await _spec(job_id, db, user.id)
-    if not spec.available:
-        raise HTTPException(status_code=409, detail=spec.unavailable_reason)
+    await _require_runnable(spec, db)
     return spec.start(spec.manual_mode)
+
+
+@user_router.post("/{job_id}/{control}")
+async def control_user_job(
+    job_id: str, control: str = _JOB_CONTROL, db: AsyncSession = _JOB_DB, user: User = _JOB_USER
+) -> dict[str, Any]:
+    """Pause, resume or cancel only this account's own task."""
+    return await control_job(db, await _spec(job_id, db, user.id), control)

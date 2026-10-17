@@ -28,6 +28,7 @@ import {
   statusBucket,
   statusBucketLabel,
   bucketToReal,
+  resolveStatus,
   mediaBucketCounts,
 } from "../../utils/mediaStatus";
 
@@ -668,7 +669,10 @@ function finishSave() {
       max: 10,
     });
     emit("save-edit", finishTargetId.value, {
-      status: bucketToReal(finishBucket.value),
+      status: resolveStatus(
+        finishBucket.value,
+        props.items.find((i) => i.id === finishTargetId.value)?.status,
+      ),
       score,
       watched: finishWatched.value,
       totalEpisodes: finishTotalEpisodes.value,
@@ -691,6 +695,8 @@ const editForm = reactive<EditForm>({
   watched: 0,
   totalEpisodes: null,
   seen: false,
+  startDate: null,
+  endDate: null,
 });
 function openEdit(it: LibraryCardVM) {
   editError.value = null;
@@ -700,6 +706,8 @@ function openEdit(it: LibraryCardVM) {
   editForm.watched = it.watched;
   editForm.totalEpisodes = it.total;
   editForm.seen = it.watched > 0;
+  editForm.startDate = it.startDate ?? null;
+  editForm.endDate = it.endDate ?? null;
   editOpen.value = true;
 }
 function closeEdit() {
@@ -735,13 +743,19 @@ function saveEdit() {
             min: 0,
             integer: true,
           });
+    const startDate = editForm.startDate || null;
+    const endDate = editForm.endDate || null;
+    if (startDate && endDate && endDate < startDate)
+      throw new Error("Finished: choose a date on or after the start date.");
     const scoreAlreadySet = score !== null;
     emit("save-edit", id, {
       ...editForm,
       totalEpisodes,
       score,
       watched,
-      status: bucketToReal(editForm.status),
+      startDate,
+      endDate,
+      status: resolveStatus(editForm.status, target?.status),
     });
     closeEdit();
     if (target && justCompleted && !scoreAlreadySet) {
@@ -1759,6 +1773,18 @@ defineExpose({ openQuickAdd });
               max="10"
               step="0.1"
               placeholder="–"
+            />
+          </label>
+          <label class="qa-field">
+            <span>Started</span>
+            <input v-model="editForm.startDate" type="date" />
+          </label>
+          <label class="qa-field">
+            <span>Finished</span>
+            <input
+              v-model="editForm.endDate"
+              type="date"
+              :min="editForm.startDate ?? undefined"
             />
           </label>
         </div>

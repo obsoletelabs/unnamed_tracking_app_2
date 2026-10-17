@@ -38,6 +38,16 @@ _TYPE_LABELS = {
     "season_started": ("New seasons", "A new season has started airing."),
     "sequel_announced": ("Sequel announcements", "A sequel to a completed title was announced."),
     "movie_released": ("Movie releases", "A followed movie has been released."),
+    "franchise_season": (
+        "Anime franchise seasons",
+        "A new season was listed for an anime franchise you completed. Checked on a "
+        "schedule; sent instead of that season's sequel announcement.",
+    ),
+    "franchise_extra": (
+        "Anime franchise movies, OVAs and specials",
+        "A new movie, OVA or special was listed for an anime franchise you completed. "
+        "Checked on a schedule.",
+    ),
     "game_released": ("Game releases", "Known releases for wishlist, backlog and on-hold games."),
     "game_sale": ("Game sales", "Sale observations from connected integrations."),
     "game_price_hit": ("Price targets", "A live game price crosses your chosen target."),

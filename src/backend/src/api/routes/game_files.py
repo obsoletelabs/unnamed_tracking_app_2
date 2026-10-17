@@ -399,13 +399,16 @@ async def restore_game_file(
 ) -> dict[str, str]:
     game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     name = Path(filename).name
+    # The trash sweep locks the row it purges; restore waits rather than racing it.
     item = await db.scalar(
-        select(GameFileItem).where(
+        select(GameFileItem)
+        .where(
             GameFileItem.game_id == game_id,
             GameFileItem.kind == kind,
             GameFileItem.filename == name,
             GameFileItem.deleted_at.is_not(None),
         )
+        .with_for_update()
     )
     if item is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deleted file not found.")

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, ref, watch, defineAsyncComponent } from "vue";
 import PageHeader from "../components/PageHeader.vue";
 import AccountChip from "../components/AccountChip.vue";
 import HomeWidgetPicker from "../components/HomeWidgetPicker.vue";
@@ -11,9 +11,6 @@ import PluginHomeWidget from "../components/plugins/PluginHomeWidget.vue";
 import PluginWidgetConfiguration from "../components/plugins/PluginWidgetConfiguration.vue";
 import type { PluginSlotContribution } from "../state/pluginExtensions";
 import type { UiValues } from "../services/pluginUi";
-import GameFormModal from "../components/GameFormModal.vue";
-import CollectionPickerModal from "../components/CollectionPickerModal.vue";
-import RandomGamePicker from "../components/RandomGamePicker.vue";
 import { pluginSlots } from "../state/pluginExtensions";
 import { currentUser } from "../state/auth";
 import { accountDisplayName } from "../services/auth";
@@ -32,6 +29,17 @@ import { fetchGames, deleteGame } from "../services/games";
 import { fetchWeeklyDigest, type WeeklyDigest } from "../services/stats";
 import type { Game } from "../types/game";
 import { gameOwnershipGroups } from "../utils/gameOwnership";
+
+// Loaded on demand so they stay out of the initial route chunk.
+const CollectionPickerModal = defineAsyncComponent(
+  () => import("../components/CollectionPickerModal.vue"),
+);
+const RandomGamePicker = defineAsyncComponent(
+  () => import("../components/RandomGamePicker.vue"),
+);
+const GameFormModal = defineAsyncComponent(
+  () => import("../components/GameFormModal.vue"),
+);
 
 const hasHomeOverride = computed(() =>
   pluginSlots.value.some((item) => item.slot === "home.replace"),
