@@ -21,9 +21,10 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.database.base import Base
+from src.database.models.destination_scope import DestinationRevisionMixin, destination_fk
 
 
-class NotificationRemoteReference(Base):
+class NotificationRemoteReference(DestinationRevisionMixin, Base):
     __tablename__ = "notification_remote_references"
     __table_args__ = (
         UniqueConstraint(
@@ -42,13 +43,7 @@ class NotificationRemoteReference(Base):
     story_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("notification_stories.id", ondelete="CASCADE")
     )
-    destination_id: Mapped[UUID] = mapped_column(
-        PG_UUID(as_uuid=True),
-        ForeignKey("notification_destinations.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    destination_revision: Mapped[int] = mapped_column(Integer, nullable=False)
-    provider_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    destination_id: Mapped[UUID] = destination_fk()
     # Opaque provider message identifier; NULL when the provider cannot address it again.
     remote_ref: Mapped[str | None] = mapped_column(String(512), nullable=True)
     delivered_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

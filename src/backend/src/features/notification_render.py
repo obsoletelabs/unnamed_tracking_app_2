@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, replace
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
@@ -126,6 +127,73 @@ def _presentation(
     return fields, fallbacks
 
 
+@dataclass(frozen=True)
+class _Clipped:
+    """Title and body after the profile's limits; base_title excludes any follow-up prefix."""
+
+    base_title: str
+    title: str
+    body: str
+    truncated: bool
+
+
+async def _presentation_changes(
+    db: AsyncSession,
+    message: NotificationMessage,
+    notification: Notification,
+    *,
+    projection: str,
+    profile: ResolvedProfile,
+    link: str | None,
+    link_base: str | None,
+) -> tuple[dict, list[str]]:
+    """Field overrides from the canonical content plus the fallback notes they produced."""
+    fallbacks: list[str] = list(profile.notes)
+    content = await _content(db, notification, projection)
+    changes: dict = {}
+    if content is not None and profile.canonical:
+        fields, notes = _presentation(content, profile, link, link_base)
+        fallbacks += notes
+        changes |= fields
+    elif content is not None and (
+        content.blocks or content.facts or content.images or content.actions
+    ):
+        fallbacks.append("rich_content_plain_text")
+    changes.setdefault("title", message.title)
+    changes.setdefault("body", message.body)
+    return changes, fallbacks
+
+
+def _clip_message(changes: dict, operation: str, caps: Any) -> _Clipped:
+    """Pop title and body from the overrides and fit them to the profile limits."""
+    title, body = changes.pop("title"), changes.pop("body")
+    base_title = _clip(title, caps.max_title_chars)
+    clipped_title = _clip(
+        f"Update: {title}" if operation == "follow_up" else title, caps.max_title_chars
+    )
+    budget = caps.max_payload_bytes - PAYLOAD_OVERHEAD - len(clipped_title.encode())
+    clipped_body = _clip_bytes(_clip(body, caps.max_text_chars), budget)
+    return _Clipped(
+        base_title, clipped_title, clipped_body, base_title != title or clipped_body != body
+    )
+
+
+def _rendering_digest(base_title: str, rendered: NotificationMessage) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            [
+                base_title,
+                rendered.body,
+                rendered.html,
+                [(a.label, a.url) for a in rendered.actions],
+                list(rendered.images),
+                rendered.link,
+            ],
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
+
+
 async def render_message(
     db: AsyncSession,
     message: NotificationMessage,
@@ -140,52 +208,34 @@ async def render_message(
     idempotency_key: UUID | str,
 ) -> Rendering:
     """Apply the profile to a base message. Pure apart from reading the revision's content."""
-    caps = profile.capabilities
-    fallbacks: list[str] = list(profile.notes)
-    link = story_link(link_base, notification) if caps.links else None
-    content = await _content(db, notification, projection)
-    changes: dict = {}
-    if content is not None and profile.canonical:
-        fields, notes = _presentation(content, profile, link, link_base)
-        fallbacks += notes
-        changes |= fields
-    elif content is not None and (
-        content.blocks or content.facts or content.images or content.actions
-    ):
-        fallbacks.append("rich_content_plain_text")
-    title = changes.pop("title", message.title)
-    body = changes.pop("body", message.body)
-    base_title = _clip(title, caps.max_title_chars)
-    clipped_title = _clip(
-        f"Update: {title}" if operation == "follow_up" else title, caps.max_title_chars
+    link = story_link(link_base, notification) if profile.capabilities.links else None
+    changes, fallbacks = await _presentation_changes(
+        db,
+        message,
+        notification,
+        projection=projection,
+        profile=profile,
+        link=link,
+        link_base=link_base,
     )
-    clipped_body = _clip(body, caps.max_text_chars)
-    budget = caps.max_payload_bytes - PAYLOAD_OVERHEAD - len(clipped_title.encode())
-    clipped_body = _clip_bytes(clipped_body, budget)
-    if base_title != title or clipped_body != body:
+    clipped = _clip_message(changes, operation, profile.capabilities)
+    if clipped.truncated:
         fallbacks.append("truncated")
     rendered = replace(
         message,
-        title=clipped_title,
-        body=clipped_body,
+        title=clipped.title,
+        body=clipped.body,
         link=link,
         operation=operation,
-        remote_ref=remote_ref if operation == "edit" or caps.threaded_follow_ups else None,
+        remote_ref=remote_ref
+        if operation == "edit" or profile.capabilities.threaded_follow_ups
+        else None,
         revision=revision,
         idempotency_key=str(idempotency_key),
         **changes,
     )
-    digest = hashlib.sha256(
-        json.dumps(
-            [
-                base_title,
-                rendered.body,
-                rendered.html,
-                [(a.label, a.url) for a in rendered.actions],
-                list(rendered.images),
-                rendered.link,
-            ],
-            separators=(",", ":"),
-        ).encode()
-    ).hexdigest()
-    return Rendering(rendered, tuple(dict.fromkeys(fallbacks)), digest)
+    return Rendering(
+        rendered,
+        tuple(dict.fromkeys(fallbacks)),
+        _rendering_digest(clipped.base_title, rendered),
+    )

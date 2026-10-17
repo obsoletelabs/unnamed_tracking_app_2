@@ -8,9 +8,10 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.database.base import Base
+from src.database.models.destination_scope import DestinationRevisionMixin, destination_fk
 
 
-class NotificationAggregationWindow(Base):
+class NotificationAggregationWindow(DestinationRevisionMixin, Base):
     """One open or sealed grouping window for one destination revision and scope."""
 
     __tablename__ = "notification_aggregation_windows"
@@ -32,13 +33,7 @@ class NotificationAggregationWindow(Base):
     user_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
-    destination_id: Mapped[UUID] = mapped_column(
-        PG_UUID(as_uuid=True),
-        ForeignKey("notification_destinations.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    destination_revision: Mapped[int] = mapped_column(Integer, nullable=False)
-    provider_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    destination_id: Mapped[UUID] = destination_fk()
     strategy: Mapped[str] = mapped_column(String(16), nullable=False)
     scope_key: Mapped[str] = mapped_column(String(200), nullable=False)
     # open: accepting members; full: closed early at the member cap; sealed: batches planned.
