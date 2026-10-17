@@ -10,6 +10,7 @@ from __future__ import annotations
 
 # SQLAlchemy's `func` is a dynamic namespace pylint cannot see through.
 # pylint: disable=not-callable
+import logging
 import time
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -35,6 +36,8 @@ from src.database.models.user import User
 from src.database.session import SessionLocal
 from src.features.game_identity_backfill import stages
 from src.features.game_identity_backfill.progress import Progress
+
+logger = logging.getLogger(__name__)
 
 VERSION = 1
 DEFAULT_BATCH = 500
@@ -305,6 +308,14 @@ async def _fail(user_id: UUID, stage: str, exc: BaseException) -> None:
         if row is None:
             return
         code = getattr(getattr(exc, "orig", None), "sqlstate", None) or type(exc).__name__
+        # the error class and SQLSTATE only: an exception message can quote library content
+        logger.error(
+            "identity backfill failed user=%s stage=%s error=%s code=%s",
+            user_id,
+            stage,
+            type(exc).__name__,
+            code,
+        )
         row.status = BackfillStatus.FAILED.value
         row.errors = [
             *(row.errors or []),
@@ -321,6 +332,12 @@ async def _verify(user_id: UUID) -> None:
         after = await snapshot(db, user_id)
         outcome, findings = judge(dict(row.before_counts or {}), after)
         row.after_counts = after
+        logger.info(
+            "identity backfill finished user=%s outcome=%s findings=%d",
+            user_id,
+            outcome,
+            len(findings),
+        )
         row.status = outcome
         row.stage = "verify"
         row.errors = [*(row.errors or []), *findings][:100]

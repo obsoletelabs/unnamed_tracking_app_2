@@ -9,6 +9,8 @@ restart, and a user's merge or keep-separate (or an undo) supersedes them.
 
 # pylint: disable=too-many-locals,duplicate-code
 
+import logging
+import time
 from dataclasses import dataclass, field
 from itertools import combinations
 from typing import Any
@@ -32,7 +34,7 @@ from src.database.models.game_identity import (
 )
 from src.features import game_duplicates
 from src.features.game_identity import decisions
-from src.features.game_identity.graph import IdentityConflict, merge_graph
+from src.features.game_identity.graph import IdentityConflict, lock_user_identities, merge_graph
 from src.features.game_identity.matching import (
     RULE,
     RULE_VERSION,
@@ -40,6 +42,8 @@ from src.features.game_identity.matching import (
     assess,
     title_key,
 )
+
+logger = logging.getLogger(__name__)
 
 _PAIR = DecisionSubject.IDENTITY_PAIR.value
 _AUTOMATIC = DecisionActor.AUTOMATIC.value
@@ -92,40 +96,46 @@ def _ordered(first: UUID, second: UUID) -> tuple[UUID, UUID]:
 
 
 async def _candidates(
-    db: AsyncSession, user_id: UUID
+    db: AsyncSession, user_id: UUID, only: set[UUID] | None = None
 ) -> tuple[dict[UUID, Candidate], dict[UUID, dict[str, Any]]]:
-    rows = (
-        await db.execute(
-            select(*(getattr(Game, name) for name in _SUMMARY))
-            .where(Game.user_id == user_id, Game.deleted_at.is_(None))
-            .order_by(Game.id)
-        )
-    ).mappings()
+    """Summaries and match candidates of the live games (or just those in `only`).
+
+    Reading the queue or the banner needs the few games named by open decisions, not the whole
+    library, so those callers pass `only` and pay for what they show."""
+    if only is not None and not only:
+        return {}, {}
+    games = select(*(getattr(Game, name) for name in _SUMMARY)).where(
+        Game.user_id == user_id, Game.deleted_at.is_(None)
+    )
+    if only is not None:
+        games = games.where(Game.id.in_(only))
+    rows = (await db.execute(games.order_by(Game.id))).mappings()
     summaries = {row["id"]: dict(row) for row in rows}
     # Trusted = an open link to an available observation of a connected source.
-    evidence = (
-        await db.execute(
-            select(
-                GameSourceObservationLink.game_id,
-                GameSourceObservation.observed_edition,
-                GameSourceObservation.availability,
-                GameSourceObservation.archived_at,
-                GameSourceConnection.disconnected_at,
-            )
-            .join(
-                GameSourceObservation,
-                GameSourceObservation.id == GameSourceObservationLink.observation_id,
-            )
-            .join(
-                GameSourceConnection,
-                GameSourceConnection.id == GameSourceObservation.connection_id,
-            )
-            .where(
-                GameSourceObservationLink.user_id == user_id,
-                GameSourceObservationLink.unlinked_at.is_(None),
-            )
+    observed = (
+        select(
+            GameSourceObservationLink.game_id,
+            GameSourceObservation.observed_edition,
+            GameSourceObservation.availability,
+            GameSourceObservation.archived_at,
+            GameSourceConnection.disconnected_at,
         )
-    ).all()
+        .join(
+            GameSourceObservation,
+            GameSourceObservation.id == GameSourceObservationLink.observation_id,
+        )
+        .join(
+            GameSourceConnection,
+            GameSourceConnection.id == GameSourceObservation.connection_id,
+        )
+        .where(
+            GameSourceObservationLink.user_id == user_id,
+            GameSourceObservationLink.unlinked_at.is_(None),
+        )
+    )
+    if only is not None:
+        observed = observed.where(GameSourceObservationLink.game_id.in_(summaries))
+    evidence = (await db.execute(observed)).all()
     trusted: set[UUID] = set()
     edition: dict[UUID, str] = {}
     for game_id, observed, availability, archived, disconnected in evidence:
@@ -204,6 +214,10 @@ async def run_matching(
     Nothing merges automatically unless `inventory_complete` and the strict rule
     holds with both records trusted; otherwise an equally strong match is only
     queued. Pairs a person touched, or rejected, are skipped."""
+    # One lock for the whole run, taken before anything is read, so every decision below is made
+    # on state nobody else can change until this transaction ends.
+    started = time.perf_counter()
+    await lock_user_identities(db, user_id)
     found, _ = await _candidates(db, user_id)
     current = await _current_pairs(db, user_id)
     dismissed = await _dismissed(db, user_id)
@@ -225,6 +239,9 @@ async def run_matching(
             result.skipped += 1
             continue
         merge = verdict.level == "auto" and allow_automatic and inventory_complete
+        if existing is not None and not merge and existing.rule_version == RULE_VERSION:
+            result.skipped += 1  # already suggested by this rule; nothing to write
+            continue
         outcome = await decisions.associate_automatically(
             db,
             user_id,
@@ -236,15 +253,31 @@ async def run_matching(
             reason=_reason(verdict.level, merge),
             evidence=verdict.evidence,
             merge=merge,
+            graph=graph,
         )
         if outcome.outcome == "associated":
             result.associated += 1
             result.pairs.append(pair)
-            graph = await merge_graph(db, user_id)
+            edge = outcome.relationship
+            if edge is not None and edge.from_game_id and edge.to_game_id:
+                graph.parent[edge.from_game_id] = edge.to_game_id  # keep the graph current
+                graph.edge[edge.from_game_id] = edge
         elif outcome.outcome == "suggested":
             result.suggested += 1
         else:
             result.skipped += 1
+    logger.info(
+        "identity matching user=%s games=%d associated=%d suggested=%d skipped=%d "
+        "automatic_allowed=%s inventory_complete=%s seconds=%.2f",
+        user_id,
+        len(found),
+        result.associated,
+        result.suggested,
+        result.skipped,
+        allow_automatic,
+        inventory_complete,
+        time.perf_counter() - started,
+    )
     return result
 
 
@@ -276,8 +309,7 @@ def _summary(row: dict[str, Any]) -> dict[str, Any]:
 
 async def queue(db: AsyncSession, user_id: UUID, limit: int = 50) -> dict[str, Any]:
     """Open review entries: persisted automatic suggestions both of whose records still exist."""
-    found, summaries = await _candidates(db, user_id)
-    graph = await merge_graph(db, user_id)
+    graph = await merge_graph(db, user_id, readonly=True)
     open_rows = await db.scalars(
         select(GameIdentityDecision)
         .where(
@@ -293,9 +325,13 @@ async def queue(db: AsyncSession, user_id: UUID, limit: int = 50) -> dict[str, A
             GameIdentityDecision.id,
         )
     )
+    rows = list(open_rows)
+    found, summaries = await _candidates(
+        db, user_id, {game for row in rows for game in _members(row)}
+    )
     dismissed = await _dismissed(db, user_id)
     entries: list[dict[str, Any]] = []
-    for row in open_rows:
+    for row in rows:
         pair = _members(row)
         if (
             pair[0] not in found
@@ -316,6 +352,8 @@ async def queue(db: AsyncSession, user_id: UUID, limit: int = 50) -> dict[str, A
                 "differences": _differences(summaries[pair[0]], summaries[pair[1]]),
             }
         )
+        if len(entries) > limit:  # one more than the page tells the caller there is more
+            break
     return {"entries": entries[:limit], "has_more": len(entries) > limit}
 
 
@@ -323,7 +361,6 @@ async def automatic_merges(
     db: AsyncSession, user_id: UUID, limit: int = 20
 ) -> list[dict[str, Any]]:
     """Active automatic associations the user can still undo (the banner source)."""
-    _, summaries = await _candidates(db, user_id)
     rows = await db.execute(
         select(GameIdentityDecision, GameRelationship)
         .join(GameRelationship, GameRelationship.decision_id == GameIdentityDecision.id)
@@ -336,8 +373,14 @@ async def automatic_merges(
         .order_by(GameIdentityDecision.created_at.desc(), GameIdentityDecision.id)
         .limit(limit)
     )
+    pairs = rows.all()
+    _, summaries = await _candidates(
+        db,
+        user_id,
+        {g for _, edge in pairs for g in (edge.from_game_id, edge.to_game_id) if g is not None},
+    )
     merged = []
-    for decision, edge in rows.all():
+    for decision, edge in pairs:
         if edge.from_game_id not in summaries or edge.to_game_id not in summaries:
             continue
         merged.append(

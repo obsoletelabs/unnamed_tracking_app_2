@@ -20,7 +20,7 @@ from __future__ import annotations
 from collections.abc import Collection
 from dataclasses import dataclass
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import null, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -99,6 +99,9 @@ def _select(metric: str, readings: list[Reading]) -> Reading | None:
     if metric == GameMetric.LAST_PLAYED.value:
         return policy.pick_latest(readings)
     return policy.pick_preferred(readings)
+
+
+_SYNC_SET = 200  # games reconciled per set when many groups are synced at once
 
 
 @dataclass
@@ -257,11 +260,15 @@ async def _ensure_members(db: AsyncSession, user_id: UUID, games: set[UUID], sta
         for metric in METRIC_FACTS:
             if (observation.id, metric) in taken or _value_of(metric, observation)[0] is None:
                 continue
+            # The ID is chosen here so the counter and its member go out in one flush.
             counter = GameMetricCounter(
-                user_id=user_id, game_id=links[observation.id], metric=metric, created_at=stamp
+                id=uuid4(),
+                user_id=user_id,
+                game_id=links[observation.id],
+                metric=metric,
+                created_at=stamp,
             )
             db.add(counter)
-            await db.flush()
             db.add(
                 GameMetricCounterMember(
                     user_id=user_id,
@@ -331,7 +338,17 @@ async def _sync(
     db: AsyncSession, user_id: UUID, graph_: MergeGraph, game_id: UUID, stamp: int
 ) -> set[UUID]:
     """Make memberships match the current links; returns the games in the group."""
-    games = graph_.group(game_id)
+    return await _sync_games(db, user_id, graph_, graph_.group(game_id), stamp)
+
+
+async def _sync_games(
+    db: AsyncSession, user_id: UUID, graph_: MergeGraph, games: set[UUID], stamp: int
+) -> set[UUID]:
+    """`_sync` for every game in `games`, which may span many merge groups.
+
+    Memberships, counters and adjustments are keyed by counter and observation, and each
+    counter is checked against its own group, so reconciling several groups together does
+    exactly what reconciling them one by one does, in a constant number of statements."""
     data = await _load(db, user_id, games)
     links = await _open_links(
         db, user_id, observations={m.observation_id for d in data for m in d.members}
@@ -374,17 +391,27 @@ async def sync_many(
 ) -> int:
     """`sync_counters` for many games with one merge graph (the library backfill, #102).
 
-    Returns how many merge groups were reconciled."""
+    Groups are reconciled together in bounded sets rather than one statement sequence per
+    game, so a 20,000-game library costs hundreds of statements instead of hundreds of
+    thousands. Returns how many merge groups were reconciled."""
     await lock_user_identities(db, user_id)
-    graph_ = await merge_graph(db, user_id)
+    graph_ = await merge_graph(db, user_id, readonly=True)
     stamp = _stamp(now)
     done: set[UUID] = set()
+    pending: set[UUID] = set()
     groups = 0
     for game_id in game_ids:
         if game_id in done:
             continue
-        done |= await _sync(db, user_id, graph_, game_id, stamp)
+        group = graph_.group(game_id)
+        done |= group
+        pending |= group
         groups += 1
+        if len(pending) >= _SYNC_SET:
+            await _sync_games(db, user_id, graph_, pending, stamp)
+            pending = set()
+    if pending:
+        await _sync_games(db, user_id, graph_, pending, stamp)
     return groups
 
 
@@ -875,7 +902,7 @@ async def reconcile(
         await sync_counters(db, user_id, game_id, now=now)
     else:
         await require_games(db, user_id, game_id)
-    graph_ = await merge_graph(db, user_id)
+    graph_ = await merge_graph(db, user_id, readonly=True)
     games = graph_.group(game_id)
     data = await _load(db, user_id, games)
     metrics: dict[str, Any] = {}

@@ -17,6 +17,7 @@ identity model, so the library, the game page and the identity dialog agree:
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Any
 from uuid import UUID
 
@@ -41,17 +42,38 @@ _PLAYTIME = "playtime"
 _HISTORY_LIMIT = 50
 
 
-async def _alive_games(db: AsyncSession, user_id: UUID) -> dict[UUID, Game]:
-    rows = await db.scalars(select(Game).where(Game.user_id == user_id, Game.deleted_at.is_(None)))
+async def _alive_games(db: AsyncSession, user_id: UUID, ids: Iterable[UUID]) -> dict[UUID, Game]:
+    """The live games among `ids`. Never the whole library: a page that shows one logical
+    game loads only that group, so the cost does not grow with the size of the library."""
+    wanted = set(ids)
+    if not wanted:
+        return {}
+    rows = await db.scalars(
+        select(Game).where(Game.user_id == user_id, Game.id.in_(wanted), Game.deleted_at.is_(None))
+    )
     return {game.id: game for game in rows}
 
 
-def _representative(group: set[UUID], root: UUID, alive: dict[UUID, Game]) -> UUID | None:
+async def _alive_keys(db: AsyncSession, user_id: UUID, ids: Iterable[UUID]) -> dict[UUID, str]:
+    """Sort titles of the live games among `ids`: all the library layout needs to know about
+    the games that take part in a merge or a relationship, as two columns rather than rows."""
+    wanted = set(ids)
+    if not wanted:
+        return {}
+    rows = await db.execute(
+        select(Game.id, Game.sort_title).where(
+            Game.user_id == user_id, Game.id.in_(wanted), Game.deleted_at.is_(None)
+        )
+    )
+    return {game_id: sort_title for game_id, sort_title in rows.tuples()}
+
+
+def _representative(group: set[UUID], root: UUID, alive: dict[UUID, str]) -> UUID | None:
     """The merge root, or (when it is in Trash) the first live member by title."""
     if root in alive:
         return root
-    live = sorted((alive[g] for g in group if g in alive), key=lambda g: (g.sort_title, str(g.id)))
-    return live[0].id if live else None
+    live = sorted((g for g in group if g in alive), key=lambda g: (alive[g], str(g)))
+    return live[0] if live else None
 
 
 async def library_layout(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
@@ -59,8 +81,22 @@ async def library_layout(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
     preferences = await load_preferences(db, user_id)
     mode = preferences["library_version_display"]
     rules: dict[str, str] = preferences["library_relationship_display"]
-    alive = await _alive_games(db, user_id)
-    merge = await graph.merge_graph(db, user_id)
+    merge = await graph.merge_graph(db, user_id, readonly=True)
+    related_edges = list(
+        await db.scalars(
+            select(GameRelationship).where(
+                GameRelationship.user_id == user_id,
+                GameRelationship.ended_at.is_(None),
+                GameRelationship.kind != _SAME_GAME,
+                GameRelationship.from_game_id.is_not(None),
+                GameRelationship.to_game_id.is_not(None),
+            )
+        )
+    )
+    taking_part = {*merge.parent, *merge.parent.values()}
+    for related_edge in related_edges:
+        taking_part |= {g for g in (related_edge.from_game_id, related_edge.to_game_id) if g}
+    alive = await _alive_keys(db, user_id, taking_part)
     separate_ids = set(
         await db.scalars(
             select(GameIdentity.game_id).where(
@@ -97,16 +133,7 @@ async def library_layout(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
         if members:
             result.append({"umbrella_id": head, "members": members})
     related = []
-    edges = await db.scalars(
-        select(GameRelationship).where(
-            GameRelationship.user_id == user_id,
-            GameRelationship.ended_at.is_(None),
-            GameRelationship.kind != _SAME_GAME,
-            GameRelationship.from_game_id.is_not(None),
-            GameRelationship.to_game_id.is_not(None),
-        )
-    )
-    for edge in edges:
+    for edge in related_edges:
         if edge.from_game_id not in alive or edge.to_game_id not in alive:
             continue
         shown = edge.display if edge.display != "default" else rules.get(edge.kind, "link")
@@ -170,7 +197,7 @@ async def game_overview(db: AsyncSession, user_id: UUID, game_id: UUID) -> dict[
     """The reconciled overall values and each version's own values for one logical game."""
     metrics = await counters.reconcile(db, user_id, game_id)
     tracking = await manual.tracking_view(db, user_id, game_id)
-    alive = await _alive_games(db, user_id)
+    alive = await _alive_games(db, user_id, metrics["games"])
     members = [alive[g] for g in metrics["games"] if g in alive]
     root = metrics["identity_id"]
     members.sort(key=lambda g: (g.id != root, g.sort_title, str(g.id)))
@@ -184,7 +211,7 @@ async def game_overview(db: AsyncSession, user_id: UUID, game_id: UUID) -> dict[
             )
         )
     }
-    merge = await graph.merge_graph(db, user_id)
+    merge = await graph.merge_graph(db, user_id, readonly=True)
     achievement_rows = {v["game_id"]: v for v in tracking["achievements"]["versions"]}
     completion_rows = {v["game_id"]: v for v in tracking["completion"]["versions"]}
     playtime = metrics["metrics"][_PLAYTIME]
@@ -322,9 +349,9 @@ def _observation_out(
 async def identity_sources(db: AsyncSession, user_id: UUID, game_id: UUID) -> dict[str, Any]:
     """Why this group is one game: sources, relationships, decisions and counters."""
     await graph.require_games(db, user_id, game_id)
-    merge = await graph.merge_graph(db, user_id)
+    merge = await graph.merge_graph(db, user_id, readonly=True)
     group = merge.group(game_id)
-    alive = await _alive_games(db, user_id)
+    alive = await _alive_games(db, user_id, group)
     members = sorted(
         (alive[g] for g in group if g in alive),
         key=lambda g: (g.id != merge.root(game_id), g.sort_title, str(g.id)),

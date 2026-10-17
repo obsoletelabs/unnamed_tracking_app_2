@@ -7,7 +7,7 @@ from __future__ import annotations
 # pylint: disable=not-callable
 from collections.abc import Iterable, Iterator, Sequence
 from typing import Any, TypeVar
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -276,24 +276,34 @@ async def placement(p: Progress, batch_size: int) -> None:
 
         async def work(db: AsyncSession, batch: Sequence[Any] = batch) -> None:
             await graph.lock_user_identities(db, p.user_id)
+            # one lookup for the whole batch rather than one per group
+            placed_now = {
+                row.game_id: row.umbrella_id
+                for row in await db.execute(
+                    select(GameIdentity.game_id, GameIdentity.umbrella_id).where(
+                        GameIdentity.user_id == p.user_id,
+                        GameIdentity.game_id.in_([m.id for _, group in batch for m in group]),
+                    )
+                )
+            }
+            identities: list[GameIdentity] = []
             for _, members in batch:
-                await _place_group(db, p, members)
+                await _place_group(db, p, members, placed_now, identities)
+            await db.flush()  # the umbrellas, which the identities reference
+            db.add_all(identities)
+            await db.flush()
 
         await p.transaction(work)
 
 
-async def _place_group(  # pylint: disable=too-many-locals
-    db: AsyncSession, p: Progress, members: list[GameRow]
+async def _place_group(  # pylint: disable=too-many-locals,too-many-arguments,too-many-positional-arguments
+    db: AsyncSession,
+    p: Progress,
+    members: list[GameRow],
+    placed: dict[UUID, UUID],
+    identities: list[GameIdentity],
 ) -> None:
-    found = {
-        row.game_id: row.umbrella_id
-        for row in await db.execute(
-            select(GameIdentity.game_id, GameIdentity.umbrella_id).where(
-                GameIdentity.user_id == p.user_id,
-                GameIdentity.game_id.in_([m.id for m in members]),
-            )
-        )
-    }
+    found = {m.id: placed[m.id] for m in members if m.id in placed}
     todo = [m for m in members if m.id not in found]
     if not todo:
         return
@@ -311,6 +321,7 @@ async def _place_group(  # pylint: disable=too-many-locals
         )
     else:
         umbrella = GameUmbrella(
+            id=uuid4(),  # chosen here so the umbrella and its identities go out in one flush
             user_id=p.user_id,
             title=head.title.strip() or "Untitled game",
             sort_title=head.sort_title or head.title.lower(),
@@ -318,7 +329,6 @@ async def _place_group(  # pylint: disable=too-many-locals
             updated_at=stamp,
         )
         db.add(umbrella)
-        await db.flush()
         umbrella_id, has_primary = umbrella.id, False
         p.add("umbrellas_created")
     ids = {m.id for m in members}
@@ -329,7 +339,7 @@ async def _place_group(  # pylint: disable=too-many-locals
         primary = not has_primary and game.id == head.id
         has_primary = has_primary or primary
         grouped = len(members) > 1
-        db.add(
+        identities.append(
             GameIdentity(
                 user_id=p.user_id,
                 game_id=game.id,
@@ -348,7 +358,6 @@ async def _place_group(  # pylint: disable=too-many-locals
                 updated_at=stamp,
             )
         )
-    await db.flush()
     p.add("identities_created", len(todo))
 
 

@@ -368,7 +368,7 @@ def _version_rows(
 async def achievements_view(db: AsyncSession, user_id: UUID, game_id: UUID) -> dict[str, Any]:
     """Umbrella totals and a per-version breakdown with no double counting."""
     await _live_game(db, user_id, game_id)
-    group = (await graph.merge_graph(db, user_id)).group(game_id)
+    group = (await graph.merge_graph(db, user_id, readonly=True)).group(game_id)
     games = list(
         await db.scalars(
             select(Game)
@@ -557,7 +557,7 @@ async def completion_history(
 async def completion_view(db: AsyncSession, user_id: UUID, game_id: UUID) -> dict[str, Any]:
     """Per-version status and an honest umbrella summary of how many are complete."""
     await _live_game(db, user_id, game_id)
-    group = (await graph.merge_graph(db, user_id)).group(game_id)
+    group = (await graph.merge_graph(db, user_id, readonly=True)).group(game_id)
     games = list(
         await db.scalars(
             select(Game)

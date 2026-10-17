@@ -19,6 +19,7 @@ installations apart.
 
 from __future__ import annotations
 
+import logging
 import re
 from datetime import date
 from typing import Any
@@ -37,6 +38,8 @@ from src.features.game_ingestion.service import (
     complete_inventory,
     find_connection,
 )
+
+logger = logging.getLogger(__name__)
 
 CONTRACT_NAME = "playnite-observations"
 CURRENT_VERSION = 1
@@ -259,6 +262,16 @@ async def record_batch(
                 "outcome": outcome,
             }
         )
+    counts: dict[str, int] = {}
+    for row in out:
+        counts[row["outcome"]] = counts.get(row["outcome"], 0) + 1
+    logger.info(
+        "playnite observations user=%s library=%s entries=%d outcomes=%s",
+        user_id,
+        batch.library_id or "default",
+        len(out),
+        dict(sorted(counts.items())),
+    )
     return out
 
 
@@ -267,12 +280,21 @@ async def record_inventory(
 ) -> InventoryResult:
     """The only place an absent Playnite entry becomes unavailable (never deleted)."""
     require_supported(body.contract_version)
-    return await complete_inventory(
+    result = await complete_inventory(
         db,
         user_id,
         connection_for(body.library_id),
         {str(item) for item in body.playnite_ids},
     )
+    logger.info(
+        "playnite inventory user=%s library=%s reported=%d applied=%s marked_unavailable=%d",
+        user_id,
+        body.library_id or "default",
+        len(body.playnite_ids),
+        result.applied,
+        result.marked_unavailable,
+    )
+    return result
 
 
 async def has_connection(db: AsyncSession, user_id: UUID, library_id: str | None) -> bool:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from typing import Any, NamedTuple
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -84,12 +85,19 @@ async def active_edges(
     return list(await db.scalars(statement))
 
 
+class EdgeView(NamedTuple):
+    """The read-only part of a same-game edge that the views show."""
+
+    id: UUID
+    display: str
+
+
 @dataclass(frozen=True)
 class MergeGraph:
     """Active `same_game` edges of one user: each identity absorbs into one parent."""
 
     parent: dict[UUID, UUID]
-    edge: dict[UUID, GameRelationship]
+    edge: dict[UUID, Any]  # GameRelationship, or EdgeView for a read-only graph
 
     def root(self, game_id: UUID) -> UUID:
         seen = {game_id}
@@ -116,7 +124,32 @@ class MergeGraph:
         return self.subtree(self.root(game_id))
 
 
-async def merge_graph(db: AsyncSession, user_id: UUID) -> MergeGraph:
+async def merge_graph(db: AsyncSession, user_id: UUID, *, readonly: bool = False) -> MergeGraph:
+    """The user's active merge edges.
+
+    `readonly` reads three columns per edge instead of building an ORM object for each one,
+    which is what a view that only follows merges needs. Anything that changes an edge takes
+    the default, which returns the entities themselves."""
+    if readonly:
+        rows = await db.execute(
+            select(
+                GameRelationship.id,
+                GameRelationship.from_game_id,
+                GameRelationship.to_game_id,
+                GameRelationship.display,
+            ).where(
+                GameRelationship.user_id == user_id,
+                GameRelationship.kind == RelationshipKind.SAME_GAME.value,
+                GameRelationship.ended_at.is_(None),
+                GameRelationship.from_game_id.is_not(None),
+                GameRelationship.to_game_id.is_not(None),
+            )
+        )
+        found = rows.all()
+        return MergeGraph(
+            parent={child: parent for _, child, parent, _ in found},
+            edge={child: EdgeView(edge_id, shown) for edge_id, child, _, shown in found},
+        )
     edges = await active_edges(db, user_id, RelationshipKind.SAME_GAME.value)
     return MergeGraph(
         parent={e.from_game_id: e.to_game_id for e in edges if e.from_game_id and e.to_game_id},
@@ -127,7 +160,7 @@ async def merge_graph(db: AsyncSession, user_id: UUID) -> MergeGraph:
 async def resolve_identity(db: AsyncSession, user_id: UUID, game_id: UUID) -> UUID:
     """The identity a game is shown as: itself unless merged into another."""
     await require_games(db, user_id, game_id)
-    return (await merge_graph(db, user_id)).root(game_id)
+    return (await merge_graph(db, user_id, readonly=True)).root(game_id)
 
 
 async def would_cycle(
