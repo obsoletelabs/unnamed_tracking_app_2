@@ -77,11 +77,30 @@ All paths below are under `/api/delegation/v1`. Responses are not cacheable.
 | `compatibility.write` | `PATCH /games/{id}/play-compatibility`: replace/clear your own multiplayer preset; separate from tracking writes |
 | `achievements.write` | `POST /games/{id}/achievement-reports`, `DELETE /games/{id}/achievement-reports/{report_id}`: local self reports only |
 
-Resource IDs never permit cross-user reads or writes. These credentials are
+Resource IDs never permit cross-user reads or writes. The
+[API access matrix](../development/api-access-matrix.md) lists every route and the
+credential class it accepts. These credentials are
 rejected on ordinary app, API-key management, authentication, plugin-management
 and administration routes. Existing `utk_` API keys retain their legacy behavior;
 they are not accepted as delegated credentials. Browser sessions are required
 to manage consent and grants.
+
+## Reference client and identity-provider extension points
+
+The companion plugins repository ships a packaged, non-Discord reference consumer,
+`reference-clients/integration-access`, that uses only this versioned contract: it
+discovers the instance, registers or uses an approved origin, requests a read-only
+subset, optionally requests writes separately, exchanges once, rotates and handles
+reduction, revocation and disabled clients. Its `tools/check_integration_access.py`
+run exercises denial, timed and Until revoked grants, origin policy, cross-user IDs
+and legacy API-key compatibility against a real instance.
+
+Identity providers (Discord and others) live in their own adapters outside the host.
+An adapter authenticates its own users, then passes `external_account`
+(`provider`, `subject`, `username`) in the access request as display context. The
+host stores and shows it but never treats it as ownership proof, and the adapter
+never receives host infrastructure. Origin approval or the any-HTTPS-origin policy
+only lets a client ask; a user must still approve each capability.
 
 ## Data provenance
 

@@ -189,7 +189,7 @@ Until then, PRs remain available for review with current validation and screensh
   chip walls with one searchable, keyboard-operable picker (counts, include/exclude
   modes, merged-spelling hints) plus deterministic tag normalization in
   `utils/genres.ts`, documented in the games guide. Classic and Modern share it.
-- **K game editor / 6–7, 14, 18–19:** active issue #143, in review. One shared
+- **K game editor / 6–7, 14, 18–19:** issue #143, merged in PR #171. One shared
   `GameFormModal` on the new `EditorShell` frame serves Modern and Classic: hero,
   eight direct tabs, a bounded body and pinned actions, with no add wizard.
   Favorite, manual collections, manual playtime and the resume note travel in
@@ -200,6 +200,8 @@ Until then, PRs remain available for review with current validation and screensh
   INTEGER range is now a validation error rather than a database failure.
 - **K / #144, #149 and L–O:** see the status board below for live PR state; only
   merged rows are complete.
+- **K media editors / 26–27:** issue #144, in review in [PR #181](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/181), stacked on the merged #143 editor. Movie, TV and anime editors share `MediaFormShell` on `EditorShell`: Basics, Details, Tracking, Artwork and Links tabs, pinned actions, and staged metadata lookup above every tab. Rewatches, dates, source, subratings, tags, countries, languages, age rating, features, anime format and validated provider IDs use each type's existing create/update request. Seasons, progress, title protection and immutable identity remain unchanged.
+- **Remaining K (#149) and L–O:** approved; not implemented yet. The package details below describe intended work, not completed behavior.
 - **M / 45–46:** issue [#146](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/146)
   implements per-kind Empty trash (explicit `confirm: true`, confirmed deletion-time
   bound, 200-title batches, per-title savepoints and deleted/failed/remaining counts)
@@ -208,6 +210,15 @@ Until then, PRs remain available for review with current validation and screensh
   `features/trash/media_titles.py`, separate from the #151 game-file sweep paths.
   No migration. Modern/Classic screenshots are in the media library guide.
   Merged as #168; row 53 was delivered separately by merged #166.
+  Review, hosted checks and merge remain pending; row 53 stays with #152.
+- **O / 51–52 (activity heatmap and day detail):** issue
+  [#147](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/147), stacked on the
+  game-statistics predicate from #152. A bounded owned day endpoint, month labels, keyboard
+  and pointer access and one shared Modern/Classic dialog are implemented; see
+  [Statistics activity](../user-guide/statistics.md) and the architecture notes. Settings
+  search (68) and selective copy (71) in package O are separate.
+- **K–N and the rest of O:** approved; not implemented yet. The package details below describe
+  intended work, not completed behavior.
 
 ### Issue-by-issue execution order
 
@@ -215,6 +226,7 @@ The owner requested one issue at a time, most complex first, on 15 October 2026.
 [Tracker #141](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/141)
 contains the ordered queue, dependencies and existing related follow-ups #125,
 #132 and #138–140. #142 is merged in #155 and #143 in #171; see the status board below.
+#132 and #138–140. #142 is merged in #155; #143 is merged in #171, and #144 is in review in [PR #181](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/181).
 
 All 29 untouched approved matrix rows are assigned exactly once:
 

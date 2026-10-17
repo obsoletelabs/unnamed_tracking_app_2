@@ -4,6 +4,7 @@ import hashlib
 import re
 import secrets
 import time
+import unicodedata
 from dataclasses import dataclass
 from typing import Final, Literal
 from uuid import UUID
@@ -78,15 +79,84 @@ def validate_password(password: str) -> str:
     return password
 
 
+USERNAME_MAX_LENGTH = 100
+_USERNAME_ALLOWED = re.compile(r"[A-Za-z0-9_.-]+")
+_USERNAME_RULE = "Use only ASCII letters, digits, underscores, hyphens and dots."
+
+
+def _describe_username_character(char: str) -> str:
+    if char == " ":
+        return "spaces"
+    if char.isprintable():
+        return f"\u201c{char}\u201d"
+    return "control or invisible characters"
+
+
+def username_rule_error(value: str) -> str | None:
+    """Name the first rule a new/renamed username breaks, or None when it is valid.
+
+    The frontend mirrors these rules and messages in ``services/usernameValidation.ts``;
+    keep the two in step (``tests/test_username_validation.py`` pins the vectors).
+    Existence checks are deliberately not part of this: they stay in the save path.
+    """
+    username = value.strip()
+    if not username:
+        return "Enter a username."
+    if len(username) > USERNAME_MAX_LENGTH:
+        return (
+            f"Username is too long: use at most {USERNAME_MAX_LENGTH} characters "
+            f"(this one has {len(username)})."
+        )
+    if not _USERNAME_ALLOWED.fullmatch(username):
+        offenders: list[str] = []
+        for char in username:
+            if _USERNAME_ALLOWED.fullmatch(char):
+                continue
+            label = _describe_username_character(char)
+            if label not in offenders:
+                offenders.append(label)
+        shown = ", ".join(offenders[:5]) + (", \u2026" if len(offenders) > 5 else "")
+        return f"Username cannot contain {shown}. {_USERNAME_RULE}"
+    return None
+
+
 def validate_username(value: str) -> str:
     """Validate new/renamed sign-in identifiers without changing legacy accounts."""
-    username = value.strip()
-    if not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", username):
-        raise ValueError(
-            "Use 1–100 ASCII letters, digits, underscores, hyphens or dots. "
-            "Spaces and other characters are not allowed."
-        )
-    return username
+    error = username_rule_error(value)
+    if error:
+        raise ValueError(error)
+    return value.strip()
+
+
+DISPLAY_NAME_MAX_LENGTH: Final = 64
+_DISPLAY_NAME_BLOCKED_CATEGORIES: Final = frozenset({"Cc", "Cf", "Cs", "Co", "Cn", "Zl", "Zp"})
+
+
+def validate_display_name(value: str) -> str | None:
+    """Normalise and validate an optional visible name; blank means "use the username".
+
+    Unicode letters, marks, emoji and spaces are allowed. Control, format (including
+    bidirectional overrides and zero-width characters), surrogate, private-use,
+    unassigned and line/paragraph separator characters are rejected so a name cannot
+    spoof other text. It is display-only and never used for authentication or lookup.
+    """
+    name = unicodedata.normalize("NFC", value)
+    for char in name:
+        if unicodedata.category(char) in _DISPLAY_NAME_BLOCKED_CATEGORIES or (
+            char.isspace() and char != " "
+        ):
+            raise ValueError("Display names cannot contain control or invisible characters.")
+    name = re.sub(r" {2,}", " ", name).strip()
+    if not name:
+        return None
+    if len(name) > DISPLAY_NAME_MAX_LENGTH:
+        raise ValueError(f"Display names can be at most {DISPLAY_NAME_MAX_LENGTH} characters.")
+    return name
+
+
+def effective_display_name(user: User) -> str:
+    """Name shown to people: the chosen display name, else the sign-in username."""
+    return user.display_name or user.username
 
 
 def hash_password(password: str) -> str:
