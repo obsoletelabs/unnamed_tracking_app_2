@@ -15,6 +15,7 @@ compatibility surface or notification migration below is missing from this page.
 | Event type | Producer | Story model |
 | --- | --- | --- |
 | `media.episode.aired`, `media.season.started`, `media.sequel.announced`, `media.movie.released` | Host media scans (`notifications.py`) | Single-item legacy rows on the same dispatcher; aggregated by entity and release day |
+| `media.franchise.season`, `media.franchise.extra` | Scheduled AniList franchise checks (`anime_franchise.py`, rows from `notifications.py`) | Single-item legacy rows on the same dispatcher; opt-in per account |
 | `game.released`, `game.sale.started`, `game.price.threshold_hit` | Host game scans | One-item stories from validated quotes (#116) |
 | `system.plugin.update` | Host plugin update checks | `available`, then `installed`, `failed` or `resolved` (#116) |
 | `security.session.anomaly` | Host session security | Security purpose, never delayed or aggregated |
