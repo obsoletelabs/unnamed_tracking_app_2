@@ -248,6 +248,14 @@ are redacted. Validation errors never echo submitted values.
 | GET | `/api/achievement-icon/{achievement_id}` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | GET | `/api/game-duplicates` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | POST | `/api/game-duplicates/keep-both` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
+| GET | `/api/game-identity/decisions` | user | Every game, observation, counter and relationship is looked up with `user_id == caller`; another user's ID is not found. |
+| GET | `/api/game-identity/games/{game_id}` | user | Every game, observation, counter and relationship is looked up with `user_id == caller`; another user's ID is not found. |
+| POST | `/api/game-identity/merge` | user | Every game, observation, counter and relationship is looked up with `user_id == caller`; another user's ID is not found. |
+| POST | `/api/game-identity/observations/{observation_id}/move` | user | Every game, observation, counter and relationship is looked up with `user_id == caller`; another user's ID is not found. |
+| POST | `/api/game-identity/relationships` | user | Every game, observation, counter and relationship is looked up with `user_id == caller`; another user's ID is not found. |
+| POST | `/api/game-identity/relationships/{relationship_id}/end` | user | Every game, observation, counter and relationship is looked up with `user_id == caller`; another user's ID is not found. |
+| POST | `/api/game-identity/separate` | user | Every game, observation, counter and relationship is looked up with `user_id == caller`; another user's ID is not found. |
+| POST | `/api/game-identity/unmerge` | user | Every game, observation, counter and relationship is looked up with `user_id == caller`; another user's ID is not found. |
 | POST | `/api/game-ownership/group` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | POST | `/api/game-ownership/separate` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | GET | `/api/game/achievements-summary` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |

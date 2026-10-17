@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.game import Game
 from src.database.models.game_duplicate_dismissal import GameDuplicateDismissal
+from src.features.game_identity.decisions import separate_identities
 
 _SUMMARY_FIELDS = (
     "id",
@@ -126,4 +127,6 @@ async def keep_both(db: AsyncSession, user_id: UUID, first_id: UUID, second_id: 
         .values(user_id=user_id, first_game_id=ids[0], second_game_id=ids[1])
         .on_conflict_do_nothing()
     )
+    # The same judgement in the identity model, so automatic matching honours it.
+    await separate_identities(db, user_id, first_id, second_id)
     await db.commit()
