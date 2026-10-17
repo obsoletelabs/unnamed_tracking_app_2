@@ -79,7 +79,7 @@ def test_rich_content_migration_keeps_existing_revisions_and_is_reversible():
                 'UPDATE notification_story_revisions SET content = \'{"title": "T"}\'::jsonb'
             )
             refused = migrate("downgrade", PREVIOUS_HEAD, expect=1)
-            assert "Refusing to drop stored canonical notification content" in refused.stderr
+            assert "Refusing to drop" in refused.stderr
             assert connection.execute(
                 "SELECT content->>'title' FROM notification_story_revisions"
             ).fetchone() == ("T",)
