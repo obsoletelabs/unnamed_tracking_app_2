@@ -48,7 +48,6 @@ from src.api.routes import (
     notification_verification,
     notifications,
     password_recovery,
-    playnite,
     preferences,
     public_apps,
     session_manager,
