@@ -22,6 +22,7 @@ from src.features.notification_audit import change_notices
 from src.features.notification_controller import emit_legacy_rows
 from src.features.notification_inbox import (
     InboxQuery,
+    lifecycle_state,
     query_inbox,
     retention_policy,
     story_details,
@@ -39,13 +40,18 @@ router = APIRouter(
 )
 
 
-def _read(n: Notification) -> dict:
+def _read(n: Notification, now: int = 0, story: dict | None = None) -> dict:
     link = (
         plugin_update_route_from_dedupe(n.dedupe_key or "")
         if n.kind == "plugin_update" and n.media_type == "plugin"
         else None
     )
     return {
+        "state": lifecycle_state(n, now or int(time.time())),
+        "dismissed_at": n.dismissed_at,
+        "deleted_at": n.deleted_at,
+        "expires_at": n.expires_at,
+        "story": story,
         "link": link,
         "id": n.id,
         "kind": n.kind,
