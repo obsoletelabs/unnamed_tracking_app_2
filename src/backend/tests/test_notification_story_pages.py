@@ -135,10 +135,22 @@ class World(SimpleNamespace):
                 ),
             )
             await db.commit()
-            story = await db.scalar(
-                select(NotificationStory).where(NotificationStory.user_id == self.owner)
-            )
+            story = await db.scalar(self.stories())
             return notice_id, story.id
+
+    def stories(self):
+        """Only this world's rows: other tests may leave unrelated stories behind."""
+        return select(NotificationStory).where(NotificationStory.user_id == self.owner)
+
+    def revisions(self):
+        return select(NotificationStoryRevision).where(
+            NotificationStoryRevision.story_id.in_(
+                self.stories().with_only_columns(NotificationStory.id)
+            )
+        )
+
+    def live_links(self):
+        return select(NotificationLiveLink).where(NotificationLiveLink.user_id == self.owner)
 
     def as_user(self, user_id):
         app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=user_id)
@@ -218,7 +230,7 @@ async def test_content_is_validated_stored_privately_and_drives_legacy_text(worl
     notice_id, story_id = await world.emit()
     async with SessionLocal() as db:
         notice = await db.get(Notification, notice_id)
-        revision = (await db.scalars(select(NotificationStoryRevision))).one()
+        revision = (await db.scalars(world.revisions())).one()
         assert notice.title == "Update ready"
         assert "Build: " + SECRET_FACT in notice.body and "**" not in notice.body
         assert revision.content["facts"][0]["value"]["value"] == SECRET_FACT
@@ -243,7 +255,7 @@ async def test_unsafe_content_is_rejected_without_consuming_the_event(world, cha
                 select(NotificationReceipt).where(NotificationReceipt.dedupe_key == "rejected")
             )
         ).all()
-        assert not (await db.scalars(select(NotificationStory))).all()
+        assert not (await db.scalars(world.stories())).all()
 
 
 async def test_host_producer_with_credential_shaped_title_degrades_to_plain_text(world):
@@ -320,7 +332,7 @@ async def test_event_without_story_becomes_a_single_item_story(world):
             ),
         )
         await db.commit()
-        story = (await db.scalars(select(NotificationStory))).one()
+        story = (await db.scalars(world.stories())).one()
         assert story.phase == "posted" and story.revision == 1
 
 
@@ -431,7 +443,7 @@ async def test_live_link_shows_only_the_public_projection(world):
     )
 
     async with SessionLocal() as db:
-        stored = (await db.scalars(select(NotificationLiveLink))).one()
+        stored = (await db.scalars(world.live_links())).one()
         assert stored.token_hash != token and token not in stored.token_hash
 
 
@@ -532,8 +544,8 @@ async def test_deleting_the_item_or_deactivating_the_owner_kills_the_link(world)
     async with SessionLocal() as db:
         await delete_notice(db, world.owner, notice_id)
         await db.commit()
-        assert (await db.scalars(select(NotificationStoryRevision))).one().content is None
-        assert (await db.scalars(select(NotificationLiveLink))).one().revoked_at is not None
+        assert (await db.scalars(world.revisions())).one().content is None
+        assert (await db.scalars(world.live_links())).one().revoked_at is not None
     assert (await world.client.get(f"/api/notifications/live/{token}")).status_code == 404
 
     _, story_id = await world.emit(dedupe="again", key="story-2")
