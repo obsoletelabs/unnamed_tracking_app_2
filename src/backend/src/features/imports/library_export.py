@@ -12,6 +12,7 @@ from src.database.models.anime import Anime
 from src.database.models.game import Game
 from src.database.models.movies import Movie
 from src.database.models.tv_show import TVShow
+from src.features.game_identity import manual
 
 
 async def build_library_export(db: AsyncSession, user_id: UUID) -> LibraryExport:
@@ -28,4 +29,9 @@ async def build_library_export(db: AsyncSession, user_id: UUID) -> LibraryExport
             .scalars()
             .all()
         )
-    return LibraryExport(exported_at=int(time.time()), game_count=len(groups["games"]), **groups)
+    return LibraryExport(
+        exported_at=int(time.time()),
+        game_count=len(groups["games"]),
+        **groups,
+        **await manual.export_rows(db, user_id),
+    )

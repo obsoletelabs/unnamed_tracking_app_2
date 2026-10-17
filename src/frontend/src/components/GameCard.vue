@@ -19,6 +19,10 @@ const props = defineProps<{
   rank?: number | null;
   ownedCopyCount?: number;
   possibleDuplicate?: boolean;
+  // versions folded under this entry, and the one version a search named (#101)
+  versionCount?: number;
+  versionContext?: { label: string; gameId: string } | null;
+  nestedLabel?: string | null;
 }>();
 
 const emit = defineEmits<{
@@ -134,7 +138,7 @@ function openGame(e?: MouseEvent) {
     emit("toggle-select", props.game, e?.shiftKey ?? false);
     return;
   }
-  router.push(`/games/${props.game.id}`);
+  router.push(`/games/${props.versionContext?.gameId ?? props.game.id}`);
 }
 
 async function toggleFavorite() {
@@ -503,6 +507,23 @@ function copyFolderPath() {
       <p v-if="mutationError" class="mutation-error" role="alert">
         {{ mutationError }}
       </p>
+      <div
+        v-if="versionContext"
+        class="meta-row version-context"
+        data-testid="version-context"
+      >
+        {{ versionContext.label }}
+      </div>
+      <div
+        v-else-if="(versionCount ?? 1) > 1"
+        class="meta-row version-count"
+        data-testid="version-count"
+      >
+        {{ versionCount }} versions
+      </div>
+      <div v-if="nestedLabel" class="meta-row version-count">
+        {{ nestedLabel }}
+      </div>
       <div v-if="(ownedCopyCount ?? 1) > 1" class="meta-row ownership-count">
         {{ ownedCopyCount }} owned copies
       </div>
@@ -533,6 +554,11 @@ function copyFolderPath() {
   margin: 6px 0 0;
   color: var(--ui-error);
   font-size: 0.75rem;
+}
+.version-context,
+.version-count {
+  color: var(--ui-accent-text);
+  font-size: 0.78rem;
 }
 .copy-review-link {
   display: block;
@@ -933,7 +959,7 @@ function copyFolderPath() {
       max-height: 100px;
     }
     .title-row .score-tag,
-    .meta-row:not(.ownership-count) {
+    .meta-row:not(.ownership-count, .version-count, .version-context) {
       display: none;
     }
   }

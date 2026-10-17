@@ -245,6 +245,55 @@ are redacted. Validation errors never echo submitted values.
 
 | Method | Path | Authority | Ownership and effect |
 | --- | --- | --- | --- |
+| GET | `/api/game-identity/backfill` | user | Own identity, review and backfill state; foreign identifiers are refused. |
+| GET | `/api/game-identity/backfill/plan` | user | Own identity, review and backfill state; foreign identifiers are refused. |
+| GET | `/api/game-identity/games/{game_id}/overview` | user | Own identity, review and backfill state; foreign identifiers are refused. |
+| GET | `/api/game-identity/games/{game_id}/sources` | user | Own identity, review and backfill state; foreign identifiers are refused. |
+| GET | `/api/game-identity/library` | user | Own identity, review and backfill state; foreign identifiers are refused. |
+| GET | `/api/game-identity/review/automatic` | user | Own identity, review and backfill state; foreign identifiers are refused. |
+| GET | `/api/game-identity/review/queue` | user | Own identity, review and backfill state; foreign identifiers are refused. |
+| POST | `/api/game-identity/backfill` | user | Own identity, review and backfill state; foreign identifiers are refused. |
+| POST | `/api/game-identity/review/automatic/{decision_id}/keep` | user | Own identity, review and backfill state; foreign identifiers are refused. |
+| POST | `/api/game-identity/review/automatic/{decision_id}/undo` | user | Own identity, review and backfill state; foreign identifiers are refused. |
+| POST | `/api/game-identity/review/queue/{decision_id}/keep-separate` | user | Own identity, review and backfill state; foreign identifiers are refused. |
+| POST | `/api/game-identity/review/queue/{decision_id}/merge` | user | Own identity, review and backfill state; foreign identifiers are refused. |
+| POST | `/api/game-identity/review/run` | user | Own identity, review and backfill state; foreign identifiers are refused. |
+| PUT | `/api/game-identity/relationships/{relationship_id}` | user | Own identity, review and backfill state; foreign identifiers are refused. |
+| PUT | `/api/game-identity/relationships/{relationship_id}/display` | user | Own identity, review and backfill state; foreign identifiers are refused. |
+
+| Method | Path | Authority | Ownership and effect |
+| --- | --- | --- | --- |
+| DELETE | `/api/game-identity/games/{game_id}/completion` | user | Own manual tracking; foreign identifiers are refused. |
+| DELETE | `/api/game-identity/manual-achievements/{achievement_id}` | user | Own manual tracking; foreign identifiers are refused. |
+| GET | `/api/game-identity/games/{game_id}/achievements` | user | Own manual tracking; foreign identifiers are refused. |
+| GET | `/api/game-identity/games/{game_id}/completion` | user | Own manual tracking; foreign identifiers are refused. |
+| GET | `/api/game-identity/games/{game_id}/completion/history` | user | Own manual tracking; foreign identifiers are refused. |
+| GET | `/api/game-identity/games/{game_id}/tracking` | user | Own manual tracking; foreign identifiers are refused. |
+| GET | `/api/game-identity/manual-achievements/{achievement_id}/icon` | user | Own manual tracking; foreign identifiers are refused. |
+| PATCH | `/api/game-identity/manual-achievements/{achievement_id}` | user | Own manual tracking; foreign identifiers are refused. |
+| POST | `/api/game-identity/games/{game_id}/manual-achievements` | user | Own manual tracking; foreign identifiers are refused. |
+| PUT | `/api/game-identity/games/{game_id}/completion` | user | Own manual tracking; foreign identifiers are refused. |
+| PUT | `/api/game-identity/manual-achievements/{achievement_id}/earned` | user | Own manual tracking; foreign identifiers are refused. |
+
+| Method | Route | Authority | Access |
+| --- | --- | --- | --- |
+| DELETE | `/api/game-identity/counters/{counter_id}/adjustment` | user | Own game identity state and source observations; foreign identifiers are refused. |
+| GET | `/api/game-identity/games/{game_id}/metrics` | user | Own game identity state and source observations; foreign identifiers are refused. |
+| GET | `/api/game-identity/names/games/{game_id}` | user | Own game identity state and source observations; foreign identifiers are refused. |
+| GET | `/api/game-identity/names/reviews` | user | Own game identity state and source observations; foreign identifiers are refused. |
+| GET | `/api/playnite/contract` | user | Own game identity state and source observations; foreign identifiers are refused. |
+| POST | `/api/game-identity/counters/{counter_id}/group` | user | Own game identity state and source observations; foreign identifiers are refused. |
+| POST | `/api/game-identity/counters/{counter_id}/members/{observation_id}/ungroup` | user | Own game identity state and source observations; foreign identifiers are refused. |
+| POST | `/api/game-identity/names/repair` | user | Own game identity state and source observations; foreign identifiers are refused. |
+| POST | `/api/game-identity/names/reviews/{review_id}/keep` | user | Own game identity state and source observations; foreign identifiers are refused. |
+| POST | `/api/game-identity/names/reviews/{review_id}/update` | user | Own game identity state and source observations; foreign identifiers are refused. |
+| POST | `/api/playnite/inventory` | user | Own game identity state and source observations; foreign identifiers are refused. |
+| POST | `/api/playnite/observations` | user | Own game identity state and source observations; foreign identifiers are refused. |
+| PUT | `/api/game-identity/counters/{counter_id}/members/{observation_id}/priority` | user | Own game identity state and source observations; foreign identifiers are refused. |
+| PUT | `/api/game-identity/games/{game_id}/metrics/playtime` | user | Own game identity state and source observations; foreign identifiers are refused. |
+
+| Method | Path | Authority | Ownership and effect |
+| --- | --- | --- | --- |
 | GET | `/api/achievement-icon/{achievement_id}` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | GET | `/api/game-duplicates` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | POST | `/api/game-duplicates/keep-both` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |

@@ -26,6 +26,7 @@ from src.core.preferences import load_preferences
 from src.database.models.game import Game, GameStatus
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features.game_identity import names
 from src.features.game_ingestion import legacy as ingestion
 from src.features.game_ingestion.contract import SourceObservationV1
 from src.features.imports import steam_connection
@@ -244,6 +245,7 @@ async def enrich_games(
                     current_user,
                     use_tags,
                 )
+                await names.reconcile_games(db, current_user.id, [game])
             enriched += 1
         except Exception:  # pylint: disable=broad-exception-caught
             failed += 1

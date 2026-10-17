@@ -4,6 +4,7 @@ TV shows and anime, including their tracked seasons and episodes.
 Folder assets, screenshots and saves
 aren't included in either direction."""
 
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, status
@@ -24,6 +25,7 @@ from src.features.backup.scheduler import (
     BACKUPS_TO_KEEP_PER_USER,
 )
 from src.features.game_folders import reserved_names
+from src.features.game_identity import manual
 from src.features.imports.library_export import build_library_export
 from src.features.jobs import JOBS, get_setting
 from src.helpers import save_game_asset
@@ -78,6 +80,22 @@ class ImportResult(BaseModel):
     created: int
     skipped: int
     errors: list[str]
+    manual_achievements: int = 0
+    manual_completion: int = 0
+
+
+class ImportedGame(GameCreate):
+    """A game of an export. Its old ID is kept only to map the manual rows."""
+
+    id: UUID | None = None
+
+
+class LibraryImport(BaseModel):
+    """A whole export (or its games with the manual rows); unknown sections are ignored."""
+
+    games: list[ImportedGame]
+    manual_achievements: list[Any] = []
+    manual_completion: list[Any] = []
 
 
 async def _available_folder_location(folder_name: str, db: AsyncSession, user_id: UUID) -> str:
@@ -100,17 +118,19 @@ async def _available_folder_location(folder_name: str, db: AsyncSession, user_id
 
 @router.post("/import/library", response_model=ImportResult, status_code=status.HTTP_200_OK)
 async def import_library(
-    payload: list[GameCreate],
+    payload: list[ImportedGame] | LibraryImport,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> ImportResult:
     created = 0
     skipped = 0
     errors: list[str] = []
+    entries = payload if isinstance(payload, list) else payload.games
+    new_ids: dict[str, UUID] = {}  # exported game ID -> the game created for it
 
-    for entry in payload:
+    for entry in entries:
         try:
-            data = entry.model_dump()
+            data = entry.model_dump(exclude={"id"})
             data["user_id"] = current_user.id
             data["folder_location"] = await _available_folder_location(
                 data["folder_location"], db, current_user.id
@@ -140,6 +160,8 @@ async def import_library(
             create_game_folder(current_user.id, game.folder_location)
             await db.commit()
             created += 1
+            if entry.id is not None:
+                new_ids[str(entry.id)] = game.id
         except IntegrityError as exc:
             await db.rollback()
             skipped += 1
@@ -149,4 +171,22 @@ async def import_library(
             skipped += 1
             errors.append(f"{entry.title}: {exc}")
 
-    return ImportResult(created=created, skipped=skipped, errors=errors[:20])
+    restored = (
+        await manual.restore_rows(
+            db,
+            current_user.id,
+            new_ids,
+            [] if isinstance(payload, list) else payload.manual_achievements,
+            [] if isinstance(payload, list) else payload.manual_completion,
+        )
+        if new_ids
+        else manual.Restored()
+    )
+    errors.extend(restored.errors)
+    return ImportResult(
+        created=created,
+        skipped=skipped,
+        errors=errors[:20],
+        manual_achievements=restored.achievements,
+        manual_completion=restored.completions,
+    )
