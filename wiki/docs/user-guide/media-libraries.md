@@ -138,6 +138,37 @@ Provider identity is an explicit choice, grouped with offered TV seasons. Select
 an unrelated description or picture cannot change the tracked provider identity.
 See [the shared lookup workflow](../integrations/metadata.md#review-metadata-before-saving).
 
+### The Add and Edit dialogs
+
+Movie, TV show and anime dialogs share one layout: a header with the poster,
+title and status, five direct tabs, and Delete, Look up metadata, Cancel and
+Save pinned below the scrolling body. Save is available on every tab.
+
+| Tab | What it holds |
+| --- | --- |
+| Basics | Title (with **Protect title from metadata updates** on saved items), status, favorite, description. |
+| Details | Provider metadata: dates, runtime, people and studios, scores, genres, countries, languages, age rating, features, and an anime's format. |
+| Tracking | Your own values: where you left off (movies), started and finished dates, rewatches, source, ratings (overall and story, performance, soundtrack), personal rank, tags and notes. |
+| Artwork | Poster and backdrop with their image URLs. |
+| Links | Provider IDs (for example `tmdb`, `imdb`, `tvmaze`, `anilist`, `mal`). |
+
+**Look up metadata** opens the search above whichever tab is showing; a result is
+reviewed there and nothing is saved until you press **Apply** and then **Save**
+(Save waits while a result is being reviewed). Every field is sent in the item's
+existing create or update request, so there is no second save. Fields the dialog
+does not show, such as priority and an anime's links to a series, keep their saved
+values, and the dialog never rewrites seasons or episode progress; that stays on
+the show's page.
+
+Numbers follow one rule: a cleared box saves nothing (or `0` for rewatches), a real
+`0` is kept, and values outside the allowed range are refused with a message that
+names the field. A finish date before the start date is refused. Provider IDs
+must use lowercase letters, digits, dots, dashes or underscores for the name
+(up to 50 characters), an ID of at most 256 characters, no duplicates and at most
+32 entries; a problem sends you to the **Links** tab. Editing a TVmaze, MyAnimeList
+or AniList ID also updates the matching stored ID that episode sync uses.
+Modern and Classic share the same dialog; Classic only changes fields and secondary
+actions to its filled/outlined style.
 ## Trash, Empty trash and automatic deletion
 
 Deleting a movie, TV show or anime entry moves it to the trash. Open

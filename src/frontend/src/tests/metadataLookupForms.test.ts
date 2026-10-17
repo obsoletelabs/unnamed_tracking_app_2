@@ -35,6 +35,8 @@ function result() {
     description: "Offered description",
     genres: ["Drama"],
     studios: ["Studio"],
+    countries: ["US"],
+    languages: ["en"],
     creators: ["Creator"],
     releaseDate: null,
     firstAirDate: null,
@@ -115,7 +117,7 @@ afterEach(() => {
 });
 const shell = {
   template:
-    "<div><slot/><button @click=\"$emit('save')\">Save form</button></div>",
+    '<div><slot name="lookup"/><slot/><button @click="$emit(\'save\')">Save form</button></div>',
   emits: ["save"],
 };
 
