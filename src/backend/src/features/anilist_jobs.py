@@ -18,7 +18,7 @@ from src.core.preferences import load_preferences
 from src.database.models.user import User
 from src.database.session import SessionLocal
 from src.features.imports.anilist import import_anilist_library
-from src.features.jobs import JobSpec, record_run
+from src.features.jobs import JobSpec, personal_job_defaults, record_run
 from src.features.metadata.anime.anilist import AniListError
 
 logger = logging.getLogger(__name__)
@@ -70,9 +70,7 @@ def _job_spec(user_id: UUID, reason: str) -> JobSpec:
         "It only reads AniList and never changes it.",
         min_interval_minutes=MIN_INTERVAL_MINUTES,
         max_interval_minutes=MAX_INTERVAL_MINUTES,
-        default_interval_minutes=24 * 60,
-        default_enabled=False,
-        manual_mode="all",
+        **personal_job_defaults(),
         start=start,
         is_running=is_running,
         summarize=_summarize,
