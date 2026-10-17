@@ -8,6 +8,7 @@ import { refreshMediaNotifications } from "../../state/notifications";
 import type { MediaNotificationKind } from "../../services/notifications";
 import { fetchSystemInfo } from "../../services/settings";
 import type { SystemInfo } from "../../services/settings";
+import NotificationDiagnosticsPanel from "./NotificationDiagnosticsPanel.vue";
 
 const kindOptions: { value: MediaNotificationKind; label: string }[] = [
   { value: "episode_aired", label: "Episode aired" },
@@ -215,6 +216,8 @@ async function sendRequest() {
         Sent. Check the bell in the top corner.
       </div>
     </section>
+
+    <NotificationDiagnosticsPanel class="settings-section wide" />
 
     <section class="settings-section">
       <h2>Regenerate notifications</h2>

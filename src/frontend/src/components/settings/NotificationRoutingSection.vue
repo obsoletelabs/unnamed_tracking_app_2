@@ -19,6 +19,11 @@ import type {
 } from "../../services/notifications";
 import type { Preferences } from "../../services/preferences";
 import {
+  disabledSummary,
+  isRoutable,
+  providerListing,
+} from "../../utils/notificationProviders";
+import {
   notificationTypeUnavailable,
   routeUnavailable,
   unavailableText,
@@ -76,13 +81,11 @@ watch(
   { flush: "post" },
 );
 
-const sortedProviders = computed(() =>
+const listed = (kind: ReturnType<typeof providerListing>) =>
   [...(routing.value?.providers ?? [])]
     .filter(
       (provider) =>
-        provider.available ||
-        provider.configuration_available ||
-        routing.value?.destinations.some((d) => d.provider_id === provider.id),
+        providerListing(provider, routing.value?.destinations ?? []) === kind,
     )
     .sort((a, b) => {
       const configured = (id: string) =>
@@ -96,7 +99,14 @@ const sortedProviders = computed(() =>
         Number(b.available) - Number(a.available) ||
         a.name.localeCompare(b.name)
       );
-    }),
+    });
+const sortedProviders = computed(() => [
+  ...listed("active"),
+  ...listed("disabled"),
+]);
+const unavailableProviders = computed(() => listed("unavailable"));
+const hasHiddenRoutes = computed(
+  () => !!routing.value?.destinations.some((d) => !isRoutable(d)),
 );
 
 function typeEnabled(type: NotificationRoutingType) {
@@ -259,11 +269,13 @@ async function testDestination(destination: NotificationRoutingDestination) {
           <summary>
             {{ provider.name }}
             <span class="hint">{{
-              routing.destinations.some(
-                (d) => d.provider_id === provider.id && d.active,
-              )
-                ? "Configured"
-                : "Set up"
+              providerListing(provider, routing.destinations) === "disabled"
+                ? disabledSummary(provider, routing.destinations)
+                : routing.destinations.some(
+                      (d) => d.provider_id === provider.id && d.active,
+                    )
+                  ? "Configured"
+                  : "Set up"
             }}</span>
           </summary>
           <p v-if="provider.configuration_scope === 'internal'" class="hint">
@@ -410,9 +422,26 @@ async function testDestination(destination: NotificationRoutingDestination) {
             </p>
           </div>
         </details>
-        <p v-if="routing.providers.length === 1" class="hint">
-          No external providers are configured.
+        <p v-if="!sortedProviders.length" class="hint">
+          No notification providers can be added right now.
         </p>
+        <details
+          v-if="unavailableProviders.length"
+          class="unavailable-providers"
+        >
+          <summary>
+            Unavailable providers ({{ unavailableProviders.length }})
+          </summary>
+          <ul>
+            <li v-for="provider in unavailableProviders" :key="provider.id">
+              <strong>{{ provider.name }}</strong>
+              <span class="hint">
+                Unavailable · your choices are kept; reinstalling does not
+                reactivate old destinations.</span
+              >
+            </li>
+          </ul>
+        </details>
       </section>
       <NotificationLinkSettings
         :routing="routing"
@@ -526,9 +555,7 @@ async function testDestination(destination: NotificationRoutingDestination) {
           </fieldset>
           <div
             v-for="destination in routing.destinations.filter(
-              (d) =>
-                (d.active && d.available) ||
-                showInactiveRoutes[type.event_type],
+              (d) => isRoutable(d) || showInactiveRoutes[type.event_type],
             )"
             :key="destination.id"
             class="destination-row"
@@ -597,7 +624,8 @@ async function testDestination(destination: NotificationRoutingDestination) {
             </label>
           </div>
           <button
-            v-if="routing.destinations.some((d) => !d.active || !d.available)"
+            v-if="hasHiddenRoutes"
+            type="button"
             class="expand"
             :aria-expanded="!!showInactiveRoutes[type.event_type]"
             @click="
@@ -605,13 +633,14 @@ async function testDestination(destination: NotificationRoutingDestination) {
                 !showInactiveRoutes[type.event_type]
             "
           >
-            {{ showInactiveRoutes[type.event_type] ? "Hide" : "Show" }} inactive
-            routing choices
+            {{ showInactiveRoutes[type.event_type] ? "Hide" : "Show" }} disabled
+            or unavailable providers
           </button>
           <p
             v-for="provider in routing.providers.filter(
               (p) =>
                 p.available &&
+                p.enabled &&
                 !routing?.destinations.some(
                   (d) => d.provider_id === p.id && d.active,
                 ),
@@ -649,6 +678,18 @@ async function testDestination(destination: NotificationRoutingDestination) {
 .provider-card summary {
   cursor: pointer;
   font-weight: var(--ui-weight-heading);
+  overflow-wrap: anywhere;
+}
+.unavailable-providers {
+  margin: 10px 0;
+  font-size: 0.78rem;
+}
+.unavailable-providers summary {
+  cursor: pointer;
+  color: var(--ui-dim);
+}
+.unavailable-providers li {
+  margin: 6px 0;
   overflow-wrap: anywhere;
 }
 .provider-card[open] summary {

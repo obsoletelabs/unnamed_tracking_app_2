@@ -383,3 +383,8 @@ summary {
     flex-wrap: wrap;
   }
 }
+
+.plugin.deep-linked {
+  outline: 2px solid var(--ui-accent, currentColor);
+  outline-offset: 2px;
+}

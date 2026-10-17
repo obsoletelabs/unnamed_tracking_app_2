@@ -120,6 +120,7 @@ _CRITICAL = frozenset(
         Capability.INTEGRATIONS_PUBLIC_APP_ADMIN,
         Capability.INTEGRATIONS_IDENTITY_PROVIDER,
         Capability.NOTIFICATIONS_SENSITIVE,
+        Capability.NOTIFICATIONS_TEMPLATES_HTML,
         Capability.NOTIFICATION_PROVIDERS_SENSITIVE,
         Capability.AUTH_PASSWORD_RESET,
         Capability.AUTH_USER_INVITES,
@@ -143,6 +144,9 @@ _HIGH = frozenset(
         Capability.SESSIONS_GEOIP_CONFIGURE,
         Capability.NOTIFICATIONS_SEND,
         Capability.NOTIFICATIONS_EMIT,
+        Capability.NOTIFICATIONS_CANONICAL,
+        Capability.NOTIFICATIONS_ACTIONS,
+        Capability.NOTIFICATIONS_URGENCY,
         Capability.NOTIFICATION_SOURCES_REGISTER,
         Capability.NOTIFICATION_PROVIDERS,
         Capability.NOTIFICATION_PROVIDERS_REGISTER,
@@ -199,6 +203,18 @@ def _title(capability: Capability) -> str:
         Capability.INTEGRATIONS_IDENTITY_PROVIDER: "Verify external public-app participants",
         Capability.AUTH_PASSWORD_RESET: "Enable host-mediated password reset for local accounts",
         Capability.AUTH_USER_INVITES: "Issue account invitations and enable public account acceptance",
+        Capability.NOTIFICATIONS_CANONICAL: (
+            "Publish versioned notification stories with structured facts and rich content"
+        ),
+        Capability.NOTIFICATIONS_ACTIONS: (
+            "Offer declared actions on notifications, run only after the host rechecks access"
+        ),
+        Capability.NOTIFICATIONS_URGENCY: (
+            "Request urgent handling for notifications; the host and user limits decide"
+        ),
+        Capability.NOTIFICATIONS_TEMPLATES_HTML: (
+            "Design notification emails with sanitised HTML templates"
+        ),
         Capability.NOTIFICATION_PROVIDERS_SENSITIVE: (
             "Receive verification codes and security/recovery content for eligible destinations"
         ),

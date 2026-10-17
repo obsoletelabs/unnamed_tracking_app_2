@@ -24,10 +24,17 @@ from src.plugin_api.contracts import (
     NotificationDeliveryResult,
     NotificationFieldLayout,
     NotificationProviderDefinition,
+    PluginCanonicalDelivery,
     PluginNotificationContent,
     PluginNotificationDestination,
 )
 from src.plugin_api.grants import has_capability_grant, installation_is_executable
+from src.plugin_api.notification_contracts import (
+    PluginDeliveryAction,
+    PluginDeliveryFact,
+    PluginDeliveryItem,
+)
+from src.plugin_api.notification_story_contracts import NOTIFICATION_CONTRACT_VERSION
 from src.plugin_api.runtime_client import (
     PluginRuntimeClient,
     PluginRuntimeRequestError,
@@ -39,7 +46,7 @@ from .eligibility import endpoint_route_enabled, revalidate_delivery_attempt
 from .webhook import discord_payload, normalize_discord_webhook
 
 
-class PluginNotificationProvider:
+class PluginNotificationProvider:  # pylint: disable=too-many-instance-attributes
     """Core-controlled delivery adapter for one registered plugin provider."""
 
     def __init__(
@@ -59,6 +66,15 @@ class PluginNotificationProvider:
         self.critical_supported = bool(
             self.definition and self.definition.features.critical_supported
         )
+        # Declared presentation capabilities (Plugin API 1.1.14). The dispatcher narrows them to
+        # what this adapter implements, so `edit` exists only when the plugin declared updates.
+        self.capabilities = (
+            self.definition.capabilities
+            if self.definition is not None and self.transport == "plugin"
+            else None
+        )
+        if self.capabilities is not None and self.capabilities.message_updates != "none":
+            self.edit = self.deliver
 
     async def lookup_destination(
         self,
@@ -234,6 +250,48 @@ class PluginNotificationProvider:
             and endpoint.configuration_ref == str(endpoint.id)
         )
 
+    def _delivery_action(self, message: NotificationMessage) -> str:
+        """Edits of an earlier message run the plugin's declared edit action."""
+        if (
+            self.capabilities is not None
+            and message.purpose == "standard"
+            and message.operation == "edit"
+            and self.definition is not None
+            and self.definition.edit_action
+        ):
+            return self.definition.edit_action
+        return self.registration.action_id
+
+    @staticmethod
+    def _canonical_delivery(
+        content: PluginNotificationContent, message: NotificationMessage
+    ) -> PluginCanonicalDelivery:
+        """Capability-narrowed delivery: the host already applied projection, limits and the
+        sanitiser, so a plugin cannot receive more than it declared it can present."""
+        return PluginCanonicalDelivery(
+            **content.model_dump(),
+            contract_version=NOTIFICATION_CONTRACT_VERSION,
+            operation=message.operation,
+            revision=message.revision,
+            remote_ref=message.remote_ref,
+            idempotency_key=message.idempotency_key or str(message.id),
+            html=message.html,
+            actions=tuple(
+                PluginDeliveryAction(label=item.label, url=item.url) for item in message.actions
+            ),
+            images=message.images,
+            facts=tuple(PluginDeliveryFact(label=f.label, text=f.text) for f in message.facts),
+            items=tuple(
+                PluginDeliveryItem(
+                    title=item.title[:500],
+                    body=item.body[:10_000],
+                    event_at=item.event_at,
+                    url=item.url,
+                )
+                for item in message.items
+            ),
+        )
+
     async def _deliver_generic(self, db, destination, message) -> DeliveryResult:
         """Revalidate durable authority immediately before disclosing approved content."""
         endpoint = await revalidate_delivery_attempt(db, destination, message)
@@ -251,7 +309,7 @@ class PluginNotificationProvider:
             body=message.body,
             event_at=message.event_at,
             urgency=message.urgency if self.critical_supported else "normal",
-            link=message.action_url or link,
+            link=message.link or message.action_url or link,
         )
         endpoint = await revalidate_delivery_attempt(db, destination, message)
         if (
@@ -284,14 +342,16 @@ class PluginNotificationProvider:
         reference = PluginNotificationDestination(
             id=endpoint.id, revision=endpoint.revision, kind=endpoint.kind
         )
+        if self.capabilities is not None and message.purpose == "standard":
+            content = self._canonical_delivery(content, message)
         test_action = self.definition.test_action if self.definition else None
         try:
             response = await self._runtime.notification_delivery(
                 self.registration.plugin_id,
                 (
-                    test_action or self.registration.action_id
+                    test_action or self._delivery_action(message)
                     if message.purpose == "test"
-                    else self.registration.action_id
+                    else self._delivery_action(message)
                 ),
                 {
                     "delivery": content.model_dump(mode="json"),
@@ -331,7 +391,11 @@ class PluginNotificationProvider:
             return DeliveryResult(False, error="provider_result_invalid")
         # Arbitrary plugin error strings can contain its secrets; core stores only safe codes.
         return DeliveryResult(
-            result.success, result.retryable, None if result.success else "provider_delivery_failed"
+            result.success,
+            result.retryable,
+            None if result.success else "provider_delivery_failed",
+            remote_ref=result.remote_ref if result.success else None,
+            gone=result.gone,
         )
 
     # Distinct fail-closed outcomes keep each routing and transport gate visible.

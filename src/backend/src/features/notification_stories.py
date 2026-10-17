@@ -22,6 +22,7 @@ from src.database.models.notification_story import (
     NotificationStory,
     NotificationStoryRevision,
 )
+from src.features.notification_audit import record_notices
 from src.features.notification_contract import (
     STORY_PURPOSES,
     RevisionDecision,
@@ -246,6 +247,8 @@ async def apply_revision(
         item = head_item
         _replace_content(item, candidate)
         item.story_revision = revision
+        # Replay (Plugin API 1.1.14) learns of the update without any of its content.
+        await record_notices(db, [item], "revised")
     else:
         item = candidate
         item.story_id, item.story_revision = story.id, revision

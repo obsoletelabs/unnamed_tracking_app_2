@@ -58,6 +58,21 @@ LIFECYCLE = StoryLifecycleDeclaration(
     ),
 )
 SECRET_FACT = "internal-build-7731"
+REGISTRATION = {
+    "contract_version": NOTIFICATION_CONTRACT_VERSION,
+    "event_type": EVENT_TYPE,
+    "label": "Update",
+    "lifecycle": LIFECYCLE.model_dump(mode="json"),
+    "facts": [{"key": "build", "label": "Build", "kind": "text"}],
+    "actions": [
+        {
+            "action_id": "install.apply",
+            "label": "Install",
+            "input": {"channel": {"type": "string"}},
+        },
+        {"action_id": "wipe.all", "label": "Wipe"},
+    ],
+}
 
 
 def rich(**changes):
@@ -160,19 +175,20 @@ async def notification_world():
                 plugin_id=PLUGIN,
                 installation_id=installation,
                 event_type=EVENT_TYPE,
-                definition={},
+                definition=REGISTRATION,
                 registered_at=int(time.time()),
             )
         )
-        db.add(
-            PluginPermissionGrant(
-                plugin_id=PLUGIN,
-                installation_id=installation,
-                user_id=owner,
-                capability="notifications.emit",
-                capability_version=1,
+        for capability in ("notifications.canonical", "notifications.actions"):
+            db.add(
+                PluginPermissionGrant(
+                    plugin_id=PLUGIN,
+                    installation_id=installation,
+                    user_id=owner,
+                    capability=capability,
+                    capability_version=1,
+                )
             )
-        )
         await db.commit()
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -585,14 +601,28 @@ def test_link_tokens_are_not_logged():
 
 
 @pytest.fixture
-def runtime(monkeypatch):
+def runtime(monkeypatch, world):
     calls = []
 
     async def fake(self, plugin_id, action_id, values, **context):
         calls.append((plugin_id, action_id, values, context))
         return {"ok": True, "message": "Installed 2.0"}
 
+    async def plugins(self):
+        return [
+            {
+                "plugin_id": PLUGIN,
+                "installation_id": str(world.installation),
+                "api_contract_version": "1.1.14",
+                "enabled": True,
+                "compatible": True,
+                "status": "running",
+                "health": "healthy",
+            }
+        ]
+
     monkeypatch.setattr(PluginRuntimeClient, "notification_story_action", fake)
+    monkeypatch.setattr(PluginRuntimeClient, "plugins", plugins)
     return calls
 
 
@@ -705,7 +735,7 @@ async def test_runtime_failure_is_a_bad_gateway_without_details(world, monkeypat
     assert response.status_code == 502 and "secret" not in response.text
 
 
-async def test_action_messages_are_bounded_text(world, monkeypatch):
+async def test_action_messages_are_bounded_text(world, runtime, monkeypatch):
     _, story_id = await world.emit()
 
     async def noisy(self, *args, **kwargs):
@@ -753,6 +783,19 @@ async def test_html_templates_need_the_high_risk_grant(world):
         )
 
     async with SessionLocal() as db:
+        # The plugin declares exactly these two contributions; anything else is not its own.
+        await db.execute(
+            update(PluginNotificationTypeRegistration).values(
+                definition={
+                    **REGISTRATION,
+                    "renderers": [
+                        template("markdown_template", "# {title}").model_dump(mode="json"),
+                        template("html_template", "<p>{title}</p>").model_dump(mode="json"),
+                    ],
+                }
+            )
+        )
+        await db.commit()
         check = lambda item: pages.contribution_authorised(  # noqa: E731
             db,
             item,
@@ -767,7 +810,7 @@ async def test_html_templates_need_the_high_risk_grant(world):
                 plugin_id=PLUGIN,
                 installation_id=world.installation,
                 user_id=world.owner,
-                capability="notifications.sensitive",
+                capability="notifications.templates.html",
                 capability_version=1,
             )
         )
@@ -781,6 +824,8 @@ async def test_html_templates_need_the_high_risk_grant(world):
             template="{title}",
         )
         assert not await check(other)  # not a type this installation registered
+        undeclared = template("markdown_template", "Different {title}")
+        assert not await check(undeclared)  # not a contribution the plugin declared
         await db.execute(update(PluginPermissionGrant).values(revoked_at=int(time.time())))
         await db.commit()
         assert not await check(template("markdown_template", "# {title}"))

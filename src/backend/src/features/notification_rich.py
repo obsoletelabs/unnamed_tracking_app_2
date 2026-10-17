@@ -116,7 +116,9 @@ def build_view(
     }
 
 
-def render_plain(content: NotificationContent, live_url: str | None = None) -> str:
+def render_plain(
+    content: NotificationContent, live_url: str | None = None, *, facts: bool = True
+) -> str:
     """Understandable without opening the app: summary, blocks, facts and the live link."""
     parts = [content.title, "", plain_text(render_markdown(content.summary))]
     for block in content.blocks:
@@ -126,7 +128,7 @@ def render_plain(content: NotificationContent, live_url: str | None = None) -> s
             else block.text
         )
         parts += ["", text]
-    if content.facts:
+    if content.facts and facts:
         parts.append("")
         parts += [f"{fact['label']}: {fact['text']}" for fact in map(format_fact, content.facts)]
     if live_url:

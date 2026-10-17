@@ -212,7 +212,7 @@ not change package format, SDK, gateway transport or installation identity.
 | `network.request` | `network.outbound` | Bounded JSON GET/POST through the host, outside worker network isolation |
 | `tasks.subscribe`, `tasks.unsubscribe` | `tasks.background` | Explicit authenticated UI action's own user; a worker cannot subscribe another user |
 | `tasks.subscribers` | `tasks.background` | Plugin's opted-in user IDs; bounded offset/limit, maximum 100 |
-| `tasks.request` | `tasks.background` | Delegates reviewed media sync or notifications to a subscribed target; checks both target grants live |
+| `tasks.request` | `tasks.background` | Delegates reviewed media sync, notifications, and (Plugin API 1.1.14) `notification_sources.register` / `notifications.publish` to a subscribed target; checks both target grants live |
 
 ### Media sync contract
 
@@ -303,7 +303,7 @@ optional notification denial must not break sync. No other methods can be delega
 
 ### Outbound JSON
 
-`network.request` accepts `{url, headers?, method?: "GET"|"POST", body?: object}`. It uses
+`network.request` accepts `{url, headers?, method?: "GET"|"POST"|"PATCH", body?: object}`. It uses
 normal TLS verification, an 8-second timeout, no redirects and a 4 MiB response
 limit. Authorization values allow up to 16 KiB for provider tokens with signed
 claims; other header values retain their 2 KiB limit. Header names are matched
@@ -311,7 +311,7 @@ case-insensitively and CR/LF is rejected before transport. URLs cannot contain
 embedded credentials or fragments. Header names are
 restricted to Accept, Authorization and X-Emby-Token; count/length and CRLF bounds
 are enforced. The generic transport treats those headers as opaque strings and
-contains no provider behavior. POST JSON bodies are bounded to 64 KiB; other methods
+contains no provider behavior. POST and PATCH JSON bodies are bounded to 64 KiB; other methods
 and non-object bodies are rejected. Responses preserve successful HTTP status and
 return `{status, data: <object/array/boolean>}`
 or a safe `{status, error}` for HTTP/connection failures. Malformed/oversized JSON
@@ -355,9 +355,14 @@ Contract 1.1.2 adds `notification_sources.register`, `notification_sources.unreg
 [canonical notification contract](notification-contract.md) (`1.0.0`): event,
 content, story lifecycle, provider capability and renderer contribution models,
 `notification_contract_schemas()` and version negotiation helpers. These are
-published schemas only; no gateway operation accepts them in Plugin API 1.1.13,
-and existing notification operations are unchanged. SDKs can pin the reviewed
-schema snapshots and conformance cases without importing host internals.
+published schemas, and Plugin API 1.1.14 adds the gateway operations that accept
+them (`notifications.publish`, `notifications.contract`, canonical
+`notification_sources.register`) behind the explicit `notifications.canonical`,
+`notifications.actions`, `notifications.urgency` and `notifications.templates.html`
+capabilities. Existing notification operations are unchanged. See the
+[plugin contract](notification-contract.md#plugin-contract-plugin-api-1114). SDKs
+can pin the reviewed schema snapshots and conformance cases without importing host
+internals.
 
 ## Notification lifecycle replay (1.1.4)
 

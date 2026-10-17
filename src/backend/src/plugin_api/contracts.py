@@ -83,6 +83,7 @@ from .notification_contracts import (
     NotificationProviderDefinition,
     NotificationProviderRegistration,
     NotificationTypeRegistration,
+    PluginCanonicalDelivery,
     PluginNotificationContent,
     PluginNotificationDestination,
 )
@@ -295,6 +296,7 @@ __all__ = [
     "NotificationProviderRegistration",
     "NotificationProviderDefinition",
     "PluginNotificationContent",
+    "PluginCanonicalDelivery",
     "PluginNotificationDestination",
     "NotificationFieldLayout",
     "NotificationLifecycleEvent",

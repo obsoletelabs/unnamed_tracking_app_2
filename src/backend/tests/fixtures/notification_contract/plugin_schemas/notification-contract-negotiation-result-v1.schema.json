@@ -1,0 +1,59 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "host_contract_version": {
+      "title": "Host Contract Version",
+      "type": "string"
+    },
+    "plugin_api_version": {
+      "title": "Plugin Api Version",
+      "type": "string"
+    },
+    "negotiated": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Negotiated"
+    },
+    "reason": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Reason"
+    },
+    "supported_major": {
+      "title": "Supported Major",
+      "type": "integer"
+    },
+    "features": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Features",
+      "type": "array"
+    }
+  },
+  "required": [
+    "host_contract_version",
+    "plugin_api_version",
+    "negotiated",
+    "supported_major",
+    "features"
+  ],
+  "title": "ContractNegotiationResult",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "x-api-contract-version": "1.1.14",
+  "x-notification-contract-version": "1.0.0"
+}

@@ -530,6 +530,13 @@ are redacted. Validation errors never echo submitted values.
 | POST | `/api/notifications/{notification_id}/dismiss` | user | Rows filtered by `user_id == caller`. |
 | POST | `/api/notifications/{notification_id}/read` | user | Rows filtered by `user_id == caller`. |
 | POST | `/api/notifications/{notification_id}/unread` | user | Rows filtered by `user_id == caller`. |
+| GET | `/api/settings/notification-diagnostics/deliveries` | user | Only deliveries of the caller's own notifications; redacted diagnostics. |
+| POST | `/api/settings/notification-diagnostics/deliveries/{delivery_id}/retry` | user | Delivery must belong to one of the caller's notifications (404 otherwise); sensitive purposes are never re-sent. |
+| POST | `/api/settings/notification-diagnostics/digest` | admin | Administrator; dry-run digest preview with fixtures. |
+| GET | `/api/settings/notification-diagnostics/overview` | admin | Administrator; instance delivery health, redacted. |
+| POST | `/api/settings/notification-diagnostics/preview` | admin | Administrator; dry-run render with fixtures. |
+| POST | `/api/settings/notification-diagnostics/simulate` | admin | Administrator; dry-run routing simulation, nothing is queued. |
+| POST | `/api/settings/notification-diagnostics/test-send` | admin | Administrator; test send to the administrator's own destinations. |
 | GET | `/api/settings/notification-providers` | user | Rows filtered by `user_id == caller`. |
 | GET | `/api/settings/notification-providers/browser-configuration` | user | Rows filtered by `user_id == caller`. |
 | POST | `/api/settings/notification-providers/browser-configuration/key` | admin | Instance notification configuration; administrator. |

@@ -40,6 +40,7 @@ from src.features.metadata.service import search_games
 from src.features.notification_controller import emit_legacy_rows
 from src.features.notification_destinations import retire_provider_destinations
 from src.features.notification_feed import poll_lifecycle
+from src.features.notification_plugin_events import negotiate, publish_event
 from src.features.notification_provider_status import destination_status
 from src.features.notification_sources import emit_source, register_source, unregister_source
 from src.features.plugin_auth_flows import (
@@ -119,6 +120,8 @@ _METHOD_CAPABILITIES = {
     "notification_destinations.status": "notification_destinations.read",
     "notifications.send": "notifications.send",
     "notifications.emit": "notifications.emit",
+    "notifications.publish": "notifications.canonical",
+    "notifications.contract": "notifications.canonical",
     "notification_sources.register": "notification_sources.register",
     "notification_sources.unregister": "notification_sources.register",
     "notification_providers.register": "notification_providers.register",
@@ -276,6 +279,10 @@ async def dispatch_gateway_request(
         "notifications.emit": partial(
             emit_source, db, plugin_id, installation_id, user_id, payload
         ),
+        "notifications.publish": partial(
+            publish_event, db, plugin_id, installation_id, user_id, payload
+        ),
+        "notifications.contract": partial(_negotiate_contract, payload),
         "notification_sources.register": partial(
             register_source, db, plugin_id, installation_id, user_id, payload
         ),
@@ -633,6 +640,10 @@ async def _poll_events(
         "events": events[:limit],
         "cursor": max([since, *[int(event["occurred_at"]) for event in events]]),
     }
+
+
+async def _negotiate_contract(payload: dict[str, Any]) -> dict[str, Any]:
+    return negotiate(payload)
 
 
 async def _send_notification(

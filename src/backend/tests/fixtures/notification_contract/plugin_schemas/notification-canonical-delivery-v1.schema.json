@@ -1,0 +1,253 @@
+{
+  "$defs": {
+    "PluginDeliveryAction": {
+      "additionalProperties": false,
+      "description": "A host-checked link button; plugin actions never reach external destinations.",
+      "properties": {
+        "label": {
+          "maxLength": 40,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "url": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "url"
+      ],
+      "title": "PluginDeliveryAction",
+      "type": "object"
+    },
+    "PluginDeliveryFact": {
+      "additionalProperties": false,
+      "description": "One host-formatted fact (label and display text) for providers that declared embeds.",
+      "properties": {
+        "label": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "text"
+      ],
+      "title": "PluginDeliveryFact",
+      "type": "object"
+    },
+    "PluginDeliveryItem": {
+      "additionalProperties": false,
+      "description": "One member of a digest message. Text is what the destination's projection may show.",
+      "properties": {
+        "title": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "body": {
+          "default": "",
+          "maxLength": 10000,
+          "title": "Body",
+          "type": "string"
+        },
+        "event_at": {
+          "minimum": 0,
+          "title": "Event At",
+          "type": "integer"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Url"
+        }
+      },
+      "required": [
+        "title",
+        "event_at"
+      ],
+      "title": "PluginDeliveryItem",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Capability-narrowed delivery for providers that declared canonical capabilities (1.1.14).\n\nThe host has already applied the recipient's projection, the provider's limits and its own\nsanitiser; ``html`` is sanitised email markup, never executable. ``operation`` is ``send``,\n``edit`` (``remote_ref`` is the provider's earlier message) or ``follow_up``. The\n``idempotency_key`` is stable across retries of one obligation.",
+  "properties": {
+    "notification_id": {
+      "format": "uuid",
+      "title": "Notification Id",
+      "type": "string"
+    },
+    "event_type": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Event Type",
+      "type": "string"
+    },
+    "title": {
+      "maxLength": 500,
+      "minLength": 1,
+      "title": "Title",
+      "type": "string"
+    },
+    "body": {
+      "maxLength": 10000,
+      "minLength": 1,
+      "title": "Body",
+      "type": "string"
+    },
+    "event_at": {
+      "minimum": 0,
+      "title": "Event At",
+      "type": "integer"
+    },
+    "urgency": {
+      "default": "normal",
+      "enum": [
+        "normal",
+        "critical"
+      ],
+      "title": "Urgency",
+      "type": "string"
+    },
+    "link": {
+      "anyOf": [
+        {
+          "maxLength": 2048,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Link"
+    },
+    "contract_version": {
+      "maxLength": 16,
+      "minLength": 5,
+      "title": "Contract Version",
+      "type": "string"
+    },
+    "operation": {
+      "default": "send",
+      "enum": [
+        "send",
+        "edit",
+        "follow_up"
+      ],
+      "title": "Operation",
+      "type": "string"
+    },
+    "revision": {
+      "minimum": 0,
+      "title": "Revision",
+      "type": "integer"
+    },
+    "remote_ref": {
+      "anyOf": [
+        {
+          "maxLength": 512,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Remote Ref"
+    },
+    "idempotency_key": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Idempotency Key",
+      "type": "string"
+    },
+    "html": {
+      "anyOf": [
+        {
+          "maxLength": 200000,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Html"
+    },
+    "actions": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/PluginDeliveryAction"
+      },
+      "maxItems": 10,
+      "title": "Actions",
+      "type": "array"
+    },
+    "images": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 10,
+      "title": "Images",
+      "type": "array"
+    },
+    "facts": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/PluginDeliveryFact"
+      },
+      "maxItems": 25,
+      "title": "Facts",
+      "type": "array"
+    },
+    "items": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/PluginDeliveryItem"
+      },
+      "maxItems": 50,
+      "title": "Items",
+      "type": "array"
+    }
+  },
+  "required": [
+    "notification_id",
+    "event_type",
+    "title",
+    "body",
+    "event_at",
+    "contract_version",
+    "revision",
+    "idempotency_key"
+  ],
+  "title": "PluginCanonicalDelivery",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "x-api-contract-version": "1.1.14",
+  "x-notification-contract-version": "1.0.0"
+}

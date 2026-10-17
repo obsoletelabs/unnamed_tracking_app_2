@@ -61,6 +61,7 @@ _CREDENTIALS = (
     ),
     re.compile(r"\b(?:otp|passcode)\b[^\n0-9]{0,12}[0-9]{4,10}\b", re.IGNORECASE),
 )
+CREDENTIAL_PATTERNS = _CREDENTIALS
 _SECRET_QUERY = re.compile(
     r"^(?:pass(?:word|wd)?|secret|api[_-]?key|apikey|key|access[_-]?token|auth|token|sig|signature"
     r"|code|session|sid|jwt|credential|bearer)$",
@@ -119,6 +120,17 @@ def _has_secret_query(url: str) -> bool:
 
 def markdown_link_targets(markdown: str) -> list[str]:
     return [match.group(1) for match in _MARKDOWN_TARGET.finditer(markdown)]
+
+
+def markdown_is_safe(markdown: str) -> bool:
+    """True when Markdown a provider would display verbatim has no markup, image or unsafe link.
+
+    Template output is composed by the host but its literal text comes from the plugin, so it is
+    held to the same rule as producer Markdown before any provider receives it as source.
+    """
+    if _EXECUTABLE_MARKUP.search(markdown) or "![" in markdown:
+        return False
+    return all(url_is_safe(target) for target in markdown_link_targets(markdown))
 
 
 def _check_text(value: str, *, markup: bool) -> None:

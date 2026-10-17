@@ -11,11 +11,14 @@ import {
   markAllNotificationsRead,
   dismissMediaNotification,
   deleteMediaNotification,
+  fetchInboxRetentionPolicy,
 } from "../services/notifications";
 import type {
   MediaNotification,
   InboxFilter,
   InboxPage,
+  InboxRetentionPolicy,
+  InboxState,
 } from "../services/notifications";
 import { refreshMediaNotifications } from "../state/notifications";
 import { useKeptAlive } from "../utils/useKeptAlive";
@@ -31,6 +34,21 @@ import {
   groupNotifications,
 } from "../utils/notificationPresentation";
 
+import {
+  STATE_LABEL,
+  expiryOf,
+  isActionable,
+  lifecycleHistory,
+  retentionSummary,
+} from "../utils/notificationLifecycle";
+
+const STATES: { key: InboxState; label: string }[] = [
+  { key: "active", label: "Active" },
+  { key: "dismissed", label: "Dismissed" },
+  { key: "expired", label: "Expired" },
+  { key: "deleted", label: "Deleted" },
+  { key: "history", label: "All history" },
+];
 const FILTERS: { key: InboxFilter; label: string }[] = [
   { key: "all", label: "All" },
   { key: "unread", label: "Unread" },
@@ -49,7 +67,14 @@ const summary = ref<Omit<InboxPage, "items">>({
   counts: {},
   nextOffset: null,
   sources: [],
+  states: {},
 });
+const stateFilter = ref<InboxState>("active");
+const severity = ref<"" | "info" | "warning" | "error">("");
+const policy = ref<InboxRetentionPolicy | null>(null);
+void fetchInboxRetentionPolicy()
+  .then((value) => (policy.value = value))
+  .catch(() => undefined);
 const loading = ref(true);
 const pending = ref(false);
 const error = ref<string | null>(null);
@@ -89,6 +114,8 @@ async function load(more = false) {
       category: filter.value,
       search: search.value,
       source: source.value,
+      severity: severity.value,
+      state: stateFilter.value,
       offset: more ? (summary.value.nextOffset ?? 0) : 0,
     });
     if (request !== generation || currentUser.value?.id !== account) return;
@@ -110,7 +137,7 @@ async function load(more = false) {
 }
 onMounted(() => void load());
 useKeptAlive(() => void load());
-watch([filter, source], () => {
+watch([filter, source, severity, stateFilter], () => {
   clearTimeout(searchTimer);
   void load();
 });
@@ -191,6 +218,9 @@ const TYPE_LABEL: Record<string, string> = {
   plugin: "Plugin",
   system: "Account",
 };
+function stateOf(n: MediaNotification) {
+  return n.state ?? (n.read ? "read" : "unread");
+}
 // Listings carry the time they were learned; AniList does not date announcements.
 const NOTICED_KINDS = new Set([
   "sequel_announced",
@@ -301,6 +331,21 @@ function toggleOpen(n: MediaNotification) {
             placeholder="Search titles or messages"
         /></label>
         <label
+          >Status<select v-model="stateFilter">
+            <option v-for="entry in STATES" :key="entry.key" :value="entry.key">
+              {{ entry.label }} ({{ summary.states[entry.key] ?? 0 }})
+            </option>
+          </select></label
+        >
+        <label
+          >Severity<select v-model="severity">
+            <option value="">Any severity</option>
+            <option value="info">Info</option>
+            <option value="warning">Warning</option>
+            <option value="error">Error</option>
+          </select></label
+        >
+        <label
           >Source<select v-model="source">
             <option value="">All sources</option>
             <option
@@ -318,6 +363,12 @@ function toggleOpen(n: MediaNotification) {
           >Notification settings</RouterLink
         >
       </div>
+      <p v-if="policy" class="retention-note" data-testid="retention-note">
+        {{ retentionSummary(policy) }}
+        <RouterLink to="/settings?section=notifications"
+          >Change retention</RouterLink
+        >
+      </p>
       <p v-if="error" class="ui-state error">{{ error }}</p>
       <p v-if="loading && !items.length" class="ui-state" role="status">
         Loading…
@@ -400,7 +451,8 @@ function toggleOpen(n: MediaNotification) {
                   :key="n.id"
                   class="card"
                   :class="{
-                    unread: !n.read,
+                    unread: stateOf(n) === 'unread',
+                    inactive: !isActionable(n),
                     open: openId === n.id,
                     warning: n.severity === 'warning' || n.severity === 'error',
                   }"
@@ -421,11 +473,13 @@ function toggleOpen(n: MediaNotification) {
                       "
                     >
                       <span v-if="!n.posterUrl" class="poster-initial">{{
-                        n.title.slice(0, 1)
+                        (n.title || "?").slice(0, 1)
                       }}</span>
                     </span>
                     <span class="card-main">
-                      <span class="card-title">{{ n.title }}</span>
+                      <span class="card-title">{{
+                        n.title || "Deleted notification"
+                      }}</span>
                       <span class="card-body">{{ n.body }}</span>
                       <span class="card-time"
                         >{{ timeOnly(n.eventAt) }} ·
@@ -440,7 +494,16 @@ function toggleOpen(n: MediaNotification) {
                       >{{ notificationPresentation(n.kind).label }}</span
                     >
                     <span
-                      v-if="!n.read"
+                      v-if="!isActionable(n) || n.story?.resolved"
+                      class="state-pill"
+                      >{{
+                        n.story?.resolved && isActionable(n)
+                          ? "Resolved"
+                          : STATE_LABEL[stateOf(n)]
+                      }}</span
+                    >
+                    <span
+                      v-if="stateOf(n) === 'unread'"
                       class="unread-dot"
                       title="Unread"
                     ></span>
@@ -458,7 +521,7 @@ function toggleOpen(n: MediaNotification) {
                           {{ n.source === "host" ? "Tracking app" : n.source }}
                         </dd>
                       </div>
-                      <div>
+                      <div v-if="stateOf(n) !== 'deleted'">
                         <dt>What happened</dt>
                         <dd>
                           {{ notificationPresentation(n.kind).label }}:
@@ -466,6 +529,18 @@ function toggleOpen(n: MediaNotification) {
                         </dd>
                       </div>
                       <div>
+                        <dt>Status</dt>
+                        <dd>
+                          {{ STATE_LABEL[stateOf(n)]
+                          }}<template v-if="n.story">
+                            · story phase {{ n.story.phase
+                            }}{{ n.story.resolved ? " (resolved)" : "" }} ·
+                            {{ n.story.revisions }}
+                            {{ n.story.revisions === 1 ? "update" : "updates" }}
+                          </template>
+                        </dd>
+                      </div>
+                      <div v-if="stateOf(n) !== 'deleted'">
                         <dt>Title</dt>
                         <dd>
                           {{ n.title }} ({{
@@ -482,45 +557,62 @@ function toggleOpen(n: MediaNotification) {
                         <dd>{{ exactTime(n.eventAt) }}</dd>
                       </div>
                     </dl>
+                    <ol class="history" aria-label="Lifecycle history">
+                      <li
+                        v-for="entry in lifecycleHistory(n, policy)"
+                        :key="entry.label"
+                      >
+                        <strong>{{ entry.label }}</strong>
+                        <span>{{ exactTime(entry.at) }}</span>
+                      </li>
+                    </ol>
+                    <p
+                      v-if="isActionable(n) && expiryOf(n, policy)"
+                      class="sub"
+                    >
+                      Visible until {{ exactTime(expiryOf(n, policy)!) }}.
+                    </p>
                     <div class="detail-actions">
                       <RouterLink
-                        v-if="n.storyId"
+                        v-if="n.storyId && stateOf(n) !== 'deleted'"
                         :to="`/notifications/stories/${n.storyId}`"
                         class="ui-btn ui-btn-sm ui-btn-secondary"
                         >View full update</RouterLink
                       >
                       <button
-                        v-if="notificationDestination(n)"
+                        v-if="isActionable(n) && notificationDestination(n)"
                         type="button"
                         class="ui-btn ui-btn-sm ui-btn-primary"
                         @click="open(n)"
                       >
                         Open {{ TYPE_LABEL[n.mediaType] ?? "item" }}
                       </button>
-                      <button
-                        type="button"
-                        class="ui-btn ui-btn-sm ui-btn-secondary"
-                        :disabled="pending"
-                        @click="setRead(n, !n.read)"
-                      >
-                        {{ n.read ? "Mark Unread" : "Mark Read" }}
-                      </button>
-                      <button
-                        type="button"
-                        class="ui-btn ui-btn-sm ui-btn-secondary"
-                        :disabled="pending"
-                        @click="dismiss(n)"
-                      >
-                        Dismiss
-                      </button>
-                      <button
-                        type="button"
-                        class="ui-btn ui-btn-sm ui-btn-danger-soft"
-                        :disabled="pending"
-                        @click="remove(n)"
-                      >
-                        Delete
-                      </button>
+                      <template v-if="isActionable(n)">
+                        <button
+                          type="button"
+                          class="ui-btn ui-btn-sm ui-btn-secondary"
+                          :disabled="pending"
+                          @click="setRead(n, !n.read)"
+                        >
+                          {{ n.read ? "Mark Unread" : "Mark Read" }}
+                        </button>
+                        <button
+                          type="button"
+                          class="ui-btn ui-btn-sm ui-btn-secondary"
+                          :disabled="pending"
+                          @click="dismiss(n)"
+                        >
+                          Dismiss
+                        </button>
+                        <button
+                          type="button"
+                          class="ui-btn ui-btn-sm ui-btn-danger-soft"
+                          :disabled="pending"
+                          @click="remove(n)"
+                        >
+                          Delete
+                        </button>
+                      </template>
                     </div>
                   </div>
                 </article>
@@ -610,6 +702,38 @@ function toggleOpen(n: MediaNotification) {
   align-items: center;
   gap: 12px;
   padding: 16px 0;
+}
+.retention-note {
+  margin: 0 0 16px;
+  font-size: 0.82rem;
+  color: var(--ui-dim);
+}
+.state-pill {
+  flex-shrink: 0;
+  font-size: 0.66rem;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--ui-border);
+  color: var(--ui-dim);
+}
+.card.inactive {
+  opacity: 0.85;
+}
+.history {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  font-size: 0.78rem;
+}
+.history li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+.history span {
+  color: var(--ui-dim);
 }
 .card.warning {
   border-left: 3px solid var(--ui-error);

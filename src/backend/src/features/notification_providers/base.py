@@ -51,6 +51,14 @@ class MessageAction:
 
 
 @dataclass(frozen=True)
+class MessageFact:
+    """A labelled fact for a provider that declared structured embeds (canonical projection)."""
+
+    label: str
+    text: str
+
+
+@dataclass(frozen=True)
 class NotificationMessage:  # pylint: disable=too-many-instance-attributes
     id: UUID
     kind: str
@@ -72,6 +80,7 @@ class NotificationMessage:  # pylint: disable=too-many-instance-attributes
     html: str | None = None
     actions: tuple[MessageAction, ...] = ()
     images: tuple[str, ...] = ()
+    facts: tuple[MessageFact, ...] = ()
     link: str | None = None
     # send | edit | follow_up. `remote_ref` is the provider's own opaque reference for the earlier
     # message: set for an edit, and for a follow-up only when the provider threads replies.

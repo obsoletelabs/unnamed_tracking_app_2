@@ -337,8 +337,10 @@ def test_existing_providers_have_discoverable_legacy_profiles(provider):
     assert profile.renderer == "legacy"
     assert profile.critical_supported is provider.critical_supported
     capabilities = profile.capabilities
-    # Current transports deliver one item, cannot edit and receive plain text only.
-    assert capabilities.max_batch_items == 1 and capabilities.message_updates == "none"
+    # Current transports deliver one item and receive plain text only; only a browser tag can
+    # replace an earlier alert in place.
+    expected_updates = "replace" if provider.id == "core.browser" else "none"
+    assert capabilities.max_batch_items == 1 and capabilities.message_updates == expected_updates
     assert capabilities.text_formats == ("plain",) and capabilities.action_buttons == 0
     assert not capabilities.live_page_links and capabilities.images is None
 
@@ -379,7 +381,7 @@ def test_only_generic_plugin_providers_declare_canonical_capabilities():
 
 def test_every_notification_operation_has_an_explicit_adapter():
     operations = {name for name in _METHOD_CAPABILITIES if "notification" in name}
-    runtime = {"notification-deliveries", "notification-layouts"}
+    runtime = {"notification-deliveries", "notification-layouts", "notification-story-actions"}
     assert set(LEGACY_ADAPTERS) == operations | runtime
     for adapter in LEGACY_ADAPTERS.values():
         assert parse_semver(adapter.introduced_in) <= parse_semver(PLUGIN_API_CONTRACT_VERSION)

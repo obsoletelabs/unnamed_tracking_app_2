@@ -105,3 +105,32 @@ def test_invalid_generic_envelopes_never_execute_plugin(provider, change):
                user_id=str(uuid4()), installation_id=installation, attempt_id=str(uuid4()),
                **({"server_revision": 1} if change != "render" else {}))
     assert calls == []
+
+
+@pytest.mark.parametrize("delivery", [
+    {"operation": "edit", "idempotency_key": "k"},
+    {"operation": "teleport", "idempotency_key": "k"},
+    {"operation": "send", "remote_ref": "x" * 513, "idempotency_key": "k"},
+    {"operation": "send"},
+    {"operation": "send", "idempotency_key": "k", "html": "x" * 200_001},
+])
+def test_canonical_delivery_operations_are_validated_before_execution(provider, delivery):
+    registry, installation, calls = provider
+    destination = {"id": str(uuid4()), "revision": 2, "kind": "webhook"}
+    with pytest.raises(RuntimePolicyError, match="operation"):
+        registry.notification_delivery("contract.provider", "deliver",
+            {"delivery": delivery, "destination": destination},
+            user_id=str(uuid4()), installation_id=installation, attempt_id=str(uuid4()),
+            server_revision=1)
+    assert calls == []
+
+
+def test_a_valid_edit_names_its_message_and_reaches_the_plugin(provider):
+    registry, installation, calls = provider
+    destination = {"id": str(uuid4()), "revision": 2, "kind": "webhook"}
+    delivery = {"operation": "edit", "remote_ref": "msg-1", "idempotency_key": "k"}
+    registry.notification_delivery("contract.provider", "deliver",
+        {"delivery": delivery, "destination": destination},
+        user_id=str(uuid4()), installation_id=installation, attempt_id=str(uuid4()),
+        server_revision=1)
+    assert calls[0]["delivery"] == delivery
