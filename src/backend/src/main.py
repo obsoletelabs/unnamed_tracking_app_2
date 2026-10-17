@@ -26,6 +26,7 @@ from src.api.routes import (
     game_archives,
     game_duplicates,
     game_identity,
+    game_identity_backfill,
     game_identity_overview,
     game_identity_review,
     game_manual,
@@ -129,6 +130,7 @@ app.include_router(default_game_assets.router)
 app.include_router(games.router)
 app.include_router(game_duplicates.router)
 app.include_router(game_identity.router)
+app.include_router(game_identity_backfill.router)
 app.include_router(game_identity_overview.router)
 app.include_router(game_identity_review.router)
 app.include_router(game_manual.router)

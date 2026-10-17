@@ -25,6 +25,7 @@ from src.database.models import (
     game_field_change,  # noqa: F401
     game_file_item,  # noqa: F401
     game_identity,  # noqa: F401
+    game_identity_backfill,  # noqa: F401
     game_identity_tracking,  # noqa: F401
     game_note_detail,  # noqa: F401
     game_profile,  # noqa: F401
