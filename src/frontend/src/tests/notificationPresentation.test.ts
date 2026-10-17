@@ -11,8 +11,19 @@ it("groups plugin notifications without requiring a media page", () => {
     group: "plugins",
   });
   expect(
-    notificationDestination({ mediaType: "plugin", mediaId: "publisher-uuid" }),
+    notificationDestination({
+      mediaType: "plugin",
+      mediaId: "publisher-uuid",
+      kind: "plugin",
+    }),
   ).toBeNull();
+  expect(
+    notificationDestination({
+      mediaType: "plugin",
+      mediaId: "batch-uuid",
+      kind: "plugin_update",
+    }),
+  ).toBe("/settings?area=administration&section=plugins");
 });
 
 it.each(["legacy-event", "constructor", "__proto__"])(
