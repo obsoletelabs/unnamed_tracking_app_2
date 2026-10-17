@@ -20,10 +20,11 @@ from src.core.config import settings
 from src.database.models.notification import Notification
 from src.database.models.notification_story import NotificationStoryRevision
 from src.features.notification_contract import content_from_notification
+from src.features.notification_contributions import contributed_text, selected_contribution
 from src.features.notification_providers.base import MessageAction, NotificationMessage
 from src.features.notification_providers.capabilities import ResolvedProfile
 from src.features.notification_rich import render_email_html, render_plain
-from src.plugin_api.notification_story_contracts import NotificationContent
+from src.plugin_api.notification_story_contracts import NotificationContent, RendererContribution
 
 ELLIPSIS = "…"
 PAYLOAD_OVERHEAD = 512
@@ -79,22 +80,38 @@ def story_link(base: str | None, notification: Notification) -> str | None:
     return base.rstrip("/") + suffix
 
 
+def _body_fields(
+    content: NotificationContent,
+    profile: ResolvedProfile,
+    base: str | None,
+    contribution: RendererContribution | None,
+    fields: dict,
+) -> list[str]:
+    """HTML or body text for the provider's surface, honouring an authorised contribution."""
+    if "html_email" in profile.capabilities.text_formats:
+        fields["html"] = render_email_html(content, base_url=base or "", contribution=contribution)
+        return []
+    if contribution is None:
+        return ["rich_text_plain"] if content.blocks or content.facts else []
+    contributed, note = contributed_text(contribution, content, profile)
+    if contributed:
+        fields["body"] = contributed
+    return [note] if note else []
+
+
 def _presentation(
     content: NotificationContent,
     profile: ResolvedProfile,
     link: str | None,
     base: str | None,
+    contribution: RendererContribution | None = None,
 ) -> tuple[dict, list[str]]:
     """Fields a canonical provider receives, narrowed to its declared capabilities."""
     caps = profile.capabilities
     fallbacks: list[str] = []
-    body = render_plain(content).split("\n\n", 1)
-    text = body[1] if len(body) > 1 else content.summary
-    fields: dict = {"title": content.title, "body": text}
-    if "html_email" in caps.text_formats:
-        fields["html"] = render_email_html(content, base_url=base or "")
-    elif content.blocks or content.facts:
-        fallbacks.append("rich_text_plain")
+    _, _, text = render_plain(content).partition("\n\n")
+    fields: dict = {"title": content.title, "body": text or content.summary}
+    fallbacks += _body_fields(content, profile, base, contribution, fields)
     buttons: list[MessageAction] = []
     for action in content.actions:
         target = action.target
@@ -146,7 +163,13 @@ async def render_message(
     content = await _content(db, notification, projection)
     changes: dict = {}
     if content is not None and profile.canonical:
-        fields, notes = _presentation(content, profile, link, link_base)
+        fields, notes = _presentation(
+            content,
+            profile,
+            link,
+            link_base,
+            await selected_contribution(db, notification, profile),
+        )
         fallbacks += notes
         changes |= fields
     elif content is not None and (

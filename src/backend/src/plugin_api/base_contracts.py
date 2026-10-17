@@ -11,7 +11,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 API_VERSION = "v1"
-PLUGIN_API_CONTRACT_VERSION = "1.1.13"
+PLUGIN_API_CONTRACT_VERSION = "1.1.14"
 Timestamp = datetime
 
 
@@ -50,6 +50,10 @@ class Capability(StrEnum):
     NOTIFICATIONS_EMIT = "notifications.emit"
     NOTIFICATION_SOURCES_REGISTER = "notification_sources.register"
     NOTIFICATIONS_SENSITIVE = "notifications.sensitive"
+    NOTIFICATIONS_CANONICAL = "notifications.canonical"
+    NOTIFICATIONS_ACTIONS = "notifications.actions"
+    NOTIFICATIONS_URGENCY = "notifications.urgency"
+    NOTIFICATIONS_TEMPLATES_HTML = "notifications.templates.html"
     NOTIFICATIONS_LIFECYCLE_READ = "notifications.lifecycle.read"
     NOTIFICATION_DESTINATIONS_READ = "notification_destinations.read"
     NOTIFICATIONS = "notifications"
@@ -230,11 +234,18 @@ class NotificationDeliveryRepresentation(ContractModel):
 
 
 class NotificationDeliveryResult(ContractModel):
-    """Provider result interpreted by core-owned retry and terminal-state logic."""
+    """Provider result interpreted by core-owned retry and terminal-state logic.
+
+    ``remote_ref`` (1.1.14) is the provider's own opaque identifier of the message it created or
+    edited; only the host stores it. ``gone`` reports that an earlier message can no longer be
+    edited, so the host falls back to a follow-up.
+    """
 
     success: bool
     retryable: bool = False
     error: str | None = Field(default=None, max_length=512)
+    remote_ref: str | None = Field(default=None, min_length=1, max_length=512)
+    gone: bool = False
 
 
 class UserContext(ContractModel):
@@ -744,6 +755,16 @@ class PluginIdentityProviderDeclaration(ContractModel):
     revalidate_action_id: str = Field(min_length=1, max_length=128)
 
 
+NOTIFICATION_CONTRACT_CAPABILITIES = frozenset(
+    {
+        Capability.NOTIFICATIONS_CANONICAL,
+        Capability.NOTIFICATIONS_ACTIONS,
+        Capability.NOTIFICATIONS_URGENCY,
+        Capability.NOTIFICATIONS_TEMPLATES_HTML,
+    }
+)
+
+
 class PluginManifest(ContractModel):
     """Static plugin manifest validated without importing or executing the plugin."""
 
@@ -796,6 +817,18 @@ class PluginManifest(ContractModel):
             capability.name.startswith("metadata_providers.") for capability in self.capabilities
         ) and parse_semver(self.api_contract_version) < (1, 1, 1):
             raise ValueError("metadata provider capabilities require Plugin API v1.1.1")
+        return self
+
+    @model_validator(mode="after")
+    def validate_notification_contract(self) -> "PluginManifest":
+        """Versioned notification capabilities are only understood from Plugin API 1.1.14."""
+        used = sorted(
+            capability.name.value
+            for capability in self.capabilities
+            if capability.name in NOTIFICATION_CONTRACT_CAPABILITIES
+        )
+        if used and parse_semver(self.api_contract_version) < (1, 1, 14):
+            raise ValueError(f"{', '.join(used)} require Plugin API v1.1.14")
         return self
 
     @model_validator(mode="after")

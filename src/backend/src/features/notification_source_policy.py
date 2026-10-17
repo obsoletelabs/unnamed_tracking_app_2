@@ -24,6 +24,7 @@ async def source_delivery_allowed(db: AsyncSession, notice: Notification) -> boo
     if notice.user_id is None or notice.source_installation_id is None:
         return notice.user_id is not None
     legacy = notice.kind == "plugin" and notice.event_type == "plugin.notice"
+    canonical = False
     if not legacy:
         row = await db.scalar(
             select(PluginNotificationTypeRegistration).where(
@@ -35,7 +36,13 @@ async def source_delivery_allowed(db: AsyncSession, notice: Notification) -> boo
         )
         if row is None:
             return False
+        canonical = "contract_version" in row.definition
     capabilities = ["notifications.send" if legacy else "notifications.emit"]
+    if canonical:
+        # Plugin API 1.1.14 sources are authorised by their own grants, rechecked per dispatch.
+        capabilities = ["notifications.canonical"]
+        if notice.requested_urgency == "critical":
+            capabilities.append("notifications.urgency")
     if notice.required_trust == Trust.SECURE:
         capabilities.append("notifications.sensitive")
     for capability in capabilities:

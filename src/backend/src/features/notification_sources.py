@@ -26,6 +26,7 @@ from src.plugin_api.notification_contracts import (
     NotificationEventEmission,
     NotificationTypeRegistration,
 )
+from src.plugin_api.notification_plugin_contracts import CanonicalNotificationTypeRegistration
 
 
 async def _sensitive_grant(
@@ -45,15 +46,30 @@ async def _sensitive_grant(
         raise PermissionError("Sensitive notification sources require an explicit high-risk grant")
 
 
-async def register_source(
-    db: AsyncSession, plugin_id: str, installation_id: UUID, user_id: UUID, payload: dict[str, Any]
-) -> dict[str, Any]:
-    definition = NotificationTypeRegistration.model_validate(payload)
-    if not definition.event_type.startswith(f"{plugin_id}.") or definition.event_type.startswith(
-        ("auth.", "security.", "destination.", "system.", "media.", "game.", "host.", "core.")
-    ):
-        raise ValueError("Notification types must use this plugin's namespace")
-    await _sensitive_grant(db, plugin_id, installation_id, user_id, definition)
+RESERVED_NAMESPACES = (
+    "auth.",
+    "security.",
+    "destination.",
+    "system.",
+    "media.",
+    "game.",
+    "host.",
+    "core.",
+)
+
+
+def source_namespace_allowed(plugin_id: str, event_type: str) -> bool:
+    return event_type.startswith(f"{plugin_id}.") and not event_type.startswith(RESERVED_NAMESPACES)
+
+
+async def store_source_registration(
+    db: AsyncSession,
+    plugin_id: str,
+    installation_id: UUID,
+    event_type: str,
+    definition: dict[str, Any],
+) -> None:
+    """Create or refresh this installation's registration; changes retire unsent source work."""
     # Serialize first creation and source-count limits with an existing scope lock.
     lock_key = int.from_bytes(
         hashlib.sha256(f"notification-types:{plugin_id}".encode()).digest()[:8], "big", signed=True
@@ -61,7 +77,7 @@ async def register_source(
     await db.execute(select(func.pg_advisory_xact_lock(lock_key)))
     row = await db.scalar(
         select(PluginNotificationTypeRegistration)
-        .where(PluginNotificationTypeRegistration.event_type == definition.event_type)
+        .where(PluginNotificationTypeRegistration.event_type == event_type)
         .with_for_update()
     )
     if row is not None and row.plugin_id != plugin_id:
@@ -77,26 +93,42 @@ async def register_source(
         row = PluginNotificationTypeRegistration(
             plugin_id=plugin_id,
             installation_id=installation_id,
-            event_type=definition.event_type,
-            definition=definition.model_dump(mode="json"),
+            event_type=event_type,
+            definition=definition,
         )
         db.add(row)
     else:
-        if row.installation_id != installation_id or row.definition != definition.model_dump(
-            mode="json"
-        ):
-            await retire_sources(db, plugin_id, event_type=definition.event_type)
+        if row.installation_id != installation_id or row.definition != definition:
+            await retire_sources(db, plugin_id, event_type=event_type)
         # The current installation's reviewed source grant authorizes new facts;
         # no destination activation, proof or consent is transferred here.
         row.installation_id = installation_id
-        row.definition = definition.model_dump(mode="json")
+        row.definition = definition
         row.revoked_at = None
         row.registered_at = int(time.time())
+
+
+async def register_source(
+    db: AsyncSession, plugin_id: str, installation_id: UUID, user_id: UUID, payload: dict[str, Any]
+) -> dict[str, Any]:
+    if "contract_version" in payload:
+        # Plugin API 1.1.14 canonical declaration; the legacy template form never carries one.
+        # pylint: disable-next=import-outside-toplevel,cyclic-import
+        from src.features.notification_plugin_events import register_canonical_source
+
+        return await register_canonical_source(db, plugin_id, installation_id, user_id, payload)
+    definition = NotificationTypeRegistration.model_validate(payload)
+    if not source_namespace_allowed(plugin_id, definition.event_type):
+        raise ValueError("Notification types must use this plugin's namespace")
+    await _sensitive_grant(db, plugin_id, installation_id, user_id, definition)
+    await store_source_registration(
+        db, plugin_id, installation_id, definition.event_type, definition.model_dump(mode="json")
+    )
     await db.commit()
     return {"registered": True, "event_type": definition.event_type}
 
 
-async def _check_acceptance_quota(
+async def check_acceptance_quota(
     db: AsyncSession, user_id: UUID, plugin_id: str, dedupe_key: str, now: int
 ) -> None:
     """Serialize account quotas using acceptance time; exact replay consumes no new quota."""
@@ -143,6 +175,8 @@ async def emit_source(
     )
     if row is None:
         raise PermissionError("Notification source is not active for this installation")
+    if "contract_version" in row.definition:
+        raise ValueError("Canonical notification types are published with notifications.publish")
     definition = NotificationTypeRegistration.model_validate(row.definition)
     await _sensitive_grant(db, plugin_id, installation_id, user_id, definition)
     expected = {"string": str, "integer": int, "boolean": bool}
@@ -153,32 +187,71 @@ async def emit_source(
     ):
         raise ValueError("Notification parameters do not match the registered type")
     dedupe_key = source_receipt_key(plugin_id, event.event_type, event.dedupe_key)
-    await _check_acceptance_quota(db, user_id, plugin_id, dedupe_key, now)
+    await check_acceptance_quota(db, user_id, plugin_id, dedupe_key, now)
     facts = json.dumps(event.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
-    draft = NotificationDraft(
-        kind="plugin",
-        user_id=user_id,
-        entity_type="plugin",
-        entity_id=uuid5(NAMESPACE_URL, f"notification-source:{event.event_type}"),
-        occurred_at=event.occurred_at,
-        dedupe_key=dedupe_key,
-        title=definition.title_template.format_map(event.data),
-        body=definition.body_template.format_map(event.data),
-        source=plugin_id,
+    draft = source_draft(
+        user_id,
+        plugin_id,
+        event.event_type,
+        event.occurred_at,
+        dedupe_key,
+        definition.title_template.format_map(event.data),
+        definition.body_template.format_map(event.data),
         group_key=f"{event.event_type}:{event.group_key}" if event.group_key else None,
         fingerprint=hashlib.sha256(facts.encode()).hexdigest(),
     )
-    notice_id = await emit_interpreted(
+    return await accept_source_event(
         db,
         draft,
-        NotificationInterpretation(
-            event.event_type,
-            Trust[definition.required_trust],
-            definition.purpose,
-            definition.severity,
-            installation_id,
-        ),
+        source_interpretation(definition, event.event_type, installation_id),
     )
+
+
+def source_interpretation(
+    definition: NotificationTypeRegistration | CanonicalNotificationTypeRegistration,
+    event_type: str,
+    installation_id: UUID,
+) -> NotificationInterpretation:
+    """Trust, purpose and severity come from the registered declaration, never the event."""
+    return NotificationInterpretation(
+        event_type,
+        Trust[definition.required_trust],
+        definition.purpose,
+        definition.severity,
+        installation_id,
+    )
+
+
+def source_draft(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    user_id: UUID,
+    plugin_id: str,
+    event_type: str,
+    occurred_at: int,
+    dedupe_key: str,
+    title: str,
+    body: str,
+    **extra: Any,
+) -> NotificationDraft:
+    """The producer-neutral part of a registered source's draft; the host adds the rest."""
+    return NotificationDraft(
+        kind="plugin",
+        user_id=user_id,
+        entity_type="plugin",
+        entity_id=uuid5(NAMESPACE_URL, f"notification-source:{event_type}"),
+        occurred_at=occurred_at,
+        dedupe_key=dedupe_key,
+        title=title,
+        body=body,
+        source=plugin_id,
+        **extra,
+    )
+
+
+async def accept_source_event(
+    db: AsyncSession, draft: NotificationDraft, interpretation: NotificationInterpretation
+) -> dict[str, Any]:
+    """Host acceptance of one registered source event, shared by both producer contracts."""
+    notice_id = await emit_interpreted(db, draft, interpretation)
     await db.commit()
     return {
         "created": notice_id is not None,

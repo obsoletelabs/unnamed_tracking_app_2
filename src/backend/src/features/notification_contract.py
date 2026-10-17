@@ -422,4 +422,8 @@ LEGACY_ADAPTERS: Mapping[str, LegacyAdapter] = {
     "notification_destinations.status": LegacyAdapter(
         "1.1.11", ("NotificationDestinationStatusPage",), "unchanged"
     ),
+    # Plugin API 1.1.14: native canonical surfaces, so no legacy mapping is involved.
+    "notifications.publish": LegacyAdapter("1.1.14", ("CanonicalNotificationEvent",), "unchanged"),
+    "notifications.contract": LegacyAdapter("1.1.14", ("ContractNegotiationRequest",), "unchanged"),
+    "notification-story-actions": LegacyAdapter("1.1.14", ("PluginActionTarget",), "unchanged"),
 }

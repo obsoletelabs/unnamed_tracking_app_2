@@ -57,6 +57,8 @@ async def poll_lifecycle(
             "has_more": False,
             "resync_required": True,
         }
+    # Statuses added after 1.1.4 are replayed only to consumers that ask for them.
+    statuses = () if query.include_revisions else ("revised",)
     rows = list(
         await db.scalars(
             select(NotificationLifecycleAudit)
@@ -66,6 +68,7 @@ async def poll_lifecycle(
                 NotificationLifecycleAudit.installation_id == installation_id,
                 NotificationLifecycleAudit.sequence > after,
                 NotificationLifecycleAudit.sequence <= stream.published_through,
+                NotificationLifecycleAudit.status.not_in(statuses),
             )
             .order_by(NotificationLifecycleAudit.sequence)
             .limit(query.limit + 1)
