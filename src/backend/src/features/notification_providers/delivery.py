@@ -323,6 +323,34 @@ async def _resolve_work(
     return _DeliveryWork(notification, endpoint, provider, destination)
 
 
+async def _open_attempt(
+    db: AsyncSession,
+    work: _DeliveryWork,
+    delivery: NotificationDelivery,
+    token: UUID,
+    current_preferences: dict[str, Any],
+) -> NotificationDeliveryAttempt:
+    """Record urgency and persist a new attempt row before transport I/O."""
+    notification, endpoint = work.notification, work.endpoint
+    delivery.requested_urgency = route_choice(
+        notification.event_type, str(endpoint.id), current_preferences
+    )["urgency"]
+    delivery.effective_urgency = (
+        delivery.requested_urgency
+        if getattr(work.provider, "critical_supported", False) is True
+        else "normal"
+    )
+    delivery.attempts += 1
+    now = int(time.time())
+    delivery.attempted_at = now
+    attempt = NotificationDeliveryAttempt(
+        delivery_id=delivery.id, number=delivery.attempts, claim_token=token, started_at=now
+    )
+    db.add(attempt)
+    await db.flush()
+    return attempt
+
+
 # Separate exits ensure source revocation is rechecked before transport I/O.
 # pylint: disable-next=too-many-return-statements,too-many-locals,too-many-statements
 async def _dispatch(db: AsyncSession, delivery_id: UUID, token: UUID) -> bool:
@@ -371,22 +399,7 @@ async def _dispatch(db: AsyncSession, delivery_id: UUID, token: UUID) -> bool:
     if destination is None or not _transport_allowed(notification, destination):
         await _finish(db, delivery_id, token, "suppressed", "transport_security_required")
         return False
-    delivery.requested_urgency = route_choice(
-        notification.event_type, str(endpoint.id), current_preferences
-    )["urgency"]
-    delivery.effective_urgency = (
-        delivery.requested_urgency
-        if getattr(work.provider, "critical_supported", False) is True
-        else "normal"
-    )
-    delivery.attempts += 1
-    now = int(time.time())
-    delivery.attempted_at = now
-    attempt = NotificationDeliveryAttempt(
-        delivery_id=delivery.id, number=delivery.attempts, claim_token=token, started_at=now
-    )
-    db.add(attempt)
-    await db.flush()
+    attempt = await _open_attempt(db, work, delivery, token, current_preferences)
     message = notification_message(
         notification,
         projection=delivery.projection,
