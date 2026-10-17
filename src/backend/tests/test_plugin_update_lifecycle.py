@@ -180,6 +180,9 @@ async def test_four_plugin_updates_are_one_consolidated_notification(monkeypatch
 
     emit = AsyncMock(return_value=[uuid4()])
     monkeypatch.setattr(plugin_catalogues, "emit_legacy_rows", emit)
+    monkeypatch.setattr(
+        plugin_catalogues.settings, "PUBLIC_APP_URL", "https://tracking.example"
+    )
     updates = [
         {
             "plugin_id": f"example.plugin{i}",
@@ -201,6 +204,10 @@ async def test_four_plugin_updates_are_one_consolidated_notification(monkeypatch
         assert update["plugin_id"] in body
         assert f'{update["current_version"]} → {update["available_version"]}' in body
     assert notices[0]["dedupe_key"].startswith("plugin-update-batch:")
+    assert (
+        "https://tracking.example/settings?area=administration&section=plugins"
+        in body
+    )
 
 
 @pytest.mark.asyncio
