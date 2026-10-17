@@ -383,3 +383,46 @@ async def test_password_change_cannot_leave_a_concurrent_old_password_sign_in_ac
         )
         assert concurrent.revoked_at is not None
         assert current.revoked_at is None
+
+
+async def test_member_profile_conflicts_cannot_tell_username_from_email(accounts):
+    sign_in(accounts)
+    taken = accounts.users[1]
+    by_username = await accounts.client.patch("/api/auth/me", json={"username": taken.username})
+    by_email = await accounts.client.patch("/api/auth/me", json={"email": taken.email})
+    assert by_username.status_code == by_email.status_code == 409
+    assert by_username.json() == by_email.json() == {"detail": auth.ACCOUNT_CONFLICT_DETAIL}
+    assert taken.email not in by_email.text
+
+
+async def test_admin_conflicts_still_name_the_colliding_field(accounts):
+    sign_in(accounts, 1)
+    taken = accounts.users[0]
+    response = await accounts.client.patch("/api/auth/me", json={"username": taken.username})
+    assert response.status_code == 409
+    assert (
+        response.json()["detail"] == "That username is already taken. Choose a different username."
+    )
+    response = await accounts.client.patch("/api/auth/me", json={"email": taken.email})
+    assert response.status_code == 409
+    assert response.json()["detail"] == "That email address is already in use."
+    response = await accounts.client.post(
+        "/api/auth/users",
+        json={"username": f"new-{uuid4().hex}", "email": taken.email, "password": NEW_PASSWORD},
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"] == "That email address is already in use."
+
+
+async def test_invalid_username_reasons_reach_the_client_for_each_account_form(accounts):
+    sign_in(accounts, 1)
+    response = await accounts.client.post(
+        "/api/auth/users",
+        json={
+            "username": "bad@name",
+            "email": f"x-{uuid4().hex}@example.test",
+            "password": NEW_PASSWORD,
+        },
+    )
+    assert response.status_code == 422
+    assert "Username cannot contain \u201c@\u201d" in response.text

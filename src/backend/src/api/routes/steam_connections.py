@@ -58,6 +58,8 @@ class ConnectionRead(BaseModel):
     display_name: str | None
     expires_at: int | None
     pending: PendingRead | None
+    # SteamID64 proven by Steam's OpenID redirect; identity only, not library access.
+    verified_steam_id: str | None = None
 
 
 class AttemptRequest(BaseModel):

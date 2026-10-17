@@ -1,10 +1,16 @@
+import { fetchAllGamePages } from "./gamePages";
 import type { MetadataSearchResult } from "./metadata";
 export type { MetadataSearchResult } from "./metadata";
 import { mockGames } from "../data/mockGames";
 import { failedRequest } from "./apiError";
 import { normalizeKind } from "../utils/achievements";
 import { createEntityCache } from "../utils/entityCache";
-import { POSTER_WIDTH, sizedAssetUrl } from "../utils/gameImages";
+import {
+  POSTER_WIDTH,
+  gameAssetUrl,
+  rememberUploadedRevision,
+  sizedAssetUrl,
+} from "../utils/gameImages";
 import type { ContentCounts, PageOverrides } from "../utils/gamePage";
 import type {
   Achievement,
@@ -128,7 +134,7 @@ function normalizeStatus(raw: string): GameStatus {
   return raw.toLowerCase().replace(/_/g, " ") as GameStatus;
 }
 // inverse of normalizeStatus, 'on hold' -> 'ON_HOLD'
-function denormalizeStatus(status: GameStatus): string {
+export function denormalizeStatus(status: GameStatus): string {
   return status.toUpperCase().replace(/ /g, "_");
 }
 
@@ -141,11 +147,8 @@ export function mapBackendGame(raw: BackendGame): Game {
     coverColor: "#2a2a2a",
     // every place a cover is shown is a card or a poster well under 400 px
     // wide, and the stored cover is a PNG of up to a megabyte
-    coverImageUrl: sizedAssetUrl(
-      `/api/game/${raw.id}/assets/key_art`,
-      POSTER_WIDTH,
-    ),
-    bannerImageUrl: `/api/game/${raw.id}/assets/banner`,
+    coverImageUrl: sizedAssetUrl(gameAssetUrl(raw.id, "key_art"), POSTER_WIDTH),
+    bannerImageUrl: gameAssetUrl(raw.id, "banner"),
     status: normalizeStatus(raw.status),
     ratingOverall: toNumberOrNull(raw.rating_overall),
     ratingStory: toNumberOrNull(raw.rating_story),
@@ -283,30 +286,12 @@ function rememberFetchedGame(game: Game, started: number): Game {
 // /api/game/list caps a single page at 200, page through until a page
 // comes back short, otherwise only the first 50 (the endpoint's default)
 // ever reached the library view once a synced library grew past that.
-const GAMES_PAGE_SIZE = 200;
-
 export async function fetchGames(): Promise<Game[]> {
   if (import.meta.env.VITE_USE_MOCK_DATA === "true") {
     return mockGames;
   }
   const started = mutationVersion;
-  const all: BackendGame[] = [];
-  let skip = 0;
-  while (true) {
-    const response = await fetch(
-      `/api/game/list?skip=${skip}&limit=${GAMES_PAGE_SIZE}`,
-      { credentials: "include" },
-    );
-    if (!response.ok) {
-      throw new Error(
-        `Failed to fetch games: ${response.status} ${response.statusText}`,
-      );
-    }
-    const page: BackendGame[] = await response.json();
-    all.push(...page);
-    if (page.length < GAMES_PAGE_SIZE) break;
-    skip += GAMES_PAGE_SIZE;
-  }
+  const all = await fetchAllGamePages<BackendGame>();
   const games = all.map((raw) =>
     rememberFetchedGame(mapBackendGame(raw), started),
   );
@@ -1592,6 +1577,7 @@ export interface GameAssetUploadResponse {
   asset_kind: string;
   path: string;
   status: string;
+  revision?: string;
 }
 
 export async function uploadGameAsset(
@@ -1615,7 +1601,7 @@ export async function uploadGameAsset(
     );
   }
 
-  return await response.json();
+  return rememberUploadedRevision(gameId, assetKind, await response.json());
 }
 
 export async function attachGameAssetFromUrl(
@@ -1640,7 +1626,7 @@ export async function attachGameAssetFromUrl(
     );
   }
 
-  return await response.json();
+  return rememberUploadedRevision(gameId, assetKind, await response.json());
 }
 
 export interface GameRatings {

@@ -9,7 +9,14 @@ export type StagedArtwork =
   | { source: "file"; file: File; preview: string }
   | { source: "link" | "provider"; url: string };
 
-export function useStagedArtwork(current: () => string | null | undefined) {
+// A choice that can move between editors (the quick editor's "Edit more").
+export type ArtworkChoice =
+  { source: "file"; file: File } | { source: "link" | "provider"; url: string };
+
+export function useStagedArtwork(
+  current: () => string | null | undefined,
+  initial?: ArtworkChoice | null,
+) {
   const staged = shallowRef<StagedArtwork | null>(null);
 
   // Each local preview is an object URL; release it as soon as it is
@@ -47,9 +54,21 @@ export function useStagedArtwork(current: () => string | null | undefined) {
     return choice.source === "file" ? choice.preview : choice.url;
   });
 
+  // The choice in a form that can seed another editor.
+  function toChoice(): ArtworkChoice | null {
+    const choice = staged.value;
+    if (!choice) return null;
+    return choice.source === "file"
+      ? { source: "file", file: choice.file }
+      : { source: choice.source, url: choice.url };
+  }
+
+  if (initial?.source === "file") chooseFile(initial.file);
+  else if (initial) chooseUrl(initial.url, initial.source);
+
   onScopeDispose(release);
 
-  return { staged, preview, chooseFile, chooseUrl, reset };
+  return { staged, toChoice, preview, chooseFile, chooseUrl, reset };
 }
 
 // Stage a file from an <input type="file"> change event.

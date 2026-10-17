@@ -10,6 +10,7 @@ import {
   movieToInput,
 } from "../services/movies";
 import type { Movie, MovieStatus } from "../types/movie";
+import { resolveStatus } from "../utils/mediaStatus";
 import { localMediaImage } from "../utils/mediaImages";
 import MediaLibraryView from "../components/library/MediaLibraryView.vue";
 import type {
@@ -56,6 +57,8 @@ function toVM(m: Movie): LibraryCardVM {
     favorite: m.favorite,
     score: m.ratingOverall,
     personalRank: m.personalRank,
+    startDate: m.startDate,
+    endDate: m.endDate,
     note: m.note,
     genres: m.genres,
     isEpisodic: false,
@@ -109,8 +112,10 @@ async function onSaveEdit(id: string, form: EditForm) {
   replaceMovie(
     await updateMovie(id, {
       ...movieToInput(movie),
-      status: form.status as MovieStatus,
+      status: resolveStatus(form.status, movie.status) as MovieStatus,
       ratingOverall: form.score,
+      ...(form.startDate !== undefined && { startDate: form.startDate }),
+      ...(form.endDate !== undefined && { endDate: form.endDate }),
     }),
   );
 }
@@ -149,7 +154,7 @@ function detailRoute(id: string): string {
 <template>
   <MediaLibraryView
     kind="movie"
-    add-label="+ Add Movie"
+    add-label="+ Add movie"
     :items="items"
     :total="total"
     :status-counts="statusCounts"

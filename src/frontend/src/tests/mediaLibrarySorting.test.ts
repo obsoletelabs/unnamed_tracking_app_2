@@ -118,7 +118,7 @@ it("exposes accessible sortable headers and preserves the server's global row or
   const view = mount(MediaLibraryView, {
     props: {
       kind: "movie",
-      addLabel: "Add Movie",
+      addLabel: "Add movie",
       items: [card, { ...card, id: "2", title: "Alpha", score: 8 }],
       total: 7,
       statusCounts: { WATCHED: 4, FAVORITE: 3, WISHLIST: 10 },
