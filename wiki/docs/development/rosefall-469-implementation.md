@@ -189,7 +189,7 @@ Until then, PRs remain available for review with current validation and screensh
   chip walls with one searchable, keyboard-operable picker (counts, include/exclude
   modes, merged-spelling hints) plus deterministic tag normalization in
   `utils/genres.ts`, documented in the games guide. Classic and Modern share it.
-- **K game editor / 6–7, 14, 18–19:** active issue #143, in review. One shared
+- **K game editor / 6–7, 14, 18–19:** issue #143, merged in PR #171. One shared
   `GameFormModal` on the new `EditorShell` frame serves Modern and Classic: hero,
   eight direct tabs, a bounded body and pinned actions, with no add wizard.
   Favorite, manual collections, manual playtime and the resume note travel in
@@ -200,6 +200,7 @@ Until then, PRs remain available for review with current validation and screensh
   INTEGER range is now a validation error rather than a database failure.
 - **K / #144, #149 and L–O:** see the status board below for live PR state; only
   merged rows are complete.
+- **K media editors / 26–27:** issue #144, merged in [PR #181](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/181) on the #143 editor. Movie, TV and anime editors share `MediaFormShell` on `EditorShell`: Basics, Details, Tracking, Artwork and Links tabs, pinned actions, and staged metadata lookup above every tab. Rewatches, dates, source, subratings, tags, countries, languages, age rating, features, anime format and validated provider IDs use each type's existing create/update request. Seasons, progress, title protection and immutable identity remain unchanged.
 - **M / 45–46:** issue [#146](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/146)
   implements per-kind Empty trash (explicit `confirm: true`, confirmed deletion-time
   bound, 200-title batches, per-title savepoints and deleted/failed/remaining counts)
@@ -208,6 +209,13 @@ Until then, PRs remain available for review with current validation and screensh
   `features/trash/media_titles.py`, separate from the #151 game-file sweep paths.
   No migration. Modern/Classic screenshots are in the media library guide.
   Merged as #168; row 53 was delivered separately by merged #166.
+- **O / 51–52 (activity heatmap and day detail):** issue
+  [#147](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/147), merged as
+  [PR #193](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/193) on the
+  game-statistics predicate from #152. A bounded owned day endpoint, month labels, keyboard
+  and pointer access and one shared Modern/Classic dialog are implemented; see
+  [Statistics activity](../user-guide/statistics.md) and the architecture notes. Settings
+  search (68) and selective copy (71) in package O are separate.
 
 ### Issue-by-issue execution order
 
@@ -239,7 +247,7 @@ separate notification and game-identity overhaul epics remain outside this queue
 
 ### Status board for the #141 queue
 
-Verified against GitHub on 17 October 2026 (about 04:00 UTC). A PR is "merged" only
+Verified against GitHub on 17 October 2026 (about 10:00 UTC). A PR is "merged" only
 when GitHub reports it merged; open and draft PRs are not done, whatever their own
 checklists say. Local results quoted below are the authors' own PR-body claims; the
 two `tests/test_plugin_upload.py` failures noted there are sandbox network failures
@@ -252,36 +260,37 @@ estimates PR (plugins repo #47) and host [#136](https://github.com/obsoletelabs/
 | Order | Issue | PR | State | Base / stack | Tests | Screenshots | Docs | Companion | Remains |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2 | #143 | [#171](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/171) | Merged | main | Frontend suites reported | Modern/Classic | Editor and Classic guides | None | Nothing |
-| 3 | #144 | [#181](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/181) | Open | main (now unblocked by #171) | 665 frontend pass; no backend change | Modern/Classic, 390px | Yes | None | Review and hosted checks; #149 stacks on it |
+| 3 | #144 | [#181](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/181) | Merged | main | 665 frontend pass; no backend change | Modern/Classic, 390px | Yes | None | Nothing |
 | 4 | #145 | [#175](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/175) | Open | main | Backend 3118 pass (2 sandbox network failures), frontend 726, strict docs | Yes | Task, AniList and notification docs | None | Review and hosted checks; #153 stacks on it |
 | 5 | #140 | [#177](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/177) | Merged | main | Reported in PR | Reported in PR | Yes | None | Nothing |
 | 6 | #146 | [#168](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/168) | Merged | main | Reported in PR | Modern/Classic | Media library guide | None | Nothing |
 | 7 | #132 | [#172](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/172) | Merged | main | Reported in PR | Reported in PR | Yes | None | Nothing |
-| 8 | #147 | [#193](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/193) | Open | Base is the merged #152 branch; retarget to main | Backend 2790 pass, frontend 633; build and strict docs not run | Yes | Yes | None | Retarget/rebase on main, rerun build and strict docs, hosted checks |
+| 8 | #147 | [#193](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/193) | Merged | main | Backend 2790 pass, frontend 633 | Yes | Yes | None | Nothing |
 | 9 | #148 | [#197](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/197) | Open | main | Backend 3104 pass, frontend 727, build; live two-client ETag check | Not applicable (no visible UI) | Yes | None | Review and hosted checks |
-| 10 | #125 | [#201](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/201) | Open | main | Backend 3140 pass, frontend 728; migration, single head | Yes | Yes | None | Review and hosted checks; its migration head must follow whatever else merges first |
-| 11 | #149 | [#200](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/200) | Open | Stacked on #144 branch | Frontend 676 pass, lint, strict docs; live checks | Modern/Classic, 390px | Yes | None | #144 must merge first, then retarget to main |
+| 10 | #125 | [#201](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/201) | Merged | main | Backend 3140 pass, frontend 728; migration, single head | Yes | Yes | None | Nothing |
+| 11 | #149 | [#200](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/200) | Open | main (its #144 base has merged) | Frontend 766 pass, lint, typecheck, size check after merging main; live checks | Modern/Classic, 390px | Yes | None | Review and hosted checks; #154 stacks on it |
 | 12 | #150 | [#160](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/160) | Merged | main | Reported in PR | Reported in PR | Yes | None | Nothing |
 | 13 | #151 | [#174](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/174) | Open | main | 23 new tests (fail on main, pass here); backend 2771 pass | None | Yes | None | Review and hosted checks; coordinated with merged #146 |
 | 14 | #139 | [#182](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/182) | Merged | main | Reported in PR | Reported in PR | Yes | None | Nothing |
 | 15 | #152 | [#166](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/166) | Merged | main | Reported in PR | Not applicable | Yes | None | Nothing |
-| 16 | #138 | [#191](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/191) | Draft | main | 228 focused backend pass; full backend, build and whole-tree lint not run; one load-related timeout in a frontend test | Yes | Yes | None | Full backend suite, build, lint, then mark ready |
-| 17 | #153 | [#198](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/198) | Open | Stacked on #145 branch | 731 frontend pass, lint, build, strict docs; backend untouched | Not in PR body | Yes | None | #145 must merge first, then retarget to main |
-| 18 | #154 | None | Not started | Last | None | None | None | None | Everything: selective wording and final migration-consistency review |
+| 16 | #138 | [#191](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/191) | Merged | main | Full backend and frontend suites reported in PR | Yes | Yes | None | Nothing |
+| 17 | #153 | [#198](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/198) | Open | Stacked on #145 branch | Frontend lint, format and typecheck pass after merging the #145 base; backend untouched | 54 captures in the assets folder | Yes | None | #145 must merge first, then retarget to main |
+| 18 | #154 | [#229](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/229) | Open | Stacked on #149 branch; also carries the unmerged #145 and #153 work | Frontend 791 pass, lint, format and typecheck after merging its bases | 24 before/after captures | Copy review page, Classic guide | None | #149, #145 and #153 must merge first, then retarget to main |
 
-Only #143, #140, #146, #132, #150, #139 and #152 are merged. #144, #145, #147, #148, #125,
-#149, #151, #153 are open and ready for review; #138 is a draft; #154 has no branch or PR.
-Matrix rows are delivered only by merged PRs: 6, 7, 14, 18, 19 (#143), 45-46 (#146),
-53 (#152) and 68 (#150). Rows 26-27 (#144), 43-44 (#148), 47-50 (#145), 51-52 (#147),
-20-21 and 37-38 (#149), 70 (#153) and 71 (#154) are not yet delivered.
+Only #143, #144, #140, #146, #132, #147, #125, #150, #139, #152 and #138 are merged. #145,
+#148, #149, #151, #153 and #154 are open and ready for review.
+Matrix rows are delivered only by merged PRs: 6, 7, 14, 18, 19 (#143), 26-27 (#144), 45-46
+(#146), 51-52 (#147), 53 (#152) and 68 (#150). Rows 43-44 (#148), 47-50 (#145), 20-21 and
+37-38 (#149), 70 (#153) and 71 (#154) are not yet delivered.
 
 **Recommended merge order and stacking.** Independent PRs to main in any order, each
-after its hosted checks: #145, #148, #151, #125, #144, #138 (once ready). Stacks: #144 then
-#149; #145 then #153 (retarget each to main after its base merges, merging main forward
-rather than force-pushing); #147 retargeted to main now that #152 is merged. #154 is
-last, after #144, #145, #149, #150, #153 so its wording review covers the final
-workflows. Migrations: #125 and #145 each carry migrations and must keep a single Alembic head;
-rebase the later migration on the earlier one's merged head. Unrelated queued PRs
+after its hosted checks: #145, #148, #149, #151. Stacks: #145 then #153 (retarget each to main
+after its base merges, merging main forward rather than force-pushing). #154 is
+last, after #149, #145 and #153 so its wording review covers the final
+workflows. Migrations: the other open PRs that add one (for example the AniList schedule,
+Steam OpenID and background job run controls) must each chain on the Alembic head that
+is current when they merge; keep a single head and rebase the later migration on the
+earlier one's merged head. Unrelated queued PRs
 (notification and identity projects, #188) are outside this queue; their contracts must
 be respected if they land first.
 

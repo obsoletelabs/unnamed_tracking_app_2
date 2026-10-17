@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch, nextTick, onMounted, onUnmounted } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
-import { logout } from "../services/auth";
+import { accountDisplayName, accountInitials, logout } from "../services/auth";
 import {
   pluginNavigation,
   refreshPluginExtensions,
@@ -551,15 +551,15 @@ onUnmounted(() => {
             <RouterLink
               to="/settings?section=profile"
               class="nav-account-link"
-              :title="currentUser?.username"
+              :title="accountDisplayName(currentUser)"
               aria-label="Your account"
               @click="close"
               ><span class="nav-avatar"
                 ><ProfileAvatar class="nav-avatar-img">{{
-                  currentUser?.username.slice(0, 2).toUpperCase()
+                  accountInitials(currentUser)
                 }}</ProfileAvatar></span
               ><span class="nav-label account-label"
-                ><strong>{{ currentUser?.username }}</strong
+                ><strong>{{ accountDisplayName(currentUser) }}</strong
                 ><small>Your account</small></span
               ></RouterLink
             >

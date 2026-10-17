@@ -14,6 +14,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
     text,
 )
 from sqlalchemy import (
@@ -63,6 +64,9 @@ class Game(Base):
             unique=True,
             postgresql_where=text("deleted_at IS NULL"),
         ),
+        # target of the identity model's composite foreign keys, which make a
+        # reference to another user's game impossible (see models/game_identity.py)
+        UniqueConstraint("user_id", "id", name="uq_games_user_id_id"),
     )
 
     # ------------------------------------------------------------------

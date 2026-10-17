@@ -9,12 +9,17 @@ import {
 } from "../../services/admin";
 import ToggleButton from "./ToggleButton.vue";
 import PasswordInput from "../PasswordInput.vue";
+import UsernameField from "../UsernameField.vue";
 import type { AdminUser } from "../../services/admin";
 import PasswordRequirements from "./PasswordRequirements.vue";
 import PluginAdminActions from "../plugins/PluginAdminActions.vue";
 import PluginExtensionSlot from "../plugins/PluginExtensionSlot.vue";
 import AdminUserEditDialog from "./AdminUserEditDialog.vue";
 import { listInvitations, type Invitation } from "../../services/adminUsers";
+import {
+  usernameFieldError,
+  usernameServerError,
+} from "../../services/usernameValidation";
 import {
   fetchPasswordPolicy,
   passwordValidationErrors,
@@ -77,14 +82,27 @@ onMounted(async () => {
 
 const showCreateForm = ref(false);
 const newUsername = ref("");
+const newDisplayName = ref("");
 const newEmail = ref("");
 const newPassword = ref("");
 const confirmPassword = ref("");
 const newIsAdmin = ref(false);
 const creating = ref(false);
 const createError = ref<string | null>(null);
+const usernameServerMessage = ref<{ message: string; value: string } | null>(
+  null,
+);
+const usernameField = ref<InstanceType<typeof UsernameField> | null>(null);
+const createAttempted = ref(false);
 
 async function handleCreateUser() {
+  createAttempted.value = true;
+  usernameServerMessage.value = null;
+  if (usernameFieldError(newUsername.value)) {
+    createError.value = null;
+    usernameField.value?.focus();
+    return;
+  }
   const validationErrors = passwordPolicy.value
     ? passwordValidationErrors(newPassword.value, passwordPolicy.value)
     : ["Password requirements could not be loaded."];
@@ -96,16 +114,19 @@ async function handleCreateUser() {
     createError.value = "The passwords do not match.";
     return;
   }
+  const submittedUsername = newUsername.value;
   creating.value = true;
   createError.value = null;
   try {
     await createUser({
       username: newUsername.value.trim(),
+      displayName: newDisplayName.value.trim() || undefined,
       email: newEmail.value.trim(),
       password: newPassword.value,
       isAdmin: newIsAdmin.value,
     });
     newUsername.value = "";
+    newDisplayName.value = "";
     newEmail.value = "";
     newPassword.value = "";
     confirmPassword.value = "";
@@ -113,8 +134,17 @@ async function handleCreateUser() {
     showCreateForm.value = false;
     await loadUsers();
   } catch (err) {
-    createError.value =
-      err instanceof Error ? err.message : "Failed to create user";
+    const reason = err instanceof Error ? err.message : null;
+    const usernameReply = usernameServerError(reason);
+    usernameServerMessage.value = usernameReply
+      ? { message: usernameReply, value: submittedUsername }
+      : null;
+    if (usernameServerMessage.value) {
+      createError.value = null;
+      usernameField.value?.focus();
+    } else {
+      createError.value = reason ?? "Failed to create user";
+    }
   } finally {
     creating.value = false;
   }
@@ -154,7 +184,10 @@ async function toggleAdmin(user: AdminUser) {
 }
 
 function openCreateForm() {
+  createAttempted.value = false;
+  usernameServerMessage.value = null;
   newUsername.value = "";
+  newDisplayName.value = "";
   newEmail.value = "";
   newPassword.value = "";
   confirmPassword.value = "";
@@ -176,7 +209,7 @@ function openCreateForm() {
       <table class="user-table">
         <thead>
           <tr>
-            <th scope="col">Username</th>
+            <th scope="col">Sign-in username</th>
             <th scope="col">Email</th>
             <th scope="col">Role</th>
             <th scope="col">Joined</th>
@@ -185,7 +218,12 @@ function openCreateForm() {
         </thead>
         <tbody>
           <tr v-for="user in users" :key="user.id">
-            <td data-label="Username">{{ user.username }}</td>
+            <td data-label="Sign-in username">
+              {{ user.username }}
+              <small v-if="user.display_name" class="muted display-name-line"
+                >Display name: {{ user.display_name }}</small
+              >
+            </td>
             <td data-label="Email">{{ user.email }}</td>
             <td data-label="Role">
               <span class="role-badge" :class="{ admin: user.is_admin }">{{
@@ -273,18 +311,24 @@ function openCreateForm() {
         class="create-form"
         @submit.prevent="handleCreateUser"
       >
+        <UsernameField
+          ref="usernameField"
+          v-model="newUsername"
+          required
+          :server-error="usernameServerMessage"
+          :show-errors="createAttempted"
+        />
         <label class="field"
-          ><span>Username</span
+          ><span>Display name (optional)</span
           ><input
-            v-model="newUsername"
+            v-model="newDisplayName"
             type="text"
-            maxlength="100"
-            aria-label="Username"
-            aria-describedby="new-user-username-help"
-            required
-          /><small id="new-user-username-help"
-            >Use 1–100 ASCII letters, digits, underscores, hyphens or dots. No
-            spaces.</small
+            maxlength="64"
+            aria-label="Display name"
+            aria-describedby="new-user-display-name-help"
+          /><small id="new-user-display-name-help"
+            >Shown instead of the username. Spaces and any language are fine; it
+            is not used to sign in.</small
           ></label
         >
         <label class="field"
@@ -446,6 +490,14 @@ function openCreateForm() {
     padding-top: 12px;
     border-top: 1px solid var(--ui-border-soft);
   }
+}
+.display-name-line {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.muted {
+  color: var(--ui-text-muted, var(--ui-text));
+  opacity: 0.7;
 }
 .role-badge {
   white-space: nowrap;

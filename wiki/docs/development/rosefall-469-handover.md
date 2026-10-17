@@ -8,11 +8,10 @@ board (PR, state, stack, tests, screenshots, docs, companion contracts, what rem
 is the [status board](rosefall-469-implementation.md#status-board-for-the-141-queue).
 
 - Prerequisites #137 and #142 (PR #155) are merged.
-- Merged children: #143, #140, #146, #132, #150, #139, #152.
-- Open and awaiting review/hosted checks: #144, #145, #147, #148, #125, #149, #151, #153.
-  #149 is stacked on #144 and #153 on #145; #147 needs retargeting to main.
-- Draft: #138 (full backend suite, build and lint still to run).
-- Not started: #154, which goes last after #144, #145, #149, #150 and #153.
+- Merged children: #143, #144, #140, #146, #132, #147, #125, #150, #139, #152, #138.
+- Open and awaiting review/hosted checks: #145, #148, #149, #151, #153, #154.
+  #153 is stacked on #145; #154 is stacked on #149 and carries the unmerged #145 and
+  #153 work, so it merges last.
 - #141 stays open until #154 and every open child above merge.
 
 Do not mark a row complete before GitHub reports it merged. Work one issue at a time;
@@ -59,8 +58,8 @@ unconfigured accounts/browsers; explicit saved choices remain authoritative.
 The [Classic UI porting guide](classic-ui.md) explains how to add shared behavior
 and style it for both presentations. New settings already have Modern/Classic
 screenshots committed alongside their PRs. The staged lookup (#142) is merged and
-the shared game editor with eight direct tabs is #143; media editor sections (#144)
-and quick editors (#149) remain pending. Classic does not imply all #469 features exist.
+the shared game editor with eight direct tabs is #143; the movie/TV/anime editors share
+the same frame and five tabs in #144; quick editors (#149) remain pending. Classic does not imply all #469 features exist.
 
 ## Accepted constraints for resumption
 
