@@ -131,10 +131,8 @@ async function saveProfile() {
       saveError.value = null;
       usernameField.value?.focus();
     } else {
-      saveError.value = reason ?? "Failed to update profile";
+      saveError.value = reason ?? "Could not update the profile.";
     }
-    saveError.value =
-      err instanceof Error ? err.message : "Could not update the profile.";
   } finally {
     saving.value = false;
   }
@@ -203,18 +201,32 @@ async function onRemoveAvatar() {
 
       <div class="avatar-meta">
         <div class="avatar-name">{{ accountDisplayName(currentUser) }}</div>
-        <div v-if="currentUser?.display_name" class="avatar-email" title="Your sign-in username">
+        <div
+          v-if="currentUser?.display_name"
+          class="avatar-email"
+          title="Your sign-in username"
+        >
           Sign-in: {{ currentUser.username }}
         </div>
         <div v-if="currentUser?.email" class="avatar-email">
           {{ currentUser.email }}
         </div>
         <label v-if="!isMock" class="upload-label">
-          <input type="file" accept="image/*" @change="onAvatarFileChange" hidden />
+          <input
+            type="file"
+            accept="image/*"
+            @change="onAvatarFileChange"
+            hidden
+          />
           {{ uploading ? "Uploading…" : "Change picture" }}
         </label>
-        <button v-if="!isMock && currentUser?.profile_picture_version" type="button" class="remove-picture"
-          :disabled="uploading" @click="onRemoveAvatar">
+        <button
+          v-if="!isMock && currentUser?.profile_picture_version"
+          type="button"
+          class="remove-picture"
+          :disabled="uploading"
+          @click="onRemoveAvatar"
+        >
           Remove picture
         </button>
         <p v-if="isMock" class="mock-note">
@@ -228,16 +240,30 @@ async function onRemoveAvatar() {
     <form @submit.prevent="saveProfile">
       <label class="field">
         <span>Display name (optional)</span>
-        <input v-model="displayName" type="text" maxlength="64" autocomplete="nickname" aria-label="Display name"
-          aria-describedby="profile-display-name-help" />
-        <small id="profile-display-name-help">Shown in the app instead of your username. Up to 64 characters;
+        <input
+          v-model="displayName"
+          type="text"
+          maxlength="64"
+          autocomplete="nickname"
+          aria-label="Display name"
+          aria-describedby="profile-display-name-help"
+        />
+        <small id="profile-display-name-help"
+          >Shown in the app instead of your username. Up to 64 characters;
           spaces and any language are fine. Leave blank to show your username.
-          It is not used to sign in.</small>
+          It is not used to sign in.</small
+        >
       </label>
 
-      <UsernameField ref="usernameField" v-model="username" autocomplete="username"
-        :unchanged-value="currentUser?.username" :server-error="usernameServerMessage" :show-errors="submitAttempted"
-        help="Use 1–100 ASCII letters, digits, underscores, hyphens or dots. No spaces. Existing usernames may be kept unchanged." />
+      <UsernameField
+        ref="usernameField"
+        v-model="username"
+        autocomplete="username"
+        :unchanged-value="currentUser?.username"
+        :server-error="usernameServerMessage"
+        :show-errors="submitAttempted"
+        help="Use 1–100 ASCII letters, digits, underscores, hyphens or dots. No spaces. Existing usernames may be kept unchanged."
+      />
 
       <label class="field">
         <span>Email</span>
@@ -246,19 +272,37 @@ async function onRemoveAvatar() {
 
       <label class="field">
         <span>New password (optional)</span>
-        <PasswordInput v-model="newPassword" mode="new" autocomplete="new-password" />
+        <PasswordInput
+          v-model="newPassword"
+          mode="new"
+          autocomplete="new-password"
+        />
       </label>
 
-      <PasswordRequirements v-if="newPassword && passwordPolicy" :password="newPassword" :policy="passwordPolicy" />
+      <PasswordRequirements
+        v-if="newPassword && passwordPolicy"
+        :password="newPassword"
+        :policy="passwordPolicy"
+      />
 
       <label v-if="newPassword" class="field">
         <span>Confirm new password</span>
-        <PasswordInput v-model="confirmPassword" mode="new" autocomplete="new-password" :required="true" />
+        <PasswordInput
+          v-model="confirmPassword"
+          mode="new"
+          autocomplete="new-password"
+          :required="true"
+        />
       </label>
 
       <label v-if="newPassword" class="field">
         <span>Current password (required to set a new one)</span>
-        <PasswordInput v-model="currentPassword" mode="new" autocomplete="current-password" :required="true" />
+        <PasswordInput
+          v-model="currentPassword"
+          mode="new"
+          autocomplete="current-password"
+          :required="true"
+        />
       </label>
 
       <div v-if="saveError" class="form-error">{{ saveError }}</div>
@@ -274,7 +318,8 @@ async function onRemoveAvatar() {
 <style scoped>
 .settings-section h2 {
   margin: 0 0 12px;
-  font: var(--ui-weight-heading) var(--ui-font-heading)/1.4 var(--ui-font-family);
+  font: var(--ui-weight-heading) var(--ui-font-heading)/1.4
+    var(--ui-font-family);
   color: var(--ui-text);
 }
 

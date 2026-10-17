@@ -8,8 +8,12 @@ Current deployment-wide jobs are:
 - **Airing episode check** — enabled by default, normally every 30 minutes; checks TV/anime airing data and can be manually forced. A title whose provider cannot answer is reported as unavailable in the summary, not as checked, and is asked again on the next run.
 - **Anime franchise check** — enabled by default, normally daily; checks completed anime franchises only for accounts that opted in to franchise notifications (see below). With no opted-in account it makes no provider requests.
 - **Media refresh** — disabled by default, normally daily; fills missing episode metadata and corrects stale media data.
+- **Library backups** — enabled by default, normally daily (1 hour to 7 days); writes each account's rolling JSON snapshot and keeps the last seven. A partial failure is recorded on the task. Settings → Import & export shows the schedule, or that backups are switched off.
+- **Trash and session cleanup** — enabled by default, normally every 6 hours (15 minutes to 7 days); permanently removes trash past its retention period and expired sign-in sessions.
 
-Per-user scheduled AniList imports are also processed in bounded batches when enabled in user preferences. Accounts that are due are selected before the four-account batch limit, oldest attempt first, so accounts that are not due yet cannot fill the batch and starve later ones. Disabled accounts and accounts without a username are never selected. External notification deliveries use the same loop, but their retry schedule is owned by the notification delivery coordinator rather than the task settings page.
+These two used to run on fixed private timers; they now use the same schedule, switch, last-run and failure record as every other task, with no second scheduler. A run starts on the first minute after the server starts, then follows the interval. Runs of one task never overlap. Provider health discovery, expiry of public-app and verification secrets, notification delivery and session retention remain fixed internal housekeeping, because they protect correctness or security and are not meant to be paused.
+
+The per-user AniList import is a personal task in Account → Background tasks and runs through this same loop: due tasks start oldest run first, at most four imports run at once, and tasks that are not due never take a slot from tasks that are. External notification deliveries use the same loop, but their retry schedule is owned by the notification delivery coordinator rather than the task settings page.
 
 The task view shows running state, last run, and a bounded summary. A failed run is recorded like a completed one: its time counts towards the job's interval, so a persistent provider error is retried at the next scheduled time rather than every minute, and the summary says that it failed. It does not stop the API server. Run now retries immediately.
 
@@ -61,6 +65,14 @@ New tasks start off, with a daily interval. Disconnecting pauses a saved task wh
 retaining its switch, interval and history; reconnecting restores availability. A paused,
 enabled task can still be switched off. Xbox and GOG currently store credentials without
 a library-sync workflow, so they do not have an executable autosync task.
+
+Every account also has an **AniList import** task. The username and the "update existing
+titles" choice stay in Settings → Import & export; the task controls whether the import runs by
+itself, how often (1 hour to 30 days), when it last ran and what happened. It starts off and is
+unavailable until a username is saved. Failures show a short message without remote details.
+Schedules saved before this task existed are moved to it automatically, keeping their state.
+
+![The AniList import personal task in Modern](../assets/anilist-user-schedule/background-tasks-modern.jpg)
 
 ![Personal autosync tasks for configured connections](../assets/connection-autosync/all-connections.jpg)
 

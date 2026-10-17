@@ -23,19 +23,15 @@ from dataclasses import dataclass
 from typing import Any, Callable
 from uuid import UUID
 
-from sqlalchemy import BigInteger, Select, func, or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.sql.functions import coalesce
 
-from src.core.preferences import load_preferences, save_preferences
 from src.database.models.job_setting import JobSetting
 from src.database.models.user import User
-from src.database.models.user_preferences import UserPreferences
 from src.database.session import SessionLocal
 from src.features.anime_franchise import run_franchise_check
-from src.features.imports.anilist import import_anilist_library
+from src.features.backup.scheduler import run_all_backups
 from src.features.metadata import refresh_job
-from src.features.metadata.anime.anilist import AniListError
 from src.features.metadata.refresh import check_airing_episodes
 from src.features.notification_audit import publish_lifecycle
 from src.features.notification_browser import expire_browser_sessions
@@ -43,11 +39,11 @@ from src.features.notification_enrollment import expire_verification_secrets
 from src.features.notification_providers.delivery import process_pending_deliveries
 from src.features.notification_scans import scan_notification_users
 from src.features.password_recovery import expire_recovery_secrets
+from src.features.trash.sweep import run_sweep_once
 from src.features.user_invitations import expire_invitations
 
 logger = logging.getLogger(__name__)
 TICK_SECONDS = 60
-ANILIST_IMPORT_MAX_USERS_PER_TICK = 4
 
 
 @dataclass(frozen=True)
@@ -75,6 +71,15 @@ class JobSpec:
     user_id: UUID | None = None
 
 
+def personal_job_defaults() -> dict[str, Any]:
+    """Shared defaults for opt-in personal schedules."""
+    return {
+        "default_interval_minutes": 24 * 60,
+        "default_enabled": False,
+        "manual_mode": "all",
+    }
+
+
 def _summarize_refresh(r: dict[str, Any]) -> str:
     parts = [
         f"{r.get('checked') or 0} refreshed",
@@ -97,13 +102,54 @@ def _summarize_airing(r: dict[str, Any]) -> str:
     return ", ".join(parts)
 
 
+_running = {
+    "airing_check": False,
+    "plugin_updates": False,
+    "anime_franchise_check": False,
+    "library_backups": False,
+    "trash_sweep": False,
+}
+
+
+def _start_maintenance(
+    job_id: str, work: Callable[[], Awaitable[dict[str, Any]]]
+) -> dict[str, Any]:
+    """Run an async maintenance pass in the background, never overlapping itself."""
+    if not _running[job_id]:
+        _running[job_id] = True
+        asyncio.get_running_loop().create_task(_run_maintenance(job_id, work))
+    return {"running": True}
+
+
+async def _maintenance_result(work: Callable[[], Awaitable[dict[str, Any]]]) -> dict[str, Any]:
+    result = await work()
+    if result.get("failed") or result.get("failed_parts"):
+        result = {**result, "completed": False, "error": "Part of the run failed"}
+    return result
+
+
+async def _run_maintenance(job_id: str, work: Callable[[], Awaitable[dict[str, Any]]]) -> None:
+    try:
+        await _record_outcome(job_id, _maintenance_result(work), "The run failed")
+    finally:
+        _running[job_id] = False
+
+
+def _summarize_backups(r: dict[str, Any]) -> str:
+    text = f"{r.get('written') or 0} snapshot(s) written for {r.get('accounts') or 0} account(s)"
+    return f"{text}, {r['failed']} failed" if r.get("failed") else text
+
+
+def _summarize_sweep(r: dict[str, Any]) -> str:
+    purged = sum(v for k, v in r.items() if k.startswith("purged_") and isinstance(v, int))
+    text = f"{purged} expired item(s) purged, {r.get('expired_sessions_removed') or 0} session(s)"
+    return f"{text}, {r['failed_parts']} step(s) failed" if r.get("failed_parts") else text
+
+
 def _summarize_plugin_updates(r: dict[str, Any]) -> str:
     if r.get("error"):
         return str(r["error"])
     return f"{r.get('checked', 0)} checked, {r.get('installed', 0)} installed"
-
-
-_running = {"airing_check": False, "plugin_updates": False, "anime_franchise_check": False}
 
 
 async def _record_outcome(job_id: str, work: Awaitable[dict[str, Any]], failure: str) -> None:
@@ -273,6 +319,30 @@ JOBS: dict[str, JobSpec] = {
         refresh_job.is_running,
         _summarize_refresh,
     ),
+    "library_backups": JobSpec(
+        "library_backups",
+        "Library backups",
+        "Writes a rolling JSON snapshot of each account's library (the last 7 are kept).",
+        60,
+        7 * 24 * 60,
+        24 * 60,
+        True,
+        lambda _mode: _start_maintenance("library_backups", run_all_backups),
+        lambda: _running["library_backups"],
+        _summarize_backups,
+    ),
+    "trash_sweep": JobSpec(
+        "trash_sweep",
+        "Trash and session cleanup",
+        "Permanently removes trash past its retention period and expired sign-in sessions.",
+        15,
+        7 * 24 * 60,
+        6 * 60,
+        True,
+        lambda _mode: _start_maintenance("trash_sweep", run_sweep_once),
+        lambda: _running["trash_sweep"],
+        _summarize_sweep,
+    ),
 }
 
 
@@ -336,10 +406,15 @@ async def get_user_jobs(db: AsyncSession, user_id: UUID) -> list[JobSpec]:
     """Share the personal task registry between account controls and the scheduler."""
     # Adapters depend on JobSpec; import them after this registry is initialized.
     # pylint: disable=import-outside-toplevel
+    from src.features.anilist_jobs import get_anilist_jobs
     from src.features.connection_jobs import get_connection_jobs
     from src.features.plugin_jobs import get_plugin_jobs
 
-    return [*await get_connection_jobs(db, user_id), *await get_plugin_jobs(db, user_id)]
+    return [
+        *await get_connection_jobs(db, user_id),
+        *await get_anilist_jobs(db, user_id),
+        *await get_plugin_jobs(db, user_id),
+    ]
 
 
 async def get_scheduled_user_jobs(db: AsyncSession) -> list[JobSpec]:
@@ -363,77 +438,12 @@ def _on_media_refresh_finished(progress: dict[str, Any]) -> None:
 refresh_job.finish_hooks.append(_on_media_refresh_finished)
 
 
-def due_anilist_imports(now: int) -> Select[tuple[UUID]]:
-    """Choose due accounts before the batch limit, so enabled accounts that are not due yet
-    cannot take every slot and starve later ones. The oldest attempt goes first, and an
-    attempt counts whether or not it succeeded."""
-    data = UserPreferences.data
-    interval = coalesce(data["anilist_import_interval_minutes"].astext.cast(BigInteger), 24 * 60)
-    attempted = coalesce(
-        data["anilist_import_last_attempt_at"].astext.cast(BigInteger),
-        data["anilist_import_last_run_at"].astext.cast(BigInteger),
-    )
-    return (
-        select(UserPreferences.user_id)
-        .join(User, User.id == UserPreferences.user_id)
-        .where(
-            User.is_active.is_(True),
-            data["anilist_import_enabled"].as_boolean().is_(True),
-            func.length(func.btrim(coalesce(data["anilist_import_username"].astext, ""))) > 0,
-            or_(attempted.is_(None), attempted + interval * 60 <= now),
-        )
-        .order_by(attempted.asc().nulls_first(), UserPreferences.user_id)
-        .limit(ANILIST_IMPORT_MAX_USERS_PER_TICK)
-    )
-
-
-async def _run_due_anilist_import(user_id: UUID, now: int) -> None:
-    """Import one account's public list and record the attempt, including a failure."""
-    changes: dict[str, Any] = {"anilist_import_last_attempt_at": now}
-    try:
-        async with SessionLocal() as db:
-            prefs = await load_preferences(db, user_id)
-            if not prefs["anilist_import_enabled"]:
-                return
-            result = await import_anilist_library(
-                db,
-                user_id,
-                str(prefs["anilist_import_username"]).strip(),
-                bool(prefs["anilist_import_update_existing"]),
-            )
-        changes.update(anilist_import_last_run_at=now, anilist_import_last_error="")
-        logger.info("Scheduled AniList import for user %s: %s", user_id, result)
-    except AniListError as exc:
-        logger.warning("Scheduled AniList import failed for user %s: %s", user_id, exc)
-        # Keep only the leading classification; the rest may carry connection details.
-        changes["anilist_import_last_error"] = (
-            str(exc).split(": ", 1)[0].rstrip(".") or "AniList is unavailable"
-        )[:200] + "."
-    # An unexpected worker failure must not terminate the remaining scheduled work.
-    except Exception:  # pylint: disable=broad-exception-caught
-        logger.exception("Scheduled AniList import failed for user %s", user_id)
-        changes["anilist_import_last_error"] = "The import could not finish."
-    try:
-        async with SessionLocal() as db:
-            await save_preferences(db, user_id, changes)
-    # Losing one account's report must not stop the other accounts in this batch.
-    except Exception:  # pylint: disable=broad-exception-caught
-        logger.exception("Scheduled AniList import result could not be saved for %s", user_id)
-
-
-async def _run_due_anilist_imports(now: int) -> None:
-    """Run a small bounded batch so one deployment with many users cannot starve other jobs."""
-    async with SessionLocal() as db:
-        user_ids = list(await db.scalars(due_anilist_imports(now)))
-    for user_id in user_ids:
-        await _run_due_anilist_import(user_id, now)
-
-
 async def due_jobs(db: AsyncSession, specs: list[JobSpec], now: int) -> list[JobSpec]:
     """Schedules whose interval, or a requested continuation of an unfinished batch, has
     elapsed. A failed run records its time like any other, so it is not due again until
-    then."""
-    due = []
+    then. Due work is ordered oldest run first, so personal schedules waiting for the shared
+    import slots are served by how long they have waited, across ticks and restarts."""
+    due: list[tuple[int, JobSpec]] = []
     for spec in specs:
         row = await get_setting(db, spec)
         continuation = (row.last_result or {}).get("continue_after_seconds")
@@ -453,8 +463,9 @@ async def due_jobs(db: AsyncSession, specs: list[JobSpec], now: int) -> list[Job
             and not spec.is_running()
             and is_due(row.enabled, row.last_run_at, interval, now)
         ):
-            due.append(spec)
-    return due
+            due.append((row.last_run_at or 0, spec))
+    due.sort(key=lambda pair: pair[0])
+    return [spec for _, spec in due]
 
 
 async def run_jobs_loop() -> None:
@@ -467,7 +478,6 @@ async def run_jobs_loop() -> None:
         await asyncio.sleep(TICK_SECONDS)
         try:
             now = int(time.time())
-            await _run_due_anilist_imports(now)
             await scan_notification_users()
             async with SessionLocal() as db:
                 await expire_verification_secrets(db)

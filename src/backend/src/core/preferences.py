@@ -66,14 +66,8 @@ DEFAULTS: dict[str, Any] = {
     "title_language": "english",
     "lists_default_sort": "custom",
     "stats_include_plan": True,
-    "anilist_import_enabled": False,
     "anilist_import_username": "",
-    "anilist_import_interval_minutes": 24 * 60,
     "anilist_import_update_existing": False,
-    "anilist_import_last_run_at": None,
-    # Scheduled attempts, including failures, keep the import on its cadence.
-    "anilist_import_last_attempt_at": None,
-    "anilist_import_last_error": "",
     # genres from the tags Steam players vote on (Souls-like, Open World ...)
     # instead of only Steam's broad official genres
     "steam_user_tags": True,
@@ -144,24 +138,6 @@ def _validate_anilist_username(value: Any) -> str:
     if not isinstance(value, str) or len(value.strip()) > 100:
         raise ValueError("anilist_import_username must be a string of at most 100 characters")
     return value.strip()
-
-
-def _validate_anilist_interval(value: Any) -> int:
-    if not isinstance(value, int) or isinstance(value, bool) or not 60 <= value <= 30 * 24 * 60:
-        raise ValueError("anilist_import_interval_minutes must be between 60 and 43200")
-    return value
-
-
-def _validate_anilist_timestamp(key: str, value: Any) -> int | None:
-    if value is not None and (not isinstance(value, int) or isinstance(value, bool) or value < 0):
-        raise ValueError(f"{key} must be a Unix timestamp or null")
-    return value
-
-
-def _validate_anilist_error(value: Any) -> str:
-    if not isinstance(value, str) or len(value) > 300:
-        raise ValueError("anilist_import_last_error must be a string of at most 300 characters")
-    return value
 
 
 def _validate_media_trash_retention(value: Any) -> int:
@@ -353,15 +329,7 @@ _VALUE_VALIDATORS: dict[str, Callable[[Any], Any]] = {
     "keyboard_shortcut_overrides": validate_shortcut_overrides,
     "game_page": partial(validate_page_settings, partial=False),
     "anilist_import_username": _validate_anilist_username,
-    "anilist_import_interval_minutes": _validate_anilist_interval,
     "media_trash_retention_days": _validate_media_trash_retention,
-    "anilist_import_last_run_at": partial(
-        _validate_anilist_timestamp, "anilist_import_last_run_at"
-    ),
-    "anilist_import_last_attempt_at": partial(
-        _validate_anilist_timestamp, "anilist_import_last_attempt_at"
-    ),
-    "anilist_import_last_error": _validate_anilist_error,
 }
 
 

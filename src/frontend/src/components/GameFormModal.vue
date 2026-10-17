@@ -211,14 +211,14 @@ const RELATIONSHIP_TYPE_OPTIONS: {
   value: GameRelationshipType;
   label: string;
 }[] = [
-    { value: "mod", label: "Mod" },
-    { value: "modpack", label: "Modpack" },
-    { value: "expansion", label: "Expansion" },
-    { value: "dlc", label: "DLC" },
-    { value: "standalone_expansion", label: "Standalone expansion" },
-    { value: "total_conversion", label: "Total conversion" },
-    { value: "owned_copy", label: "Owned copy" },
-  ];
+  { value: "mod", label: "Mod" },
+  { value: "modpack", label: "Modpack" },
+  { value: "expansion", label: "Expansion" },
+  { value: "dlc", label: "DLC" },
+  { value: "standalone_expansion", label: "Standalone expansion" },
+  { value: "total_conversion", label: "Total conversion" },
+  { value: "owned_copy", label: "Owned copy" },
+];
 const source = ref(props.game?.source ?? "");
 const ageRating = ref(props.game?.ageRating ?? "");
 // v-model on a type="number" input hands back a number once it's typed in,
@@ -596,9 +596,9 @@ function buildInput() {
     String(playtimeHours.value).trim() !== initialPlaytime;
   const playtime = playtimeChanged
     ? (numberOrNull(playtimeHours.value, "Playtime", {
-      min: 0,
-      max: MAX_PLAYTIME_HOURS,
-    }) ?? 0)
+        min: 0,
+        max: MAX_PLAYTIME_HOURS,
+      }) ?? 0)
     : null;
   return {
     title: title.value.trim(),
@@ -698,53 +698,6 @@ function buildInput() {
 }
 
 function stagedArtwork() {
-  return [
-    { kind: "key_art" as const, label: "cover", choice: cover.staged.value },
-    { kind: "banner" as const, label: "banner", choice: banner.staged.value },
-  ].flatMap(({ kind, label, choice }) =>
-    choice
-      ? [
-        choice.source === "file"
-          ? { kind, label, file: choice.file, url: null }
-          : { kind, label, file: null, url: choice.url },
-      ]
-      : [],
-  );
-}
-
-// Artwork is transferred after the game is saved. A failure leaves the game
-// saved and offers a retry of the remaining artwork on that same game only.
-async function attachArtwork(
-  savedGame: Game,
-  artwork: ReturnType<typeof stagedArtwork>,
-) {
-  const taskId = startTask(`Artwork for ${savedGame.title}`, artwork.length);
-  let done = 0;
-  let running = false;
-  const attempt = async () => {
-    if (running || done === artwork.length) return;
-    running = true;
-    try {
-      while (done < artwork.length) {
-        const asset = artwork[done]!;
-        if (asset.file)
-          await uploadGameAsset(savedGame.id, asset.kind, asset.file);
-        else if (asset.url)
-          await attachGameAssetFromUrl(savedGame.id, asset.kind, asset.url);
-        updateTask(taskId, ++done);
-      }
-      completeTask(taskId, "Artwork saved.");
-    } catch {
-      errorTask(
-        taskId,
-        `Game saved. Artwork could not be attached (${artwork[done]!.label}). Retry artwork or edit it later.`,
-      );
-      setTaskRetry(taskId, () => void attempt());
-    } finally {
-      running = false;
-    }
-  };
-  await attempt();
   return stagedArtworkList([
     { kind: "key_art", label: "cover", choice: cover.staged.value },
     { kind: "banner", label: "banner", choice: banner.staged.value },
@@ -789,44 +742,94 @@ async function submit() {
 </script>
 
 <template>
-  <EditorShell ref="shell" v-model:tab="activeTab" :title="dialogTitle" :heading="compact ? undefined : heroTitle"
-    :subtitle="heroSubtitle" :cover="cover.preview.value" cover-label="Show artwork" :tabs="compact ? [] : TABS"
-    tabs-label="Game details" :size="compact ? 'standard' : 'editor'" :dismissible="!saving" class="game-editor"
-    :class="{ 'quick-add': compact }" @close="emit('close')" @submit="submit" @cover="activeTab = 'Artwork'">
+  <EditorShell
+    ref="shell"
+    v-model:tab="activeTab"
+    :title="dialogTitle"
+    :heading="compact ? undefined : heroTitle"
+    :subtitle="heroSubtitle"
+    :cover="cover.preview.value"
+    cover-label="Show artwork"
+    :tabs="compact ? [] : TABS"
+    tabs-label="Game details"
+    :size="compact ? 'standard' : 'editor'"
+    :dismissible="!saving"
+    class="game-editor"
+    :class="{ 'quick-add': compact }"
+    @close="emit('close')"
+    @submit="submit"
+    @cover="activeTab = 'Artwork'"
+  >
     <template #lead>
-      <p v-if="!compact && !lookupOpen && appliedNote" class="lookup-note" role="status">
+      <p
+        v-if="!compact && !lookupOpen && appliedNote"
+        class="lookup-note"
+        role="status"
+      >
         {{ appliedNote }}
       </p>
-      <MetadataComparison v-if="progressiveSearch.selected.value" :changes="comparison.changes.value"
-        :reason="comparison.reason.value" :provider="progressiveSearch.selected.value.provider_name"
-        :busy="artwork.busy.value || searchingMedia" :previews="artwork.previews.value" @toggle="comparison.toggle"
-        @apply="applyLookup" @cancel="cancelLookup" />
+      <MetadataComparison
+        v-if="progressiveSearch.selected.value"
+        :changes="comparison.changes.value"
+        :reason="comparison.reason.value"
+        :provider="progressiveSearch.selected.value.provider_name"
+        :busy="artwork.busy.value || searchingMedia"
+        :previews="artwork.previews.value"
+        @toggle="comparison.toggle"
+        @apply="applyLookup"
+        @cancel="cancelLookup"
+      />
       <div v-if="compact || lookupOpen" :id="lookupId" class="metadata-search">
         <div class="search-heading">
           <strong>Find game metadata</strong>
-          <span>Search external providers and choose a match to review its
-            fields.</span>
+          <span
+            >Search external providers and choose a match to review its
+            fields.</span
+          >
         </div>
-        <p v-if="metadataProvidersLoaded && !hasMediaProvider" class="steamgriddb-hint">
+        <p
+          v-if="metadataProvidersLoaded && !hasMediaProvider"
+          class="steamgriddb-hint"
+        >
           Configure the built-in artwork providers in
-          <router-link to="/settings?section=sources" @click="emit('close')">Settings &rsaquo;
-            Metadata/API</router-link>
+          <router-link to="/settings?section=sources" @click="emit('close')"
+            >Settings &rsaquo; Metadata/API</router-link
+          >
           to receive cover and hero artwork after choosing a game.
         </p>
         <div class="search-row">
-          <input ref="lookupInput" v-model="metadataQuery" type="search" placeholder="Search by game title"
-            aria-label="Search game metadata by title" @keydown.enter.prevent="searchMetadata" />
-          <button type="button" class="secondary-button" :disabled="searchingMetadata" @click="searchMetadata">
+          <input
+            ref="lookupInput"
+            v-model="metadataQuery"
+            type="search"
+            placeholder="Search by game title"
+            aria-label="Search game metadata by title"
+            @keydown.enter.prevent="searchMetadata"
+          />
+          <button
+            type="button"
+            class="secondary-button"
+            :disabled="searchingMetadata"
+            @click="searchMetadata"
+          >
             {{ searchingMetadata ? "Searching…" : "Search" }}
           </button>
         </div>
         <div v-if="metadataResults.length" class="metadata-results">
-          <button v-for="result in metadataResults" :key="`${result.provider}-${result.provider_id}`" type="button"
-            class="metadata-result" @click="applyMetadata(result)">
+          <button
+            v-for="result in metadataResults"
+            :key="`${result.provider}-${result.provider_id}`"
+            type="button"
+            class="metadata-result"
+            @click="applyMetadata(result)"
+          >
             <span>{{ result.title }}</span>
-            <small>{{ result.provider
+            <small
+              >{{ result.provider
               }}<span v-if="result.release_date">
-                · {{ result.release_date.slice(0, 4) }}</span></small>
+                · {{ result.release_date.slice(0, 4) }}</span
+              ></small
+            >
           </button>
         </div>
         <p v-if="metadataMessage" class="hint">{{ metadataMessage }}</p>
@@ -846,7 +849,12 @@ async function submit() {
       <div class="editor-grid">
         <label class="field full">
           <span>Title</span>
-          <input v-model="title" type="text" required @blur="suggestFolderFromTitle" />
+          <input
+            v-model="title"
+            type="text"
+            required
+            @blur="suggestFolderFromTitle"
+          />
         </label>
         <label class="field">
           <span>Status</span>
@@ -858,9 +866,18 @@ async function submit() {
         </label>
         <label class="field">
           <span>Platform</span>
-          <input v-model="platform" type="text" list="quick-game-platforms" placeholder="PC, Switch..." />
+          <input
+            v-model="platform"
+            type="text"
+            list="quick-game-platforms"
+            placeholder="PC, Switch..."
+          />
           <datalist id="quick-game-platforms">
-            <option v-for="option in PLATFORM_SUGGESTIONS" :key="option" :value="option" />
+            <option
+              v-for="option in PLATFORM_SUGGESTIONS"
+              :key="option"
+              :value="option"
+            />
           </datalist>
         </label>
       </div>
@@ -876,7 +893,12 @@ async function submit() {
         <div class="editor-grid">
           <label class="field full">
             <span>Title</span>
-            <input v-model="title" type="text" required @blur="suggestFolderFromTitle" />
+            <input
+              v-model="title"
+              type="text"
+              required
+              @blur="suggestFolderFromTitle"
+            />
           </label>
           <label v-if="isEditing" class="checkbox-field full">
             <input v-model="titleProtected" type="checkbox" />
@@ -884,13 +906,23 @@ async function submit() {
           </label>
           <label class="field">
             <span>Sorting name</span>
-            <input v-model="sortTitle" type="text" placeholder="Defaults to the title" />
+            <input
+              v-model="sortTitle"
+              type="text"
+              placeholder="Defaults to the title"
+            />
           </label>
           <label class="field">
             <span>Folder name</span>
-            <input v-model="folderLocation" type="text" :required="!isEditing" pattern="[A-Za-z0-9_\-]+"
+            <input
+              v-model="folderLocation"
+              type="text"
+              :required="!isEditing"
+              pattern="[A-Za-z0-9_\-]+"
               title="Letters, numbers, underscores and hyphens only"
-              :placeholder="isEditing ? 'Leave blank to keep current' : ''" @input="folderTouched = true" />
+              :placeholder="isEditing ? 'Leave blank to keep current' : ''"
+              @input="folderTouched = true"
+            />
           </label>
         </div>
         <p class="editor-section">Library</p>
@@ -907,25 +939,42 @@ async function submit() {
             <span>Priority</span>
             <select v-model="priority">
               <option value="">None</option>
-              <option v-for="option in PRIORITY_OPTIONS" :key="option.value" :value="option.value">
+              <option
+                v-for="option in PRIORITY_OPTIONS"
+                :key="option.value"
+                :value="option.value"
+              >
                 {{ option.label }}
               </option>
             </select>
-            <small v-if="priority && isFinished(status)" class="field-hint">Finished games are left out of priority
-              sorting and the random
-              picker.</small>
+            <small v-if="priority && isFinished(status)" class="field-hint"
+              >Finished games are left out of priority sorting and the random
+              picker.</small
+            >
           </label>
           <label class="field">
             <span>Platform</span>
-            <input v-model="platform" type="text" list="game-platform-suggestions"
-              placeholder="PC, PlayStation 5, Switch..." />
+            <input
+              v-model="platform"
+              type="text"
+              list="game-platform-suggestions"
+              placeholder="PC, PlayStation 5, Switch..."
+            />
             <datalist id="game-platform-suggestions">
-              <option v-for="option in PLATFORM_SUGGESTIONS" :key="option" :value="option" />
+              <option
+                v-for="option in PLATFORM_SUGGESTIONS"
+                :key="option"
+                :value="option"
+              />
             </datalist>
           </label>
           <label class="field">
             <span>Source</span>
-            <input v-model="source" type="text" placeholder="Steam, GOG, physical..." />
+            <input
+              v-model="source"
+              type="text"
+              placeholder="Steam, GOG, physical..."
+            />
           </label>
           <label class="field">
             <span>Date added to library</span>
@@ -969,7 +1018,11 @@ async function submit() {
         <div class="editor-grid">
           <label class="field">
             <span>Age rating</span>
-            <input v-model="ageRating" type="text" placeholder="ESRB M, PEGI 18..." />
+            <input
+              v-model="ageRating"
+              type="text"
+              placeholder="ESRB M, PEGI 18..."
+            />
           </label>
           <label class="field">
             <span>Region</span>
@@ -977,7 +1030,11 @@ async function submit() {
           </label>
           <label class="field">
             <span>Language</span>
-            <input v-model="language" type="text" placeholder="English, Japanese..." />
+            <input
+              v-model="language"
+              type="text"
+              placeholder="English, Japanese..."
+            />
           </label>
         </div>
       </div>
@@ -987,7 +1044,14 @@ async function submit() {
         <div class="editor-grid">
           <label class="field">
             <span>Playtime (hours)</span>
-            <input v-model="playtimeHours" type="number" min="0" :max="MAX_PLAYTIME_HOURS" step="0.1" placeholder="0" />
+            <input
+              v-model="playtimeHours"
+              type="number"
+              min="0"
+              :max="MAX_PLAYTIME_HOURS"
+              step="0.1"
+              placeholder="0"
+            />
           </label>
           <label class="field">
             <span>100% completion date</span>
@@ -995,8 +1059,12 @@ async function submit() {
           </label>
           <label class="field full">
             <span>Where you left off</span>
-            <textarea v-model="resumeNote" rows="3" maxlength="2000"
-              placeholder="What to do when you pick this game back up"></textarea>
+            <textarea
+              v-model="resumeNote"
+              rows="3"
+              maxlength="2000"
+              placeholder="What to do when you pick this game back up"
+            ></textarea>
           </label>
         </div>
         <p class="hint">
@@ -1005,10 +1073,20 @@ async function submit() {
         </p>
         <p class="editor-section">Time to beat (hours)</p>
         <div class="editor-grid four">
-          <label v-for="estimate in completionEstimateInputs" :key="estimate.key" class="field">
+          <label
+            v-for="estimate in completionEstimateInputs"
+            :key="estimate.key"
+            class="field"
+          >
             <span>{{ estimate.label }}</span>
-            <input v-model="estimate.input.value" type="number" min="0" max="99999.9" step="0.1"
-              placeholder="e.g. 12.5" />
+            <input
+              v-model="estimate.input.value"
+              type="number"
+              min="0"
+              max="99999.9"
+              step="0.1"
+              placeholder="e.g. 12.5"
+            />
           </label>
         </div>
         <p class="hint">
@@ -1022,48 +1100,96 @@ async function submit() {
         <div class="editor-grid four">
           <label class="field">
             <span>Atmosphere</span>
-            <input v-model.number="ratingOverall" type="number" min="0" max="10" step="0.1" />
+            <input
+              v-model.number="ratingOverall"
+              type="number"
+              min="0"
+              max="10"
+              step="0.1"
+            />
           </label>
           <label class="field">
             <span>Story</span>
-            <input v-model.number="ratingStory" type="number" min="0" max="10" step="0.1" />
+            <input
+              v-model.number="ratingStory"
+              type="number"
+              min="0"
+              max="10"
+              step="0.1"
+            />
           </label>
           <label class="field">
             <span>Gameplay</span>
-            <input v-model.number="ratingGameplay" type="number" min="0" max="10" step="0.1" />
+            <input
+              v-model.number="ratingGameplay"
+              type="number"
+              min="0"
+              max="10"
+              step="0.1"
+            />
           </label>
           <label class="field">
             <span>Sound</span>
-            <input v-model.number="ratingSound" type="number" min="0" max="10" step="0.1" />
+            <input
+              v-model.number="ratingSound"
+              type="number"
+              min="0"
+              max="10"
+              step="0.1"
+            />
           </label>
         </div>
         <p class="editor-section">Organize</p>
         <div class="editor-grid">
           <label class="field full">
             <span>Tags (comma separated)</span>
-            <input v-model="tagsInput" type="text" placeholder="Action RPG, Souls-Like" />
+            <input
+              v-model="tagsInput"
+              type="text"
+              placeholder="Action RPG, Souls-Like"
+            />
           </label>
           <label class="field full">
             <span>Features (comma separated)</span>
-            <input v-model="featuresInput" type="text" placeholder="Achievements, Cloud Saves" />
+            <input
+              v-model="featuresInput"
+              type="text"
+              placeholder="Achievements, Cloud Saves"
+            />
           </label>
-          <GameCollectionsField v-model="collections" class="full" :available="collectionChoices" />
+          <GameCollectionsField
+            v-model="collections"
+            class="full"
+            :available="collectionChoices"
+          />
         </div>
       </div>
 
       <div v-else-if="activeTab === 'Links'" class="tab-panel">
         <p class="editor-section">Links</p>
-        <div v-for="(link, index) in links" :key="index" class="editor-grid link-row">
+        <div
+          v-for="(link, index) in links"
+          :key="index"
+          class="editor-grid link-row"
+        >
           <label class="field">
             <span>Label</span>
-            <input v-model="link.label" type="text" placeholder="Steam Store Page" />
+            <input
+              v-model="link.label"
+              type="text"
+              placeholder="Steam Store Page"
+            />
           </label>
           <label class="field">
             <span>URL</span>
             <input v-model="link.url" type="url" placeholder="https://..." />
           </label>
-          <button type="button" class="remove-button" :aria-label="`Remove link ${index + 1}`"
-            @click="removeLink(index)">
+          <button
+            type="button"
+            class="remove-button"
+            :aria-label="`Remove link ${index + 1}`"
+            @click="removeLink(index)"
+          >
             ✕
           </button>
         </div>
@@ -1099,11 +1225,21 @@ async function submit() {
                 {{ code }}
               </option>
             </select>
-            <input v-else v-model="priceCurrency" type="text" placeholder="USD" maxlength="3" />
+            <input
+              v-else
+              v-model="priceCurrency"
+              type="text"
+              placeholder="USD"
+              maxlength="3"
+            />
           </label>
           <label v-if="ownershipFormat === 'physical'" class="field full">
             <span>Condition / notes</span>
-            <input v-model="condition" type="text" placeholder="CIB, disc only, box wear..." />
+            <input
+              v-model="condition"
+              type="text"
+              placeholder="CIB, disc only, box wear..."
+            />
           </label>
         </div>
       </div>
@@ -1115,7 +1251,11 @@ async function submit() {
             <span>Parent game</span>
             <select v-model="parentGameId">
               <option value="">None: this is its own game</option>
-              <option v-for="g in availableParentGames" :key="g.id" :value="g.id">
+              <option
+                v-for="g in availableParentGames"
+                :key="g.id"
+                :value="g.id"
+              >
                 {{ g.title }}
               </option>
             </select>
@@ -1124,11 +1264,17 @@ async function submit() {
             <span>Relationship</span>
             <select v-model="relationshipType" :disabled="!parentGameId">
               <option value="">N/A</option>
-              <option v-for="opt in RELATIONSHIP_TYPE_OPTIONS" :key="opt.value" :value="opt.value">
+              <option
+                v-for="opt in RELATIONSHIP_TYPE_OPTIONS"
+                :key="opt.value"
+                :value="opt.value"
+              >
                 {{ opt.label }}
               </option>
             </select>
-            <small v-if="!parentGameId" class="field-hint">Choose a parent game first.</small>
+            <small v-if="!parentGameId" class="field-hint"
+              >Choose a parent game first.</small
+            >
           </label>
         </div>
         <p class="editor-section">Accounts</p>
@@ -1136,18 +1282,22 @@ async function submit() {
           <input v-model="profilesEnabled" type="checkbox" />
           <span>
             Track multiple accounts on this game
-            <small>Adds an account switcher with its own checklist and media for
+            <small
+              >Adds an account switcher with its own checklist and media for
               each account, useful for any game with multiple
-              characters/accounts, not just OSRS.</small>
+              characters/accounts, not just OSRS.</small
+            >
           </span>
         </label>
         <label v-if="profilesEnabled" class="checkbox-field">
           <input v-model="osrsStatsEnabled" type="checkbox" />
           <span>
             Use OSRS stats (WiseOldMan)
-            <small>Adds skill/boss syncing from wiseoldman.net, real skill icons,
+            <small
+              >Adds skill/boss syncing from wiseoldman.net, real skill icons,
               and dated stat history to each account. Only makes sense for Old
-              School RuneScape.</small>
+              School RuneScape.</small
+            >
           </span>
         </label>
         <p class="editor-section">Game page</p>
@@ -1155,11 +1305,18 @@ async function submit() {
           What this game's page shows. Anything left on Default follows Settings
           > Game Page.
         </p>
-        <PageSettingsEditor :model-value="pageOverrides" :defaults="pageDefaults"
-          @update:model-value="pageOverrides = $event as PageOverrides" />
+        <PageSettingsEditor
+          :model-value="pageOverrides"
+          :defaults="pageDefaults"
+          @update:model-value="pageOverrides = $event as PageOverrides"
+        />
       </div>
 
-      <div v-if="artworkOpened" v-show="activeTab === 'Artwork'" class="tab-panel">
+      <div
+        v-if="artworkOpened"
+        v-show="activeTab === 'Artwork'"
+        class="tab-panel"
+      >
         <div class="media-search-panel">
           <div>
             <strong>Find artwork</strong>
@@ -1168,19 +1325,42 @@ async function submit() {
               choices. Offered images never replace a file you chose.
             </p>
           </div>
-          <button type="button" class="secondary-button" :disabled="searchingMedia || saving" @click="searchMedia">
+          <button
+            type="button"
+            class="secondary-button"
+            :disabled="searchingMedia || saving"
+            @click="searchMedia"
+          >
             {{ searchingMedia ? "Searching artwork…" : "Search artwork" }}
           </button>
           <p v-if="metadataMessage" class="hint" role="status">
             {{ metadataMessage }}
           </p>
         </div>
-        <GameArtPicker label="Cover" shape="tall" :current="props.game?.coverImageUrl ?? null"
-          :staged="cover.staged.value" :candidates="keyArtCandidates" :disabled="saving" @file="cover.chooseFile"
-          @url="cover.chooseUrl" @reset="cover.reset" />
-        <GameArtPicker label="Banner" shape="wide" :current="props.game ? sizedAssetUrl(props.game.bannerImageUrl, 640) : null
-          " :staged="banner.staged.value" :candidates="bannerCandidates" :disabled="saving" @file="banner.chooseFile"
-          @url="banner.chooseUrl" @reset="banner.reset" />
+        <GameArtPicker
+          label="Cover"
+          shape="tall"
+          :current="props.game?.coverImageUrl ?? null"
+          :staged="cover.staged.value"
+          :candidates="keyArtCandidates"
+          :disabled="saving"
+          @file="cover.chooseFile"
+          @url="cover.chooseUrl"
+          @reset="cover.reset"
+        />
+        <GameArtPicker
+          label="Banner"
+          shape="wide"
+          :current="
+            props.game ? sizedAssetUrl(props.game.bannerImageUrl, 640) : null
+          "
+          :staged="banner.staged.value"
+          :candidates="bannerCandidates"
+          :disabled="saving"
+          @file="banner.chooseFile"
+          @url="banner.chooseUrl"
+          @reset="banner.reset"
+        />
         <p class="hint">
           Nothing is uploaded until you click Add game or Save changes. If the
           game saves but artwork cannot be attached, the game stays saved and
@@ -1194,26 +1374,54 @@ async function submit() {
     </template>
 
     <template #actions="{ formId }">
-      <button v-if="isEditing" type="button" class="danger-button" @click="emit('delete', props.game!.id)">
-        Delete Game
+      <button
+        v-if="isEditing"
+        type="button"
+        class="danger-button"
+        @click="emit('delete', props.game!.id)"
+      >
+        Delete game
       </button>
-      <button v-if="compact" type="button" class="secondary-button" :disabled="saving" @click="openFullForm">
+      <button
+        v-if="compact"
+        type="button"
+        class="secondary-button"
+        :disabled="saving"
+        @click="openFullForm"
+      >
         Full form
       </button>
-      <button v-else type="button" class="secondary-button" :aria-expanded="lookupOpen" :aria-controls="lookupId"
-        @click="toggleLookup">
+      <button
+        v-else
+        type="button"
+        class="secondary-button"
+        :aria-expanded="lookupOpen"
+        :aria-controls="lookupId"
+        @click="toggleLookup"
+      >
         Look up metadata
       </button>
       <span class="modal-actions-spacer"></span>
-      <button type="button" class="secondary-button" :disabled="saving" @click="emit('close')">
+      <button
+        type="button"
+        class="secondary-button"
+        :disabled="saving"
+        @click="emit('close')"
+      >
         Cancel
       </button>
-      <button type="submit" :form="formId" class="primary-button" :disabled="saving ||
-        selectingMetadata ||
-        !!progressiveSearch.selected.value ||
-        (compact && !title.trim())
-        ">
-        {{ saving ? "Saving…" : isEditing ? "Save Changes" : "Add Game" }}
+      <button
+        type="submit"
+        :form="formId"
+        class="primary-button"
+        :disabled="
+          saving ||
+          selectingMetadata ||
+          !!progressiveSearch.selected.value ||
+          (compact && !title.trim())
+        "
+      >
+        {{ saving ? "Saving…" : isEditing ? "Save changes" : "Add game" }}
       </button>
     </template>
   </EditorShell>
@@ -1228,23 +1436,18 @@ async function submit() {
   gap: 12px;
   min-width: 0;
 }
-
-.tab-panel>.editor-section {
+.tab-panel > .editor-section {
   margin-bottom: -4px;
 }
-
-.tab-panel>.editor-section:not(:first-child) {
+.tab-panel > .editor-section:not(:first-child) {
   margin-top: 8px;
 }
-
 .favorite-field {
   align-self: end;
 }
-
 .page-hint {
   margin-bottom: 4px;
 }
-
 .lookup-note {
   margin: 0;
   padding: 8px 12px;
@@ -1254,7 +1457,6 @@ async function submit() {
   color: var(--ui-text);
   font-size: 0.82rem;
 }
-
 .media-search-panel {
   flex-wrap: wrap;
   border: 1px solid var(--ui-border);
@@ -1266,39 +1468,32 @@ async function submit() {
   justify-content: space-between;
   gap: 12px;
 }
-
-.media-search-panel>div {
+.media-search-panel > div {
   min-width: 0;
 }
-
 .media-search-panel strong {
   color: var(--ui-text);
 }
-
 .media-search-panel .hint {
   margin: 2px 0 0;
 }
-
 .metadata-search {
   border: 1px solid var(--ui-border);
   border-radius: var(--ui-radius-control);
   padding: 12px;
   background: var(--ui-surface);
 }
-
 .search-heading {
   display: flex;
   flex-direction: column;
   gap: 3px;
   margin-bottom: 10px;
 }
-
 .search-heading span,
 .metadata-result small {
   color: var(--ui-dim);
   font-size: 0.78rem;
 }
-
 .steamgriddb-hint {
   margin: 0 0 10px;
   padding: 8px 10px;
@@ -1309,22 +1504,18 @@ async function submit() {
   font-size: 0.78rem;
   line-height: 1.5;
 }
-
 .steamgriddb-hint a {
   color: var(--ui-accent-text);
   font-weight: 600;
   text-decoration: none;
 }
-
 .steamgriddb-hint a:hover {
   text-decoration: underline;
 }
-
 .search-row {
   display: flex;
   gap: 8px;
 }
-
 .search-row input {
   flex: 1;
   min-width: 0;
@@ -1335,18 +1526,15 @@ async function submit() {
   padding: 9px 11px;
   font: inherit;
 }
-
 .search-row input:focus {
   outline: none;
   border-color: var(--ui-accent-line);
 }
-
 .metadata-results {
   display: grid;
   gap: 6px;
   margin-top: 10px;
 }
-
 .metadata-result {
   display: flex;
   justify-content: space-between;
@@ -1361,16 +1549,13 @@ async function submit() {
   border-radius: 6px;
   cursor: pointer;
 }
-
 .metadata-result:hover {
   border-color: var(--ui-accent-line);
   background: var(--ui-surface-2);
 }
-
 .metadata-search .hint {
   margin-top: 8px;
 }
-
 .provider-warnings {
   list-style: none;
   margin: 6px 0 0;
@@ -1379,17 +1564,14 @@ async function submit() {
   flex-direction: column;
   gap: 3px;
 }
-
 .provider-warnings li {
   color: var(--ui-warning);
   font-size: 0.78rem;
 }
-
 .link-row {
   grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto;
   align-items: end;
 }
-
 .remove-button {
   background: color-mix(in srgb, var(--ui-error) 15%, transparent);
   color: var(--ui-error);
@@ -1400,15 +1582,12 @@ async function submit() {
   cursor: pointer;
   transition: background 0.15s ease;
 }
-
 .remove-button:hover {
   background: color-mix(in srgb, var(--ui-error) 30%, transparent);
 }
-
-.tab-panel>.secondary-button {
+.tab-panel > .secondary-button {
   align-self: flex-start;
 }
-
 .form-error {
   color: var(--ui-error);
   font-size: 0.85rem;
@@ -1417,15 +1596,12 @@ async function submit() {
   border-radius: var(--ui-radius-control);
   padding: 10px 12px;
 }
-
 .quick-add .form-error {
   margin-top: 14px;
 }
-
 .modal-actions-spacer {
   flex: 1;
 }
-
 .danger-button {
   background: color-mix(in srgb, var(--ui-error) 15%, transparent);
   color: var(--ui-error);
@@ -1438,11 +1614,9 @@ async function submit() {
   cursor: pointer;
   transition: background 0.15s ease;
 }
-
 .danger-button:hover {
   background: color-mix(in srgb, var(--ui-error) 30%, transparent);
 }
-
 .primary-button,
 .secondary-button {
   border: none;
@@ -1456,48 +1630,31 @@ async function submit() {
     background 0.15s ease,
     transform 0.05s ease;
 }
-
 .remove-button:focus-visible {
   outline: 2px solid var(--ui-accent);
   outline-offset: 2px;
 }
-
 .secondary-button[aria-expanded="true"] {
   background: var(--ui-accent-soft);
   color: var(--ui-accent-text);
 }
-
-:is(.primary-button,
+:is(
+  .primary-button,
   .secondary-button,
   .danger-button,
-  .remove-button):focus-visible {
+  .remove-button
+):focus-visible {
   outline: 2px solid var(--ui-accent);
   outline-offset: 2px;
 }
-
-.secondary-button[aria-expanded="true"] {
-  background: var(--ui-accent-soft);
-  color: var(--ui-accent-text);
-}
-
-:is(.primary-button,
-  .secondary-button,
-  .danger-button,
-  .remove-button):focus-visible {
-  outline: 2px solid var(--ui-accent);
-  outline-offset: 2px;
-}
-
 @media (max-width: 480px) {
   .link-row {
     grid-template-columns: minmax(0, 1fr) auto;
   }
-
-  .link-row>.field:nth-child(2) {
+  .link-row > .field:nth-child(2) {
     grid-column: 1 / -1;
     order: 3;
   }
-
   .primary-button,
   .secondary-button,
   .danger-button {

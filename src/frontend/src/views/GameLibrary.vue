@@ -3,10 +3,6 @@ import { sizedAssetUrl } from "../utils/gameImages";
 import HeartIcon from "../components/HeartIcon.vue";
 import GameCard from "../components/GameCard.vue";
 import CheckIcon from "../components/CheckIcon.vue";
-import GameFormModal from "../components/GameFormModal.vue";
-import GameQuickEditModal from "../components/game/GameQuickEditModal.vue";
-import BulkEditModal from "../components/BulkEditModal.vue";
-import RandomGamePicker from "../components/RandomGamePicker.vue";
 import FilterCombobox from "../components/FilterCombobox.vue";
 import TagFilterPicker from "../components/TagFilterPicker.vue";
 import GameTopBar from "../components/GameTopBar.vue";
@@ -26,6 +22,9 @@ const RandomGamePicker = defineAsyncComponent(
 );
 const CollectionPickerModal = defineAsyncComponent(
   () => import("../components/CollectionPickerModal.vue"),
+);
+const GameQuickEditModal = defineAsyncComponent(
+  () => import("../components/game/GameQuickEditModal.vue"),
 );
 const GameFormModal = defineAsyncComponent(
   () => import("../components/GameFormModal.vue"),
@@ -158,20 +157,29 @@ const compactPreview = computed(
 </script>
 
 <template>
-  <main class="library" :class="{
-    locked: viewMode === 'detail',
-    'compact-preview': compactPreview,
-    'compact-controls': compactControls,
-  }" :data-shortcut-context="viewMode === 'detail'
-    ? 'games.preview'
-    : viewMode === 'cards'
-      ? 'games.cards'
-      : undefined
-    ">
+  <main
+    class="library"
+    :class="{
+      locked: viewMode === 'detail',
+      'compact-preview': compactPreview,
+      'compact-controls': compactControls,
+    }"
+    :data-shortcut-context="
+      viewMode === 'detail'
+        ? 'games.preview'
+        : viewMode === 'cards'
+          ? 'games.cards'
+          : undefined
+    "
+  >
     <GameTopBar active="games">
       <template #actions>
-        <SegmentedTabs :options="VIEW_OPTIONS" :model-value="viewMode" aria-label="View"
-          @update:model-value="setView($event as ViewMode)" />
+        <SegmentedTabs
+          :options="VIEW_OPTIONS"
+          :model-value="viewMode"
+          aria-label="View"
+          @update:model-value="setView($event as ViewMode)"
+        />
       </template>
     </GameTopBar>
 
@@ -184,58 +192,104 @@ const compactPreview = computed(
             {{ filteredGames.length === 1 ? "game" : "games" }}
           </div>
         </div>
-        <button v-if="viewportWidth <= 760" type="button" class="secondary-button preview-tools-toggle"
-          :aria-expanded="!compactControls" :aria-label="compactControls ? 'Library controls' : 'Hide controls'"
-          @click="previewToolsOpen = !previewToolsOpen">
+        <button
+          v-if="viewportWidth <= 760"
+          type="button"
+          class="secondary-button preview-tools-toggle"
+          :aria-expanded="!compactControls"
+          :aria-label="compactControls ? 'Library controls' : 'Hide controls'"
+          @click="previewToolsOpen = !previewToolsOpen"
+        >
           {{ compactControls ? "Controls" : "Hide controls" }}
         </button>
         <div class="head-actions">
           <LibrarySyncMenu @synced="loadGames" />
           <div class="select-button-wrap">
-            <button type="button" class="select-btn" :class="{ on: selectMode }" @click="
-              toggleSelectMode();
-            dismissBulkEditHint();
-            ">
+            <button
+              type="button"
+              class="select-btn"
+              :class="{ on: selectMode }"
+              @click="
+                toggleSelectMode();
+                dismissBulkEditHint();
+              "
+            >
               {{ selectMode ? "Done" : "Select" }}
             </button>
           </div>
-          <button type="button" class="select-btn" :disabled="!games.length"
+          <button
+            type="button"
+            class="select-btn"
+            :disabled="!games.length"
             title="Pick a game to play, filtered by status, platform, genre, length and priority"
-            @click="showRandomPicker = true">
+            @click="showRandomPicker = true"
+          >
             Random
           </button>
-          <button type="button" class="add-btn" data-shortcut="create" @click="openAddModal">
+          <button
+            type="button"
+            class="add-btn"
+            data-shortcut="create"
+            @click="openAddModal"
+          >
             + Add Game
           </button>
         </div>
       </div>
 
       <div v-if="showBulkEditHint && !compactControls" class="first-use-hint">
-        <span>Select games, then bulk-edit their status, tags, or collections all
-          at once.</span>
-        <button type="button" class="first-use-hint-dismiss" @click="dismissBulkEditHint">
+        <span
+          >Select games, then bulk-edit their status, tags, or collections all
+          at once.</span
+        >
+        <button
+          type="button"
+          class="first-use-hint-dismiss"
+          @click="dismissBulkEditHint"
+        >
           Got it
         </button>
       </div>
 
       <div v-if="selectMode" class="bulk-toolbar">
         <span class="count">{{ selectedIds.size }} selected</span>
-        <button type="button" class="btn-outline" :disabled="filteredGames.length === 0"
-          @click="selectedIds = new Set(filteredGames.map((g) => g.id))">
+        <button
+          type="button"
+          class="btn-outline"
+          :disabled="filteredGames.length === 0"
+          @click="selectedIds = new Set(filteredGames.map((g) => g.id))"
+        >
           Select all ({{ filteredGames.length }})
         </button>
-        <button type="button" class="btn-outline" :disabled="!selectedIds.size" @click="clearSelection">
+        <button
+          type="button"
+          class="btn-outline"
+          :disabled="!selectedIds.size"
+          @click="clearSelection"
+        >
           Clear
         </button>
-        <button type="button" class="btn-outline" :disabled="!selectedIds.size || bulkAddingToCollection"
-          @click="bulkAddToCollection">
+        <button
+          type="button"
+          class="btn-outline"
+          :disabled="!selectedIds.size || bulkAddingToCollection"
+          @click="bulkAddToCollection"
+        >
           {{ bulkAddingToCollection ? "Adding…" : "Add to Collection" }}
         </button>
-        <button type="button" class="btn-solid" :disabled="!selectedIds.size" @click="showBulkEditModal = true">
+        <button
+          type="button"
+          class="btn-solid"
+          :disabled="!selectedIds.size"
+          @click="showBulkEditModal = true"
+        >
           Bulk Edit
         </button>
       </div>
-      <div v-if="bulkEditResultCount !== null" class="form-success bulk-success">
+      <div
+        v-if="bulkEditResultCount !== null"
+        class="form-success bulk-success"
+      >
         Updated {{ bulkEditResultCount }} game{{
           bulkEditResultCount === 1 ? "" : "s"
         }}.
@@ -243,23 +297,51 @@ const compactPreview = computed(
 
       <div class="toolbar">
         <div class="search-wrap">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+          >
             <circle cx="11" cy="11" r="7" />
             <line x1="21" y1="21" x2="16.65" y2="16.65" />
           </svg>
-          <input ref="librarySearch" data-shortcut="search" v-model="searchQuery" type="text" class="search-input"
-            placeholder="Search your library… (/)" aria-label="Search games" @focus="showRecentSearches = true" @blur="
+          <input
+            ref="librarySearch"
+            data-shortcut="search"
+            v-model="searchQuery"
+            type="text"
+            class="search-input"
+            placeholder="Search your library… (/)"
+            aria-label="Search games"
+            @focus="showRecentSearches = true"
+            @blur="
               showRecentSearches = false;
-            commitSearchToRecent();
-            " @keydown.enter="commitSearchToRecent" />
-          <div v-if="
-            showRecentSearches && !searchQuery.trim() && recentSearches.length
-          " class="recent-searches-dropdown">
+              commitSearchToRecent();
+            "
+            @keydown.enter="commitSearchToRecent"
+          />
+          <div
+            v-if="
+              showRecentSearches && !searchQuery.trim() && recentSearches.length
+            "
+            class="recent-searches-dropdown"
+          >
             <div class="recent-searches-label">Recent searches</div>
-            <button v-for="q in recentSearches" :key="q" type="button" class="recent-search-item"
-              @mousedown.prevent="pickRecentSearch(q)">
+            <button
+              v-for="q in recentSearches"
+              :key="q"
+              type="button"
+              class="recent-search-item"
+              @mousedown.prevent="pickRecentSearch(q)"
+            >
               <span>{{ q }}</span>
-              <span class="recent-search-remove" @mousedown.prevent.stop="removeRecentSearch(q)">✕</span>
+              <span
+                class="recent-search-remove"
+                @mousedown.prevent.stop="removeRecentSearch(q)"
+                >✕</span
+              >
             </button>
           </div>
         </div>
@@ -275,81 +357,160 @@ const compactPreview = computed(
           <option value="release">Release date (newest)</option>
           <option value="length">Time to beat (shortest)</option>
         </select>
-        <button type="button" class="filter-btn" data-tour="games-filters" :class="{ 'active-filter': filterCount }"
-          @click="showAdvancedFilters = !showAdvancedFilters">
+        <button
+          type="button"
+          class="filter-btn"
+          data-tour="games-filters"
+          :class="{ 'active-filter': filterCount }"
+          @click="showAdvancedFilters = !showAdvancedFilters"
+        >
           Filters
           <span v-if="filterCount" class="count">{{ filterCount }}</span>
         </button>
         <div class="presets-wrap">
-          <button type="button" class="filter-btn" @click="showPresetsMenu = !showPresetsMenu">
+          <button
+            type="button"
+            class="filter-btn"
+            @click="showPresetsMenu = !showPresetsMenu"
+          >
             Presets
           </button>
           <div v-if="showPresetsMenu" class="presets-dropdown">
-            <button v-for="p in filterPresets" :key="p.name" type="button" class="preset-item" @click="applyPreset(p)">
+            <button
+              v-for="p in filterPresets"
+              :key="p.name"
+              type="button"
+              class="preset-item"
+              @click="applyPreset(p)"
+            >
               <span>{{ p.name }}</span>
-              <span class="preset-remove" @click.stop="deletePreset(p.name)">✕</span>
+              <span class="preset-remove" @click.stop="deletePreset(p.name)"
+                >✕</span
+              >
             </button>
             <p v-if="!filterPresets.length" class="preset-empty">
               No saved presets yet.
             </p>
-            <button type="button" class="preset-save" @click="saveCurrentAsPreset">
+            <button
+              type="button"
+              class="preset-save"
+              @click="saveCurrentAsPreset"
+            >
               + Save current filters
             </button>
           </div>
         </div>
-        <div v-if="viewMode === 'cards'" class="density-toggle" title="Card size">
-          <button v-for="d in ['compact', 'cozy', 'large'] as CardDensity[]" :key="d" type="button"
-            class="density-button" :class="{ active: cardDensity === d }" :title="d" @click="cardDensity = d">
+        <div
+          v-if="viewMode === 'cards'"
+          class="density-toggle"
+          title="Card size"
+        >
+          <button
+            v-for="d in ['compact', 'cozy', 'large'] as CardDensity[]"
+            :key="d"
+            type="button"
+            class="density-button"
+            :class="{ active: cardDensity === d }"
+            :title="d"
+            @click="cardDensity = d"
+          >
             {{ d === "compact" ? "S" : d === "cozy" ? "M" : "L" }}
           </button>
         </div>
       </div>
 
-      <div v-if="showAdvancedFilters" class="advanced-panel" data-tour="games-filter-panel">
+      <div
+        v-if="showAdvancedFilters"
+        class="advanced-panel"
+        data-tour="games-filter-panel"
+      >
         <div class="filter-group platform-genre-group">
-          <FilterCombobox v-model="platformFilter" :options="platformOptions" :extra-options="platformExtraOptions"
-            extra-label="Retro" placeholder="Platform" all-label="All platforms" />
-          <TagFilterPicker :options="tagOptions" :included="tagsFilter" :excluded="excludedTags"
-            @toggle="toggleTagChoice" @remove="removeTagChoice" />
+          <FilterCombobox
+            v-model="platformFilter"
+            :options="platformOptions"
+            :extra-options="platformExtraOptions"
+            extra-label="Retro"
+            placeholder="Platform"
+            all-label="All platforms"
+          />
+          <TagFilterPicker
+            :options="tagOptions"
+            :included="tagsFilter"
+            :excluded="excludedTags"
+            @toggle="toggleTagChoice"
+            @remove="removeTagChoice"
+          />
         </div>
         <div class="advanced-field">
           <label>Franchise</label>
-          <FilterCombobox v-model="franchiseFilter" :options="franchiseOptions" placeholder="Franchise"
-            all-label="All franchises" />
+          <FilterCombobox
+            v-model="franchiseFilter"
+            :options="franchiseOptions"
+            placeholder="Franchise"
+            all-label="All franchises"
+          />
         </div>
         <div class="advanced-field">
           <label>Collection</label>
-          <FilterCombobox v-model="collectionFilter" :options="collectionOptions" placeholder="Collection"
-            all-label="All collections" />
+          <FilterCombobox
+            v-model="collectionFilter"
+            :options="collectionOptions"
+            placeholder="Collection"
+            all-label="All collections"
+          />
         </div>
         <div class="advanced-field">
           <label>Company</label>
-          <FilterCombobox v-model="companyFilter" :options="companyOptions" placeholder="Company"
-            all-label="All companies" />
+          <FilterCombobox
+            v-model="companyFilter"
+            :options="companyOptions"
+            placeholder="Company"
+            all-label="All companies"
+          />
         </div>
         <div class="advanced-field">
           <label>Age Rating</label>
-          <FilterCombobox v-model="ageRatingFilter" :options="ageRatingOptions" placeholder="Age rating"
-            all-label="All ratings" />
+          <FilterCombobox
+            v-model="ageRatingFilter"
+            :options="ageRatingOptions"
+            placeholder="Age rating"
+            all-label="All ratings"
+          />
         </div>
         <div class="advanced-field">
           <label>Region</label>
-          <FilterCombobox v-model="regionFilter" :options="regionOptions" placeholder="Region"
-            all-label="All regions" />
+          <FilterCombobox
+            v-model="regionFilter"
+            :options="regionOptions"
+            placeholder="Region"
+            all-label="All regions"
+          />
         </div>
         <div class="advanced-field">
           <label>Language</label>
-          <FilterCombobox v-model="languageFilter" :options="languageOptions" placeholder="Language"
-            all-label="All languages" />
+          <FilterCombobox
+            v-model="languageFilter"
+            :options="languageOptions"
+            placeholder="Language"
+            all-label="All languages"
+          />
         </div>
         <div class="advanced-field">
           <label>Metadata Provider</label>
-          <FilterCombobox v-model="metadataProviderFilter" :options="metadataProviderOptions" placeholder="Provider"
-            all-label="All providers" />
+          <FilterCombobox
+            v-model="metadataProviderFilter"
+            :options="metadataProviderOptions"
+            placeholder="Provider"
+            all-label="All providers"
+          />
         </div>
         <div class="advanced-field">
           <label>Achievements</label>
-          <select v-model="achievementsFilter" class="filter-select" aria-label="Achievements">
+          <select
+            v-model="achievementsFilter"
+            class="filter-select"
+            aria-label="Achievements"
+          >
             <option value="all">All games</option>
             <option value="has">Has achievements</option>
             <option value="none">No achievements</option>
@@ -357,7 +518,11 @@ const compactPreview = computed(
         </div>
         <div class="advanced-field">
           <label>What's missing</label>
-          <select v-model="missingFilter" class="filter-select" aria-label="What's missing">
+          <select
+            v-model="missingFilter"
+            class="filter-select"
+            aria-label="What's missing"
+          >
             <option value="none">Nothing, show everything</option>
             <option value="playtime">No playtime logged</option>
             <option value="rating">No rating</option>
@@ -365,46 +530,84 @@ const compactPreview = computed(
             <option value="description">No description</option>
           </select>
         </div>
-        <fieldset v-for="group in exclusionGroups" :key="group.kind"
-          class="advanced-field advanced-field-wide exclusion-group">
+        <fieldset
+          v-for="group in exclusionGroups"
+          :key="group.kind"
+          class="advanced-field advanced-field-wide exclusion-group"
+        >
           <legend>{{ group.label }}</legend>
           <div class="tags-multiselect">
-            <button v-for="value in group.values" :key="value" type="button" class="tag-chip"
-              :class="{ active: isExcluded(group.kind, value) }" :aria-pressed="isExcluded(group.kind, value)"
-              @click="toggleExclusion(group.kind, value)">
+            <button
+              v-for="value in group.values"
+              :key="value"
+              type="button"
+              class="tag-chip"
+              :class="{ active: isExcluded(group.kind, value) }"
+              :aria-pressed="isExcluded(group.kind, value)"
+              @click="toggleExclusion(group.kind, value)"
+            >
               Not {{ value }}
             </button>
           </div>
         </fieldset>
         <div class="advanced-toggles">
-          <button type="button" class="toggle-chip" :class="{ active: favoritesOnly }"
-            @click="favoritesOnly = !favoritesOnly">
+          <button
+            type="button"
+            class="toggle-chip"
+            :class="{ active: favoritesOnly }"
+            @click="favoritesOnly = !favoritesOnly"
+          >
             ★ Favorites only
           </button>
-          <button type="button" class="toggle-chip" :class="{ active: retroAchievementsOnly }"
-            @click="retroAchievementsOnly = !retroAchievementsOnly">
+          <button
+            type="button"
+            class="toggle-chip"
+            :class="{ active: retroAchievementsOnly }"
+            @click="retroAchievementsOnly = !retroAchievementsOnly"
+          >
             Has RetroAchievements tracking
           </button>
-          <button type="button" class="clear-advanced" :disabled="!advancedFilterCount" @click="clearAdvancedFilters">
+          <button
+            type="button"
+            class="clear-advanced"
+            :disabled="!advancedFilterCount"
+            @click="clearAdvancedFilters"
+          >
             Clear advanced filters
           </button>
         </div>
       </div>
 
       <div class="status-tabs">
-        <button v-for="s in statusOptions" :key="s" type="button" class="status-tab"
-          :class="{ active: statusFilter === s }" @click="statusFilter = s">
+        <button
+          v-for="s in statusOptions"
+          :key="s"
+          type="button"
+          class="status-tab"
+          :class="{ active: statusFilter === s }"
+          @click="statusFilter = s"
+        >
           {{ s === "all" ? "All" : s }}
           <span class="n">{{ statusCounts[s] }}</span>
         </button>
       </div>
 
       <div v-if="activeFilterPills.length" class="active-filter-pills">
-        <button v-for="pill in activeFilterPills" :key="pill.key" type="button" class="filter-pill"
-          :title="`Remove ${pill.label} filter`" @click="pill.clear()">
+        <button
+          v-for="pill in activeFilterPills"
+          :key="pill.key"
+          type="button"
+          class="filter-pill"
+          :title="`Remove ${pill.label} filter`"
+          @click="pill.clear()"
+        >
           {{ pill.label }} <span class="filter-pill-x">✕</span>
         </button>
-        <button type="button" class="filter-pill-clear-all" @click="clearAllFilters">
+        <button
+          type="button"
+          class="filter-pill-clear-all"
+          @click="clearAllFilters"
+        >
           Clear all
         </button>
       </div>
@@ -413,8 +616,17 @@ const compactPreview = computed(
       <p v-else-if="error" class="empty-state error">{{ error }}</p>
 
       <div v-else-if="isEmpty" class="empty-state rich">
-        <svg v-if="!hasAnyGames" viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor"
-          stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+        <svg
+          v-if="!hasAnyGames"
+          viewBox="0 0 24 24"
+          width="48"
+          height="48"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.4"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
           <rect x="3" y="5" width="18" height="14" rx="2" />
           <path d="M3 9h18" />
           <path d="M8 13h.01M12 13h.01M16 13h.01" />
@@ -429,16 +641,31 @@ const compactPreview = computed(
         </p>
         <div v-if="searchSuggestions.length" class="search-suggestions">
           <span>Did you mean:</span>
-          <button v-for="s in searchSuggestions" :key="s" type="button" class="search-suggestion-item"
-            @click="searchQuery = s">
+          <button
+            v-for="s in searchSuggestions"
+            :key="s"
+            type="button"
+            class="search-suggestion-item"
+            @click="searchQuery = s"
+          >
             {{ s }}
           </button>
         </div>
-        <button v-if="hasAnyGames" type="button" class="btn-outline" @click="clearAllFilters">
+        <button
+          v-if="hasAnyGames"
+          type="button"
+          class="btn-outline"
+          @click="clearAllFilters"
+        >
           Clear filters
         </button>
         <template v-else>
-          <button type="button" class="btn-solid" data-shortcut="create" @click="openAddModal">
+          <button
+            type="button"
+            class="btn-solid"
+            data-shortcut="create"
+            @click="openAddModal"
+          >
             + Add Game
           </button>
           <ul class="empty-hint-list">
@@ -455,82 +682,167 @@ const compactPreview = computed(
       </div>
 
       <template v-else>
-        <div v-if="viewMode === 'cards'" class="grid-virtual-container"
-          :style="{ height: rowVirtualizer.getTotalSize() + 'px' }">
-          <div v-for="virtualRow in rowVirtualizer.getVirtualItems()" :key="virtualRow.index"
-            :ref="(el) => rowVirtualizer.measureElement(el as HTMLElement)" :data-index="virtualRow.index"
-            class="grid-row" :style="{
+        <div
+          v-if="viewMode === 'cards'"
+          class="grid-virtual-container"
+          :style="{ height: rowVirtualizer.getTotalSize() + 'px' }"
+        >
+          <div
+            v-for="virtualRow in rowVirtualizer.getVirtualItems()"
+            :key="virtualRow.index"
+            :ref="(el) => rowVirtualizer.measureElement(el as HTMLElement)"
+            :data-index="virtualRow.index"
+            class="grid-row"
+            :style="{
               transform: `translateY(${virtualRow.start}px)`,
               gridTemplateColumns: `repeat(${CARD_COLUMNS}, 1fr)`,
-            }">
-            <GameCard v-for="(game, colIndex) in cardsInRow(virtualRow.index)" :key="game.id" :game="game"
-              :owned-copy-count="ownedCopyCount(game)" :possible-duplicate="possibleDuplicateIds.has(game.id)"
-              :rank="rankByGameId.get(game.id) ?? null" :select-mode="selectMode" :selected="selectedIds.has(game.id)"
-              :keyboard-focused="gridFocusIndex === virtualRow.index * CARD_COLUMNS + colIndex
-                " @edit="openEditModal" @updated="onGameUpdated" @add-to-collection="handleAddToCollection"
-              @toggle-select="toggleSelect" />
+            }"
+          >
+            <GameCard
+              v-for="(game, colIndex) in cardsInRow(virtualRow.index)"
+              :key="game.id"
+              :game="game"
+              :owned-copy-count="ownedCopyCount(game)"
+              :possible-duplicate="possibleDuplicateIds.has(game.id)"
+              :rank="rankByGameId.get(game.id) ?? null"
+              :select-mode="selectMode"
+              :selected="selectedIds.has(game.id)"
+              :keyboard-focused="
+                gridFocusIndex === virtualRow.index * CARD_COLUMNS + colIndex
+              "
+              @edit="openEditModal"
+              @updated="onGameUpdated"
+              @add-to-collection="handleAddToCollection"
+              @toggle-select="toggleSelect"
+            />
           </div>
         </div>
 
         <div v-else-if="viewMode === 'list'" class="list-view">
           <div v-if="filteredGames.length" class="list-header">
             <span></span>
-            <button type="button" class="sortable left" :class="{ active: sortBy === 'name' }" @click="sortBy = 'name'">
+            <button
+              type="button"
+              class="sortable left"
+              :class="{ active: sortBy === 'name' }"
+              @click="sortBy = 'name'"
+            >
               Name
             </button>
             <span></span>
-            <button type="button" class="sortable" :class="{ active: sortBy === 'playtime' }"
-              @click="sortBy = 'playtime'">
+            <button
+              type="button"
+              class="sortable"
+              :class="{ active: sortBy === 'playtime' }"
+              @click="sortBy = 'playtime'"
+            >
               Playtime
             </button>
-            <button type="button" class="sortable" :class="{ active: sortBy === 'rating' }" @click="sortBy = 'rating'">
+            <button
+              type="button"
+              class="sortable"
+              :class="{ active: sortBy === 'rating' }"
+              @click="sortBy = 'rating'"
+            >
               Rating
             </button>
             <span>Rank</span>
-            <button type="button" class="sortable" :class="{ active: sortBy === 'neglected' }"
-              @click="sortBy = 'neglected'">
+            <button
+              type="button"
+              class="sortable"
+              :class="{ active: sortBy === 'neglected' }"
+              @click="sortBy = 'neglected'"
+            >
               Last played
             </button>
             <span>Released</span>
             <span>Status</span>
           </div>
-          <div v-for="game in filteredGames" :key="game.id" class="list-row"
-            @click="selectMode ? toggleSelect(game) : openGame(game)">
+          <div
+            v-for="game in filteredGames"
+            :key="game.id"
+            class="list-row"
+            @click="selectMode ? toggleSelect(game) : openGame(game)"
+          >
             <div class="list-thumb-wrap">
-              <img class="list-cover" :src="game.coverImageUrl" alt="" loading="lazy" decoding="async" />
-              <div v-if="selectMode" class="select-checkbox" :class="{ checked: selectedIds.has(game.id) }"
-                @click.stop="toggleSelect(game)">
+              <img
+                class="list-cover"
+                :src="game.coverImageUrl"
+                alt=""
+                loading="lazy"
+                decoding="async"
+              />
+              <div
+                v-if="selectMode"
+                class="select-checkbox"
+                :class="{ checked: selectedIds.has(game.id) }"
+                @click.stop="toggleSelect(game)"
+              >
                 <CheckIcon v-if="selectedIds.has(game.id)" />
               </div>
             </div>
             <div class="list-title-col">
               <div class="list-title">{{ game.title }}</div>
-              <RouterLink v-if="possibleDuplicateIds.has(game.id)" class="list-sub"
-                to="/settings?section=library&tab=duplicates" @click.stop>Review possible duplicate</RouterLink>
+              <RouterLink
+                v-if="possibleDuplicateIds.has(game.id)"
+                class="list-sub"
+                to="/settings?section=library&tab=duplicates"
+                @click.stop
+                >Review possible duplicate</RouterLink
+              >
               <div v-if="ownedCopyCount(game) > 1" class="list-sub">
                 {{ ownedCopyCount(game) }} owned copies
               </div>
               <div class="list-sub">
                 {{ game.tags[0] ?? "No genre"
                 }}<template v-if="game.platforms[0]">
-                  · {{ game.platforms[0].platform }}</template>
+                  · {{ game.platforms[0].platform }}</template
+                >
               </div>
             </div>
             <div class="icon-cluster">
-              <button type="button" class="icon-btn" :class="{ active: game.favorite }" :title="game.favorite ? 'Remove from favorites' : 'Add to favorites'
-                " @click.stop="toggleFavorite(game)">
+              <button
+                type="button"
+                class="icon-btn"
+                :class="{ active: game.favorite }"
+                :title="
+                  game.favorite ? 'Remove from favorites' : 'Add to favorites'
+                "
+                @click.stop="toggleFavorite(game)"
+              >
                 <HeartIcon :filled="game.favorite" />
               </button>
-              <button type="button" class="icon-btn" title="Add to collection"
-                @click.stop="handleAddToCollection(game)">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                  stroke-linejoin="round">
+              <button
+                type="button"
+                class="icon-btn"
+                title="Add to collection"
+                @click.stop="handleAddToCollection(game)"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
                   <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
                 </svg>
               </button>
-              <button type="button" class="icon-btn" title="Edit" @click.stop="openEditModal(game)">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                  stroke-linejoin="round">
+              <button
+                type="button"
+                class="icon-btn"
+                title="Edit"
+                @click.stop="openEditModal(game)"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
                   <path d="M12 20h9" />
                   <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
                 </svg>
@@ -547,7 +859,9 @@ const compactPreview = computed(
               }}
             </div>
             <div class="rank-cell">
-              <span v-if="rankByGameId.get(game.id)" class="rank-badge">#{{ rankByGameId.get(game.id) }}</span>
+              <span v-if="rankByGameId.get(game.id)" class="rank-badge"
+                >#{{ rankByGameId.get(game.id) }}</span
+              >
               <span v-else class="rank-empty">–</span>
             </div>
             <div class="stat-cell">
@@ -561,32 +875,58 @@ const compactPreview = computed(
               {{ game.releaseDate ? formatDisplayDate(game.releaseDate) : "–" }}
             </div>
             <div class="status-cell">
-              <span class="status-pill" :class="`st-${game.status.replace(' ', '-')}`">{{ game.status }}</span>
+              <span
+                class="status-pill"
+                :class="`st-${game.status.replace(' ', '-')}`"
+                >{{ game.status }}</span
+              >
             </div>
           </div>
         </div>
 
         <div v-else class="detail-view">
           <div class="detail-list">
-            <button v-for="game in filteredGames" :key="game.id" type="button" class="detail-list-item"
-              :class="{ active: selectedGame?.id === game.id }" @click="selectedGame = game">
-              <img class="detail-list-thumb" :src="game.coverImageUrl" alt="" loading="lazy" decoding="async" />
+            <button
+              v-for="game in filteredGames"
+              :key="game.id"
+              type="button"
+              class="detail-list-item"
+              :class="{ active: selectedGame?.id === game.id }"
+              @click="selectedGame = game"
+            >
+              <img
+                class="detail-list-thumb"
+                :src="game.coverImageUrl"
+                alt=""
+                loading="lazy"
+                decoding="async"
+              />
               <span>{{ game.title }}</span>
             </button>
           </div>
 
           <Transition name="preview-fade" mode="out-in">
-            <div v-if="selectedGame" :key="selectedGame.id" class="detail-preview">
-              <div class="preview-banner" :style="{
-                backgroundImage: `url(${sizedAssetUrl(selectedGame.bannerImageUrl, 800)})`,
-              }">
+            <div
+              v-if="selectedGame"
+              :key="selectedGame.id"
+              class="detail-preview"
+            >
+              <div
+                class="preview-banner"
+                :style="{
+                  backgroundImage: `url(${sizedAssetUrl(selectedGame.bannerImageUrl, 800)})`,
+                }"
+              >
                 <div class="preview-banner-overlay"></div>
               </div>
               <div class="preview-info">
                 <h2>{{ selectedGame.title }}</h2>
                 <div class="preview-meta">
                   <span class="preview-badge">{{ selectedGame.status }}</span>
-                  <span v-if="computeScore(selectedGame)" class="preview-badge score">
+                  <span
+                    v-if="computeScore(selectedGame)"
+                    class="preview-badge score"
+                  >
                     ★ {{ computeScore(selectedGame)!.sum.toFixed(1) }}
                   </span>
                   <span class="preview-badge">{{
@@ -614,13 +954,19 @@ const compactPreview = computed(
                     <span class="preview-detail-label">Age Rating</span>
                     <span>{{ selectedGame.ageRating }}</span>
                   </div>
-                  <div v-if="selectedGame.releaseDate" class="preview-detail-row">
+                  <div
+                    v-if="selectedGame.releaseDate"
+                    class="preview-detail-row"
+                  >
                     <span class="preview-detail-label">Released</span>
                     <span>{{
                       formatDisplayDate(selectedGame.releaseDate)
                     }}</span>
                   </div>
-                  <div v-if="activePriority(selectedGame) !== null" class="preview-detail-row">
+                  <div
+                    v-if="activePriority(selectedGame) !== null"
+                    class="preview-detail-row"
+                  >
                     <span class="preview-detail-label">Priority</span>
                     <span>{{
                       priorityLabel(activePriority(selectedGame)!)
@@ -632,41 +978,76 @@ const compactPreview = computed(
                       new Date(selectedGame.dateAdded).toLocaleDateString()
                     }}</span>
                   </div>
-                  <div v-if="selectedGame.platforms.length" class="preview-detail-row">
+                  <div
+                    v-if="selectedGame.platforms.length"
+                    class="preview-detail-row"
+                  >
                     <span class="preview-detail-label">Platforms</span>
                     <div class="preview-platforms">
-                      <div v-for="p in selectedGame.platforms" :key="p.platform">
+                      <div
+                        v-for="p in selectedGame.platforms"
+                        :key="p.platform"
+                      >
                         {{ p.platform }}:
                         {{ Math.round(p.playtimeMinutes / 60) }}h
-                        <span v-if="p.completionPercent !== null">· {{ p.completionPercent }}%</span>
+                        <span v-if="p.completionPercent !== null"
+                          >· {{ p.completionPercent }}%</span
+                        >
                       </div>
                     </div>
                   </div>
-                  <div v-if="selectedGame.tags.length" class="preview-detail-row">
+                  <div
+                    v-if="selectedGame.tags.length"
+                    class="preview-detail-row"
+                  >
                     <span class="preview-detail-label">Tags</span>
                     <span class="preview-pills">
-                      <span v-for="tag in selectedGame.tags" :key="tag" class="preview-pill">{{ tag }}</span>
+                      <span
+                        v-for="tag in selectedGame.tags"
+                        :key="tag"
+                        class="preview-pill"
+                        >{{ tag }}</span
+                      >
                     </span>
                   </div>
-                  <div v-if="selectedGame.features.length" class="preview-detail-row">
+                  <div
+                    v-if="selectedGame.features.length"
+                    class="preview-detail-row"
+                  >
                     <span class="preview-detail-label">Features</span>
                     <span class="preview-pills">
-                      <span v-for="f in selectedGame.features" :key="f" class="preview-pill">{{ f }}</span>
+                      <span
+                        v-for="f in selectedGame.features"
+                        :key="f"
+                        class="preview-pill"
+                        >{{ f }}</span
+                      >
                     </span>
                   </div>
-                  <div v-if="selectedGame.links.length" class="preview-detail-row">
+                  <div
+                    v-if="selectedGame.links.length"
+                    class="preview-detail-row"
+                  >
                     <span class="preview-detail-label">Links</span>
                     <div class="preview-links">
-                      <a v-for="link in selectedGame.links" :key="link.url" :href="link.url" target="_blank"
-                        rel="noopener noreferrer">
+                      <a
+                        v-for="link in selectedGame.links"
+                        :key="link.url"
+                        :href="link.url"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
                         {{ link.label }}
                       </a>
                     </div>
                   </div>
-                  <div v-if="
-                    selectedGame.ownership.format ||
-                    selectedGame.ownership.price !== null
-                  " class="preview-detail-row">
+                  <div
+                    v-if="
+                      selectedGame.ownership.format ||
+                      selectedGame.ownership.price !== null
+                    "
+                    class="preview-detail-row"
+                  >
                     <span class="preview-detail-label">Ownership</span>
                     <span>
                       {{ selectedGame.ownership.format ?? "N/A" }}
@@ -676,32 +1057,66 @@ const compactPreview = computed(
                       </span>
                     </span>
                   </div>
-                  <div v-if="selectedGame.folderLocation" class="preview-detail-row">
+                  <div
+                    v-if="selectedGame.folderLocation"
+                    class="preview-detail-row"
+                  >
                     <span class="preview-detail-label">Folder</span>
                     <span>{{ selectedGame.folderLocation }}</span>
                   </div>
                 </div>
-                <div v-if="selectedGameDescriptionHtml" class="preview-description-html"
-                  v-html="selectedGameDescriptionHtml">
-                </div>
+                <div
+                  v-if="selectedGameDescriptionHtml"
+                  class="preview-description-html"
+                  v-html="selectedGameDescriptionHtml"
+                ></div>
                 <div class="preview-actions">
-                  <button type="button" class="primary-button" @click="openGame(selectedGame)">
+                  <button
+                    type="button"
+                    class="primary-button"
+                    @click="openGame(selectedGame)"
+                  >
                     Open Full Page
                   </button>
-                  <button type="button" class="secondary-button" @click="openEditModal(selectedGame)">
+                  <button
+                    type="button"
+                    class="secondary-button"
+                    @click="openEditModal(selectedGame)"
+                  >
                     Edit
                   </button>
-                  <button type="button" class="icon-button" title="Add to collection"
-                    @click="handleAddToCollection(selectedGame)">
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
-                      stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+                  <button
+                    type="button"
+                    class="icon-button"
+                    title="Add to collection"
+                    @click="handleAddToCollection(selectedGame)"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      width="16"
+                      height="16"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <path
+                        d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"
+                      />
                     </svg>
                   </button>
-                  <button type="button" class="icon-button" :class="{ active: selectedGame.favorite }" :title="selectedGame.favorite
-                    ? 'Remove from favorites'
-                    : 'Add to favorites'
-                    " @click="toggleFavorite(selectedGame)">
+                  <button
+                    type="button"
+                    class="icon-button"
+                    :class="{ active: selectedGame.favorite }"
+                    :title="
+                      selectedGame.favorite
+                        ? 'Remove from favorites'
+                        : 'Add to favorites'
+                    "
+                    @click="toggleFavorite(selectedGame)"
+                  >
                     <HeartIcon :filled="selectedGame.favorite" />
                   </button>
                 </div>
@@ -714,21 +1129,50 @@ const compactPreview = computed(
         </div>
       </template>
 
-      <GameQuickEditModal v-if="quickEditingGame" :key="quickEditingGame.id" :game="quickEditingGame"
-        @close="quickEditingGame = null" @saved="onQuickEdited" @more="openFullEditor(quickEditingGame, $event)" />
+      <GameQuickEditModal
+        v-if="quickEditingGame"
+        :key="quickEditingGame.id"
+        :game="quickEditingGame"
+        @close="quickEditingGame = null"
+        @saved="onQuickEdited"
+        @more="openFullEditor(quickEditingGame, $event)"
+      />
 
-      <GameFormModal v-if="showFormModal" :game="editingGame" :quick-add="!editingGame" :draft="editDraft"
-        @close="showFormModal = false" @saved="onGameSaved" @delete="onDeleteFromModal" />
+      <GameFormModal
+        v-if="showFormModal"
+        :game="editingGame"
+        :quick-add="!editingGame"
+        :draft="editDraft"
+        @close="showFormModal = false"
+        @saved="onGameSaved"
+        @delete="onDeleteFromModal"
+      />
 
-      <CollectionPickerModal v-if="collectionPickerGame" :game="collectionPickerGame"
-        @close="collectionPickerGame = null" @added="onCollectionAdded" />
+      <CollectionPickerModal
+        v-if="collectionPickerGame"
+        :game="collectionPickerGame"
+        @close="collectionPickerGame = null"
+        @added="onCollectionAdded"
+      />
 
-      <BulkEditModal v-if="showBulkEditModal" :game-ids="Array.from(selectedIds)" @close="showBulkEditModal = false"
-        @saved="onBulkEditSaved" />
+      <BulkEditModal
+        v-if="showBulkEditModal"
+        :game-ids="Array.from(selectedIds)"
+        @close="showBulkEditModal = false"
+        @saved="onBulkEditSaved"
+      />
 
-      <RandomGamePicker v-if="showRandomPicker" :games="libraryEntries" @close="showRandomPicker = false" />
+      <RandomGamePicker
+        v-if="showRandomPicker"
+        :games="libraryEntries"
+        @close="showRandomPicker = false"
+      />
 
-      <div v-if="deletingGame" class="confirm-backdrop" @click.self="deletingGame = null">
+      <div
+        v-if="deletingGame"
+        class="confirm-backdrop"
+        @click.self="deletingGame = null"
+      >
         <div class="confirm-dialog">
           <h3>Delete {{ deletingGame.title }}?</h3>
           <p>
@@ -737,10 +1181,19 @@ const compactPreview = computed(
           </p>
           <div v-if="deleteError" class="confirm-error">{{ deleteError }}</div>
           <div class="confirm-actions">
-            <button type="button" class="secondary-button" @click="deletingGame = null">
+            <button
+              type="button"
+              class="secondary-button"
+              @click="deletingGame = null"
+            >
               Cancel
             </button>
-            <button type="button" class="danger-button" :disabled="deleting" @click="confirmDelete">
+            <button
+              type="button"
+              class="danger-button"
+              :disabled="deleting"
+              @click="confirmDelete"
+            >
               {{ deleting ? "Deleting…" : "Delete" }}
             </button>
           </div>
