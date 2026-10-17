@@ -91,41 +91,90 @@ const isPicked = (url: string) =>
     <p :id="headingId" class="editor-section">{{ label }}</p>
     <div class="art-row">
       <div class="art-preview" :class="shape">
-        <img v-if="preview && !previewFailed" :src="preview" alt="" @error="previewFailed = true" />
+        <img
+          v-if="preview && !previewFailed"
+          :src="preview"
+          alt=""
+          @error="previewFailed = true"
+        />
         <span class="art-tag">{{ tag }}</span>
       </div>
       <div class="art-actions">
         <p class="art-state" role="status">{{ state }}</p>
         <label class="ui-btn ui-btn-secondary art-upload">
           Upload a file
-          <input type="file" accept="image/*" class="art-file" :aria-label="`Upload a ${label.toLowerCase()} file`"
-            :disabled="disabled" @click="allowSameFileReselection" @change="onFile" />
+          <input
+            type="file"
+            accept="image/*"
+            class="art-file"
+            :aria-label="`Upload a ${label.toLowerCase()} file`"
+            :disabled="disabled"
+            @click="allowSameFileReselection"
+            @change="onFile"
+          />
         </label>
         <div class="art-link">
           <!-- text, not url: a half-typed link in a hidden tab must not block Save -->
-          <input v-model="link" type="text" inputmode="url" autocomplete="off" class="editor-input"
-            :aria-label="`${label} image link`" placeholder="Paste an image link" :disabled="disabled"
-            @keydown.enter.prevent="useLink" />
-          <button type="button" class="ui-btn ui-btn-secondary" :disabled="disabled || !link.trim()" @click="useLink">
+          <input
+            v-model="link"
+            type="text"
+            inputmode="url"
+            autocomplete="off"
+            class="editor-input"
+            :aria-label="`${label} image link`"
+            placeholder="Paste an image link"
+            :disabled="disabled"
+            @keydown.enter.prevent="useLink"
+          />
+          <button
+            type="button"
+            class="ui-btn ui-btn-secondary"
+            :disabled="disabled || !link.trim()"
+            @click="useLink"
+          >
             Use
           </button>
         </div>
         <p v-if="linkError" class="art-error" role="alert">{{ linkError }}</p>
-        <button v-if="staged" type="button" class="ui-btn ui-btn-ghost ui-btn-sm art-reset" :disabled="disabled"
-          @click="emit('reset')">
+        <button
+          v-if="staged"
+          type="button"
+          class="ui-btn ui-btn-ghost ui-btn-sm art-reset"
+          :disabled="disabled"
+          @click="emit('reset')"
+        >
           {{ current ? "Keep current" : "Remove choice" }}
         </button>
       </div>
     </div>
-    <div v-if="candidates.length" class="art-options" role="group" :aria-label="`${label} choices`">
-      <button v-if="current" type="button" class="art-tile" :class="[shape, { chosen: !staged }]"
-        :aria-pressed="!staged" :disabled="disabled" @click="emit('reset')">
+    <div
+      v-if="candidates.length"
+      class="art-options"
+      role="group"
+      :aria-label="`${label} choices`"
+    >
+      <button
+        v-if="current"
+        type="button"
+        class="art-tile"
+        :class="[shape, { chosen: !staged }]"
+        :aria-pressed="!staged"
+        :disabled="disabled"
+        @click="emit('reset')"
+      >
         <img :src="current" alt="Current artwork" loading="lazy" />
         <span class="art-tag">Current</span>
       </button>
-      <button v-for="url in candidates" :key="url" type="button" class="art-tile"
-        :class="[shape, { chosen: isPicked(url) }]" :aria-pressed="isPicked(url)" :disabled="disabled"
-        @click="emit('url', url, 'provider')">
+      <button
+        v-for="url in candidates"
+        :key="url"
+        type="button"
+        class="art-tile"
+        :class="[shape, { chosen: isPicked(url) }]"
+        :aria-pressed="isPicked(url)"
+        :disabled="disabled"
+        @click="emit('url', url, 'provider')"
+      >
         <img :src="url" alt="Search result" loading="lazy" />
         <span class="art-tag">Search</span>
       </button>

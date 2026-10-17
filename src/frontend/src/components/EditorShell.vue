@@ -100,13 +100,30 @@ defineExpose({ scrollToTop });
 </script>
 
 <template>
-  <UiModal :title="title" :size="size" :bounded="bounded" :dismissible="dismissible" class="editor-shell"
-    @close="emit('close')">
+  <UiModal
+    :title="title"
+    :size="size"
+    :bounded="bounded"
+    :dismissible="dismissible"
+    class="editor-shell"
+    @close="emit('close')"
+  >
     <template v-if="heading !== undefined" #header="{ titleId }">
       <div class="editor-hero">
-        <button type="button" class="editor-cover" :class="{ empty: !cover || coverFailed }" :aria-label="coverLabel"
-          :title="coverLabel" @click="emit('cover')">
-          <img v-if="cover && !coverFailed" :src="cover" alt="" @error="coverFailed = true" />
+        <button
+          type="button"
+          class="editor-cover"
+          :class="{ empty: !cover || coverFailed }"
+          :aria-label="coverLabel"
+          :title="coverLabel"
+          @click="emit('cover')"
+        >
+          <img
+            v-if="cover && !coverFailed"
+            :src="cover"
+            alt=""
+            @error="coverFailed = true"
+          />
         </button>
         <div class="editor-titles">
           <h2 :id="titleId" class="editor-kicker">{{ title }}</h2>
@@ -117,18 +134,44 @@ defineExpose({ scrollToTop });
     </template>
 
     <div class="editor-frame" :class="{ bounded }">
-      <div v-if="tabs.length" ref="tabRow" class="editor-tabs" role="tablist" :aria-label="tabsLabel"
-        @keydown="onTabKey">
-        <button v-for="item in tabs" :id="tabId(item)" :key="item" type="button" role="tab" class="editor-tab"
-          :class="{ active: item === tab }" :aria-selected="item === tab" :aria-controls="panelId"
-          :tabindex="item === tab ? 0 : -1" :autofocus="item === tab" @click="tab = item">
+      <div
+        v-if="tabs.length"
+        ref="tabRow"
+        class="editor-tabs"
+        role="tablist"
+        :aria-label="tabsLabel"
+        @keydown="onTabKey"
+      >
+        <button
+          v-for="item in tabs"
+          :id="tabId(item)"
+          :key="item"
+          type="button"
+          role="tab"
+          class="editor-tab"
+          :class="{ active: item === tab }"
+          :aria-selected="item === tab"
+          :aria-controls="panelId"
+          :tabindex="item === tab ? 0 : -1"
+          :autofocus="item === tab"
+          @click="tab = item"
+        >
           {{ item }}
         </button>
       </div>
-      <form :id="formId" ref="body" class="editor-body" @submit.prevent="emit('submit')">
+      <form
+        :id="formId"
+        ref="body"
+        class="editor-body"
+        @submit.prevent="emit('submit')"
+      >
         <slot name="lead" />
-        <div :id="panelId" class="editor-panel" :role="tabs.length ? 'tabpanel' : undefined"
-          :aria-labelledby="tabs.length && tab ? tabId(tab) : undefined">
+        <div
+          :id="panelId"
+          class="editor-panel"
+          :role="tabs.length ? 'tabpanel' : undefined"
+          :aria-labelledby="tabs.length && tab ? tabId(tab) : undefined"
+        >
           <slot />
         </div>
       </form>
@@ -172,9 +215,11 @@ defineExpose({ scrollToTop });
 }
 
 .editor-cover.empty {
-  background: linear-gradient(150deg,
-      var(--ui-accent-soft),
-      var(--ui-surface-2) 70%);
+  background: linear-gradient(
+    150deg,
+    var(--ui-accent-soft),
+    var(--ui-surface-2) 70%
+  );
 }
 
 .editor-cover:hover {
