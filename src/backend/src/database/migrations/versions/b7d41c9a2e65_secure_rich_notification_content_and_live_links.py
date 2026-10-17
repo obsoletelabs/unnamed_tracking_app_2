@@ -46,6 +46,18 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # Live links are expiring bearer tokens and are safe to drop; the canonical documents are the
+    # only copy of a revision's rich content, so a populated column is never silently erased.
+    connection = op.get_bind()
+    if h.has_column("notification_story_revisions", "content") and connection.scalar(
+        sa.text(
+            "SELECT EXISTS (SELECT 1 FROM notification_story_revisions WHERE content IS NOT NULL)"
+        )
+    ):
+        raise RuntimeError(
+            "Refusing to drop stored canonical notification content; retain the schema or "
+            "clear the content explicitly before downgrading."
+        )
     h.drop_index_if_exists("ix_notification_live_links_story", "notification_live_links")
     if h.has_table("notification_live_links"):
         op.drop_table("notification_live_links")

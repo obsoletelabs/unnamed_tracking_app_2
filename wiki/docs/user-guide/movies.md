@@ -29,9 +29,12 @@ does not change their permissions or import behavior.
 
 ## Editing
 
-The **Edit** form only changes what it shows. A movie's note, rewatch count,
-priority, dates, countries, languages and other ratings are kept as they are
-when you save it. The same applies to TV shows and anime.
+The **Edit** dialog has Basics, Details, Tracking, Artwork and Links tabs (see
+[the shared dialogs](media-libraries.md#the-add-and-edit-dialogs)). Tracking holds
+where you left off, your dates, rewatches, source, ratings, rank, tags and notes;
+Details holds the provider's metadata including countries, languages, age rating
+and features. Only priority and a few internal values are kept as they were when
+you save. The same applies to TV shows and anime.
 
 ## Library features shared with TV shows and anime
 
