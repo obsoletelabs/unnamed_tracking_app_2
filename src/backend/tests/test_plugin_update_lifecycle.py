@@ -211,6 +211,51 @@ async def test_four_plugin_updates_are_one_consolidated_notification(monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_batch_summarizes_mixed_automatic_update_outcomes(monkeypatch) -> None:
+    admin_id = uuid4()
+
+    class Db:
+        async def scalars(self, statement):
+            del statement
+            return [admin_id]
+
+    from unittest.mock import AsyncMock
+
+    emit = AsyncMock(return_value=[uuid4()])
+    monkeypatch.setattr(plugin_catalogues, "emit_legacy_rows", emit)
+    await plugin_catalogues.notify_plugin_updates(
+        Db(),
+        [
+            {
+                "plugin_id": "example.updated",
+                "current_version": "1.0.0",
+                "available_version": "2.0.0",
+                "status": "updated",
+            },
+            {
+                "plugin_id": "example.failed",
+                "current_version": "3.0.0",
+                "available_version": "4.0.0",
+                "status": "failed",
+            },
+            {
+                "plugin_id": "example.pending",
+                "current_version": "5.0.0",
+                "available_version": "6.0.0",
+                "status": "available",
+                "reason": "Global automatic updates are disabled.",
+            },
+        ],
+    )
+
+    body = emit.await_args.args[2][0]["body"]
+    assert "Updated automatically: example.updated (1.0.0 → 2.0.0)" in body
+    assert "Automatic update failed: example.failed (3.0.0 → 4.0.0)" in body
+    assert "Update still available: example.pending (5.0.0 → 6.0.0)" in body
+    assert "Global automatic updates are disabled." in body
+
+
+@pytest.mark.asyncio
 async def test_unchanged_plugin_update_batch_is_not_notified_twice(monkeypatch) -> None:
     records: dict[str, dict[str, object]] = {}
 
