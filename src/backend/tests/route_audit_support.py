@@ -6,6 +6,7 @@ from A that names B's identifiers can be compared with B's own response.
 """
 
 import re
+import time
 from dataclasses import dataclass, field
 from datetime import date
 from uuid import uuid4
@@ -36,10 +37,16 @@ from src.database.models.media_item import MediaItem
 from src.database.models.movies import Movie
 from src.database.models.notification import Notification
 from src.database.models.notification_destination import NotificationDestination
+from src.database.models.notification_story import (
+    NotificationLiveLink,
+    NotificationStory,
+    NotificationStoryRevision,
+)
 from src.database.models.plugin_permissions import PluginClientIdentity
 from src.database.models.tv_show import TVEpisode, TVSeason, TVShow
 from src.database.models.user import User
 from src.database.session import SessionLocal
+from src.features.notification_story_pages import TOKEN_PREFIX, hash_token
 from src.main import app
 
 
@@ -183,7 +190,59 @@ async def seed_owner(db, tenant: Tenant) -> None:
     )
     for kind, row in destinations.items():
         ids[f"{kind}_destination_id"] = row.id
+    await _seed_story(db, tenant, movie.id)
     ids.update({key: str(value) for key, value in ids.items()})
+
+
+async def _seed_story(db, tenant: Tenant, movie_id) -> None:
+    """A host story with one revision and an active live link, all owned by the tenant."""
+    now = int(time.time())
+    story = NotificationStory(
+        user_id=tenant.user.id,
+        event_type="host.audit",
+        scope_key="host",
+        story_key=f"audit-{uuid4().hex}",
+        source="host",
+        phase="available",
+        revision=1,
+    )
+    db.add(story)
+    await db.flush()
+    head = Notification(
+        user_id=tenant.user.id,
+        kind="test",
+        media_type="movie",
+        media_id=movie_id,
+        title="Owner story",
+        body="Owner story body",
+        event_at=now,
+        dedupe_key=f"audit-story:{uuid4()}",
+        story_id=story.id,
+        story_revision=1,
+    )
+    db.add(head)
+    await db.flush()
+    token = f"{TOKEN_PREFIX}{uuid4().hex}"
+    link = NotificationLiveLink(
+        story_id=story.id,
+        user_id=tenant.user.id,
+        token_hash=hash_token(token),
+        expires_at=now + 86400,
+    )
+    revision = NotificationStoryRevision(
+        story_id=story.id,
+        revision=1,
+        phase="available",
+        notification_id=head.id,
+        decision="create_story",
+        receipt_key=f"audit:{uuid4()}",
+        occurred_at=now,
+        title="Owner story",
+        body="Owner story body",
+    )
+    db.add_all([link, revision])
+    await db.flush()
+    tenant.ids.update(story_id=story.id, link_id=link.id, live_token=token)
 
 
 @dataclass
@@ -264,6 +323,11 @@ def resolve_path(template: str, ids: dict[str, str]) -> str | None:
         "kind": _kind_for(template),
         "filename": "owner.txt" if "/files" in template else "owner.png",
         "session_id": ids["session_id"] if "/sessions/me" in template else str(uuid4()),
+        "story_id": ids["story_id"],
+        "link_id": ids["link_id"],
+        "token": ids["live_token"],
+        "index": "0",
+        "action_id": "install",
     }
     # Game identity records (observations, counters, decisions, relationships) have no
     # fixture: a fresh identifier proves a caller cannot reach a record that is not theirs.

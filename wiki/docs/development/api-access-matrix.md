@@ -461,9 +461,19 @@ are redacted. Validation errors never echo submitted values.
 | POST | `/api/notifications/email-unsubscribe` | public | Signed single-use link token; query string redacted from access logs. |
 | GET | `/api/notifications/email-verify` | public | Signed single-use link token; query string redacted from access logs. |
 | POST | `/api/notifications/email-verify` | public | Signed single-use link token; query string redacted from access logs. |
+| GET | `/api/notifications/live/{token}` | public | Unguessable, expiring, revocable live-link token; public projection only; path redacted from access logs. |
+| GET | `/api/notifications/live/{token}/state` | public | Unguessable, expiring, revocable live-link token; public projection only; path redacted from access logs. |
 | GET | `/api/notifications/policy` | user | Rows filtered by `user_id == caller`. |
 | POST | `/api/notifications/read-all` | user | Rows filtered by `user_id == caller`. |
 | POST | `/api/notifications/regenerate` | admin | Administrator. |
+| GET | `/api/notifications/stories/by-link/{token}` | user | Full private view only when the link's story belongs to the caller (404 otherwise); path redacted from access logs. |
+| POST | `/api/notifications/stories/live-links/revoke-all` | user | Revokes only the caller's own live links. |
+| GET | `/api/notifications/stories/{story_id}` | user | Story must belong to the caller (404 otherwise). |
+| POST | `/api/notifications/stories/{story_id}/actions/{action_id}` | user | Story must belong to the caller (404 otherwise); the host rechecks plugin grants before running the action. |
+| GET | `/api/notifications/stories/{story_id}/images/{index}` | user | Story must belong to the caller (404 otherwise); host-proxied image. |
+| GET | `/api/notifications/stories/{story_id}/live-links` | user | Story must belong to the caller (404 otherwise). |
+| POST | `/api/notifications/stories/{story_id}/live-links` | user | Story must belong to the caller (404 otherwise). |
+| DELETE | `/api/notifications/stories/{story_id}/live-links/{link_id}` | user | Story and link must belong to the caller (404 otherwise). |
 | POST | `/api/notifications/test` | admin | Administrator. |
 | GET | `/api/notifications/unread-count` | user | Rows filtered by `user_id == caller`. |
 | DELETE | `/api/notifications/{notification_id}` | user | Rows filtered by `user_id == caller`. |
