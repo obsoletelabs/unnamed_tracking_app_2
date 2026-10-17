@@ -32,7 +32,7 @@ from src.features.notification_policy import (
 )
 from src.features.notification_providers.delivery import ensure_deliveries
 from src.features.notification_rich import render_plain
-from src.features.notification_safety import validate_rich_content
+from src.features.notification_safety import UnsafeContentError, validate_rich_content
 from src.features.notification_stories import StoryReference, apply_revision
 from src.plugin_api.notification_story_contracts import NotificationContent
 
@@ -245,7 +245,9 @@ async def _accept(
     """Flush atomically; the caller owns commit and no provider is contacted here."""
     if event.kind not in EVENT_TYPES:
         raise ValueError("Unknown host notification type")
-    content = validate_rich_content(event.content) if event.content is not None else None
+    content = _accepted_content(event, interpretation)
+    if content is None and event.content is not None:
+        event = replace(event, content=None)
     if content is not None:
         event = _with_content(event, content, interpretation)
     if (
@@ -329,6 +331,23 @@ async def _accept(
     # Idempotent: an in-place revision only adds work for destinations that have none yet.
     await ensure_deliveries(db, [outcome.item.id], preferences=preferences)
     return outcome.item.id
+
+
+def _accepted_content(
+    event: NotificationDraft, interpretation: NotificationInterpretation | None
+) -> NotificationContent | None:
+    """Validated rich content. A plugin's unsafe content is rejected to its producer; the host's
+    own producers describe the user's library (a game titled "Secret: Hidden Tales" looks like a
+    credential to the scanner), so their notification degrades to its plain text instead of
+    failing every inbox refresh that generates it."""
+    if event.content is None:
+        return None
+    try:
+        return validate_rich_content(event.content)
+    except UnsafeContentError:
+        if interpretation is not None:
+            raise
+        return None
 
 
 def _with_content(
