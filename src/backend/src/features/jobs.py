@@ -67,6 +67,15 @@ class JobSpec:
     user_id: UUID | None = None
 
 
+def personal_job_defaults() -> dict[str, Any]:
+    """Shared defaults for opt-in personal schedules."""
+    return {
+        "default_interval_minutes": 24 * 60,
+        "default_enabled": False,
+        "manual_mode": "all",
+    }
+
+
 def _summarize_refresh(r: dict[str, Any]) -> str:
     parts = [
         f"{r.get('checked') or 0} refreshed",
