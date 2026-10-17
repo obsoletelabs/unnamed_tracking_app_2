@@ -354,8 +354,22 @@ BUILTIN_PROFILES: Mapping[str, ProviderCapabilityProfile] = {
     "core.inbox": ProviderCapabilityProfile(
         "legacy", _baseline(images=ImageCapabilities(max_images=1, proxied_urls=True))
     ),
+    # Email cannot be edited: later revisions follow the follow-up rule. Images are only linked
+    # (never embedded) and only in the external image mode, so every message must read without
+    # them; the live story link needs the recipient to sign in as the owner.
     "core.smtp": ProviderCapabilityProfile(
-        "legacy", _baseline(links=True), critical_supported=True
+        "canonical",
+        _baseline(
+            text_formats=("plain", "html_email"),
+            links=True,
+            live_page_links=True,
+            action_buttons=3,
+            images=ImageCapabilities(max_images=1, external_urls=True),
+            max_batch_items=20,
+            max_text_chars=20_000,
+            max_payload_bytes=262_144,
+        ),
+        critical_supported=True,
     ),
     "core.browser": ProviderCapabilityProfile(
         "legacy",

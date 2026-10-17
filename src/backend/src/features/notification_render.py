@@ -85,12 +85,12 @@ async def _content(
         return None
 
 
-def story_link(base: str | None, notification: Notification) -> str | None:
+def story_link(base: str | None, notification: Notification | None) -> str | None:
     if not base:
         return None
     suffix = (
         f"/notifications/stories/{notification.story_id}"
-        if notification.story_id
+        if notification is not None and notification.story_id
         else "/notifications"
     )
     return base.rstrip("/") + suffix
@@ -213,7 +213,15 @@ async def _presentation_changes(
 ) -> tuple[dict, list[str]]:
     """Field overrides from the canonical content plus the fallback notes they produced."""
     fallbacks: list[str] = list(profile.notes)
-    content = await _content(db, notification, projection)
+    # Host-composed digests, recovery, invitation, test and verification messages keep their own
+    # text: rich content of one story must neither replace a digest nor reach a sensitive mail.
+    content = (
+        None
+        if message.items
+        or message.purpose != "standard"
+        or message.kind == "destination_verification"
+        else await _content(db, notification, projection)
+    )
     changes: dict = {}
     if content is not None and profile.canonical:
         fields, notes = _presentation(
@@ -279,7 +287,9 @@ async def render_message(
     idempotency_key: UUID | str,
 ) -> Rendering:
     """Apply the profile to a base message. Pure apart from reading the revision's content."""
-    link = story_link(link_base, notification) if profile.capabilities.links else None
+    link = None
+    if profile.capabilities.links:
+        link = story_link(link_base, None if message.items else notification)
     changes, fallbacks = await _presentation_changes(
         db,
         message,
