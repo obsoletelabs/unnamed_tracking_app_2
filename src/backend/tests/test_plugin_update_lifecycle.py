@@ -204,6 +204,42 @@ async def test_four_plugin_updates_are_one_consolidated_notification(monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_unchanged_plugin_update_batch_is_not_notified_twice(monkeypatch) -> None:
+    records: dict[str, dict[str, object]] = {}
+
+    class Store:
+        def read(self):
+            return {"plugins": records}
+
+        def patch(self, plugin_id: str, **changes):
+            records.setdefault(plugin_id, {}).update(changes)
+
+    store = Store()
+    monkeypatch.setattr(plugin_catalogues, "manager_state", lambda: store)
+    batch = [
+        {
+            "plugin_id": "example.one",
+            "current_version": "1.0.0",
+            "available_version": "2.0.0",
+            "status": "available",
+        },
+        {
+            "plugin_id": "example.two",
+            "current_version": "3.0.0",
+            "available_version": "4.0.0",
+            "status": "available",
+        },
+    ]
+
+    assert plugin_catalogues.plugin_update_batch_changed(batch)
+    plugin_catalogues.mark_plugin_update_batch_notified(batch)
+    assert not plugin_catalogues.plugin_update_batch_changed(batch)
+
+    changed = [{**batch[0], "available_version": "2.1.0"}, batch[1]]
+    assert plugin_catalogues.plugin_update_batch_changed(changed)
+
+
+@pytest.mark.asyncio
 async def test_inline_changelog_is_returned_before_update(monkeypatch) -> None:
     class Runtime:
         async def plugins(self):
