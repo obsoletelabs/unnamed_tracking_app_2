@@ -249,11 +249,20 @@ def _entry_key_manual(row: GameManualAchievement) -> tuple[str, ...]:
 
 
 def _group_entries(
-    provider: Sequence[Achievement], manual: Sequence[GameManualAchievement]
+    provider: Sequence[Achievement],
+    manual: Sequence[GameManualAchievement],
+    sets: dict[UUID, str] | None = None,
 ) -> dict[tuple[str, ...], _Entry]:
+    """`sets` maps a game to its provider set (the app ID): generic provider IDs such as
+    ACH_1 in two different apps are two achievements, the same app on two rows is one."""
     entries: dict[tuple[str, ...], _Entry] = {}
     for row in provider:
-        key: tuple[str, ...] = ("provider", row.provider.casefold(), row.external_id)
+        key: tuple[str, ...] = (
+            "provider",
+            row.provider.casefold(),
+            (sets or {}).get(row.game_id, ""),
+            row.external_id,
+        )
         entry = entries.setdefault(key, _Entry(key, "provider", row.name))
         entry.unlocked = entry.unlocked or bool(row.unlocked)
         entry.versions[row.game_id] = entry.versions.get(row.game_id, False) or bool(row.unlocked)
@@ -333,7 +342,7 @@ async def achievements_view(db: AsyncSession, user_id: UUID, game_id: UUID) -> d
         )
     ).all()
 
-    entries = _group_entries(provider, manual)
+    entries = _group_entries(provider, manual, {g.id: g.external_id or "" for g in games})
     versions = _version_rows(games, provider, manual)
     total = len(entries)
     unlocked = sum(1 for e in entries.values() if e.unlocked)
