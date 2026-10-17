@@ -14,10 +14,6 @@ import {
   PluginActionError,
   pluginExternalDestination,
   reserveExternalTab,
-  fetchPluginSettings,
-  PluginActionError,
-  pluginExternalDestination,
-  savedFieldValues,
   validateField,
   type PluginUiDocument,
   type UiAction,
@@ -87,47 +83,6 @@ const dialogs = computed(() =>
     page.value?.dialogs.includes(item.id),
   ),
 );
-// Saved ordinary values replace declared defaults before the form can be used, so
-// a reload, Save or action never silently reverts to the manifest defaults.
-const settingsLoading = ref(false);
-const settingsError = ref("");
-let savedSettingsRequested = false;
-const showsSavedSettings = computed(
-  () =>
-    !frontend.value &&
-    settings.value.some((section) =>
-      section.fields.some(
-        (field) => !field.secret && field.type !== "password",
-      ),
-    ),
-);
-async function loadSavedSettings() {
-  if (savedSettingsRequested) return;
-  savedSettingsRequested = true;
-  settingsLoading.value = true;
-  try {
-    const saved = await fetchPluginSettings(props.document.plugin_id);
-    values.value = {
-      ...values.value,
-      ...savedFieldValues(props.document, saved),
-    };
-  } catch (error) {
-    settingsError.value = `${
-      error instanceof Error
-        ? error.message
-        : "Saved plugin settings could not be loaded."
-    } Fields show the plugin defaults.`;
-  } finally {
-    settingsLoading.value = false;
-  }
-}
-watch(
-  showsSavedSettings,
-  (shown) => {
-    if (shown) void loadSavedSettings();
-  },
-  { immediate: true },
-);
 const errors = computed(() => {
   if (!submitted.value) return [];
   return settings.value.flatMap((section) =>
@@ -146,7 +101,6 @@ function errorFor(field: UiField): string | undefined {
   return errors.value.find((item) => item.field === field.id)?.message;
 }
 function submit() {
-  if (settingsLoading.value) return;
   submitted.value = true;
   if (!errors.value.length) {
     const saved = Object.fromEntries(
@@ -160,7 +114,7 @@ function submit() {
   }
 }
 async function runAction(action: UiAction) {
-  if (settingsLoading.value || !(await approveAction(action))) return;
+  if (!(await approveAction(action))) return;
   emit("action", action, {
     ...values.value,
     ...(props.widgetConfig
@@ -361,7 +315,6 @@ onBeforeUnmount(() => {
           v-for="menu in document.menus"
           :key="menu.id"
           type="button"
-          :disabled="settingsLoading && Boolean(menu.action_id)"
           @click="
             menu.page_id
               ? goTo(menu.page_id)
@@ -400,13 +353,7 @@ onBeforeUnmount(() => {
     </div>
     <p v-else-if="!page" class="empty">This plugin has no native pages.</p>
     <template v-else>
-      <form :aria-busy="settingsLoading" @submit.prevent="submit">
-        <p v-if="settingsLoading" class="muted" role="status">
-          Loading saved settings…
-        </p>
-        <p v-else-if="settingsError" class="error" role="alert">
-          {{ settingsError }}
-        </p>
+      <form @submit.prevent="submit">
         <fieldset v-for="section in settings" :key="section.id">
           <legend>{{ section.title }}</legend>
           <p v-if="section.description" class="muted">
@@ -418,7 +365,6 @@ onBeforeUnmount(() => {
             v-model="values[field.id]"
             :field="field"
             :error="errorFor(field)"
-            :disabled="settingsLoading"
           />
         </fieldset>
         <div v-for="table in tables" :key="table.id" class="table-block">
@@ -452,7 +398,6 @@ onBeforeUnmount(() => {
               v-for="id in dialog.actions"
               :key="id"
               type="button"
-              :disabled="settingsLoading"
               @click="
                 document.actions.find((item) => item.id === id) &&
                 runAction(document.actions.find((item) => item.id === id)!)
@@ -463,12 +408,11 @@ onBeforeUnmount(() => {
           </div>
         </div>
         <div class="actions">
-          <button type="submit" :disabled="settingsLoading">Save</button
+          <button type="submit">Save</button
           ><button
             v-for="action in actions"
             :key="action.id"
             type="button"
-            :disabled="settingsLoading"
             @click="runAction(action)"
           >
             {{ action.label }}
@@ -502,10 +446,6 @@ button {
   color: var(--ui-text);
   font: inherit;
   cursor: pointer;
-}
-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
 }
 nav button.active {
   color: var(--ui-accent-text);
