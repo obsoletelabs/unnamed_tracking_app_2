@@ -134,9 +134,7 @@ async def test_due_imports_rotate_by_oldest_run_across_ticks_and_restarts(import
     assert sorted(imported) == sorted(accounts[:2])
 
 
-async def test_failed_anilist_import_is_reported_and_retried_on_its_cadence(
-    importers, monkeypatch
-):
+async def test_failed_anilist_import_is_reported_and_retried_on_its_cadence(importers, monkeypatch):
     owner = await importers(interval=60, last_run=1)
     failing = AsyncMock(
         side_effect=AniListError("Could not reach AniList: HTTPSConnectionPool(host='internal')")
