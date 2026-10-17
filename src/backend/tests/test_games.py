@@ -310,3 +310,20 @@ async def test_personal_key_cards_report_a_server_wide_fallback(monkeypatch):
     assert status["SteamGridDB"] == {"status": "not_configured", "server_configured": True}
     assert status["GiantBomb"]["server_configured"] is False
     assert "server-key" not in str(status)
+
+
+async def test_playstation_card_reports_a_saved_npsso_token():
+    """PlayStation is outside PROVIDER_FIELD_MAP, so its status must come from
+    the stored npsso token or the Connections list never shows it connected."""
+    from src.api.routes import settings as settings_routes
+
+    user = User(id=uuid.uuid4(), username="psn", email="psn@example.test")
+    async with SessionLocal() as db:
+        status = await settings_routes.get_provider_credentials(db, user)
+    assert status["PlayStation"]["status"] == "not_configured"
+
+    user.psn_npsso_token = "encrypted-npsso"
+    async with SessionLocal() as db:
+        status = await settings_routes.get_provider_credentials(db, user)
+    assert status["PlayStation"]["status"] == "configured"
+    assert "encrypted-npsso" not in str(status)

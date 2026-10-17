@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from "vue";
+import ProfileAvatar from "../ProfileAvatar.vue";
 import PasswordInput from "../PasswordInput.vue";
 import { currentUser, checkAuth } from "../../state/auth";
 import PasswordRequirements from "./PasswordRequirements.vue";
@@ -11,23 +12,15 @@ import {
 import {
   updateProfile,
   uploadProfilePicture,
-  profilePictureUrl,
+  removeProfilePicture,
+  accountDisplayName,
+  accountInitials,
 } from "../../services/auth";
 
 const isMock = computed(() => currentUser.value?.id === "mock");
 
-const avatarUrl = computed(() =>
-  currentUser.value?.profile_picture_version
-    ? profilePictureUrl(
-        currentUser.value.id,
-        currentUser.value.profile_picture_version,
-      )
-    : "",
-);
-const avatarFailed = ref(false);
-watch(avatarUrl, () => (avatarFailed.value = false));
-
 const username = ref("");
+const displayName = ref("");
 const email = ref("");
 // filled (and refilled after a save) from the signed-in user rather than
 // captured once at setup, so the fields are never blank if this mounts
@@ -37,6 +30,7 @@ watch(
   (u) => {
     if (!u) return;
     username.value = u.username;
+    displayName.value = u.display_name ?? "";
     email.value = u.email;
   },
   { immediate: true },
@@ -54,7 +48,7 @@ const passwordPolicy = ref<PasswordPolicy | null>(null);
 // edit was already saved. Only username/email, not the password fields,
 // saveProfile() itself clears those right after a successful save, and
 // watching them here would stomp saveSuccess back to false in that same tick.
-watch([username, email], () => {
+watch([username, displayName, email], () => {
   saveSuccess.value = false;
 });
 
@@ -96,6 +90,8 @@ async function saveProfile() {
   try {
     await updateProfile({
       username: username.value.trim() || undefined,
+      // always sent so clearing the field returns to the username
+      displayName: displayName.value.trim(),
       email: email.value.trim() || undefined,
       currentPassword: currentPassword.value || undefined,
       newPassword: newPassword.value || undefined,
@@ -129,7 +125,6 @@ async function onAvatarFileChange(e: Event) {
         ...currentUser.value,
         profile_picture_version: version,
       };
-      avatarFailed.value = false;
     }
   } catch (err) {
     uploadError.value =
@@ -141,6 +136,27 @@ async function onAvatarFileChange(e: Event) {
     input.value = "";
   }
 }
+
+async function onRemoveAvatar() {
+  if (!currentUser.value) return;
+  uploading.value = true;
+  uploadError.value = null;
+  const userId = currentUser.value.id;
+  try {
+    const version = await removeProfilePicture(userId);
+    if (currentUser.value?.id === userId) {
+      currentUser.value = {
+        ...currentUser.value,
+        profile_picture_version: version,
+      };
+    }
+  } catch (err) {
+    uploadError.value =
+      err instanceof Error ? err.message : "Failed to remove picture";
+  } finally {
+    uploading.value = false;
+  }
+}
 </script>
 
 <template>
@@ -148,19 +164,21 @@ async function onAvatarFileChange(e: Event) {
     <h2>Profile</h2>
 
     <div class="avatar-row">
-      <img
-        v-if="!isMock && avatarUrl && !avatarFailed"
-        :src="avatarUrl"
-        alt=""
-        class="avatar-image"
-        @error="avatarFailed = true"
-      />
-      <div v-else class="avatar-fallback">
-        {{ (currentUser?.username ?? "?").slice(0, 2).toUpperCase() }}
-      </div>
+      <ProfileAvatar class="avatar-image"
+        ><div class="avatar-fallback">
+          {{ accountInitials(currentUser) }}
+        </div></ProfileAvatar
+      >
 
       <div class="avatar-meta">
-        <div class="avatar-name">{{ currentUser?.username }}</div>
+        <div class="avatar-name">{{ accountDisplayName(currentUser) }}</div>
+        <div
+          v-if="currentUser?.display_name"
+          class="avatar-email"
+          title="Your sign-in username"
+        >
+          Sign-in: {{ currentUser.username }}
+        </div>
         <div v-if="currentUser?.email" class="avatar-email">
           {{ currentUser.email }}
         </div>
@@ -173,6 +191,15 @@ async function onAvatarFileChange(e: Event) {
           />
           {{ uploading ? "Uploading…" : "Change picture" }}
         </label>
+        <button
+          v-if="!isMock && currentUser?.profile_picture_version"
+          type="button"
+          class="remove-picture"
+          :disabled="uploading"
+          @click="onRemoveAvatar"
+        >
+          Remove picture
+        </button>
         <p v-if="isMock" class="mock-note">
           Profile pictures aren't available in mock mode.
         </p>
@@ -183,7 +210,24 @@ async function onAvatarFileChange(e: Event) {
 
     <form @submit.prevent="saveProfile">
       <label class="field">
-        <span>Username</span>
+        <span>Display name (optional)</span>
+        <input
+          v-model="displayName"
+          type="text"
+          maxlength="64"
+          autocomplete="nickname"
+          aria-label="Display name"
+          aria-describedby="profile-display-name-help"
+        />
+        <small id="profile-display-name-help"
+          >Shown in the app instead of your username. Up to 64 characters;
+          spaces and any language are fine. Leave blank to show your username.
+          It is not used to sign in.</small
+        >
+      </label>
+
+      <label class="field">
+        <span>Sign-in username</span>
         <input
           v-model="username"
           type="text"
@@ -300,8 +344,20 @@ async function onAvatarFileChange(e: Event) {
   font-weight: 600;
   cursor: pointer;
 }
-.upload-label:hover {
+.upload-label:hover,
+.remove-picture:hover {
   text-decoration: underline;
+}
+.remove-picture {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ui-dim);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
 }
 .mock-note {
   color: var(--ui-faint);

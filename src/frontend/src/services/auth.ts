@@ -2,11 +2,35 @@ import { failedRequest } from "./apiError";
 
 export interface CurrentUser {
   id: string;
+  // Immutable sign-in identifier; never replaced by the display name.
   username: string;
+  // Optional visible name chosen by the user (null/absent = use the username).
+  display_name?: string | null;
   email: string;
   is_admin: boolean;
   steamgriddb_api_key: string | null;
   profile_picture_version?: string | null;
+}
+
+/** Name shown to people: the chosen display name, else the sign-in username. */
+export function accountDisplayName(
+  user: Pick<CurrentUser, "username" | "display_name"> | null | undefined,
+): string {
+  if (!user) return "";
+  return user.display_name?.trim() || user.username;
+}
+
+/** Up to two user-perceived characters (not UTF-16 halves) for avatar fallbacks. */
+export function accountInitials(
+  user: Pick<CurrentUser, "username" | "display_name"> | null | undefined,
+): string {
+  const name = accountDisplayName(user);
+  if (!name) return "?";
+  const characters = Array.from(
+    new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(name),
+    (part) => part.segment,
+  );
+  return characters.slice(0, 2).join("").toUpperCase();
 }
 
 export interface ApiKeySummary {
@@ -71,6 +95,7 @@ export async function fetchCurrentUser(): Promise<CurrentUser | null> {
     return {
       id: "mock",
       username: "MockUser",
+      display_name: null,
       email: "mock@example.com",
       is_admin: true,
       steamgriddb_api_key: null,
@@ -96,6 +121,7 @@ export async function updateProfile(
     credentials: "include",
     body: JSON.stringify({
       username: payload.username,
+      display_name: payload.displayName,
       email: payload.email,
       current_password: payload.currentPassword,
       new_password: payload.newPassword,
@@ -160,6 +186,8 @@ export async function revokeApiKey(keyId: string): Promise<void> {
 
 export interface UpdateProfilePayload {
   username?: string;
+  // Omit to keep the current value; a blank string clears it.
+  displayName?: string;
   email?: string;
   currentPassword?: string;
   newPassword?: string;
@@ -186,6 +214,26 @@ export async function uploadProfilePicture(
       typeof body?.detail === "string"
         ? body.detail
         : `Failed to upload profile picture (${response.status}).`,
+    );
+  }
+  const result: { profile_picture_version?: string | null } =
+    await response.json();
+  return result.profile_picture_version ?? null;
+}
+
+export async function removeProfilePicture(
+  userId: string,
+): Promise<string | null> {
+  const response = await fetch(
+    `/api/user/${encodeURIComponent(userId)}/profile-picture`,
+    { method: "DELETE", credentials: "include" },
+  );
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(
+      typeof body?.detail === "string"
+        ? body.detail
+        : `Failed to remove profile picture (${response.status}).`,
     );
   }
   const result: { profile_picture_version?: string | null } =
