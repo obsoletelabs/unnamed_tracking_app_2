@@ -60,9 +60,7 @@ The [Classic UI porting guide](classic-ui.md) explains how to add shared behavio
 and style it for both presentations. New settings already have Modern/Classic
 screenshots committed alongside their PRs. The staged lookup (#142) is merged and
 the shared game editor with eight direct tabs is #143; the movie/TV/anime editors share
-the same frame and five tabs in #144; quick editors (#149) remain pending. Classic does not imply all #469 features exist.
-the shared game editor with eight direct tabs is #143; media editor sections (#144)
-and quick editors (#149) remain pending. Classic does not imply all #469 features exist.
+the same frame and five tabs in #144; the quick editors are #149. Classic does not imply all #469 features exist.
 
 ## Accepted constraints for resumption
 

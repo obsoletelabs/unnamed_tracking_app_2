@@ -3,10 +3,6 @@ import { sizedAssetUrl } from "../utils/gameImages";
 import HeartIcon from "../components/HeartIcon.vue";
 import GameCard from "../components/GameCard.vue";
 import CheckIcon from "../components/CheckIcon.vue";
-import GameFormModal from "../components/GameFormModal.vue";
-import GameQuickEditModal from "../components/game/GameQuickEditModal.vue";
-import BulkEditModal from "../components/BulkEditModal.vue";
-import RandomGamePicker from "../components/RandomGamePicker.vue";
 import FilterCombobox from "../components/FilterCombobox.vue";
 import TagFilterPicker from "../components/TagFilterPicker.vue";
 import GameTopBar from "../components/GameTopBar.vue";
@@ -26,6 +22,9 @@ const RandomGamePicker = defineAsyncComponent(
 );
 const CollectionPickerModal = defineAsyncComponent(
   () => import("../components/CollectionPickerModal.vue"),
+);
+const GameQuickEditModal = defineAsyncComponent(
+  () => import("../components/game/GameQuickEditModal.vue"),
 );
 const GameFormModal = defineAsyncComponent(
   () => import("../components/GameFormModal.vue"),

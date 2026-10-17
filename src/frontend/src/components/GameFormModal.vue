@@ -698,53 +698,6 @@ function buildInput() {
 }
 
 function stagedArtwork() {
-  return [
-    { kind: "key_art" as const, label: "cover", choice: cover.staged.value },
-    { kind: "banner" as const, label: "banner", choice: banner.staged.value },
-  ].flatMap(({ kind, label, choice }) =>
-    choice
-      ? [
-          choice.source === "file"
-            ? { kind, label, file: choice.file, url: null }
-            : { kind, label, file: null, url: choice.url },
-        ]
-      : [],
-  );
-}
-
-// Artwork is transferred after the game is saved. A failure leaves the game
-// saved and offers a retry of the remaining artwork on that same game only.
-async function attachArtwork(
-  savedGame: Game,
-  artwork: ReturnType<typeof stagedArtwork>,
-) {
-  const taskId = startTask(`Artwork for ${savedGame.title}`, artwork.length);
-  let done = 0;
-  let running = false;
-  const attempt = async () => {
-    if (running || done === artwork.length) return;
-    running = true;
-    try {
-      while (done < artwork.length) {
-        const asset = artwork[done]!;
-        if (asset.file)
-          await uploadGameAsset(savedGame.id, asset.kind, asset.file);
-        else if (asset.url)
-          await attachGameAssetFromUrl(savedGame.id, asset.kind, asset.url);
-        updateTask(taskId, ++done);
-      }
-      completeTask(taskId, "Artwork saved.");
-    } catch {
-      errorTask(
-        taskId,
-        `Game saved. Artwork could not be attached (${artwork[done]!.label}). Retry artwork or edit it later.`,
-      );
-      setTaskRetry(taskId, () => void attempt());
-    } finally {
-      running = false;
-    }
-  };
-  await attempt();
   return stagedArtworkList([
     { kind: "key_art", label: "cover", choice: cover.staged.value },
     { kind: "banner", label: "banner", choice: banner.staged.value },
@@ -1482,23 +1435,18 @@ async function submit() {
   gap: 12px;
   min-width: 0;
 }
-
 .tab-panel > .editor-section {
   margin-bottom: -4px;
 }
-
 .tab-panel > .editor-section:not(:first-child) {
   margin-top: 8px;
 }
-
 .favorite-field {
   align-self: end;
 }
-
 .page-hint {
   margin-bottom: 4px;
 }
-
 .lookup-note {
   margin: 0;
   padding: 8px 12px;
@@ -1508,7 +1456,6 @@ async function submit() {
   color: var(--ui-text);
   font-size: 0.82rem;
 }
-
 .media-search-panel {
   flex-wrap: wrap;
   border: 1px solid var(--ui-border);
@@ -1520,39 +1467,32 @@ async function submit() {
   justify-content: space-between;
   gap: 12px;
 }
-
 .media-search-panel > div {
   min-width: 0;
 }
-
 .media-search-panel strong {
   color: var(--ui-text);
 }
-
 .media-search-panel .hint {
   margin: 2px 0 0;
 }
-
 .metadata-search {
   border: 1px solid var(--ui-border);
   border-radius: var(--ui-radius-control);
   padding: 12px;
   background: var(--ui-surface);
 }
-
 .search-heading {
   display: flex;
   flex-direction: column;
   gap: 3px;
   margin-bottom: 10px;
 }
-
 .search-heading span,
 .metadata-result small {
   color: var(--ui-dim);
   font-size: 0.78rem;
 }
-
 .steamgriddb-hint {
   margin: 0 0 10px;
   padding: 8px 10px;
@@ -1563,22 +1503,18 @@ async function submit() {
   font-size: 0.78rem;
   line-height: 1.5;
 }
-
 .steamgriddb-hint a {
   color: var(--ui-accent-text);
   font-weight: 600;
   text-decoration: none;
 }
-
 .steamgriddb-hint a:hover {
   text-decoration: underline;
 }
-
 .search-row {
   display: flex;
   gap: 8px;
 }
-
 .search-row input {
   flex: 1;
   min-width: 0;
@@ -1589,18 +1525,15 @@ async function submit() {
   padding: 9px 11px;
   font: inherit;
 }
-
 .search-row input:focus {
   outline: none;
   border-color: var(--ui-accent-line);
 }
-
 .metadata-results {
   display: grid;
   gap: 6px;
   margin-top: 10px;
 }
-
 .metadata-result {
   display: flex;
   justify-content: space-between;
@@ -1615,16 +1548,13 @@ async function submit() {
   border-radius: 6px;
   cursor: pointer;
 }
-
 .metadata-result:hover {
   border-color: var(--ui-accent-line);
   background: var(--ui-surface-2);
 }
-
 .metadata-search .hint {
   margin-top: 8px;
 }
-
 .provider-warnings {
   list-style: none;
   margin: 6px 0 0;
@@ -1633,17 +1563,14 @@ async function submit() {
   flex-direction: column;
   gap: 3px;
 }
-
 .provider-warnings li {
   color: var(--ui-warning);
   font-size: 0.78rem;
 }
-
 .link-row {
   grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto;
   align-items: end;
 }
-
 .remove-button {
   background: color-mix(in srgb, var(--ui-error) 15%, transparent);
   color: var(--ui-error);
@@ -1654,15 +1581,12 @@ async function submit() {
   cursor: pointer;
   transition: background 0.15s ease;
 }
-
 .remove-button:hover {
   background: color-mix(in srgb, var(--ui-error) 30%, transparent);
 }
-
 .tab-panel > .secondary-button {
   align-self: flex-start;
 }
-
 .form-error {
   color: var(--ui-error);
   font-size: 0.85rem;
@@ -1671,15 +1595,12 @@ async function submit() {
   border-radius: var(--ui-radius-control);
   padding: 10px 12px;
 }
-
 .quick-add .form-error {
   margin-top: 14px;
 }
-
 .modal-actions-spacer {
   flex: 1;
 }
-
 .danger-button {
   background: color-mix(in srgb, var(--ui-error) 15%, transparent);
   color: var(--ui-error);
@@ -1692,11 +1613,9 @@ async function submit() {
   cursor: pointer;
   transition: background 0.15s ease;
 }
-
 .danger-button:hover {
   background: color-mix(in srgb, var(--ui-error) 30%, transparent);
 }
-
 .primary-button,
 .secondary-button {
   border: none;
@@ -1710,17 +1629,14 @@ async function submit() {
     background 0.15s ease,
     transform 0.05s ease;
 }
-
 .remove-button:focus-visible {
   outline: 2px solid var(--ui-accent);
   outline-offset: 2px;
 }
-
 .secondary-button[aria-expanded="true"] {
   background: var(--ui-accent-soft);
   color: var(--ui-accent-text);
 }
-
 :is(
   .primary-button,
   .secondary-button,
@@ -1730,32 +1646,14 @@ async function submit() {
   outline: 2px solid var(--ui-accent);
   outline-offset: 2px;
 }
-
-.secondary-button[aria-expanded="true"] {
-  background: var(--ui-accent-soft);
-  color: var(--ui-accent-text);
-}
-
-:is(
-  .primary-button,
-  .secondary-button,
-  .danger-button,
-  .remove-button
-):focus-visible {
-  outline: 2px solid var(--ui-accent);
-  outline-offset: 2px;
-}
-
 @media (max-width: 480px) {
   .link-row {
     grid-template-columns: minmax(0, 1fr) auto;
   }
-
   .link-row > .field:nth-child(2) {
     grid-column: 1 / -1;
     order: 3;
   }
-
   .primary-button,
   .secondary-button,
   .danger-button {
