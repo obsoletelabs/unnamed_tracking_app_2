@@ -164,6 +164,55 @@ Container identifiers follow the [Ogg framing specification](https://xiph.org/og
 
 ![Classic media editor](../assets/media-safety/classic-editor.jpg)
 
+## Game trash retention
+
+`features/trash/sweep.py` runs in the backend process once at startup and then every
+six hours, using the same in-process loop as before (no separate worker). It
+permanently removes trash older than the seven-day retention window. Game files are
+resolved where the storage routes keep them, never under the retired `/data/games`
+layout:
+
+| Trashed item | Location |
+| --- | --- |
+| Screenshot, clip or soundtrack | `<data>/users/<user-id>/games/<folder>/_trash/<kind>/<file>` |
+| Document or modpack | `<data>/users/<user-id>/games/<folder>/_trash/<doc or modpack>/<file>` |
+| Save or world archive | `<data>/users/<user-id>/games/<folder>/_trash/<save or world_save>/<archive-id>/` |
+| Archive version | `<archive trash>/files/<file>` |
+| Whole game | `<data>/users/_trash/<game-id>/` (the moved game folder, nested trash included) |
+
+The trash of a deleted game's files, archives and versions is purged inside its
+`_trash/<game-id>` folder rather than under its old folder name, which another game
+may have taken since. Restoring that game therefore cannot revive expired files. An
+expired archive version is removed from its archive's trash folder even when the
+whole archive was trashed later, so restoring the archive returns only versions still
+within retention.
+
+Each expired row is purged in its own transaction. Before using a path, the sweep
+takes the same Game row lock as the storage routes (shared for files and archives,
+exclusive for a whole game), then locks the trashed row and re-checks that it is
+still deleted and past retention. Folder renames wait for a purge in progress, or
+finish first and the purge uses the new name. Restores either finish first, so the
+purge skips the row, or wait and then return 404. Uploads and downloads use shared
+locks and continue alongside it. A second sweep, for example from another backend
+process, waits and finds nothing left to purge. File and media restores lock their
+trashed row, and archive and version restores lock the archive, for this purpose.
+Removal runs in a worker thread. Cancellation, such as shutdown, waits for the
+current row's files and transaction before it stops the sweep.
+
+The sweep reuses the `features/game_folders.py` checks. A row is kept, with the log
+warning `Trash sweep kept <kind> <id> for a later pass`, when:
+
+- its game has an unfinished folder move recorded in `.folder-moves`, including an
+  ambiguous one where both names exist;
+- an owner, game, trash, kind or whole-game trash directory on its path is a symlink;
+- its stored file name is not a plain name (for example it contains `..` or `/`); or
+- its files could not be removed.
+
+A kept row is retried on every pass. No files are removed for it unless a removal
+failed partway through. Fix the reported storage problem instead of deleting rows
+or recovery records by hand. For example, retry saving the game's folder name to
+reconcile an interrupted move.
+
 ## How a game page opens
 
 `services/games.ts` keeps every game it has fetched in an entity cache (`peekGame`). Opening a game from the library draws it from that cache straight away and refreshes it from the server behind it. Its achievements, variants and parent game are requested in parallel with the game, and fill in when they arrive instead of holding the page back. The hero and poster downloads start before the game's details have returned. When there is nothing cached (opening the address directly), a loading screen is shown whose hero, poster and tab bar match the real page's sizes, so the page does not jump when it replaces it.
