@@ -78,6 +78,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    h.refuse_if_populated("notification_aggregation_windows", "notification digest window history")
+
     # Held work must not be stranded by removing its windows: release it as ordinary work.
     if h.has_table("notification_deliveries"):
         op.execute(

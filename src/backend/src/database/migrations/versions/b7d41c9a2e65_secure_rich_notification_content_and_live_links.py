@@ -46,6 +46,10 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    h.refuse_if_populated(
+        "notification_story_revisions", "rich notification story content", "content IS NOT NULL"
+    )
+
     h.drop_index_if_exists("ix_notification_live_links_story", "notification_live_links")
     if h.has_table("notification_live_links"):
         op.drop_table("notification_live_links")

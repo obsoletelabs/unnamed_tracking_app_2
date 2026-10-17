@@ -80,6 +80,13 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    h.refuse_if_populated(
+        "notification_remote_references", "remote notification message references"
+    )
+    h.refuse_if_populated(
+        "notification_deliveries", "per-revision notification deliveries", "story_revision > 0"
+    )
+
     h.drop_index_if_exists(
         "ix_notification_remote_reference_story", "notification_remote_references"
     )

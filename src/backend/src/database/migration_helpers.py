@@ -119,3 +119,15 @@ def delete_duplicate_episodes(table: str) -> None:
         )
         """
     )
+
+
+def refuse_if_populated(table: str, what: str, where: str = "true") -> None:
+    """Abort a downgrade that would silently destroy retained notification history."""
+    if not has_table(table):
+        return
+    # Identifiers and predicates are literals supplied by migrations, never user input.
+    if op.get_bind().scalar(sa.text(f"SELECT EXISTS (SELECT 1 FROM {table} WHERE {where})")):  # noqa: S608
+        raise RuntimeError(
+            f"Refusing to drop populated {what}; retain the schema or remove the rows "
+            "explicitly (within retention rules) before downgrading."
+        )
