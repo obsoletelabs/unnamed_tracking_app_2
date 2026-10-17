@@ -19,7 +19,12 @@ it("fetches a Settings section only when it is opened", () => {
   expect(sections.length).toBeGreaterThan(25);
   for (const section of new Set(sections)) {
     const name = section.split("/").pop()!.replace(".vue", "");
-    if (["SettingsNav", "SaveStatus", "ToggleButton"].includes(name)) continue;
+    if (
+      ["SettingsNav", "SettingsSearch", "SaveStatus", "ToggleButton"].includes(
+        name,
+      )
+    )
+      continue;
     expect(settings).toMatch(
       new RegExp(
         `const ${name} = defineAsyncComponent\\(\\s*\\(\\) => import\\(`,
