@@ -349,16 +349,6 @@ phase separation, scoped credential migration, deadlines and persistence behavio
 
 Contract 1.1.2 adds `notification_sources.register`, `notification_sources.unregister` and `notifications.emit` through the existing gateway/capability system. Public DTOs `NotificationTypeRegistration` and `NotificationEventEmission` are exported from `src.plugin_api`. Namespaced declarations are host-interpreted, recipient scope comes from the authenticated action/subscribed background user, and providers remain separate. Sensitive content additionally requires the explicit critical `notifications.sensitive` grant, which broad notification/full-API grants do not imply. See [notification core](notification-core.md#registered-plugin-notification-sources-contract-112) for limits, routing and retained lifecycle semantics. Existing `notifications.send` callers remain supported.
 
-### Canonical notification contract
-
-`src.plugin_api` also exports the versioned
-[canonical notification contract](notification-contract.md) (`1.0.0`): event,
-content, story lifecycle, provider capability and renderer contribution models,
-`notification_contract_schemas()` and version negotiation helpers. These are
-published schemas only; no gateway operation accepts them in Plugin API 1.1.13,
-and existing notification operations are unchanged. SDKs can pin the reviewed
-schema snapshots and conformance cases without importing host internals.
-
 ## Notification lifecycle replay (1.1.4)
 
 `notifications.lifecycle.poll` requires a separate explicit `notifications.lifecycle.read` grant. Neither `notifications`, `events.subscribe` nor `api.full` implies it. Requests contain only an optional opaque cursor and a page limit (1–200). The host supplies the authenticated user and current installation; caller-selected owners, installations, providers or destinations are rejected.

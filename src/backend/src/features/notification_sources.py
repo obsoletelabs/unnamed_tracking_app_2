@@ -13,7 +13,6 @@ from sqlalchemy.sql.functions import count as sql_count
 from src.database.models.notification_receipt import NotificationReceipt
 from src.database.models.plugin_notification_type import PluginNotificationTypeRegistration
 from src.database.models.user import User
-from src.features.notification_contract import source_receipt_key
 from src.features.notification_controller import (
     NotificationDraft,
     NotificationInterpretation,
@@ -152,7 +151,8 @@ async def emit_source(
         for key, kind in definition.parameters.items()
     ):
         raise ValueError("Notification parameters do not match the registered type")
-    dedupe_key = source_receipt_key(plugin_id, event.event_type, event.dedupe_key)
+    identity = hashlib.sha256(f"{plugin_id}:{event.event_type}".encode()).hexdigest()
+    dedupe_key = f"src:{identity}:{event.dedupe_key}"
     await _check_acceptance_quota(db, user_id, plugin_id, dedupe_key, now)
     facts = json.dumps(event.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
     draft = NotificationDraft(
