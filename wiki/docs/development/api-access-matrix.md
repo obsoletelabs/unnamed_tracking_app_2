@@ -169,7 +169,19 @@ are redacted. Validation errors never echo submitted values.
 | POST | `/api/auth/users` | admin | Instance user management; the primary user and the caller cannot be demoted or deleted. |
 | DELETE | `/api/auth/users/{user_id}` | admin | Instance user management; the primary user and the caller cannot be demoted or deleted. |
 | PATCH | `/api/auth/users/{user_id}` | admin | Instance user management; the primary user and the caller cannot be demoted or deleted. |
+| GET | `/api/auth/user-invitations` | admin | Instance user administration; administrator only, never reachable with a delegated, public-app or legacy credential. |
+| DELETE | `/api/auth/user-invitations/{invitation_id}` | admin | Instance user administration; administrator only, never reachable with a delegated, public-app or legacy credential. |
+| POST | `/api/auth/user-invitations/{invitation_id}/resend` | admin | Instance user administration; administrator only, never reachable with a delegated, public-app or legacy credential. |
+| GET | `/api/auth/user-audit/{target_id}` | admin | Instance user administration; administrator only, never reachable with a delegated, public-app or legacy credential. |
+| GET | `/api/auth/users/{user_id}/email-destinations` | admin | Instance user administration; administrator only, never reachable with a delegated, public-app or legacy credential. |
+| POST | `/api/auth/users/{user_id}/email` | admin | Instance user administration; administrator only, never reachable with a delegated, public-app or legacy credential. |
+| POST | `/api/auth/users/{user_id}/email-verification` | admin | Instance user administration; administrator only, never reachable with a delegated, public-app or legacy credential. |
+| POST | `/api/auth/users/{user_id}/email-verification/revoke` | admin | Instance user administration; administrator only, never reachable with a delegated, public-app or legacy credential. |
+| POST | `/api/auth/users/{user_id}/force-password-reset` | admin | Instance user administration; administrator only, never reachable with a delegated, public-app or legacy credential. |
+| POST | `/api/auth/users/{user_id}/password` | admin | Instance user administration; administrator only, never reachable with a delegated, public-app or legacy credential. |
+| POST | `/api/auth/users/{user_id}/password-reset-link` | admin | Instance user administration; administrator only, never reachable with a delegated, public-app or legacy credential. |
 | GET | `/api/user/{user_id}/profile-picture` | user | Self or administrator; another ordinary user's ID is 403. |
+| DELETE | `/api/user/{user_id}/profile-picture` | user | Self or administrator; another ordinary user's ID is 403. |
 | PUT | `/api/user/{user_id}/profile-picture` | user | Self or administrator; another ordinary user's ID is 403. |
 
 ### Integration delegation (`utd_`)
