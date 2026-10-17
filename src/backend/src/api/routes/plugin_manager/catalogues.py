@@ -464,7 +464,9 @@ async def check_plugin_updates(
         store.patch(plugin_id, available_update=update)
         if update.get("update_available"):
             notification_batch.append({**update, "status": "available"})
-        else:
+        elif not update.get("error"):
+            # Only clear deduplication after a successful check confirms resolution.
+            # A transient catalogue/network error must not cause a repeat alert.
             store.patch(plugin_id, last_notified_update_state=None)
     if notification_batch and plugin_update_batch_changed(notification_batch):
         await notify_plugin_updates(db, notification_batch)
