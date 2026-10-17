@@ -32,9 +32,9 @@ from src.database.models.game_identity import (
     HostSource,
     SourceKind,
 )
-from src.features.game_identity.review import run_matching
 from src.features.game_identity import names
 from src.features.game_identity.names import ObservedName
+from src.features.game_identity.review import run_matching
 from src.features.game_ingestion.contract import (
     ObservationBatchV1,
     ObservedFacts,
