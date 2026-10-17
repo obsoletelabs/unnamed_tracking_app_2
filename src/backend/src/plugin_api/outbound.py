@@ -36,7 +36,9 @@ def public_instance_request(
     binary: bool = False,
 ) -> dict[str, Any]:
     """Bounded delegated HTTPS; no redirects, ambient proxy or DNS rebinding."""
-    from src.api.schemas.delegation import integration_origin  # pylint: disable=import-outside-toplevel
+    from src.api.schemas.delegation import (
+        integration_origin,  # pylint: disable=import-outside-toplevel
+    )
 
     if method not in {"GET", "POST", "PATCH", "DELETE"} or not path.startswith(
         "/api/delegation/v1/"
@@ -61,7 +63,9 @@ def public_instance_request(
 
 def legacy_instance_request(origin: str, path: str, *, credential: str) -> dict[str, Any]:
     """Explicit legacy compatibility permits only identity and bounded own-library reads."""
-    from src.api.schemas.delegation import integration_origin  # pylint: disable=import-outside-toplevel
+    from src.api.schemas.delegation import (
+        integration_origin,  # pylint: disable=import-outside-toplevel
+    )
 
     if not re.fullmatch(r"utk_[A-Za-z0-9_-]{20,252}", credential):
         raise ValueError("Enter an Unnamed Tracking API key.")

@@ -75,6 +75,7 @@ async def test_sweep_exception_is_recorded_without_detail(monkeypatch):
 
 async def test_sweep_pass_reports_failed_parts(monkeypatch):
     monkeypatch.setattr(sweep, "purge_expired_trash", AsyncMock(side_effect=RuntimeError("x")))
+    monkeypatch.setattr(sweep, "purge_expired_media_titles", AsyncMock(return_value={}))
     monkeypatch.setattr(sweep, "purge_expired_sessions", AsyncMock(return_value=2))
     result = await sweep.run_sweep_once()
     assert result == {"failed_parts": 1, "expired_sessions_removed": 2}

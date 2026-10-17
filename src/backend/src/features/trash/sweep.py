@@ -35,7 +35,6 @@ logger = logging.getLogger(__name__)
 _DATA_ROOT = Path("/data/games")
 _USER_DATA_ROOT = Path("/data/user")
 RETENTION_SECONDS = 7 * 24 * 60 * 60
-SWEEP_INTERVAL_SECONDS = 6 * 60 * 60
 
 
 async def _purge_archives(db: AsyncSession, cutoff: int) -> int:
@@ -232,6 +231,14 @@ async def run_sweep_once() -> dict[str, int]:
         logger.exception("Trash sweep failed")
         result["failed_parts"] += 1
     try:
+        # opt-in, per-account title retention; separate from the game files above
+        result.update(await purge_expired_media_titles())
+    # Keep the periodic cleanup boundary alive after an unexpected failed pass.
+    # pylint: disable-next=broad-exception-caught
+    except Exception:
+        logger.exception("Media trash retention failed")
+        result["failed_parts"] += 1
+    try:
         async with SessionLocal() as db:
             removed = await purge_expired_sessions(db)
         result["expired_sessions_removed"] = removed
@@ -243,30 +250,3 @@ async def run_sweep_once() -> dict[str, int]:
         logger.exception("Expired session cleanup failed")
         result["failed_parts"] += 1
     return result
-async def run_sweep_loop() -> None:
-    while True:
-        try:
-            await purge_expired_trash()
-        # Keep the periodic cleanup boundary alive after an unexpected failed pass.
-        # pylint: disable-next=broad-exception-caught
-        except Exception:
-            logger.exception("Trash sweep failed")
-        # a failed cleanup only means expired rows wait for the next sweep;
-        # it never affects startup or signing in
-        try:
-            # opt-in, per-account title retention; separate from the game files above
-            await purge_expired_media_titles()
-        # Keep the periodic cleanup boundary alive after an unexpected failed pass.
-        # pylint: disable-next=broad-exception-caught
-        except Exception:
-            logger.exception("Media trash retention failed")
-        try:
-            async with SessionLocal() as db:
-                removed = await purge_expired_sessions(db)
-            if removed:
-                logger.info("Removed %d expired login session(s)", removed)
-        # Keep the periodic cleanup boundary alive after an unexpected failed pass.
-        # pylint: disable-next=broad-exception-caught
-        except Exception:
-            logger.exception("Expired session cleanup failed")
-        await asyncio.sleep(SWEEP_INTERVAL_SECONDS)
