@@ -23,12 +23,12 @@ from src.database.models.notification import Notification
 from src.database.models.notification_story import NotificationStoryRevision
 from src.features.notification_contract import content_from_notification
 from src.features.notification_contributions import contributed_text, selected_contribution
+from src.features.notification_diagnostic_fixtures import test_content, variant_of
 from src.features.notification_providers.base import (
     MessageAction,
     MessageFact,
     NotificationMessage,
 )
-from src.features.notification_diagnostic_fixtures import test_content, variant_of
 from src.features.notification_providers.capabilities import ResolvedProfile
 from src.features.notification_rich import format_fact, render_email_html, render_plain
 from src.plugin_api.notification_story_contracts import NotificationContent, RendererContribution

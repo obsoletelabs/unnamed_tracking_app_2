@@ -22,7 +22,6 @@ from src.features.notification_audit import change_notices
 from src.features.notification_controller import emit_legacy_rows
 from src.features.notification_inbox import (
     InboxQuery,
-    lifecycle_state,
     query_inbox,
     retention_policy,
     story_details,
