@@ -23,7 +23,7 @@ from src.api.routes.utils.games import (
     _DATA_ROOT,
     _get_game_or_404,
 )
-from src.core.app_integrations import get_max_upload_size_mb, get_upload_limits_mb
+from src.core.app_integrations import get_upload_limits_mb
 from src.core.auth import get_current_user
 from src.database.models.game_file_item import GameFileItem
 from src.database.models.user import User
@@ -135,10 +135,11 @@ async def upload_game_files(
 
     # a modpack zip is routinely hundreds of MB to a few GB — far past a
     # doc-sized limit
+    upload_limits = await get_upload_limits_mb(db)
     limit_mb = (
-        (await get_upload_limits_mb(db))["max_world_save_size_mb"]
+        upload_limits["max_world_save_size_mb"]
         if kind == "modpack"
-        else await get_max_upload_size_mb(db)
+        else upload_limits["max_doc_size_mb"]
     )
     max_bytes = limit_mb * 1024 * 1024
     # Initializing deployment limits can commit; take a fresh storage lock afterward.
