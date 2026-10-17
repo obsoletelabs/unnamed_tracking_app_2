@@ -64,6 +64,15 @@ class Game(Base):
             unique=True,
             postgresql_where=text("deleted_at IS NULL"),
         ),
+        # the library list pages through a user's live games in title order; this index
+        # returns each page without sorting the whole library (#103)
+        Index(
+            "ix_games_user_sort_title_live",
+            "user_id",
+            "sort_title",
+            "id",
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
         # target of the identity model's composite foreign keys, which make a
         # reference to another user's game impossible (see models/game_identity.py)
         UniqueConstraint("user_id", "id", name="uq_games_user_id_id"),

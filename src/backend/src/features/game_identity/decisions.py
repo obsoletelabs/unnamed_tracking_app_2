@@ -5,6 +5,7 @@ and automatic matching are applied one after another. Callers commit."""
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
@@ -24,6 +25,7 @@ from src.database.models.game_identity import (
     RecordOrigin,
     RelationshipKind,
 )
+from src.features.game_identity import counters
 from src.features.game_identity.graph import (
     IdentityConflict,
     IdentityInvalid,
@@ -34,6 +36,8 @@ from src.features.game_identity.graph import (
     require_games,
 )
 from src.features.game_ingestion.service import relink_observation
+
+logger = logging.getLogger(__name__)
 
 _CONFIRMING = frozenset({DecisionActor.USER.value, DecisionActor.MIGRATION.value})
 _SAME = (DecisionOutcome.CONFIRMED_SAME.value, DecisionOutcome.AUTOMATIC_SAME.value)
@@ -100,6 +104,7 @@ class MoveResult:
 class AutomaticResult:
     outcome: str  # associated | suggested | unchanged | blocked
     decision: GameIdentityDecision | None = None
+    relationship: GameRelationship | None = None  # the new same-game edge when associated
 
 
 def _pair(first: UUID, second: UUID) -> dict[str, Any]:
@@ -179,6 +184,17 @@ async def write_decision(
     )
     db.add(decision)
     await db.flush()
+    # Provenance for operators: who decided what, never a title, a source ID or a credential.
+    logger.info(
+        "identity decision user=%s decision=%s subject=%s outcome=%s actor=%s rule=%s superseded=%s",
+        user_id,
+        decision.id,
+        subject_kind,
+        outcome,
+        actor.kind,
+        rule_version,
+        None if current is None else current.id,
+    )
     return decision
 
 
@@ -495,19 +511,26 @@ async def associate_automatically(
     evidence: dict[str, Any] | None = None,
     merge: bool = True,
     now: int | None = None,
+    graph: MergeGraph | None = None,
 ) -> AutomaticResult:
     """An automatic match proposes (`merge=False`) or applies a same-game link.
 
     Never overrides a user decision: a pair whose groups hold a rejected pair is
     `blocked`; a pair already decided is `unchanged`. A new third record is
-    compared on its own, so an earlier rejection never hides or reapplies."""
+    compared on its own, so an earlier rejection never hides or reapplies.
+
+    A caller evaluating many pairs in one transaction (the matcher) passes the merge graph
+    it already holds and keeps it current, instead of re-reading every edge for each pair. By
+    passing it, the caller also states that it already holds the user's identity lock and has
+    read both games from that user's own library."""
     if first_id == second_id:
         raise IdentityInvalid("An identity cannot be matched with itself")
     actor = Actor(DecisionActor.AUTOMATIC.value, rule, reason)
     now = now_seconds() if now is None else now
-    await lock_user_identities(db, user_id)
-    await require_games(db, user_id, first_id, second_id)
-    graph = await merge_graph(db, user_id)
+    if graph is None:
+        await lock_user_identities(db, user_id)
+        await require_games(db, user_id, first_id, second_id)
+        graph = await merge_graph(db, user_id)
     settled = await _settled_automatic(
         db, user_id, graph, (first_id, second_id), merge=merge, rule_version=rule_version
     )
@@ -527,8 +550,13 @@ async def associate_automatically(
     )
     if not merge:
         return AutomaticResult("suggested", decision)
-    await _attach(db, user_id, graph, first_id, second_id, decision=decision, actor=actor, now=now)
-    return AutomaticResult("associated", decision)
+    return AutomaticResult(
+        "associated",
+        decision,
+        await _attach(
+            db, user_id, graph, first_id, second_id, decision=decision, actor=actor, now=now
+        ),
+    )
 
 
 async def move_observation(
@@ -591,6 +619,8 @@ async def move_observation(
         decision_id=decision.id,
         now=stamp,
     )
+    if link is not None:
+        await counters.follow_observation(db, user_id, observation_id, now=stamp)
     return MoveResult(link, decision, previous)
 
 
