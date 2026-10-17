@@ -19,6 +19,8 @@ export interface SteamConnection {
   display_name: string | null;
   expires_at: number | null;
   pending: SteamLoginAttempt | null;
+  /** SteamID64 proven by Steam's OpenID redirect; identity only. */
+  verified_steam_id?: string | null;
 }
 
 export class SteamConnectionError extends Error {
