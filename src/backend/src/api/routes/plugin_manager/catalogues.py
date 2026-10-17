@@ -17,10 +17,13 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.database.models.notification_story import NotificationStory
 from src.database.models.user import User
 from src.database.session import get_db
 from src.features.notification_controller import emit_legacy_rows
+from src.features.notification_producer_content import plugin_update_content
 from src.features.notification_stories import (
+    PLUGIN_UPDATE_EVENT_TYPE,
     PLUGIN_UPDATE_LIFECYCLE,
     StoryReference,
     StoryTransitionError,
@@ -316,12 +319,26 @@ async def notify_plugin_update(
     """
     if not update.get("update_available"):
         return 0
-    plugin_id = str(update["plugin_id"])
-    version = str(update["available_version"])
     phase = "installed" if installed else "failed" if failed else "available"
-    dedupe_key = f"plugin-update:{plugin_id}:{version}" + (
-        ":installed" if installed else ":failed" if failed else ""
+    return await _emit_update_phase(
+        db,
+        str(update["plugin_id"]),
+        str(update["available_version"]),
+        phase,
+        current_version=update.get("current_version"),
     )
+
+
+async def _emit_update_phase(
+    db: AsyncSession,
+    plugin_id: str,
+    version: str,
+    phase: str,
+    *,
+    current_version: str | None,
+) -> int:
+    suffix = "" if phase == "available" else f":{phase}"
+    dedupe_key = f"plugin-update:{plugin_id}:{version}{suffix}"
     admin_ids = list(
         await db.scalars(select(User.id).where(User.is_admin.is_(True), User.is_active.is_(True)))
     )
@@ -329,19 +346,7 @@ async def notify_plugin_update(
         return 0
     now = int(time.time())
     accepted = 0
-    title = {
-        "available": "Plugin update available",
-        "failed": "Plugin update failed",
-        "installed": "Plugin update installed",
-    }[phase]
-    body = {
-        "available": f"Version {version} is available (installed: {update['current_version']}).",
-        "failed": (
-            f"Version {version} could not be activated. The previous package is retained; "
-            "inspect Plugin Manager diagnostics."
-        ),
-        "installed": f"Version {version} is installed.",
-    }[phase]
+    content = plugin_update_content(phase, plugin_id, version, current_version)
     for user_id in admin_ids:
         try:
             created = await emit_legacy_rows(
@@ -354,8 +359,9 @@ async def notify_plugin_update(
                         "media_id": uuid5(
                             NAMESPACE_URL, f"urn:unnamed-tracking:plugin:{plugin_id}"
                         ),
-                        "title": f"{title}: {plugin_id}",
-                        "body": body,
+                        "title": content.title,
+                        "body": content.summary,
+                        "content": content,
                         "poster_url": None,
                         "event_at": now,
                         "dedupe_key": dedupe_key,
@@ -367,6 +373,34 @@ async def notify_plugin_update(
         except StoryTransitionError:
             continue
     return accepted
+
+
+async def resolve_plugin_update_stories(db: AsyncSession, plugin_id: str) -> int:
+    """Close the plugin's open update stories (available or failed) as resolved.
+
+    Used when the plugin is uninstalled or a check shows the announced version is no longer
+    pending. History stays: an unread item is revised in place, a read or dismissed one gets a
+    linked follow-up, and nothing is deleted.
+    """
+    prefix = f"update:{plugin_id}:"
+    rows = (
+        await db.execute(
+            select(NotificationStory.story_key)
+            .where(
+                NotificationStory.event_type == PLUGIN_UPDATE_EVENT_TYPE,
+                NotificationStory.story_key.startswith(prefix, autoescape=True),
+                NotificationStory.phase.in_(("available", "failed")),
+            )
+            .distinct()
+        )
+    ).all()
+    resolved = 0
+    for (story_key,) in rows:
+        version = story_key[len(prefix) :]
+        resolved += await _emit_update_phase(
+            db, plugin_id, version, "resolved", current_version=None
+        )
+    return resolved
 
 
 async def notify_plugin_update_result(
@@ -422,6 +456,8 @@ async def check_plugin_updates(
         updates.append(update)
         manager_state().patch(str(plugin["plugin_id"]), available_update=update)
         await notify_plugin_update(db, update)
+        if not update.get("update_available") and "error" not in update:
+            await resolve_plugin_update_stories(db, str(plugin["plugin_id"]))
     await db.commit()
     return {
         "updates": updates,

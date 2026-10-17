@@ -98,3 +98,46 @@ def test_notification_delegation_checks_target_permission_and_rejects_wrong_capa
     monkeypatch.setattr(supervisor, "_authorize_capability", authorize)
     with pytest.raises(RuntimePolicyError, match="revoked"):
         dispatch(supervisor, "tasks.request", {"user_id": user, "method": "notifications.send", "capability": "notifications.send"})
+
+
+def test_canonical_notification_operations_are_delegated_only_with_their_own_capability(
+    supervisor, monkeypatch
+):
+    user = str(uuid4())
+    dispatch(supervisor, "tasks.subscribe", user=user)
+    for method, capability in (
+        ("notifications.publish", "notifications.send"),
+        ("notification_sources.register", "notifications.canonical"),
+        ("notifications.contract", "notifications.canonical"),
+    ):
+        with pytest.raises(RuntimePolicyError, match="unsupported"):
+            dispatch(
+                supervisor,
+                "tasks.request",
+                {"user_id": user, "method": method, "capability": capability},
+            )
+    forwarded = []
+    original = supervisor._dispatch_gateway_request
+
+    def dispatch_request(plugin, request, *, user_id=None):
+        if request["method"] == "tasks.request":
+            return original(plugin, request, user_id=user_id)
+        forwarded.append((request["method"], request["capability"], user_id))
+        return {"payload": {}}
+
+    monkeypatch.setattr(supervisor, "_dispatch_gateway_request", dispatch_request)
+    monkeypatch.setattr(supervisor, "_authorize_capability", lambda *a, **k: None)
+    for method, capability in (
+        ("notification_sources.register", "notification_sources.register"),
+        ("notifications.publish", "notifications.canonical"),
+    ):
+        dispatch(
+            supervisor,
+            "tasks.request",
+            {"user_id": user, "method": method, "capability": capability, "payload": {}},
+        )
+    assert [item[:2] for item in forwarded] == [
+        ("notification_sources.register", "notification_sources.register"),
+        ("notifications.publish", "notifications.canonical"),
+    ]
+    assert {item[2] for item in forwarded} == {user}

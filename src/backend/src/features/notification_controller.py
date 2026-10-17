@@ -187,6 +187,9 @@ class NotificationDraft:  # pylint: disable=too-many-instance-attributes
     requested_urgency: Literal["normal", "critical"] = "normal"
     # Validated canonical rich content (#109). When present, title and body are derived from it.
     content: NotificationContent | None = None
+    # Host producers whose legacy surfaces (webhooks, plain messages) keep their concise text:
+    # the title and body stay as written and the content only feeds the story page and renderers.
+    keep_text: bool = False
 
 
 @dataclass(frozen=True)
@@ -347,6 +350,8 @@ def _with_content(
         phase=SINGLE_ITEM_PHASE,
         lifecycle=single_item_lifecycle(event_type),
     )
+    if event.keep_text:
+        return replace(event, story=story)
     return replace(
         event,
         title=content.title,
@@ -432,6 +437,8 @@ async def emit_legacy_rows(
             public_body=row["body"] if row["kind"] in MEDIA_KINDS and source == "host" else None,
             group_key=f"{row['kind']}:{row['media_id']}",
             story=row.get("story"),
+            content=row.get("content"),
+            keep_text=row.get("content") is not None,
         )
         notification_id = await _accept(db, event)
         if notification_id is not None:
