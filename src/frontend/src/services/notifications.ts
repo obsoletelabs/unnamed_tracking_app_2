@@ -26,7 +26,17 @@ export interface MediaNotification {
   createdAt?: number;
   readAt?: number | null;
   storyId?: string | null;
+  state?: NotificationState;
+  dismissedAt?: number | null;
+  deletedAt?: number | null;
+  expiresAt?: number | null;
+  story?: { phase: string; resolved: boolean; revisions: number } | null;
 }
+
+export type NotificationState =
+  "unread" | "read" | "dismissed" | "expired" | "deleted";
+export type InboxState =
+  "active" | "dismissed" | "expired" | "deleted" | "history";
 
 interface BackendNotification {
   id: string;
@@ -47,6 +57,11 @@ interface BackendNotification {
   created_at?: number;
   read_at?: number | null;
   story_id?: string | null;
+  state?: NotificationState;
+  dismissed_at?: number | null;
+  deleted_at?: number | null;
+  expires_at?: number | null;
+  story?: { phase: string; resolved: boolean; revisions: number } | null;
 }
 
 export type InboxFilter =
@@ -62,6 +77,7 @@ export interface InboxOptions {
   search?: string;
   source?: string;
   severity?: "" | "info" | "warning" | "error";
+  state?: InboxState;
   offset?: number;
 }
 export interface InboxPage {
@@ -71,6 +87,7 @@ export interface InboxPage {
   counts: Partial<Record<InboxFilter, number>>;
   nextOffset: number | null;
   sources: string[];
+  states: Partial<Record<InboxState, number>>;
 }
 export interface InboxRetentionPolicy {
   default_days: number;
@@ -108,6 +125,7 @@ export async function fetchMediaNotifications(
     counts?: Partial<Record<InboxFilter, number>>;
     next_offset?: number | null;
     sources?: string[];
+    states?: Partial<Record<InboxState, number>>;
   };
   return {
     unread: raw.unread,
@@ -115,6 +133,7 @@ export async function fetchMediaNotifications(
     counts: raw.counts ?? {},
     nextOffset: raw.next_offset ?? null,
     sources: raw.sources ?? [],
+    states: raw.states ?? {},
     items: raw.items.map((n) => ({
       id: n.id,
       kind: n.kind,
@@ -134,6 +153,11 @@ export async function fetchMediaNotifications(
       createdAt: n.created_at ?? n.event_at,
       readAt: n.read_at ?? null,
       storyId: n.story_id ?? null,
+      state: n.state ?? (n.read ? "read" : "unread"),
+      dismissedAt: n.dismissed_at ?? null,
+      deletedAt: n.deleted_at ?? null,
+      expiresAt: n.expires_at ?? null,
+      story: n.story ?? null,
     })),
   };
 }

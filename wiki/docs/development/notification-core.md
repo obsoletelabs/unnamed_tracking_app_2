@@ -2,6 +2,8 @@
 
 Notification orchestration lives in `features/notification_controller.py`, with adjacent destination, policy, lifecycle and provider modules. Existing media, season, session, plugin-update and plugin-send producers pass through this boundary. It flushes within the caller's transaction and never performs network delivery. UI polling and bounded offline discovery share deduplication; the existing job loop scans up to four active users per tick with a per-user time limit and a rotating cursor.
 
+Overhaul status, merge order and invariants: see the [coordination board](notification-overhaul.md).
+
 ## Objects and ownership
 
 | Object | Responsibility |
@@ -52,6 +54,10 @@ Alembic revision `22ff87d4d01c` follows `d8338e79fbbd` in the single migration h
 Notification representations additionally carry event type, source, severity, purpose, trust requirement, group key, creation time and read time. Grouping is presentation only and keeps every durable notification and delivery intact. The frontend groups within a local calendar day and matching source/type/purpose/trust/severity. Pages can split groups; group operations apply only to displayed members.
 
 `GET /api/notifications/policy` returns server default/maximum, requested/effective days, inheritance and whether a maximum is applied. The existing preference service stores `notification_retention_inherit`; older stored durations retain override semantics. Server configuration uses the central registry with bounded 0–3650-day values. Expired queued notices are hidden from the inbox while their transport content is retained; terminal expired rows can be removed while receipts persist. Explicit deletion still cancels work. Browser push state is independent.
+
+### Full notification page lifecycle and history
+
+The full page reuses the same endpoints; the compact bell keeps polling the active inbox and unread count. `GET /api/notifications` adds a `state` slice (`active`, the default and unchanged; `dismissed`; `expired`, meaning hidden by retention or expiry but not yet removed; `deleted`, an erased tombstone; and `history`, every row the owner has). Every slice is owner-scoped, paged with `offset`/`next_offset`, and combined with the category, search, source and severity filters. The response adds per-slice `states` counts, while `unread` stays the active-inbox badge count. Each item carries `state` (`unread`, `read`, `dismissed`, `expired`, `deleted`, resolved with the same precedence as the story item state), `dismissed_at`, `deleted_at`, `expires_at` and, for story members, `story` with the phase, whether it is resolved and the revision count. No migration or second retention store is involved. Dismissal only hides an item from the active view; read, dismiss and delete endpoints and their semantics are unchanged and the page offers them only for active items. The page shows the existing `GET /api/notifications/policy` result: effective duration, whether it is the server default, your own setting, or capped by the server maximum, plus each item's visible expiry (its own `expires_at`, else event time plus the effective days).
 
 ## Personal routing controls
 
@@ -299,3 +305,24 @@ Browser/PWA push is story-aware: the push carries identities only, the worker re
 for the same story by tag, shows a generic message unless `NOTIFICATION_BROWSER_PREVIEWS=story`,
 and opens the same-origin story page. See
 [Browser and PWA notifications](notification-contract.md#browser-and-pwa-notifications).
+## Diagnostics, previews and test sends
+
+The existing administrator test tools (Settings > Administration > Dev Tools) and each person's delivery history share one API, `/api/settings/notification-diagnostics`, implemented in `features/notification_diagnostics.py` (pure fixtures, reason catalogue and redaction in `notification_diagnostic_fixtures.py`).
+
+| Endpoint | Access | Effect |
+| --- | --- | --- |
+| `GET /overview` | administrator | Fixtures, content variants, provider capability declarations, configuration health and server-wide 24-hour outcome counts (codes and counts only), retry policy. |
+| `POST /simulate` | administrator | Dry run of a fixture through ingestion (receipt deduplication, story transitions), grouping, timing (quiet hours, urgency), eligibility, capability fallback and a simulated provider outcome. |
+| `POST /preview` | administrator | Dry run of the real renderer for every provider, or one, with the provider's current capabilities. |
+| `POST /digest` | administrator | Dry run of window bounds and per-provider chunking of up to 200 events. |
+| `POST /test-send` | administrator | Queues 1 to 5 labelled `test` notifications for one of the caller's own destinations through the real dispatcher and adapters. Requires `confirm: true`. |
+| `GET /deliveries`, `POST /deliveries/{id}/retry` | the owner | Own deliveries with attempts, safe reasons and next actions; a bounded manual retry. |
+
+Rules:
+
+- **No side effects.** Dry-run endpoints use the production policy functions (`policy_for`, `decide_for`, `decide_revision`, `delivery_projection`, `render_message`, `compose_digest`) on unsaved objects, read only the caller's own rows, never call `resolve_destinations` (which enrols the inbox) and roll the session back afterwards. Tests assert that no notification, delivery, attempt, receipt, story or window row is created.
+- **Fixtures only.** Requests carry a fixture identifier and a few enumerated overrides (outcome, severity, urgency, duplicates); there is no free-form content. Recovery and verification fixtures are simulation-only: they explain eligibility (verified, external, explicitly permitted destination), are never rendered and cannot be test-sent.
+- **Real test sends.** A test notification has purpose `test`, is bound to one destination (routing refuses any other), is hidden from the inbox, carries a variant (`basic`, `rich`, `image`, `actions`, `long`) rendered by the same renderer and capability negotiation as real work, and counts against the existing ten-per-hour quota. Provider failures cannot be injected into real providers; they are simulated with the dispatcher's own constants (attempt limit and backoff).
+- **Redaction.** Reasons are looked up in a catalogue; an unknown stored string is reported as `unrecognized` and never echoed. Free text from outside the host (destination and plugin names) is passed through `redact`, which removes credentials, one-time codes, recipient addresses and URL paths or queries. Responses never contain message text of real notifications, addresses, configuration or secrets.
+- **Retry.** The owner can re-queue a `failed_permanent` or `retry_wait` delivery of standard or test purpose within its remaining attempt budget (never beyond the three attempts) after a one-minute cooldown. Authorization, consent and routing are rechecked per send. Sensitive purposes are never re-sent.
+- **Health** is a configuration check, not a network probe: it reports whether SMTP and push are configured and whether a plugin provider has its required server configuration.

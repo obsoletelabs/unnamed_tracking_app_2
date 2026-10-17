@@ -16,6 +16,9 @@ core and [plugin notification providers](notification-providers.md).
 | Shared conformance cases and reviewed schema snapshots | `src/backend/tests/fixtures/notification_contract/` |
 | Contract tests | `tests/test_notification_contract.py`, `tests/test_notification_contract_adapters.py` |
 
+Pull request status, merge order and verification for the whole overhaul are on the
+[coordination board](notification-overhaul.md).
+
 The contract version is `NOTIFICATION_CONTRACT_VERSION = "1.0.0"`. It is
 independent of the Plugin API wire version. Plugin API **1.1.14** (#115) is the
 first version whose gateway accepts these documents: see
@@ -847,7 +850,26 @@ support. A generic provider that declares them receives `PluginCanonicalDelivery
 (`send`, `edit`, `follow_up`), `revision`, `remote_ref`, `idempotency_key` and the
 host-sanitised `html`, link buttons and image URLs). The adapter exposes `edit` only
 when updates were declared, so the dispatcher's capability narrowing (#110) works on
-real plugins. Verification and test messages keep the minimal payload. A plugin
+real plugins. Verification and test messages keep the minimal payload.
+
+**Rich chat deliveries (#112).** A provider that declared `rich_embeds` also receives, in
+the private canonical projection only, `facts` (at most 25 host-formatted label/text pairs,
+clipped to 100/500 characters; the body then omits them and `facts_truncated` is recorded
+when more existed) and, for a digest of several members (`max_batch_items` above 1), `items`
+(title, body, optional signed-in story link and time per member, at most 50). Both are
+additive optional fields of `PluginCanonicalDelivery`; the public and media-shared
+projections never carry facts and digest members only carry their projection-approved text.
+The presented facts are part of the rendering hash, so a changed fact is an edit or a
+follow-up and an unchanged one is not re-sent. `network.request` accepts `PATCH` with a JSON
+object body (Discord edits are `PATCH`).
+
+The maintained Discord providers (`official.discord-notifications` webhook and
+`official.discord-bot-notifications` account DM and server channel) use these fields to
+build embeds. Their message reference is an opaque `channel:message` (or webhook message id)
+bound to the exact destination revision and checked again by the provider before every edit;
+Discord limits (10 embeds and 6,000 characters per message, 256/4,096/1,024 characters per
+title, description and field value, 25 fields, 5 buttons) are enforced deterministically in
+the package and the cut is always followed by the live story link. A plugin
 result may add an opaque `remote_ref` (stored only by the host) and `gone: true` when
 an earlier message cannot be edited, which makes the host send a follow-up. Plugin
 error text is never stored. Providers without a declaration keep the legacy payload.
@@ -913,6 +935,24 @@ for name, schema in plugin_notification_schemas().items():
     path.write_text(json.dumps(schema, indent=2, ensure_ascii=False) + "\n")
 PY
 ```
+
+## Producer migration to stories
+
+Issue #116 moves the producers that existed before the contract onto it. The host owns routing, privacy,
+retention and delivery in every case; producers only describe what happened.
+
+| Producer | Story and phases | Content and actions | Grouping |
+|---|---|---|---|
+| Plugin updates (host) | One story per `update:<plugin>:<version>`: `available`, then `installed`, `failed` or `resolved`. The announcement is revised in place while unread; a read or dismissed item keeps its history and a linked item announces the change. Uninstalling the plugin, or a check that no longer offers the version, resolves open stories; nothing is deleted. | Facts for plugin, installed and target version; a `host_route` action to `/settings?area=administration&section=plugins&plugin=<id>` (relative, so it follows the installation origin). | `system.plugin.update` digest: several plugins become one message whose items each link to their own story page and carry their own action. |
+| Game sales and price hits (host) | One-item story per validated quote observation. | Money facts and market/platform come only from the validated quote; the private target stays in the owner's text and never in facts or the public copy. Action opens the game. | Sales digest app-wide; price hits are never delayed. Quote validation is unchanged (regular price required and above the sale price, decimal strings, downward threshold crossing). |
+| Game releases, episodes and movies (host) | Game releases are one-item stories; episode and movie rows keep their legacy items on the same dispatcher. | Game release: release-time fact and an action that opens the game. | Coalesced only for the same entity and release or airing day. |
+| Jellyfin sync problems (official plugin) | `sync:<account>`: `attention` (revised by a different problem), then `resolved` by the next successful sync. | Account and server facts, link to the plugin's accounts page. | Only one account's problems share a digest. |
+
+Background workers publish through `tasks.request`, which now delegates `notification_sources.register`
+(capability `notification_sources.register`) and `notifications.publish` (capability
+`notifications.canonical`) to a subscribed account in addition to `notifications.send` and
+`notifications.emit`; the target account's live grant is checked for each. Existing `notifications.send`
+and `notifications.emit` producers continue through the compatibility adapters below.
 
 ## Compatibility adapters
 

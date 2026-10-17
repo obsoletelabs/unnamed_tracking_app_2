@@ -41,6 +41,7 @@ from src.api.routes import (
     media_stats,
     metadata,
     movies,
+    notification_diagnostics,
     notification_live,
     notification_providers,
     notification_stories,
@@ -172,6 +173,7 @@ app.include_router(notification_stories.router)
 app.include_router(notifications.router)
 app.include_router(notification_live.router)
 app.include_router(notification_providers.router)
+app.include_router(notification_diagnostics.router)
 app.include_router(notification_timing.router)
 app.include_router(notification_unsubscribe.router)
 app.include_router(notification_verification.router)
