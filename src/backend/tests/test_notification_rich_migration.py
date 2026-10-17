@@ -28,7 +28,7 @@ def test_rich_content_migration_keeps_existing_revisions_and_is_reversible():
         environment.pop(key, None)
     directory = Path(__file__).resolve().parents[1]
 
-    def migrate(*arguments):
+    def migrate(*arguments, expect=0):
         result = subprocess.run(
             [sys.executable, "-m", "alembic", "-c", "alembic.ini", *arguments],
             cwd=directory,
@@ -37,7 +37,8 @@ def test_rich_content_migration_keeps_existing_revisions_and_is_reversible():
             text=True,
             timeout=120,
         )
-        assert result.returncode == 0, result.stderr
+        assert (result.returncode == 0) == (expect == 0), result.stderr
+        return result
 
     url = base.set(drivername="postgresql").render_as_string(hide_password=False)
     with psycopg.connect(url, autocommit=True) as connection:
@@ -74,6 +75,15 @@ def test_rich_content_migration_keeps_existing_revisions_and_is_reversible():
                    created_at, expires_at) VALUES (%s, %s, %s, %s, 1, 2)""",
                 (uuid4(), story, owner, "a" * 64),
             )
+            connection.execute(
+                'UPDATE notification_story_revisions SET content = \'{"title": "T"}\'::jsonb'
+            )
+            refused = migrate("downgrade", PREVIOUS_HEAD, expect=1)
+            assert "Refusing to drop stored canonical notification content" in refused.stderr
+            assert connection.execute(
+                "SELECT content->>'title' FROM notification_story_revisions"
+            ).fetchone() == ("T",)
+            connection.execute("UPDATE notification_story_revisions SET content = NULL")
             migrate("downgrade", PREVIOUS_HEAD)
             tables = {
                 row[0]

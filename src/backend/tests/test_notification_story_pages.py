@@ -25,6 +25,7 @@ from src.features import notification_story_pages as pages
 from src.features.notification_controller import (
     NotificationDraft,
     NotificationInterpretation,
+    _accept,
     emit_interpreted,
 )
 from src.features.notification_lifecycle import delete_notice
@@ -227,6 +228,36 @@ async def test_unsafe_content_is_rejected_without_consuming_the_event(world, cha
             )
         ).all()
         assert not (await db.scalars(select(NotificationStory))).all()
+
+
+async def test_host_producer_with_credential_shaped_title_degrades_to_plain_text(world):
+    """A game titled "Secret: Hidden Tales" must not break the inbox refresh that generates it."""
+    async with SessionLocal() as db:
+        notice_id = await _accept(
+            db,
+            NotificationDraft(
+                kind="game_released",
+                user_id=world.owner,
+                entity_type="game",
+                entity_id=uuid4(),
+                occurred_at=int(time.time()),
+                dedupe_key="host-secret-title",
+                title="Secret: Hidden Tales",
+                body="Released",
+                source="host",
+                content=rich(title="Secret: Hidden Tales", summary="Released"),
+            ),
+        )
+        await db.commit()
+        notice = await db.get(Notification, notice_id)
+        assert notice is not None
+        assert (notice.title, notice.body) == ("Secret: Hidden Tales", "Released")
+        assert notice.story_id is None
+
+
+async def test_plugin_content_with_a_credential_shaped_title_is_still_rejected(world):
+    with pytest.raises(UnsafeContentError):
+        await world.emit(rich(title="Secret: Hidden Tales"), dedupe="plugin-secret-title")
 
 
 async def test_reserved_purposes_cannot_carry_rich_content(world):
