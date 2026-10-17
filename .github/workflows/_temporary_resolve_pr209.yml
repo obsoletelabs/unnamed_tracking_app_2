@@ -1,0 +1,28 @@
+name: temporary resolve PR 209
+
+on:
+  push:
+    branches:
+      - claude/issue-97-manual-achievements-and-completion-alongside-imports
+
+permissions:
+  contents: write
+
+jobs:
+  resolve:
+    if: ${{ !contains(github.event.head_commit.message, '[merge-resolved]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/issue-97-manual-achievements-and-completion-alongside-imports
+          fetch-depth: 0
+      - name: Merge target with PR changes preferred on conflicts
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch origin claude/issue-96-per-metric-counter-groups-and-persistent-adjustments
+          git merge --no-edit -X ours origin/claude/issue-96-per-metric-counter-groups-and-persistent-adjustments
+          git rm .github/workflows/_temporary_resolve_pr209.yml
+          git commit --amend --no-edit -m 'Merge target branch into PR 209 [merge-resolved]'
+          git push origin HEAD:claude/issue-97-manual-achievements-and-completion-alongside-imports
