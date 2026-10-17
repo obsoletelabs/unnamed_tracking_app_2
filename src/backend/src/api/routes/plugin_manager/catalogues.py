@@ -318,9 +318,7 @@ def _normalized_plugin_update_items(updates: list[dict[str, Any]]) -> list[dict[
     return items
 
 
-def _plugin_update_message(
-    items: list[dict[str, str]], action_url: str
-) -> tuple[str, str]:
+def _plugin_update_message(items: list[dict[str, str]], action_url: str) -> tuple[str, str]:
     """Render a stable, bounded summary for administrators."""
     lines = [
         f"- {_PLUGIN_UPDATE_STATUS_LABELS[item['status']]}: {item['plugin_id']} "
