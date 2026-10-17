@@ -106,9 +106,6 @@ export async function updateProfile(
   if (response.status === 401) {
     throw new Error("Current password is incorrect.");
   }
-  if (response.status === 409) {
-    throw new Error("That username or email is already taken.");
-  }
   if (!response.ok) {
     throw await failedRequest(response);
   }

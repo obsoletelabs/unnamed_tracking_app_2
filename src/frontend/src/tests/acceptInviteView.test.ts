@@ -79,6 +79,7 @@ it("removes the fragment without accepting on page load and clears credentials a
 });
 it("validates confirmation and accepts a replacement link opened in the same tab", async () => {
   const state = await mount(`#id=${id}&token=${token}`);
+  state.username = "invitee";
   state.password = "New-Password-789!";
   state.confirmation = "different";
   await state.submit();
@@ -91,4 +92,12 @@ it("validates confirmation and accepts a replacement link opened in the same tab
   expect(state.error).toBe("");
   expect(route.hash).toBe("");
   expect(state.credential?.token).toBe("b".repeat(43));
+});
+it("stops at the username field with the specific reason before contacting the server", async () => {
+  const state = await mount(`#id=${id}&token=${token}`);
+  state.username = "bad name";
+  state.password = state.confirmation = "New-Password-789!";
+  await state.submit();
+  expect(acceptInvitation).not.toHaveBeenCalled();
+  expect(state.error).toBe("");
 });
