@@ -18,11 +18,14 @@ import {
   updateProfile,
   uploadProfilePicture,
   removeProfilePicture,
+  accountDisplayName,
+  accountInitials,
 } from "../../services/auth";
 
 const isMock = computed(() => currentUser.value?.id === "mock");
 
 const username = ref("");
+const displayName = ref("");
 const email = ref("");
 // filled (and refilled after a save) from the signed-in user rather than
 // captured once at setup, so the fields are never blank if this mounts
@@ -32,6 +35,7 @@ watch(
   (u) => {
     if (!u) return;
     username.value = u.username;
+    displayName.value = u.display_name ?? "";
     email.value = u.email;
   },
   { immediate: true },
@@ -54,7 +58,7 @@ const passwordPolicy = ref<PasswordPolicy | null>(null);
 // edit was already saved. Only username/email, not the password fields,
 // saveProfile() itself clears those right after a successful save, and
 // watching them here would stomp saveSuccess back to false in that same tick.
-watch([username, email], () => {
+watch([username, displayName, email], () => {
   saveSuccess.value = false;
 });
 
@@ -104,6 +108,8 @@ async function saveProfile() {
   try {
     await updateProfile({
       username: username.value.trim() || undefined,
+      // always sent so clearing the field returns to the username
+      displayName: displayName.value.trim(),
       email: email.value.trim() || undefined,
       currentPassword: currentPassword.value || undefined,
       newPassword: newPassword.value || undefined,
@@ -187,12 +193,19 @@ async function onRemoveAvatar() {
     <div class="avatar-row">
       <ProfileAvatar class="avatar-image"
         ><div class="avatar-fallback">
-          {{ (currentUser?.username ?? "?").slice(0, 2).toUpperCase() }}
+          {{ accountInitials(currentUser) }}
         </div></ProfileAvatar
       >
 
       <div class="avatar-meta">
-        <div class="avatar-name">{{ currentUser?.username }}</div>
+        <div class="avatar-name">{{ accountDisplayName(currentUser) }}</div>
+        <div
+          v-if="currentUser?.display_name"
+          class="avatar-email"
+          title="Your sign-in username"
+        >
+          Sign-in: {{ currentUser.username }}
+        </div>
         <div v-if="currentUser?.email" class="avatar-email">
           {{ currentUser.email }}
         </div>
@@ -223,6 +236,23 @@ async function onRemoveAvatar() {
     <div v-if="uploadError" class="form-error">{{ uploadError }}</div>
 
     <form @submit.prevent="saveProfile">
+      <label class="field">
+        <span>Display name (optional)</span>
+        <input
+          v-model="displayName"
+          type="text"
+          maxlength="64"
+          autocomplete="nickname"
+          aria-label="Display name"
+          aria-describedby="profile-display-name-help"
+        />
+        <small id="profile-display-name-help"
+          >Shown in the app instead of your username. Up to 64 characters;
+          spaces and any language are fine. Leave blank to show your username.
+          It is not used to sign in.</small
+        >
+      </label>
+
       <UsernameField
         ref="usernameField"
         v-model="username"

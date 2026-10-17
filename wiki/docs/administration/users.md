@@ -1,6 +1,6 @@
 # Users
 
-Administrators can list, create, update, and delete local users from Settings. A user has a unique username/email identity, an active state, and an administrator flag. Deactivation prevents normal access without immediately deleting library data.
+Administrators can list, create, update, and delete local users from Settings. A user has a unique sign-in username and email identity, an optional display name (not unique and never used for sign-in; the user list always shows the sign-in username beside it), an active state, and an administrator flag. Deactivation prevents normal access without immediately deleting library data.
 
 The configured primary user is reconciled at application startup when `PRIMARY_USER_USERNAME`, `PRIMARY_USER_EMAIL`, and `PRIMARY_USER_PASSWORD` are present. Treat those values as deployment secrets and rotate them through the supported configuration path.
 

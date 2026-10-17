@@ -10,6 +10,20 @@ Passwords are not stored in plaintext. API requests made by the web application 
 
 New or renamed usernames use 1–100 ASCII letters, digits, underscores, hyphens or dots, with no spaces. The first-run administrator, invitations and account administration use the same rule. Existing usernames continue to sign in and can be kept unchanged when editing other profile fields. Exact username matching takes priority over the email fallback; email matching is case insensitive.
 
+## Display name
+
+Settings > Profile has an optional **Display name**. It is shown instead of your username in the account menu, sidebar, home greeting and in the profile summary; leave it blank (or clear it) to show your username again. Existing accounts start with no display name, so nothing changes until you set one.
+
+- Up to 64 characters. Spaces and any language or emoji are allowed.
+- Control characters, line breaks, zero-width and bidirectional-override characters, and other invisible characters are rejected. Repeated spaces are collapsed and the text is Unicode-normalised (NFC).
+- It is plain text only (it is rendered with Vue's escaping, so markup is shown literally), is not unique, and is never used to sign in, look up an account or match an identity provider account. Two people may use the same display name.
+- Your **sign-in username**, email, password and stable account ID are unchanged. Administrators always see the sign-in username in **Settings > Administration > Users**, the Session Manager and the API, next to the display name, so accounts remain distinguishable. When you approve an app's access request, both your sign-in username and display name are shown.
+- Administrators can set a display name when creating a user; users change their own in Profile. The API accepts `display_name` on `PATCH /api/auth/me` and `POST /api/auth/users`, and returns `display_name` (the stored value or `null`) and, on `/api/auth/me`, `effective_display_name`.
+
+### OIDC and display names
+
+When single sign-on creates a new account, the provider's `name` claim (if present and valid under the rules above) is stored as the display name; invalid or missing values are ignored. Later sign-ins never change the username or display name from provider claims. With "match users by username", only the `preferred_username` claim can select an existing account (the free-form `name` claim never does), and an account already linked to a different provider subject is refused rather than merged.
+
 Changing your password in Profile requires your current password and signs out other active browser sessions. The browser making the change remains signed in. Session audit records are retained; API keys stay active. Concurrent local sign-ins and password changes are serialized so an old-password sign-in cannot create a live session after the change.
 
 ## Optional password recovery
@@ -156,3 +170,7 @@ the same responsive HTML design and readable plain alternative.
 Create API keys from an interactive signed-in browser session. An API key cannot mint another key, even when the request also carries a browser cookie. Existing key ownership, listing/revocation and integration scopes remain unchanged.
 
 Before the first account is created, the setup configuration remains available for bootstrap. After bootstrap, reading or changing it requires an administrator. Hidden ENV-only secrets, including the legacy database URL, are redacted from the configuration schema.
+
+![Profile with a display name (Modern)](../assets/display-name/archive-pocket-profile.jpg)
+
+![Administration users list showing sign-in usernames (Classic)](../assets/display-name/classic-admin-users.jpg)
