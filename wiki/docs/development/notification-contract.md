@@ -880,7 +880,26 @@ support. A generic provider that declares them receives `PluginCanonicalDelivery
 (`send`, `edit`, `follow_up`), `revision`, `remote_ref`, `idempotency_key` and the
 host-sanitised `html`, link buttons and image URLs). The adapter exposes `edit` only
 when updates were declared, so the dispatcher's capability narrowing (#110) works on
-real plugins. Verification and test messages keep the minimal payload. A plugin
+real plugins. Verification and test messages keep the minimal payload.
+
+**Rich chat deliveries (#112).** A provider that declared `rich_embeds` also receives, in
+the private canonical projection only, `facts` (at most 25 host-formatted label/text pairs,
+clipped to 100/500 characters; the body then omits them and `facts_truncated` is recorded
+when more existed) and, for a digest of several members (`max_batch_items` above 1), `items`
+(title, body, optional signed-in story link and time per member, at most 50). Both are
+additive optional fields of `PluginCanonicalDelivery`; the public and media-shared
+projections never carry facts and digest members only carry their projection-approved text.
+The presented facts are part of the rendering hash, so a changed fact is an edit or a
+follow-up and an unchanged one is not re-sent. `network.request` accepts `PATCH` with a JSON
+object body (Discord edits are `PATCH`).
+
+The maintained Discord providers (`official.discord-notifications` webhook and
+`official.discord-bot-notifications` account DM and server channel) use these fields to
+build embeds. Their message reference is an opaque `channel:message` (or webhook message id)
+bound to the exact destination revision and checked again by the provider before every edit;
+Discord limits (10 embeds and 6,000 characters per message, 256/4,096/1,024 characters per
+title, description and field value, 25 fields, 5 buttons) are enforced deterministically in
+the package and the cut is always followed by the live story link. A plugin
 result may add an opaque `remote_ref` (stored only by the host) and `gone: true` when
 an earlier message cannot be edited, which makes the host send a follow-up. Plugin
 error text is never stored. Providers without a declaration keep the legacy payload.
