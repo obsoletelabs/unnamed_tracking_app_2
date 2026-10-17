@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { useRoute } from "vue-router";
+import {
+  deepLinkedPluginId,
+  hasPluginEntry,
+} from "../../services/pluginDeepLink";
 import {
   managerEntries,
   catalogueVersions,
@@ -72,6 +77,27 @@ import {
 const plugins = ref<PluginSummary[]>([]);
 const catalog = ref<PluginCatalogEntry[]>([]);
 const loading = ref(true);
+const route = useRoute();
+const focusedPluginId = computed(() => deepLinkedPluginId(route.query.plugin));
+const focusedMissing = ref(false);
+watch(
+  [() => loading.value, focusedPluginId, () => entries.value],
+  async ([isLoading, id]) => {
+    if (isLoading || !id) {
+      focusedMissing.value = false;
+      return;
+    }
+    focusedMissing.value = !hasPluginEntry(entries.value, id);
+    if (focusedMissing.value) return;
+    await nextTick();
+    const row = Array.from(
+      document.querySelectorAll<HTMLElement>("[data-plugin-id]"),
+    ).find((el) => el.dataset.pluginId === id);
+    row?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+    row?.focus?.({ preventScroll: true });
+  },
+  { immediate: true },
+);
 const cataloguesLoading = ref(false);
 const error = ref("");
 const operationError = ref("");
@@ -1001,6 +1027,9 @@ onMounted(() => {
       @cancel="pendingIsolationInstall = null"
     />
     <PluginGatewayWarning v-if="runtime" :runtime="runtime" />
+    <p v-if="focusedMissing" class="muted" role="status">
+      The linked plugin is not installed or listed in your catalogues.
+    </p>
     <details
       v-if="runtime"
       class="manager-settings"
@@ -1354,6 +1383,9 @@ onMounted(() => {
           v-for="entry in group.entries"
           :key="entry.plugin_id"
           class="plugin"
+          :class="{ 'deep-linked': focusedPluginId === entry.plugin_id }"
+          :data-plugin-id="entry.plugin_id"
+          tabindex="-1"
         >
           <img
             v-if="entry.icon"
@@ -1432,6 +1464,9 @@ onMounted(() => {
         v-for="plugin in installedEntries"
         :key="plugin.plugin_id"
         class="plugin"
+        :class="{ 'deep-linked': focusedPluginId === plugin.plugin_id }"
+        :data-plugin-id="plugin.plugin_id"
+        tabindex="-1"
         tag="article"
         :busy="previewing || installing || action === plugin.plugin_id"
         :label="`Update package for ${plugin.name}`"

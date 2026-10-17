@@ -22,6 +22,7 @@ from src.features.notification_audit import change_notices
 from src.features.notification_controller import emit_legacy_rows
 from src.features.notification_inbox import InboxQuery, query_inbox, retention_policy
 from src.features.notification_lifecycle import delete_notice, dismiss, visible_inbox
+from src.features.notification_producer_content import plugin_update_route_from_dedupe
 from src.features.notifications import generate_for_user
 
 _NOTIFICATION_DB = Depends(get_db)
@@ -34,7 +35,13 @@ router = APIRouter(
 
 
 def _read(n: Notification) -> dict:
+    link = (
+        plugin_update_route_from_dedupe(n.dedupe_key)
+        if n.kind == "plugin_update" and n.media_type == "plugin"
+        else None
+    )
     return {
+        "link": link,
         "id": n.id,
         "kind": n.kind,
         "media_type": n.media_type,
