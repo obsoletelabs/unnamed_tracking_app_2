@@ -67,9 +67,25 @@ resized on first display, like provider icons.
 
 ## 5. Export and history
 
-`GET /api/export/library` (and the scheduled backups, which share the builder) now include
+`GET /api/export/library` (and the scheduled backups, which share the builder) include
 `manual_achievements` and `manual_completion` next to the games; older exports without them stay valid
-(`format_version` is unchanged because the fields are additive). `POST /api/import/library` still recreates games
-only; restoring manual rows needs the game ID mapping and is a follow-up. History of a completion is
-`GET .../completion/history`; a game's other field edits keep using `GET /api/game/{id}/field-changes`.
-The game page's tab count (`/api/game/{id}/content-counts`) includes manual achievements.
+(`format_version` is unchanged because the fields are additive). Only the library import restores games; a
+backup file is restored through the same `POST /api/import/library`.
+
+**Restore.** `POST /api/import/library` accepts either the old bare games list (no manual rows) or a whole
+export (`{games, manual_achievements, manual_completion, ...}`; other sections are ignored). Each game is created as
+before and its exported ID is mapped to the new game; `manual.restore_rows` then recreates the rows on the mapped
+games under the importing user:
+
+- a row whose game is not in the file, an umbrella-scoped row, a row failing the same validation as the API (blank
+  title, unsafe icon, bad time) or a non-object row is skipped and reported in `errors`; nothing is attached to another
+  user's game, since only games created by this request are mappable;
+- an achievement equal (title, `match_key`, category, description) to one already on that game, or repeated in the
+  file, is added once;
+- only the `current` completion of a game is restored, through `set_completion`, so the status is locked as the
+  user's; superseded choices (the history of the old server) and removed (archived) achievements are not carried;
+- `created_at` is kept, new IDs are generated, and the result reports `manual_achievements` and `manual_completion`
+  counts. Importing the same file twice repeats the games as the game import always did; each new copy receives its own rows once.
+
+History of a completion is `GET .../completion/history`; a game's other field edits keep using
+`GET /api/game/{id}/field-changes`. The game page's content counts (`/api/game/{id}/content-counts`) include manual achievements.

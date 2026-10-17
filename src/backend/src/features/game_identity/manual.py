@@ -566,3 +566,97 @@ async def export_rows(db: AsyncSession, user_id: UUID) -> dict[str, list[dict[st
             for c in completions
         ],
     }
+
+
+@dataclass
+class Restored:
+    """What a restore brought back, and why the rest was left out."""
+
+    achievements: int = 0
+    completions: int = 0
+    errors: list[str] = field(default_factory=list)
+
+
+def _achievement_key(
+    title: str, match_key: str | None, category: str | None, description: str | None
+) -> tuple[str, str | None, str | None, str | None]:
+    return (title.casefold(), match_key, category, description)
+
+
+async def _restore_achievement(
+    db: AsyncSession,
+    user_id: UUID,
+    game_id: UUID,
+    item: dict[str, Any],
+    seen: set[tuple[Any, ...]],
+) -> bool:
+    keys = ("title", "description", "icon_url", "category", "position", "match_key", "achieved")
+    values = {k: item[k] for k in keys if k in item}
+    if item.get("achieved_at") is not None:
+        values["achieved_at"] = item["achieved_at"]
+    data = _normalise(values)
+    key = (
+        game_id,
+        *_achievement_key(
+            data["title"], data.get("match_key"), data.get("category"), data.get("description")
+        ),
+    )
+    if key in seen:
+        return False
+    seen.add(key)
+    created = await create_achievement(db, user_id, game_id, values)
+    if isinstance(item.get("created_at"), int) and item["created_at"] >= 0:
+        created.created_at = item["created_at"]
+    return True
+
+
+async def restore_rows(
+    db: AsyncSession,
+    user_id: UUID,
+    game_ids: dict[str, UUID],
+    achievements: list[Any],
+    completions: list[Any],
+) -> Restored:
+    """Put exported manual rows back on the games an import just created.
+
+    `game_ids` maps an exported game ID to the new game; a row for any other game,
+    an umbrella-scoped row, or a malformed row is reported and skipped, never
+    guessed at. Rows already present (a second restore of the same file) are not
+    added again. Only the current completion of a game is restored; its earlier
+    choices were history of the old server."""
+    result = Restored()
+    seen: set[tuple[Any, ...]] = set()
+    for item in achievements:
+        target = game_ids.get(str(item.get("game_id"))) if isinstance(item, dict) else None
+        label = item.get("title") if isinstance(item, dict) else item
+        if target is None:
+            result.errors.append(f"Manual achievement {label!r}: its game is not in this import.")
+            continue
+        existing = await db.scalars(
+            select(GameManualAchievement).where(
+                GameManualAchievement.user_id == user_id,
+                GameManualAchievement.game_id == target,
+                GameManualAchievement.archived_at.is_(None),
+            )
+        )
+        for row in existing:
+            seen.add(
+                (target, *_achievement_key(row.title, row.match_key, row.category, row.description))
+            )
+        try:
+            async with db.begin_nested():
+                result.achievements += await _restore_achievement(db, user_id, target, item, seen)
+        except (graph.IdentityError, TypeError, ValueError) as exc:
+            result.errors.append(f"Manual achievement {label!r}: {exc}")
+    for item in completions:
+        target = game_ids.get(str(item.get("game_id"))) if isinstance(item, dict) else None
+        if target is None or item.get("state") != FieldValueState.CURRENT.value:
+            continue
+        try:
+            async with db.begin_nested():
+                await set_completion(db, user_id, target, GameStatus(str(item.get("status"))))
+            result.completions += 1
+        except (graph.IdentityError, LookupError, ValueError) as exc:
+            result.errors.append(f"Manual completion {item.get('status')!r}: {exc}")
+    await db.commit()
+    return result

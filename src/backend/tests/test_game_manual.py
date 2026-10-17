@@ -351,3 +351,112 @@ async def test_export_includes_manual_facts(users):  # noqa: F811
     assert snapshot.manual_achievements[0]["icon_url"] == "https://example.test/e.png"
     assert snapshot.manual_completion[0]["status"] == "BEATEN"
     assert empty.manual_achievements == [] and empty.manual_completion == []
+
+
+async def _manual_state(user):
+    async with SessionLocal() as db:
+        rows = (
+            await db.execute(
+                select(Game.title, Game.status, Game.locked_fields).where(Game.user_id == user)
+            )
+        ).all()
+        found = (
+            await db.execute(
+                select(
+                    Game.title,
+                    GameManualAchievement.title,
+                    GameManualAchievement.achieved,
+                    GameManualAchievement.achieved_at,
+                    GameManualAchievement.category,
+                    GameManualAchievement.match_key,
+                )
+                .join(Game, Game.id == GameManualAchievement.game_id)
+                .where(Game.user_id == user, GameManualAchievement.archived_at.is_(None))
+            )
+        ).all()
+    return sorted(map(tuple, rows), key=str), sorted(map(tuple, found), key=str)
+
+
+async def test_export_wipe_import_restores_identical_manual_state(users, monkeypatch):  # noqa: F811
+    from src.api.routes import export_import
+
+    monkeypatch.setattr(export_import, "create_game_folder", lambda *_a: None)
+    user = await users()
+    a, b = await make_game(user, "Game PC"), await make_game(user, "Game Deck")
+    mine = await add(user, a, "Win", achieved=True, category="Story", match_key="win")
+    await run(manual.set_earned, user, mine.id, True, 1_700_000_000)
+    await add(user, b, "Win on Deck", match_key="win", description="d")
+    await add(user, b, "Removed")
+    gone = (await tracked(user, b))["manual"][-1]["id"]
+    await run(manual.remove_achievement, user, gone)
+    await run(manual.set_completion, user, a, GameStatus.BEATEN)
+    await run(manual.set_completion, user, a, GameStatus.MASTERED)
+    before = await _manual_state(user)
+
+    async with client_for(user) as client:
+        snapshot = (await client.get("/api/export/library")).json()
+    assert len(snapshot["manual_achievements"]) == 2 and len(snapshot["manual_completion"]) == 2
+    async with SessionLocal() as db:  # wipe
+        await db.execute(Game.__table__.delete().where(Game.user_id == user))
+        await db.commit()
+    assert (await _manual_state(user)) == ([], [])
+
+    async with client_for(user) as client:
+        done = await client.post("/api/import/library", json=snapshot)
+        assert done.status_code == 200 and done.json()["created"] == 2, done.text
+        assert done.json()["manual_achievements"] == 2 and done.json()["manual_completion"] == 1
+        assert done.json()["errors"] == []
+    after = await _manual_state(user)
+    assert after[1] == before[1]
+    assert [(t, s) for t, s, _ in after[0]] == [(t, s) for t, s, _ in before[0]]
+    assert all("status" in locked for t, s, locked in after[0] if t == "Game PC")
+    async with client_for(user) as client:
+        new_pc = next(
+            g["id"] for g in (await client.get("/api/game/list")).json() if g["title"] == "Game PC"
+        )
+        view = (await client.get(f"/api/game-identity/games/{new_pc}/completion")).json()
+        assert view["versions"][0]["status"] == "MASTERED" and view["versions"][0]["user_set"]
+
+    # restoring the same file into the same library repeats games (as before) but each new
+    # copy gets its rows once; the first copies keep theirs and nothing is shared
+    async with client_for(user) as client:
+        again = await client.post("/api/import/library", json=snapshot)
+        assert again.json()["manual_achievements"] == 2
+    assert len((await _manual_state(user))[1]) == 4
+
+
+async def test_import_reports_bad_and_foreign_manual_rows_and_stays_owned(users, monkeypatch):  # noqa: F811
+    from src.api.routes import export_import
+
+    monkeypatch.setattr(export_import, "create_game_folder", lambda *_a: None)
+    user, other = await users(), await users()
+    foreign = await make_game(other, "Theirs")
+    game_id = "11111111-1111-1111-1111-111111111111"
+    body = {
+        "games": [{"id": game_id, "title": "Mine", "folder_location": "mine-97"}],
+        "manual_achievements": [
+            {"game_id": game_id, "title": "ok", "achieved": True},
+            {"game_id": game_id, "title": "ok", "achieved": True},  # duplicate in the file
+            {"game_id": game_id, "title": "  "},
+            {"game_id": game_id, "title": "x", "icon_url": "file:///etc/passwd"},
+            {"game_id": game_id, "title": "x", "achieved_at": "soon", "achieved": True},
+            {"game_id": str(foreign), "title": "steal"},
+            {"game_id": None, "title": "umbrella", "scope": "umbrella"},
+            "garbage",
+        ],
+        "manual_completion": [
+            {"game_id": game_id, "status": "NOPE", "state": "current"},
+            {"game_id": str(foreign), "status": "BEATEN", "state": "current"},
+            {"game_id": game_id, "status": "BEATEN", "state": "superseded"},
+            7,
+        ],
+    }
+    async with client_for(user) as client:
+        done = await client.post("/api/import/library", json=body)
+    assert done.status_code == 200, done.text
+    result = done.json()
+    assert (result["manual_achievements"], result["manual_completion"]) == (1, 0)
+    assert len(result["errors"]) >= 4
+    state = await _manual_state(user)
+    assert [r[1] for r in state[1]] == ["ok"]
+    assert (await _manual_state(other))[1] == []

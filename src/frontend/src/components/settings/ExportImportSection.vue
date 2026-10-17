@@ -267,7 +267,9 @@ async function onFileSelected(e: Event) {
         'This file doesn\'t look like a library export, expected a "games" list.',
       );
     }
-    importResult.value = await importLibrary(games);
+    importResult.value = await importLibrary(
+      Array.isArray(parsed) ? games : { ...parsed, games },
+    );
   } catch (err) {
     importError.value =
       err instanceof Error ? err.message : "Failed to import library";
@@ -561,6 +563,14 @@ async function onFileSelected(e: Event) {
         Imported {{ importResult.created }} game{{
           importResult.created === 1 ? "" : "s"
         }}.
+        <template
+          v-if="
+            importResult.manual_achievements || importResult.manual_completion
+          "
+          >{{ importResult.manual_achievements ?? 0 }} manual achievement(s) and
+          {{ importResult.manual_completion ?? 0 }} completion choice(s)
+          restored.
+        </template>
         <template v-if="importResult.skipped"
           >{{ importResult.skipped }} skipped.</template
         >
