@@ -11,6 +11,7 @@ This page describes the current repository development workflow. The backend and
 | `src/frontend/src/` | Vue application, services, router, state, and views. |
 | `src/frontend/` | Vite/Vue package and frontend tooling. |
 | `src/docker-container/` | Production Docker image, Compose deployment, Nginx configuration, and startup scripts. |
+| `tools/` | Repository-level CI, acceptance, and contract export scripts. Their tests are under `tools/tests/`. |
 | `wiki/` | This documentation site. |
 
 ## Local development
@@ -52,6 +53,24 @@ docker compose exec -e PYTHONPATH=/app backend python -m pytest tests -q
 ```
 
 The pytest configuration uses automatic asyncio support and the test suite is under `src/backend/tests`.
+
+### Repository-level tool tests
+
+The development container holds only the backend source and tests under `/app`, not the complete repository. Tests of repository-level tools therefore live under `tools/tests/` rather than in the backend suite. `tools/tests/test_plugin_acceptance_acquisition.py` checks that the [plugin lifecycle acceptance runner](plugin-validation.md#repeatable-repository-lifecycle-acceptance) substitutes only its own fixture downloads and passes every other URL to the host's download boundary. CI runs it in the Backend tests job.
+
+With the development stack, run it in a one-off backend container that mounts the checkout read-only. It needs no database connection:
+
+```bash
+docker compose run --rm --no-deps -v "$PWD:/repository:ro" -w /repository \
+  -e PYTHONPATH=/repository/src/backend --entrypoint python backend \
+  -m pytest -q -p no:cacheprovider tools/tests/test_plugin_acceptance_acquisition.py
+```
+
+Outside Docker, run it from the repository root with the backend requirements installed and the backend configuration environment set, as CI does:
+
+```bash
+PYTHONPATH=src/backend python -m pytest -q tools/tests/test_plugin_acceptance_acquisition.py
+```
 
 ## Frontend development
 
@@ -113,7 +132,7 @@ A real failure stops startup with the reason instead of retrying the same error.
 
 ### Writing a migration that is safe to re-run
 
-Because an adopted database is attached to the first migration and then runs every later one, each migration after the baseline must be safe on a database that already has part of what it adds. Use the create-if-missing wrappers in `src/database/migration_helpers.py` (`create_table_if_missing`, `add_column_if_missing`, `create_index_if_missing`, `create_unique_constraint_if_missing`, `drop_index_if_exists`) instead of calling `op.*` directly, and name every constraint explicitly so it can be looked up. `tests/test_migrations.py` re-runs the whole chain on the already-migrated test database to catch a migration that is not.
+Because an adopted database is attached to the first migration and then runs every later one, each migration after the baseline must be safe on a database that already has part of what it adds. Use the create-if-missing wrappers in `src/database/migration_helpers.py` (`create_table_if_missing`, `add_column_if_missing`, `create_index_if_missing`, `create_unique_constraint_if_missing`, `drop_index_if_exists`) instead of calling `op.*` directly, and name every constraint explicitly so it can be looked up. For a unique, check or foreign-key constraint without a wrapper, guard `op.create_*` with `has_constraint(table, name)`. Like the other helpers, it checks the table that the following `op.*` call will change, found through the connection's `search_path`. A constraint with the same name on another table or in another schema does not count, so an upgrade into an isolated schema still creates its own constraints and its downgrade can drop them. `tests/test_migrations.py` re-runs the whole chain on the already-migrated test database to catch a migration that is not, and `tests/test_migration_helpers.py` upgrades, adopts and downgrades two schemas side by side.
 
 ## Configuration development
 

@@ -46,7 +46,17 @@ async def request_password_reset(db: AsyncSession, identifier: str, caller: str)
     if len(users) != 1:
         await db.commit()
         return
-    user = users[0]
+    await issue_reset_token(db, users[0], flow)
+    await db.commit()
+
+
+async def issue_reset_token(db: AsyncSession, user: User, flow) -> bool:
+    """Create a reset credential and route it; True when an eligible delivery was queued.
+
+    The credential is routed only through the core notification policy, so it
+    can reach nothing but verified, recovery-allowed destinations. The caller
+    owns the transaction.
+    """
     token = secrets.token_urlsafe(32)
     record = AuthRecoveryToken(
         id=uuid4(),
@@ -73,7 +83,8 @@ async def request_password_reset(db: AsyncSession, identifier: str, caller: str)
         if record.notification_id:
             await db.execute(delete(Notification).where(Notification.id == record.notification_id))
         await db.delete(record)
-    await db.commit()
+        return False
+    return True
 
 
 async def complete_password_reset(

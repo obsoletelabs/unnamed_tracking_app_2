@@ -15,8 +15,13 @@ from src.database.base import Base, unix_timestamp
 # HowLongToBeat contributes a single field, so it's least useful to check
 # first. SteamGridDB's library and curation (community-rated, purpose-built
 # for cover art) beats ScreenScraper's narrower retro-focused art.
+# These display names predate plugin providers; discovery resolves them to
+# registered providers, and a saved order holds provider IDs instead.
 DEFAULT_PROVIDER_ORDER = ["IGDB", "GiantBomb", "Steam", "GOG", "RetroAchievements", "HowLongToBeat"]
 DEFAULT_IMAGE_PROVIDER_ORDER = ["SteamGridDB", "ScreenScraper"]
+# Every name the pre-plugin scan settings accepted; saved orders may still hold them.
+LEGACY_DATA_PROVIDER_NAMES = frozenset(DEFAULT_PROVIDER_ORDER)
+LEGACY_IMAGE_PROVIDER_NAMES = frozenset(DEFAULT_IMAGE_PROVIDER_ORDER)
 
 
 class UserScanSettings(Base):
@@ -60,10 +65,10 @@ class UserScanSettings(Base):
     save_banner: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     save_logo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     save_icon: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    # {provider name: epoch seconds} — last time that provider actually
-    # returned a result during a search (games.py's search_metadata route
-    # updates this after each call), so Scan Settings can show "last used"
-    # instead of a bare on/off toggle with no history
+    # {provider ID: epoch seconds} — last time that registered metadata
+    # provider supplied a result the account selected, searched or refreshed
+    # (rows written before plugin providers may also hold display names), so
+    # Scan Settings can show "last used" instead of a bare on/off toggle
     provider_last_used: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     created_at: Mapped[int] = mapped_column(BigInteger, nullable=False, default=unix_timestamp)
     updated_at: Mapped[int] = mapped_column(

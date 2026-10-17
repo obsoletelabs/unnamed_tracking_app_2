@@ -110,6 +110,19 @@ describe("shared game filters", () => {
     ]);
   });
 
+  it("reads tag spellings and synonyms as one canonical filter value", () => {
+    expect(
+      readGameLibraryQuery({
+        tag: ["Steam: race", "Racing"],
+        not_tag: ["Hack & Slash", "hack and slash"],
+      }),
+    ).toMatchObject({ tagsFilter: ["Racing"], excludedTags: ["Hack & Slash"] });
+    expect(normalizeGameTags(["Roguelike", "Roguelite"])).toEqual([
+      "Roguelike",
+      "Roguelite",
+    ]);
+  });
+
   it("ignores unknown enumerations and empty query values", () => {
     expect(
       readGameLibraryQuery({

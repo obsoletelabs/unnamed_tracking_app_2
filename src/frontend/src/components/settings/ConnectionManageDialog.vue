@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted } from "vue";
+import { computed, onMounted, ref } from "vue";
 import PasswordInput from "../PasswordInput.vue";
 import UiModal from "../UiModal.vue";
 import { useConfirm } from "../../state/dialog";
@@ -42,11 +42,15 @@ const syncing = computed(() =>
     : false,
 );
 
+const disconnecting = ref(false);
+
 onMounted(() => {
+  props.state.clearMessages(key.value);
   if (props.connection.kind === "psn") void props.state.loadPsn();
 });
 
 async function disconnect() {
+  if (disconnecting.value) return;
   const confirmed = await confirm({
     title: `Disconnect ${props.connection.label}?`,
     message:
@@ -57,8 +61,14 @@ async function disconnect() {
     danger: true,
   });
   if (!confirmed) return;
-  if (props.connection.kind === "psn") await props.state.handleDisconnectPsn();
-  else await props.state.clearConnection(props.connection);
+  disconnecting.value = true;
+  try {
+    if (props.connection.kind === "psn")
+      await props.state.handleDisconnectPsn();
+    else await props.state.clearConnection(props.connection);
+  } finally {
+    disconnecting.value = false;
+  }
 }
 </script>
 
@@ -70,9 +80,12 @@ async function disconnect() {
   >
     <div class="connection-dialog">
       <p class="status-line">
-        <span class="pill" :class="{ ok: connected }">{{
-          connected ? "Connected" : "Not connected"
-        }}</span>
+        <span
+          v-if="!(connection.kind === 'psn' && state.psnLoading.value)"
+          class="pill"
+          :class="{ ok: connected }"
+          >{{ connected ? "Connected" : "Not connected" }}</span
+        >
         <span v-if="profile.name" class="profile">
           <img v-if="profile.avatar" :src="profile.avatar" alt="" />
           {{ profile.name }}
@@ -93,11 +106,16 @@ async function disconnect() {
 
       <template v-if="connection.kind === 'psn'">
         <p v-if="state.psnLoading.value" class="hint" role="status">Loading…</p>
+        <!-- shown while connected too: a fresh token is how PSN reconnects -->
         <form
-          v-else-if="!state.psnStatus.value.connected"
+          v-else
           class="connection-form"
           @submit.prevent="state.handleConnectPsn()"
         >
+          <p v-if="connected" class="hint">
+            Paste a fresh npsso token to reconnect, for example after
+            PlayStation signs you out.
+          </p>
           <label class="field">
             <span>npsso token</span>
             <PasswordInput
@@ -114,18 +132,16 @@ async function disconnect() {
               class="ui-btn ui-btn-primary"
               :disabled="state.psnConnecting.value"
             >
-              {{ state.psnConnecting.value ? "Connecting…" : "Connect" }}
+              {{
+                state.psnConnecting.value
+                  ? "Connecting…"
+                  : connected
+                    ? "Reconnect"
+                    : "Connect"
+              }}
             </button>
           </div>
         </form>
-        <template v-else>
-          <p class="hint">
-            Connected. Reconnect with a fresh token to re-check it.
-          </p>
-          <p v-if="state.psnError.value" class="form-error" role="alert">
-            {{ state.psnError.value }}
-          </p>
-        </template>
       </template>
 
       <template v-else>
@@ -135,13 +151,25 @@ async function disconnect() {
             class="ui-btn ui-btn-primary"
             @click="emit('signIn')"
           >
-            Manage Steam sign-in
+            {{
+              status?.connection_method === "account"
+                ? "Manage Steam sign-in"
+                : "Sign in with Steam"
+            }}
           </button>
         </div>
+        <p
+          v-if="status?.connection_method === 'account' && state.cardError[key]"
+          class="form-error"
+          role="alert"
+        >
+          {{ state.cardError[key] }}
+        </p>
         <component
           :is="connection.signIn ? 'details' : 'div'"
           v-if="status?.connection_method !== 'account'"
           class="credential-fields"
+          :open="connection.signIn && !connected ? true : undefined"
         >
           <summary v-if="connection.signIn">
             Legacy API credentials (public profiles)
@@ -206,15 +234,16 @@ async function disconnect() {
         :disabled="syncing"
         @click="state.handleSyncLibrary(connection.syncProvider)"
       >
-        {{ syncing ? "Importing…" : "Import library" }}
+        {{ syncing ? "Syncing…" : "Sync now" }}
       </button>
       <button
         v-if="connected"
         type="button"
         class="ui-btn ui-btn-danger-soft"
+        :disabled="disconnecting"
         @click="disconnect"
       >
-        Disconnect
+        {{ disconnecting ? "Disconnecting…" : "Disconnect" }}
       </button>
       <button type="button" class="ui-btn ui-btn-ghost" @click="emit('close')">
         Close
