@@ -294,3 +294,8 @@ when the provider can edit (otherwise a follow-up under `NOTIFICATION_FOLLOW_UPS
 message references are opaque, host-held per destination revision and removed with the
 item. Authorization, trust, grants and routing are rechecked immediately before every
 physical send. See [Capability-aware dispatch](notification-contract.md#capability-aware-dispatch).
+
+Browser/PWA push is story-aware: the push carries identities only, the worker replaces the alert
+for the same story by tag, shows a generic message unless `NOTIFICATION_BROWSER_PREVIEWS=story`,
+and opens the same-origin story page. See
+[Browser and PWA notifications](notification-contract.md#browser-and-pwa-notifications).
