@@ -294,3 +294,25 @@ when the provider can edit (otherwise a follow-up under `NOTIFICATION_FOLLOW_UPS
 message references are opaque, host-held per destination revision and removed with the
 item. Authorization, trust, grants and routing are rechecked immediately before every
 physical send. See [Capability-aware dispatch](notification-contract.md#capability-aware-dispatch).
+
+## Diagnostics, previews and test sends
+
+The existing administrator test tools (Settings > Administration > Dev Tools) and each person's delivery history share one API, `/api/settings/notification-diagnostics`, implemented in `features/notification_diagnostics.py` (pure fixtures, reason catalogue and redaction in `notification_diagnostic_fixtures.py`).
+
+| Endpoint | Access | Effect |
+| --- | --- | --- |
+| `GET /overview` | administrator | Fixtures, content variants, provider capability declarations, configuration health and server-wide 24-hour outcome counts (codes and counts only), retry policy. |
+| `POST /simulate` | administrator | Dry run of a fixture through ingestion (receipt deduplication, story transitions), grouping, timing (quiet hours, urgency), eligibility, capability fallback and a simulated provider outcome. |
+| `POST /preview` | administrator | Dry run of the real renderer for every provider, or one, with the provider's current capabilities. |
+| `POST /digest` | administrator | Dry run of window bounds and per-provider chunking of up to 200 events. |
+| `POST /test-send` | administrator | Queues 1 to 5 labelled `test` notifications for one of the caller's own destinations through the real dispatcher and adapters. Requires `confirm: true`. |
+| `GET /deliveries`, `POST /deliveries/{id}/retry` | the owner | Own deliveries with attempts, safe reasons and next actions; a bounded manual retry. |
+
+Rules:
+
+- **No side effects.** Dry-run endpoints use the production policy functions (`policy_for`, `decide_for`, `decide_revision`, `delivery_projection`, `render_message`, `compose_digest`) on unsaved objects, read only the caller's own rows, never call `resolve_destinations` (which enrols the inbox) and roll the session back afterwards. Tests assert that no notification, delivery, attempt, receipt, story or window row is created.
+- **Fixtures only.** Requests carry a fixture identifier and a few enumerated overrides (outcome, severity, urgency, duplicates); there is no free-form content. Recovery and verification fixtures are simulation-only: they explain eligibility (verified, external, explicitly permitted destination), are never rendered and cannot be test-sent.
+- **Real test sends.** A test notification has purpose `test`, is bound to one destination (routing refuses any other), is hidden from the inbox, carries a variant (`basic`, `rich`, `image`, `actions`, `long`) rendered by the same renderer and capability negotiation as real work, and counts against the existing ten-per-hour quota. Provider failures cannot be injected into real providers; they are simulated with the dispatcher's own constants (attempt limit and backoff).
+- **Redaction.** Reasons are looked up in a catalogue; an unknown stored string is reported as `unrecognized` and never echoed. Free text from outside the host (destination and plugin names) is passed through `redact`, which removes credentials, one-time codes, recipient addresses and URL paths or queries. Responses never contain message text of real notifications, addresses, configuration or secrets.
+- **Retry.** The owner can re-queue a `failed_permanent` or `retry_wait` delivery of standard or test purpose within its remaining attempt budget (never beyond the three attempts) after a one-minute cooldown. Authorization, consent and routing are rechecked per send. Sensitive purposes are never re-sent.
+- **Health** is a configuration check, not a network probe: it reports whether SMTP and push are configured and whether a plugin provider has its required server configuration.
