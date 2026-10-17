@@ -16,6 +16,15 @@ Open **Settings → Account → Notifications** or use the centre's **Notificati
 
 Each notification type has an on/off switch and a **Providers** expansion. Inside it, choose individual destinations and **Normal** or **Critical** delivery urgency. Turning off a type keeps these choices. A destination that cannot satisfy the type's trust or server policy is visibly unavailable. Sign-in alerts still require SECURE destinations when delivered as Normal.
 
+### Unavailable choices and saved intent
+
+A choice that currently has no effect is disabled, with the exact reason and the way to turn it back on shown beside it and read out by screen readers. Your saved choice is never changed: the switch keeps showing what you chose, and it applies again as soon as the dependency is restored. This covers:
+
+- **Media filters.** A type is disabled while no media type it needs is followed (for example, the new season and movie/OVA/special types need **Anime** under *Followed media*), or when it needs a watch status and none is selected.
+- **Routes.** A route is disabled while its notification type is off, its provider is disabled, the destination is turned off for your account, the destination is inactive, or it does not meet the type's trust or server policy.
+
+Provider grants, destination proof, trust and privacy rules always stay authoritative; the explanation never grants anything.
+
 Critical is a request for higher transport urgency, such as sound or Do Not Disturb override where supported. It does not change notification sensitivity, verification or permissions. The existing inbox and legacy webhook adapters support normal delivery only; a Critical choice is saved for a compatible provider, with that limitation shown beside the control.
 
 **Your providers** controls external provider enrollment for your account and whether each existing destination is used. Inactive destinations and routing choices remain visible after removal; reinstall does not reclaim them automatically. The legacy webhook uses administrator configuration and generic public release facts. This section does not expose its credentials or pretend that it is a personal, verified endpoint. Personal endpoint enrollment and richer webhook consent follow in the provider work.
