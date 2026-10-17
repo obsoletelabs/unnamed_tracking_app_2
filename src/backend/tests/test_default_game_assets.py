@@ -14,6 +14,7 @@ from src.core.auth import get_current_user
 from src.database.models.game import Game
 from src.database.models.user import User
 from src.database.session import get_db
+from src.helpers.artwork_revisions import MUTABLE_CACHE_CONTROL
 
 
 def test_default_cover_svg_is_deterministic_and_title_aware() -> None:
@@ -85,7 +86,7 @@ async def test_placeholder_revalidates_and_same_url_serves_new_art(game_asset_cl
     assert uploaded.status_code == 200
     expected_type = "image/png" if width is None else "image/jpeg"
     assert uploaded.headers["content-type"] == expected_type
-    assert uploaded.headers["cache-control"] == "private, max-age=3600, must-revalidate"
+    assert uploaded.headers["cache-control"] == MUTABLE_CACHE_CONTROL
     with Image.open(io.BytesIO(uploaded.content)) as image:
         assert image.width == (600 if width is None else width)
 

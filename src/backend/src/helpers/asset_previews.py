@@ -24,6 +24,14 @@ def preview_path(cache_root: Path, game_id: str, kind: str, width: int) -> Path:
     return cache_root / "asset-previews" / game_id / f"{kind}-{width}.jpg"
 
 
+def invalidate_previews(cache_root: Path, game_id: str, kind: str) -> None:
+    """Forget every resized copy (standard or not) of one game's asset, so the next
+    request for any width is made from the replacement and never from the old image."""
+    folder = cache_root / "asset-previews" / game_id
+    for stale in folder.glob(f"{kind}-*.jpg"):
+        stale.unlink(missing_ok=True)
+
+
 def ensure_preview(source: Path, target: Path, width: int) -> tuple[Path, str]:
     """The file to send for `source` at most `width` pixels wide, and its media
     type. An image already that small (or smaller) is sent as it is."""

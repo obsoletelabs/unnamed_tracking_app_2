@@ -86,16 +86,22 @@ async def _get_archive_or_404(
     user_id: UUID,
     kind: ArchiveKind | None = None,
     include_deleted: bool = False,
+    *,
+    for_update: bool = False,
 ) -> GameArchive:
     await _get_game_or_404(game_id, db, user_id, for_storage=True)
     # eager-loads versions — db.get() doesn't, and every caller of this
     # touches archive.versions afterward; a lazy-load on an already-awaited
     # async session blows up with MissingGreenlet
-    archive = await db.scalar(
+    stmt = (
         select(GameArchive)
         .options(selectinload(GameArchive.versions))
         .where(GameArchive.id == archive_id)
     )
+    if for_update:
+        # Restores take the archive lock the trash sweep holds while purging.
+        stmt = stmt.with_for_update().execution_options(populate_existing=True)
+    archive = await db.scalar(stmt)
     if (
         archive is None
         or archive.game_id != game_id
@@ -365,7 +371,7 @@ async def restore_archive(
 ) -> dict:
     """Restore a deleted archive and all of its versions."""
     archive = await _get_archive_or_404(
-        game_id, archive_id, db, current_user.id, include_deleted=True
+        game_id, archive_id, db, current_user.id, include_deleted=True, for_update=True
     )
     if archive.deleted_at is None:
         raise HTTPException(
@@ -437,7 +443,7 @@ async def restore_archive_version(
 ) -> dict:
     """Restore one deleted archive version."""
     archive = await _get_archive_or_404(
-        game_id, archive_id, db, current_user.id, include_deleted=True
+        game_id, archive_id, db, current_user.id, include_deleted=True, for_update=True
     )
     game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     version = next(
