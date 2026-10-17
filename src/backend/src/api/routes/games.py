@@ -140,6 +140,7 @@ from src.database.models.game_field_change import GameFieldChange
 from src.database.models.user import User
 from src.database.session import get_db
 from src.features import game_folders, game_ownership
+from src.features.game_identity import manual
 from src.features.game_ingestion.legacy import (
     has_manual_observation,
     record_manual_fields,
@@ -565,6 +566,9 @@ async def update_game(
     updates = _drop_nulls_for_required_fields(dict(sent))
     authorize_title_update(game, updates, actor)
     old_folder = game.folder_location
+    manual_status = manual.guard_status_update(
+        game, updates, automation=getattr(actor, "credential_kind", None) == "api_key"
+    )
 
     if "folder_location" in updates and updates["folder_location"] is not None:
         await _ensure_folder_location_available(
@@ -607,6 +611,8 @@ async def update_game(
     # stays "when I first 100%'d this" rather than "when I last did"
     if updates.get("status") == GameStatus.MASTERED and game.completion_date is None:
         game.completion_date = int(time.time())
+
+    await manual.record_user_status(db, game, manual_status)
 
     await _record_update_observation(db, game, actor, sent)
 
@@ -688,10 +694,13 @@ async def bulk_update_games(
     )
     games = result.scalars().all()
     for game in games:
+        previous = game.status
         for field, value in updates.items():
             setattr(game, field, value)
         if updates.get("status") == GameStatus.MASTERED and game.completion_date is None:
             game.completion_date = int(time.time())
+        if updates.get("status") is not None and updates["status"] != previous:
+            await manual.set_completion(db, current_user.id, game.id, updates["status"], game=game)
     await db.commit()
     return {"updated": len(games)}
 

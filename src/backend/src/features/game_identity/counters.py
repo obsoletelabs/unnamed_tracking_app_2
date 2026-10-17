@@ -24,7 +24,6 @@ from uuid import UUID
 from sqlalchemy import null, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.database.models.achievement import Achievement
 from src.database.models.game_identity import (
     GameSourceConnection,
     GameSourceObservation,
@@ -39,7 +38,7 @@ from src.database.models.game_identity_tracking import (
     GameMetricCounter,
     GameMetricCounterMember,
 )
-from src.features.game_identity import policy
+from src.features.game_identity import manual, policy
 from src.features.game_identity.graph import (
     IdentityConflict,
     IdentityInvalid,
@@ -863,16 +862,21 @@ async def reconcile(
     for metric in METRIC_FACTS:
         views = [_counter_view(d) for d in data if d.counter.metric == metric]
         metrics[metric] = {"counters": views, **_total(metric, views)}
-    rows = (
-        await db.execute(
-            select(Achievement.name, Achievement.unlocked).where(Achievement.game_id.in_(games))
-        )
-    ).all()
-    if rows:
-        total, unlocked = policy.achievement_union([(name, bool(flag)) for name, flag in rows])
+    tracked = await manual.achievements_view(db, user_id, game_id)
+    if tracked["umbrella"]["total"]:
+        found = tracked["umbrella"]
         metrics[GameMetric.ACHIEVEMENTS.value].update(
-            effective=unlocked, unlocked=unlocked, total=total, exact=True, basis="achievement rows"
+            effective=found["unlocked"],
+            unlocked=found["unlocked"],
+            total=found["total"],
+            exact=True,
+            basis="achievement rows and manual achievements",
+            versions=tracked["versions"],
         )
+    # the same answer whichever member of the group it is asked from
+    tracked_completion = await manual.completion_view(db, user_id, game_id)
+    tracked_completion.pop("game_id")
+    metrics[GameMetric.COMPLETION.value]["tracked"] = tracked_completion
     metrics[GameMetric.COMPLETION.value]["user_value"] = await _field(
         db, user_id, games, "completion_status"
     )
