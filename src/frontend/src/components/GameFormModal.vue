@@ -334,7 +334,7 @@ const heroSubtitle = computed(() =>
     .join(" · "),
 );
 const dialogTitle = computed(() =>
-  isEditing.value ? "Edit Game" : compact.value ? "Quick Add Game" : "Add Game",
+  isEditing.value ? "Edit game" : compact.value ? "Quick add game" : "Add game",
 );
 
 const saving = ref(false);
@@ -733,7 +733,8 @@ async function submit() {
 
     emit("saved", savedGame.id);
   } catch (err) {
-    error.value = err instanceof Error ? err.message : "Failed to save game";
+    error.value =
+      err instanceof Error ? err.message : "Could not save the game.";
   } finally {
     saving.value = false;
   }
@@ -1361,7 +1362,7 @@ async function submit() {
           @reset="banner.reset"
         />
         <p class="hint">
-          Nothing is uploaded until you click Add Game or Save Changes. If the
+          Nothing is uploaded until you click Add game or Save changes. If the
           game saves but artwork cannot be attached, the game stays saved and
           you can retry the artwork.
         </p>
@@ -1379,7 +1380,7 @@ async function submit() {
         class="danger-button"
         @click="emit('delete', props.game!.id)"
       >
-        Delete Game
+        Delete game
       </button>
       <button
         v-if="compact"
@@ -1420,7 +1421,7 @@ async function submit() {
           (compact && !title.trim())
         "
       >
-        {{ saving ? "Saving…" : isEditing ? "Save Changes" : "Add Game" }}
+        {{ saving ? "Saving…" : isEditing ? "Save changes" : "Add game" }}
       </button>
     </template>
   </EditorShell>

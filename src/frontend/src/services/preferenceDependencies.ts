@@ -124,8 +124,8 @@ export function calendarGameUnavailable(
 ): Unavailable | null {
   return prefs.calendar_hide_games
     ? {
-        reason: "Hidden while Hide all Games layers is on.",
-        enable: "Turn off Hide all Games layers below.",
+        reason: "Hidden while Hide all games layers is on.",
+        enable: "Turn off Hide all games layers below.",
       }
     : null;
 }

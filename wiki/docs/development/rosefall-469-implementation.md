@@ -241,6 +241,12 @@ Until then, PRs remain available for review with current validation and screensh
   search (68) and selective copy (71) in package O are separate.
 - **N and the rest of O:** approved; not implemented yet. The package details below describe
   intended work, not completed behavior.
+- **final review / 71:** issue #154. Selective sentence-case, "Could not ..." and
+  destructive-wording pass over the editors, quick editors, calendar and
+  notification settings, anime franchise settings, trash and profile screens, with
+  a screen-by-screen [copy review](rosefall-copy-review.md), Modern/Classic before
+  and after screenshots and `copyConsistency.test.ts`. No behaviour, API or
+  migration change.
 
 ### Issue-by-issue execution order
 
@@ -301,10 +307,10 @@ estimates PR (plugins repo #47) and host [#136](https://github.com/obsoletelabs/
 | 15 | #152 | [#166](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/166) | Merged | main | Reported in PR | Not applicable | Yes | None | Nothing |
 | 16 | #138 | [#191](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/191) | Draft | main | 228 focused backend pass; full backend, build and whole-tree lint not run; one load-related timeout in a frontend test | Yes | Yes | None | Full backend suite, build, lint, then mark ready |
 | 17 | #153 | [#198](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/198) | Open | Stacked on #145 branch | 731 frontend pass, lint, build, strict docs; backend untouched | Not in PR body | Yes | None | #145 must merge first, then retarget to main |
-| 18 | #154 | None | Not started | Last | None | None | None | None | Everything: selective wording and final migration-consistency review |
+| 18 | #154 | PR for `claude/issue-154-selective-wording-and-migration-consistency-review` | Open (includes #181, #200, #175, #198 and #204 until they merge) | Stacked on the #200 branch | Frontend focused and full suites, lint, typecheck, build, strict docs, `alembic heads` | Modern/Classic before and after | [Copy review](rosefall-copy-review.md), [Classic guide](classic-ui.md) | None | Hosted checks; retarget to main after its bases merge |
 
 Only #143, #140, #146, #132, #150, #139 and #152 are merged. #144, #145, #147, #148, #125,
-#149, #151, #153 are open and ready for review; #138 is a draft; #154 has no branch or PR.
+#149, #151, #153 are open and ready for review; #138 is a draft; #154 is open as the final review PR.
 Matrix rows are delivered only by merged PRs: 6, 7, 14, 18, 19 (#143), 45-46 (#146),
 53 (#152) and 68 (#150). Rows 26-27 (#144), 43-44 (#148), 47-50 (#145), 51-52 (#147),
 20-21 and 37-38 (#149), 70 (#153) and 71 (#154) are not yet delivered.

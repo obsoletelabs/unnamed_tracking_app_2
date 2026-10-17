@@ -92,7 +92,7 @@ async function save() {
     emit("saved", saved);
   } catch (failure) {
     error.value =
-      failure instanceof Error ? failure.message : "Failed to save game";
+      failure instanceof Error ? failure.message : "Could not save the game.";
   } finally {
     saving.value = false;
   }

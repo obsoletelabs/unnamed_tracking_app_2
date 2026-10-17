@@ -40,4 +40,4 @@ A safe server-side importer would need persistent source ownership, credentials,
 
 ## Unavailable calendar settings
 
-While **Hide all Games layers** is on, **Game releases** and **Games history** are disabled with a note saying why and how to turn them back on. Their saved choices are not changed and apply again when you turn off **Hide all Games layers**. The note is also announced to screen readers.
+While **Hide all games layers** is on, **Game releases** and **Games history** are disabled with a note saying why and how to turn them back on. Their saved choices are not changed and apply again when you turn off **Hide all games layers**. The note is also announced to screen readers.
