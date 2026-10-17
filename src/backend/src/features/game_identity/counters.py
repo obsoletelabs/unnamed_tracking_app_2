@@ -17,6 +17,7 @@ rule says two observations count the same thing).
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
@@ -366,6 +367,25 @@ async def sync_counters(
     await lock_user_identities(db, user_id)
     await require_games(db, user_id, game_id)
     await _sync(db, user_id, await merge_graph(db, user_id), game_id, _stamp(now))
+
+
+async def sync_many(
+    db: AsyncSession, user_id: UUID, game_ids: Collection[UUID], *, now: int | None = None
+) -> int:
+    """`sync_counters` for many games with one merge graph (the library backfill, #102).
+
+    Returns how many merge groups were reconciled."""
+    await lock_user_identities(db, user_id)
+    graph_ = await merge_graph(db, user_id)
+    stamp = _stamp(now)
+    done: set[UUID] = set()
+    groups = 0
+    for game_id in game_ids:
+        if game_id in done:
+            continue
+        done |= await _sync(db, user_id, graph_, game_id, stamp)
+        groups += 1
+    return groups
 
 
 async def follow_observation(
