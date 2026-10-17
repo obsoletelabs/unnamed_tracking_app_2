@@ -549,6 +549,8 @@ are redacted. Validation errors never echo submitted values.
 | POST | `/api/settings/steam/login/account` | user | Own settings and provider credentials; secrets are never returned. |
 | POST | `/api/settings/steam/login/cancel` | user | Own settings and provider credentials; secrets are never returned. |
 | POST | `/api/settings/steam/login/guard` | user | Own settings and provider credentials; secrets are never returned. |
+| POST | `/api/settings/steam/openid/begin` | user | Own settings; starts a single-use redirect state bound to the caller's session. |
+| GET | `/api/settings/steam/openid/callback` | user | Own settings; the state must match the caller's session and Steam's assertion is verified before the identity is linked. |
 | POST | `/api/settings/steam/login/poll` | user | Own settings and provider credentials; secrets are never returned. |
 | POST | `/api/settings/steam/login/qr` | user | Own settings and provider credentials; secrets are never returned. |
 | GET | `/api/settings/system-info` | admin | Instance configuration; administrator. |
