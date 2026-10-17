@@ -46,6 +46,7 @@ nav:
       - TV Shows: user-guide/tv-shows.md
       - Movies: user-guide/movies.md
       - Calendar & ICS: user-guide/calendar.md
+      - Statistics Activity: user-guide/statistics.md
   - Integrations:
       - Overview: integrations/index.md
       - Playnite: integrations/playnite.md
@@ -81,6 +82,7 @@ nav:
       - API Examples: development/api-examples.md
       - Plugin API v1: development/plugin-api-v1.md
       - Public Apps and Integration Delegation: development/plugin-public-apps.md
+      - API Access Matrix: development/api-access-matrix.md
       - Progressive Metadata Providers: development/metadata-providers.md
       - Plugin v1.1 Migration: development/plugin-v1.1-migration.md
       - Plugin Platform Architecture: development/plugin-platform.md

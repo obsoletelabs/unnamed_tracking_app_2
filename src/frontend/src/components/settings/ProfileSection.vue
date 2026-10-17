@@ -2,6 +2,7 @@
 import { ref, computed, watch, onMounted } from "vue";
 import ProfileAvatar from "../ProfileAvatar.vue";
 import PasswordInput from "../PasswordInput.vue";
+import UsernameField from "../UsernameField.vue";
 import { currentUser, checkAuth } from "../../state/auth";
 import PasswordRequirements from "./PasswordRequirements.vue";
 import {
@@ -9,6 +10,10 @@ import {
   passwordValidationErrors,
   type PasswordPolicy,
 } from "../../services/passwordPolicy";
+import {
+  usernameFieldError,
+  usernameServerError,
+} from "../../services/usernameValidation";
 import {
   updateProfile,
   uploadProfilePicture,
@@ -40,6 +45,11 @@ const newPassword = ref("");
 const confirmPassword = ref("");
 const saving = ref(false);
 const saveError = ref<string | null>(null);
+const usernameServerMessage = ref<{ message: string; value: string } | null>(
+  null,
+);
+const usernameField = ref<InstanceType<typeof UsernameField> | null>(null);
+const submitAttempted = ref(false);
 const saveSuccess = ref(false);
 const passwordPolicy = ref<PasswordPolicy | null>(null);
 
@@ -65,6 +75,13 @@ const uploading = ref(false);
 const uploadError = ref<string | null>(null);
 
 async function saveProfile() {
+  submitAttempted.value = true;
+  usernameServerMessage.value = null;
+  if (usernameFieldError(username.value, currentUser.value?.username)) {
+    saveError.value = null;
+    usernameField.value?.focus();
+    return;
+  }
   if (newPassword.value) {
     const validationErrors = passwordPolicy.value
       ? passwordValidationErrors(newPassword.value, passwordPolicy.value)
@@ -83,6 +100,7 @@ async function saveProfile() {
     return;
   }
 
+  const submittedUsername = username.value;
   saving.value = true;
   saveError.value = null;
   saveSuccess.value = false;
@@ -102,8 +120,17 @@ async function saveProfile() {
     confirmPassword.value = "";
     saveSuccess.value = true;
   } catch (err) {
-    saveError.value =
-      err instanceof Error ? err.message : "Failed to update profile";
+    const reason = err instanceof Error ? err.message : null;
+    const usernameReply = usernameServerError(reason);
+    usernameServerMessage.value = usernameReply
+      ? { message: usernameReply, value: submittedUsername }
+      : null;
+    if (usernameServerMessage.value) {
+      saveError.value = null;
+      usernameField.value?.focus();
+    } else {
+      saveError.value = reason ?? "Failed to update profile";
+    }
   } finally {
     saving.value = false;
   }
@@ -226,20 +253,15 @@ async function onRemoveAvatar() {
         >
       </label>
 
-      <label class="field">
-        <span>Sign-in username</span>
-        <input
-          v-model="username"
-          type="text"
-          maxlength="100"
-          aria-label="Username"
-          aria-describedby="profile-username-help"
-        />
-        <small id="profile-username-help"
-          >Use 1–100 ASCII letters, digits, underscores, hyphens or dots. No
-          spaces. Existing usernames may be kept unchanged.</small
-        >
-      </label>
+      <UsernameField
+        ref="usernameField"
+        v-model="username"
+        autocomplete="username"
+        :unchanged-value="currentUser?.username"
+        :server-error="usernameServerMessage"
+        :show-errors="submitAttempted"
+        help="Use 1–100 ASCII letters, digits, underscores, hyphens or dots. No spaces. Existing usernames may be kept unchanged."
+      />
 
       <label class="field">
         <span>Email</span>

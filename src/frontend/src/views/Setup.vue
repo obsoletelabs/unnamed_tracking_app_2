@@ -19,6 +19,7 @@ import {
   passwordValidationErrors,
   type PasswordPolicy,
 } from "../services/passwordPolicy";
+import { usernameRuleError } from "../services/usernameValidation";
 import { consumeReturnPath } from "../state/startup";
 import AppBrand from "../components/AppBrand.vue";
 import { branding } from "../state/branding";
@@ -66,6 +67,14 @@ const welcomeBlocked = computed(() =>
 function fieldValue(field: SetupField): unknown {
   if (field.name in values.value) return values.value[field.name];
   return field.value;
+}
+
+// The first administrator's username follows the same rules as every new account;
+// say which one it breaks as soon as something has been typed.
+function usernameMessage(field: SetupField): string | null {
+  if (field.name !== "PRIMARY_USER_USERNAME") return null;
+  const value = String(fieldValue(field) ?? "");
+  return value.trim() ? usernameRuleError(value) : null;
 }
 
 function setField(field: SetupField, value: unknown) {
@@ -349,6 +358,16 @@ async function submit() {
     }
   }
 
+  const usernameField = sections.value
+    .find((section) => section.id === "first_admin")
+    ?.fields.find((field) => field.name === "PRIMARY_USER_USERNAME");
+  const usernameProblem = usernameField ? usernameMessage(usernameField) : null;
+  if (usernameProblem) {
+    currentSection.value = "first_admin";
+    error.value = usernameProblem;
+    return;
+  }
+
   const passwordField = sections.value
     .find((section) => section.id === "first_admin")
     ?.fields.find((field) => field.name === "PRIMARY_USER_PASSWORD");
@@ -598,10 +617,21 @@ async function submit() {
                     :disabled="
                       field.locked || (field.generated && field.configured)
                     "
+                    :aria-invalid="usernameMessage(field) ? 'true' : undefined"
+                    :aria-describedby="
+                      usernameMessage(field) ? `${field.name}-error` : undefined
+                    "
                     @input="
                       setField(field, ($event.target as HTMLInputElement).value)
                     "
                   />
+                  <small
+                    v-if="field.name === 'PRIMARY_USER_USERNAME'"
+                    :id="`${field.name}-error`"
+                    class="field-error"
+                    aria-live="polite"
+                    >{{ usernameMessage(field) }}</small
+                  >
 
                   <PasswordRequirements
                     v-if="
@@ -848,6 +878,14 @@ async function submit() {
 .fields input:focus,
 .fields select:focus {
   border-color: var(--ui-accent);
+}
+.fields .field-error {
+  color: var(--ui-error);
+  font-size: 12px;
+  font-weight: 600;
+}
+.fields input[aria-invalid="true"] {
+  border-color: var(--ui-error);
 }
 .fields input:disabled,
 .fields select:disabled {
