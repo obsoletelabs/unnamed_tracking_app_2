@@ -290,6 +290,18 @@ async def test_unchanged_plugin_update_batch_is_not_notified_twice(monkeypatch) 
     changed = [{**batch[0], "available_version": "2.1.0"}, batch[1]]
     assert plugin_catalogues.plugin_update_batch_changed(changed)
 
+    legacy = {
+        "plugin_id": "example.legacy",
+        "current_version": "1.0.0",
+        "available_version": "2.0.0",
+        "update_available": True,
+    }
+    store.patch("example.legacy", available_update=legacy)
+    plugin_catalogues.adopt_legacy_update_notification("example.legacy", legacy, legacy)
+    assert not plugin_catalogues.plugin_update_batch_changed(
+        [{**legacy, "status": "available"}]
+    )
+
 
 @pytest.mark.asyncio
 async def test_inline_changelog_is_returned_before_update(monkeypatch) -> None:
