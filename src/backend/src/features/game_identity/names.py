@@ -389,11 +389,16 @@ async def reconcile_games(  # pylint: disable=too-many-locals
     user_id: UUID,
     games: Iterable[Game],
     observed: Mapping[UUID, ObservedName] | None = None,
+    *,
+    reviewed_renames: bool = False,
 ) -> ReconcileReport:
     """Record the provenance of each game's name and apply `observed` names.
 
     Idempotent. `observed` maps a game ID to the name a source or provider just
-    reported; the raw name stays on its observation whatever the outcome."""
+    reported; the raw name stays on its observation whatever the outcome. With
+    `reviewed_renames`, a source whose existing records are renamed through their own
+    update call (Playnite, manual entries) never renames a real name silently: a
+    different real name is proposed instead."""
     stamp = _now()
     items = {game.id: game for game in games if game.user_id == user_id}
     report = ReconcileReport(checked=len(items))
@@ -417,6 +422,8 @@ async def reconcile_games(  # pylint: disable=too-many-locals
             quality,
             same=seen.title == game.title,
         )
+        if reviewed_renames and decision.action == "replace" and not is_weak(current.quality):
+            decision = Decision("propose", "renames from this source are reviewed")
         if decision.action == "replace":
             _supersede(current, stamp)
             await db.flush()

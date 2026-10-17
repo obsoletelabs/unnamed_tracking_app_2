@@ -314,3 +314,20 @@ async def test_http_review_repair_and_provenance(users, api):  # noqa: F811
         assert (
             await client.post(f"/api/game-identity/names/reviews/{review}/keep")
         ).status_code == 404
+
+
+async def test_a_playnite_rename_on_create_retry_is_reviewed_not_applied(users):  # noqa: F811
+    user = await users()
+    guid = uuid4()
+    game_id = await make_game(user, "Hades")
+    async with SessionLocal() as db:
+        await db.execute(update(Game).where(Game.id == game_id).values(playnite_guid=guid))
+        await legacy.record_playnite_fields(db, user, game_id, guid, {"title": "Hades"})
+        await legacy.record_playnite_fields(db, user, game_id, guid, {"title": "Hades (2020)"})
+        await db.commit()
+        assert await title_of(game_id) == "Hades"
+        ((review, _),) = await names.pending_reviews(db, user)
+        assert review.value == "Hades (2020)"
+        game = await names.accept_review(db, user, review.id)
+        await db.commit()
+        assert (game.title, game.playnite_guid) == ("Hades (2020)", guid)

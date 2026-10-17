@@ -155,7 +155,9 @@ async def record_observations(
                 attach={key: resolved[key][0] for key in chunk},
             )
         )
-    await _reconcile_names(db, user_id, resolved, results)
+    await _reconcile_names(
+        db, user_id, resolved, results, reviewed=connection in (PLAYNITE, MANUAL)
+    )
     return results
 
 
@@ -164,6 +166,8 @@ async def _reconcile_names(
     user_id: UUID,
     resolved: Mapping[str, tuple[UUID, SourceObservationV1]],
     results: Iterable[BatchResult],
+    *,
+    reviewed: bool,
 ) -> None:
     """Apply the name each source reported under the quality, provenance and lock rules
     (#98). The raw name is already on the observation whatever happens here."""
@@ -191,7 +195,7 @@ async def _reconcile_names(
                 .execution_options(populate_existing=True)
             )
         ).all()
-    await names.reconcile_games(db, user_id, games, observed)
+    await names.reconcile_games(db, user_id, games, observed, reviewed_renames=reviewed)
 
 
 async def record_complete_inventory(

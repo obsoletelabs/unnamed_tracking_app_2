@@ -66,7 +66,9 @@ name the user kept is not offered again.
   library sync, enrich step or metadata apply that knows the real name upgrades the same
   game, keeping its tracking data.
 - **Playnite** and manual entries: names arrive through the same observation hook; the
-  Playnite GUID and external ID are never changed.
+  Playnite GUID and external ID are never changed. A create retry that carries a different
+  real name does not rename the game (renames arrive through the update call); it opens a
+  review. A placeholder is still upgraded.
 - **Metadata apply**: records the new title as metadata. New-game enrichment only upgrades
   a recognised placeholder; it never renames a real title.
 
