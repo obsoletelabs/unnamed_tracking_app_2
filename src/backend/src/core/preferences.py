@@ -145,9 +145,20 @@ def _validate_anilist_username(value: Any) -> str:
 
 _RELATIONSHIP_RULE_KINDS = frozenset(
     {
-        "version_of", "remake_of", "remaster_of", "port_of", "dlc_of", "expansion_of",
-        "standalone_expansion_of", "mod_of", "modpack_of", "total_conversion_of",
-        "series_member", "collection_member", "related_to", "custom",
+        "version_of",
+        "remake_of",
+        "remaster_of",
+        "port_of",
+        "dlc_of",
+        "expansion_of",
+        "standalone_expansion_of",
+        "mod_of",
+        "modpack_of",
+        "total_conversion_of",
+        "series_member",
+        "collection_member",
+        "related_to",
+        "custom",
     }
 )
 

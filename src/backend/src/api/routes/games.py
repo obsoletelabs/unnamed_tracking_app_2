@@ -456,9 +456,7 @@ async def create_game(
         if payload.playnite_guid is not None:
             existing = await _find_playnite_game(payload, user_id, db)
             if existing is not None:
-                await record_playnite_fields(
-                    db, user_id, existing.id, payload.playnite_guid, sent
-                )
+                await record_playnite_fields(db, user_id, existing.id, payload.playnite_guid, sent)
                 await db.commit()
                 response.status_code = status.HTTP_200_OK
                 return existing
