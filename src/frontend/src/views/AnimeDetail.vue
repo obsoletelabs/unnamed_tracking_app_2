@@ -41,6 +41,7 @@ import { useConfirm } from "../state/dialog";
 import { displayTitle } from "../utils/displayTitle";
 import MediaProviderPanel from "../components/MediaProviderPanel.vue";
 import MediaTopBar from "../components/MediaTopBar.vue";
+import { mediaTrackingFacts } from "../utils/mediaTrackingFacts";
 import BackButton from "../components/BackButton.vue";
 import PluginExtensionSlot from "../components/plugins/PluginExtensionSlot.vue";
 import PluginContextualActions from "../components/plugins/PluginContextualActions.vue";
@@ -947,6 +948,7 @@ async function onRatingChange(value: number | null) {
       :favorite="show.favorite"
       media-type="anime"
       :media-id="show.id"
+      :facts="mediaTrackingFacts(show)"
       :badges="[
         ...(firstAirYear ? [{ text: firstAirYear }] : []),
         ...(episodeRuntimeLabel ? [{ text: episodeRuntimeLabel }] : []),

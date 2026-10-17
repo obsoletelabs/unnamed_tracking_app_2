@@ -36,6 +36,7 @@ import BackButton from "../components/BackButton.vue";
 import PluginExtensionSlot from "../components/plugins/PluginExtensionSlot.vue";
 import PluginContextualActions from "../components/plugins/PluginContextualActions.vue";
 import { formatAiringCountdown } from "../utils/countdown";
+import { mediaTrackingFacts } from "../utils/mediaTrackingFacts";
 import { statusBucket, bucketToReal } from "../utils/mediaStatus";
 
 const route = useRoute();
@@ -659,6 +660,7 @@ async function onRatingChange(value: number | null) {
       :favorite="show.favorite"
       media-type="tv"
       :media-id="show.id"
+      :facts="mediaTrackingFacts(show)"
       :badges="[
         ...(firstAirYear ? [{ text: firstAirYear }] : []),
         ...(episodeRuntimeLabel ? [{ text: episodeRuntimeLabel }] : []),
