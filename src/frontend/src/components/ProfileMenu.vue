@@ -10,7 +10,7 @@ import { ref, watch, onMounted, onBeforeUnmount } from "vue";
 import { useRouter } from "vue-router";
 import { openTopbarPopover } from "../state/topbarPopover";
 import { currentUser } from "../state/auth";
-import { logout } from "../services/auth";
+import { accountDisplayName, logout } from "../services/auth";
 import ProfileAvatar from "./ProfileAvatar.vue";
 import { useConfirm } from "../state/dialog";
 
@@ -170,7 +170,9 @@ onBeforeUnmount(() => {
         :style="{ ...panelStyle, '--caret-offset': `${caretOffset}px` }"
       >
         <div class="profile-menu-head">
-          <div class="profile-menu-name">{{ currentUser?.username }}</div>
+          <div class="profile-menu-name">
+            {{ accountDisplayName(currentUser) }}
+          </div>
           <div class="profile-menu-email">{{ currentUser?.email }}</div>
         </div>
         <button type="button" class="profile-menu-item" @click="goProfile">
