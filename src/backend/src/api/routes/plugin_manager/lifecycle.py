@@ -439,6 +439,12 @@ async def _apply_automatic_update(
     path = None
     try:
         update = await catalogues.check_plugin_update(plugin, admin)
+        previous_update = (
+            store.read().get("plugins", {}).get(plugin["plugin_id"], {}).get("available_update")
+        )
+        catalogues.adopt_legacy_update_notification(
+            plugin["plugin_id"], previous_update, update
+        )
         store.patch(plugin["plugin_id"], available_update=update)
         if not update.get("update_available"):
             return
