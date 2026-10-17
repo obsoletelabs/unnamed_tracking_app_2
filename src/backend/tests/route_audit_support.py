@@ -116,7 +116,9 @@ async def seed_owner(db, tenant: Tenant) -> None:
         state="proposed",
         quality="standard",
     )
-    db.add_all([list_item, profile, checklist, achievement, archive, file_item, shot, note, name_review])
+    db.add_all(
+        [list_item, profile, checklist, achievement, archive, file_item, shot, note, name_review]
+    )
     await db.flush()
     version = GameArchiveVersion(archive_id=archive.id, filename="v1.zip", size=1)
     rewatch = RewatchLog(
