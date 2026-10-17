@@ -25,6 +25,9 @@ SCHEDULE_KEYS = (
     "anilist_import_interval_minutes",
     "anilist_import_last_run_at",
 )
+# Scheduled-attempt reports kept in preferences before the schedule became a task; the
+# task's own last run and last result replace them.
+REPORT_KEYS = ("anilist_import_last_attempt_at", "anilist_import_last_error")
 JOB_PREFIX = "user-anilist:"
 MIN_INTERVAL, MAX_INTERVAL, DEFAULT_INTERVAL = 60, 30 * 24 * 60, 24 * 60
 
@@ -46,12 +49,17 @@ def upgrade() -> None:
     now = int(time.time())
     for pref_id, user_id, data in rows:
         data = data if isinstance(data, dict) else json.loads(data or "{}")
-        if not any(key in data for key in SCHEDULE_KEYS):
+        if not any(key in data for key in (*SCHEDULE_KEYS, *REPORT_KEYS)):
             continue
         interval = _int_or_none(data.get("anilist_import_interval_minutes"))
         if interval is None or not MIN_INTERVAL <= interval <= MAX_INTERVAL:
             interval = DEFAULT_INTERVAL
-        last_run = _int_or_none(data.get("anilist_import_last_run_at"))
+        # A recorded failed attempt also counts, so the import keeps its cadence.
+        runs = [
+            _int_or_none(data.get(key))
+            for key in ("anilist_import_last_run_at", "anilist_import_last_attempt_at")
+        ]
+        last_run = max((run for run in runs if run is not None), default=None)
         bind.execute(
             sa.text(
                 "INSERT INTO job_settings "
@@ -68,7 +76,8 @@ def upgrade() -> None:
                 "now": now,
             },
         )
-        remaining = {k: v for k, v in data.items() if k not in SCHEDULE_KEYS}
+        retired = (*SCHEDULE_KEYS, *REPORT_KEYS)
+        remaining = {k: v for k, v in data.items() if k not in retired}
         bind.execute(
             sa.text("UPDATE user_preferences SET data = CAST(:data AS jsonb) WHERE id = :id"),
             {"data": json.dumps(remaining), "id": pref_id},

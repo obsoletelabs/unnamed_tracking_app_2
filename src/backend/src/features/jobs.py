@@ -7,6 +7,8 @@ episodes should appear without anyone asking, the full refresh is off because
 it is heavy). One loop (started in main.py) wakes every minute, and runs any
 enabled job that is due. Running a job by hand, from a screen or from
 the loop, goes through the same code and records the same last-run details.
+A failed run is recorded too, so it waits for its interval instead of being
+retried on every tick, and its summary says what went wrong.
 
 Adding a job is one entry here plus whatever it does; the Tasks screen lists
 whatever is registered."""
@@ -16,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections.abc import Awaitable
 from dataclasses import dataclass
 from typing import Any, Callable
 from uuid import UUID
@@ -26,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.database.models.job_setting import JobSetting
 from src.database.models.user import User
 from src.database.session import SessionLocal
+from src.features.anime_franchise import run_franchise_check
 from src.features.metadata import refresh_job
 from src.features.metadata.refresh import check_airing_episodes
 from src.features.notification_audit import publish_lifecycle
@@ -85,14 +89,39 @@ def _summarize_refresh(r: dict[str, Any]) -> str:
 
 
 def _summarize_airing(r: dict[str, Any]) -> str:
+    if r.get("error"):
+        return str(r["error"])
     added = (r.get("anime_episodes_added") or 0) + (r.get("tv_episodes_added") or 0)
     parts = [f"{r.get('checked') or 0} checked", f"{r.get('not_due') or 0} not due yet"]
     if added:
         parts.append(f"{added} new episode(s)")
+    if r.get("failed"):
+        parts.append(f"{r['failed']} unavailable; retried next run")
     return ", ".join(parts)
 
 
-_running = {"airing_check": False, "plugin_updates": False}
+def _summarize_plugin_updates(r: dict[str, Any]) -> str:
+    if r.get("error"):
+        return str(r["error"])
+    return f"{r.get('checked', 0)} checked, {r.get('installed', 0)} installed"
+
+
+_running = {"airing_check": False, "plugin_updates": False, "anime_franchise_check": False}
+
+
+async def _record_outcome(job_id: str, work: Awaitable[dict[str, Any]], failure: str) -> None:
+    """Record a failed run like a completed one, so cadence and reporting survive errors."""
+    try:
+        result = await work
+    # An unexpected worker failure must not terminate the remaining scheduled work.
+    except Exception:  # pylint: disable=broad-exception-caught
+        logger.exception("The scheduled job %s failed", job_id)
+        result = {"completed": False, "error": failure}
+    try:
+        await record_run(job_id, result)
+    # Losing one result must not leave the job marked as running.
+    except Exception:  # pylint: disable=broad-exception-caught
+        logger.exception("The result of the scheduled job %s could not be saved", job_id)
 
 
 def _plugin_updates_is_running() -> bool:
@@ -106,22 +135,25 @@ def _start_plugin_updates(_mode: str) -> dict[str, Any]:
     return {"running": True}
 
 
-async def _run_plugin_updates() -> None:
+async def _plugin_update_result() -> dict[str, Any]:
     # Keep importing job descriptors independent of Plugin Manager router initialization.
     # pylint: disable-next=import-outside-toplevel
     from src.api.routes.plugin_manager.lifecycle import run_automatic_plugin_updates
 
+    async with SessionLocal() as db:
+        admin = await db.scalar(
+            select(User).where(User.is_admin.is_(True), User.is_active.is_(True))
+        )
+        return await run_automatic_plugin_updates(db, admin) if admin else {"checked": 0}
+
+
+async def _run_plugin_updates() -> None:
     try:
-        async with SessionLocal() as db:
-            admin = await db.scalar(
-                select(User).where(User.is_admin.is_(True), User.is_active.is_(True))
-            )
-            result = await run_automatic_plugin_updates(db, admin) if admin else {"checked": 0}
-        await record_run("plugin_updates", result)
-    # An unexpected worker failure must not terminate the remaining scheduled work.
-    # pylint: disable-next=broad-exception-caught
-    except Exception:
-        logger.exception("Scheduled plugin updates failed")
+        await _record_outcome(
+            "plugin_updates",
+            _plugin_update_result(),
+            "Plugin updates could not finish. They will retry at the next scheduled time.",
+        )
     finally:
         _running["plugin_updates"] = False
 
@@ -141,13 +173,55 @@ def _start_airing(mode: str) -> dict[str, Any]:
 
 async def _run_airing(force: bool) -> None:
     try:
-        await record_run("airing_check", await check_airing_episodes(force=force))
-    # An unexpected worker failure must not terminate the remaining scheduled work.
-    # pylint: disable-next=broad-exception-caught
-    except Exception:
-        logger.exception("The airing check failed")
+        await _record_outcome(
+            "airing_check",
+            check_airing_episodes(force=force),
+            "The airing check could not finish. It will retry at the next scheduled time.",
+        )
     finally:
         _running["airing_check"] = False
+
+
+def _franchise_check_is_running() -> bool:
+    return _running["anime_franchise_check"]
+
+
+def _start_franchise_check(_mode: str) -> dict[str, Any]:
+    """Run one bounded batch; scheduled and manual runs both resume the saved cursor."""
+    if not _running["anime_franchise_check"]:
+        _running["anime_franchise_check"] = True
+        asyncio.get_running_loop().create_task(_run_franchise_check())
+    return {"running": True}
+
+
+async def _franchise_check_result() -> dict[str, Any]:
+    async with SessionLocal() as db:
+        previous = dict((await get_setting(db, JOBS["anime_franchise_check"])).last_result or {})
+        await db.commit()
+    try:
+        return await run_franchise_check(previous)
+    # Keep the saved cursor so the next run resumes; the interval paces the retry.
+    except Exception:  # pylint: disable=broad-exception-caught
+        logger.exception("The anime franchise check failed")
+        kept = ("cursor_user", "cursor_franchise", "stalled")
+        resume = previous.get("completed") is False
+        return {
+            **({key: previous[key] for key in kept if key in previous} if resume else {}),
+            "completed": False,
+            "error": "The franchise check could not finish. It will resume at the next "
+            "scheduled time.",
+        }
+
+
+async def _run_franchise_check() -> None:
+    try:
+        await _record_outcome(
+            "anime_franchise_check",
+            _franchise_check_result(),
+            "The franchise check could not finish. It will resume at the next scheduled time.",
+        )
+    finally:
+        _running["anime_franchise_check"] = False
 
 
 JOBS: dict[str, JobSpec] = {
@@ -161,9 +235,7 @@ JOBS: dict[str, JobSpec] = {
         True,
         _start_plugin_updates,
         _plugin_updates_is_running,
-        lambda result: (
-            f"{result.get('checked', 0)} checked, {result.get('installed', 0)} installed"
-        ),
+        _summarize_plugin_updates,
     ),
     "airing_check": JobSpec(
         "airing_check",
@@ -177,6 +249,20 @@ JOBS: dict[str, JobSpec] = {
         _airing_is_running,
         _summarize_airing,
         "all",
+    ),
+    "anime_franchise_check": JobSpec(
+        "anime_franchise_check",
+        "Anime franchise check",
+        "Looks for newly listed seasons, movies, OVAs and specials of anime franchises "
+        "completed by accounts that opted in. Each run checks a small batch and resumes "
+        "where the previous one stopped.",
+        60,
+        30 * 24 * 60,
+        24 * 60,
+        True,
+        _start_franchise_check,
+        _franchise_check_is_running,
+        lambda result: str(result.get("summary") or result.get("error") or "")[:512],
     ),
     "media_refresh": JobSpec(
         "media_refresh",
@@ -285,6 +371,36 @@ def _on_media_refresh_finished(progress: dict[str, Any]) -> None:
 refresh_job.finish_hooks.append(_on_media_refresh_finished)
 
 
+async def due_jobs(db: AsyncSession, specs: list[JobSpec], now: int) -> list[JobSpec]:
+    """Schedules whose interval, or a requested continuation of an unfinished batch, has
+    elapsed. A failed run records its time like any other, so it is not due again until
+    then. Due work is ordered oldest run first, so personal schedules waiting for the shared
+    import slots are served by how long they have waited, across ticks and restarts."""
+    due: list[tuple[int, JobSpec]] = []
+    for spec in specs:
+        row = await get_setting(db, spec)
+        continuation = (row.last_result or {}).get("continue_after_seconds")
+        interval = row.interval_minutes
+        # Personal and built-in jobs may resume an unfinished batch sooner;
+        # plugin server tasks keep their declared interval.
+        if (
+            (spec.user_id is not None or spec.plugin_id is None)
+            and (row.last_result or {}).get("completed") is False
+            and isinstance(continuation, int)
+            and not isinstance(continuation, bool)
+        ):
+            interval = min(60, max(1, (continuation + 59) // 60))
+        if (
+            spec.available
+            and spec.min_interval_minutes <= row.interval_minutes <= spec.max_interval_minutes
+            and not spec.is_running()
+            and is_due(row.enabled, row.last_run_at, interval, now)
+        ):
+            due.append((row.last_run_at or 0, spec))
+    due.sort(key=lambda pair: pair[0])
+    return [spec for _, spec in due]
+
+
 async def run_jobs_loop() -> None:
     """Run eligible schedules without blocking imports or notification delivery."""
     # Plugin adapters import JobSpec/record_run from this registry; load them after initialization.
@@ -304,31 +420,12 @@ async def run_jobs_loop() -> None:
                 await db.commit()
                 await process_pending_deliveries(db)
                 await publish_lifecycle(db)
-                due = []
-                for spec in [
+                specs = [
                     *JOBS.values(),
                     *await get_plugin_jobs(db),
                     *await get_scheduled_user_jobs(db),
-                ]:
-                    row = await get_setting(db, spec)
-                    continuation = (row.last_result or {}).get("continue_after_seconds")
-                    interval = row.interval_minutes
-                    if (
-                        spec.user_id is not None
-                        and (row.last_result or {}).get("completed") is False
-                        and isinstance(continuation, int)
-                        and not isinstance(continuation, bool)
-                    ):
-                        interval = min(60, max(1, (continuation + 59) // 60))
-                    if (
-                        spec.available
-                        and spec.min_interval_minutes
-                        <= row.interval_minutes
-                        <= spec.max_interval_minutes
-                        and not spec.is_running()
-                        and is_due(row.enabled, row.last_run_at, interval, now)
-                    ):
-                        due.append(spec)
+                ]
+                due = await due_jobs(db, specs, now)
                 await db.commit()
             for spec in due:
                 logger.info("Starting the scheduled job %s", spec.id)

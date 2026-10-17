@@ -29,6 +29,9 @@ export interface Preferences {
   notify_season_started: boolean;
   notify_sequel_announced: boolean;
   notify_movie_released: boolean;
+  // completed anime franchise checks; each is opt-in and starts off
+  notify_franchise_season: boolean;
+  notify_franchise_extra: boolean;
   notify_game_released: boolean;
   notify_game_sale: boolean;
   notify_game_price_hit: boolean;
@@ -90,6 +93,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   notify_season_started: true,
   notify_sequel_announced: true,
   notify_movie_released: true,
+  notify_franchise_season: false,
+  notify_franchise_extra: false,
   notify_game_released: true,
   notify_game_sale: true,
   notify_game_price_hit: true,

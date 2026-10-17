@@ -185,6 +185,14 @@ Until then, PRs remain available for review with current validation and screensh
   passed. Live Steam/TVmaze checks and Modern/Classic desktop screenshots passed;
   fresh phone visual verification remains unavailable because the integrated
   browser ignored its viewport override. Full hosted checks/merge remain pending.
+- **N / 47–50:** issue #145 on `claude/issue-145-fair-scheduled-anime-franchise-checks`.
+  Due AniList accounts are selected before the batch limit and every scheduled attempt
+  is recorded; failed airing/plugin-update runs are recorded on their cadence. The
+  bounded, resumable `anime_franchise_check` job and the opt-in season and
+  movie/OVA/special types are documented in the task and notification guides.
+  Row 70 remains with #153.
+- **K–O:** approved; not implemented yet, except where noted above. The package
+  details below describe intended work, not completed behavior.
 - **#140 compact tag filters:** the Games filter panel replaces per-tag include/exclude
   chip walls with one searchable, keyboard-operable picker (counts, include/exclude
   modes, merged-spelling hints) plus deterministic tag normalization in

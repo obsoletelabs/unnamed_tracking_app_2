@@ -103,6 +103,15 @@ async function change(changes: Partial<Preferences>) {
   color: var(--ui-error);
   font-size: 0.82rem;
 }
+.import-status {
+  margin: 14px 0;
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: var(--ui-text);
+}
+.import-status.failed {
+  color: var(--ui-error);
+}
 .field {
   display: flex;
   flex-direction: column;

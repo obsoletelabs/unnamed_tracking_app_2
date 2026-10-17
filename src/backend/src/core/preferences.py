@@ -43,6 +43,10 @@ DEFAULTS: dict[str, Any] = {
     "notify_season_started": True,
     "notify_sequel_announced": True,
     "notify_movie_released": True,
+    # Completed anime franchise checks are opt-in, separately for new seasons and for
+    # movies/OVAs/specials; new and existing accounts both start with them off.
+    "notify_franchise_season": False,
+    "notify_franchise_extra": False,
     "notify_session_anomaly": True,
     "notify_game_released": True,
     "notify_game_sale": True,

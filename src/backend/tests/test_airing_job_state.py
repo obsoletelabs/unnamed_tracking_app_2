@@ -42,6 +42,8 @@ async def test_airing_job_reports_state_and_prevents_duplicate_runs(monkeypatch,
 
     assert job.is_running() is False
     if fails:
-        record.assert_not_awaited()
+        record.assert_awaited_once()
+        assert record.await_args.args[0] == "airing_check"
+        assert record.await_args.args[1]["completed"] is False
     else:
         record.assert_awaited_once_with("airing_check", {"checked": 1})
