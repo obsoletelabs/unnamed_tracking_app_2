@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.crypto import decrypt_secret, encrypt_secret
 from src.database.models.game import Game
 from src.database.models.user import User
+from src.features.game_ingestion.legacy import STEAM, record_disconnect
 from src.features.metadata.games import steam, steam_login
 
 _ATTEMPT_SECONDS = 300
@@ -180,6 +181,8 @@ async def disconnect(db: AsyncSession, user_id: UUID) -> dict:
         "steam_avatar_url",
     ):
         setattr(user, field, None)
+    # Records the disconnect only; observations and their history are kept.
+    await record_disconnect(db, user_id, STEAM)
     await db.commit()
     return connection_status(user)
 

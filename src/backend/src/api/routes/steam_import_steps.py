@@ -26,6 +26,8 @@ from src.core.preferences import load_preferences
 from src.database.models.game import Game, GameStatus
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features.game_ingestion import legacy as ingestion
+from src.features.game_ingestion.contract import SourceObservationV1
 from src.features.imports import steam_connection
 from src.features.imports.game_progression import apply_provider_progress
 from src.features.imports.library_games import LibraryIndex, lock_imported_game
@@ -92,6 +94,7 @@ async def import_achievements(
     return await _save_achievement_batch(db, current_user.id, fetched, set(body.status_game_ids))
 
 
+# pylint: disable-next=too-many-locals
 async def _save_achievement_batch(
     db: AsyncSession,
     user_id: UUID,
@@ -114,6 +117,7 @@ async def _save_achievement_batch(
     ).all()
     synced = 0
     unavailable: list[str] = []
+    observations: list[tuple[UUID, SourceObservationV1 | None]] = []
     for game in games:
         snapshot = fetched.get(game.id)
         if snapshot is None or snapshot[0] != game.external_id:
@@ -128,12 +132,24 @@ async def _save_achievement_batch(
             synced += len(rows)
             total = len(rows)
             unlocked_count = sum(1 for row in rows if row["unlocked"])
+            # An unavailable snapshot says nothing about the counts, so it records nothing.
+            observations.append(
+                (
+                    game.id,
+                    ingestion.build_observation(
+                        game.external_id,
+                        achievements_total=total,
+                        achievements_unlocked=unlocked_count,
+                    ),
+                )
+            )
         apply_provider_progress(
             game,
             playtime_seconds=game.playtime_seconds if game.id in deferred_status else None,
             total_achievements=total,
             unlocked_achievements=unlocked_count,
         )
+    await ingestion.record_observations(db, user_id, ingestion.STEAM, observations)
     await db.commit()
     return {"achievements_synced": synced, "achievements_unavailable": unavailable}
 
@@ -158,6 +174,7 @@ async def import_wishlist(
 
     index = await LibraryIndex.load(db, current_user.id, "Steam")
     game_ids: list[str] = []
+    wishlist_observations: list[tuple[UUID, SourceObservationV1 | None]] = []
     for app_id in app_ids:
         placeholder = f"{_PLACEHOLDER}{app_id}"
         if index.find(placeholder, str(app_id)) is not None:
@@ -175,6 +192,16 @@ async def import_wishlist(
         _add_source_tag_and_collection(game, "Steam")
         await db.flush()
         game_ids.append(str(game.id))
+        # The placeholder title is ours, not Steam's name, so only the ID is recorded.
+        wishlist_observations.append(
+            (
+                game.id,
+                ingestion.build_observation(
+                    str(app_id), provider_ids={"steam": str(app_id)}, wishlisted=True
+                ),
+            )
+        )
+    await ingestion.record_observations(db, current_user.id, ingestion.STEAM, wishlist_observations)
     await db.commit()
     return {
         "enabled": True,

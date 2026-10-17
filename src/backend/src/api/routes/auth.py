@@ -40,6 +40,7 @@ from src.database.models.auth import UserApiKey
 from src.database.models.user import User
 from src.database.session import get_db
 from src.features.admin_users import is_primary_user, record_audit
+from src.features.game_ingestion.legacy import PLAYSTATION, record_disconnect
 from src.features.metadata.games.psn import PSNClient, PSNError
 from src.features.notification_urls import remember_app_url
 from src.features.profile_pictures import profile_picture_version
@@ -377,6 +378,7 @@ async def disconnect_psn(
     user.psn_validated_at = None
     user.psn_online_id = None
     user.psn_avatar_url = None
+    await record_disconnect(db, user.id, PLAYSTATION)
     await db.commit()
     return {"status": "disconnected"}
 
