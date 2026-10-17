@@ -63,7 +63,9 @@ be half understood.
   `POST /api/playnite/inventory` (sent by the extension after it read and reported the **whole** library,
   including games carrying the ignore tag) marks an absent observation `unavailable`. Rows, links and
   history are never deleted; reporting the entry again makes it `available`. An inventory for a library
-  that never reported anything is a no-op.
+  that never reported anything is a no-op. An applied inventory then runs the host's identity matching
+  ([Game identity matching](game-identity-matching.md)), the same as any other complete pull; Playnite
+  itself still never merges or splits identities.
 * A new name for a known GUID updates the observation (a revision) and, through the original update
   route, the game's title unless the user locked it.
 

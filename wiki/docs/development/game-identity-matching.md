@@ -33,8 +33,10 @@ A record is *trusted* when it has an open link to an observation that is `availa
 archived, on a connection that is not disconnected. Records with no observation yet (before the
 #102 backfill) can only be queued. `run_matching(inventory_complete=False)` downgrades an `auto`
 verdict to a queue entry, so an incomplete or failed inventory never merges. Automatic merging
-runs only after a source reports a complete pull (`record_complete_inventory`, so
-RetroAchievements and PlayStation today) and on the user's "Check again".
+runs only after a source reports a complete pull (`record_complete_inventory` for
+RetroAchievements and PlayStation, and an applied Playnite inventory from
+`POST /api/playnite/inventory`) and on the user's "Check again". A Playnite inventory that is not
+applied (for a library that never reported anything) does not start matching.
 
 ## 2. Durable decisions and the queue
 

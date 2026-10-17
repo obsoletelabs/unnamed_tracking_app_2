@@ -18,6 +18,7 @@ from src.database.models.game_identity import (
 )
 from src.database.models.user import User
 from src.database.session import SessionLocal
+from src.features.game_ingestion import playnite as playnite_source
 from tests.test_playnite_contract import _key_client, storage  # noqa: F401
 
 NOW = 1_760_000_000
@@ -379,6 +380,33 @@ async def test_inventory_for_an_unknown_library_changes_nothing(clients):
     )
     assert result.json()["applied"] is False
     assert (await observation_of(playnite.user_id, guid)).availability == "available"
+
+
+async def test_only_an_applied_inventory_runs_identity_matching(clients, monkeypatch):
+    """A complete inventory is the moment automatic matching may merge (#99); a refused one is not."""
+    calls: list[UUID] = []
+    real = playnite_source.run_matching
+
+    async def spy(db, user_id, **kwargs):
+        calls.append(user_id)
+        return await real(db, user_id, **kwargs)
+
+    monkeypatch.setattr(playnite_source, "run_matching", spy)
+    playnite = await clients()
+    guid = str(uuid4())
+    await import_game(playnite, guid)
+    await playnite.api.post("/api/playnite/observations", json=batch(entry(guid)))
+    refused = await playnite.api.post(
+        "/api/playnite/inventory",
+        json={"contract_version": 1, "library_id": "nowhere", "playnite_ids": []},
+    )
+    assert refused.json()["applied"] is False
+    assert not calls
+    done = await playnite.api.post(
+        "/api/playnite/inventory", json={"contract_version": 1, "playnite_ids": [guid]}
+    )
+    assert done.json()["applied"] is True
+    assert calls == [UUID(str(playnite.user_id))]
 
 
 # --- import -> merge -> sync -> manual edit -> sync -> split ---------------------------------
