@@ -26,6 +26,11 @@ export interface MediaNotification {
   createdAt?: number;
   readAt?: number | null;
   storyId?: string | null;
+  state?: NotificationState;
+  dismissedAt?: number | null;
+  deletedAt?: number | null;
+  expiresAt?: number | null;
+  story?: { phase: string; resolved: boolean; revisions: number } | null;
   link?: string | null;
 }
 
@@ -53,6 +58,11 @@ interface BackendNotification {
   created_at?: number;
   read_at?: number | null;
   story_id?: string | null;
+  state?: NotificationState;
+  dismissed_at?: number | null;
+  deleted_at?: number | null;
+  expires_at?: number | null;
+  story?: { phase: string; resolved: boolean; revisions: number } | null;
   link?: string | null;
 }
 
@@ -145,6 +155,11 @@ export async function fetchMediaNotifications(
       createdAt: n.created_at ?? n.event_at,
       readAt: n.read_at ?? null,
       storyId: n.story_id ?? null,
+      state: n.state ?? (n.read ? "read" : "unread"),
+      dismissedAt: n.dismissed_at ?? null,
+      deletedAt: n.deleted_at ?? null,
+      expiresAt: n.expires_at ?? null,
+      story: n.story ?? null,
       link: n.link ?? null,
     })),
   };
