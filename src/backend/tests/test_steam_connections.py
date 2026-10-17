@@ -17,6 +17,7 @@ from src.database.models.game import Game, GameStatus
 from src.database.models.user import User
 from src.database.session import SessionLocal
 from src.features.imports import steam_connection as connection
+from src.features.metadata.games import steam_login, steam_session
 from src.features.metadata.games.steam_session import SteamSession
 from src.main import app
 
@@ -160,6 +161,44 @@ async def test_expired_attempt_and_rapid_poll_do_not_reach_steam(actors, monkeyp
         with pytest.raises(connection.SteamConnectionError, match="expired"):
             await connection.poll(db, identities[0], attempt)
     provider.assert_called_once()
+
+
+async def test_transient_poll_failure_keeps_the_attempt(actors, monkeypatch):
+    identities, clock = actors
+    attempt = await start_attempt(identities[0], clock)
+    monkeypatch.setattr(
+        connection,
+        "_poll_provider",
+        Mock(side_effect=steam_login.SteamSignInUnavailable("Could not reach Steam.")),
+    )
+    async with SessionLocal() as db:
+        with pytest.raises(connection.SteamConnectionError) as error:
+            await connection.poll(db, identities[0], attempt)
+        assert error.value.status_code == 503
+        status = connection.connection_status(await db.get(User, identities[0]))
+    assert status["pending"]["attempt_id"] == attempt
+    assert status["pending"]["phase"] == "waiting"
+
+    # The next poll after the back-off reaches Steam with the same attempt.
+    clock.now += 10
+    monkeypatch.setattr(connection, "_poll_provider", Mock(return_value=({}, None)))
+    async with SessionLocal() as db:
+        status = await connection.poll(db, identities[0], attempt)
+    assert status["pending"]["attempt_id"] == attempt
+
+
+async def test_rejected_poll_still_ends_the_attempt(actors, monkeypatch):
+    identities, clock = actors
+    attempt = await start_attempt(identities[0], clock)
+    monkeypatch.setattr(
+        connection,
+        "_poll_provider",
+        Mock(side_effect=steam_session.SteamLibraryError("Steam did not accept this sign-in.")),
+    )
+    async with SessionLocal() as db:
+        with pytest.raises(steam_session.SteamLibraryError):
+            await connection.poll(db, identities[0], attempt)
+        assert (await db.get(User, identities[0])).steam_login_state is None
 
 
 async def test_guard_code_is_not_paced_like_automatic_polls(actors, monkeypatch):

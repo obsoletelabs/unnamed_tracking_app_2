@@ -10,7 +10,7 @@ The backend owns the application-facing API, authentication, compatibility and p
 
 Compose connects the backend and runtime through an internal-only network. PostgreSQL and the frontend remain on the normal application network; the runtime is not attached to it and is not published to the host.
 
-The frontend plugin manager calls /api/plugins for lifecycle state and /api/plugins/{id}/ui, /settings and /actions for the declarative plugin host. There is no browser-to-runtime connection.
+The frontend plugin manager calls /api/plugins for lifecycle state and /api/plugins/{id}/ui, /settings (read and save) and /actions for the declarative plugin host. There is no browser-to-runtime connection.
 
 ## Repository structure
 
@@ -178,8 +178,9 @@ Movies, TV shows and anime, and game collections and media lists, were near copi
 | --- | --- |
 | `MediaDetailHero`, `MediaDetailTabs`, `ExpandableDescription` | The Movie, TV and Anime detail pages. |
 | `MediaFormShell`, `MediaMetadataSearch`, `useMetadataSearch` | The three Add and Edit dialogs. |
-| `services/mediaApi.ts` | The movie, TV and anime services (list, get, create, update, delete, trash). |
+| `services/mediaApi.ts` | The movie, TV and anime services (list, get, create, update, delete, trash, empty trash). |
 | `api/routes/media_common.py` | The movie, TV and anime routes (library list, soft delete, trash, restore, purge, title search). |
+| `features/trash/media_titles.py` | Empty trash and opt-in retention for movies, TV shows and anime, called by their routes and by the existing trash sweep. |
 | `CollectionTile`, `useCardOrder` | The Collections and Lists overview pages. |
 | `CollectionDetailHeader`, `CollectionItemTile`, `CollectionAddDialog`, `useReorderGrid` | The collection and list detail pages. |
 | `GameMediaPanel`, `MediaTile`, `MediaEditDialog` | Screenshots, Clips, Soundtrack and Docs. |
@@ -192,6 +193,10 @@ When adding a field to movies, TV shows and anime, look for the shared piece fir
 ## Library ranks
 
 The Movie, TV and Anime list endpoints return `score_ranks`: the position of every rated title for that user across the whole library, highest score first, ties broken by sort title, deleted titles left out. It is computed on the server so a rank does not depend on which page or search result the browser holds.
+
+## Game statistics scope
+
+Current-library game aggregates use `active_owned_games(user_id)` from `features/game_stats.py`: the caller's games whose `deleted_at` is unset. `GET /api/stats/overview` and `GET /api/stats/weekly-digest` apply it to every query, including the achievement and metadata-change joins, so a game in Trash contributes nothing until it is restored. `api/routes/media_stats.py` already applies the equivalent filter inline. New game statistics, such as day-level activity details, should use the shared predicate instead of restating it. Soft delete keeps a game's rows, so numbers derived from them return unchanged on restore; purge removes them. The user-facing explanation is in [Library totals and Trash](../user-guide/games.md#library-totals-and-trash).
 
 ## Game page settings
 
