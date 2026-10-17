@@ -457,6 +457,7 @@ async def emit_legacy_rows(
             group_key=f"{row['kind']}:{row['media_id']}",
             story=row.get("story"),
             content=row.get("content"),
+            fingerprint=row.get("fingerprint"),
             keep_text=row.get("content") is not None,
         )
         notification_id = await _accept(db, event)
