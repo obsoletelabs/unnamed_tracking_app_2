@@ -27,6 +27,11 @@ REDACTED_SENSITIVE: Final = "[redacted: sensitive content is never rendered by d
 
 # code -> (label, next action). Unknown codes never echo free text.
 REASONS: Final[dict[str, tuple[str, str]]] = {
+    "ok": ("The provider is configured and ready.", "No action needed."),
+    "not_configured": (
+        "The provider has no saved configuration yet.",
+        "Configure it in the server integration settings before sending.",
+    ),
     "accepted": ("The event was accepted as new.", "No action needed."),
     "deduplicated": (
         "An identical event was already received, so it was ignored.",
