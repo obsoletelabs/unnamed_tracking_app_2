@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.achievement import Achievement
 from src.database.models.game import Game, GameStatus
-from src.database.models.game_identity import GameIdentity
+from src.database.models.game_identity import GameIdentity, GameUmbrella, IdentityKind
 from src.database.models.game_identity_tracking import (
     FieldValueOrigin,
     FieldValueState,
@@ -82,14 +82,89 @@ async def _live_game(db: AsyncSession, user_id: UUID, game_id: UUID, *, lock: bo
 
 
 async def _umbrella_of(db: AsyncSession, user_id: UUID, game_id: UUID) -> UUID:
-    umbrella = await db.scalar(
+    """The umbrella a game belongs to, placing it (and its merged group) on first use.
+
+    Library records created before the umbrella model have no placement. The
+    first umbrella-wide fact places the game: into the umbrella a merged
+    version already has, or into a new one named after the group's main game.
+    Nothing about the game changes, and the placement is what a later backfill
+    would have written."""
+    placed = await db.scalar(
         select(GameIdentity.umbrella_id).where(
             GameIdentity.game_id == game_id, GameIdentity.user_id == user_id
         )
     )
-    if umbrella is None:
-        raise graph.IdentityConflict("This game is not placed in an umbrella yet.")
-    return umbrella
+    if placed is not None:
+        return placed
+    await graph.lock_user_identities(db, user_id)
+    placed = await db.scalar(
+        select(GameIdentity.umbrella_id).where(
+            GameIdentity.game_id == game_id, GameIdentity.user_id == user_id
+        )
+    )
+    if placed is not None:
+        return placed
+    merge = await graph.merge_graph(db, user_id)
+    group = merge.group(game_id)
+    games = {
+        g.id: g
+        for g in await db.scalars(
+            select(Game).where(
+                Game.id.in_(group), Game.user_id == user_id, Game.deleted_at.is_(None)
+            )
+        )
+    }
+    if game_id not in games:
+        raise LookupError("Game not found")
+    existing = (
+        await db.execute(
+            select(GameIdentity.game_id, GameIdentity.umbrella_id).where(
+                GameIdentity.user_id == user_id, GameIdentity.game_id.in_(group)
+            )
+        )
+    ).all()
+    stamp = graph.now_seconds()
+    if existing:
+        umbrella_id = existing[0].umbrella_id
+        primary = False
+    else:
+        head = games.get(merge.root(game_id)) or games[game_id]
+        umbrella = GameUmbrella(
+            user_id=user_id,
+            title=head.title.strip() or "Untitled game",
+            sort_title=head.sort_title or head.title.lower(),
+            created_at=stamp,
+            updated_at=stamp,
+        )
+        db.add(umbrella)
+        await db.flush()
+        umbrella_id, primary = umbrella.id, True
+        if head.id != game_id:
+            db.add(
+                GameIdentity(
+                    user_id=user_id,
+                    game_id=head.id,
+                    umbrella_id=umbrella_id,
+                    is_primary=True,
+                    kind=IdentityKind.EDITION.value,
+                    created_at=stamp,
+                    updated_at=stamp,
+                )
+            )
+            primary = False
+    db.add(
+        GameIdentity(
+            user_id=user_id,
+            game_id=game_id,
+            umbrella_id=umbrella_id,
+            is_primary=primary,
+            kind=IdentityKind.EDITION.value,
+            created_at=stamp,
+            updated_at=stamp,
+        )
+    )
+    await db.flush()
+    return umbrella_id
 
 
 async def _owned_achievement(

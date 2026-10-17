@@ -14,7 +14,7 @@ from src.database.models.game import Game, GameStatus
 from src.database.models.game_identity_tracking import GameManualAchievement
 from src.database.session import SessionLocal
 from src.features.game_identity import counters, decisions, manual
-from src.features.game_identity.graph import IdentityConflict, IdentityInvalid
+from src.features.game_identity.graph import IdentityInvalid
 from src.features.imports.game_progression import apply_provider_progress
 from src.features.imports.library_export import build_library_export
 from src.main import app
@@ -89,8 +89,9 @@ async def test_validation(users):  # noqa: F811
         await run(manual.update_achievement, user, made.id, {"title": ""})
     with pytest.raises(IdentityInvalid):
         await run(manual.update_achievement, user, made.id, {"achieved_at": -5})
-    with pytest.raises(IdentityConflict):  # no umbrella has been assigned yet
-        await run(manual.create_achievement, user, game, {"title": "u"}, umbrella=True)
+    # a game with no umbrella is placed in one by its first umbrella-wide fact (#101)
+    placed = await run(manual.create_achievement, user, game, {"title": "u"}, umbrella=True)
+    assert placed.umbrella_id is not None
 
 
 async def test_users_are_isolated(users):  # noqa: F811

@@ -46,6 +46,10 @@ export interface Preferences {
   notification_retention_days: 0 | 7 | 14 | 30 | 90 | 180 | 365;
   notification_retention_inherit: boolean;
   library_default_layout: "list" | "shelf" | "board";
+  // one entry per logical game, or every version on its own (#101)
+  library_version_display: "grouped" | "separate";
+  // relationship kind -> how edges left on "default" are listed
+  library_relationship_display: Record<string, "link" | "nest" | "hidden">;
   lists_default_sort: "custom" | "name" | "count" | "recent";
   title_language: "english" | "romaji" | "native";
   stats_include_plan: boolean;
@@ -103,6 +107,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   notification_retention_days: 30,
   notification_retention_inherit: true,
   library_default_layout: "list",
+  library_version_display: "grouped",
+  library_relationship_display: {},
   lists_default_sort: "custom",
   title_language: "english",
   stats_include_plan: true,

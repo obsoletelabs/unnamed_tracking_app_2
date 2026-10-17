@@ -30,6 +30,7 @@ import {
 import type { AchFilter } from "../composables/useGameAchievements";
 import GameAccountsPanel from "../components/game/GameAccountsPanel.vue";
 import GamePlayPanel from "../components/game/GamePlayPanel.vue";
+import GameVersionsPanel from "../components/game/GameVersionsPanel.vue";
 import GameOwnedCopiesPanel from "../components/game/GameOwnedCopiesPanel.vue";
 import GameWorldsPanel from "../components/game/GameWorldsPanel.vue";
 import GameManualTrackingPanel from "../components/game/GameManualTrackingPanel.vue";
@@ -481,6 +482,12 @@ const {
     </div>
 
     <section v-if="activeTab === 'Overview'" class="overview">
+      <GameVersionsPanel
+        :key="`versions-${game.id}`"
+        :game-id="game.id"
+        :title="game.title"
+        @changed="onGameSaved"
+      />
       <GameOwnedCopiesPanel
         :key="game.id"
         :game="game"

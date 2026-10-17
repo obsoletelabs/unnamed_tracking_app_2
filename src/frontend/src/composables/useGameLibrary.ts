@@ -55,8 +55,16 @@ import {
   type GameLibraryFilters,
 } from "../utils/gameLibraryQuery";
 import type { Game, GameStatus } from "../types/game";
-import { gameOwnershipGroups } from "../utils/gameOwnership";
 import { fetchGameDuplicates } from "../services/gameDuplicates";
+import {
+  fetchLibraryLayout,
+  type LibraryLayout,
+} from "../services/gameIdentity";
+import {
+  libraryGrouping,
+  versionLabel,
+  type NestedGame,
+} from "../utils/gameIdentityGroups";
 import { usePrompt } from "../state/dialog";
 export function useGameLibrary() {
   const prompt = usePrompt();
@@ -69,16 +77,62 @@ export function useGameLibrary() {
   const route = useRoute();
 
   const games = ref<Game[]>([]);
-  const possibleDuplicateIds = ref(new Set<string>());
+  const duplicatePairs = ref<[string, string][]>([]);
   let duplicateRequest: AbortController | null = null;
   onUnmounted(() => duplicateRequest?.abort());
-  const ownership = computed(() => gameOwnershipGroups(games.value));
-  const libraryEntries = computed(() => ownership.value.entries);
+  // Which games share one library entry (#101): merged versions fold under
+  // their umbrella, related games nest or hide per the user's rules. A failed
+  // layout request just leaves the plain library, it never blocks it.
+  const layout = ref<LibraryLayout | null>(null);
+  const grouping = computed(() =>
+    libraryGrouping(games.value, layout.value, {
+      showAll: searchQuery.value.trim() !== "",
+    }),
+  );
+  const libraryEntries = computed(() => grouping.value.entries);
+  // an entry is flagged when any record folded into it is half of a possible
+  // duplicate; a pair already inside one entry (merged) is not a duplicate
+  const possibleDuplicateIds = computed(() => {
+    const ids = new Set<string>();
+    const entryOf = grouping.value.entryOf;
+    const merged = grouping.value.versions;
+    const home = new Map<string, string>();
+    for (const [entry, group] of merged)
+      for (const game of group) home.set(game.id, entry);
+    const entryFor = (id: string) =>
+      home.get(entryOf.get(id) ?? id) ?? entryOf.get(id) ?? id;
+    for (const [first, second] of duplicatePairs.value) {
+      if (entryFor(first) === entryFor(second)) continue;
+      ids.add(entryFor(first));
+      ids.add(entryFor(second));
+    }
+    return ids;
+  });
   function ownedCopyCount(game: Game): number {
-    return ownership.value.members.get(game.id)?.length ?? 1;
+    return grouping.value.ownedCopies.get(game.id) ?? 1;
   }
   function copiesOf(game: Game): Game[] {
-    return ownership.value.members.get(game.id) ?? [game];
+    return grouping.value.members.get(game.id) ?? [game];
+  }
+  function versionsOf(game: Game): Game[] {
+    return grouping.value.versions.get(game.id) ?? [];
+  }
+  function nestedUnder(game: Game): NestedGame[] {
+    return grouping.value.nested.get(game.id) ?? [];
+  }
+  // A query that matches exactly one version of an umbrella names that
+  // version: "Minecraft Java" shows the Minecraft entry with its Java Edition
+  // context, and the entry opens that version. Matching several versions (or
+  // the umbrella's own title) keeps the umbrella as it is.
+  function searchContext(game: Game): { label: string; game: Game } | null {
+    const q = searchQuery.value.trim().toLowerCase();
+    const versions = versionsOf(game);
+    if (!q || versions.length < 2) return null;
+    const matched = versions.filter((version) =>
+      fuzzyTitleMatch(version.title, q),
+    );
+    if (matched.length !== 1 || matched[0].id === game.id) return null;
+    return { label: versionLabel(matched[0], game), game: matched[0] };
   }
   const loading = ref(true);
   const isLibraryActive = ref(true);
@@ -766,12 +820,20 @@ export function useGameLibrary() {
     void fetchGameDuplicates(duplicateRequest.signal)
       .then((result) => {
         if (token === loadGamesToken)
-          possibleDuplicateIds.value = new Set(
-            result.pairs.flatMap((pair) => [pair.first.id, pair.second.id]),
-          );
+          duplicatePairs.value = result.pairs.map((pair) => [
+            pair.first.id,
+            pair.second.id,
+          ]);
       })
       .catch(() => {
         /* A failed check does not imply the games are unique. */
+      });
+    void fetchLibraryLayout(duplicateRequest.signal)
+      .then((result) => {
+        if (token === loadGamesToken) layout.value = result;
+      })
+      .catch(() => {
+        /* Without a layout the library lists each record as before. */
       });
     refreshing.value = true;
     // A library seen earlier in this visit is drawn at once and refreshed
@@ -1077,7 +1139,7 @@ export function useGameLibrary() {
   }
 
   function openGame(game: Game) {
-    router.push(`/games/${game.id}`);
+    router.push(`/games/${searchContext(game)?.game.id ?? game.id}`);
   }
 
   const gamesMatchingFilters = computed(() => {
@@ -1528,6 +1590,10 @@ export function useGameLibrary() {
     games,
     libraryEntries,
     ownedCopyCount,
+    versionsOf,
+    nestedUnder,
+    searchContext,
+    layout,
     possibleDuplicateIds,
     loading,
     error,

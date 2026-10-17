@@ -13,6 +13,8 @@ identity model, so the library, the game page and the identity dialog agree:
   relationships, decisions (including rejections) and metric counters.
 """
 
+# pylint: disable=too-many-locals
+
 from __future__ import annotations
 
 from typing import Any

@@ -238,3 +238,25 @@ async def test_http_routes_and_isolation(users):  # noqa: F811
             assert (await client.get("/api/game-identity/library")).json()["groups"] == []
     finally:
         app.dependency_overrides.pop(get_current_user, None)
+
+
+async def test_first_umbrella_wide_achievement_places_the_merged_group(users):  # noqa: F811
+    user = await users()
+    java, bedrock, _ = await minecraft(user)
+    first = await run(
+        manual.create_achievement, user, bedrock, {"title": "Beat the dragon"}, umbrella=True
+    )
+    again = await run(
+        manual.create_achievement, user, java, {"title": "Build a beacon"}, umbrella=True
+    )
+    assert first.umbrella_id == again.umbrella_id is not None
+    async with SessionLocal() as db:
+        from sqlalchemy import select
+
+        from src.database.models.game_identity import GameIdentity
+
+        rows = (await db.scalars(select(GameIdentity).where(GameIdentity.user_id == user))).all()
+    assert {r.game_id for r in rows} == {java, bedrock}
+    assert [r.game_id for r in rows if r.is_primary] == [java]
+    body = await run(overview.game_overview, user, bedrock)
+    assert body["aggregate"]["achievements"]["total"] == 2
