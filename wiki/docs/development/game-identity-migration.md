@@ -145,6 +145,18 @@ pg_dump --format=custom --file=utapp-before-identity-backfill.dump "$DATABASE_UR
 | Run `incomplete` | New games appeared during the run | Run again |
 | Run `failed` with `decreased:...` | An invariant broke | Stop, keep the dump, report it. Restore the dump if you cannot proceed |
 
+### How long it takes
+
+Stages reconcile counters and place umbrellas for sets of games, not one game at a time
+(final acceptance, [#103](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/103)).
+A games-only library of 5,000 games needed 87,161 SQL statements before that change and about a
+thousand after, with identical results; `tests/test_game_identity_scale.py` pins that the number
+of statements does not grow with the number of games. The remaining time is Python work that is
+linear in the library, measured in the
+[acceptance report](game-identity-acceptance.md#6-performance), which also gives wall-clock
+figures for 5,000 and 20,000 games. A repeat run with nothing left to do still visits every
+game, so expect it to take a good fraction of the first run.
+
 ## 6. Rollback and forward-recovery limits
 
 Stated plainly:
