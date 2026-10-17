@@ -64,8 +64,12 @@ def upgrade() -> None:
         "notification_receipts", sa.Column("story_phase", sa.String(length=64), nullable=True)
     )
     h.add_column_if_missing("notifications", sa.Column("story_id", sa.UUID(), nullable=True))
-    h.add_column_if_missing("notifications", sa.Column("story_revision", sa.Integer(), nullable=True))
-    h.add_column_if_missing("notifications", sa.Column("previous_notification_id", sa.UUID(), nullable=True))
+    h.add_column_if_missing(
+        "notifications", sa.Column("story_revision", sa.Integer(), nullable=True)
+    )
+    h.add_column_if_missing(
+        "notifications", sa.Column("previous_notification_id", sa.UUID(), nullable=True)
+    )
     if not h.has_constraint("notifications", "fk_notifications_story"):
         op.create_foreign_key(
             "fk_notifications_story",
