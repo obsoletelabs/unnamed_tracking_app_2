@@ -12,12 +12,13 @@ from src.database.models.media_item import MediaItem
 from src.database.models.user import User
 from src.database.session import SessionLocal
 from src.features.trash import sweep
+from src.helpers import save_game_asset
 from src.main import app  # noqa: F401 — register the complete application model graph
 
 
 @pytest.mark.asyncio
 async def test_trash_sweep_purges_expired_data_and_keeps_recoverable_files(monkeypatch, tmp_path):
-    monkeypatch.setattr(sweep, "_DATA_ROOT", tmp_path)
+    monkeypatch.setattr(save_game_asset, "DATA_ROOT", tmp_path)
     user_id = uuid4()
     game_ids = {state: uuid4() for state in ("active", "recent", "expired")}
     cutoff = int(time.time()) - sweep.RETENTION_SECONDS
@@ -64,7 +65,7 @@ async def test_trash_sweep_purges_expired_data_and_keeps_recoverable_files(monke
                 )
             await db.commit()
         for kind, extension in (("screenshot", "png"), ("doc", "pdf")):
-            folder = tmp_path / "active" / "_trash" / kind
+            folder = tmp_path / str(user_id) / "games" / "active" / "_trash" / kind
             folder.mkdir(parents=True)
             for state in deleted_at:
                 (folder / f"{state}.{extension}").write_bytes(b"recoverable data")
@@ -81,7 +82,7 @@ async def test_trash_sweep_purges_expired_data_and_keeps_recoverable_files(monke
         )
         assert not game_trash.exists()
         for kind, extension in (("screenshot", "png"), ("doc", "pdf")):
-            folder = tmp_path / "active" / "_trash" / kind
+            folder = tmp_path / str(user_id) / "games" / "active" / "_trash" / kind
             assert not (folder / f"expired.{extension}").exists()
             assert (folder / f"active.{extension}").is_file()
             assert (folder / f"recent.{extension}").is_file()

@@ -20,6 +20,16 @@ const kinds: Record<string, Presentation> = {
     tone: "violet",
     group: "releases",
   },
+  franchise_season: {
+    label: "New season listed",
+    tone: "blue",
+    group: "seasons",
+  },
+  franchise_extra: {
+    label: "Movie, OVA or special listed",
+    tone: "violet",
+    group: "releases",
+  },
   game_released: { label: "Game released", tone: "green", group: "releases" },
   game_sale: { label: "Game on sale", tone: "amber", group: "releases" },
   game_price_hit: {
@@ -71,11 +81,15 @@ export function groupNotifications(items: MediaNotification[]): {
 }
 
 export function notificationDestination(
-  n: Pick<MediaNotification, "mediaType" | "mediaId" | "link">,
+  n: Pick<MediaNotification, "mediaType" | "mediaId" | "link"> &
+    Partial<Pick<MediaNotification, "kind">>,
 ): string | null {
   // Host-issued in-app links (plugin updates). Only same-origin paths are followed.
   if (n.link && n.link.startsWith("/") && !n.link.startsWith("//"))
     return n.link;
+  if (n.kind === "plugin_update") {
+    return "/settings?area=administration&section=plugins";
+  }
   if (!n.mediaId) return null;
   const roots: Record<string, string> = {
     game: "/games",

@@ -72,23 +72,13 @@ Imported entries are created with a season record containing the AniList episode
 
 ## Scheduling behavior
 
-Automatic imports use the application's existing background scheduler rather than a separate worker.
+The schedule is the personal task **AniList import** in **Settings → Account → Background tasks**, driven by the application's existing background scheduler rather than a separate worker. Turn it on there, choose how often it runs (1 hour to 30 days), run it now and see the last result. The username and the update-existing choice stay in the AniList Import settings.
 
-The scheduler wakes approximately once per minute and checks enabled AniList preferences for users whose configured interval has elapsed.
+The scheduler wakes approximately once per minute and starts every enabled task whose interval has elapsed since its last run, oldest run first. At most **4 imports run at once** so that a large multi-user deployment cannot monopolize the application scheduler; tasks that are not due yet never take a slot from tasks that are. Disabled tasks, inactive accounts and accounts without an AniList username are never imported.
 
-The scheduler processes at most **4 users per tick** so that a large multi-user deployment cannot monopolize the application scheduler.
+Each user has an independent task: enabled state, interval, last run and last result belong to that account only, and a user's schedule does not change another user's schedule.
 
-Each user has an independent:
-
-- enabled/disabled setting;
-- AniList username;
-- import interval;
-- update-existing preference;
-- last-run timestamp.
-
-A user's schedule does not change another user's schedule.
-
-The scheduler records the last-run time after an import attempt has completed. If the AniList username is empty, that user's scheduled import is skipped.
+Every run is recorded, whether it succeeds or fails. A failed import shows a short, safe reason as the task's last result and is tried again when the interval next elapses, not every minute. A later successful import replaces the reason with its counts.
 
 ## Defaults
 
@@ -96,14 +86,13 @@ New users receive these AniList import defaults:
 
 | Setting | Default |
 | --- | --- |
-| Automatic import | Disabled |
+| AniList import task | Off |
 | AniList username | Empty |
-| Import frequency | Daily (24 hours) |
+| Task interval | Daily (24 hours) |
 | Update existing titles | Disabled |
-| Last run | None |
 
 ## Manual versus automatic import
 
 The scheduled path uses the reusable AniList import service rather than maintaining a separate import implementation. The scheduler is responsible for deciding when an enabled user's import is due.
 
-For troubleshooting an import, first check the AniList username, confirm that the list is public, and verify that automatic import is enabled if you expect it to run on a schedule.
+For troubleshooting an import, first check the AniList username, confirm that the list is public, and verify that the AniList import task is on if you expect it to run on a schedule. A failed run shows its reason as the task's last result in Background tasks; a manual import from the anime library does not change the schedule.

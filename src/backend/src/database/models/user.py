@@ -47,6 +47,10 @@ class User(Base):
     steam_refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)
     steam_token_expires_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     steam_login_state: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # SteamID64 proven through Steam's OpenID redirect sign-in; it grants no library access.
+    steam_verified_id: Mapped[str | None] = mapped_column(String(17), nullable=True)
+    # One-time OpenID state (hashed) for a redirect still in flight.
+    steam_openid_state: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Retained on disconnect so another account cannot overwrite imported progress.
     steam_library_owner_id: Mapped[str | None] = mapped_column(String(17), nullable=True)
     retroachievements_username: Mapped[str | None] = mapped_column(String(64), nullable=True)

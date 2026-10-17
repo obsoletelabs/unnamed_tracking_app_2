@@ -185,6 +185,14 @@ Until then, PRs remain available for review with current validation and screensh
   passed. Live Steam/TVmaze checks and Modern/Classic desktop screenshots passed;
   fresh phone visual verification remains unavailable because the integrated
   browser ignored its viewport override. Full hosted checks/merge remain pending.
+- **N / 47–50:** issue #145 on `claude/issue-145-fair-scheduled-anime-franchise-checks`.
+  Due AniList accounts are selected before the batch limit and every scheduled attempt
+  is recorded; failed airing/plugin-update runs are recorded on their cadence. The
+  bounded, resumable `anime_franchise_check` job and the opt-in season and
+  movie/OVA/special types are documented in the task and notification guides.
+  Row 70 remains with #153.
+- **K–O:** approved; not implemented yet, except where noted above. The package
+  details below describe intended work, not completed behavior.
 - **#140 compact tag filters:** the Games filter panel replaces per-tag include/exclude
   chip walls with one searchable, keyboard-operable picker (counts, include/exclude
   modes, merged-spelling hints) plus deterministic tag normalization in
@@ -198,8 +206,19 @@ Until then, PRs remain available for review with current validation and screensh
   reselection works and object URLs are released. Artwork failures keep the
   saved game and retry on it without another create. Playtime beyond the stored
   INTEGER range is now a validation error rather than a database failure.
+- **K / #144, #149 and L–O:** see the status board below for live PR state; only
+  merged rows are complete.
 - **K media editors / 26–27:** issue #144, in review in [PR #181](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/181), stacked on the merged #143 editor. Movie, TV and anime editors share `MediaFormShell` on `EditorShell`: Basics, Details, Tracking, Artwork and Links tabs, pinned actions, and staged metadata lookup above every tab. Rewatches, dates, source, subratings, tags, countries, languages, age rating, features, anime format and validated provider IDs use each type's existing create/update request. Seasons, progress, title protection and immutable identity remain unchanged.
-- **Remaining K (#149) and L–O:** approved; not implemented yet. The package details below describe intended work, not completed behavior.
+- **K quick editors / 20–21, 37–38:** issue #149. The game
+  library's Edit opens `GameQuickEditModal` (status, platform, rating, cover) on
+  `EditorShell`; it PATCHes only those fields and shares artwork transfer and
+  retry with the full editor (`useGameArtworkTransfer`). **Edit more** passes a
+  `GameEditDraft` (values plus the staged cover file or link) to `GameFormModal`.
+  The artwork picker keeps the Current / Local file / Link / Search labels. The
+  media quick edit gains start/end dates and uses `resolveStatus`, so an
+  unchanged visible bucket keeps a stored Favorite or Rewatch status. Detail
+  pages list priority and formatted dates through `mediaTrackingFacts`. No
+  endpoint, schema or migration changes.
 - **M / 45–46:** issue [#146](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/146)
   implements per-kind Empty trash (explicit `confirm: true`, confirmed deletion-time
   bound, 200-title batches, per-title savepoints and deleted/failed/remaining counts)
@@ -207,15 +226,34 @@ Until then, PRs remain available for review with current validation and screensh
   trash sweep with a bounded budget and an in-transaction recheck. Purging stays in
   `features/trash/media_titles.py`, separate from the #151 game-file sweep paths.
   No migration. Modern/Classic screenshots are in the media library guide.
+  Merged as #168; row 53 was delivered separately by merged #166.
   Review, hosted checks and merge remain pending; row 53 stays with #152.
-- **K–O:** approved; not implemented yet. The package details below describe
+- **L / 43–44:** issue #148. Game artwork, normalized `?w=` variants and generated
+  covers carry content-derived `ETag`s with `304` handling; unversioned URLs have a
+  finite 60-second cache, `?v=<revision>` URLs are immutable, and saving artwork
+  invalidates every cached variant. Semantics are in the
+  [architecture guide](architecture.md).
+- **O / 51–52 (activity heatmap and day detail):** issue
+  [#147](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/147), stacked on the
+  game-statistics predicate from #152. A bounded owned day endpoint, month labels, keyboard
+  and pointer access and one shared Modern/Classic dialog are implemented; see
+  [Statistics activity](../user-guide/statistics.md) and the architecture notes. Settings
+  search (68) and selective copy (71) in package O are separate.
+- **N and the rest of O:** approved; not implemented yet. The package details below describe
   intended work, not completed behavior.
+- **final review / 71:** issue #154. Selective sentence-case, "Could not ..." and
+  destructive-wording pass over the editors, quick editors, calendar and
+  notification settings, anime franchise settings, trash and profile screens, with
+  a screen-by-screen [copy review](rosefall-copy-review.md), Modern/Classic before
+  and after screenshots and `copyConsistency.test.ts`. No behaviour, API or
+  migration change.
 
 ### Issue-by-issue execution order
 
 The owner requested one issue at a time, most complex first, on 15 October 2026.
 [Tracker #141](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/141)
 contains the ordered queue, dependencies and existing related follow-ups #125,
+#132 and #138–140. #142 is merged in #155 and #143 in #171; see the status board below.
 #132 and #138–140. #142 is merged in #155; #143 is merged in #171, and #144 is in review in [PR #181](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/181).
 
 All 29 untouched approved matrix rows are assigned exactly once:
@@ -238,6 +276,72 @@ All 29 untouched approved matrix rows are assigned exactly once:
 #151 separately tracks the known legacy game-file trash sweep path/locking
 follow-up from #135. Existing issues are reused rather than duplicated. The
 separate notification and game-identity overhaul epics remain outside this queue.
+
+### Status board for the #141 queue
+
+Verified against GitHub on 17 October 2026 (about 04:00 UTC). A PR is "merged" only
+when GitHub reports it merged; open and draft PRs are not done, whatever their own
+checklists say. Local results quoted below are the authors' own PR-body claims; the
+two `tests/test_plugin_upload.py` failures noted there are sandbox network failures
+on clean main, and hosted CI decides. Re-check the live PR before acting on any row.
+
+**Verified prerequisites (merged):** #137 (squash `3b597a02403b05a46dfbe1e8e1aff7ae8c58c77f`, PR [#137](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/137)) and
+#142 (PR [#155](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/155), squash `e82e988dc873c6d9f2d93628a75f621b403c1f5d`). Companion HLTB
+estimates PR (plugins repo #47) and host [#136](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/136) are also merged.
+
+| Order | Issue | PR | State | Base / stack | Tests | Screenshots | Docs | Companion | Remains |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2 | #143 | [#171](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/171) | Merged | main | Frontend suites reported | Modern/Classic | Editor and Classic guides | None | Nothing |
+| 3 | #144 | [#181](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/181) | Open | main (now unblocked by #171) | 665 frontend pass; no backend change | Modern/Classic, 390px | Yes | None | Review and hosted checks; #149 stacks on it |
+| 4 | #145 | [#175](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/175) | Open | main | Backend 3118 pass (2 sandbox network failures), frontend 726, strict docs | Yes | Task, AniList and notification docs | None | Review and hosted checks; #153 stacks on it |
+| 5 | #140 | [#177](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/177) | Merged | main | Reported in PR | Reported in PR | Yes | None | Nothing |
+| 6 | #146 | [#168](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/168) | Merged | main | Reported in PR | Modern/Classic | Media library guide | None | Nothing |
+| 7 | #132 | [#172](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/172) | Merged | main | Reported in PR | Reported in PR | Yes | None | Nothing |
+| 8 | #147 | [#193](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/193) | Open | Base is the merged #152 branch; retarget to main | Backend 2790 pass, frontend 633; build and strict docs not run | Yes | Yes | None | Retarget/rebase on main, rerun build and strict docs, hosted checks |
+| 9 | #148 | [#197](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/197) | Open | main | Backend 3104 pass, frontend 727, build; live two-client ETag check | Not applicable (no visible UI) | Yes | None | Review and hosted checks |
+| 10 | #125 | [#201](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/201) | Open | main | Backend 3140 pass, frontend 728; migration, single head | Yes | Yes | None | Review and hosted checks; its migration head must follow whatever else merges first |
+| 11 | #149 | [#200](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/200) | Open | Stacked on #144 branch | Frontend 676 pass, lint, strict docs; live checks | Modern/Classic, 390px | Yes | None | #144 must merge first, then retarget to main |
+| 12 | #150 | [#160](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/160) | Merged | main | Reported in PR | Reported in PR | Yes | None | Nothing |
+| 13 | #151 | [#174](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/174) | Open | main | 23 new tests (fail on main, pass here); backend 2771 pass | None | Yes | None | Review and hosted checks; coordinated with merged #146 |
+| 14 | #139 | [#182](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/182) | Merged | main | Reported in PR | Reported in PR | Yes | None | Nothing |
+| 15 | #152 | [#166](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/166) | Merged | main | Reported in PR | Not applicable | Yes | None | Nothing |
+| 16 | #138 | [#191](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/191) | Draft | main | 228 focused backend pass; full backend, build and whole-tree lint not run; one load-related timeout in a frontend test | Yes | Yes | None | Full backend suite, build, lint, then mark ready |
+| 17 | #153 | [#198](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/198) | Open | Stacked on #145 branch | 731 frontend pass, lint, build, strict docs; backend untouched | Not in PR body | Yes | None | #145 must merge first, then retarget to main |
+| 18 | #154 | PR for `claude/issue-154-selective-wording-and-migration-consistency-review` | Open (includes #181, #200, #175, #198 and #204 until they merge) | Stacked on the #200 branch | Frontend focused and full suites, lint, typecheck, build, strict docs, `alembic heads` | Modern/Classic before and after | [Copy review](rosefall-copy-review.md), [Classic guide](classic-ui.md) | None | Hosted checks; retarget to main after its bases merge |
+
+Only #143, #140, #146, #132, #150, #139 and #152 are merged. #144, #145, #147, #148, #125,
+#149, #151, #153 are open and ready for review; #138 is a draft; #154 is open as the final review PR.
+Matrix rows are delivered only by merged PRs: 6, 7, 14, 18, 19 (#143), 45-46 (#146),
+53 (#152) and 68 (#150). Rows 26-27 (#144), 43-44 (#148), 47-50 (#145), 51-52 (#147),
+20-21 and 37-38 (#149), 70 (#153) and 71 (#154) are not yet delivered.
+
+**Recommended merge order and stacking.** Independent PRs to main in any order, each
+after its hosted checks: #145, #148, #151, #125, #144, #138 (once ready). Stacks: #144 then
+#149; #145 then #153 (retarget each to main after its base merges, merging main forward
+rather than force-pushing); #147 retargeted to main now that #152 is merged. #154 is
+last, after #144, #145, #149, #150, #153 so its wording review covers the final
+workflows. Migrations: #125 and #145 each carry migrations and must keep a single Alembic head;
+rebase the later migration on the earlier one's merged head. Unrelated queued PRs
+(notification and identity projects, #188) are outside this queue; their contracts must
+be respected if they land first.
+
+**Per-issue verification** (from `src/backend` with the environment sourced for backend,
+`src/frontend` for frontend; `mkdocs build --strict --config-file wiki/mkdocs.yml` for docs):
+
+| Issue | Commands |
+| --- | --- |
+| #144, #149, #153 | `npm run lint`, `npm run format`, `npm run typecheck`, `npm run test`, `npm run build`; strict docs build |
+| #145 | `pytest -q -p no:cacheprovider`, `ruff check .`, `mypy --config-file pyproject.toml src`, `alembic upgrade head`, plus the frontend set above |
+| #147 | `pytest tests/test_activity_days.py tests/test_media_stats_sections.py tests/test_game_stats_trash.py`, full backend, `npm run test`, `npm run build`, strict docs |
+| #148 | Backend suite, `npm run test`, `npm run build`; two-client ETag/304 check |
+| #125 | Backend suite, `alembic heads` (single), `alembic upgrade head` on a fresh DB, frontend set |
+| #151 | `pytest tests/test_trash_sweep_storage.py tests/test_trash_sweep.py`, full backend |
+| #138 | `pytest tests/test_username_validation.py tests/test_account_security.py`, full backend, frontend set |
+| #154 | Strict docs build, grep of changed copy, `alembic heads`, full suites of the affected workflows |
+
+**Definition of done for #141.** The umbrella closes only when every child above is
+merged and #154's final consistency review has landed. That is not yet true, so the
+status PR for this board does not close #141.
 
 ## Concrete packages
 

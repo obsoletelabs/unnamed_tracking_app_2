@@ -23,17 +23,38 @@ watch(
   { flush: "sync" },
 );
 
-export async function refreshMediaNotifications() {
-  const request = ++generation;
+let pendingRefresh: {
+  account: string | undefined;
+  done: Promise<void>;
+} | null = null;
+
+// Mounted components (the sidebar, the bell) ask for the same list in the
+// same tick. `shared` lets them join one request instead of each sending its
+// own; callers reacting to a change (opening the bell, a dev action) still
+// start a fresh request so they never read an older snapshot.
+export function refreshMediaNotifications(
+  options: { shared?: boolean } = {},
+): Promise<void> {
   const account = currentUser.value?.id;
-  try {
-    const res = await fetchMediaNotifications();
-    if (request !== generation || currentUser.value?.id !== account) return;
-    mediaNotifications.value = res.items;
-    mediaUnread.value = res.unread;
-  } catch {
-    // the badge simply doesn't change this tick
-  }
+  if (options.shared && pendingRefresh && pendingRefresh.account === account)
+    return pendingRefresh.done;
+  const request = ++generation;
+  const done = (async () => {
+    try {
+      const res = await fetchMediaNotifications();
+      if (request !== generation || currentUser.value?.id !== account) return;
+      mediaNotifications.value = res.items;
+      mediaUnread.value = res.unread;
+    } catch {
+      // the badge simply doesn't change this tick
+    }
+  })();
+  const entry = { account, done };
+  pendingRefresh = entry;
+  void done.finally(() => {
+    if (pendingRefresh === entry) pendingRefresh = null;
+  });
+  return done;
 }
 
 export async function readMediaNotification(id: string) {

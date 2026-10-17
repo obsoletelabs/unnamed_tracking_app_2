@@ -2,7 +2,7 @@
 // Calendar preferences. These are stored on the server
 // (not in this browser), so they follow you between devices, and each
 // change saves as soon as it is made.
-import { ref, onMounted } from "vue";
+import { computed, ref, onMounted } from "vue";
 import SegmentedControl from "./SegmentedControl.vue";
 import ToggleButton from "./ToggleButton.vue";
 import {
@@ -11,6 +11,10 @@ import {
   queuePreferences,
 } from "../../services/preferences";
 import type { Preferences } from "../../services/preferences";
+import {
+  calendarGameUnavailable,
+  unavailableText,
+} from "../../services/preferenceDependencies";
 import { preferences as sharedPreferences } from "../../state/preferences";
 
 const prefs = ref<Preferences>({ ...DEFAULT_PREFERENCES });
@@ -22,7 +26,8 @@ onMounted(async () => {
   try {
     prefs.value = await fetchPreferences();
   } catch (e) {
-    error.value = e instanceof Error ? e.message : "Failed to load settings.";
+    error.value =
+      e instanceof Error ? e.message : "Could not load the settings.";
   } finally {
     loaded.value = true;
   }
@@ -41,7 +46,8 @@ async function change(changes: Partial<Preferences>) {
     savedNote.value = "Saved";
     setTimeout(() => (savedNote.value = ""), 1500);
   } catch (e) {
-    error.value = e instanceof Error ? e.message : "Failed to save.";
+    error.value =
+      e instanceof Error ? e.message : "Could not save the settings.";
     try {
       prefs.value = await fetchPreferences();
     } catch {
@@ -57,6 +63,7 @@ function setMember<T extends string>(list: T[], value: T, on: boolean): T[] {
     ? [...list.filter((v) => v !== value), value]
     : list.filter((v) => v !== value);
 }
+const gameUnavailable = computed(() => calendarGameUnavailable(prefs.value));
 const NOTIFY_STATUS_ROWS: { key: NotifyStatus; label: string; hint: string }[] =
   [
     {
@@ -94,7 +101,8 @@ const weekOptions = [
     <ToggleButton
       :model-value="prefs.calendar_game_releases"
       label="Game releases"
-      :disabled="!loaded"
+      :disabled="!loaded || !!gameUnavailable"
+      :aria-describedby="gameUnavailable ? 'calendar-games-reason' : undefined"
       @update:model-value="change({ calendar_game_releases: $event })"
     >
       <strong>Game releases</strong>: show the release date of every game in
@@ -103,13 +111,22 @@ const weekOptions = [
     <ToggleButton
       :model-value="prefs.calendar_game_history"
       label="Games history"
-      :disabled="!loaded"
+      :disabled="!loaded || !!gameUnavailable"
+      :aria-describedby="gameUnavailable ? 'calendar-games-reason' : undefined"
       @update:model-value="change({ calendar_game_history: $event })"
     >
       <strong>Games history</strong>: show the day you finished a game and the
       days you unlocked achievements
     </ToggleButton>
 
+    <p
+      v-if="gameUnavailable"
+      id="calendar-games-reason"
+      class="restriction"
+      role="status"
+    >
+      {{ unavailableText(gameUnavailable) }}
+    </p>
     <ToggleButton
       :model-value="prefs.calendar_show_estimated"
       label="Estimated episodes"
@@ -122,11 +139,11 @@ const weekOptions = [
     </ToggleButton>
     <ToggleButton
       :model-value="prefs.calendar_hide_games"
-      label="Hide all Games layers"
+      label="Hide all games layers"
       :disabled="!loaded"
       @update:model-value="change({ calendar_hide_games: $event })"
     >
-      <strong>Hide all Games layers</strong>: keep games off the calendar even
+      <strong>Hide all games layers</strong>: keep games off the calendar even
       when the two options above are on
     </ToggleButton>
 
@@ -214,6 +231,12 @@ const weekOptions = [
   color: var(--ui-good);
   margin-left: 8px;
   font-weight: 700;
+}
+.restriction {
+  margin: -6px 0 12px 44px;
+  color: var(--ui-dim);
+  font-size: 0.78rem;
+  line-height: 1.5;
 }
 .error {
   color: var(--ui-error);
