@@ -51,6 +51,14 @@ async def issue_invitation(db, plugin_id, installation_id, user_id, payload):
     # Serialize issuance/configuration and the pending cap across host workers.
     await db.execute(select(func.pg_advisory_xact_lock(731856417203)))
     flow, admin = await _owned_flow(db, plugin_id, installation_id, user_id)
+    origin = await _issuance_origin(db, admin, email)
+    return await _create_invitation(
+        db, flow, admin, email, origin, recipient_name=invitation.recipient_name
+    )
+
+
+async def _issuance_origin(db, admin, email):
+    """Shared preconditions and limits for issuing or re-issuing a link; returns the app origin."""
     config = await smtp_configuration(db)
     if not config.configured or not config.allows_sensitive:
         raise ValueError("Invitations require configured SMTP with an allowed secure transport")
@@ -85,9 +93,7 @@ async def issue_invitation(db, plugin_id, installation_id, user_id, payload):
     if count is not None and count >= 1000:
         await db.commit()
         raise ValueError("Pending invitation capacity reached; allow cleanup before issuing more")
-    return await _create_invitation(
-        db, flow, admin, email, origin, recipient_name=invitation.recipient_name
-    )
+    return origin
 
 
 async def _create_invitation(db, flow, admin, email, origin, *, recipient_name=""):
@@ -335,4 +341,89 @@ async def expire_invitations(db):
     await db.execute(
         delete(NotificationPendingRecipient).where(NotificationPendingRecipient.id.in_(expired))
     )
+    await db.commit()
+
+
+def _invitation_state(row):
+    if row.used_at:
+        return "accepted"
+    if row.revoked_at:
+        return "revoked"
+    return "expired" if row.expires_at <= int(time.time()) else "pending"
+
+
+async def list_unaccepted_invitations(db):
+    """Host-side administrator view of invitations that have not become accounts yet."""
+    rows = list(
+        await db.scalars(
+            select(UserInvitation)
+            .where(UserInvitation.used_at.is_(None))
+            .order_by(UserInvitation.created_at.desc(), UserInvitation.id)
+            .limit(100)
+        )
+    )
+    result = []
+    for row in rows:
+        delivery = await db.scalar(
+            select(NotificationDelivery.status)
+            .where(NotificationDelivery.notification_id == row.notification_id)
+            .limit(1)
+        )
+        result.append(
+            {
+                "id": str(row.id),
+                "email": decrypt_secret(row.encrypted_email),
+                "status": _invitation_state(row),
+                "delivery_status": delivery,
+                "created_at": row.created_at,
+                "expires_at": row.expires_at,
+            }
+        )
+    return result
+
+
+async def resend_invitation(db, admin, invitation_id):
+    """Replace an unaccepted invitation with a fresh single-use link to the same address.
+
+    The original destination is reused and every normal issuance rule applies
+    (granted invite flow, SMTP policy, rate limits, duplicate-account check); an
+    accepted invitation can never be resent.
+    """
+    await db.execute(select(func.pg_advisory_xact_lock(731856417203)))
+    row = await db.scalar(
+        select(UserInvitation).where(UserInvitation.id == invitation_id).with_for_update()
+    )
+    if row is None:
+        raise LookupError("Invitation not found")
+    if row.used_at is not None:
+        raise ValueError("This invitation was already accepted; the account is active")
+    flow = await active_auth_flow(db, "user_invite")
+    if flow is None:
+        raise ValueError("No active invitation plugin is available to send invitations")
+    email = decrypt_secret(row.encrypted_email)
+    endpoint = await db.scalar(
+        select(NotificationDestination).where(
+            NotificationDestination.pending_recipient_id == row.pending_recipient_id
+        )
+    )
+    recipient_name = ""
+    if endpoint is not None and endpoint.encrypted_configuration:
+        recipient_name = json.loads(decrypt_secret(endpoint.encrypted_configuration)).get(
+            "recipient_name", ""
+        )
+    origin = await _issuance_origin(db, admin, email)
+    return await _create_invitation(db, flow, admin, email, origin, recipient_name=recipient_name)
+
+
+async def withdraw_invitation(db, invitation_id):
+    """Administrator withdrawal of a pending invitation, independent of the issuing plugin."""
+    await db.execute(select(func.pg_advisory_xact_lock(731856417203)))
+    row = await db.scalar(
+        select(UserInvitation).where(UserInvitation.id == invitation_id).with_for_update()
+    )
+    if row is None:
+        raise LookupError("Invitation not found")
+    if row.used_at is not None:
+        raise ValueError("This invitation was already accepted; the account is active")
+    await _retire(db, row, revoked=True)
     await db.commit()

@@ -46,6 +46,20 @@ async def test_environment_defaults_and_partial_update_reset(boundary):
 
 
 @pytest.mark.asyncio
+async def test_documents_have_their_own_cap_independent_of_the_image_cap(boundary):
+    app, row, _, _ = boundary
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        defaults = (await client.get("/api/settings/upload-limits")).json()
+        assert defaults["max_doc_size_mb"] == settings.MAX_DOC_SIZE_MB
+        assert settings.MAX_DOC_SIZE_MB > settings.MAX_UPLOAD_SIZE_MB
+        response = await client.put("/api/settings/upload-limit", json={"max_doc_size_mb": 64})
+        assert response.json() == {**defaults, "max_doc_size_mb": 64}
+        response = await client.put("/api/settings/upload-limit", json={"max_upload_size_mb": 2})
+        assert response.json() == {**defaults, "max_upload_size_mb": 2, "max_doc_size_mb": 64}
+    assert row.max_doc_size_mb == 64 and row.max_upload_size_mb == 2
+
+
+@pytest.mark.asyncio
 async def test_member_can_read_but_cannot_change_any_limit(boundary):
     app, _, db, user = boundary
     user.is_admin = False

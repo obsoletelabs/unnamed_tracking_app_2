@@ -10,11 +10,16 @@ The bridge supports basic context, ordinary settings, write-only secrets, and de
 
 A declared action with `external_navigation: true` may return `redirect_url`.
 The host validates the successful result as a credential-free HTTP(S) URL and
-navigates its own browser tab. This works for sandbox bridge actions and regular
-declarative plugin pages, using the same validator as contextual actions. Failed
-or undeclared actions cannot redirect. The iframe retains `allow-scripts` only;
-it does not gain popup, same-origin or top-navigation permission. Users can return
-with browser Back after external sign-in.
+opens it in a new browser tab, so the app and any open connection popup stay in
+place; for example, a person can copy a sign-in code from that tab and paste it
+into the still-open popup. The host reserves the tab (without an opener) when the
+action starts, while the click's user activation is valid, and closes it if the
+action fails or returns no destination. If the browser blocks the tab, the host
+falls back to navigating its own tab and users can return with browser Back.
+This works for sandbox bridge actions, regular declarative plugin pages and
+contextual actions, using the same validator. Failed or undeclared actions cannot
+redirect. The iframe retains `allow-scripts` only; it does not gain popup,
+same-origin or top-navigation permission.
 
 Sandboxed and native frontends are distinct declarations and a plugin may declare both. `frontend.entry` remains the ordinary iframe model and does not require native execution. `native_frontend` represents trusted Vue/JavaScript/CSS integration and requires the explicit critical-risk `frontend.native` capability. Native loading is not enabled by merely declaring the bundle.
 

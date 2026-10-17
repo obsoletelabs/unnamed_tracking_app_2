@@ -89,16 +89,46 @@
   border-radius: var(--ui-radius-control);
 }
 
-:root[data-ui-style="classic"] :is(.seg-tab, .status-tab, .tab-button) {
+:root[data-ui-style="classic"]
+  :is(.seg-tab, .status-tab, .tab-button, .editor-tab) {
   font-weight: 600;
 }
 
-/* Editors share the same controls and metadata session in both presentations.
-   Accent cues identify the active tab, search action and selected result. */
-:root[data-ui-style="classic"] .game-editor .modal-tab.active {
-  color: var(--ui-on-accent);
-  background: var(--ui-accent);
-  border-bottom-color: var(--ui-accent);
+/* Editors share the same markup, controls and metadata session in both
+   presentations. Rosefall's editor fills its fields with the secondary
+   surface and outlines its secondary actions; accent cues identify the
+   active tab, search action and selected result. */
+:root[data-ui-style="classic"]
+  .editor-shell
+  :is(
+    .field input,
+    .field select,
+    .field textarea,
+    .editor-input,
+    .search-row input
+  ) {
+  background: var(--ui-surface-2);
+}
+
+:root[data-ui-style="classic"]
+  .editor-shell
+  .modal-footer
+  :is(.secondary-button, .danger-button) {
+  border: 1px solid var(--ui-border);
+  background: transparent;
+  color: var(--ui-dim);
+}
+
+:root[data-ui-style="classic"]
+  .editor-shell
+  .modal-footer
+  .secondary-button:is(:hover, [aria-expanded="true"]) {
+  border-color: var(--ui-accent-line);
+  color: var(--ui-text);
+}
+
+:root[data-ui-style="classic"] .editor-shell .modal-footer .danger-button {
+  color: var(--ui-error);
 }
 
 :root[data-ui-style="classic"] .game-editor .metadata-search {

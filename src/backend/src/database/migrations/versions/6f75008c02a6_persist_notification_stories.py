@@ -1,7 +1,7 @@
 """Persist notification stories, revisions and item links.
 
 Revision ID: 6f75008c02a6
-Revises: e4a0157eef4b
+Revises: a7d3c91e5b20
 Create Date: 2026-10-16 22:15:32.215123
 """
 
@@ -13,7 +13,7 @@ from alembic import op
 from src.database import migration_helpers as h
 
 revision: str = "6f75008c02a6"
-down_revision: Union[str, None] = "e4a0157eef4b"
+down_revision: Union[str, None] = "a7d3c91e5b20"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -105,7 +105,7 @@ def downgrade() -> None:
         )
     if h.has_constraint("notifications", "uq_notifications_story_revision"):
         op.drop_constraint("uq_notifications_story_revision", "notifications", type_="unique")
-    h.drop_index_if_exists("ix_notifications_story", table_name="notifications")
+    h.drop_index_if_exists("ix_notifications_story", "notifications")
     if h.has_constraint("notifications", "fk_notifications_previous"):
         op.drop_constraint("fk_notifications_previous", "notifications", type_="foreignkey")
     if h.has_constraint("notifications", "fk_notifications_story"):

@@ -61,6 +61,7 @@ async def get_max_upload_size_mb(db: AsyncSession) -> int:
 
 UPLOAD_LIMIT_FIELDS = (
     "max_upload_size_mb",
+    "max_doc_size_mb",
     "max_save_archive_size_mb",
     "max_clip_size_mb",
     "max_world_save_size_mb",
