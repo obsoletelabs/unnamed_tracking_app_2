@@ -70,6 +70,10 @@ Timing (quiet hours, digest times, per-category and per-destination modes, mute 
 
 The core records requested and effective delivery urgency. Built-in SMTP supports Critical through high-priority email headers, subject to mail-client behavior. The inbox and legacy plugin adapters deliver Normal while retaining the requested choice. Urgency cannot weaken sensitivity, destination trust, administrative policy or plugin permissions. The UI distinguishes concrete personal email destinations from shared legacy webhooks.
 
+## Built-in SMTP rich rendering
+
+The built-in SMTP provider has a canonical capability profile (HTML email, links, live story link, digests of up to 20 items, no edits). See "SMTP rich email" in `notification-contract.md`.
+
 ## Built-in SMTP enrollment and proof
 
 `features/smtp_configuration.py` resolves the central registry's six `SMTP_*` fields with ENV precedence over `AppIntegrationSettings`. Persisted authentication passwords and endpoint addresses use existing Fernet encryption. The host-only adapter selects the concrete destination revision; it never falls back to a user's account email or arbitrary first address. Owner routing metadata exposes a label and masked email, never endpoint keys, full addresses or credentials.
