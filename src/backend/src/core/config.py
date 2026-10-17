@@ -51,6 +51,8 @@ class Settings(BaseSettings):
     STARTUP_MODE: str = ""
     NOTIFICATION_BLOCKED_PROVIDERS: str = ""
     NOTIFICATION_BLOCKED_TYPES: str = ""
+    NOTIFICATION_TIMING_ENABLED: bool = True
+    NOTIFICATION_URGENT_BYPASS_ENABLED: bool = True
     NOTIFICATION_MINIMUM_TRUST: int = Field(default=0, ge=0, le=2)
     NOTIFICATION_RETENTION_DEFAULT_DAYS: int = Field(default=30, ge=0, le=3650)
     NOTIFICATION_AUDIT_RETENTION_DAYS: int = Field(default=90, ge=1, le=3650)

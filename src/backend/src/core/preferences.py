@@ -5,6 +5,7 @@ option is a one-line change to DEFAULTS, not a migration."""
 import math
 import re
 from collections.abc import Callable
+from copy import deepcopy
 from functools import partial
 from typing import Any
 from uuid import UUID
@@ -13,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.app_integrations import get_default_ui_style
+from src.core.notification_timing_schema import DEFAULT_TIMING, normalize_timing
 from src.core.page_settings import DEFAULT_PAGE_SETTINGS, validate_page_settings
 from src.core.public_url import normalize_public_url
 from src.database.models.user_preferences import UserPreferences
@@ -50,6 +52,7 @@ DEFAULTS: dict[str, Any] = {
     "notification_types": {},
     "notification_destinations": {},
     "notification_routes": {},
+    "notification_timing": deepcopy(DEFAULT_TIMING),
     "notification_url": "",
     "notify_statuses": ["watching", "plan", "hold"],
     "notify_media_types": ["anime", "tv", "movie"],
@@ -314,6 +317,7 @@ _VALUE_VALIDATORS: dict[str, Callable[[Any], Any]] = {
     "notification_types": _validate_notification_mapping,
     "notification_destinations": _validate_notification_mapping,
     "notification_routes": _validate_notification_routes,
+    "notification_timing": normalize_timing,
     "ui_theme_package": _validate_theme_package,
     "home_widgets": _validate_home_widgets,
     "home_widget_config": _validate_widget_config,

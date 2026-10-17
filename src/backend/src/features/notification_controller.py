@@ -4,7 +4,7 @@ import hashlib
 import json
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
@@ -175,6 +175,8 @@ class NotificationDraft:  # pylint: disable=too-many-instance-attributes
     fingerprint: str | None = None
     source_installation_id: UUID | None = None
     story: StoryReference | None = None
+    # A producer's request only; timing policy (#108) decides whether it bypasses any delay.
+    requested_urgency: Literal["normal", "critical"] = "normal"
 
 
 @dataclass(frozen=True)
@@ -273,6 +275,7 @@ async def _accept(
         purpose=purpose,
         severity=interpretation.severity if interpretation else "warning" if security else "info",
         group_key=event.group_key,
+        requested_urgency=event.requested_urgency,
         expires_at=event.occurred_at + lifetime,
         public_title=event.public_title if event.kind in MEDIA_KINDS else None,
         public_body=event.public_body if event.kind in MEDIA_KINDS else None,
