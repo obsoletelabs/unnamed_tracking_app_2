@@ -455,6 +455,7 @@ async def _apply_automatic_update(
         )
         store.patch(plugin["plugin_id"], available_update=update)
         if not update.get("update_available"):
+            store.patch(plugin["plugin_id"], last_notified_update_state=None)
             return
         outcomes[plugin["plugin_id"]] = {**update, "status": "available"}
         path, _, _ = await acquisition.download_remote_file(update["url"])
