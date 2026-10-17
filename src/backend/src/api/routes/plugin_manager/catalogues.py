@@ -369,6 +369,44 @@ async def notify_plugin_update(
     )
 
 
+def _update_notification_state(update: dict[str, Any]) -> str:
+    """Stable per-plugin state used to suppress unchanged update-check cycles."""
+    return json.dumps(
+        {
+            "status": str(update.get("status") or "available"),
+            "current_version": str(update.get("current_version") or "unknown"),
+            "available_version": str(
+                update.get("available_version") or update.get("new_version") or "unknown"
+            ),
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def plugin_update_batch_changed(updates: list[dict[str, Any]]) -> bool:
+    """Return whether any plugin's notification-worthy update state changed."""
+    records = manager_state().read().get("plugins", {})
+    return any(
+        records.get(str(item.get("plugin_id") or ""), {}).get("last_notified_update_state")
+        != _update_notification_state(item)
+        for item in updates
+        if item.get("plugin_id")
+    )
+
+
+def mark_plugin_update_batch_notified(updates: list[dict[str, Any]]) -> None:
+    """Persist the batch's per-plugin state after its notification transaction commits."""
+    store = manager_state()
+    for item in updates:
+        plugin_id = str(item.get("plugin_id") or "")
+        if plugin_id:
+            store.patch(
+                plugin_id,
+                last_notified_update_state=_update_notification_state(item),
+            )
+
+
 @router.post("/updates/check")
 async def check_plugin_updates(
     admin: User = Depends(get_plugin_manager_admin),
@@ -390,8 +428,12 @@ async def check_plugin_updates(
         manager_state().patch(str(plugin["plugin_id"]), available_update=update)
         if update.get("update_available"):
             notification_batch.append({**update, "status": "available"})
-    await notify_plugin_updates(db, notification_batch)
-    await db.commit()
+    if notification_batch and plugin_update_batch_changed(notification_batch):
+        await notify_plugin_updates(db, notification_batch)
+        await db.commit()
+        mark_plugin_update_batch_notified(notification_batch)
+    else:
+        await db.commit()
     return {
         "updates": updates,
         "available": sum(bool(item.get("update_available")) for item in updates),
