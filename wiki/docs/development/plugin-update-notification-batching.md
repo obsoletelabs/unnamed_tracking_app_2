@@ -10,7 +10,7 @@ Every supported transport should receive one event for the batch and render the 
 
 `/settings?area=administration&section=plugins`
 
-Do not hard-code any deployment domain or link to the app root.
+In-app navigation uses that relative route. Email and external transports use the configured `PUBLIC_APP_URL` plus the route for an absolute link; never hard-code a production domain. Deployments that need clickable external links must set `PUBLIC_APP_URL` to their own public app URL.
 
 ## Required investigation
 
