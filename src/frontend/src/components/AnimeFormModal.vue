@@ -7,13 +7,25 @@ import {
   animeToInput,
 } from "../services/anime";
 import type { AnimeMetadataResult } from "../services/anime";
-import type { Anime, AnimeStatus } from "../types/anime";
+import type { Anime } from "../types/anime";
+import { statusBucketLabel } from "../utils/mediaStatus";
 import {
-  STATUS_BUCKETS,
-  statusBucket,
-  bucketToReal,
-} from "../utils/mediaStatus";
+  ANIME_PROVIDER_KEYS,
+  MEDIA_EDITOR_TABS,
+  blankClassification,
+  blankTracking,
+  classificationFrom,
+  classificationToInput,
+  followProviderId,
+  trackingFrom,
+  trackingToInput,
+  type MediaEditorTab,
+} from "../utils/mediaEditorFields";
 import MediaFormShell from "./MediaFormShell.vue";
+import MediaTrackingFields from "./MediaTrackingFields.vue";
+import MediaClassificationFields from "./MediaClassificationFields.vue";
+import MediaArtworkFields from "./MediaArtworkFields.vue";
+import MediaProviderIds from "./MediaProviderIds.vue";
 import MediaMetadataSearch from "./MediaMetadataSearch.vue";
 import { useMetadataSearch } from "../utils/useMetadataSearch";
 import { splitList } from "../utils/formLists";
@@ -47,12 +59,9 @@ function blankFields() {
     firstAirDate: "",
     episodeRuntimeMinutes: null as number | null,
     studiosInput: "",
-    genresInput: "",
-    tagsInput: "",
-    status: "wishlist" as AnimeStatus,
-    favorite: false,
-    ratingOverall: null as number | null,
-    personalRank: null as number | null,
+    format: "",
+    ...blankTracking(),
+    ...blankClassification(),
     posterUrl: null as string | null,
     backdropUrl: null as string | null,
     anilistScore: null as number | null,
@@ -61,15 +70,21 @@ function blankFields() {
 }
 
 const fields = ref(blankFields());
-const statusBucketModel = computed({
-  get: () => statusBucket(fields.value.status),
-  set: (bucket: string) => {
-    fields.value.status = bucketToReal(bucket) as AnimeStatus;
-  },
-});
+const tab = ref<MediaEditorTab>("Basics");
+const providerIdsProblem = ref<string | null>(null);
 const { titleProtected, titleLockOverride } = useTitleProtection(
   () => props.show,
   () => fields.value.title,
+);
+
+const FORMATS = ["TV", "TV Short", "Movie", "Special", "OVA", "ONA", "Music"];
+const subtitle = computed(() =>
+  [
+    fields.value.firstAirDate.slice(0, 4),
+    statusBucketLabel(fields.value.status),
+  ]
+    .filter(Boolean)
+    .join(" · "),
 );
 
 const saving = ref(false);
@@ -98,12 +113,9 @@ function loadFromShow(show: Anime | null | undefined) {
     firstAirDate: show.firstAirDate ?? "",
     episodeRuntimeMinutes: show.episodeRuntimeMinutes,
     studiosInput: show.studios.join(", "),
-    genresInput: show.genres.join(", "),
-    tagsInput: show.tags.join(", "),
-    status: show.status,
-    favorite: show.favorite,
-    ratingOverall: show.ratingOverall,
-    personalRank: show.personalRank,
+    format: show.format ?? "",
+    ...trackingFrom(show),
+    ...classificationFrom(show),
     posterUrl: show.posterUrl,
     backdropUrl: show.backdropUrl,
     anilistScore: show.anilistScore,
@@ -114,49 +126,51 @@ function loadFromShow(show: Anime | null | undefined) {
 watch(() => props.show, loadFromShow, { immediate: true });
 
 const artwork = useMetadataArtwork(search.candidate, search.previewArtwork);
+const isLocked = (name: string) =>
+  (props.show?.lockedFields ?? []).includes(name);
 const comparison = useMetadataComparison(
   () => fields.value,
   () => ({
     title: { label: "Title", locked: titleProtected.value },
     description: {
       label: "Description",
-      locked: (props.show?.lockedFields ?? []).includes("description"),
+      locked: isLocked("description"),
     },
     posterUrl: {
       label: "Poster",
-      locked: (props.show?.lockedFields ?? []).includes("poster_url"),
+      locked: isLocked("poster_url"),
       image: true,
     },
     backdropUrl: {
       label: "Backdrop",
-      locked: (props.show?.lockedFields ?? []).includes("backdrop_url"),
+      locked: isLocked("backdrop_url"),
       image: true,
     },
     genresInput: {
       label: "Genres",
-      locked: (props.show?.lockedFields ?? []).includes("genres"),
+      locked: isLocked("genres"),
     },
     firstAirDate: {
       label: "First air date",
-      locked: (props.show?.lockedFields ?? []).includes("first_air_date"),
+      locked: isLocked("first_air_date"),
     },
     episodeRuntimeMinutes: {
       label: "Episode runtime",
-      locked: (props.show?.lockedFields ?? []).includes(
-        "episode_runtime_minutes",
-      ),
+      locked: isLocked("episode_runtime_minutes"),
     },
+    countriesInput: { label: "Countries", locked: isLocked("countries") },
+    format: { label: "Format", locked: isLocked("format") },
     studiosInput: {
       label: "Studios",
-      locked: (props.show?.lockedFields ?? []).includes("studios"),
+      locked: isLocked("studios"),
     },
     anilistScore: {
       label: "AniList score",
-      locked: (props.show?.lockedFields ?? []).includes("anilist_score"),
+      locked: isLocked("anilist_score"),
     },
     malScore: {
       label: "MAL score",
-      locked: (props.show?.lockedFields ?? []).includes("mal_score"),
+      locked: isLocked("mal_score"),
     },
     tracking: { label: "Provider identity" },
   }),
@@ -168,6 +182,8 @@ function offerMetadata(result: AnimeMetadataResult) {
   incoming.posterUrl = artwork.urls.value.cover;
   incoming.backdropUrl = artwork.urls.value.banner;
   incoming.genresInput = result.genres.join(", ") ?? undefined;
+  incoming.countriesInput = result.countries.join(", ");
+  incoming.format = result.format ?? undefined;
   incoming.firstAirDate = result.firstAirDate ?? undefined;
   incoming.episodeRuntimeMinutes = result.episodeRuntimeMinutes ?? undefined;
   incoming.studiosInput = result.studios.join(", ") ?? undefined;
@@ -229,7 +245,19 @@ function pickResult(key: string) {
 async function submit() {
   if (search.selected.value) return;
   if (!fields.value.title.trim()) {
+    tab.value = "Basics";
     error.value = "Title is required.";
+    return;
+  }
+  if (providerIdsProblem.value) {
+    tab.value = "Links";
+    error.value = providerIdsProblem.value;
+    return;
+  }
+  const format = fields.value.format.trim();
+  if (format.length > 20) {
+    tab.value = "Details";
+    error.value = "Format: use 20 characters or fewer.";
     return;
   }
   saving.value = true;
@@ -247,21 +275,25 @@ async function submit() {
         { min: 0, integer: true },
       ),
       studios: splitList(fields.value.studiosInput),
-      genres: splitList(fields.value.genresInput),
-      tags: splitList(fields.value.tagsInput),
-      status: fields.value.status,
-      favorite: fields.value.favorite,
-      ratingOverall: numberOrNull(fields.value.ratingOverall, "Your rating", {
-        min: 0,
-        max: 10,
-      }),
-      personalRank: numberOrNull(fields.value.personalRank, "Personal rank"),
+      format: format || null,
+      ...classificationToInput(fields.value),
+      ...trackingToInput(fields.value),
       posterUrl: fields.value.posterUrl,
       backdropUrl: fields.value.backdropUrl,
       anilistScore: numberOrNull(fields.value.anilistScore, "AniList score"),
       malScore: numberOrNull(fields.value.malScore, "MAL score"),
-      externalId: fields.value.tracking.externalId,
-      anilistId: fields.value.tracking.anilistId,
+      // MyAnimeList's and AniList's ids also live in their own columns;
+      // follow an edited identity
+      externalId: followProviderId(
+        fields.value.tracking.externalId,
+        props.show?.providerIds?.mal,
+        fields.value.tracking.providerIds.mal,
+      ),
+      anilistId: followProviderId(
+        fields.value.tracking.anilistId,
+        props.show?.providerIds?.anilist,
+        fields.value.tracking.providerIds.anilist,
+      ),
     };
     const saved = props.show
       ? await updateAnime(props.show.id, {
@@ -295,174 +327,160 @@ async function remove() {
 
 <template>
   <MediaFormShell
+    v-model:tab="tab"
     noun="Anime"
     :editing="!!show"
     :saving="saving"
     :lookup-pending="!!search.selected.value"
     :deleting="deleting"
     :error="error"
+    :tabs="MEDIA_EDITOR_TABS"
+    :heading="fields.title.trim() || (show ? show.title : 'New anime')"
+    :subtitle="subtitle"
+    :cover="fields.posterUrl"
+    @cover="tab = 'Artwork'"
     @closed="emit('closed')"
     @save="submit"
     @delete="remove"
   >
-    <MediaMetadataSearch
-      v-model:query="search.query.value"
-      label="Search AniList / MyAnimeList"
-      noun="anime"
-      :results="searchResults"
-      :searching="search.searching.value"
-      :enriching-media="search.enrichingMedia.value"
-      :message="search.message.value"
-      :warnings="search.warnings.value"
-      @search="search.run"
-      @pick="pickResult"
-    />
-
-    <MetadataComparison
-      v-if="search.selected.value"
-      :changes="comparison.changes.value"
-      :reason="comparison.reason.value"
-      :provider="search.selected.value.provider"
-      :busy="artwork.busy.value || search.enrichingMedia.value"
-      :previews="artwork.previews.value"
-      @toggle="comparison.toggle"
-      @apply="applyLookup"
-      @cancel="cancelLookup"
-    />
-
-    <img
-      v-if="fields.posterUrl"
-      :src="fields.posterUrl"
-      alt=""
-      class="poster-preview"
-    />
-
-    <label class="field">
-      <span>Title</span>
-      <input
-        v-model="fields.title"
-        type="text"
-        class="text-input"
-        placeholder="Fullmetal Alchemist: Brotherhood"
+    <template #lookup>
+      <MediaMetadataSearch
+        v-model:query="search.query.value"
+        label="Search AniList / MyAnimeList"
+        noun="anime"
+        :results="searchResults"
+        :searching="search.searching.value"
+        :enriching-media="search.enrichingMedia.value"
+        :message="search.message.value"
+        :warnings="search.warnings.value"
+        @search="search.run"
+        @pick="pickResult"
       />
-    </label>
 
-    <label v-if="props.show" class="field checkbox-field">
-      <input v-model="titleProtected" type="checkbox" />
-      <span>Protect title from metadata updates</span>
-    </label>
+      <MetadataComparison
+        v-if="search.selected.value"
+        :changes="comparison.changes.value"
+        :reason="comparison.reason.value"
+        :provider="search.selected.value.provider"
+        :busy="artwork.busy.value || search.enrichingMedia.value"
+        :previews="artwork.previews.value"
+        @toggle="comparison.toggle"
+        @apply="applyLookup"
+        @cancel="cancelLookup"
+      />
+    </template>
 
-    <label class="field">
-      <span>Description</span>
-      <textarea
-        v-model="fields.description"
-        class="text-input textarea-input"
-        rows="3"
-      ></textarea>
-    </label>
-
-    <div class="field-row">
+    <template v-if="tab === 'Basics'">
       <label class="field">
-        <span>First air date</span>
-        <input v-model="fields.firstAirDate" type="date" class="text-input" />
-      </label>
-      <label class="field">
-        <span>Episode runtime (minutes)</span>
+        <span>Title</span>
         <input
-          v-model.number="fields.episodeRuntimeMinutes"
-          type="number"
-          min="0"
-          class="text-input"
+          v-model="fields.title"
+          type="text"
+          placeholder="Fullmetal Alchemist: Brotherhood"
         />
       </label>
-    </div>
-
-    <label class="field">
-      <span>Studios (comma-separated)</span>
-      <input v-model="fields.studiosInput" type="text" class="text-input" />
-    </label>
-
-    <label class="field">
-      <span>Genres (comma-separated)</span>
-      <input v-model="fields.genresInput" type="text" class="text-input" />
-    </label>
-
-    <label class="field">
-      <span>Tags (comma-separated)</span>
-      <input v-model="fields.tagsInput" type="text" class="text-input" />
-    </label>
-
-    <div class="field-row">
+      <label v-if="props.show" class="checkbox-field">
+        <input v-model="titleProtected" type="checkbox" />
+        <span>Protect title from metadata updates</span>
+      </label>
+      <MediaTrackingFields :model-value="fields" part="status" noun="anime" />
       <label class="field">
-        <span>Status</span>
-        <select v-model="statusBucketModel" class="text-input">
-          <option v-for="s in STATUS_BUCKETS" :key="s.key" :value="s.key">
-            {{ s.label }}
-          </option>
-        </select>
+        <span>Description</span>
+        <textarea v-model="fields.description" rows="4"></textarea>
       </label>
-      <label class="field">
-        <span>Overall rating (0-10)</span>
-        <input
-          v-model.number="fields.ratingOverall"
-          type="number"
-          min="0"
-          max="10"
-          step="0.1"
-          class="text-input"
-        />
-      </label>
-    </div>
+    </template>
 
-    <div class="field-row">
-      <label class="field checkbox-field">
-        <input v-model="fields.favorite" type="checkbox" />
-        <span>Favorite</span>
-      </label>
-      <label class="field">
-        <span>Personal rank</span>
-        <input
-          v-model.number="fields.personalRank"
-          type="number"
-          min="1"
-          class="text-input"
-        />
-      </label>
-    </div>
+    <template v-else-if="tab === 'Details'">
+      <h3 class="editor-section">From the provider</h3>
+      <div class="editor-grid">
+        <label class="field">
+          <span>First air date</span>
+          <input v-model="fields.firstAirDate" type="date" />
+        </label>
+        <label class="field">
+          <span>Episode runtime (minutes)</span>
+          <input
+            v-model.number="fields.episodeRuntimeMinutes"
+            type="number"
+            min="0"
+          />
+        </label>
+        <label class="field">
+          <span>Studios (comma-separated)</span>
+          <input v-model="fields.studiosInput" type="text" />
+        </label>
+        <label class="field">
+          <span>AniList score (0-10)</span>
+          <input
+            v-model.number="fields.anilistScore"
+            type="number"
+            min="0"
+            max="10"
+            step="0.1"
+          />
+        </label>
+        <label class="field">
+          <span>MAL score (0-10)</span>
+          <input
+            v-model.number="fields.malScore"
+            type="number"
+            min="0"
+            max="10"
+            step="0.1"
+          />
+        </label>
+      </div>
+      <MediaClassificationFields :model-value="fields">
+        <label class="field">
+          <span>Format</span>
+          <input
+            v-model="fields.format"
+            type="text"
+            list="anime-formats"
+            maxlength="20"
+            placeholder="TV, Movie, OVA…"
+          />
+          <datalist id="anime-formats">
+            <option v-for="name in FORMATS" :key="name" :value="name" />
+          </datalist>
+        </label>
+      </MediaClassificationFields>
+    </template>
 
-    <div class="field-row">
-      <label class="field">
-        <span>AniList score (0-10)</span>
-        <input
-          v-model.number="fields.anilistScore"
-          type="number"
-          min="0"
-          max="10"
-          step="0.1"
-          class="text-input"
-        />
-      </label>
-      <label class="field">
-        <span>MAL score (0-10)</span>
-        <input
-          v-model.number="fields.malScore"
-          type="number"
-          min="0"
-          max="10"
-          step="0.1"
-          class="text-input"
-        />
-      </label>
-    </div>
+    <MediaTrackingFields
+      v-else-if="tab === 'Tracking'"
+      :model-value="fields"
+      part="journal"
+      noun="anime"
+    >
+      <template #progress>
+        <p class="hint">
+          Season and episode progress is tracked on the anime's page.
+        </p>
+      </template>
+    </MediaTrackingFields>
+
+    <MediaArtworkFields
+      v-else-if="tab === 'Artwork'"
+      v-model:poster="fields.posterUrl"
+      v-model:backdrop="fields.backdropUrl"
+      noun="anime"
+    />
+
+    <template v-else>
+      <h3 class="editor-section">Provider IDs</h3>
+      <p class="hint">
+        The identities this anime is matched by. A lookup fills them in; edit
+        them only to correct a wrong match.
+      </p>
+      <MediaProviderIds
+        :model-value="fields.tracking.providerIds"
+        :suggestions="ANIME_PROVIDER_KEYS"
+        @update:model-value="fields.tracking.providerIds = $event"
+        @invalid="providerIdsProblem = $event"
+      />
+    </template>
   </MediaFormShell>
 </template>
 
-<style scoped src="../styles/shared/mediaForm.css"></style>
-
-<style scoped>
-.hint {
-  font-size: 0.78rem;
-  color: var(--ui-dim);
-  margin: 0;
-}
-</style>
+<style scoped src="../styles/shared/editorForm.css"></style>

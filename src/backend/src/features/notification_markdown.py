@@ -50,7 +50,10 @@ def _find_close(text: str, start: int, marker: str) -> int:
             index += 2
             continue
         if text.startswith(marker, index) and index > start:
-            return index
+            after = text[index + len(marker) : index + len(marker) + 1]
+            # An underscore inside a word (snake_case, file_names) is text, never emphasis.
+            if marker[0] != "_" or not after.isalnum():
+                return index
         index += 1
     return -1
 
@@ -104,6 +107,8 @@ class _Inline:
         return True
 
     def emphasis(self, char: str) -> bool:
+        if char == "_" and self.index > 0 and self.text[self.index - 1].isalnum():
+            return False
         strong = self.text.startswith(char * 2, self.index)
         marker = char * 2 if strong else char
         close = _find_close(self.text, self.index + len(marker), marker)

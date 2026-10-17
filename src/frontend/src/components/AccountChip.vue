@@ -4,6 +4,7 @@
 // the window resizes or the page around it changes. Pages with the shared
 // top bar get it through AppTopBar; the rest use the `fixed` form.
 import { currentUser } from "../state/auth";
+import { accountDisplayName, accountInitials } from "../services/auth";
 import NotificationBell from "./NotificationBell.vue";
 import ProfileMenu from "./ProfileMenu.vue";
 import { navigationViewport } from "../state/sidebarMode";
@@ -18,8 +19,8 @@ defineProps<{ fixed?: boolean; inline?: boolean }>();
     :class="{ fixed, inline }"
   >
     <NotificationBell />
-    <ProfileMenu :initials="currentUser.username.slice(0, 2).toUpperCase()">
-      <span class="account-name">{{ currentUser.username }}</span>
+    <ProfileMenu :initials="accountInitials(currentUser)">
+      <span class="account-name">{{ accountDisplayName(currentUser) }}</span>
     </ProfileMenu>
   </div>
 </template>

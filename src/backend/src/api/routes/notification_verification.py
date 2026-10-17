@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.api.private_page_headers import private_page_headers
 from src.database.session import get_db
 from src.features.notification_verification_links import (
     VERIFICATION_PATH,
@@ -43,14 +44,10 @@ def _page(title: str, text: str, *, token: str = "", status: int = 200) -> HTMLR
         '<p><a href="/settings?section=notifications">Manage account notifications</a></p>'
         "</main></body></html>",
         status_code=status,
-        headers={
-            "Cache-Control": "no-store",
-            "Referrer-Policy": "no-referrer",
-            "X-Content-Type-Options": "nosniff",
-            "X-Robots-Tag": "noindex, nofollow",
-            "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; "
-            "form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
-        },
+        headers=private_page_headers(
+            "default-src 'none'; style-src 'unsafe-inline'; "
+            "form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
+        ),
     )
 
 

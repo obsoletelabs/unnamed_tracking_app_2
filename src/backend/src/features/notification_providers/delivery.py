@@ -647,6 +647,30 @@ async def _dispatch(db: AsyncSession, delivery_id: UUID, token: UUID) -> bool:
     return result.success
 
 
+async def _fail_dispatch(db: AsyncSession, delivery_id: UUID, token: UUID) -> None:
+    """An unexpected error before the attempt was counted still uses one attempt up.
+
+    Otherwise a delivery that fails deterministically (for example content that can no longer be
+    rendered) would be reclaimed every minute forever instead of ending as `failed_permanent`.
+    """
+    await db.execute(
+        update(NotificationDelivery)
+        .where(
+            NotificationDelivery.id == delivery_id,
+            NotificationDelivery.claim_token == token,
+            NotificationDelivery.status == "processing",
+        )
+        .values(attempts=NotificationDelivery.attempts + 1)
+    )
+    attempts = await db.scalar(
+        select(NotificationDelivery.attempts).where(NotificationDelivery.id == delivery_id)
+    )
+    exhausted = attempts is not None and attempts >= MAX_ATTEMPTS
+    await _finish(
+        db, delivery_id, token, "failed_permanent" if exhausted else "retry_wait", "dispatch_error"
+    )
+
+
 async def process_pending_deliveries(db: AsyncSession, limit: int = 5) -> int:
     """Bound work/time, isolate failures and retain ownership across worker crashes."""
     delivered = 0
@@ -671,5 +695,5 @@ async def process_pending_deliveries(db: AsyncSession, limit: int = 5) -> int:
             logger.warning(
                 "Notification dispatch failed: delivery_id=%s reason=dispatch_error", claim[0]
             )
-            await _finish(db, *claim, "retry_wait", "dispatch_error")
+            await _fail_dispatch(db, *claim)
     return delivered
