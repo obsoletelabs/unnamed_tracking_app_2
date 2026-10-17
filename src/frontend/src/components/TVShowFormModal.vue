@@ -7,13 +7,25 @@ import {
   tvShowToInput,
 } from "../services/tvShows";
 import type { TVShowMetadataResult, SeasonInput } from "../services/tvShows";
-import type { TVShow, TVShowStatus } from "../types/tv_show";
+import type { TVShow } from "../types/tv_show";
+import { statusBucketLabel } from "../utils/mediaStatus";
 import {
-  STATUS_BUCKETS,
-  statusBucket,
-  bucketToReal,
-} from "../utils/mediaStatus";
+  MEDIA_EDITOR_TABS,
+  TV_PROVIDER_KEYS,
+  blankClassification,
+  blankTracking,
+  classificationFrom,
+  classificationToInput,
+  followProviderId,
+  trackingFrom,
+  trackingToInput,
+  type MediaEditorTab,
+} from "../utils/mediaEditorFields";
 import MediaFormShell from "./MediaFormShell.vue";
+import MediaTrackingFields from "./MediaTrackingFields.vue";
+import MediaClassificationFields from "./MediaClassificationFields.vue";
+import MediaArtworkFields from "./MediaArtworkFields.vue";
+import MediaProviderIds from "./MediaProviderIds.vue";
 import MediaMetadataSearch from "./MediaMetadataSearch.vue";
 import { useMetadataSearch } from "../utils/useMetadataSearch";
 import { splitList } from "../utils/formLists";
@@ -47,12 +59,8 @@ function blankFields() {
     firstAirDate: "",
     episodeRuntimeMinutes: null as number | null,
     creatorsInput: "",
-    genresInput: "",
-    tagsInput: "",
-    status: "wishlist" as TVShowStatus,
-    favorite: false,
-    ratingOverall: null as number | null,
-    personalRank: null as number | null,
+    ...blankTracking(),
+    ...blankClassification(),
     posterUrl: null as string | null,
     backdropUrl: null as string | null,
     tmdbScore: null as number | null,
@@ -60,17 +68,22 @@ function blankFields() {
 }
 
 const fields = ref(blankFields());
-const statusBucketModel = computed({
-  get: () => statusBucket(fields.value.status),
-  set: (bucket: string) => {
-    fields.value.status = bucketToReal(bucket) as TVShowStatus;
-  },
-});
+const tab = ref<MediaEditorTab>("Basics");
+const providerIdsProblem = ref<string | null>(null);
 let applySeasons = false;
 const stagedSeasons = computed(() => fields.value.tracking.seasons);
 const { titleProtected, titleLockOverride } = useTitleProtection(
   () => props.show,
   () => fields.value.title,
+);
+
+const subtitle = computed(() =>
+  [
+    fields.value.firstAirDate.slice(0, 4),
+    statusBucketLabel(fields.value.status),
+  ]
+    .filter(Boolean)
+    .join(" · "),
 );
 
 const saving = ref(false);
@@ -106,12 +119,8 @@ function loadFromShow(show: TVShow | null | undefined) {
     firstAirDate: show.firstAirDate ?? "",
     episodeRuntimeMinutes: show.episodeRuntimeMinutes,
     creatorsInput: show.creators.join(", "),
-    genresInput: show.genres.join(", "),
-    tagsInput: show.tags.join(", "),
-    status: show.status,
-    favorite: show.favorite,
-    ratingOverall: show.ratingOverall,
-    personalRank: show.personalRank,
+    ...trackingFrom(show),
+    ...classificationFrom(show),
     posterUrl: show.posterUrl,
     backdropUrl: show.backdropUrl,
     tmdbScore: show.tmdbScore,
@@ -121,45 +130,47 @@ function loadFromShow(show: TVShow | null | undefined) {
 watch(() => props.show, loadFromShow, { immediate: true });
 
 const artwork = useMetadataArtwork(search.candidate, search.previewArtwork);
+const isLocked = (name: string) =>
+  (props.show?.lockedFields ?? []).includes(name);
 const comparison = useMetadataComparison(
   () => fields.value,
   () => ({
     title: { label: "Title", locked: titleProtected.value },
     description: {
       label: "Description",
-      locked: (props.show?.lockedFields ?? []).includes("description"),
+      locked: isLocked("description"),
     },
     posterUrl: {
       label: "Poster",
-      locked: (props.show?.lockedFields ?? []).includes("poster_url"),
+      locked: isLocked("poster_url"),
       image: true,
     },
     backdropUrl: {
       label: "Backdrop",
-      locked: (props.show?.lockedFields ?? []).includes("backdrop_url"),
+      locked: isLocked("backdrop_url"),
       image: true,
     },
     genresInput: {
       label: "Genres",
-      locked: (props.show?.lockedFields ?? []).includes("genres"),
+      locked: isLocked("genres"),
     },
     firstAirDate: {
       label: "First air date",
-      locked: (props.show?.lockedFields ?? []).includes("first_air_date"),
+      locked: isLocked("first_air_date"),
     },
     episodeRuntimeMinutes: {
       label: "Episode runtime",
-      locked: (props.show?.lockedFields ?? []).includes(
-        "episode_runtime_minutes",
-      ),
+      locked: isLocked("episode_runtime_minutes"),
     },
+    countriesInput: { label: "Countries", locked: isLocked("countries") },
+    languagesInput: { label: "Languages", locked: isLocked("languages") },
     creatorsInput: {
       label: "Creators",
-      locked: (props.show?.lockedFields ?? []).includes("creators"),
+      locked: isLocked("creators"),
     },
     tmdbScore: {
       label: "TMDB score",
-      locked: (props.show?.lockedFields ?? []).includes("tmdb_score"),
+      locked: isLocked("tmdb_score"),
     },
     tracking: { label: "Provider identity and offered seasons" },
   }),
@@ -171,6 +182,8 @@ function offerMetadata(result: TVShowMetadataResult) {
   incoming.posterUrl = artwork.urls.value.cover;
   incoming.backdropUrl = artwork.urls.value.banner;
   incoming.genresInput = result.genres.join(", ") ?? undefined;
+  incoming.countriesInput = result.countries.join(", ");
+  incoming.languagesInput = result.languages.join(", ");
   incoming.firstAirDate = result.firstAirDate ?? undefined;
   incoming.episodeRuntimeMinutes = result.episodeRuntimeMinutes ?? undefined;
   incoming.creatorsInput = result.creators.join(", ") ?? undefined;
@@ -229,7 +242,13 @@ function pickResult(key: string) {
 async function submit() {
   if (search.selected.value) return;
   if (!fields.value.title.trim()) {
+    tab.value = "Basics";
     error.value = "Title is required.";
+    return;
+  }
+  if (providerIdsProblem.value) {
+    tab.value = "Links";
+    error.value = providerIdsProblem.value;
     return;
   }
   saving.value = true;
@@ -247,22 +266,20 @@ async function submit() {
         { min: 0, integer: true },
       ),
       creators: splitList(fields.value.creatorsInput),
-      genres: splitList(fields.value.genresInput),
-      tags: splitList(fields.value.tagsInput),
-      status: fields.value.status,
-      favorite: fields.value.favorite,
-      ratingOverall: numberOrNull(fields.value.ratingOverall, "Your rating", {
-        min: 0,
-        max: 10,
-      }),
-      personalRank: numberOrNull(fields.value.personalRank, "Personal rank"),
+      ...classificationToInput(fields.value),
+      ...trackingToInput(fields.value),
       posterUrl: fields.value.posterUrl,
       backdropUrl: fields.value.backdropUrl,
       tmdbScore: numberOrNull(fields.value.tmdbScore, "TMDB score", {
         min: 0,
         max: 10,
       }),
-      externalId: fields.value.tracking.externalId,
+      // TVmaze's id also lives in its own column; follow an edited identity
+      externalId: followProviderId(
+        fields.value.tracking.externalId,
+        props.show?.providerIds?.tvmaze,
+        fields.value.tracking.providerIds.tvmaze,
+      ),
       seasons: !props.show || applySeasons ? stagedSeasons.value : undefined,
     };
     const saved = props.show
@@ -297,168 +314,138 @@ async function remove() {
 
 <template>
   <MediaFormShell
+    v-model:tab="tab"
     noun="TV Show"
     :editing="!!show"
     :saving="saving"
     :lookup-pending="!!search.selected.value"
     :deleting="deleting"
     :error="error"
+    :tabs="MEDIA_EDITOR_TABS"
+    :heading="fields.title.trim() || (show ? show.title : 'New show')"
+    :subtitle="subtitle"
+    :cover="fields.posterUrl"
+    @cover="tab = 'Artwork'"
     @closed="emit('closed')"
     @save="submit"
     @delete="remove"
   >
-    <MediaMetadataSearch
-      v-model:query="search.query.value"
-      label="Search metadata providers"
+    <template #lookup>
+      <MediaMetadataSearch
+        v-model:query="search.query.value"
+        label="Search metadata providers"
+        noun="show"
+        :results="searchResults"
+        :searching="search.searching.value"
+        :enriching-media="search.enrichingMedia.value"
+        :message="search.message.value"
+        :warnings="search.warnings.value"
+        @search="search.run"
+        @pick="pickResult"
+      />
+
+      <MetadataComparison
+        v-if="search.selected.value"
+        :changes="comparison.changes.value"
+        :reason="comparison.reason.value"
+        :provider="search.selected.value.provider"
+        :busy="artwork.busy.value || search.enrichingMedia.value"
+        :previews="artwork.previews.value"
+        @toggle="comparison.toggle"
+        @apply="applyLookup"
+        @cancel="cancelLookup"
+      />
+    </template>
+
+    <template v-if="tab === 'Basics'">
+      <label class="field">
+        <span>Title</span>
+        <input v-model="fields.title" type="text" placeholder="Breaking Bad" />
+      </label>
+      <label v-if="props.show" class="checkbox-field">
+        <input v-model="titleProtected" type="checkbox" />
+        <span>Protect title from metadata updates</span>
+      </label>
+      <MediaTrackingFields :model-value="fields" part="status" noun="show" />
+      <label class="field">
+        <span>Description</span>
+        <textarea v-model="fields.description" rows="4"></textarea>
+      </label>
+    </template>
+
+    <template v-else-if="tab === 'Details'">
+      <h3 class="editor-section">From the provider</h3>
+      <div class="editor-grid">
+        <label class="field">
+          <span>First air date</span>
+          <input v-model="fields.firstAirDate" type="date" />
+        </label>
+        <label class="field">
+          <span>Episode runtime (minutes)</span>
+          <input
+            v-model.number="fields.episodeRuntimeMinutes"
+            type="number"
+            min="0"
+          />
+        </label>
+        <label class="field">
+          <span>Creators (comma-separated)</span>
+          <input v-model="fields.creatorsInput" type="text" />
+        </label>
+        <label class="field">
+          <span>TMDB / IMDb score (0-10)</span>
+          <input
+            v-model.number="fields.tmdbScore"
+            type="number"
+            min="0"
+            max="10"
+            step="0.1"
+          />
+        </label>
+      </div>
+      <MediaClassificationFields :model-value="fields" />
+    </template>
+
+    <MediaTrackingFields
+      v-else-if="tab === 'Tracking'"
+      :model-value="fields"
+      part="journal"
       noun="show"
-      :results="searchResults"
-      :searching="search.searching.value"
-      :enriching-media="search.enrichingMedia.value"
-      :message="search.message.value"
-      :warnings="search.warnings.value"
-      @search="search.run"
-      @pick="pickResult"
+    >
+      <template #progress>
+        <p class="hint">
+          Season and episode progress is tracked on the show's page.
+        </p>
+      </template>
+    </MediaTrackingFields>
+
+    <MediaArtworkFields
+      v-else-if="tab === 'Artwork'"
+      v-model:poster="fields.posterUrl"
+      v-model:backdrop="fields.backdropUrl"
+      noun="show"
     />
 
-    <MetadataComparison
-      v-if="search.selected.value"
-      :changes="comparison.changes.value"
-      :reason="comparison.reason.value"
-      :provider="search.selected.value.provider"
-      :busy="artwork.busy.value || search.enrichingMedia.value"
-      :previews="artwork.previews.value"
-      @toggle="comparison.toggle"
-      @apply="applyLookup"
-      @cancel="cancelLookup"
-    />
-
-    <img
-      v-if="fields.posterUrl"
-      :src="fields.posterUrl"
-      alt=""
-      class="poster-preview"
-    />
-
-    <label class="field">
-      <span>Title</span>
-      <input
-        v-model="fields.title"
-        type="text"
-        class="text-input"
-        placeholder="Breaking Bad"
+    <template v-else>
+      <h3 class="editor-section">Provider IDs</h3>
+      <p class="hint">
+        The identities this show is matched by. A lookup fills them in; edit
+        them only to correct a wrong match.
+      </p>
+      <MediaProviderIds
+        :model-value="fields.tracking.providerIds"
+        :suggestions="TV_PROVIDER_KEYS"
+        @update:model-value="fields.tracking.providerIds = $event"
+        @invalid="providerIdsProblem = $event"
       />
-    </label>
-
-    <label v-if="props.show" class="field checkbox-field">
-      <input v-model="titleProtected" type="checkbox" />
-      <span>Protect title from metadata updates</span>
-    </label>
-
-    <label class="field">
-      <span>Description</span>
-      <textarea
-        v-model="fields.description"
-        class="text-input textarea-input"
-        rows="3"
-      ></textarea>
-    </label>
-
-    <div class="field-row">
-      <label class="field">
-        <span>First air date</span>
-        <input v-model="fields.firstAirDate" type="date" class="text-input" />
-      </label>
-      <label class="field">
-        <span>Episode runtime (minutes)</span>
-        <input
-          v-model.number="fields.episodeRuntimeMinutes"
-          type="number"
-          min="0"
-          class="text-input"
-        />
-      </label>
-    </div>
-
-    <label class="field">
-      <span>Creators (comma-separated)</span>
-      <input v-model="fields.creatorsInput" type="text" class="text-input" />
-    </label>
-
-    <label class="field">
-      <span>Genres (comma-separated)</span>
-      <input v-model="fields.genresInput" type="text" class="text-input" />
-    </label>
-
-    <label class="field">
-      <span>Tags (comma-separated)</span>
-      <input v-model="fields.tagsInput" type="text" class="text-input" />
-    </label>
-
-    <div class="field-row">
-      <label class="field">
-        <span>Status</span>
-        <select v-model="statusBucketModel" class="text-input">
-          <option v-for="s in STATUS_BUCKETS" :key="s.key" :value="s.key">
-            {{ s.label }}
-          </option>
-        </select>
-      </label>
-      <label class="field">
-        <span>Overall rating (0-10)</span>
-        <input
-          v-model.number="fields.ratingOverall"
-          type="number"
-          min="0"
-          max="10"
-          step="0.1"
-          class="text-input"
-        />
-      </label>
-    </div>
-
-    <div class="field-row">
-      <label class="field checkbox-field">
-        <input v-model="fields.favorite" type="checkbox" />
-        <span>Favorite</span>
-      </label>
-      <label class="field">
-        <span>Personal rank</span>
-        <input
-          v-model.number="fields.personalRank"
-          type="number"
-          min="1"
-          class="text-input"
-        />
-      </label>
-    </div>
-
-    <label class="field">
-      <span>TMDB / IMDb score (0-10)</span>
-      <input
-        v-model.number="fields.tmdbScore"
-        type="number"
-        min="0"
-        max="10"
-        step="0.1"
-        class="text-input"
-      />
-    </label>
-
-    <p v-if="!show && stagedSeasons.length" class="hint">
-      {{ stagedSeasons.length }} season{{
-        stagedSeasons.length === 1 ? "" : "s"
-      }}
-      will be created with this show.
-    </p>
+      <p v-if="!show && stagedSeasons.length" class="hint">
+        {{ stagedSeasons.length }} season{{
+          stagedSeasons.length === 1 ? "" : "s"
+        }}
+        will be created with this show.
+      </p>
+    </template>
   </MediaFormShell>
 </template>
 
-<style scoped src="../styles/shared/mediaForm.css"></style>
-
-<style scoped>
-.hint {
-  font-size: 0.78rem;
-  color: var(--ui-dim);
-  margin: 0;
-}
-</style>
+<style scoped src="../styles/shared/editorForm.css"></style>
