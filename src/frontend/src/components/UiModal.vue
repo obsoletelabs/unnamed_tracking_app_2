@@ -1,3 +1,10 @@
+<script lang="ts">
+// Modals can close in any order (a page may unmount beneath a confirm), so
+// only the first to open saves the page's overflow and the last restores it.
+let openModals = 0;
+let savedOverflow = "";
+</script>
+
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, useId } from "vue";
 import AppIcon from "./AppIcon.vue";
@@ -9,17 +16,27 @@ const props = withDefaults(
     title: string;
     description?: string;
     dismissible?: boolean;
-    size?: "standard" | "wide";
+    size?: "standard" | "wide" | "editor";
+    // A fixed-height dialog whose content manages its own scrolling, so tabs
+    // and actions stay put while only the editor body scrolls.
+    bounded?: boolean;
   }>(),
-  { dismissible: true, size: "standard" },
+  { dismissible: true, size: "standard", bounded: false },
 );
 const emit = defineEmits<{ close: [] }>();
 const dialog = ref<HTMLDialogElement | null>(null);
 const titleId = useId();
 let previousFocus: HTMLElement | null = null;
-let previousOverflow = "";
+let active = false;
 function dismiss() {
   if (props.dismissible) emit("close");
+}
+// Browsers may close a <dialog> despite a prevented cancel (e.g. a repeated
+// Escape); keep the component and its parent in step with what's on screen.
+function closed() {
+  if (!active || !dialog.value || dialog.value.open) return;
+  if (props.dismissible) emit("close");
+  else dialog.value.showModal();
 }
 function backdrop(event: MouseEvent) {
   if (event.target !== dialog.value || !dialog.value) return;
@@ -37,13 +54,17 @@ onMounted(() => {
     document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null;
-  previousOverflow = document.body.style.overflow;
-  document.body.style.overflow = "hidden";
+  if (openModals++ === 0) {
+    savedOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+  }
+  active = true;
   dialog.value?.showModal();
 });
 onBeforeUnmount(() => {
+  active = false;
   dialog.value?.close();
-  document.body.style.overflow = previousOverflow;
+  if (--openModals === 0) document.body.style.overflow = savedOverflow;
   if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
 });
 </script>
@@ -54,17 +75,28 @@ onBeforeUnmount(() => {
       v-bind="$attrs"
       ref="dialog"
       class="ui-modal"
-      :class="{ 'ui-modal-wide': size === 'wide' }"
+      :class="{
+        'ui-modal-wide': size === 'wide',
+        'ui-modal-editor': size === 'editor',
+        'ui-modal-bounded': bounded,
+      }"
       :aria-labelledby="titleId"
       @cancel.prevent="dismiss"
+      @close="closed"
       @click="backdrop"
       @keydown="containModalTab($event, dialog)"
     >
-      <header class="modal-header">
-        <div>
-          <h2 :id="titleId">{{ title }}</h2>
-          <p v-if="description">{{ description }}</p>
-        </div>
+      <header
+        class="modal-header"
+        :class="{ 'modal-header-hero': $slots.header }"
+      >
+        <!-- A replacement header must label the dialog with titleId. -->
+        <slot name="header" :title-id="titleId">
+          <div>
+            <h2 :id="titleId">{{ title }}</h2>
+            <p v-if="description">{{ description }}</p>
+          </div>
+        </slot>
         <button
           v-if="dismissible"
           type="button"
@@ -107,6 +139,19 @@ onBeforeUnmount(() => {
 .ui-modal-wide {
   width: min(1120px, calc(100vw - 64px));
 }
+.ui-modal-editor {
+  width: min(920px, calc(100vw - 32px));
+}
+.ui-modal-bounded {
+  height: min(760px, calc(100dvh - 32px));
+}
+.ui-modal-bounded .modal-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
 .ui-modal::backdrop {
   background: var(--ui-overlay);
 }
@@ -117,6 +162,12 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   gap: 16px;
   padding: 24px;
+}
+.modal-header-hero {
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--ui-border-soft);
+  background: linear-gradient(160deg, var(--ui-accent-soft), transparent 70%);
 }
 .modal-header h2 {
   margin: 0;
@@ -155,6 +206,9 @@ onBeforeUnmount(() => {
   padding: 16px 24px;
   border-top: 1px solid var(--ui-border-soft);
 }
+.ui-modal-bounded .modal-footer {
+  padding: 12px 20px;
+}
 @media (max-width: 760px) {
   .ui-modal {
     width: calc(100vw - 20px);
@@ -162,14 +216,23 @@ onBeforeUnmount(() => {
     max-height: calc(100dvh - 20px);
     border-radius: 28px;
   }
+  .ui-modal-bounded {
+    height: calc(100dvh - 20px);
+  }
   .modal-header {
     padding: 20px;
+  }
+  .modal-header-hero {
+    padding: 14px 16px;
   }
   .modal-body {
     padding: 0 20px 20px;
   }
   .modal-footer {
     padding: 16px 20px;
+  }
+  .ui-modal-bounded .modal-footer {
+    padding: 10px 16px;
   }
 }
 </style>

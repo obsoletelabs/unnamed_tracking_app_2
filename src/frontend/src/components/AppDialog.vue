@@ -5,6 +5,7 @@ import { activeDialog, closeDialog } from "../state/dialog";
 const value = ref("");
 const inputEl = ref<HTMLInputElement | null>(null);
 const acceptEl = ref<HTMLButtonElement | null>(null);
+const cancelEl = ref<HTMLButtonElement | null>(null);
 watch(activeDialog, async (request) => {
   if (!request) return;
   value.value = request.defaultValue;
@@ -12,6 +13,9 @@ watch(activeDialog, async (request) => {
   if (request.kind === "prompt") {
     inputEl.value?.focus();
     inputEl.value?.select();
+  } else if (request.danger) {
+    // a stray Enter must not confirm something destructive
+    cancelEl.value?.focus();
   } else acceptEl.value?.focus();
 });
 function accept() {
@@ -48,7 +52,12 @@ function cancel() {
       />
     </label>
     <template #footer>
-      <button type="button" class="ui-btn ui-btn-ghost" @click="cancel">
+      <button
+        ref="cancelEl"
+        type="button"
+        class="ui-btn ui-btn-ghost"
+        @click="cancel"
+      >
         {{ activeDialog.cancelLabel }}
       </button>
       <button

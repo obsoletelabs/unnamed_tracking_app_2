@@ -16,6 +16,9 @@ from src.database.models.game import (
 )
 from src.helpers.currency_codes import CURRENCY_CODES
 
+# games.playtime_seconds is an INTEGER column; larger totals cannot be stored.
+PLAYTIME_SECONDS_MAX = 2_147_483_647
+
 GameRelationshipType = Literal[
     "mod", "modpack", "expansion", "dlc", "standalone_expansion", "total_conversion", "owned_copy"
 ]
@@ -119,7 +122,7 @@ class GameBase(BaseModel):
 
     notes: str | None = None
     resume_note: str | None = Field(default=None, max_length=2_000)
-    playtime_seconds: int = Field(default=0, ge=0)
+    playtime_seconds: int = Field(default=0, ge=0, le=PLAYTIME_SECONDS_MAX)
 
     purchase_date: int | None = Field(
         default=None, ge=0, description="Unix timestamp in seconds for the purchase date."
@@ -223,7 +226,7 @@ class GameUpdate(TitleProtectionUpdate):
 
     notes: str | None = None
     resume_note: str | None = Field(default=None, max_length=2_000)
-    playtime_seconds: int | None = Field(default=None, ge=0)
+    playtime_seconds: int | None = Field(default=None, ge=0, le=PLAYTIME_SECONDS_MAX)
 
     purchase_date: int | None = Field(
         default=None, ge=0, description="Unix timestamp in seconds for the purchase date."

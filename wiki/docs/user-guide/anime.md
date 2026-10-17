@@ -8,6 +8,13 @@ You can import a public AniList anime list into your anime library. The import i
 
 See the [AniList Import guide](anilist.md) for configuration, supported schedule options, update behavior, and scheduling details.
 
+## Trash
+
+Deleting an entry moves it to trash. Restore returns it with its seasons and episodes;
+purge permanently removes it. You can also empty the whole anime trash or have trashed
+entries deleted automatically after a period you choose (never by default); see
+[Trash, Empty trash and automatic deletion](media-libraries.md#trash-empty-trash-and-automatic-deletion).
+
 ## Library features shared with TV shows and anime
 
 Ranks, clickable genres, local pictures and the Add and Edit dialog work the same way here. See

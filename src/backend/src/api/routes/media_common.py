@@ -268,9 +268,10 @@ async def soft_delete(db: AsyncSession, row: Any) -> None:
 
 
 async def trash_listing(db: AsyncSession, model: Any, user_id: Any) -> list[dict]:
-    """A user's deleted rows, most recently deleted first. Nothing purges
-    these on a schedule: a row is only data, so there is nothing to clean up
-    and it stays until it is restored or purged."""
+    """A user's deleted rows, most recently deleted first. A row is only
+    data, so it stays until it is restored or purged, its kind's trash is
+    emptied, or the owner's opt-in retention period passes (never by
+    default; see features/trash/media_titles.py)."""
     result = await db.execute(
         select(model)
         .where(model.user_id == user_id, model.deleted_at.is_not(None))

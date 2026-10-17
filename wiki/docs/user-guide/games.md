@@ -49,14 +49,15 @@ records, real game saves and synthetic provider responses. The
 and tracking edits.
 
 Editing supports title and sort title, platform, status, dates, rating,
-genres/tags/features, description, time-to-beat data, and artwork. Field-change
-history records supported metadata changes.
+genres/tags/features, description, time-to-beat data, favorite, collections,
+playtime, the resume note and artwork; see [Adding a game](#adding-a-game).
+Field-change history records supported metadata changes.
 
 Bulk edit changes selected records only. Locked fields are not overwritten by refresh operations.
 
 ## Completion estimates
 
-The full editor's **General** tab has four estimates in hours: **Main story**,
+The full editor's **Play** tab has four estimates in hours: **Main story**,
 **Main + extras**, **Completionist** and **All play styles**. Leave a field empty
 when its estimate is unknown. These community estimates are separate from your
 logged playtime and never add to it.
@@ -81,20 +82,18 @@ Examples also show [Classic details](../assets/game-time-estimates/classic-dark-
 
 ## Excluding games
 
-Open **Filters** to exclude statuses, tags/genres or platform families. Choose
-**Not …** to hide matching games while retaining your include filters. Exclusions
-take precedence; a game selected by both an include and an exclusion stays hidden.
-Platform exclusions also check owned copies, such as PS4 and PS5 within PlayStation.
+Open **Filters** to exclude statuses, tags/genres or platform families. Status
+and platform exclusions are **Not …** chips. Tags and genres use the searchable
+picker described below, in **Exclude** mode. Exclusions take precedence; a game
+matching both an include and an exclusion stays hidden. Platform exclusions also
+check owned copies, such as PS4 and PS5 within PlayStation.
 
-Each exclusion has a removable **Not …** chip. **Clear advanced filters** and
+Each exclusion has a removable chip. **Clear advanced filters** and
 **Clear all** remove exclusions too. Saved presets and shared filter links retain
 them; older presets start with no exclusions. Counts describe the matching games.
 These controls filter the loaded library without contacting metadata providers.
 
-![Classic exclusion controls](../assets/library-query-controls/classic-light-exclusions.jpg)
-
-The [Modern phone controls](../assets/library-query-controls/modern-dark-phone-exclusions.jpg)
-use the same selection and keyboard behavior.
+![Classic exclusion controls before the compact picker](../assets/library-query-controls/classic-light-exclusions.jpg)
 
 ## Card updates and priority
 
@@ -215,22 +214,81 @@ or reporting a missing achievement. Use Back to return to the achievement's game
 
 ## Documents and plugins
 
-The core file list allows normal downloads. Plugins with an approved `documents.read` grant can receive only safe document DTOs and supported PDF/plain-text content; they never receive host paths. See [Plugins](plugins.md).
+A game's **Docs** tab takes files of any type and always offers them as normal downloads; see [Game Media and Files](game-media.md#docs). Plugins with an approved `documents.read` grant can receive only safe document DTOs and the content of supported previews (PDF, UTF-8 text, HTML as text, and inactive `.docx`, `.pptx`, `.odt` and `.odp` files within the preview limits); they never receive host paths. See [Plugins](plugins.md).
 
 ## Adding a game
 
-**+ Add Game** in the Games library walks through the game in steps:
+**+ Add Game** opens Quick Add (above). **Full form**, adding a game from Home
+and a game page's **Edit** all open the same full editor. Its header shows the
+cover, the title as you type it and the developer, year and platform. Below it
+are eight tabs; click any of them in any order:
 
-1. **Find**: search the metadata providers by title and pick a match to fill
-   in the following steps. Press Enter or **Search** to search. Exact title
-   matches are listed first. **Skip** leaves every field for you to fill in.
-2. **General**: title, folder name, status, platform, priority and the rest.
-   **Next** won't continue without a title and a folder name.
-3. **Ratings & Tags**, **Media**, **Links**, **Ownership**: move through them
-   with **Next** and **Back**, or click a tab to jump to it.
+| Tab | What it holds |
+| --- | --- |
+| **Basics** | Title, title protection, sorting name, folder name, status, priority, platform, source, date added and **Favorite**. |
+| **Details** | Description, developer, publisher, series, release date, age rating, region and language. |
+| **Play** | Your playtime in hours, the 100% completion date, **Where you left off**, the four completion estimates and multiplayer settings. |
+| **Ratings and tags** | Your four ratings, tags, features and manual **Collections**. |
+| **Artwork** | The cover and banner: the saved artwork, an uploaded file, an image link or a search result. |
+| **Links** | Store pages and other links. |
+| **Ownership** | Format, purchase date, price, currency and condition. |
+| **Advanced** | Parent game and relationship, multiple accounts and OSRS stats, and which parts this game's page shows. |
 
-The game is only created with **Add Game** on the last step. Editing an
-existing game shows the same tabs as one form with **Save Changes**.
+**Add Game** or **Save Changes** stays at the bottom of every tab, and only the
+tab's content scrolls. Nothing is saved until you click it, and switching tabs
+keeps everything you have typed or chosen, including staged files. **Cancel**
+discards the unsaved edits. Arrow keys, Home and End move between tabs once one
+has focus; selecting the cover in the header opens **Artwork**.
+
+**Look up metadata** opens the provider search above whichever tab is showing;
+adding a game opens it straight away. Choosing a result shows the
+[field-by-field review](../integrations/metadata.md#review-metadata-before-saving):
+nothing changes until you **Apply** checked values, and the game is only
+written when you save.
+
+![The shared full editor in Modern dark](../assets/game-editor/modern-dark-basics.jpg)
+
+### Favorite, collections, playtime and notes
+
+**Favorite** adds the game to the Favorites collection. **Collections** lists
+your manual collections as checkboxes; type a name and **Add** to start a new
+one (an existing name in different letter case is reused). Smart collections and
+Favorites fill themselves from their rules, so they are not offered here.
+**Playtime (hours)** is your total and **Where you left off** is the same note
+shown on the game's Overview. These values are saved together with the rest of
+the game in one request, so a save never keeps some of them and loses others.
+Playtime is only sent when you change it; a connected library sync can later
+replace it with the store's total. Totals above 596,523 hours are rejected.
+
+![Tracking fields in Classic light](../assets/game-editor/classic-light-play.jpg)
+
+### Artwork
+
+The **Artwork** tab is built the first time you open it and then kept while the
+editor is open. For the cover and the banner you can upload a file, paste an
+`http` or `https` image link and choose **Use**, or pick one of the images
+offered by **Search artwork** or a metadata lookup. The preview is labelled
+**Current**, **Local file**, **Link** or **Search**, and **Keep current**
+discards the staged choice. The most recent explicit choice wins: an uploaded
+file is never replaced by search results that arrive later, only by choosing
+another image yourself. Choosing the same file again works, and local previews
+are released when they are replaced or the editor closes.
+
+Artwork is uploaded or fetched only after the game itself saves. If that
+transfer fails, the game stays saved and the editor closes; the task notice
+names the artwork that failed and **Retry** attaches the remaining artwork to
+that same game without creating another copy.
+
+![A staged local cover in Classic dark](../assets/game-editor/classic-dark-artwork.jpg)
+
+Modern and Classic use the same editor, fields and saving. Classic follows
+Rosefall's editor with filled fields and outlined secondary buttons, and both
+keep your palette, custom colors, light or dark mode and phone layout:
+[adding in Modern](../assets/game-editor/modern-dark-add.jpg),
+[collections in Modern light](../assets/game-editor/modern-light-collections.jpg),
+[a custom palette in Classic](../assets/game-editor/classic-custom-dark-advanced.jpg),
+[Classic on a phone](../assets/game-editor/classic-dark-phone.jpg) and
+[artwork on a phone in Modern light](../assets/game-editor/modern-light-phone-artwork.jpg).
 
 ### Fields worth knowing
 
@@ -241,6 +299,8 @@ existing game shows the same tabs as one form with **Save Changes**.
 | Platform | The system you play it on (PC, PlayStation 5, Nintendo Switch...). Suggestions are offered but anything can be typed. Without a platform, the source is shown instead. |
 | Priority | 1 (highest) to 5 (lowest). Finished games (beaten, mastered, played, dropped) are left out of priority sorting and the random picker. |
 | Date added to library | Defaults to today. Change it to back-date a game you've had for a while. |
+| Playtime (hours) | Your own total, to one decimal place. Leave it empty for none. |
+| Where you left off | Up to 2,000 characters; also shown and editable on the Overview. |
 | Region, Language | Edition details, used by the library's Region and Language filters. |
 | Currency | Chosen from the currencies the server accepts. |
 
@@ -249,16 +309,79 @@ title.
 
 ## Filtering and sharing
 
-The Filters panel has one **Tags & genres (any of)** picker. Selected tags are
-highlighted there and shown as removable pills above the results. Metadata labels
-such as `Genre: Indie` and `Indie` match the same choice. Selecting multiple tags
-shows games matching any selected tag; the other filters narrow that selection.
+The Filters panel has one **Tags & genres** picker instead of a chip for every
+tag, so a library with hundreds of Steam player tags stays about one screen tall
+on desktop and phone. Focus the search box (or press the Down arrow) to open a
+list of every tag with the number of games it matches. Shared genres are listed
+first, then your other tags, most used first. Type to narrow the list.
+
+- **Include** (default) shows games with any included tag. **Exclude** hides
+  games with any excluded tag. Click a row, or press Enter, to use the selected
+  mode; **Shift+Enter** uses the other one. The Up and Down arrows move through
+  the list, Escape closes it. Choosing a tag in the other mode moves it, so a tag
+  is never in both lists.
+- Chosen tags appear as chips under the box (**Not …** for exclusions) and in the
+  pills above the results. Click a chip to remove it.
+- A row shows what it also matches, for example **Also matches Race, Steam: race**
+  or **Counts as Action**. Searching finds a tag by any raw spelling it merges, so
+  `steam: race` finds **Racing** and `science fic` finds **Sci-fi**.
+
+Selecting multiple included tags shows games matching any of them; the other
+filters narrow that selection.
+
+![Compact tag picker, Modern dark, searching "rac"](../assets/library-tag-filters/after-modern-dark-search.jpg)
+
+### Tag normalization
+
+Tags are stored exactly as the provider, import or you wrote them. Nothing is
+rewritten, so a game's own tag list and its page always show the raw tags. Filters
+compare tags through three fixed, deterministic rules that run on your device with
+no provider requests and no language model:
+
+1. **Spelling.** Case, accents, spacing and punctuation are ignored, `&` reads as
+   `and`, and a leading `Genre:`, `Tag:`, `Theme:`, `Steam:`, `IGDB:` or `GOG:`
+   label is dropped. `Rogue-like`, `roguelike` and `Steam: Roguelike` are one
+   choice. `Roguelite` stays separate.
+2. **Synonyms.** A short fixed list of names for exactly the same thing share one
+   choice: `Race` → **Racing**, `Role-playing (RPG)` → **RPG**, `Platform` →
+   **Platformer**, `Simulator` → **Simulation**, `Sport` → **Sports**, `FPS` →
+   **First-Person Shooter**, `RTS` and `Real Time Strategy (RTS)` →
+   **Real-Time Strategy**, `Turn-Based Strategy (TBS)` →
+   **Turn-Based Strategy**, `Science Fiction` → **Sci-fi**, `Shmup` → **Shoot 'Em Up**, `Soccer` → **Football (Soccer)** and a
+   few more.
+3. **Broader genres.** A narrower tag keeps its own choice and also counts as the
+   broader genres it belongs to (`Hack and slash/Beat 'em up` also counts as
+   **Action**; `Twin Stick Shooter` as **Shooter**, which counts as **Action**).
+   This is one-way: choosing **Action** finds the narrower tag, never the reverse.
+
+Related but different tags are deliberately **not** merged: `Roguelike` and
+`Roguelite`, `Souls-like` and `Action RPG`, `Driving` and `Racing`. A tag the rules
+do not know stays its own choice, spelled as most of your games spell it.
+Existing links, presets and saved filters keep working; their tags are read through
+the same rules when loaded.
+
+To roll a rule back, remove its entry from `TAG_SYNONYMS` or `BROADER_GENRES` in
+`src/frontend/src/utils/genres.ts`. Because stored tags and URLs keep the raw or
+canonical text, no data migration is needed; the affected tags simply return to
+separate choices (the spelling rule is the only one that cannot be switched off
+per tag).
 
 Changing tags, genres, sorting or other query filters on the current page keeps
 your scroll position. The URL still updates for sharing. Navigating to another
 page starts at the top, and browser back/forward restores its saved position.
 
 ![Selecting another genre keeps the filter panel in the same viewport](../assets/filter-scroll/after.jpg)
+
+| Before: a chip per tag and per exclusion | After: one searchable picker |
+| --- | --- |
+| ![Modern dark filter panel before, 2,287 px tall](../assets/library-tag-filters/before-modern-dark.jpg) | ![Modern dark filter panel after, 557 px tall](../assets/library-tag-filters/after-modern-dark.jpg) |
+| ![Classic light filter panel before](../assets/library-tag-filters/before-classic-light.jpg) | ![Classic light filter panel after](../assets/library-tag-filters/after-classic-light.jpg) |
+| ![Phone filter panel before, 6,757 px tall](../assets/library-tag-filters/before-modern-dark-phone.jpg) | ![Phone filter panel after, 1,037 px tall](../assets/library-tag-filters/after-modern-dark-phone.jpg) |
+
+On a phone the panel uses two columns and the picker's list scrolls inside a
+bounded area; the Classic presentation shares the same controls
+([Classic phone search](../assets/library-tag-filters/after-classic-dark-phone-search.jpg),
+[Classic desktop search](../assets/library-tag-filters/after-classic-light-search.jpg)).
 
 The game total reflects the visible results. All and each status tab count games
 matching the current search and other filters, so switching status remains useful.
@@ -295,7 +418,8 @@ Genre filters, here and in the Games library, match a game whichever
 metadata provider named its genre. IGDB, for example, has no "Action" genre
 and files Devil May Cry under "Hack and slash/Beat 'em up", which still
 counts as Action; "Role-playing (RPG)" counts as RPG and "Platform" as
-Platformer. Letter case doesn't matter.
+Platformer. Letter case doesn't matter. See
+[Tag normalization](#tag-normalization) for the exact rules.
 
 ## Bulk edit
 
@@ -382,6 +506,33 @@ summary, and opens to show the details. Entries cover being added to the
 library, being purchased, achievements unlocked, metadata updated, a price or
 status change, and media added. Things that happened together are grouped. The
 timeline can be switched off in the page settings while the numbers stay.
+
+## Library totals and Trash
+
+Library-wide numbers describe the games currently in your library. A game in
+Trash is left out of Settings > Storage & usage (game count, favorites, total
+playtime, storage used, total spent, average rating, most played and every
+breakdown), the Home **This week** widget, and the game figures on the
+Statistics page. Another account's games are never included.
+
+Trashing a game does not erase what was recorded about it. Its playtime, last
+played time, achievements and metadata history stay with the game while it is
+in Trash, and restoring it returns exactly the same values to every total.
+Trashing and restoring are not counted as activity themselves. When Trash is
+purged after seven days, the game and those records are removed permanently.
+
+These totals are built from what is recorded on each active game, not from a
+separate activity log:
+
+- **Total playtime** is the playtime each platform last reported for a game, not
+  the time played during a particular period.
+- **Games played** in **This week** counts each active game once if its most
+  recent recorded play is within the last seven days, however often it was
+  played that week.
+- **Achievements unlocked** and **Metadata changes** in **This week** count the
+  unlock and change times recorded on active games during those seven days.
+- A game's own Stats tab and history timeline are unavailable while it is in
+  Trash and return unchanged when it is restored.
 
 ## The library at a glance
 

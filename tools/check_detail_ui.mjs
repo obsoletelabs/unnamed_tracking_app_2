@@ -138,14 +138,14 @@ export async function checkDetailUi({ admin, member, origin, evidenceRoot, repor
         const limitsBefore = await json(await context.request.get(origin + "/api/settings/upload-limits"));
         try {
           await page.goto(origin + "/settings?section=limits");
-          for (const label of ["Images & general files (MB)", "Save archives (MB)", "Video clips (MB)", "World saves & modpacks (MB)"]) await page.getByRole("spinbutton", { name: label, exact: true }).fill("1");
+          for (const label of ["Images & general files (MB)", "Documents (MB)", "Save archives (MB)", "Video clips (MB)", "World saves & modpacks (MB)"]) await page.getByRole("spinbutton", { name: label, exact: true }).fill("1");
           await page.getByRole("button", { name: "Save limits", exact: true }).click();
           await page.getByRole("status").filter({ hasText: "Limits saved." }).waitFor();
           await page.reload(); await page.getByRole("spinbutton", { name: "Save archives (MB)", exact: true }).waitFor();
           for (const value of Object.values(await json(await context.request.get(origin + "/api/settings/upload-limits")))) assert.equal(value, 1);
           assert.equal(await page.getByRole("spinbutton", { name: "Video clips (MB)", exact: true }).inputValue(), "1");
           const payload = Buffer.alloc(1024*1024+1, 1);
-          for (const [endpoint, filename, mimeType] of [[`/api/game/${game.id}/screenshots`, "too-large.mp4", "video/mp4"], [`/api/game/${game.id}/screenshots`, "too-large.png", "image/png"], [`/api/game/${game.id}/files/modpack`, "too-large.zip", "application/zip"]]) {
+          for (const [endpoint, filename, mimeType] of [[`/api/game/${game.id}/screenshots`, "too-large.mp4", "video/mp4"], [`/api/game/${game.id}/screenshots`, "too-large.png", "image/png"], [`/api/game/${game.id}/files/doc`, "too-large.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"], [`/api/game/${game.id}/files/modpack`, "too-large.zip", "application/zip"]]) {
             const response = await json(await context.request.post(origin + endpoint, { multipart: { file: { name: filename, mimeType, buffer: payload } } }));
             assert(JSON.stringify(response).includes("Larger than 1 MB."), "Actual upload handler enforces saved cap");
           }
@@ -156,9 +156,9 @@ export async function checkDetailUi({ admin, member, origin, evidenceRoot, repor
           await page.getByRole("button", { name: "Reset all to server defaults", exact: true }).click();
           await page.getByRole("status").filter({ hasText: "All limits reset" }).waitFor();
           const defaults = await json(await context.request.get(origin + "/api/settings/upload-limits"));
-          assert.deepEqual(defaults, { max_upload_size_mb: 15, max_save_archive_size_mb: 4096, max_clip_size_mb: 500, max_world_save_size_mb: 2000 });
+          assert.deepEqual(defaults, { max_upload_size_mb: 15, max_doc_size_mb: 500, max_save_archive_size_mb: 4096, max_clip_size_mb: 500, max_world_save_size_mb: 2000 });
         } finally { await json(await context.request.put(origin + "/api/settings/upload-limit", { data: limitsBefore })); }
-        report.passed.push("Real package preview renders only requested risk categories and usable disclosure arrows", "All four upload caps persist through real settings UI and enforce oversized file, clip, modpack, save and world-save rejection", "Reset clears all overrides to the configured environment defaults");
+        report.passed.push("Real package preview renders only requested risk categories and usable disclosure arrows", "All five upload caps persist through real settings UI and enforce oversized file, document, clip, modpack, save and world-save rejection", "Reset clears all overrides to the configured environment defaults");
       }
       // Fresh in-app navigation resets a scrolled page; a detail return preserves library context.
       await page.setViewportSize({ width: 390, height: 620 });

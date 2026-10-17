@@ -4,7 +4,7 @@ Movies are user-scoped records with metadata, status, rating, dates, artwork, li
 
 Create a movie manually or select a result from the configured movie metadata provider. The library supports search, filters, sorting, list membership, and bulk workflows shared with other media libraries. The detail page exposes editing, activity, related titles, and recommendations when provider data is available.
 
-Deleting a movie moves it to trash. Restore returns it to the library; purge permanently removes it. Metadata refresh respects supported locked-field behavior and requires the relevant provider credentials to be configured by an administrator.
+Deleting a movie moves it to trash. Restore returns it to the library; purge permanently removes it. You can also empty the whole movie trash or have trashed movies deleted automatically after a period you choose (never by default); see [Trash, Empty trash and automatic deletion](media-libraries.md#trash-empty-trash-and-automatic-deletion). Metadata refresh respects supported locked-field behavior and requires the relevant provider credentials to be configured by an administrator.
 
 ## Where you left off
 

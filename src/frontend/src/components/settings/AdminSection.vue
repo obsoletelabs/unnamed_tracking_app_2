@@ -13,6 +13,8 @@ import type { AdminUser } from "../../services/admin";
 import PasswordRequirements from "./PasswordRequirements.vue";
 import PluginAdminActions from "../plugins/PluginAdminActions.vue";
 import PluginExtensionSlot from "../plugins/PluginExtensionSlot.vue";
+import AdminUserEditDialog from "./AdminUserEditDialog.vue";
+import { listInvitations, type Invitation } from "../../services/adminUsers";
 import {
   fetchPasswordPolicy,
   passwordValidationErrors,
@@ -20,15 +22,39 @@ import {
 } from "../../services/passwordPolicy";
 
 const users = ref<AdminUser[]>([]);
+const invitations = ref<Invitation[]>([]);
+const editingUser = ref<AdminUser | null>(null);
+const editingInvitation = ref<Invitation | null>(null);
 const loading = ref(true);
 const error = ref<string | null>(null);
 const passwordPolicy = ref<PasswordPolicy | null>(null);
+
+async function refreshAfterEdit() {
+  try {
+    users.value = await listUsers();
+    invitations.value = await listInvitations().catch(() => []);
+    const open = editingUser.value;
+    if (open)
+      editingUser.value = users.value.find((u) => u.id === open.id) ?? null;
+    const invite = editingInvitation.value;
+    if (invite)
+      editingInvitation.value =
+        invitations.value.find(
+          (i) => i.email === invite.email && i.status === "pending",
+        ) ??
+        invitations.value.find((i) => i.id === invite.id) ??
+        invite;
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : "Failed to load users";
+  }
+}
 
 async function loadUsers() {
   loading.value = true;
   error.value = null;
   try {
     users.value = await listUsers();
+    invitations.value = await listInvitations().catch(() => []);
   } catch (err) {
     error.value = err instanceof Error ? err.message : "Failed to load users";
   } finally {
@@ -186,6 +212,13 @@ function openCreateForm() {
               </button>
               <button
                 type="button"
+                class="small-button"
+                @click="editingUser = user"
+              >
+                Edit
+              </button>
+              <button
+                type="button"
                 class="small-button danger"
                 :disabled="user.id === currentUser?.id"
                 @click="
@@ -194,6 +227,32 @@ function openCreateForm() {
                 "
               >
                 Delete
+              </button>
+            </td>
+          </tr>
+          <tr
+            v-for="invite in invitations"
+            :key="invite.id"
+            class="invited-row"
+          >
+            <td data-label="Username">
+              <span class="role-badge invited">Invited</span>
+            </td>
+            <td data-label="Email">{{ invite.email }}</td>
+            <td data-label="Role">
+              <span class="role-badge">{{ invite.status }}</span>
+            </td>
+            <td class="joined" data-label="Joined">
+              Expires
+              {{ new Date(invite.expires_at * 1000).toLocaleDateString() }}
+            </td>
+            <td class="actions">
+              <button
+                type="button"
+                class="small-button"
+                @click="editingInvitation = invite"
+              >
+                Edit
               </button>
             </td>
           </tr>
@@ -262,6 +321,17 @@ function openCreateForm() {
       </form>
     </template>
     <PluginExtensionSlot slot-id="administration.users.settings" inline />
+    <AdminUserEditDialog
+      v-if="editingUser || editingInvitation"
+      :user="editingUser"
+      :invitation="editingInvitation"
+      :is-self="editingUser?.id === currentUser?.id"
+      @close="
+        editingUser = null;
+        editingInvitation = null;
+      "
+      @changed="refreshAfterEdit"
+    />
     <div
       v-if="deletingUser"
       class="confirm-backdrop"
@@ -378,12 +448,17 @@ function openCreateForm() {
   }
 }
 .role-badge {
+  white-space: nowrap;
   font-size: 11px;
   font-weight: 700;
   padding: 3px 10px;
   border-radius: 999px;
   color: var(--ui-dim);
   background: color-mix(in srgb, var(--ui-text) 6%, transparent);
+}
+.role-badge.invited {
+  color: var(--ui-warning);
+  background: var(--ui-warning-soft);
 }
 .role-badge.admin {
   color: var(--ui-accent-text);
