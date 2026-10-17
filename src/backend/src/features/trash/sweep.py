@@ -233,6 +233,9 @@ async def run_sweep_once() -> dict[str, int]:
     try:
         # opt-in, per-account title retention; separate from the game files above
         result.update(await purge_expired_media_titles())
+        if result.get("failed_titles"):
+            # Titles that could not be purged wait for the next pass but must still be reported.
+            result["failed_parts"] += 1
     # Keep the periodic cleanup boundary alive after an unexpected failed pass.
     # pylint: disable-next=broad-exception-caught
     except Exception:

@@ -116,3 +116,19 @@ async def test_maintenance_jobs_are_admin_only_in_the_route(monkeypatch):
         with pytest.raises(HTTPException) as caught:
             await job_routes._spec("library_backups", db, uuid4())
     assert caught.value.status_code == 404
+
+
+async def test_sweep_pass_reports_media_titles_that_could_not_be_purged(monkeypatch):
+    monkeypatch.setattr(sweep, "purge_expired_trash", AsyncMock(return_value={}))
+    monkeypatch.setattr(
+        sweep,
+        "purge_expired_media_titles",
+        AsyncMock(return_value={"accounts": 1, "purged_titles": 2, "failed_titles": 1}),
+    )
+    monkeypatch.setattr(sweep, "purge_expired_sessions", AsyncMock(return_value=0))
+    result = await sweep.run_sweep_once()
+    assert result["failed_parts"] == 1
+    monkeypatch.setattr(jobs, "run_sweep_once", AsyncMock(return_value=result))
+    row = await _start_and_wait("trash_sweep")
+    assert row["last_result"]["completed"] is False
+    assert row["last_summary"].endswith("1 step(s) failed")
