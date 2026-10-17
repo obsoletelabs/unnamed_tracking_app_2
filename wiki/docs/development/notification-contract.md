@@ -589,7 +589,7 @@ Discovery (`provider_capability_profile`):
 | --- | --- | --- |
 | `core.inbox` | legacy | Plain text, one host-proxied artwork image, no external links |
 | `core.smtp` | legacy | Plain text plus the host link footer, critical supported |
-| `core.browser` | legacy | Constant generic preview only, 4,096-byte Web Push payload |
+| `core.browser` | legacy | Generic preview by default (opt-in story previews), `replace` by stable tag, 4,096-byte Web Push payload |
 | `legacy` plugin transport | legacy | Title/body DTO, no links |
 | `discord_webhook` | legacy | Approved fields as embed, links, 256-character title, 4,096-character text |
 | `plugin` (generic) | legacy | Title/body DTO with the host link, critical per declaration |
@@ -1058,3 +1058,57 @@ Regenerate snapshots after an intentional schema change from `src/backend`:
 ```bash
 python -c "import json, pathlib; from src.plugin_api import notification_contract_schemas as s; [pathlib.Path(f'tests/fixtures/notification_contract/schemas/{n}.schema.json').write_text(json.dumps(v, indent=2, sort_keys=True) + '\n') for n, v in s().items()]"
 ```
+
+## Browser and PWA notifications
+
+`core.browser` keeps its conservative model: the encrypted Web Push payload never contains a
+title, body, link or address. It carries identities only (under 512 bytes):
+
+```json
+{"version": 1, "destination": "…", "revision": 1, "generation": "…",
+ "notification": "…", "operation": "send|edit|follow_up", "story": "…", "story_revision": 2}
+```
+
+`story` is omitted for an item outside a story. The provider declares `message_updates:
+"replace"` and implements `edit`, so the dispatcher plans later revisions of a story like any
+other provider:
+
+| Situation | Operation | Result on the device |
+| --- | --- | --- |
+| First revision | `send` | New alert under the tag `…:story:<id>` (`renotify`) |
+| Later revision, reference current | `edit` | Same tag replaces the alert quietly (`silent`, no `renotify`) |
+| No reference (for example the destination was re-enrolled) | `follow_up` | Subject to `NOTIFICATION_FOLLOW_UPS`; shown under the same tag |
+| Identical presentation, replayed event | none | No push; the dispatcher's `unchanged`/receipt rules apply |
+
+The remote reference is the story identity (`story:<id>` or `notification:<id>`), held by the
+host like any other. A `Topic` header (a 32-character hash of destination and story identity,
+RFC 8030) lets the push service replace an alert that was not yet delivered, so a device that
+was offline does not receive a burst. The worker also skips a push whose notification and
+revision it already shows or has superseded.
+
+The service worker fetches `GET /api/settings/notification-providers/browser-destinations/{id}/status?revision=N&notification=ID`
+with the signed-in cookie. That endpoint repeats the existing gate (session, consent,
+blocked providers, trust floor, VAPID/subscription binding) and adds a `preview`. `preview` is
+`null` (nothing is shown) when the item is deleted, expired, owned by another account or has no
+live delivery for this destination revision.
+
+`NOTIFICATION_BROWSER_PREVIEWS` selects what a visible preview contains:
+
+| Mode | Content |
+| --- | --- |
+| `generic` (default) | Constant title and body, safe on a locked screen. Replacement and click-through are still story-specific. |
+| `story` | Title and summary (control and bidirectional characters removed, 80/240 characters, credential-shaped text withheld) plus at most one `external` HTTPS image (only when `NOTIFICATION_IMAGE_MODE=external`; the OS loads notification images without the session) and up to two `host_route` actions. |
+
+A delivery whose projection is not `canonical`, or a notification whose purpose is not
+`standard`, is always generic.
+
+Capability limits are honoured on the device: actions need `Notification.maxActions`,
+images need `image` support in `Notification.prototype`, and `getNotifications` is optional.
+An unsupported field is omitted and the title/body still show. Link and plugin-action
+targets are never rendered as buttons; the story page offers them after authorization.
+
+Clicking opens only a path on the worker's own origin (the story page, or the chosen action's
+route) in an existing same-origin window or a new one; a value that is not an absolute
+same-origin path falls back to `/notifications`. The application route then applies the normal
+host authorization, so a revoked or foreign story simply does not load. Retirement, disabled
+PWA, subscription expiry and revocation behave as before.

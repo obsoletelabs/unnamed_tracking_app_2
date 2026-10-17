@@ -358,7 +358,11 @@ BUILTIN_PROFILES: Mapping[str, ProviderCapabilityProfile] = {
         "legacy", _baseline(links=True), critical_supported=True
     ),
     "core.browser": ProviderCapabilityProfile(
-        "legacy", _baseline(max_payload_bytes=4096), generic_preview_only=True
+        "legacy",
+        # A tag replaces the earlier alert on the device, so a later story revision is a
+        # `replace` without any per-message reference from the push service.
+        _baseline(max_payload_bytes=4096, message_updates="replace"),
+        generic_preview_only=True,
     ),
 }
 TRANSPORT_PROFILES: Mapping[str, ProviderCapabilityProfile] = {
