@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from "vue";
-import { useRouter } from "vue-router";
+import { RouterLink, useRouter } from "vue-router";
 import AppTopBar from "../components/AppTopBar.vue";
 import SegmentedTabs from "../components/SegmentedTabs.vue";
 import type { SegmentOption } from "../components/SegmentedTabs.vue";
@@ -479,6 +479,12 @@ function toggleOpen(n: MediaNotification) {
                       </div>
                     </dl>
                     <div class="detail-actions">
+                      <RouterLink
+                        v-if="n.storyId"
+                        :to="`/notifications/stories/${n.storyId}`"
+                        class="ui-btn ui-btn-sm ui-btn-secondary"
+                        >View full update</RouterLink
+                      >
                       <button
                         v-if="notificationDestination(n)"
                         type="button"

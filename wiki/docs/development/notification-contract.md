@@ -31,7 +31,7 @@ through the [compatibility adapters](#compatibility-adapters).
 | Item, delivery and attempt transition tables verified against the current routes and dispatcher | Dispatcher (#110), full page (#113) |
 | Story revision decision (`decide_revision`) for read/dismissed items | Persisted by the controller since 1.0.0 revision 2 ([Story persistence](#story-persistence-and-idempotency)); first host producer: plugin updates |
 | Capability model, discovery profiles for every current provider and the edit/follow-up fallback | Dispatcher (#110), SMTP (#111), Discord (#112), PWA (#114) |
-| Renderer contribution model and template rules | Rich rendering (#109), plugin contract (#115) |
+| Renderer contribution model and template rules | Enforced by the host since #109 ([Rich content](#rich-content-live-story-pages-and-actions)); plugin contract (#115) |
 | Explicit adapters for every existing producer, record and notification Plugin API surface | All downstream issues until #118 retires adapters |
 
 The contract itself adds no gateway methods, permissions or provider behaviour.
@@ -531,6 +531,121 @@ recipient or destination details and never apply to PUBLIC projections.
 Accepting them requires grants that #115 defines; HTML templates additionally
 require an explicit high-risk grant.
 
+## Rich content, live story pages and actions
+
+Migration `b7d41c9a2e65` adds `notification_story_revisions.content` (JSONB, the
+validated canonical document of that revision) and `notification_live_links`.
+Existing revisions keep their title and body and simply have no document. The
+contract version stays 1.0.0: no wire document changed.
+
+### Acceptance and rendering
+
+`NotificationDraft.content` carries a validated `NotificationContent`. At
+acceptance (`validate_rich_content`) the host **rejects**, rather than rewrites,
+content that contains executable markup (`script`, `iframe`, `object`, `form`,
+`svg`, `base`, `meta`, `link`, `style`, inline event handlers or `style`
+attributes), script or data URL schemes, CSS constructs (`expression(`, `@import`,
+`url(`), non-HTTPS or private-host URLs, URLs with secret query parameters
+(`token`, `key`, `password`, `signature`, `code`, ...) and credential-shaped text
+(private keys, bearer or basic tokens, JWTs, cloud and Git provider keys,
+`password=` style pairs and verification codes). A rejected event consumes no
+receipt. Only `standard` and `security` purposes can carry content; an event
+without a story becomes a one-item story so every rich notification has a page.
+
+The notification's `title` and `body` (used by every legacy provider and the bell)
+are derived from the content (`render_plain`: summary, blocks, then `Label: value`
+fact lines), so a message is understandable without opening the app. The bell
+stays compact and links to the full page. `Notification.expires_at` becomes the
+earlier of the content expiry and the purpose lifetime.
+
+Rendering never produces markup from producer text:
+
+| Surface | Mechanism |
+| --- | --- |
+| Web page | `render_markdown` returns a bounded node tree (paragraphs, headings, lists, quotes, code, links). Clients draw it with text interpolation; links are re-checked client-side. Raw HTML is shown as text, embedded images are not rendered, only HTTPS or application-path links survive. Parsing is linear with explicit window, depth and node limits. |
+| Plain text | `render_plain`, with link targets appended. |
+| Email | `render_email_html` builds the default layout from the node tree or applies an authorised template, then runs the allowlist `sanitize_html`. |
+| Templates | `apply_template` substitutes escaped canonical values for the contract's named placeholders only; `markdown_template` output is Markdown source, `html_template` output is sanitised. |
+
+`sanitize_html` rebuilds markup from parser events: allowlisted elements
+(`a`, `p`, headings, lists, tables, `strong`, `em`, `code`, `pre`, ...), allowlisted
+attributes (`href` HTTPS/app path only, `title`, `lang`, `dir`, table spans and
+alignment), and `style` reduced to colour, font, alignment and spacing properties
+with strict value syntax. Scripts, frames, forms, SVG/MathML, comments, `url()`
+and unknown elements are dropped; links gain `rel="noopener noreferrer nofollow"`.
+HTML templates require the existing high-risk `notifications.sensitive` grant until
+#115 defines a dedicated one.
+
+### Public projection and live links
+
+The private canonical document never feeds a public surface.
+`public_projection` is built only from the host-approved
+`Notification.public_title/public_body` (the existing release projection, absent
+for plugin content, in which case generic text is used), the phase label and the
+update time.
+
+A live link is `<origin>/api/notifications/live/<token>`:
+
+- The token is `nls1_` plus 256 random bits. It contains no identifier; only its
+  SHA-256 is stored, so the table cannot reproduce a link.
+- Lifetime defaults to `NOTIFICATION_LIVE_LINK_DEFAULT_DAYS` (7) and is clamped to
+  `NOTIFICATION_LIVE_LINK_MAXIMUM_DAYS` (30). At most 20 links are active per story.
+- It is revoked individually, in bulk (`POST /api/notifications/stories/live-links/revoke-all`)
+  or implicitly when the story's latest item is deleted. It stops working when the
+  owner is deactivated. Every failure (unknown, malformed, expired, revoked, erased)
+  returns the same 404 page.
+- The server-rendered page (`notification_live.py`) has no scripts, images or forms,
+  `Cache-Control: no-store`, `Referrer-Policy: no-referrer`, a `default-src 'none'`
+  CSP and landmarks for screen readers (`main` labelled by the single `h1`, a
+  definition list, `time` elements). The same projection is available as JSON at
+  `.../state`. Uvicorn access logs redact the token.
+- A signed-in owner opens the private latest state through
+  `/notifications/live/<token>` in the app (`GET /api/notifications/stories/by-link/{token}`);
+  any other account receives 404.
+
+The signed-in story page is `/notifications/stories/<story id>`
+(`GET /api/notifications/stories/{id}`, owner only, `Cache-Control: private, no-store`).
+
+### Images
+
+`NOTIFICATION_IMAGE_MODE` selects how producer images are shown:
+
+| Mode | Behaviour |
+| --- | --- |
+| `proxied` (default) | The viewer loads `/api/notifications/stories/{id}/images/{index}`. The URL is read from the stored revision, never from the request. The host fetches it with the pinned-DNS, public-address-only, redirect-checked downloader, caps bytes (`NOTIFICATION_IMAGE_MAX_BYTES`, 5 MiB) and pixels, runs at most four fetches at once, re-encodes to JPEG (so no remote byte is served as sent), and caches by URL hash. |
+| `external` | The viewer's browser loads the validated HTTPS URL directly with `referrerpolicy="no-referrer"`. |
+| `off` | Built-in fallback artwork. |
+
+`effective_image_mode(capabilities)` narrows the policy by what a surface declares
+(`ImageCapabilities`). Any failure (private address, redirect to a private host,
+oversize, non-image, decompression bomb, timeout) serves fallback artwork and is
+remembered for `NOTIFICATION_IMAGE_FAILURE_SECONDS` (300) so a bad URL cannot be
+used to hammer a remote host. `host_media` images resolve only to the recipient's
+own movie, TV or anime records through the existing protected media route.
+
+### Plugin actions
+
+`plugin_action` targets run only through
+`POST /api/notifications/stories/{id}/actions/{action_id}`. The request carries no
+input: the host reads the action and its input from the stored latest revision and
+rechecks, at invocation, that
+
+1. the actor is the story owner and still active;
+2. the story is the live head and the item is not erased or expired;
+3. the source installation still has a non-revoked registration for the event type
+   (a reinstalled plugin cannot act on an older installation's stories);
+4. the installation's current grant (`notifications.emit`, until #115 defines
+   action-specific grants) covers the owner, honouring revocation tombstones;
+5. destructive actions (`style: danger`) were confirmed.
+
+The host then calls the runtime route
+`POST /plugins/{plugin_id}/notification-story-actions/{action_id}` (host-only
+transport, `PluginRuntimeClient.notification_story_action`) with
+`values`, `user_id`, `installation_id`, `story_id` and `revision`. The result
+message is bounded to 300 printable characters. Plugin JavaScript never runs in
+notification content, and plugin action entries in views expose no plugin id,
+input or target.
+
 ## Compatibility adapters
 
 Every existing notification gateway method and runtime operation has an explicit
@@ -606,7 +721,7 @@ These invariants hold for every adopter:
 | #106 | Done: persisted with `decide_revision` under transactional locks, installation-scoped story identity, receipts separate from content, no reuse of replay statuses. See [Story persistence](#story-persistence-and-idempotency). |
 | #107 | Done: see [Aggregation windows and digests](#aggregation-windows-and-digests). |
 | #108 | Done: see [Timing policy](#timing-policy). Urgency is a request constrained by server, user and policy limits, never by trust. |
-| #109 | Markdown/HTML/URL enforcement, image proxying, host media resolution, action routes and live story links. |
+| #109 | Done: see [Rich content, live story pages and actions](#rich-content-live-story-pages-and-actions). Providers (#110-#114) call `render_plain`, `render_email_html` and `live_url`; #115 declares the grants and the runtime route for story actions. |
 | #110 | Capability declarations and discovery, per-revision deliveries, batches, remote references and `reconciliation_operation`. |
 | #111–#114 | Provider renderers consuming negotiated content or `legacy_text`, and their capability profiles. |
 | #115 | Gateway operations, grants and SDK types for these schemas under a new Plugin API minor. |

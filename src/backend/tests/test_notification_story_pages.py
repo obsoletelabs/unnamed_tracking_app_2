@@ -3,7 +3,7 @@
 import time
 from html.parser import HTMLParser
 from types import SimpleNamespace
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import httpx
 import pytest
@@ -412,7 +412,7 @@ async def test_live_page_is_a_screen_reader_friendly_document(world):
     assert outline.tags.count("h1") == 1 and outline.tags.count("main") == 1
     assert ("main", {"aria-labelledby": "story-title"}) in outline.attrs
     assert {"dl", "dt", "dd", "time"} <= set(outline.tags)
-    assert not {"script", "img", "iframe", "form", "style"} - {"style"} & set(outline.tags)
+    assert not {"script", "img", "iframe", "form"} & set(outline.tags)
     assert "script" not in outline.tags and "img" not in outline.tags
     assert any(tag == "meta" and a.get("name") == "viewport" for tag, a in outline.attrs)
     assert any(tag == "time" and a.get("datetime", "").endswith("Z") for tag, a in outline.attrs)
@@ -678,10 +678,66 @@ async def test_action_messages_are_bounded_text(world, monkeypatch):
     assert (await run(world, story_id)).json()["message"] is None
 
 
-async def test_link_count_helper_ignores_expired_links(world):
+async def test_expired_and_revoked_links_do_not_count_against_the_limit(world, monkeypatch):
     _, story_id = await world.emit()
-    await link_for(world, story_id)
+    monkeypatch.setattr(pages, "MAX_ACTIVE_LINKS_PER_STORY", 1)
+    first = await link_for(world, story_id)
     async with SessionLocal() as db:
-        total = await db.scalar(select(func.count()).select_from(NotificationLiveLink))
-        assert total == 1
-    assert isinstance(story_id, UUID)
+        await db.execute(update(NotificationLiveLink).values(expires_at=int(time.time()) - 1))
+        await db.commit()
+    second = await link_for(world, story_id)
+    assert (
+        await world.client.delete(
+            f"/api/notifications/stories/{story_id}/live-links/{second['id']}"
+        )
+    ).status_code == 204
+    third = await link_for(world, story_id)
+    assert first["id"] != third["id"]
+    async with SessionLocal() as db:
+        assert await db.scalar(select(func.count()).select_from(NotificationLiveLink)) == 3
+
+
+async def test_html_templates_need_the_high_risk_grant(world):
+    from src.plugin_api.notification_story_contracts import RendererContribution
+
+    def template(kind, text):
+        return RendererContribution(
+            contract_version=NOTIFICATION_CONTRACT_VERSION,
+            event_type=EVENT_TYPE,
+            surface="email" if kind == "html_template" else "card",
+            kind=kind,
+            template=text,
+        )
+
+    async with SessionLocal() as db:
+        check = lambda item: pages.contribution_authorised(  # noqa: E731
+            db,
+            item,
+            plugin_id=PLUGIN,
+            installation_id=world.installation,
+            user_id=world.owner,
+        )
+        assert await check(template("markdown_template", "# {title}"))
+        assert not await check(template("html_template", "<p>{title}</p>"))
+        db.add(
+            PluginPermissionGrant(
+                plugin_id=PLUGIN,
+                installation_id=world.installation,
+                user_id=world.owner,
+                capability="notifications.sensitive",
+                capability_version=1,
+            )
+        )
+        await db.commit()
+        assert await check(template("html_template", "<p>{title}</p>"))
+        other = RendererContribution(
+            contract_version=NOTIFICATION_CONTRACT_VERSION,
+            event_type=f"{PLUGIN}.other",
+            surface="card",
+            kind="markdown_template",
+            template="{title}",
+        )
+        assert not await check(other)  # not a type this installation registered
+        await db.execute(update(PluginPermissionGrant).values(revoked_at=int(time.time())))
+        await db.commit()
+        assert not await check(template("markdown_template", "# {title}"))
