@@ -74,6 +74,7 @@ export const LIBRARY_SETTINGS_TABS: SettingsTab[] = [
   { id: "manage", label: "Library" },
   { id: "preferences", label: "Preferences" },
   { id: "duplicates", label: "Duplicates" },
+  { id: "names", label: "Names" },
   { id: "trash", label: "Trash" },
 ];
 

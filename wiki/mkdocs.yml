@@ -110,6 +110,7 @@ nav:
       - Playnite Observations: development/playnite-observations.md
       - Game Identity Decisions: development/game-identity-decisions.md
       - Game Identity Counters: development/game-identity-counters.md
+      - Game Identity Names: development/game-identity-names.md
       - Plugin Palettes & Appearance: development/plugin-themes.md
       - Plugin Home Widgets: development/plugin-home-widgets.md
       - Custom Plugin Frontend Sandbox: development/plugin-ui-sandbox.md
