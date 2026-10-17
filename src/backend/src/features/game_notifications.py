@@ -13,6 +13,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.preferences import load_preferences
 from src.database.models.game import Game, GameStatus
 from src.features.notification_controller import NotificationDraft, NotificationEvent, emit
+from src.features.notification_producer_content import game_price_content, open_game_action
+from src.plugin_api.notification_story_contracts import (
+    ContentFact,
+    NotificationContent,
+    TimestampFactValue,
+)
 
 
 class GamePriceObservation(BaseModel):
@@ -62,6 +68,7 @@ async def interpret_game_event(
     dedupe_key = event.dedupe_key
     body = "Released"
     public_body = body
+    content: NotificationContent | None = None
     if event.type == "game.released":
         if event.data:
             raise ValueError("Release facts are resolved from owned game metadata")
@@ -77,6 +84,18 @@ async def interpret_game_event(
         ):
             raise ValueError("Release event does not match the known release date")
         dedupe_key = f"game-release:{game.id}:{game.release_date}"
+        content = NotificationContent(
+            title=game.title,
+            summary=body,
+            facts=(
+                ContentFact(
+                    key="released",
+                    label="Released",
+                    value=TimestampFactValue(kind="timestamp", value=release_at),
+                ),
+            ),
+            actions=(open_game_action(game.id),),
+        )
     else:
         quote = GamePriceObservation.model_validate(event.data)
         source = quote.source
@@ -107,6 +126,16 @@ async def interpret_game_event(
             body = f"Price reached your {quote.currency} {quote.threshold} target: {quote.amount}"
         else:
             raise ValueError("Unsupported game event")
+        content = game_price_content(
+            title=game.title,
+            summary=body,
+            game_id=game.id,
+            currency=quote.currency,
+            amount=quote.amount,
+            regular_amount=quote.regular_amount,
+            market=quote.market,
+            platform=quote.platform,
+        )
     return NotificationDraft(
         kind=kind,
         user_id=event.user_id,
@@ -123,6 +152,8 @@ async def interpret_game_event(
         fingerprint=sha256(quote.model_dump_json().encode()).hexdigest()
         if event.type != "game.released"
         else None,
+        content=content,
+        keep_text=True,
     )
 
 
