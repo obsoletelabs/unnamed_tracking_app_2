@@ -41,7 +41,9 @@ from src.api.routes import (
     media_stats,
     metadata,
     movies,
+    notification_live,
     notification_providers,
+    notification_stories,
     notification_timing,
     notification_unsubscribe,
     notification_verification,
@@ -166,7 +168,9 @@ app.include_router(steam_import_steps.router)
 app.include_router(steam_connections.router)
 app.include_router(steam_tags_refresh.router)
 app.include_router(media_lists.router)
+app.include_router(notification_stories.router)
 app.include_router(notifications.router)
+app.include_router(notification_live.router)
 app.include_router(notification_providers.router)
 app.include_router(notification_timing.router)
 app.include_router(notification_unsubscribe.router)
