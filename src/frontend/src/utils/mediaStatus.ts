@@ -43,6 +43,14 @@ export function bucketToReal(bucket: string): string {
   return BUCKET_TO_REAL[bucket as StatusBucketKey] ?? bucket;
 }
 
+// The real status to save when a form shows only the five buckets: an
+// unchanged bucket keeps the stored value, so Favorite and Rewatch are not
+// silently rewritten to Watched / In progress.
+export function resolveStatus(bucket: string, currentReal?: string): string {
+  if (currentReal && statusBucket(currentReal) === bucket) return currentReal;
+  return bucketToReal(bucket);
+}
+
 export function statusBucketLabel(realStatus: string): string {
   const bucket = statusBucket(realStatus);
   return STATUS_BUCKETS.find((s) => s.key === bucket)?.label ?? "Plan to Watch";

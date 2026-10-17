@@ -45,10 +45,10 @@ it("disables game layers with a described reason and restores them", async () =>
   expect(id).toBeTruthy();
   const reason = wrapper.find(`#${id}`);
   expect(reason.attributes("role")).toBe("status");
-  expect(reason.text()).toContain("Hide all Games layers");
+  expect(reason.text()).toContain("Hide all games layers");
   expect(reason.text()).toContain("Your choice is kept.");
 
-  await toggle(wrapper, "Hide all Games layers").trigger("click");
+  await toggle(wrapper, "Hide all games layers").trigger("click");
   await flushPromises();
   const after = toggle(wrapper, "Game releases");
   expect(after.attributes("disabled")).toBeUndefined();

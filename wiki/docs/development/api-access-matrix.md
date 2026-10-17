@@ -248,6 +248,14 @@ are redacted. Validation errors never echo submitted values.
 | GET | `/api/achievement-icon/{achievement_id}` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | GET | `/api/game-duplicates` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | POST | `/api/game-duplicates/keep-both` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
+| GET | `/api/game-identity/decisions` | user | Every game, observation, counter and relationship is looked up with `user_id == caller`; another user's ID is not found. |
+| GET | `/api/game-identity/games/{game_id}` | user | Every game, observation, counter and relationship is looked up with `user_id == caller`; another user's ID is not found. |
+| POST | `/api/game-identity/merge` | user | Every game, observation, counter and relationship is looked up with `user_id == caller`; another user's ID is not found. |
+| POST | `/api/game-identity/observations/{observation_id}/move` | user | Every game, observation, counter and relationship is looked up with `user_id == caller`; another user's ID is not found. |
+| POST | `/api/game-identity/relationships` | user | Every game, observation, counter and relationship is looked up with `user_id == caller`; another user's ID is not found. |
+| POST | `/api/game-identity/relationships/{relationship_id}/end` | user | Every game, observation, counter and relationship is looked up with `user_id == caller`; another user's ID is not found. |
+| POST | `/api/game-identity/separate` | user | Every game, observation, counter and relationship is looked up with `user_id == caller`; another user's ID is not found. |
+| POST | `/api/game-identity/unmerge` | user | Every game, observation, counter and relationship is looked up with `user_id == caller`; another user's ID is not found. |
 | POST | `/api/game-ownership/group` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | POST | `/api/game-ownership/separate` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | GET | `/api/game/achievements-summary` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
@@ -537,6 +545,7 @@ are redacted. Validation errors never echo submitted values.
 | GET | `/api/settings/jobs` | admin | Instance schedule; administrator. |
 | PUT | `/api/settings/jobs/{job_id}` | admin | Instance schedule; administrator. |
 | POST | `/api/settings/jobs/{job_id}/run` | admin | Instance schedule; administrator. |
+| POST | `/api/settings/jobs/{job_id}/{control}` | admin | Instance schedule; administrator. |
 | GET | `/api/settings/provider-credentials` | user | Own settings and provider credentials; secrets are never returned. |
 | DELETE | `/api/settings/provider-credentials/{provider}` | user | Own settings and provider credentials; secrets are never returned. |
 | PUT | `/api/settings/provider-credentials/{provider}` | user | Own settings and provider credentials; secrets are never returned. |
@@ -549,6 +558,8 @@ are redacted. Validation errors never echo submitted values.
 | POST | `/api/settings/steam/login/account` | user | Own settings and provider credentials; secrets are never returned. |
 | POST | `/api/settings/steam/login/cancel` | user | Own settings and provider credentials; secrets are never returned. |
 | POST | `/api/settings/steam/login/guard` | user | Own settings and provider credentials; secrets are never returned. |
+| POST | `/api/settings/steam/openid/begin` | user | Own settings; starts a single-use redirect state bound to the caller's session. |
+| GET | `/api/settings/steam/openid/callback` | user | Own settings; the state must match the caller's session and Steam's assertion is verified before the identity is linked. |
 | POST | `/api/settings/steam/login/poll` | user | Own settings and provider credentials; secrets are never returned. |
 | POST | `/api/settings/steam/login/qr` | user | Own settings and provider credentials; secrets are never returned. |
 | GET | `/api/settings/system-info` | admin | Instance configuration; administrator. |
@@ -557,6 +568,7 @@ are redacted. Validation errors never echo submitted values.
 | GET | `/api/settings/user-jobs` | user | Per-user job preferences; the job must be one the caller can see. |
 | PUT | `/api/settings/user-jobs/{job_id}` | user | Per-user job preferences; the job must be one the caller can see. |
 | POST | `/api/settings/user-jobs/{job_id}/run` | user | Per-user job preferences; the job must be one the caller can see. |
+| POST | `/api/settings/user-jobs/{job_id}/{control}` | user | Per-user job preferences; the job must be one the caller can see. |
 | PUT | `/api/themes/default` | admin | Instance themes; administrator. |
 | POST | `/api/themes/install` | admin | Instance themes; administrator. |
 | POST | `/api/themes/install/preview` | admin | Instance themes; administrator. |

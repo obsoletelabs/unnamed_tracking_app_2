@@ -26,7 +26,8 @@ onMounted(async () => {
   try {
     prefs.value = await fetchPreferences();
   } catch (e) {
-    error.value = e instanceof Error ? e.message : "Failed to load settings.";
+    error.value =
+      e instanceof Error ? e.message : "Could not load the settings.";
   } finally {
     loaded.value = true;
   }
@@ -45,7 +46,8 @@ async function change(changes: Partial<Preferences>) {
     savedNote.value = "Saved";
     setTimeout(() => (savedNote.value = ""), 1500);
   } catch (e) {
-    error.value = e instanceof Error ? e.message : "Failed to save.";
+    error.value =
+      e instanceof Error ? e.message : "Could not save the settings.";
     try {
       prefs.value = await fetchPreferences();
     } catch {
@@ -137,11 +139,11 @@ const weekOptions = [
     </ToggleButton>
     <ToggleButton
       :model-value="prefs.calendar_hide_games"
-      label="Hide all Games layers"
+      label="Hide all games layers"
       :disabled="!loaded"
       @update:model-value="change({ calendar_hide_games: $event })"
     >
-      <strong>Hide all Games layers</strong>: keep games off the calendar even
+      <strong>Hide all games layers</strong>: keep games off the calendar even
       when the two options above are on
     </ToggleButton>
 

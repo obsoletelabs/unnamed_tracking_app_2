@@ -56,6 +56,7 @@ from src.api.routes import (
     stats,
     steam_connections,
     steam_import_steps,
+    steam_openid,
     steam_tags_refresh,
     tv_shows,
     user_invitations,
@@ -167,6 +168,7 @@ app.include_router(media_images.router)
 app.include_router(achievement_icons.router)
 app.include_router(steam_import_steps.router)
 app.include_router(steam_connections.router)
+app.include_router(steam_openid.router)
 app.include_router(steam_tags_refresh.router)
 app.include_router(media_lists.router)
 app.include_router(notifications.router)
