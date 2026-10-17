@@ -140,6 +140,11 @@ from src.database.models.game_field_change import GameFieldChange
 from src.database.models.user import User
 from src.database.session import get_db
 from src.features import game_folders, game_ownership
+from src.features.game_ingestion.legacy import (
+    has_manual_observation,
+    record_manual_fields,
+    record_playnite_fields,
+)
 from src.features.metadata.locked_fields import apply_updates_with_locking, authorize_title_update
 from src.features.trash.game_trash import move_game_to_trash, restore_game_from_trash
 from src.features.trash.sweep import RETENTION_SECONDS
@@ -296,6 +301,27 @@ async def _find_playnite_game(payload: GameCreate, user_id: UUID, db: AsyncSessi
     return by_folder
 
 
+async def _reject_trashed_playnite_game(guid: UUID, user_id: UUID, db: AsyncSession) -> None:
+    """A GUID whose game sits in Trash is reported, not silently recreated.
+
+    Creating a second row for the same Playnite entry would split one source
+    record across two identities. Restore the game or let the sweep purge it."""
+    trashed = await db.scalar(
+        select(Game.id)
+        .where(Game.user_id == user_id, Game.playnite_guid == guid, Game.deleted_at.is_not(None))
+        .limit(1)
+    )
+    if trashed is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error": "playnite_game_in_trash",
+                "game_id": str(trashed),
+                "message": "This Playnite game is in Trash. Restore it instead of creating it again.",
+            },
+        )
+
+
 async def _validate_game_relationship(
     parent_game_id: UUID | None,
     relationship_type: str | None,
@@ -371,11 +397,17 @@ async def create_game(
     duplicate-folder failure, so a repeated or concurrent Playnite sync
     reconciles rather than erroring (#184). A manual create (no GUID) still
     gets 409 for a folder name that's taken."""
+    sent = payload.model_dump(exclude_unset=True)
     if payload.playnite_guid is not None:
         existing = await _find_playnite_game(payload, current_user.id, db)
         if existing is not None:
+            await record_playnite_fields(
+                db, current_user.id, existing.id, payload.playnite_guid, sent
+            )
+            await db.commit()
             response.status_code = status.HTTP_200_OK
             return existing
+        await _reject_trashed_playnite_game(payload.playnite_guid, current_user.id, db)
 
     await _ensure_folder_location_available(payload.folder_location, current_user.id, db)
     try:
@@ -406,6 +438,12 @@ async def create_game(
     try:
         await db.flush()
         create_game_folder(game.user_id, game.folder_location)
+        # Evidence about the new record, keyed by its stable source ID: the
+        # Playnite GUID, or this entry's own ID for a manual game.
+        if payload.playnite_guid is not None:
+            await record_playnite_fields(db, current_user.id, game.id, payload.playnite_guid, sent)
+        else:
+            await record_manual_fields(db, current_user.id, game.id, sent)
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
@@ -414,6 +452,10 @@ async def create_game(
         if payload.playnite_guid is not None:
             existing = await _find_playnite_game(payload, current_user.id, db)
             if existing is not None:
+                await record_playnite_fields(
+                    db, current_user.id, existing.id, payload.playnite_guid, sent
+                )
+                await db.commit()
                 response.status_code = status.HTTP_200_OK
                 return existing
         raise _duplicate_folder_error(payload.folder_location) from exc
@@ -425,6 +467,7 @@ async def create_game(
 # pylint: disable=too-many-positional-arguments
 @router.get("/list", response_model=list[GameRead])
 async def list_games(
+    response: Response,
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
     status_filter: GameStatus | None = _NONE_QUERY_STATUS,
@@ -433,7 +476,11 @@ async def list_games(
     skip: int = _SKIP_DEFAULT,
     limit: int = _LIMIT_DEFAULT_2,
 ) -> list[Game]:
-    """Return games filtered by status, favorite flag, or title search."""
+    """Return one page of games filtered by status, favorite flag, or title search.
+
+    The body stays a plain array. `X-Total-Count` carries the number of games
+    matching the filters so a client can request the remaining pages together.
+    """
     stmt = select(Game).where(Game.user_id == current_user.id, Game.deleted_at.is_(None))
 
     if status_filter is not None:
@@ -443,6 +490,8 @@ async def list_games(
     if search:
         stmt = stmt.where(Game.title.ilike(f"%{search}%"))
 
+    total = await db.scalar(select(sql_count()).select_from(stmt.subquery()))
+    response.headers["X-Total-Count"] = str(total or 0)
     stmt = stmt.order_by(Game.sort_title).offset(skip).limit(limit)
 
     result = await db.execute(stmt)
@@ -519,7 +568,8 @@ async def update_game(
         await game_ownership.lock_changes(db, current_user.id)
     game = await _get_game_or_404(game_id, db, current_user.id, for_update=True)
 
-    updates = _drop_nulls_for_required_fields(payload.model_dump(exclude_unset=True))
+    sent = payload.model_dump(exclude_unset=True)
+    updates = _drop_nulls_for_required_fields(dict(sent))
     authorize_title_update(game, updates, actor)
     old_folder = game.folder_location
 
@@ -565,6 +615,8 @@ async def update_game(
     if updates.get("status") == GameStatus.MASTERED and game.completion_date is None:
         game.completion_date = int(time.time())
 
+    await _record_update_observation(db, game, actor, sent)
+
     target_folder = game.folder_location
     try:
         if target_folder != old_folder:
@@ -581,6 +633,21 @@ async def update_game(
         ) from exc
 
     return game
+
+
+async def _record_update_observation(
+    db: AsyncSession, game: Game, actor: AuthenticatedActor, sent: dict
+) -> None:
+    """Record what an update reported as evidence; only the fields it carried.
+
+    A Playnite API key's update is Playnite's observation of its entry. A user
+    editing their own manual entry updates the manual observation. Edits to any
+    other game are the user's tracking choices, not source evidence."""
+    is_api_key = isinstance(actor, AuthenticatedActor) and actor.credential_kind == "api_key"
+    if is_api_key and game.playnite_guid is not None:
+        await record_playnite_fields(db, game.user_id, game.id, game.playnite_guid, sent)
+    elif await has_manual_observation(db, game.user_id, game.id):
+        await record_manual_fields(db, game.user_id, game.id, sent)
 
 
 router.include_router(game_metadata.router)

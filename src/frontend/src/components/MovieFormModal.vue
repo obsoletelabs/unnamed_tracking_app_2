@@ -295,7 +295,7 @@ async function submit() {
       : await createMovie(input);
     emit("saved", saved);
   } catch (e) {
-    error.value = e instanceof Error ? e.message : "Failed to save movie.";
+    error.value = e instanceof Error ? e.message : "Could not save the movie.";
   } finally {
     saving.value = false;
   }
@@ -309,7 +309,8 @@ async function remove() {
     await deleteMovie(props.movie.id);
     emit("deleted", props.movie.id);
   } catch (e) {
-    error.value = e instanceof Error ? e.message : "Failed to delete movie.";
+    error.value =
+      e instanceof Error ? e.message : "Could not delete the movie.";
   } finally {
     deleting.value = false;
   }
@@ -319,7 +320,7 @@ async function remove() {
 <template>
   <MediaFormShell
     v-model:tab="tab"
-    noun="Movie"
+    noun="movie"
     :editing="!!movie"
     :saving="saving"
     :lookup-pending="!!search.selected.value"

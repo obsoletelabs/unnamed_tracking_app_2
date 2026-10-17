@@ -381,10 +381,16 @@ async def history(game_id: UUID, actor: DelegatedActor = _ACTOR, db: AsyncSessio
 
 @router.get("/games/{game_id}/artwork/{kind}")
 async def artwork(
-    game_id: UUID, kind: AssetKind, actor: DelegatedActor = _ACTOR, db: AsyncSession = _DB
+    request: Request,
+    game_id: UUID,
+    kind: AssetKind,
+    actor: DelegatedActor = _ACTOR,
+    db: AsyncSession = _DB,
 ) -> Response:
     actor.require("games.read")
-    result = await get_game_asset(game_id=game_id, asset_kind=kind, db=db, current_user=actor.user)
+    result = await get_game_asset(
+        request, game_id=game_id, asset_kind=kind, db=db, current_user=actor.user
+    )
     result.headers["Cache-Control"] = "no-store"
     return result
 

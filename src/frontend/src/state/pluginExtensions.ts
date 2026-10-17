@@ -546,6 +546,10 @@ const replacementState = ref<PluginPageReplacementContribution[]>([]);
 const documentReaderState = ref<PluginDocumentReaderContribution[]>([]);
 let refreshVersion = 0;
 let pendingRefresh: Promise<void> | undefined;
+let lastRefreshFinishedAt = 0;
+// Background callers (mounted components, the poll) skip a load that would
+// repeat one that just finished; explicit manager changes never do.
+const BACKGROUND_REFRESH_FRESH_MS = 2000;
 const documentState = ref<Record<string, PluginUiDocument>>({});
 export const activePluginDocuments = shallowReadonly(documentState);
 
@@ -598,6 +602,7 @@ function retainContributions(pluginIds: ReadonlySet<string>): void {
 export function clearPluginExtensions(): void {
   refreshVersion++;
   pendingRefresh = undefined;
+  lastRefreshFinishedAt = 0;
   retainContributions(new Set());
 }
 
@@ -651,8 +656,16 @@ export function refreshPluginExtensions(
   // multi-plugin refresh is repeatedly invalidated before it can publish.
   // Explicit manager mutations still start a fresh load to reflect revocation.
   if (options.background && pendingRefresh) return pendingRefresh;
+  if (
+    options.background &&
+    Date.now() - lastRefreshFinishedAt < BACKGROUND_REFRESH_FRESH_MS
+  )
+    return Promise.resolve();
   const refresh = loadPluginExtensions().finally(() => {
-    if (pendingRefresh === refresh) pendingRefresh = undefined;
+    if (pendingRefresh === refresh) {
+      pendingRefresh = undefined;
+      lastRefreshFinishedAt = Date.now();
+    }
   });
   pendingRefresh = refresh;
   return refresh;

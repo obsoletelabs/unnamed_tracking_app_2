@@ -21,11 +21,11 @@ from src.database.models.user import User
 from src.database.session import get_db
 from src.features.backup.scheduler import (
     _BACKUP_ROOT,
-    BACKUP_INTERVAL_SECONDS,
     BACKUPS_TO_KEEP_PER_USER,
 )
 from src.features.game_folders import reserved_names
 from src.features.imports.library_export import build_library_export
+from src.features.jobs import JOBS, get_setting
 from src.helpers import save_game_asset
 from src.helpers.save_game_asset import create_game_folder
 
@@ -49,7 +49,12 @@ class BackupStatus(BaseModel):
 
 
 @router.get("/export/backup-status", response_model=BackupStatus)
-async def backup_status(current_user: User = Depends(get_current_user)) -> BackupStatus:
+async def backup_status(
+    current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+) -> BackupStatus:
+    # The schedule is the administrator's "Library backups" task in the schedule manager.
+    setting = await get_setting(db, JOBS["library_backups"])
+    await db.commit()
     user_dir = _BACKUP_ROOT / str(current_user.id)
     files = sorted(user_dir.glob("backup-*.json"), reverse=True) if user_dir.is_dir() else []
     last_at = None
@@ -61,7 +66,8 @@ async def backup_status(current_user: User = Depends(get_current_user)) -> Backu
         except (IndexError, ValueError):
             last_at = int(files[0].stat().st_mtime)
     return BackupStatus(
-        interval_hours=BACKUP_INTERVAL_SECONDS // 3600,
+        enabled=setting.enabled,
+        interval_hours=max(1, -(-setting.interval_minutes // 60)),
         backups_kept=BACKUPS_TO_KEEP_PER_USER,
         last_backup_at=last_at,
         backup_count=len(files),

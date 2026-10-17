@@ -26,7 +26,8 @@ onMounted(async () => {
     prefs.value = await fetchPreferences();
     retention.value = await fetchInboxRetentionPolicy();
   } catch (e) {
-    error.value = e instanceof Error ? e.message : "Failed to load settings.";
+    error.value =
+      e instanceof Error ? e.message : "Could not load the settings.";
   } finally {
     loaded.value = true;
   }
@@ -46,7 +47,8 @@ async function change(changes: Partial<Preferences>) {
     savedNote.value = "Saved";
     setTimeout(() => (savedNote.value = ""), 1500);
   } catch (e) {
-    error.value = e instanceof Error ? e.message : "Failed to save.";
+    error.value =
+      e instanceof Error ? e.message : "Could not save the settings.";
     try {
       prefs.value = await fetchPreferences();
     } catch {

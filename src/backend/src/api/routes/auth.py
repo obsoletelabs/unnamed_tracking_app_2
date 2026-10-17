@@ -40,9 +40,39 @@ from src.database.models.auth import UserApiKey
 from src.database.models.user import User
 from src.database.session import get_db
 from src.features.admin_users import is_primary_user, record_audit
+from src.features.game_ingestion.legacy import PLAYSTATION, record_disconnect
 from src.features.metadata.games.psn import PSNClient, PSNError
 from src.features.notification_urls import remember_app_url
 from src.features.profile_pictures import profile_picture_version
+
+ACCOUNT_CONFLICT_DETAIL = "That username or email is already in use."
+
+
+def _account_conflict_detail(exc: IntegrityError, *, reveal_field: bool) -> str:
+    """Describe a unique-field collision.
+
+    Only administrators (who can already list every account) learn which field collided; for
+    everyone else the reply is one combined message so a profile save cannot be used to probe
+    which usernames or email addresses are registered.
+    """
+    if not reveal_field:
+        return ACCOUNT_CONFLICT_DETAIL
+    # PostgreSQL names the violated constraint in the error text; the offending value (which a
+    # user controls) appears only in the separate DETAIL line, so match the quoted name.
+    message = str(exc.orig)
+    constraint = (
+        "username"
+        if '"users_username_key"' in message
+        else "email"
+        if '"users_email_key"' in message
+        else ""
+    )
+    if constraint == "username":
+        return "That username is already taken. Choose a different username."
+    if constraint == "email":
+        return "That email address is already in use."
+    return "Username or email already exists."
+
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -58,7 +88,7 @@ class ApiKeyCreateRequest(BaseModel):
 
 
 class UserCreateRequest(BaseModel):
-    username: str = Field(min_length=1, max_length=100)
+    username: str
     email: str = Field(min_length=3, max_length=320)
     password: str = Field(min_length=1)
     is_admin: bool = False
@@ -89,7 +119,7 @@ class PsnConnectRequest(BaseModel):
 
 
 class UserProfileUpdateRequest(BaseModel):
-    username: str | None = Field(default=None, min_length=1, max_length=100)
+    username: str | None = None
     email: str | None = Field(default=None, min_length=3, max_length=320)
     # Omitted keeps the current value; blank clears it so the username is shown again.
     display_name: str | None = Field(default=None, max_length=200)
@@ -279,6 +309,8 @@ async def update_current_user(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Username and email are required."
         )
 
+    # Read before the commit: a rollback expires the instance.
+    may_name_conflicting_field = user.is_admin
     try:
         if payload.new_password is not None:
             current_token = (
@@ -292,7 +324,8 @@ async def update_current_user(
     except IntegrityError as exc:
         await db.rollback()
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="Username or email already exists."
+            status_code=status.HTTP_409_CONFLICT,
+            detail=_account_conflict_detail(exc, reveal_field=may_name_conflicting_field),
         ) from exc
 
     return {
@@ -345,6 +378,7 @@ async def disconnect_psn(
     user.psn_validated_at = None
     user.psn_online_id = None
     user.psn_avatar_url = None
+    await record_disconnect(db, user.id, PLAYSTATION)
     await db.commit()
     return {"status": "disconnected"}
 
@@ -461,7 +495,8 @@ async def create_user(
     except IntegrityError as exc:
         await db.rollback()
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="Username or email already exists."
+            status_code=status.HTTP_409_CONFLICT,
+            detail=_account_conflict_detail(exc, reveal_field=True),
         ) from exc
 
     return {

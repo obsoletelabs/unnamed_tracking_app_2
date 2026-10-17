@@ -2,6 +2,7 @@
 import { ref, computed, watch, onMounted } from "vue";
 import ProfileAvatar from "../ProfileAvatar.vue";
 import PasswordInput from "../PasswordInput.vue";
+import UsernameField from "../UsernameField.vue";
 import { currentUser, checkAuth } from "../../state/auth";
 import PasswordRequirements from "./PasswordRequirements.vue";
 import {
@@ -9,6 +10,10 @@ import {
   passwordValidationErrors,
   type PasswordPolicy,
 } from "../../services/passwordPolicy";
+import {
+  usernameFieldError,
+  usernameServerError,
+} from "../../services/usernameValidation";
 import {
   updateProfile,
   uploadProfilePicture,
@@ -40,6 +45,11 @@ const newPassword = ref("");
 const confirmPassword = ref("");
 const saving = ref(false);
 const saveError = ref<string | null>(null);
+const usernameServerMessage = ref<{ message: string; value: string } | null>(
+  null,
+);
+const usernameField = ref<InstanceType<typeof UsernameField> | null>(null);
+const submitAttempted = ref(false);
 const saveSuccess = ref(false);
 const passwordPolicy = ref<PasswordPolicy | null>(null);
 
@@ -57,7 +67,9 @@ onMounted(async () => {
     passwordPolicy.value = await fetchPasswordPolicy();
   } catch (err) {
     saveError.value =
-      err instanceof Error ? err.message : "Failed to load password policy";
+      err instanceof Error
+        ? err.message
+        : "Could not load the password policy.";
   }
 });
 
@@ -65,6 +77,13 @@ const uploading = ref(false);
 const uploadError = ref<string | null>(null);
 
 async function saveProfile() {
+  submitAttempted.value = true;
+  usernameServerMessage.value = null;
+  if (usernameFieldError(username.value, currentUser.value?.username)) {
+    saveError.value = null;
+    usernameField.value?.focus();
+    return;
+  }
   if (newPassword.value) {
     const validationErrors = passwordPolicy.value
       ? passwordValidationErrors(newPassword.value, passwordPolicy.value)
@@ -83,6 +102,7 @@ async function saveProfile() {
     return;
   }
 
+  const submittedUsername = username.value;
   saving.value = true;
   saveError.value = null;
   saveSuccess.value = false;
@@ -102,8 +122,17 @@ async function saveProfile() {
     confirmPassword.value = "";
     saveSuccess.value = true;
   } catch (err) {
-    saveError.value =
-      err instanceof Error ? err.message : "Failed to update profile";
+    const reason = err instanceof Error ? err.message : null;
+    const usernameReply = usernameServerError(reason);
+    usernameServerMessage.value = usernameReply
+      ? { message: usernameReply, value: submittedUsername }
+      : null;
+    if (usernameServerMessage.value) {
+      saveError.value = null;
+      usernameField.value?.focus();
+    } else {
+      saveError.value = reason ?? "Could not update the profile.";
+    }
   } finally {
     saving.value = false;
   }
@@ -128,7 +157,7 @@ async function onAvatarFileChange(e: Event) {
     }
   } catch (err) {
     uploadError.value =
-      err instanceof Error ? err.message : "Failed to upload picture";
+      err instanceof Error ? err.message : "Could not upload the picture.";
   } finally {
     uploading.value = false;
     // without this, re-picking the same file after a failed upload fires
@@ -152,7 +181,7 @@ async function onRemoveAvatar() {
     }
   } catch (err) {
     uploadError.value =
-      err instanceof Error ? err.message : "Failed to remove picture";
+      err instanceof Error ? err.message : "Could not remove the picture.";
   } finally {
     uploading.value = false;
   }
@@ -164,11 +193,11 @@ async function onRemoveAvatar() {
     <h2>Profile</h2>
 
     <div class="avatar-row">
-      <ProfileAvatar class="avatar-image"
-        ><div class="avatar-fallback">
+      <ProfileAvatar class="avatar-image">
+        <div class="avatar-fallback">
           {{ accountInitials(currentUser) }}
-        </div></ProfileAvatar
-      >
+        </div>
+      </ProfileAvatar>
 
       <div class="avatar-meta">
         <div class="avatar-name">{{ accountDisplayName(currentUser) }}</div>
@@ -226,20 +255,15 @@ async function onRemoveAvatar() {
         >
       </label>
 
-      <label class="field">
-        <span>Sign-in username</span>
-        <input
-          v-model="username"
-          type="text"
-          maxlength="100"
-          aria-label="Username"
-          aria-describedby="profile-username-help"
-        />
-        <small id="profile-username-help"
-          >Use 1–100 ASCII letters, digits, underscores, hyphens or dots. No
-          spaces. Existing usernames may be kept unchanged.</small
-        >
-      </label>
+      <UsernameField
+        ref="usernameField"
+        v-model="username"
+        autocomplete="username"
+        :unchanged-value="currentUser?.username"
+        :server-error="usernameServerMessage"
+        :show-errors="submitAttempted"
+        help="Use 1–100 ASCII letters, digits, underscores, hyphens or dots. No spaces. Existing usernames may be kept unchanged."
+      />
 
       <label class="field">
         <span>Email</span>
@@ -298,12 +322,14 @@ async function onRemoveAvatar() {
     var(--ui-font-family);
   color: var(--ui-text);
 }
+
 .avatar-row {
   display: flex;
   align-items: center;
   gap: 16px;
   margin-bottom: 20px;
 }
+
 .avatar-image,
 .avatar-fallback {
   width: 64px;
@@ -312,6 +338,7 @@ async function onRemoveAvatar() {
   object-fit: cover;
   flex-shrink: 0;
 }
+
 .avatar-fallback {
   background: var(--ui-accent);
   color: var(--ui-on-accent);
@@ -321,6 +348,7 @@ async function onRemoveAvatar() {
   font-size: 20px;
   font-weight: 700;
 }
+
 .avatar-meta {
   display: flex;
   flex-direction: column;
@@ -328,26 +356,31 @@ async function onRemoveAvatar() {
   min-width: 0;
   overflow-wrap: anywhere;
 }
+
 .avatar-name {
   color: var(--ui-text);
   font-size: 1.05rem;
   font-weight: 700;
 }
+
 .avatar-email {
   color: var(--ui-faint);
   font-size: 0.82rem;
   margin-bottom: 4px;
 }
+
 .upload-label {
   color: var(--ui-accent-text);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
 }
+
 .upload-label:hover,
 .remove-picture:hover {
   text-decoration: underline;
 }
+
 .remove-picture {
   align-self: flex-start;
   padding: 0;
@@ -359,16 +392,19 @@ async function onRemoveAvatar() {
   font-weight: 600;
   cursor: pointer;
 }
+
 .mock-note {
   color: var(--ui-faint);
   font-size: 13px;
   margin: 0;
 }
+
 form {
   display: flex;
   flex-direction: column;
   gap: 14px;
 }
+
 .field {
   display: flex;
   flex-direction: column;
@@ -376,6 +412,7 @@ form {
   font-size: 0.85rem;
   color: var(--ui-text);
 }
+
 .field input {
   background: var(--ui-bg);
   border: 1px solid var(--ui-border-strong);
@@ -384,10 +421,12 @@ form {
   padding: 10px 12px;
   font: inherit;
 }
+
 .field input:focus {
   outline: none;
   border-color: var(--ui-accent);
 }
+
 .form-error {
   color: var(--ui-error);
   font-size: 13px;
@@ -396,6 +435,7 @@ form {
   border-radius: var(--ui-radius-control);
   padding: 8px 10px;
 }
+
 .form-success {
   color: var(--ui-good);
   font-size: 13px;
@@ -404,6 +444,7 @@ form {
   border-radius: var(--ui-radius-control);
   padding: 8px 10px;
 }
+
 .primary-button {
   background: var(--ui-accent);
   color: var(--ui-on-accent);
@@ -413,6 +454,7 @@ form {
   font-weight: 600;
   cursor: pointer;
 }
+
 .primary-button:disabled {
   opacity: 0.6;
   cursor: not-allowed;

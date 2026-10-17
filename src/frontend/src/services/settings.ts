@@ -464,6 +464,11 @@ export interface CleanupJob {
   pluginName: string | null;
   available: boolean;
   unavailableReason: string;
+  paused: boolean;
+  status: string;
+  lastSuccessAt: number | null;
+  nextRunAt: number | null;
+  failureCount: number;
 }
 interface BackendJob {
   id: string;
@@ -481,6 +486,11 @@ interface BackendJob {
   plugin_name?: string | null;
   available?: boolean;
   unavailable_reason?: string;
+  paused?: boolean;
+  status?: string;
+  last_success_at?: number | null;
+  next_run_at?: number | null;
+  failure_count?: number;
 }
 function mapJob(j: BackendJob): CleanupJob {
   return {
@@ -499,6 +509,11 @@ function mapJob(j: BackendJob): CleanupJob {
     pluginName: j.plugin_name ?? null,
     available: j.available !== false,
     unavailableReason: j.unavailable_reason ?? "",
+    paused: j.paused === true,
+    status: j.status ?? "idle",
+    lastSuccessAt: j.last_success_at ?? null,
+    nextRunAt: j.next_run_at ?? null,
+    failureCount: j.failure_count ?? 0,
   };
 }
 export async function fetchJobs(personal = false): Promise<CleanupJob[]> {
@@ -531,6 +546,20 @@ export async function updateJob(
   );
   if (!response.ok)
     throw new Error(await jobErrorDetail(response, "Failed to save the job"));
+  return mapJob(await response.json());
+}
+export type JobControl = "pause" | "resume" | "cancel";
+export async function controlJob(
+  id: string,
+  control: JobControl,
+  personal = false,
+): Promise<CleanupJob> {
+  const response = await fetch(
+    `/api/settings/${personal ? "user-jobs" : "jobs"}/${id}/${control}`,
+    { method: "POST", credentials: "include" },
+  );
+  if (!response.ok)
+    throw new Error(await jobErrorDetail(response, `Failed to ${control}`));
   return mapJob(await response.json());
 }
 export async function runJobNow(id: string, personal = false): Promise<void> {
