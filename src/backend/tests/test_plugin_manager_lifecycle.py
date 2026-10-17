@@ -355,10 +355,11 @@ async def test_automatic_update_policy_downloads_without_unauthorized_activation
         assert gate.registry.health(gate.plugin_id)
         notifications = await gate.db.scalars(
             select(Notification).where(
-                Notification.dedupe_key.like(f"plugin-update:{gate.plugin_id}:%:failed")
+                Notification.dedupe_key.like("plugin-update-batch:%"),
+                Notification.kind == "plugin_update",
             )
         )
-        assert any("failed" in item.title for item in notifications)
+        assert any("Automatic update failed" in item.body for item in notifications)
 
 
 @pytest.mark.asyncio
