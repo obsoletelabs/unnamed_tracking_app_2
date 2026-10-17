@@ -15,7 +15,8 @@ Do not hard-code any deployment domain or link to the app root.
 ## Required investigation
 
 - Trace the scheduler/job, update discovery, auto-update eligibility, executor, installed-version refresh and notification delivery paths.
-- Find why auto-updates appear not to run and identify whether the cause is a real opt-out, global configuration, stale state, eligibility logic, scheduler behaviour or an execution failure.
+- The current policy is intentionally conservative: global automatic updates default to off; per-plugin `follow` inherits that setting; activation also requires the catalogue release and package manifest to allow it, verified trust, ready dependencies, no new unapproved permissions, and no version pin or matching denied stage. Do not remove these security and consent gates just to make updates run.
+- A successful install previously left the cached `available_update` record in manager state. Clear that stale record after successful activation so the UI/check results do not continue to advertise an already-installed version.
 - Preserve explicit plugin opt-outs and existing plugin security/permission checks.
 - Inspect current notification idempotency and history semantics before changing event identity or state transitions.
 
