@@ -17,6 +17,7 @@ from src.database.models.job_setting import JobSetting
 from src.database.models.user import User
 from src.database.session import SessionLocal
 from src.features import connection_jobs, jobs, plugin_jobs
+from src.features.job_runs import job_lease
 from src.helpers import save_game_asset
 
 
@@ -65,9 +66,11 @@ async def test_configured_connections_create_off_daily_tasks_scoped_to_each_owne
             "Steam autosync",
             "PlayStation autosync",
             "RetroAchievements autosync",
+            "AniList import",
         ]
         assert all(not task["enabled"] and task["interval_minutes"] == 1440 for task in listed)
-        assert all(task["available"] and not task["plugin_id"] for task in listed)
+        assert all(task["available"] and not task["plugin_id"] for task in listed[:3])
+        assert not listed[3]["available"]  # no AniList username saved yet
         own_id = listed[0]["id"]
         assert own_id != connection_jobs.connection_job_id(other_id, "steam")
         with pytest.raises(HTTPException) as failure:
@@ -324,3 +327,56 @@ async def test_unavailable_achievement_snapshot_retains_saved_unlocks(
         assert row.last_result["achievements_synced"] == 0
         assert row.last_result["achievement_games_unavailable"] == 1
         assert "saved achievements kept" in row.last_result["summary"]
+
+
+async def test_disconnect_turns_the_schedule_off_without_touching_other_accounts(connected):
+    actor_id, other_id = connected
+    actor_job = connection_jobs.connection_job_id(actor_id, "steam")
+    other_job = connection_jobs.connection_job_id(other_id, "steam")
+    async with SessionLocal() as db:
+        actor, other = await db.get(User, actor_id), await db.get(User, other_id)
+        for owner, job_id in ((actor, actor_job), (other, other_job)):
+            await job_routes.update_user_job(job_id, job_routes.JobUpdate(enabled=True), db, owner)
+        actor.steam_api_key = None
+        await db.commit()
+        await jobs.disable_revoked_schedules(db)
+        assert not (await db.get(JobSetting, actor_job)).enabled
+        assert (await db.get(JobSetting, actor_job)).status == "disabled"
+        assert (await db.get(JobSetting, other_job)).enabled
+        scheduled = {spec.id for spec in await jobs.get_scheduled_user_jobs(db)}
+        assert other_job in scheduled and actor_job not in scheduled
+
+
+async def test_paused_connection_does_not_start_and_overlapping_runs_are_refused(
+    connected, monkeypatch
+):
+    actor_id, _ = connected
+    sync = AsyncMock(return_value={"games_added": 0})
+    monkeypatch.setattr(connection_jobs, "_sync_library", sync)
+    job_id = connection_jobs.connection_job_id(actor_id, "steam")
+    async with SessionLocal() as db:
+        actor = await db.get(User, actor_id)
+        await job_routes.update_user_job(job_id, job_routes.JobUpdate(enabled=True), db, actor)
+        await job_routes.control_user_job(job_id, "pause", db, actor)
+        spec = next(
+            s for s in await connection_jobs.get_connection_jobs(db, actor_id) if s.id == job_id
+        )
+        with pytest.raises(HTTPException) as refused:
+            await job_routes.run_user_job(job_id, db, actor)
+        assert refused.value.status_code == 409
+    spec.start("needed")
+    await asyncio.gather(*connection_jobs._running.values())
+    sync.assert_not_awaited()
+    async with SessionLocal() as db:
+        await job_routes.control_user_job(job_id, "resume", db, await db.get(User, actor_id))
+    async with job_lease(spec) as held:  # a second host process is mid-inventory
+        assert held
+        spec.start("all")
+        await asyncio.gather(*connection_jobs._running.values())
+        sync.assert_not_awaited()
+    spec.start("all")
+    await asyncio.gather(*connection_jobs._running.values())
+    sync.assert_awaited_once()
+    async with SessionLocal() as db:
+        row = await db.get(JobSetting, job_id)
+        assert row.status == "completed" and row.last_success_at and row.lease_token is None

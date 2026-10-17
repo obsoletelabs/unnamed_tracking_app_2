@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import tempfile
 from io import BytesIO
 from pathlib import Path
 from typing import Literal
@@ -12,7 +14,7 @@ from sqlalchemy import select
 from src.database.models.game import Game
 from src.database.session import SessionLocal
 from src.features import game_folders
-from src.helpers.asset_previews import make_standard_previews
+from src.helpers.asset_previews import invalidate_previews, make_standard_previews
 from src.helpers.async_storage import finish_storage_operation
 
 DATA_ROOT = Path("/data/users")
@@ -117,14 +119,32 @@ async def save_locked_game_asset(
     resized = _resize_to_exact(image_obj, width, height)
 
     output_path = output_dir / ASSET_FILENAMES[asset_kind]
-    resized.save(output_path, format="PNG")
+    _replace_atomically(resized, output_path)
     # the smaller copies the pages show, made now so no first visit waits for them
     await _finish_previews(output_path, asset_kind, str(game.id))
     return output_path
 
 
+def _replace_atomically(image: Image.Image, output_path: Path) -> None:
+    """A request arriving mid-write sees the old file or the new one, never a partial PNG."""
+    handle, temp_name = tempfile.mkstemp(dir=output_path.parent, suffix=".tmp")
+    os.close(handle)
+    try:
+        image.save(temp_name, format="PNG")
+        os.replace(temp_name, output_path)
+    finally:
+        if os.path.exists(temp_name):
+            os.unlink(temp_name)
+
+
 async def _finish_previews(output_path: Path, asset_kind: AssetKind, game_id: str) -> None:
     """Cancellation must not release storage while the thread still uses its path."""
     await finish_storage_operation(
-        asyncio.to_thread(make_standard_previews, output_path, asset_kind, game_id)
+        asyncio.to_thread(_rebuild_previews, output_path, asset_kind, game_id)
     )
+
+
+def _rebuild_previews(output_path: Path, asset_kind: AssetKind, game_id: str) -> None:
+    """Drop every old resized copy of the replaced asset, then make the standard ones."""
+    invalidate_previews(output_path.parents[2] / ".cache", game_id, asset_kind)
+    make_standard_previews(output_path, asset_kind, game_id)

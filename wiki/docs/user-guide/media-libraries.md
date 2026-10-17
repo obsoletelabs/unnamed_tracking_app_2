@@ -34,6 +34,18 @@ removes its value. Entering `0` keeps a real zero. Episodes watched requires a
 whole number; a blank or fractional count keeps Quick edit open with an explanation.
 These controls work the same way in Modern and Classic.
 
+## Quick edit: status and dates
+
+Quick edit offers the five visible statuses plus a start and finish date; a
+finish date before the start is refused. The five statuses group the stored
+ones, so Completed also covers Favorite and Watching also covers Rewatch. If
+you leave the visible status as it was, the stored status is kept: editing a
+rating on a Favorite movie does not turn it into plain Watched. Choosing a
+different status writes that status's normal value.
+
+Movie, TV and anime pages show the priority (while there is still something
+left to watch) and the formatted start and finish dates under the title.
+
 In long episode lists, saving watched state, a rating or a note keeps your chosen
 episode page. Switching to a different season or ordered episode list selects the
 page containing its next unwatched episode.

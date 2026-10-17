@@ -13,6 +13,8 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.game import Game
+from src.features.game_ingestion import legacy as ingestion
+from src.features.game_ingestion.contract import SourceObservationV1
 from src.features.imports.game_progression import apply_provider_progress
 from src.features.imports.library_games import get_or_create_game
 from src.features.metadata.locked_fields import apply_metadata_updates
@@ -103,6 +105,7 @@ async def dispatch_game_import(
         )
     }
     results = []
+    observations: list[tuple[UUID, SourceObservationV1 | None]] = []
     for item in batch.items:
         identity = identities[item.external_id]
         game = existing.get(identity)
@@ -141,6 +144,22 @@ async def dispatch_game_import(
             game.stale_since = None
         elif game.stale_since is None:
             game.stale_since = int(time.time())
+        observations.append(
+            (
+                game.id,
+                ingestion.build_observation(
+                    item.external_id,
+                    title=item.title,
+                    provider_ids=item.provider_ids,
+                    available=item.available,
+                    playtime_seconds=item.playtime_seconds,
+                    description=item.description,
+                    developer=item.developer,
+                    publisher=item.publisher,
+                    tags=item.tags,
+                ),
+            )
+        )
         result.update(
             title=game.title,
             status=game.status.value,
@@ -148,5 +167,11 @@ async def dispatch_game_import(
             available=game.stale_since is None,
         )
         results.append(result)
+    await ingestion.record_observations(
+        db,
+        user_id,
+        ingestion.plugin_connection(plugin_id, batch.source_scope, batch.source_label),
+        observations,
+    )
     await db.commit()
     return {"games": results}

@@ -9,7 +9,7 @@ import EditorShell from "./EditorShell.vue";
 // slot) sits above the tabs, so it is reachable from every tab and a staged
 // result is reviewed in place; nothing is saved until Save.
 const props = defineProps<{
-  // "Movie", "TV Show" or "Anime", for the title and the Add button
+  // "movie", "TV show" or "anime", for the title and the Add button
   noun: string;
   editing: boolean;
   saving: boolean;
@@ -102,7 +102,7 @@ const lookupId = `media-lookup-${Math.random().toString(36).slice(2, 8)}`;
         class="primary-button"
         :disabled="saving || deleting || lookupPending"
       >
-        {{ saving ? "Saving…" : editing ? "Save Changes" : "Add " + noun }}
+        {{ saving ? "Saving…" : editing ? "Save changes" : "Add " + noun }}
       </button>
     </template>
   </EditorShell>

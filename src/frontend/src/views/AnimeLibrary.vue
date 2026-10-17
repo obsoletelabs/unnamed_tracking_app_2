@@ -15,7 +15,11 @@ import type { Anime, AnimeStatus } from "../types/anime";
 import { localMediaImage } from "../utils/mediaImages";
 import MediaLibraryView from "../components/library/MediaLibraryView.vue";
 import { displayTitle } from "../utils/displayTitle";
-import { statusBucket, bucketToReal } from "../utils/mediaStatus";
+import {
+  statusBucket,
+  bucketToReal,
+  resolveStatus,
+} from "../utils/mediaStatus";
 import type {
   LibraryCardVM,
   EditForm,
@@ -103,6 +107,8 @@ function toVM(show: Anime): LibraryCardVM {
     favorite: show.favorite,
     score: show.ratingOverall,
     personalRank: show.personalRank,
+    startDate: show.startDate,
+    endDate: show.endDate,
     note: show.note,
     genres: show.genres,
     isEpisodic: true,
@@ -186,8 +192,10 @@ async function onSaveEdit(id: string, form: EditForm) {
   replaceShow(
     await updateAnime(id, {
       ...animeToInput(show),
-      status: form.status as AnimeStatus,
+      status: resolveStatus(form.status, show.status) as AnimeStatus,
       ratingOverall: form.score,
+      ...(form.startDate !== undefined && { startDate: form.startDate }),
+      ...(form.endDate !== undefined && { endDate: form.endDate }),
     }),
   );
   // The small edit modal's "episodes watched" and "total episodes" are
@@ -253,7 +261,7 @@ function detailRoute(id: string): string {
 <template>
   <MediaLibraryView
     kind="anime"
-    add-label="+ Add Anime"
+    add-label="+ Add anime"
     :items="items"
     :total="total"
     :status-counts="statusCounts"

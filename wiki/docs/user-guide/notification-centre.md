@@ -16,6 +16,15 @@ Open **Settings → Account → Notifications** or use the centre's **Notificati
 
 Each notification type has an on/off switch and a **Providers** expansion. Inside it, choose individual destinations and **Normal** or **Critical** delivery urgency. Turning off a type keeps these choices. A destination that cannot satisfy the type's trust or server policy is visibly unavailable. Sign-in alerts still require SECURE destinations when delivered as Normal.
 
+### Unavailable choices and saved intent
+
+A choice that currently has no effect is disabled, with the exact reason and the way to turn it back on shown beside it and read out by screen readers. Your saved choice is never changed: the switch keeps showing what you chose, and it applies again as soon as the dependency is restored. This covers:
+
+- **Media filters.** A type is disabled while no media type it needs is followed (for example, the new season and movie/OVA/special types need **Anime** under *Followed media*), or when it needs a watch status and none is selected.
+- **Routes.** A route is disabled while its notification type is off, its provider is disabled, the destination is turned off for your account, the destination is inactive, or it does not meet the type's trust or server policy.
+
+Provider grants, destination proof, trust and privacy rules always stay authoritative; the explanation never grants anything.
+
 Critical is a request for higher transport urgency, such as sound or Do Not Disturb override where supported. It does not change notification sensitivity, verification or permissions. The existing inbox and legacy webhook adapters support normal delivery only; a Critical choice is saved for a compatible provider, with that limitation shown beside the control.
 
 **Your providers** controls external provider enrollment for your account and whether each existing destination is used. Inactive destinations and routing choices remain visible after removal; reinstall does not reclaim them automatically. The legacy webhook uses administrator configuration and generic public release facts. This section does not expose its credentials or pretend that it is a personal, verified endpoint. Personal endpoint enrollment and richer webhook consent follow in the provider work.
@@ -29,5 +38,18 @@ Choose **Server default** or your own inbox duration, including **6 months**, **
 Administrators set `NOTIFICATION_RETENTION_DEFAULT_DAYS` (default 30) and `NOTIFICATION_RETENTION_MAXIMUM_DAYS` (default 0, no maximum) through deployment configuration. Zero for the default means unlimited history. A finite maximum also caps an unlimited choice. Inbox expiry does not cancel external work: content required by pending deliveries remains until those deliveries finish or expire, while it is hidden from the inbox. Explicit deletion has stronger cancellation behavior.
 
 ![Inbox retention and game preferences](../assets/notification-centre/settings-retention.png)
+
+### Completed anime franchises
+
+Two optional types follow anime you marked Watched or Favorite. Both start off, for new and existing accounts, and each is switched on separately:
+
+- **Anime franchise seasons** — a new season was listed for that franchise. When it is on, these seasons are sent with this type instead of **Sequel announcements**, so each season arrives once.
+- **Anime franchise movies, OVAs and specials** — a new movie, OVA or special was listed for that franchise.
+
+Switching either on adds your account to the server's scheduled **Anime franchise check**, which looks at a few franchises at a time; your whole library may take several runs. Opening an anime's Related tab checks that franchise immediately. A franchise's first check only records what is already listed, and titles already in your library are not announced. A scheduled check never sends a Sequel announcement on your behalf: with Anime franchise seasons off, opening the title still announces a new season through Sequel announcements as before. Both types use the Anime media filter, routing, trust and inbox rules of the other release types, and appear under the **Seasons** and **Releases** inbox categories.
+
+![Anime franchise notification types are off by default (Modern)](../assets/anime-franchise-checks/notification-types-modern.png)
+
+![The same choices in Classic](../assets/anime-franchise-checks/notification-types-classic.png)
 
 See [notification providers](notification-providers.md) for the existing external-delivery compatibility boundary.

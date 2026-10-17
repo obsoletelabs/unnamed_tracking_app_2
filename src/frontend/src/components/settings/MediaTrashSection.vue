@@ -136,7 +136,7 @@ async function loadAll() {
     ]);
   } catch (e) {
     error.value =
-      e instanceof Error ? e.message : "Failed to load deleted media";
+      e instanceof Error ? e.message : "Could not load deleted media.";
   } finally {
     loading.value = false;
     loadedOnce.value = true;
@@ -252,7 +252,8 @@ async function restore(kind: Kind, id: string) {
     else await restoreAnime(id);
     await loadAll();
   } catch (e) {
-    error.value = e instanceof Error ? e.message : "Failed to restore";
+    error.value =
+      e instanceof Error ? e.message : "Could not restore the title.";
   } finally {
     busyId.value = null;
   }
@@ -275,7 +276,9 @@ async function purge(kind: Kind, id: string, title: string) {
     await loadAll();
   } catch (e) {
     error.value =
-      e instanceof Error ? e.message : "Failed to permanently delete";
+      e instanceof Error
+        ? e.message
+        : "Could not delete the title permanently.";
   } finally {
     busyId.value = null;
   }

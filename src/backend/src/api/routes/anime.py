@@ -8,7 +8,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.routes.media_common import (
@@ -43,7 +42,11 @@ from src.core.titles import apply_alt_titles
 from src.core.titles import derive_sort_title as _derive_sort_title
 from src.database.models.anime import Anime, AnimeEpisode, AnimeSeason, AnimeStatus
 from src.database.models.user import User
-from src.database.session import SessionLocal, get_db
+from src.database.session import get_db
+from src.features.anime_franchise import (
+    fetch_and_store_relations,
+    refresh_relations_in_background,
+)
 from src.features.episode_progress import (
     set_episodes_watched,
     update_episode_progress,
@@ -58,6 +61,7 @@ from src.features.metadata.anime.episode_sync import (
     needs_tmdb_backfill,
     pad_to_known_total,
 )
+from src.features.metadata.anime.franchise import RELATIONS_CACHE_VERSION
 from src.features.metadata.refresh import (
     merge_episodes,
     quick_check_anime_season,
@@ -67,11 +71,8 @@ from src.features.metadata.service import (
     collect_record,
     library_candidate,
     media_result,
-    related_metadata,
-    relation_result,
     search_media,
 )
-from src.features.notifications import record_sequel_announcements
 from src.features.trash.media_titles import empty_trash
 from src.plugin_api.metadata_contracts import MediaType
 
@@ -573,66 +574,7 @@ async def update_episode(
 # changes rarely (only a genuine new-sequel announcement, or AniList
 # recomputing its own recommendation scores), so most visits should cost
 # zero AniList requests rather than a dozen+.
-RELATIONS_CACHE_VERSION = 2
 _RELATIONS_CACHE_TTL_SECONDS = 3 * 24 * 60 * 60
-
-
-_relations_inflight: set[UUID] = set()
-
-
-async def _fetch_and_store_relations(show: Anime, db: AsyncSession) -> dict:
-    """Asks AniList (slow: a paced request per franchise entry), stores the
-    result on the row, and notes any newly listed season for a title the
-    user has completed."""
-    old_chain = show.relations_cache.get("chain") if show.relations_cache else None
-    ids = {
-        **(show.provider_ids or {}),
-        **({"anilist": show.anilist_id} if show.anilist_id else {}),
-        **({"mal": show.external_id} if show.external_id else {}),
-    }
-    data = await related_metadata(
-        db, show.user_id, library_candidate(show.title, MediaType.ANIME, ids)
-    )
-    result = {
-        "chain": [],
-        "branches": [],
-        "recommendations": [],
-        "version": RELATIONS_CACHE_VERSION,
-        "configured": data["configured"],
-    }
-    for relation in data["relations"]:
-        group = {"chain": "chain", "branch": "branches", "recommendation": "recommendations"}.get(
-            relation.get("group"), "branches"
-        )
-        result[group].append(relation_result(relation))
-    if not data["configured"]:
-        return result
-    show.relations_cache = result
-    show.relations_cached_at = int(time.time())
-    await db.commit()
-    await record_sequel_announcements(db, show.user_id, show, old_chain, result["chain"])
-    return result
-
-
-async def refresh_relations_in_background(show_id: UUID) -> None:
-    """Fetches and stores a franchise graph without making anyone wait for
-    it. Used for a stale cache (the old one is served meanwhile) and to
-    warm a title right after it is added, so its Seasons and Related tabs
-    are already in the database by the time it is opened."""
-    if show_id in _relations_inflight:
-        return
-    _relations_inflight.add(show_id)
-    try:
-        async with SessionLocal() as db:
-            show = await db.scalar(select(Anime).where(Anime.id == show_id))
-            if show is None or not show.anilist_id:
-                return
-            await _fetch_and_store_relations(show, db)
-    # This background task reports its own failure and always releases the inflight marker.
-    except Exception:  # pylint: disable=broad-exception-caught
-        logger.exception("Background franchise refresh failed for %s", show_id)
-    finally:
-        _relations_inflight.discard(show_id)
 
 
 async def _get_or_refresh_anime_relations(show: Anime, db: AsyncSession) -> dict:
@@ -654,7 +596,8 @@ async def _get_or_refresh_anime_relations(show: Anime, db: AsyncSession) -> dict
         if not fresh:
             asyncio.create_task(refresh_relations_in_background(show.id))
         return cached
-    return await _fetch_and_store_relations(show, db)
+    graph, _created = await fetch_and_store_relations(db, show)
+    return graph
 
 
 @router.get("/{show_id}/relations")
