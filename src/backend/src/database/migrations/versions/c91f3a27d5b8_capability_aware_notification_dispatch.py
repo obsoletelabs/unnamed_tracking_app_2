@@ -80,18 +80,31 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # Per-revision deliveries and remote message references cannot be represented by the older
+    # one-delivery-per-destination schema; erasing them would also erase delivery history.
+    connection = op.get_bind()
+    if h.has_table("notification_remote_references") and connection.scalar(
+        sa.text("SELECT EXISTS (SELECT 1 FROM notification_remote_references)")
+    ):
+        raise RuntimeError(
+            "Refusing to drop stored remote message references; retain the schema or "
+            "remove them explicitly before downgrading."
+        )
+    if h.has_column("notification_deliveries", "story_revision") and connection.scalar(
+        sa.text(
+            "SELECT EXISTS (SELECT 1 FROM notification_deliveries WHERE destination_id IS NOT NULL "
+            "GROUP BY notification_id, destination_id HAVING count(*) > 1)"
+        )
+    ):
+        raise RuntimeError(
+            "Refusing to merge per-revision deliveries; retain the schema or remove the "
+            "superseded revisions' deliveries explicitly before downgrading."
+        )
     h.drop_index_if_exists(
         "ix_notification_remote_reference_story", "notification_remote_references"
     )
     if h.has_table("notification_remote_references"):
         op.drop_table("notification_remote_references")
-    # Keep one delivery per (notification, destination): the newest revision survives.
-    op.execute(
-        "DELETE FROM notification_deliveries d USING notification_deliveries n "
-        "WHERE d.notification_id = n.notification_id AND d.destination_id = n.destination_id "
-        "AND (d.story_revision < n.story_revision "
-        "OR (d.story_revision = n.story_revision AND d.id < n.id))"
-    )
     if h.has_constraint("notification_deliveries", UNIQUE):
         op.drop_constraint(UNIQUE, "notification_deliveries", type_="unique")
     op.create_unique_constraint(
