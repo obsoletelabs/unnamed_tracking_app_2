@@ -291,7 +291,7 @@ async function submit() {
       : await createTVShow(input);
     emit("saved", saved);
   } catch (e) {
-    error.value = e instanceof Error ? e.message : "Failed to save show.";
+    error.value = e instanceof Error ? e.message : "Could not save the show.";
   } finally {
     saving.value = false;
   }
@@ -305,7 +305,7 @@ async function remove() {
     await deleteTVShow(props.show.id);
     emit("deleted", props.show.id);
   } catch (e) {
-    error.value = e instanceof Error ? e.message : "Failed to delete show.";
+    error.value = e instanceof Error ? e.message : "Could not delete the show.";
   } finally {
     deleting.value = false;
   }
@@ -315,7 +315,7 @@ async function remove() {
 <template>
   <MediaFormShell
     v-model:tab="tab"
-    noun="TV Show"
+    noun="TV show"
     :editing="!!show"
     :saving="saving"
     :lookup-pending="!!search.selected.value"

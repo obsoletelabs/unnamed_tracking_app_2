@@ -1,69 +1,22 @@
 # Rosefall #469 handover
 
-## Current checkpoint — 15 October 2026
+## Current checkpoint — 17 October 2026
 
 The [ordered tracker #141](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/141)
-contains every remaining approved Rosefall workstream and related follow-up. Work
-one issue at a time, most complex first, respecting dependencies. Separate identity
-and notification overhaul projects are outside this queue.
+contains every remaining approved Rosefall workstream. The authoritative per-issue
+board (PR, state, stack, tests, screenshots, docs, companion contracts, what remains)
+is the [status board](rosefall-469-implementation.md#status-board-for-the-141-queue).
 
-Packages through **#137 are merged into Obsolete Labs main**. The combined library
-PR passed all seven full hosted workflows on `36dc10cd0146e00e268f15e201492dd0fde0cfce`
-and was squash-merged as `3b597a02403b05a46dfbe1e8e1aff7ae8c58c77f`. It adds game
-exclusions, global media sorting/counts, loaded-extent refresh and navigation fixes.
-Its local suites passed 2,708 backend tests (four skipped) and 601 frontend tests.
+- Prerequisites #137 and #142 (PR #155) are merged.
+- Merged children: #143, #140, #146, #132, #150, #139, #152.
+- Open and awaiting review/hosted checks: #144, #145, #147, #148, #125, #149, #151, #153.
+  #149 is stacked on #144 and #153 on #145; #147 needs retargeting to main.
+- Draft: #138 (full backend suite, build and lint still to run).
+- Not started: #154, which goes last after #144, #145, #149, #150 and #153.
+- #141 stays open until #154 and every open child above merge.
 
-**Active issue: #142 only**, published as
-[PR #155](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/155) from
-`feat/staged-metadata-lookup`, based on current main after #137. Coherent backend
-commit `20c8cb3f6` and frontend commit `a86580db` are pushed; the final documentation
-and screenshots accompany them in this PR.
-
-- One checked comparison model/panel serves game/movie/TV/anime editors and the
-  actual Add media quick-add review. Apply stages local values; Save persists;
-  Cancel discards. Save waits for a pending lookup to be applied or cancelled.
-- Empty editable values default checked; populated values, zeroes, manual edits,
-  unchecked choices and locks are preserved. Changed titles/selections/artwork
-  revisions cannot apply stale responses.
-- Provider identity is explicit on edits. TV groups identity and seasons; Save
-  adds only higher-numbered seasons and preserves current season tracking.
-- Artwork provenance stays in the host session. Owned selected previews recheck
-  provider media authorization and use pinned public image fetching/validation.
-  Steam tries tall cover then header. No migration, SDK or provider package change.
-- Modern/Classic share logic and semantic tokens. The Classic UI guide documents
-  how to extend the shared adapter instead of copying old components/search code.
-
-Validation: full backend **2,715 passed, four skipped**, mypy **357 files**, full
-configured Pylint **10/10**, Ruff lint/format **577 files**. Full frontend **616
-passed**, ESLint, Prettier, vue-tsc and production build passed; all **491 source
-files** meet the size limit. The final small result-list visibility adjustment
-also passed focused form/search/add tests and types. Live quick-add review exposed
-unused provider fields; correction `144d7322` limits its checklist to persisted
-fields, retains the selected title/identity, and passed 17 focused tests, types,
-lint/format and the size check. The staged-season regression
-failed before its fix. Live Steam Portal and TVmaze The Office checks verified
-selection, metadata, owned artwork previews, checked Apply and cancelling the form
-without database writes. Modern dark and Classic light screenshots are included.
-
-The preview's TVmaze account opt-out was enabled for the live check. Only the
-synthetic local account was changed. A phone capture could not be verified because
-the integrated browser ignored its viewport override and still reported 1280px;
-the invalid capture was removed. Do not claim fresh phone visual verification.
-
-Remaining steps: mark #155 ready and require all
-full hosted workflows on its final head before the authorized squash merge. Then
-close #142 through the PR, update #141 and start only #143 next. Do not mark #142
-complete before final PR validation/merge.
-
-HLTB companion PR #47 is merged and official HLTB 0.7.0 was signed/published
-normally. Package/signature validators and execution of its bundled SDK over
-simulated public gateway replies passed for all four estimate fields. Earlier live
-provider token/search checks passed; this does not claim installed-host live HLTB.
-
-Task-owned checks use `uta-rosefall-oidc` and local Vite port 5179. Scratch logs,
-Compose configuration and preview data backups are in this task's visualization
-directory. Hosted application data and unrelated Docker projects are untouched.
-The earlier approval-service usage limit is resolved.
+Do not mark a row complete before GitHub reports it merged. Work one issue at a time;
+the older checkpoint below is retained for history.
 
 ## Historical checkpoint — 14 October 2026
 
@@ -107,7 +60,7 @@ The [Classic UI porting guide](classic-ui.md) explains how to add shared behavio
 and style it for both presentations. New settings already have Modern/Classic
 screenshots committed alongside their PRs. The staged lookup (#142) is merged and
 the shared game editor with eight direct tabs is #143; the movie/TV/anime editors share
-the same frame and five tabs in #144; quick editors (#149) remain pending. Classic does not imply all #469 features exist.
+the same frame and five tabs in #144; the quick editors are #149; the final wording review (#154, [copy review](rosefall-copy-review.md)) closes the queue. Classic does not imply all #469 features exist.
 
 ## Accepted constraints for resumption
 

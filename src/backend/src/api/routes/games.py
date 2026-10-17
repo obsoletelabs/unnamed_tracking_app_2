@@ -468,6 +468,7 @@ async def create_game(
 # pylint: disable=too-many-positional-arguments
 @router.get("/list", response_model=list[GameRead])
 async def list_games(
+    response: Response,
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
     status_filter: GameStatus | None = _NONE_QUERY_STATUS,
@@ -476,7 +477,11 @@ async def list_games(
     skip: int = _SKIP_DEFAULT,
     limit: int = _LIMIT_DEFAULT_2,
 ) -> list[Game]:
-    """Return games filtered by status, favorite flag, or title search."""
+    """Return one page of games filtered by status, favorite flag, or title search.
+
+    The body stays a plain array. `X-Total-Count` carries the number of games
+    matching the filters so a client can request the remaining pages together.
+    """
     stmt = select(Game).where(Game.user_id == current_user.id, Game.deleted_at.is_(None))
 
     if status_filter is not None:
@@ -486,6 +491,8 @@ async def list_games(
     if search:
         stmt = stmt.where(Game.title.ilike(f"%{search}%"))
 
+    total = await db.scalar(select(sql_count()).select_from(stmt.subquery()))
+    response.headers["X-Total-Count"] = str(total or 0)
     stmt = stmt.order_by(Game.sort_title).offset(skip).limit(limit)
 
     result = await db.execute(stmt)
@@ -598,6 +605,7 @@ async def update_game(
 
     _record_field_changes(game, updates, db)
     apply_updates_with_locking(game, updates, frozenset(_GAME_METADATA_FIELDS), actor=actor)
+    playnite.restore_locks(game, kept_locks)
 
     # Keep sort_title in sync if title changed but sort_title wasn't explicitly
     # set, or was cleared (a blank sorting name means "sort by the title")

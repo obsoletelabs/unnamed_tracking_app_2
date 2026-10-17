@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount } from "vue";
-import { fetchJobs, updateJob, runJobNow } from "../../services/settings";
-import type { CleanupJob } from "../../services/settings";
+import {
+  fetchJobs,
+  updateJob,
+  runJobNow,
+  controlJob,
+} from "../../services/settings";
+import type { CleanupJob, JobControl } from "../../services/settings";
 
 const props = defineProps<{ personal?: boolean }>();
 type Unit = "minutes" | "hours" | "days" | "weeks";
@@ -108,6 +113,31 @@ async function runNow(job: CleanupJob) {
     starting.value[job.id] = false;
   }
 }
+async function control(job: CleanupJob, action: JobControl) {
+  delete actionErrors.value[job.id];
+  starting.value[job.id] = true;
+  try {
+    const saved = await controlJob(job.id, action, props.personal);
+    jobs.value = jobs.value.map((j) => (j.id === saved.id ? saved : j));
+  } catch (err) {
+    actionErrors.value[job.id] =
+      err instanceof Error ? err.message : "Failed to update the task";
+  } finally {
+    starting.value[job.id] = false;
+  }
+}
+const STATUS_TEXT: Record<string, string> = {
+  partial: "Partly done. Continues from the saved step.",
+  failed: "Last attempt failed. It will retry automatically.",
+  cancelled: "Cancelled. Saved progress was kept.",
+  disabled: "Turned off because access was removed.",
+  paused: "Paused. Resume to continue from the saved step.",
+};
+function statusNote(job: CleanupJob): string {
+  if (job.status === "failed" && !job.nextRunAt)
+    return "Last attempt failed. Run now to try again.";
+  return STATUS_TEXT[job.status] ?? "";
+}
 onMounted(() => {
   void loadJobs();
   refreshTimer = setInterval(() => void loadJobs(true), 5000);
@@ -117,7 +147,7 @@ onBeforeUnmount(() => {
 });
 
 function formatTime(epochSeconds: number | null): string {
-  if (!epochSeconds) return "Never run yet";
+  if (!epochSeconds) return "Never";
   return new Date(epochSeconds * 1000).toLocaleString(undefined, {
     month: "short",
     day: "numeric",
@@ -134,8 +164,9 @@ function formatTime(epochSeconds: number | null): string {
       Choose what runs automatically for your account. Autosync starts off and
       uses your connected accounts and approved plugin permissions. Saved
       imports run even when this page is closed. Each configured Steam,
-      PlayStation and RetroAchievements connection gets its own task alongside
-      approved plugin tasks. Disconnecting pauses a task and keeps its settings.
+      PlayStation and RetroAchievements connection gets its own task, as does
+      your AniList import, alongside approved plugin tasks. Disconnecting turns
+      a task off and keeps its interval and history.
     </p>
     <p v-else class="section-hint">
       Built-in jobs and approved plugin tasks use the app's scheduler. Each one
@@ -158,11 +189,13 @@ function formatTime(epochSeconds: number | null): string {
           {{
             job.running
               ? "Running now"
-              : job.enabled && !job.available
+              : job.paused
                 ? "Paused"
-                : job.enabled
-                  ? "On"
-                  : "Off"
+                : job.enabled && !job.available
+                  ? "Paused"
+                  : job.enabled
+                    ? "On"
+                    : "Off"
           }}
         </span>
       </div>
@@ -241,6 +274,35 @@ function formatTime(epochSeconds: number | null): string {
         >
           {{ job.running || starting[job.id] ? "Running…" : "Run now" }}
         </button>
+        <button
+          v-if="job.paused"
+          type="button"
+          class="secondary-button"
+          :disabled="starting[job.id]"
+          @click="control(job, 'resume')"
+        >
+          Resume
+        </button>
+        <button
+          v-else-if="job.enabled || job.running"
+          type="button"
+          class="secondary-button"
+          :disabled="starting[job.id]"
+          @click="control(job, 'pause')"
+        >
+          Pause
+        </button>
+        <button
+          v-if="
+            job.running || job.status === 'partial' || job.status === 'failed'
+          "
+          type="button"
+          class="secondary-button"
+          :disabled="starting[job.id]"
+          @click="control(job, 'cancel')"
+        >
+          Cancel
+        </button>
       </div>
       <p v-if="actionErrors[job.id]" class="form-error" role="alert">
         {{ actionErrors[job.id] }}
@@ -248,6 +310,13 @@ function formatTime(epochSeconds: number | null): string {
       <p class="last-run">
         Last run: {{ formatTime(job.lastRunAt) }}
         <template v-if="job.lastSummary"> · {{ job.lastSummary }}</template>
+      </p>
+      <p v-if="statusNote(job)" class="last-run" role="status">
+        {{ statusNote(job) }}
+      </p>
+      <p class="last-run">
+        Last successful run: {{ formatTime(job.lastSuccessAt) }} · Next run:
+        {{ job.nextRunAt ? formatTime(job.nextRunAt) : "Not scheduled" }}
       </p>
       <p class="tile-desc job-note">
         "Run now" works whether or not it runs by itself.
@@ -418,6 +487,9 @@ function formatTime(epochSeconds: number | null): string {
   }
   .job-amount {
     width: 64px;
+  }
+  .job-controls .secondary-button {
+    min-height: 44px;
   }
 }
 </style>

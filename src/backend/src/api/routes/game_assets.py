@@ -39,6 +39,7 @@ from src.database.models.user import User
 from src.database.session import get_db
 from src.features.trash.media_trash import move_media_file_to_trash, restore_media_file_from_trash
 from src.features.trash.sweep import RETENTION_SECONDS
+from src.helpers.artwork_revisions import artwork_response, stored_file_revision
 from src.helpers.media import (
     MediaKind,
     classify_media,
@@ -60,6 +61,9 @@ _FILES_DEFAULT = File(None, alias="files")
 
 
 _FILE_DEFAULT = File(None, alias="file")
+
+
+_VERSION_QUERY = Query(None, max_length=64, description="Revision of the stored artwork.")
 
 
 _UNSCOPED_ONLY_DEFAULT = Query(False, description="Only items with no profile_id set.")
@@ -90,14 +94,16 @@ class AssetUrlRequest(BaseModel):
 
 
 # Parallel routes/models intentionally share this shape.
-# pylint: disable=duplicate-code
+# pylint: disable=duplicate-code,too-many-positional-arguments
 @asset_read_router.get("/{game_id}/assets/{asset_kind}", response_class=FileResponse)
 async def get_game_asset(
+    request: Request,
     game_id: UUID,
     asset_kind: AssetKind,
+    v: str | None = _VERSION_QUERY,
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
-) -> FileResponse:
+) -> Response:
     """Return a stored PNG asset for a game."""
     if asset_kind not in ALLOWED_ASSET_KINDS:
         raise HTTPException(
@@ -119,21 +125,18 @@ async def get_game_asset(
             detail=f"Asset '{asset_kind}' has not been uploaded for game {game_id}.",
         )
 
-    return FileResponse(
-        asset_path,
+    revision = await stored_file_revision(asset_path)
+    return artwork_response(
+        request,
+        revision=revision,
+        source_revision=revision,
+        version=v,
         media_type="image/png",
-        # was "no-store, max-age=0" — meant the browser re-downloaded every
-        # cover/banner on every scroll, reload, and revisit, even when
-        # nothing changed. Starlette's FileResponse already sets
-        # Last-Modified/ETag from the file's own stat, so a "revalidate"
-        # cache still gets a cheap 304 instead of a full re-fetch the
-        # instant an asset actually changes (a refresh/re-sync overwrites
-        # the file in place, changing its mtime).
-        headers={"Cache-Control": "private, max-age=3600, must-revalidate"},
+        path=asset_path,
     )
 
 
-# pylint: enable=duplicate-code
+# pylint: enable=duplicate-code,too-many-positional-arguments
 
 
 # Parallel routes/models intentionally share this shape.
@@ -194,6 +197,7 @@ async def upload_game_asset(
         "asset_kind": asset_kind,
         "path": str(target_path),
         "status": "saved",
+        "revision": await stored_file_revision(target_path),
     }
 
 
@@ -245,6 +249,7 @@ async def download_game_asset(
         "asset_kind": asset_kind,
         "path": str(output_path),
         "status": "saved",
+        "revision": await stored_file_revision(output_path),
     }
 
 
@@ -680,13 +685,16 @@ async def restore_game_screenshot(
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> dict:
     game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
+    # The trash sweep locks the row it purges; restore waits rather than racing it.
     item = await db.scalar(
-        select(MediaItem).where(
+        select(MediaItem)
+        .where(
             MediaItem.game_id == game_id,
             MediaItem.kind == kind,
             MediaItem.filename == filename,
             MediaItem.deleted_at.is_not(None),
         )
+        .with_for_update()
     )
     if item is None:
         raise HTTPException(

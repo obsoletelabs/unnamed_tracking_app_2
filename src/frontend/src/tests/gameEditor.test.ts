@@ -237,7 +237,7 @@ describe("shared full game editor", () => {
       for (const name of expected) {
         await tab(wrapper, name);
         const submitButton = wrapper.get('button[type="submit"]');
-        expect(submitButton.text()).toBe(game ? "Save Changes" : "Add Game");
+        expect(submitButton.text()).toBe(game ? "Save changes" : "Add game");
         expect(submitButton.attributes("form")).toBe(
           wrapper.get("form").attributes("id"),
         );
@@ -248,7 +248,7 @@ describe("shared full game editor", () => {
 
   it("shows the hero title and moves through tabs with the keyboard", async () => {
     const wrapper = open(savedGame());
-    expect(wrapper.get("#dialog-title").text()).toBe("Edit Game");
+    expect(wrapper.get("#dialog-title").text()).toBe("Edit game");
     expect(wrapper.get(".editor-heading").text()).toBe("Saved game");
     await field(wrapper, "Title").setValue("Renamed");
     expect(wrapper.get(".editor-heading").text()).toBe("Renamed");

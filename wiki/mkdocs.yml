@@ -46,6 +46,7 @@ nav:
       - TV Shows: user-guide/tv-shows.md
       - Movies: user-guide/movies.md
       - Calendar & ICS: user-guide/calendar.md
+      - Statistics Activity: user-guide/statistics.md
   - Integrations:
       - Overview: integrations/index.md
       - Playnite: integrations/playnite.md
@@ -72,6 +73,7 @@ nav:
       - Rosefall 469 Implementation Plan: development/rosefall-469-implementation.md
       - Rosefall 469 Handover: development/rosefall-469-handover.md
       - Rosefall 469 Source Ledger: development/rosefall-469-files.md
+      - Rosefall Copy Review: development/rosefall-copy-review.md
       - Classic UI Porting Guide: development/classic-ui.md
       - Automatic Search Contract: development/automatic-search.md
       - UI PR Integration Review: development/ui-pr-integration-review.md
@@ -81,6 +83,7 @@ nav:
       - API Examples: development/api-examples.md
       - Plugin API v1: development/plugin-api-v1.md
       - Public Apps and Integration Delegation: development/plugin-public-apps.md
+      - API Access Matrix: development/api-access-matrix.md
       - Progressive Metadata Providers: development/metadata-providers.md
       - Plugin v1.1 Migration: development/plugin-v1.1-migration.md
       - Plugin Platform Architecture: development/plugin-platform.md
@@ -95,6 +98,7 @@ nav:
       - Plugin Lifecycle: development/plugin-lifecycle.md
       - Remote Plugin Management API: development/plugin-management-api.md
       - Plugin Updates & Rollback: development/plugin-updates.md
+      - Plugin Update Notification Batching: development/plugin-update-notification-batching.md
       - Plugin Runtime Isolation: development/plugin-runtime.md
       - Plugin Storage: development/plugin-storage.md
       - Plugin UI Protocol: development/plugin-ui.md

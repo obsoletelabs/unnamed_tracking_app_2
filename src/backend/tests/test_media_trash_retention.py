@@ -422,14 +422,10 @@ async def test_retention_runs_in_the_existing_trash_sweep(monkeypatch) -> None:
         calls.append("sessions")
         return 0
 
-    async def stop(_seconds) -> None:
-        raise asyncio.CancelledError
-
     monkeypatch.setattr(sweep, "purge_expired_trash", game_files)
     monkeypatch.setattr(sweep, "purge_expired_media_titles", titles)
     monkeypatch.setattr(sweep, "purge_expired_sessions", sessions)
-    monkeypatch.setattr(sweep.asyncio, "sleep", stop)
-    with pytest.raises(asyncio.CancelledError):
-        await sweep.run_sweep_loop()
-    # one loop, one interval: a failed title clean-up does not stop the rest
+    result = await sweep.run_sweep_once()
+    # one pass: a failed title clean-up does not stop the rest
     assert calls == ["game files", "titles", "sessions"]
+    assert result["failed_parts"] == 1

@@ -26,7 +26,10 @@ async function poll() {
     progress.value = await fetchMediaRefreshProgress();
     if (!progress.value.running) stopPolling();
   } catch (err) {
-    error.value = err instanceof Error ? err.message : "Lost the connection";
+    error.value =
+      err instanceof Error
+        ? err.message
+        : "Could not check progress. The connection was lost.";
     stopPolling();
   }
 }

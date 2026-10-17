@@ -6,15 +6,8 @@ import { activePriority, priorityLabel, isFinished } from "../utils/priority";
 import { HERO_WIDTH, POSTER_WIDTH, sizedAssetUrl } from "../utils/gameImages";
 import type { TrashedGameFile } from "../services/media";
 import SkeletonBlock from "../components/SkeletonBlock.vue";
-import GameMediaPanel from "../components/GameMediaPanel.vue";
 import { normalizePlatformFamily } from "../utils/platforms";
-import GameArchivesPanel from "../components/GameArchivesPanel.vue";
-import ArchiveCard from "../components/ArchiveCard.vue";
-import ArchiveEditDialog from "../components/ArchiveEditDialog.vue";
-import GameNotesPanel from "../components/GameNotesPanel.vue";
-import GameStatsPanel from "../components/GameStatsPanel.vue";
 import type { GameStatus } from "../types/game";
-import GameFormModal from "../components/GameFormModal.vue";
 import GameRatingPicker from "../components/GameRatingPicker.vue";
 import GameCollectionsButton from "../components/GameCollectionsButton.vue";
 import BackButton from "../components/BackButton.vue";
@@ -28,7 +21,6 @@ import {
   KIND_LABEL,
 } from "../utils/achievements";
 import type { AchFilter } from "../composables/useGameAchievements";
-import GameAccountsPanel from "../components/game/GameAccountsPanel.vue";
 import GamePlayPanel from "../components/game/GamePlayPanel.vue";
 import GameOwnedCopiesPanel from "../components/game/GameOwnedCopiesPanel.vue";
 import GameWorldsPanel from "../components/game/GameWorldsPanel.vue";
@@ -36,6 +28,35 @@ import GameManualTrackingPanel from "../components/game/GameManualTrackingPanel.
 import { provide } from "vue";
 import { useGameDetail } from "../composables/useGameDetail";
 import { gameDetailKey } from "../composables/gameDetailContext";
+
+// Loaded on demand so they stay out of the initial route chunk.
+const GameMediaPanel = defineAsyncComponent(
+  () => import("../components/GameMediaPanel.vue"),
+);
+const GameArchivesPanel = defineAsyncComponent(
+  () => import("../components/GameArchivesPanel.vue"),
+);
+const ArchiveCard = defineAsyncComponent(
+  () => import("../components/ArchiveCard.vue"),
+);
+const ArchiveEditDialog = defineAsyncComponent(
+  () => import("../components/ArchiveEditDialog.vue"),
+);
+const GameNotesPanel = defineAsyncComponent(
+  () => import("../components/GameNotesPanel.vue"),
+);
+const GameStatsPanel = defineAsyncComponent(
+  () => import("../components/GameStatsPanel.vue"),
+);
+const GameFormModal = defineAsyncComponent(
+  () => import("../components/GameFormModal.vue"),
+);
+const GameAccountsPanel = defineAsyncComponent(
+  () => import("../components/game/GameAccountsPanel.vue"),
+);
+const GameWorldsPanel = defineAsyncComponent(
+  () => import("../components/game/GameWorldsPanel.vue"),
+);
 const model = useGameDetail();
 provide(gameDetailKey, model);
 const {

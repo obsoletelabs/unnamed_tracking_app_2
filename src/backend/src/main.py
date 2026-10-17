@@ -48,6 +48,7 @@ from src.api.routes import (
     notification_verification,
     notifications,
     password_recovery,
+    playnite,
     preferences,
     public_apps,
     session_manager,
@@ -55,6 +56,7 @@ from src.api.routes import (
     stats,
     steam_connections,
     steam_import_steps,
+    steam_openid,
     steam_tags_refresh,
     tv_shows,
     user_invitations,
@@ -75,12 +77,10 @@ from src.core.config import settings as app_settings
 from src.core.provider_credentials import apply_deployment_provider_credentials
 from src.core.session_manager import purge_old_sessions
 from src.database.session import SessionLocal
-from src.features.backup.scheduler import run_backup_loop
 from src.features.jobs import run_jobs_loop
 from src.features.metadata.core import CORE_PROVIDERS, core_registration
 from src.features.metadata.health import monitor as provider_health_monitor
 from src.features.notification_logging import protect_notification_link_logs
-from src.features.trash.sweep import run_sweep_loop
 from src.helpers import image_prefetch
 from src.plugin_api.backend_routes import reserve_host_routes
 from src.plugin_api.public_apps import purge_expired_data
@@ -167,6 +167,7 @@ app.include_router(media_images.router)
 app.include_router(achievement_icons.router)
 app.include_router(steam_import_steps.router)
 app.include_router(steam_connections.router)
+app.include_router(steam_openid.router)
 app.include_router(steam_tags_refresh.router)
 app.include_router(media_lists.router)
 app.include_router(notifications.router)
@@ -219,11 +220,6 @@ async def stop_image_prefetch() -> None:
 
 
 @app.on_event("startup")
-async def start_trash_sweep() -> None:
-    asyncio.create_task(run_sweep_loop())
-
-
-@app.on_event("startup")
 async def start_provider_health_loop() -> None:
     app.state.provider_health_task = asyncio.create_task(provider_health_monitor.run())
 
@@ -238,11 +234,6 @@ async def stop_provider_health_loop() -> None:
             await task
         except asyncio.CancelledError:
             pass
-
-
-@app.on_event("startup")
-async def start_backup_loop() -> None:
-    asyncio.create_task(run_backup_loop())
 
 
 @app.on_event("startup")

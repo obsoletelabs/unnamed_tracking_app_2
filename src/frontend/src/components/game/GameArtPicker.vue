@@ -187,11 +187,13 @@ const isPicked = (url: string) =>
 .art-picker {
   min-width: 0;
 }
+
 .art-row {
   display: flex;
   align-items: flex-start;
   gap: 14px;
 }
+
 .art-preview,
 .art-tile {
   position: relative;
@@ -201,6 +203,7 @@ const isPicked = (url: string) =>
   border-radius: var(--ui-radius-control);
   background: var(--ui-surface-2);
 }
+
 .art-preview img,
 .art-tile img {
   display: block;
@@ -208,14 +211,17 @@ const isPicked = (url: string) =>
   height: 100%;
   object-fit: cover;
 }
+
 .art-preview.tall {
   width: 84px;
   height: 120px;
 }
+
 .art-preview.wide {
   width: 176px;
   height: 66px;
 }
+
 .art-tag {
   position: absolute;
   left: 5px;
@@ -229,6 +235,7 @@ const isPicked = (url: string) =>
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
+
 .art-actions {
   display: flex;
   flex: 1;
@@ -237,19 +244,23 @@ const isPicked = (url: string) =>
   gap: 8px;
   min-width: 0;
 }
+
 .art-state {
   margin: 0;
   color: var(--ui-dim);
   font-size: 0.8rem;
   overflow-wrap: anywhere;
 }
+
 .art-upload {
   position: relative;
 }
+
 .art-upload:focus-within {
   outline: 2px solid var(--ui-accent);
   outline-offset: 2px;
 }
+
 .art-file {
   position: absolute;
   width: 1px;
@@ -258,20 +269,24 @@ const isPicked = (url: string) =>
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
 .art-link {
   display: flex;
   gap: 6px;
   width: 100%;
   max-width: 420px;
 }
+
 .art-link .editor-input {
   min-width: 0;
 }
+
 .art-error {
   margin: 0;
   color: var(--ui-error);
   font-size: 0.78rem;
 }
+
 .art-options {
   display: flex;
   gap: 8px;
@@ -279,30 +294,37 @@ const isPicked = (url: string) =>
   padding-bottom: 4px;
   overflow-x: auto;
 }
+
 .art-tile {
   padding: 0;
   border-width: 2px;
   border-color: transparent;
   cursor: pointer;
 }
+
 .art-tile.tall {
   width: 72px;
   height: 104px;
 }
+
 .art-tile.wide {
   width: 168px;
   height: 60px;
 }
+
 .art-tile:hover:not(:disabled) {
   border-color: var(--ui-border-strong);
 }
+
 .art-tile.chosen {
   border-color: var(--ui-accent);
 }
+
 .art-tile:focus-visible {
   outline: 2px solid var(--ui-accent);
   outline-offset: 2px;
 }
+
 @media (max-width: 480px) {
   .art-row {
     flex-direction: column;
