@@ -613,3 +613,22 @@ async def test_one_batch_may_mix_records_that_report_different_fields(users):  #
     stored = {o.external_id: o for o in await rows(GameSourceObservation, user)}
     assert stored["1"].observed_platform == "PC" and stored["2"].observed_title is None
     assert stored["3"].observed_edition == "Deluxe"
+
+
+async def test_umbrella_wide_manual_achievements_use_the_backfilled_umbrella(users):  # noqa: F811
+    from src.features.game_identity import manual
+
+    user = await users()
+    g = await populate(user)
+    await fresh(user)
+    before = await counts(user)
+    async with SessionLocal() as db:
+        placed = await db.scalar(
+            select(GameIdentity.umbrella_id).where(GameIdentity.game_id == g["copy"])
+        )
+        row = await manual.create_achievement(
+            db, user, g["copy"], {"title": "Both editions"}, umbrella=True
+        )
+        await db.commit()
+    assert row.umbrella_id == placed
+    assert await counts(user) == before  # no umbrella was created lazily
