@@ -410,6 +410,7 @@ async def undo_automatic(db: AsyncSession, user_id: UUID, decision_id: UUID) -> 
         decisions.Actor(reason="Undid an automatic association"),
         keep_separate=True,
     )
+    await counters.ungroup_games(db, user_id, *_members(decision))
     await game_duplicates.keep_both(db, user_id, *_members(decision))
 
 
