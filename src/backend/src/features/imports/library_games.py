@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.game import FOLDER_NAME_MAX_LENGTH, Game, GameStatus
 from src.features.game_folders import reserved_names
-from src.features.metadata.locked_fields import apply_metadata_updates
+from src.features.game_identity import names
 from src.helpers import save_game_asset
 from src.helpers.save_game_asset import create_game_folder
 
@@ -168,7 +168,9 @@ async def get_or_create_game(
     if existing is not None:
         previous_title = existing.title
         if previous_title != title:
-            apply_metadata_updates(existing, {"title": title, "sort_title": title.lower()})
+            # Placeholder, lock and trust rules (#98): a later low-quality name never
+            # replaces a good one and a locked name is only proposed for review.
+            names.apply_candidate_title(existing, title)
         if external_id and not existing.external_id:
             existing.external_id = external_id
         existing.stale_since = None

@@ -1,7 +1,7 @@
 """Persist notification aggregation windows and delivery batch membership.
 
 Revision ID: 61de2c6d5459
-Revises: 6f75008c02a6
+Revises: 9d4b2e6f1a35
 Create Date: 2026-10-17 03:15:13.647277
 """
 
@@ -13,7 +13,7 @@ from alembic import op
 from src.database import migration_helpers as h
 
 revision: str = "61de2c6d5459"
-down_revision: Union[str, None] = "6f75008c02a6"
+down_revision: Union[str, None] = "9d4b2e6f1a35"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

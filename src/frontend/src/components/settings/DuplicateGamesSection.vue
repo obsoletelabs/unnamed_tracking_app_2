@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from "vue";
+import IdentityReviewQueue from "./IdentityReviewQueue.vue";
+import AutomaticMatchBanner from "../game/AutomaticMatchBanner.vue";
 import GroupGameCopiesDialog from "../game/GroupGameCopiesDialog.vue";
 import {
   fetchGameDuplicates,
@@ -14,6 +16,7 @@ const loaded = ref(false);
 const busy = ref<string | null>(null);
 const error = ref<string | null>(null);
 const grouping = ref<DuplicatePair | null>(null);
+const queued = ref<string[]>([]);
 const request = new AbortController();
 
 function pairKey(pair: DuplicatePair): string {
@@ -61,6 +64,8 @@ async function grouped(): Promise<void> {
 
 <template>
   <section class="duplicate-review" aria-labelledby="duplicate-review-title">
+    <AutomaticMatchBanner />
+    <IdentityReviewQueue @ids="queued = $event" />
     <div class="review-heading">
       <div>
         <h2 id="duplicate-review-title">Possible duplicate games</h2>
@@ -84,7 +89,11 @@ async function grouped(): Promise<void> {
     <p v-else-if="loaded && !pairs.length && !hasMore" role="status">
       No possible duplicates to review.
     </p>
-    <article v-for="pair in pairs" :key="pairKey(pair)" class="duplicate-pair">
+    <article
+      v-for="pair in pairs.filter((item) => !queued.includes(pairKey(item)))"
+      :key="pairKey(pair)"
+      class="duplicate-pair"
+    >
       <p class="intro">
         {{
           pair.reason === "shared_identity"
