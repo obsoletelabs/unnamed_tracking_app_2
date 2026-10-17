@@ -21,6 +21,7 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.database.base import Base
+from src.database.models.destination_scope import destination_fk
 
 
 class NotificationRemoteReference(Base):
@@ -42,11 +43,7 @@ class NotificationRemoteReference(Base):
     story_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("notification_stories.id", ondelete="CASCADE")
     )
-    destination_id: Mapped[UUID] = mapped_column(
-        PG_UUID(as_uuid=True),
-        ForeignKey("notification_destinations.id", ondelete="CASCADE"),
-        nullable=False,
-    )
+    destination_id: Mapped[UUID] = destination_fk()
     destination_revision: Mapped[int] = mapped_column(Integer, nullable=False)
     provider_id: Mapped[str] = mapped_column(String(128), nullable=False)
     # Opaque provider message identifier; NULL when the provider cannot address it again.
