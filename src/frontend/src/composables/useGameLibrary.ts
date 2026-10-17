@@ -43,7 +43,12 @@ import {
   PLATFORM_OPTIONS,
   RETRO_PLATFORM_OPTIONS,
 } from "../utils/platforms";
-import { genreOptionsFor, hasGenre } from "../utils/genres";
+import {
+  canonicalTag,
+  hasGenre,
+  sameTag,
+  tagFilterOptions,
+} from "../utils/genres";
 import {
   GAME_STATUS_OPTIONS,
   hasGameLibraryQuery,
@@ -318,32 +323,54 @@ export function useGameLibrary() {
     tag: excludedTags,
     platform: excludedPlatforms,
   };
+  // Tags compare through the shared normalization rules, so "Hack & Slash"
+  // and "Hack and Slash" are one choice; statuses and platforms by name.
+  function sameValue(kind: keyof typeof exclusionRefs, a: string, b: string) {
+    return kind === "tag" ? sameTag(a, b) : a.toLowerCase() === b.toLowerCase();
+  }
   function isExcluded(kind: keyof typeof exclusionRefs, value: string) {
-    return exclusionRefs[kind].value.some(
-      (item) => item.toLowerCase() === value.toLowerCase(),
+    return exclusionRefs[kind].value.some((item) =>
+      sameValue(kind, item, value),
     );
   }
   function toggleExclusion(kind: keyof typeof exclusionRefs, value: string) {
     const target = exclusionRefs[kind];
+    const stored = kind === "tag" ? canonicalTag(value) : value;
+    if (!stored) return;
     Object.assign(target, {
       value: isExcluded(kind, value)
-        ? target.value.filter(
-            (item) => item.toLowerCase() !== value.toLowerCase(),
-          )
-        : [...target.value, value],
+        ? target.value.filter((item) => !sameValue(kind, item, value))
+        : [...target.value, stored],
     });
   }
   function toggleTagFilter(tag: string) {
     const normalized = normalizeGameTags([tag])[0];
     if (!normalized) return;
     tagsFilter.value = isTagSelected(normalized)
-      ? tagsFilter.value.filter(
-          (t) => t.toLowerCase() !== normalized.toLowerCase(),
-        )
+      ? tagsFilter.value.filter((t) => !sameTag(t, normalized))
       : [...tagsFilter.value, normalized];
   }
   function isTagSelected(tag: string) {
-    return tagsFilter.value.some((t) => t.toLowerCase() === tag.toLowerCase());
+    return tagsFilter.value.some((t) => sameTag(t, tag));
+  }
+  // The tag picker keeps a tag in one list: choosing the other mode moves it.
+  // Older links may name a tag in both; choosing either mode resolves that.
+  type TagChoiceMode = "include" | "exclude";
+  function removeTagChoice(tag: string, mode: TagChoiceMode) {
+    if (mode === "include" && isTagSelected(tag)) toggleTagFilter(tag);
+    if (mode === "exclude" && isExcluded("tag", tag))
+      toggleExclusion("tag", tag);
+  }
+  function toggleTagChoice(tag: string, mode: TagChoiceMode) {
+    const other: TagChoiceMode = mode === "include" ? "exclude" : "include";
+    const chosen = {
+      include: isTagSelected(tag),
+      exclude: isExcluded("tag", tag),
+    };
+    removeTagChoice(tag, other);
+    if (chosen[mode] && !chosen[other]) removeTagChoice(tag, mode);
+    else if (!chosen[mode] && mode === "include") toggleTagFilter(tag);
+    else if (!chosen[mode]) toggleExclusion("tag", tag);
   }
 
   watch(
@@ -731,19 +758,16 @@ export function useGameLibrary() {
     return Array.from(set).sort();
   });
 
-  const genreOptions = computed(() =>
-    genreOptionsFor(games.value.map((g) => g.tags)),
+  // Tag filtering reads each library entry's own tags, so the picker offers
+  // and counts exactly those. Include and exclude share one picker.
+  const tagOptions = computed(() =>
+    tagFilterOptions(libraryEntries.value.map((g) => g.tags)),
   );
   const exclusionGroups = computed(() => [
     {
       kind: "status" as const,
       label: "Exclude statuses",
       values: statusOptions.filter((status) => status !== "all"),
-    },
-    {
-      kind: "tag" as const,
-      label: "Exclude tags & genres",
-      values: genreOptions.value,
     },
     {
       kind: "platform" as const,
@@ -1638,6 +1662,8 @@ export function useGameLibrary() {
     tagsFilter,
     toggleTagFilter,
     isTagSelected,
+    toggleTagChoice,
+    removeTagChoice,
     excludedStatuses,
     excludedTags,
     excludedPlatforms,
@@ -1663,7 +1689,7 @@ export function useGameLibrary() {
     statusCounts,
     platformOptions,
     platformExtraOptions,
-    genreOptions,
+    tagOptions,
     franchiseOptions,
     collectionOptions,
     companyOptions,

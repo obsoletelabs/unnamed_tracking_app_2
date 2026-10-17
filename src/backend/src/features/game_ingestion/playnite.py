@@ -212,6 +212,19 @@ async def _resolve(
     return active, trashed
 
 
+def _log_batch(user_id: UUID, batch: PlayniteBatchV1, out: list[dict[str, Any]]) -> None:
+    counts: dict[str, int] = {}
+    for row in out:
+        counts[row["outcome"]] = counts.get(row["outcome"], 0) + 1
+    logger.info(
+        "playnite observations user=%s library=%s entries=%d outcomes=%s",
+        user_id,
+        batch.library_id or "default",
+        len(out),
+        dict(sorted(counts.items())),
+    )
+
+
 async def record_batch(
     db: AsyncSession, user_id: UUID, batch: PlayniteBatchV1
 ) -> list[dict[str, Any]]:
@@ -262,16 +275,7 @@ async def record_batch(
                 "outcome": outcome,
             }
         )
-    counts: dict[str, int] = {}
-    for row in out:
-        counts[row["outcome"]] = counts.get(row["outcome"], 0) + 1
-    logger.info(
-        "playnite observations user=%s library=%s entries=%d outcomes=%s",
-        user_id,
-        batch.library_id or "default",
-        len(out),
-        dict(sorted(counts.items())),
-    )
+    _log_batch(user_id, batch, out)
     return out
 
 

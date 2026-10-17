@@ -22,6 +22,7 @@ from src.api.routes.media_common import (
     update_tracking,
 )
 from src.api.routes.media_extras import log_episode_progress
+from src.api.schemas.media_trash import MediaTrashEmptyRequest, MediaTrashEmptyResult
 from src.api.schemas.metadata import MetadataSearchResponse
 from src.api.schemas.pagination import LibraryQuery, PaginatedResponse
 from src.api.schemas.tv_show import (
@@ -52,6 +53,7 @@ from src.features.metadata.service import (
     search_media,
 )
 from src.features.metadata.tv.episode_sync import fetch_season_episodes
+from src.features.trash.media_titles import empty_trash
 from src.features.tv_seasons import add_selected_seasons, check_in_background, is_due
 from src.plugin_api.metadata_contracts import MediaType
 
@@ -275,11 +277,22 @@ async def list_show_trash(
     db: AsyncSession = _DB_DEFAULT,
     current_user: User = _CURRENT_USER_DEFAULT,
 ) -> list[dict]:
-    """Deleted shows, most recently deleted first. No purge job runs
-    against these â€” unlike Game's on-disk folders, a show is just a row
-    (plus its seasons/episodes), so there's nothing to clean up and it
-    stays here until an admin either restores it or purges it for good."""
+    """Deleted shows, most recently deleted first. A show is just a row
+    (plus its seasons/episodes), so it stays here until it is restored,
+    purged, the trash is emptied, or the owner's opt-in retention period
+    passes (never by default)."""
     return await trash_listing(db, TVShow, current_user.id)
+
+
+@router.post("/trash/empty", response_model=MediaTrashEmptyResult)
+async def empty_show_trash(
+    payload: MediaTrashEmptyRequest,
+    db: AsyncSession = _DB_DEFAULT,
+    current_user: User = _CURRENT_USER_DEFAULT,
+) -> dict:
+    """Permanently delete the shows (with their seasons and episodes) in the
+    caller's trash, in bounded batches."""
+    return await empty_trash(db, TVShow, current_user.id, deleted_through=payload.deleted_through)
 
 
 @router.post("/{show_id}/restore", response_model=TVShowRead)

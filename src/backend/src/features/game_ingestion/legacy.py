@@ -141,6 +141,10 @@ async def record_observations(
     resolved: dict[str, tuple[UUID, SourceObservationV1]] = {}
     for game_id, observation in entries:
         if observation is not None:
+            if observation.available is None:
+                # The source just listed this record, so it is present again even if an
+                # earlier complete inventory marked it unavailable.
+                observation = observation.model_copy(update={"available": True})
             resolved[observation.external_id] = (game_id, observation)
     results = []
     keys = list(resolved)
@@ -222,14 +226,14 @@ async def record_disconnect(
 
 _IDENTITY_FIELDS = ("title", "platform", "release_date")
 _GAME_FACT_FIELDS = (
-    "description",
-    "developer",
-    "publisher",
-    "series",
-    "tags",
-    "features",
     "favorite",
     "playtime_seconds",
+    "description",
+    "tags",
+    "features",
+    "series",
+    "developer",
+    "publisher",
 )
 
 

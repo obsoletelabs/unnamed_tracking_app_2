@@ -164,7 +164,7 @@ async def resolve_identity(db: AsyncSession, user_id: UUID, game_id: UUID) -> UU
 
 
 async def would_cycle(
-    db: AsyncSession, user_id: UUID, kind: str, label: str, from_id: UUID, to_id: UUID
+    db: AsyncSession, user_id: UUID, kind: str, label: str, *, from_id: UUID, to_id: UUID
 ) -> bool:
     """True when adding from -> to makes `to` reach `from` through the same kind."""
     if kind not in ACYCLIC_KINDS:
@@ -212,7 +212,7 @@ async def add_relationship(
     for edge in await active_edges(db, user_id, kind, label):
         if (edge.from_game_id, edge.to_game_id) == (from_id, to_id):
             return edge
-    if await would_cycle(db, user_id, kind, label, from_id, to_id):
+    if await would_cycle(db, user_id, kind, label, from_id=from_id, to_id=to_id):
         raise IdentityInvalid(f"A {kind} relationship cannot be circular")
     stamp = now_seconds() if now is None else now
     relationship = GameRelationship(

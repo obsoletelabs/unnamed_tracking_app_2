@@ -138,9 +138,9 @@ async def write_decision(
     user_id: UUID,
     subject_kind: str,
     subject: dict[str, Any],
+    *,
     outcome: str,
     actor: Actor,
-    *,
     rule_version: str | None = None,
     confidence: float | None = None,
     evidence: dict[str, Any] | None = None,
@@ -235,6 +235,7 @@ async def _attach(
     graph: MergeGraph,
     source_id: UUID,
     target_id: UUID,
+    *,
     decision: GameIdentityDecision,
     actor: Actor,
     now: int,
@@ -262,6 +263,32 @@ async def _attach(
     return relationship
 
 
+async def _confirm_existing(
+    db: AsyncSession,
+    user_id: UUID,
+    graph: MergeGraph,
+    pair_ids: tuple[UUID, UUID],
+    *,
+    actor: Actor,
+    stamp: int,
+) -> MergeResult:
+    """Record a user's confirmation of games that are already in one group."""
+    source_id, target_id = pair_ids
+    decision = await write_decision(
+        db,
+        user_id,
+        _IDENTITY_PAIR,
+        _pair(source_id, target_id),
+        outcome=_CONFIRMED_SAME,
+        actor=actor,
+        now=stamp,
+    )
+    edge = graph.edge.get(source_id)
+    if edge is not None and graph.parent[source_id] == target_id:
+        edge.origin, edge.decision_id = actor.origin, decision.id  # user outranks automatic
+    return MergeResult(False, decision, edge)
+
+
 async def merge_identities(
     db: AsyncSession,
     user_id: UUID,
@@ -286,15 +313,10 @@ async def merge_identities(
     await lock_user_identities(db, user_id)
     await require_games(db, user_id, source_id, target_id)
     graph = await merge_graph(db, user_id)
-    pair = _pair(source_id, target_id)
     if graph.root(source_id) == graph.root(target_id):
-        decision = await write_decision(
-            db, user_id, _IDENTITY_PAIR, pair, _CONFIRMED_SAME, actor, now=stamp
+        return await _confirm_existing(
+            db, user_id, graph, (source_id, target_id), actor=actor, stamp=stamp
         )
-        edge = graph.edge.get(source_id)
-        if edge is not None and graph.parent[source_id] == target_id:
-            edge.origin, edge.decision_id = actor.origin, decision.id  # user outranks automatic
-        return MergeResult(False, decision, edge)
     left, right = graph.group(source_id), graph.group(target_id)
     blocking = await _separate_between(db, user_id, left, right)
     if blocking and not replace_separate:
@@ -306,13 +328,15 @@ async def merge_identities(
         db,
         user_id,
         _IDENTITY_PAIR,
-        pair,
-        _CONFIRMED_SAME,
-        actor,
+        _pair(source_id, target_id),
+        outcome=_CONFIRMED_SAME,
+        actor=actor,
         evidence={"groups": [sorted(map(str, left)), sorted(map(str, right))]},
         now=stamp,
     )
-    relationship = await _attach(db, user_id, graph, source_id, target_id, decision, actor, stamp)
+    relationship = await _attach(
+        db, user_id, graph, source_id, target_id, decision=decision, actor=actor, now=stamp
+    )
     return MergeResult(True, decision, relationship, [old.id for old in blocking])
 
 
@@ -321,6 +345,7 @@ async def _split(
     user_id: UUID,
     graph: MergeGraph,
     game_id: UUID,
+    *,
     stamp: int,
     decided: dict[str, Any],
 ) -> SplitResult:
@@ -364,8 +389,8 @@ async def _split(
             user_id,
             _IDENTITY_PAIR,
             pair,
-            _UNRESOLVED,
-            Actor(DecisionActor.USER.value, reason="The group was split"),
+            outcome=_UNRESOLVED,
+            actor=Actor(DecisionActor.USER.value, reason="The group was split"),
             now=stamp,
         )
     return SplitResult(None, parent, detached)
@@ -394,14 +419,14 @@ async def unmerge_identity(
     graph = await merge_graph(db, user_id)
     parent = graph.parent.get(game_id)
     decided = _pair(game_id, parent) if parent else {"first_game_id": None, "second_game_id": None}
-    result = await _split(db, user_id, graph, game_id, stamp, decided)
+    result = await _split(db, user_id, graph, game_id, stamp=stamp, decided=decided)
     result.decision = await write_decision(
         db,
         user_id,
         _IDENTITY_PAIR,
         _pair(game_id, result.former_parent),
-        _SEPARATE if keep_separate else _UNRESOLVED,
-        actor,
+        outcome=_SEPARATE if keep_separate else _UNRESOLVED,
+        actor=actor,
         resulting_state={"detached": sorted(map(str, result.detached))},
         now=stamp,
     )
@@ -429,9 +454,15 @@ async def separate_identities(
     if graph.root(first_id) == graph.root(second_id):
         # detach the one that is not the other's ancestor
         child = second_id if second_id in graph.subtree(first_id) else first_id
-        await _split(db, user_id, graph, child, stamp, _pair(first_id, second_id))
+        await _split(db, user_id, graph, child, stamp=stamp, decided=_pair(first_id, second_id))
     return await write_decision(
-        db, user_id, _IDENTITY_PAIR, _pair(first_id, second_id), _SEPARATE, actor, now=stamp
+        db,
+        user_id,
+        _IDENTITY_PAIR,
+        _pair(first_id, second_id),
+        outcome=_SEPARATE,
+        actor=actor,
+        now=stamp,
     )
 
 
@@ -442,6 +473,29 @@ async def is_pair_rejected(
     graph = await merge_graph(db, user_id)
     left, right = graph.group(first_id), graph.group(second_id)
     return bool(await _separate_between(db, user_id, left, right))
+
+
+async def _settled_automatic(
+    db: AsyncSession,
+    user_id: UUID,
+    graph: MergeGraph,
+    pair_ids: tuple[UUID, UUID],
+    *,
+    merge: bool,
+    rule_version: str,
+) -> AutomaticResult | None:
+    """The result that makes a new automatic match a no-op or blocked, if any."""
+    first_id, second_id = pair_ids
+    if graph.root(first_id) == graph.root(second_id):
+        return AutomaticResult("unchanged")
+    if await _separate_between(db, user_id, graph.group(first_id), graph.group(second_id)):
+        return AutomaticResult("blocked")
+    existing = await _current(db, user_id, _IDENTITY_PAIR, _pair(first_id, second_id), lock=False)
+    if existing is not None and (
+        existing.outcome != _UNRESOLVED or (not merge and existing.rule_version == rule_version)
+    ):
+        return AutomaticResult("unchanged", existing)
+    return None
 
 
 async def associate_automatically(
@@ -472,37 +526,37 @@ async def associate_automatically(
     if first_id == second_id:
         raise IdentityInvalid("An identity cannot be matched with itself")
     actor = Actor(DecisionActor.AUTOMATIC.value, rule, reason)
-    stamp = now_seconds() if now is None else now
+    now = now_seconds() if now is None else now
     if graph is None:
         await lock_user_identities(db, user_id)
         await require_games(db, user_id, first_id, second_id)
         graph = await merge_graph(db, user_id)
-    if graph.root(first_id) == graph.root(second_id):
-        return AutomaticResult("unchanged")
-    if await _separate_between(db, user_id, graph.group(first_id), graph.group(second_id)):
-        return AutomaticResult("blocked")
-    existing = await _current(db, user_id, _IDENTITY_PAIR, _pair(first_id, second_id), lock=False)
-    if existing is not None and (
-        existing.outcome != _UNRESOLVED or (not merge and existing.rule_version == rule_version)
-    ):
-        return AutomaticResult("unchanged", existing)
-    outcome = DecisionOutcome.AUTOMATIC_SAME if merge else DecisionOutcome.UNRESOLVED
+    settled = await _settled_automatic(
+        db, user_id, graph, (first_id, second_id), merge=merge, rule_version=rule_version
+    )
+    if settled is not None:
+        return settled
     decision = await write_decision(
         db,
         user_id,
         _IDENTITY_PAIR,
         _pair(first_id, second_id),
-        outcome.value,
-        actor,
+        outcome=(DecisionOutcome.AUTOMATIC_SAME if merge else DecisionOutcome.UNRESOLVED).value,
+        actor=actor,
         rule_version=rule_version,
         confidence=confidence,
         evidence=evidence,
-        now=stamp,
+        now=now,
     )
     if not merge:
         return AutomaticResult("suggested", decision)
-    relationship = await _attach(db, user_id, graph, first_id, second_id, decision, actor, stamp)
-    return AutomaticResult("associated", decision, relationship)
+    return AutomaticResult(
+        "associated",
+        decision,
+        await _attach(
+            db, user_id, graph, first_id, second_id, decision=decision, actor=actor, now=now
+        ),
+    )
 
 
 async def move_observation(
@@ -540,8 +594,8 @@ async def move_observation(
         user_id,
         _OBSERVATION,
         {"observation_id": observation_id, "second_game_id": game_id},
-        _CONFIRMED_SAME,
-        actor,
+        outcome=_CONFIRMED_SAME,
+        actor=actor,
         prior_state={"game_id": str(previous) if previous else None},
         resulting_state={"game_id": str(game_id)},
         now=stamp,
@@ -552,8 +606,8 @@ async def move_observation(
             user_id,
             _OBSERVATION,
             {"observation_id": observation_id, "second_game_id": previous},
-            _SEPARATE,
-            Actor(actor.kind, actor.detail, "Moved to another game"),
+            outcome=_SEPARATE,
+            actor=Actor(actor.kind, actor.detail, "Moved to another game"),
             now=stamp,
         )
     link = await relink_observation(

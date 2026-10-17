@@ -105,8 +105,9 @@ palette also lets people keep Modern's layout while retaining familiar colors.
 unconfigured accounts/browsers; explicit saved choices remain authoritative.
 The [Classic UI porting guide](classic-ui.md) explains how to add shared behavior
 and style it for both presentations. New settings already have Modern/Classic
-screenshots committed alongside their PRs. Exact shared editor/eight-tab and staged
-metadata lookup ports remain pending; Classic does not imply all #469 features exist.
+screenshots committed alongside their PRs. The staged lookup (#142) is merged and
+the shared game editor with eight direct tabs is #143; the movie/TV/anime editors share
+the same frame and five tabs in #144; quick editors (#149) remain pending. Classic does not imply all #469 features exist.
 
 ## Accepted constraints for resumption
 

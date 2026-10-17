@@ -3,14 +3,15 @@
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.api.routes.game_identity import run_action
 from src.core.auth import get_current_user
 from src.database.models.user import User
 from src.database.session import get_db
-from src.features.game_identity import graph, overview
+from src.features.game_identity import overview
 
 router = APIRouter(prefix="/api/game-identity", tags=["game"])
 Db = Annotated[AsyncSession, Depends(get_db)]
@@ -28,22 +29,6 @@ class RelationshipChange(BaseModel):
     kind: str = Field(min_length=1, max_length=40)
     label: str = Field(default="", max_length=100)
     display: Display | None = None
-
-
-async def _run(db: AsyncSession, action: Any) -> Any:
-    try:
-        result = await action
-        await db.commit()
-        return result
-    except LookupError as exc:
-        await db.rollback()
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except graph.IdentityConflict as exc:
-        await db.rollback()
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except graph.IdentityInvalid as exc:
-        await db.rollback()
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 def _edge(row: Any) -> dict[str, Any]:
@@ -65,19 +50,19 @@ async def library(db: Db, user: Owner) -> dict[str, Any]:
 
 @router.get("/games/{game_id}/overview")
 async def game_overview(game_id: UUID, db: Db, user: Owner) -> dict[str, Any]:
-    return await _run(db, overview.game_overview(db, user.id, game_id))
+    return await run_action(db, overview.game_overview(db, user.id, game_id))
 
 
 @router.get("/games/{game_id}/sources")
 async def game_sources(game_id: UUID, db: Db, user: Owner) -> dict[str, Any]:
-    return await _run(db, overview.identity_sources(db, user.id, game_id))
+    return await run_action(db, overview.identity_sources(db, user.id, game_id))
 
 
 @router.put("/relationships/{relationship_id}/display")
 async def relationship_display(
     relationship_id: UUID, body: DisplayInput, db: Db, user: Owner
 ) -> dict[str, Any]:
-    row = await _run(
+    row = await run_action(
         db, overview.set_relationship_display(db, user.id, relationship_id, body.display)
     )
     return _edge(row)
@@ -87,7 +72,7 @@ async def relationship_display(
 async def relationship_change(
     relationship_id: UUID, body: RelationshipChange, db: Db, user: Owner
 ) -> dict[str, Any]:
-    row = await _run(
+    row = await run_action(
         db,
         overview.change_relationship(
             db, user.id, relationship_id, kind=body.kind, label=body.label, display=body.display
