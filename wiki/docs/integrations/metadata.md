@@ -259,11 +259,17 @@ they do not imply that every authenticated provider has been configured or valid
 
 ## Steam sign-in and privacy
 
-Open **Settings → Connections → Steam → Manage**. Choose **Steam Guard QR**
-to scan and approve with the Steam mobile app, or **Account sign-in** to use
-your account name and password. Account sign-in supports Steam Guard email and
-mobile codes as well as approval in Steam. These methods do not require a
-personal Web API key or a profile-ID lookup.
+Open **Settings → Connections** and select **Connect** on the Steam row; the
+sign-in dialog opens directly. (Once connected, **Manage** opens the full
+dialog with import, disconnect and **Sign in with Steam**/**Manage Steam
+sign-in**.) Choose **Steam Guard QR** to scan and approve with the Steam mobile
+app, or **Account sign-in** to use your account name and password. Account
+sign-in supports Steam Guard email and mobile codes as well as approval in
+Steam. Pasted codes may include spaces or lowercase letters. These methods do
+not require a personal Web API key or a profile-ID lookup; the legacy Web API
+key form for public profiles is linked from the sign-in dialog. An account
+connection can be replaced with **Sign in again**, for example after Steam
+revokes the session.
 
 Passwords are encrypted for Steam with its supplied RSA key, sent once, and
 never saved. Steam Guard codes are also transient. Browser refresh/access
@@ -272,7 +278,11 @@ tokens and pending sign-in state are encrypted at rest with the deployment's
 verified during its browser-session exchange. A missing or mismatched account,
 failed transfer or rejected Store response cannot establish a connection.
 QR codes are rendered locally. Sign-in attempts expire after five
-minutes; closing or cancelling the dialog invalidates the current attempt.
+minutes; closing or cancelling the dialog invalidates the current attempt, and
+an attempt left behind by a reload or closed tab simply expires. If Steam is
+briefly unreachable or rate limiting, the dialog keeps the same QR or code step
+and retries; a rejected sign-in ends the attempt and the dialog shows the
+current connection state.
 The app renews expiring sessions when importing. If Steam rejects or revokes
 a session, reconnect in Connections.
 
