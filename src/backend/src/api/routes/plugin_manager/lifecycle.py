@@ -440,6 +440,12 @@ async def _apply_automatic_update(
             else:
                 counts["installed"] += 1
                 outcomes[plugin["plugin_id"]] = {**update, "status": "updated"}
+                # A successful activation must clear the stale "update available" cache.
+                store.patch(
+                    plugin["plugin_id"],
+                    available_update=None,
+                    last_update_error=None,
+                )
     # Keep one failed update isolated while recording its rollback and notifying administrators.
     # pylint: disable-next=broad-exception-caught
     except Exception as exc:
@@ -480,8 +486,13 @@ async def run_automatic_plugin_updates(db: AsyncSession, admin: User) -> dict[st
         await _apply_automatic_update(
             db, admin, plugin, counts, store, outcomes=notification_batch
         )
-    await catalogues.notify_plugin_updates(db, list(notification_batch.values()))
-    await db.commit()
+    batch = list(notification_batch.values())
+    if batch and catalogues.plugin_update_batch_changed(batch):
+        await catalogues.notify_plugin_updates(db, batch)
+        await db.commit()
+        catalogues.mark_plugin_update_batch_notified(batch)
+    else:
+        await db.commit()
     return counts
 
 
