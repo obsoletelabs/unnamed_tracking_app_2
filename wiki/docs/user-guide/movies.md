@@ -4,7 +4,7 @@ Movies are user-scoped records with metadata, status, rating, dates, artwork, li
 
 Create a movie manually or select a result from the configured movie metadata provider. The library supports search, filters, sorting, list membership, and bulk workflows shared with other media libraries. The detail page exposes editing, activity, related titles, and recommendations when provider data is available.
 
-Deleting a movie moves it to trash. Restore returns it to the library; purge permanently removes it. Metadata refresh respects supported locked-field behavior and requires the relevant provider credentials to be configured by an administrator.
+Deleting a movie moves it to trash. Restore returns it to the library; purge permanently removes it. You can also empty the whole movie trash or have trashed movies deleted automatically after a period you choose (never by default); see [Trash, Empty trash and automatic deletion](media-libraries.md#trash-empty-trash-and-automatic-deletion). Metadata refresh respects supported locked-field behavior and requires the relevant provider credentials to be configured by an administrator.
 
 ## Where you left off
 
@@ -29,9 +29,12 @@ does not change their permissions or import behavior.
 
 ## Editing
 
-The **Edit** form only changes what it shows. A movie's note, rewatch count,
-priority, dates, countries, languages and other ratings are kept as they are
-when you save it. The same applies to TV shows and anime.
+The **Edit** dialog has Basics, Details, Tracking, Artwork and Links tabs (see
+[the shared dialogs](media-libraries.md#the-add-and-edit-dialogs)). Tracking holds
+where you left off, your dates, rewatches, source, ratings, rank, tags and notes;
+Details holds the provider's metadata including countries, languages, age rating
+and features. Only priority and a few internal values are kept as they were when
+you save. The same applies to TV shows and anime.
 
 ## Library features shared with TV shows and anime
 

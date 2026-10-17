@@ -654,6 +654,15 @@ CONFIG_REGISTRY: tuple[ConfigSpec, ...] = (
         default=15,
     ),
     ConfigSpec(
+        "MAX_DOC_SIZE_MB",
+        "general",
+        ConfigSource.BOTH,
+        label="Maximum document size (MB)",
+        input_type="integer",
+        heading="Max sizes",
+        default=500,
+    ),
+    ConfigSpec(
         "MAX_SAVE_ARCHIVE_SIZE_MB",
         "general",
         ConfigSource.BOTH,
