@@ -1,7 +1,7 @@
 """add Steam OpenID verified identity and redirect state
 
 Revision ID: a80c5e1d7b42
-Revises: 50b007897f73
+Revises: a55b7c1d9e20
 Create Date: 2026-10-16 21:00:00.000000
 
 """
@@ -13,7 +13,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "a80c5e1d7b42"
-down_revision: Union[str, None] = "50b007897f73"
+down_revision: Union[str, None] = "a55b7c1d9e20"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

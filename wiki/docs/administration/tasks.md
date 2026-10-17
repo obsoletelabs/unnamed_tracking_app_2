@@ -5,12 +5,24 @@ The backend job loop wakes every minute. Administrators configure jobs through S
 Current deployment-wide jobs are:
 
 - **Plugin updates** — enabled by default, normally daily; follows each installed plugin's update policy and version pin.
-- **Airing episode check** — enabled by default, normally every 30 minutes; checks TV/anime airing data and can be manually forced.
+- **Airing episode check** — enabled by default, normally every 30 minutes; checks TV/anime airing data and can be manually forced. A title whose provider cannot answer is reported as unavailable in the summary, not as checked, and is asked again on the next run.
+- **Anime franchise check** — enabled by default, normally daily; checks completed anime franchises only for accounts that opted in to franchise notifications (see below). With no opted-in account it makes no provider requests.
 - **Media refresh** — disabled by default, normally daily; fills missing episode metadata and corrects stale media data.
 
-Per-user scheduled AniList imports are also processed in bounded batches when enabled in user preferences. External notification deliveries use the same loop, but their retry schedule is owned by the notification delivery coordinator rather than the task settings page.
+The per-user AniList import is a personal task in Account → Background tasks and runs through this same loop: due tasks start oldest run first, at most four imports run at once, and tasks that are not due never take a slot from tasks that are. External notification deliveries use the same loop, but their retry schedule is owned by the notification delivery coordinator rather than the task settings page.
 
-The task view shows running state, last run, and a bounded summary. A failed iteration is logged and retried by a later loop; it does not stop the API server.
+The task view shows running state, last run, and a bounded summary. A failed run is recorded like a completed one: its time counts towards the job's interval, so a persistent provider error is retried at the next scheduled time rather than every minute, and the summary says that it failed. It does not stop the API server. Run now retries immediately.
+
+## Anime franchise check
+
+Accounts opt in under **Settings → Account → Notifications** with two independent types, both off for new and existing accounts: **Anime franchise seasons** and **Anime franchise movies, OVAs and specials**. The check only looks at anime the account marked Watched or Favorite.
+
+- **Franchise identity.** Titles whose stored AniList sequences share an entry are one franchise, identified by its lowest AniList id. Each franchise costs one fetch through the metadata provider gateway, using the completed title latest in the sequence, and respects the account's metadata provider choices.
+- **Bounded, resumable batches.** A run checks at most five franchises, visiting opted-in active accounts in a stable order. Its summary and cursor are stored with the job's last result. An unfinished pass continues five minutes later; a restart resumes from the stored cursor instead of starting over. After every opted-in account is checked, the job waits for its interval.
+- **Failures.** A provider failure stops the batch and is retried after 5, then 10 minutes, backing off to at most hourly while failures continue. A franchise that fails three times in a row is skipped until the next pass so it cannot block later franchises or accounts. Run now resumes the current pass.
+- **Deduplication.** A newly listed entry is announced once per account, whichever title or check finds it. The first stored graph of a franchise is only a baseline. Entries already in the account's library are not announced.
+
+Opening an anime's Related tab refreshes the same stored graph and applies the same rules.
 
 ## Plugin schedules
 
@@ -49,6 +61,14 @@ New tasks start off, with a daily interval. Disconnecting pauses a saved task wh
 retaining its switch, interval and history; reconnecting restores availability. A paused,
 enabled task can still be switched off. Xbox and GOG currently store credentials without
 a library-sync workflow, so they do not have an executable autosync task.
+
+Every account also has an **AniList import** task. The username and the "update existing
+titles" choice stay in Settings → Import & export; the task controls whether the import runs by
+itself, how often (1 hour to 30 days), when it last ran and what happened. It starts off and is
+unavailable until a username is saved. Failures show a short message without remote details.
+Schedules saved before this task existed are moved to it automatically, keeping their state.
+
+![The AniList import personal task in Modern](../assets/anilist-user-schedule/background-tasks-modern.jpg)
 
 ![Personal autosync tasks for configured connections](../assets/connection-autosync/all-connections.jpg)
 

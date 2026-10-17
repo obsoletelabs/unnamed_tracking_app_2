@@ -65,9 +65,11 @@ async def test_configured_connections_create_off_daily_tasks_scoped_to_each_owne
             "Steam autosync",
             "PlayStation autosync",
             "RetroAchievements autosync",
+            "AniList import",
         ]
         assert all(not task["enabled"] and task["interval_minutes"] == 1440 for task in listed)
-        assert all(task["available"] and not task["plugin_id"] for task in listed)
+        assert all(task["available"] and not task["plugin_id"] for task in listed[:3])
+        assert not listed[3]["available"]  # no AniList username saved yet
         own_id = listed[0]["id"]
         assert own_id != connection_jobs.connection_job_id(other_id, "steam")
         with pytest.raises(HTTPException) as failure:

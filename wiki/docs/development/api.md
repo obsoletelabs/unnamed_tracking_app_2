@@ -75,19 +75,16 @@ directly or accept a replacement `locked_fields` list from a caller.
 
 ## User preferences
 
-User preferences are exposed through the existing preferences API. The AniList automatic-import feature adds these per-user fields:
+User preferences are exposed through the existing preferences API. The AniList import adds these per-user fields:
 
 | Field | Type | Purpose |
 | --- | --- | --- |
-| `anilist_import_enabled` | boolean | Enables scheduled AniList imports for the user. Defaults to `false`. |
 | `anilist_import_username` | string | Public AniList username to import. Empty by default; maximum 100 characters. |
-| `anilist_import_interval_minutes` | integer | Minimum 60 minutes and maximum 43,200 minutes (30 days). Defaults to 1,440 minutes (24 hours). |
 | `anilist_import_update_existing` | boolean | Allows matching existing titles to be updated from AniList. Defaults to `false`. |
-| `anilist_import_last_run_at` | integer or null | Unix timestamp maintained by the scheduler after a scheduled import attempt. Defaults to `null`. |
 
 The preferences are scoped to individual users rather than deployments.
 
-The frontend presents the interval as Hourly, Every 6 hours, Twice daily, Daily, or Weekly, with a custom interval from 1 to 720 hours.
+The import schedule (enabled state, interval of 60 to 43,200 minutes, last run and last result) is not a preference. It is the personal task `user-anilist:<uuid>` returned by `GET /api/settings/user-jobs` and changed with `PUT /api/settings/user-jobs/{job_id}` or `POST /api/settings/user-jobs/{job_id}/run`. The former `anilist_import_enabled`, `anilist_import_interval_minutes` and `anilist_import_last_run_at` preferences are no longer accepted; a migration moves saved values into the task.
 
 ## Media trash
 

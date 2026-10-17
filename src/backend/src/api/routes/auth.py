@@ -44,9 +44,18 @@ from src.features.metadata.games.psn import PSNClient, PSNError
 from src.features.notification_urls import remember_app_url
 from src.features.profile_pictures import profile_picture_version
 
+ACCOUNT_CONFLICT_DETAIL = "That username or email is already in use."
 
-def _account_conflict_detail(exc: IntegrityError) -> str:
-    """Say which unique field collided so the form can show it at the right input."""
+
+def _account_conflict_detail(exc: IntegrityError, *, reveal_field: bool) -> str:
+    """Describe a unique-field collision.
+
+    Only administrators (who can already list every account) learn which field collided; for
+    everyone else the reply is one combined message so a profile save cannot be used to probe
+    which usernames or email addresses are registered.
+    """
+    if not reveal_field:
+        return ACCOUNT_CONFLICT_DETAIL
     # PostgreSQL names the violated constraint in the error text; the offending value (which a
     # user controls) appears only in the separate DETAIL line, so match the quoted name.
     message = str(exc.orig)
@@ -299,6 +308,8 @@ async def update_current_user(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Username and email are required."
         )
 
+    # Read before the commit: a rollback expires the instance.
+    may_name_conflicting_field = user.is_admin
     try:
         if payload.new_password is not None:
             current_token = (
@@ -312,7 +323,8 @@ async def update_current_user(
     except IntegrityError as exc:
         await db.rollback()
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail=_account_conflict_detail(exc)
+            status_code=status.HTTP_409_CONFLICT,
+            detail=_account_conflict_detail(exc, reveal_field=may_name_conflicting_field),
         ) from exc
 
     return {
@@ -481,7 +493,8 @@ async def create_user(
     except IntegrityError as exc:
         await db.rollback()
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail=_account_conflict_detail(exc)
+            status_code=status.HTTP_409_CONFLICT,
+            detail=_account_conflict_detail(exc, reveal_field=True),
         ) from exc
 
     return {
