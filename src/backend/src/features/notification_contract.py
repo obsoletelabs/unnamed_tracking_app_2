@@ -12,11 +12,10 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 from uuid import UUID
 
 from src.database.models.notification import Notification
-from src.features.notification_controller import NotificationDraft
 from src.features.notification_inbox import retention_policy
 from src.features.notification_providers.base import notification_message
 from src.plugin_api.notification_contracts import (
@@ -41,6 +40,9 @@ from src.plugin_api.notification_story_contracts import (
     TextBlock,
     TimestampFactValue,
 )
+
+if TYPE_CHECKING:  # the controller persists stories and therefore imports this module
+    from src.features.notification_controller import NotificationDraft
 
 # Host-reserved one-shot interpretations never join, revise or aggregate into stories.
 STORY_PURPOSES = frozenset({"standard", "security"})
@@ -253,7 +255,7 @@ def _artwork(media_type: str, media_id: UUID, poster_url: str | None) -> HostMed
     return HostMediaImage(kind="host_media", media_type=media_type, media_id=media_id)
 
 
-def content_from_draft(draft: NotificationDraft) -> NotificationContent:
+def content_from_draft(draft: "NotificationDraft") -> NotificationContent:
     """Existing host producers (`NotificationDraft`) expressed as canonical content."""
     return _legacy_content(
         draft.title, draft.body, _artwork(draft.entity_type, draft.entity_id, draft.poster_url)

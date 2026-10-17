@@ -1,5 +1,7 @@
 """Single transactional boundary from facts/legacy producers to routed notifications."""
 
+import hashlib
+import json
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -16,6 +18,7 @@ from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_receipt import NotificationReceipt
 from src.database.models.user import User
 from src.features.notification_audit import record_notices
+from src.features.notification_contract import STORY_PURPOSES, RevisionDecision
 from src.features.notification_plugin_policy import delivery_projection
 from src.features.notification_policy import (
     MEDIA_KINDS,
@@ -23,6 +26,7 @@ from src.features.notification_policy import (
     preference_enabled,
 )
 from src.features.notification_providers.delivery import ensure_deliveries
+from src.features.notification_stories import StoryReference, apply_revision
 
 EVENT_TYPES = {
     "episode_aired": "media.episode.aired",
@@ -170,6 +174,7 @@ class NotificationDraft:  # pylint: disable=too-many-instance-attributes
     group_key: str | None = None
     fingerprint: str | None = None
     source_installation_id: UUID | None = None
+    story: StoryReference | None = None
 
 
 @dataclass(frozen=True)
@@ -276,6 +281,42 @@ async def _accept(
     preferences = await load_preferences(db, event.user_id)
     if not preference_enabled(notification, preferences):
         return None
+    if event.story is None:
+        if not await _record_receipt(db, event, notification):
+            return None
+        db.add(notification)
+        await db.flush()
+        await record_notices(db, [notification], "created")
+        await ensure_deliveries(db, [notification.id], preferences=preferences)
+        return notification.id
+    if notification.purpose not in STORY_PURPOSES:
+        raise ValueError("Only standard and security notifications can join stories")
+    # A rejected transition rolls the receipt back with it, so it can be retried or corrected.
+    async with db.begin_nested():
+        if not await _record_receipt(db, event, notification):
+            return None
+        outcome = await apply_revision(db, notification, event.story, preferences=preferences)
+    if outcome.decision != RevisionDecision.UPDATE_IN_PLACE:
+        await record_notices(db, [outcome.item], "created")
+    # Idempotent: an in-place revision only adds work for destinations that have none yet.
+    await ensure_deliveries(db, [outcome.item.id], preferences=preferences)
+    return outcome.item.id
+
+
+def _story_fingerprint(event: NotificationDraft) -> str | None:
+    """Replay identity of a story event: key, phase and text, never the occurrence time."""
+    if event.story is None:
+        return event.fingerprint
+    facts = [event.story.key, event.story.phase, event.title, event.body]
+    digest = hashlib.sha256(json.dumps(facts, separators=(",", ":")).encode()).hexdigest()
+    return event.fingerprint or digest
+
+
+async def _record_receipt(
+    db: AsyncSession, event: NotificationDraft, notification: Notification
+) -> bool:
+    """Insert the payload-free receipt; False means an identical replay (no work)."""
+    fingerprint = _story_fingerprint(event)
     receipt_id = await db.scalar(
         pg_insert(NotificationReceipt)
         .values(
@@ -284,30 +325,28 @@ async def _accept(
             event_type=notification.event_type,
             source=event.source,
             occurred_at=event.occurred_at,
-            fingerprint=event.fingerprint,
+            fingerprint=fingerprint,
+            story_key=event.story.key if event.story else None,
+            story_phase=event.story.phase if event.story else None,
         )
         .on_conflict_do_nothing(index_elements=["user_id", "dedupe_key"])
         .returning(NotificationReceipt.id)
     )
-    if receipt_id is None:
-        existing = await db.scalar(
-            select(NotificationReceipt).where(
-                NotificationReceipt.user_id == event.user_id,
-                NotificationReceipt.dedupe_key == event.dedupe_key,
-            )
+    if receipt_id is not None:
+        return True
+    existing = await db.scalar(
+        select(NotificationReceipt).where(
+            NotificationReceipt.user_id == event.user_id,
+            NotificationReceipt.dedupe_key == event.dedupe_key,
         )
-        if (
-            existing is not None
-            and event.fingerprint is not None
-            and (existing.fingerprint is not None and existing.fingerprint != event.fingerprint)
-        ):
-            raise ValueError("Event identity was replayed with conflicting facts")
-        return None
-    db.add(notification)
-    await db.flush()
-    await record_notices(db, [notification], "created")
-    await ensure_deliveries(db, [notification.id], preferences=preferences)
-    return notification.id
+    )
+    if (
+        existing is not None
+        and fingerprint is not None
+        and (existing.fingerprint is not None and existing.fingerprint != fingerprint)
+    ):
+        raise ValueError("Event identity was replayed with conflicting facts")
+    return False
 
 
 async def emit_legacy_rows(
@@ -338,6 +377,7 @@ async def emit_legacy_rows(
             public_title=row["title"] if row["kind"] in MEDIA_KINDS and source == "host" else None,
             public_body=row["body"] if row["kind"] in MEDIA_KINDS and source == "host" else None,
             group_key=f"{row['kind']}:{row['media_id']}",
+            story=row.get("story"),
         )
         notification_id = await _accept(db, event)
         if notification_id is not None:

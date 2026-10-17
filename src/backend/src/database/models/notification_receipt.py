@@ -27,3 +27,6 @@ class NotificationReceipt(Base):
         BigInteger, nullable=False, default=unix_timestamp, server_default="0"
     )
     fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Payload-free story reference of the accepted event (NULL for single-item events).
+    story_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    story_phase: Mapped[str | None] = mapped_column(String(64), nullable=True)

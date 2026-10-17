@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.database.models.notification import Notification
 from src.database.models.notification_delivery import NotificationDelivery
 from src.database.models.notification_destination import NotificationDestination
+from src.database.models.notification_story import NotificationStoryRevision
 from src.database.models.notification_verification import NotificationVerification
 from src.features.notification_audit import change_deliveries, change_notices, record_notices
 
@@ -105,6 +106,12 @@ async def delete_notice(db: AsyncSession, user_id: UUID, notification_id: UUID) 
     notification.poster_url = None
     notification.public_title = None
     notification.public_body = None
+    # Revision history keeps its links; only the erased item's content goes.
+    await db.execute(
+        update(NotificationStoryRevision)
+        .where(NotificationStoryRevision.notification_id == notification_id)
+        .values(title=None, body=None)
+    )
     await change_deliveries(
         db,
         update(NotificationDelivery)

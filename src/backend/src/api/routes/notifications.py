@@ -54,6 +54,9 @@ def _read(n: Notification) -> dict:
         "purpose": n.purpose,
         "required_trust": n.required_trust,
         "group_key": n.group_key,
+        "story_id": n.story_id,
+        "story_revision": n.story_revision,
+        "previous_notification_id": n.previous_notification_id,
     }
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 from functools import lru_cache
@@ -19,12 +20,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.database.models.user import User
 from src.database.session import get_db
 from src.features.notification_controller import emit_legacy_rows
+from src.features.notification_stories import (
+    PLUGIN_UPDATE_LIFECYCLE,
+    StoryReference,
+    StoryTransitionError,
+)
 from src.plugin_api.catalogues import CatalogueStore, CatalogueStoreError
 from src.plugin_api.contracts import parse_semver
 from src.plugin_api.management_auth import get_plugin_manager_admin, get_plugin_manager_reader
 from src.plugin_api.manager_state import manager_state
 
 from . import acquisition, models, runtime
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/plugins", tags=["plugins"])
 
@@ -282,45 +290,117 @@ async def check_plugin_update(
     }
 
 
+def _update_story(plugin_id: str, version: str, phase: str) -> StoryReference:
+    """One story per plugin version; a pre-story "available" notice is adopted as revision 1."""
+    return StoryReference(
+        key=f"update:{plugin_id}:{version}",
+        phase=phase,
+        lifecycle=PLUGIN_UPDATE_LIFECYCLE,
+        adopt_dedupe_key=f"plugin-update:{plugin_id}:{version}",
+        adopt_phase="available",
+    )
+
+
 async def notify_plugin_update(
     db: AsyncSession,
     update: dict[str, Any],
     *,
     failed: bool = False,
-) -> None:
+    installed: bool = False,
+) -> int:
+    """Move the version's update story along: available, then failed or installed.
+
+    Unread items are revised in place; a read or dismissed item keeps its history and a new
+    linked item announces the transition. A transition without a story to continue (for
+    example installing a version that was never announced) creates nothing.
+    """
     if not update.get("update_available"):
-        return
+        return 0
     plugin_id = str(update["plugin_id"])
     version = str(update["available_version"])
-    dedupe_key = f"plugin-update:{plugin_id}:{version}" + (":failed" if failed else "")
+    phase = "installed" if installed else "failed" if failed else "available"
+    dedupe_key = f"plugin-update:{plugin_id}:{version}" + (
+        ":installed" if installed else ":failed" if failed else ""
+    )
     admin_ids = list(
         await db.scalars(select(User.id).where(User.is_admin.is_(True), User.is_active.is_(True)))
     )
     if not admin_ids:
-        return
+        return 0
     now = int(time.time())
+    accepted = 0
+    title = {
+        "available": "Plugin update available",
+        "failed": "Plugin update failed",
+        "installed": "Plugin update installed",
+    }[phase]
+    body = {
+        "available": f"Version {version} is available (installed: {update['current_version']}).",
+        "failed": (
+            f"Version {version} could not be activated. The previous package is retained; "
+            "inspect Plugin Manager diagnostics."
+        ),
+        "installed": f"Version {version} is installed.",
+    }[phase]
     for user_id in admin_ids:
-        await emit_legacy_rows(
-            db,
-            user_id,
-            [
-                {
-                    "kind": "plugin_update",
-                    "media_type": "plugin",
-                    "media_id": uuid5(NAMESPACE_URL, f"urn:unnamed-tracking:plugin:{plugin_id}"),
-                    "title": f"Plugin update {'failed' if failed else 'available'}: {plugin_id}",
-                    "body": (
-                        f"Version {version} could not be activated. The previous package is retained; "
-                        "inspect Plugin Manager diagnostics."
-                        if failed
-                        else f"Version {version} is available (installed: {update['current_version']})."
-                    ),
-                    "poster_url": None,
-                    "event_at": now,
-                    "dedupe_key": dedupe_key,
-                }
-            ],
-        )
+        try:
+            created = await emit_legacy_rows(
+                db,
+                user_id,
+                [
+                    {
+                        "kind": "plugin_update",
+                        "media_type": "plugin",
+                        "media_id": uuid5(
+                            NAMESPACE_URL, f"urn:unnamed-tracking:plugin:{plugin_id}"
+                        ),
+                        "title": f"{title}: {plugin_id}",
+                        "body": body,
+                        "poster_url": None,
+                        "event_at": now,
+                        "dedupe_key": dedupe_key,
+                        "story": _update_story(plugin_id, version, phase),
+                    }
+                ],
+            )
+            accepted += len(created)
+        except StoryTransitionError:
+            continue
+    return accepted
+
+
+async def notify_plugin_update_result(
+    db: AsyncSession, plugin_id: str, result: dict[str, Any]
+) -> int:
+    """Report a finished update operation on the story announcing that version."""
+    if result.get("install_status") != "updated" or result.get("status") not in {
+        "running",
+        "unhealthy",
+        "stopped",
+    }:
+        return 0
+    return await notify_plugin_update(
+        db,
+        {
+            "plugin_id": plugin_id,
+            "available_version": result.get("version"),
+            "current_version": result.get("version"),
+            "update_available": True,
+        },
+        installed=True,
+    )
+
+
+async def record_update_result(db: AsyncSession, plugin_id: str, result: dict[str, Any]) -> None:
+    """Best effort: a notification problem never changes the outcome of a finished update."""
+    try:
+        if await notify_plugin_update_result(db, plugin_id, result):
+            await db.commit()
+    # An update that already completed must not fail because its story could not be advanced.
+    # pylint: disable-next=broad-exception-caught
+    except Exception as exc:
+        await db.rollback()
+        logger.warning("Plugin update story not advanced: plugin_id=%s error=%s", plugin_id, exc)
 
 
 @router.post("/updates/check")

@@ -328,7 +328,7 @@ async def _update_plugin_package(
     db: AsyncSession,
     operation: str = "update",
 ) -> dict[str, Any]:
-    return await acquisition.commit_plugin_upload(
+    result = await acquisition.commit_plugin_upload(
         file,
         consent=consent,
         source_metadata=source_metadata,
@@ -337,3 +337,6 @@ async def _update_plugin_package(
         plugin_id=plugin_id,
         operation=operation,
     )
+    if operation == "update":
+        await catalogues.record_update_result(db, plugin_id, result)
+    return result
