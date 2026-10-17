@@ -289,3 +289,59 @@ async def test_oidc_email_uniqueness_race_rolls_back_without_a_session(callback,
     users = callback.session.scalars(select(User)).all()
     assert len(users) == 1 and users[0].username == "concurrent-owner"
     assert users[0].oidc_subject is None
+
+
+async def test_oidc_new_account_gets_display_name_but_ascii_username(callback):
+    callback.claims["preferred_username"] = "reader"
+    callback.claims["name"] = "  Rénée   Müller 🎮 "
+    assert (await complete(callback)).headers["location"] == "/login?oidc=success"
+    user = callback.session.scalar(select(User))
+    assert (user.username, user.display_name) == ("reader", "Rénée Müller 🎮")
+
+
+@pytest.mark.parametrize("name", ["bad\nname", "spoof‮name", "x" * 65, ""])
+async def test_oidc_unsafe_or_missing_name_claim_leaves_display_name_unset(callback, name):
+    callback.claims["name"] = name
+    assert (await complete(callback)).headers["location"] == "/login?oidc=success"
+    assert callback.session.scalar(select(User)).display_name is None
+
+
+async def test_oidc_login_never_renames_username_or_overwrites_display_name(callback):
+    user = User(
+        username="Local User",
+        display_name="My Chosen Name",
+        email="reader@example.test",
+        password_hash="unused",
+        oidc_subject="provider:subject",
+    )
+    callback.session.add(user)
+    callback.session.commit()
+    callback.claims.update({"preferred_username": "someone-else", "name": "Provider Name"})
+    assert (await complete(callback)).headers["location"] == "/login?oidc=success"
+    callback.session.refresh(user)
+    assert (user.username, user.display_name) == ("Local User", "My Chosen Name")
+    assert callback.session.scalar(select(UserSession.user_id)) == user.id
+
+
+async def test_oidc_name_claim_cannot_select_an_account_by_username(callback):
+    victim = User(username="Admin User", email="admin@example.test", password_hash="unused")
+    callback.session.add(victim)
+    callback.session.commit()
+    callback.claims.pop("preferred_username")
+    callback.claims["name"] = "Admin User"
+    callback.selected_config.return_value = replace(callback.config, user_match_field="username")
+    response = await complete(callback)
+    assert response.headers["location"] == "/login?oidc_error=identity_missing"
+    callback.session.refresh(victim)
+    assert victim.oidc_subject is None
+    assert callback.session.scalar(select(UserSession.id)) is None
+
+
+async def test_oidc_new_account_with_taken_username_gets_distinct_account(callback):
+    existing = User(username="reader", email="other@example.test", password_hash="unused")
+    callback.session.add(existing)
+    callback.session.commit()
+    assert (await complete(callback)).headers["location"] == "/login?oidc=success"
+    users = {u.username: u for u in callback.session.scalars(select(User))}
+    assert set(users) == {"reader", "reader-2"}
+    assert users["reader"].oidc_subject is None

@@ -16,6 +16,8 @@ class User(Base):
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
     username: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    # Optional visible name; never used to sign in, look up or match accounts.
+    display_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     oidc_subject: Mapped[str | None] = mapped_column(String(512), unique=True, nullable=True)

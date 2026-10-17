@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Path
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.api.private_page_headers import private_page_headers
 from src.database.session import get_db
 from src.features.notification_story_pages import (
     LIVE_PATH,
@@ -18,14 +19,10 @@ from src.features.notification_story_pages import (
 router = APIRouter(tags=["notifications"])
 _DB = Depends(get_db)
 _Token = Annotated[str, Path(min_length=1, max_length=512)]
-_HEADERS = {
-    "Cache-Control": "no-store",
-    "Referrer-Policy": "no-referrer",
-    "X-Content-Type-Options": "nosniff",
-    "X-Robots-Tag": "noindex, nofollow",
-    "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; "
-    "frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
-}
+_HEADERS = private_page_headers(
+    "default-src 'none'; style-src 'unsafe-inline'; "
+    "frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+)
 _STYLE = """
 :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
 body { margin: 0; min-height: 100vh; display: grid; place-items: start center; padding: 24px 12px;
