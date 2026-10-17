@@ -387,7 +387,6 @@ def _automatic_update_block_reason(
     denied: bool,
 ) -> str | None:
     """Explain the first policy gate that prevents unattended activation."""
-    """Explain the first policy gate that prevents unattended activation."""
     mode = plugin.get("automatic_updates", "follow")
     checks = (
         (denied, "This exact release was previously denied and requires a new review."),
@@ -454,7 +453,6 @@ async def _apply_automatic_update(
             update,
         )
         store.patch(plugin["plugin_id"], available_update=update)
-        store.patch(plugin["plugin_id"], available_update=update)
         if not update.get("update_available"):
             store.patch(plugin["plugin_id"], last_notified_update_state=None)
             return
@@ -479,7 +477,6 @@ async def _apply_automatic_update(
             },
         )
         counts["staged"] += 1
-        counts["staged"] += 1
         if not eligible:
             outcomes[plugin["plugin_id"]]["reason"] = _automatic_update_block_reason(
                 plugin,
@@ -488,7 +485,6 @@ async def _apply_automatic_update(
                 plan=plan,
                 store=store,
                 denied=denied,
-            )
             )
         if eligible:
             result = await acquisition.plugin_installer().install(
