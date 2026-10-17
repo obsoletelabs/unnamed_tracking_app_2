@@ -253,6 +253,14 @@ class PluginRuntimeClient:
         """Persist the plugin's ordinary configuration."""
         await self._request("PUT", f"/plugins/{plugin_id}/settings", json=values)
 
+    async def read_settings(self, plugin_id: str) -> dict[str, Any]:
+        """Read persisted ordinary configuration; the runtime omits secret fields."""
+        data = await self._request("GET", f"/plugins/{plugin_id}/settings")
+        values = data.get("values") if isinstance(data, dict) else None
+        if not isinstance(values, dict):
+            raise PluginRuntimeRequestError("plugin runtime returned invalid settings")
+        return values
+
     async def action(
         self, plugin_id: str, action_id: str, values: dict[str, Any], *, user_id: str | None = None
     ) -> dict[str, Any]:

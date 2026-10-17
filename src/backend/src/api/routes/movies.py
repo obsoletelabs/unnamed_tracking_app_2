@@ -19,6 +19,7 @@ from src.api.routes.media_common import (
     trash_listing,
 )
 from src.api.routes.media_extras import log_activity, status_change_detail
+from src.api.schemas.media_trash import MediaTrashEmptyRequest, MediaTrashEmptyResult
 from src.api.schemas.metadata import MetadataSearchResponse
 from src.api.schemas.movie import MovieCreate, MovieRead, MovieUpdate
 from src.api.schemas.pagination import LibraryQuery, PaginatedResponse
@@ -38,6 +39,7 @@ from src.features.metadata.service import (
     relation_result,
     search_media,
 )
+from src.features.trash.media_titles import empty_trash
 from src.plugin_api.metadata_contracts import MediaType
 
 _QUERY_DEFAULT = Query(..., min_length=2, max_length=100, alias="query")
@@ -242,11 +244,20 @@ async def list_movie_trash(
     db: AsyncSession = _DB_DEFAULT,
     current_user: User = _CURRENT_USER_DEFAULT,
 ) -> list[dict]:
-    """Deleted movies, most recently deleted first. No purge job runs
-    against these — unlike Game's on-disk folders, a movie is just a
-    row, so there's nothing to clean up and it stays here until an
-    admin either restores it or deletes it again to purge it for good."""
+    """Deleted movies, most recently deleted first. A movie is just a row,
+    so it stays here until it is restored, purged, the trash is emptied, or
+    the owner's opt-in retention period passes (never by default)."""
     return await trash_listing(db, Movie, current_user.id)
+
+
+@router.post("/trash/empty", response_model=MediaTrashEmptyResult)
+async def empty_movie_trash(
+    payload: MediaTrashEmptyRequest,
+    db: AsyncSession = _DB_DEFAULT,
+    current_user: User = _CURRENT_USER_DEFAULT,
+) -> dict:
+    """Permanently delete the movies in the caller's trash, in bounded batches."""
+    return await empty_trash(db, Movie, current_user.id, deleted_through=payload.deleted_through)
 
 
 @router.post("/{movie_id}/restore", response_model=MovieRead)

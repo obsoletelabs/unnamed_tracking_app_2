@@ -82,6 +82,8 @@ The extension currently uses these authenticated application endpoints:
 
 The application requires authentication for the game API and scopes game lookups to the authenticated user.
 
+`src/backend/tests/test_playnite_contract.py` exercises these endpoints over HTTP with a real `utk_` key. The [game library identity audit](../development/game-library-identity-audit.md#6-playnite-integration) lists the behaviours that must stay supported while the game model changes.
+
 ## Ignoring games
 
 The extension can skip games carrying its configured ignore tag. The default tag is:

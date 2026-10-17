@@ -10,6 +10,7 @@ import {
   saveServerAutomaticSearch,
 } from "../../services/metadata";
 import type { MetadataProviderStatus } from "../../services/metadata";
+import { PROVIDER_STATE_LABELS as states } from "../../utils/metadataProviders";
 import { preferences, preferencesLoaded } from "../../state/preferences";
 import { queuePreferences } from "../../services/preferences";
 
@@ -124,16 +125,6 @@ const shown = computed(() =>
     (provider) => !props.pluginId || provider.plugin_id === props.pluginId,
   ),
 );
-const states: Record<string, string> = {
-  disabled: "Disabled",
-  not_configured: "Not configured",
-  unvalidated: "Awaiting validation",
-  healthy: "Healthy",
-  temporarily_unavailable: "Temporarily unavailable",
-  rate_limited: "Rate limited",
-  plugin_unavailable: "Plugin unavailable",
-  invalid_configuration: "Invalid configuration",
-};
 function fields(provider: MetadataProviderStatus) {
   return provider.configuration.filter(
     (field) => field.scope === scope.value || field.scope === "both",

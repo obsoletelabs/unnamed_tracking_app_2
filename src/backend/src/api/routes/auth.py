@@ -37,6 +37,7 @@ from src.database.models.app_integration_settings import AppIntegrationSettings
 from src.database.models.auth import UserApiKey
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features.admin_users import is_primary_user, record_audit
 from src.features.metadata.games.psn import PSNClient, PSNError
 from src.features.notification_urls import remember_app_url
 from src.features.profile_pictures import profile_picture_version
@@ -374,6 +375,8 @@ async def list_users(
             "email": user.email,
             "is_admin": user.is_admin,
             "is_active": user.is_active,
+            "auth_source": "sso" if user.oidc_subject else "local",
+            "is_primary": is_primary_user(user),
             "created_at": user.created_at,
         }
         for user in users
@@ -491,6 +494,13 @@ async def update_user_admin_status(
         )
 
     user.is_admin = payload.is_admin
+    record_audit(
+        db,
+        admin,
+        "role.promote" if payload.is_admin else "role.demote",
+        target_id=user.id,
+        target_label=user.username,
+    )
     await db.commit()
     await db.refresh(user)
     return {
@@ -522,6 +532,7 @@ async def delete_user(
             status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot delete your own account."
         )
 
+    record_audit(db, admin, "account.delete", target_id=user.id, target_label=user.username)
     await db.delete(user)
     await db.commit()
     shutil.rmtree(Path("/data/user") / str(user_id), ignore_errors=True)

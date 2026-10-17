@@ -100,11 +100,13 @@ nav:
       - Plugin UI Protocol: development/plugin-ui.md
       - Native Plugin Layout Review: development/native-plugin-review.md
       - Games and Media Migration Review: development/games-ui-migration.md
+      - Game Library Identity Audit: development/game-library-identity-audit.md
       - Plugin Palettes & Appearance: development/plugin-themes.md
       - Plugin Home Widgets: development/plugin-home-widgets.md
       - Custom Plugin Frontend Sandbox: development/plugin-ui-sandbox.md
       - Plugin Notification Providers: development/notification-providers.md
       - Notification Core: development/notification-core.md
+      - Notification Contract: development/notification-contract.md
       - Authentication plugin flows: development/plugin-auth-flows.md
       - Reference Plugins: development/reference-plugins.md
       - Plugin Integration Validation: development/plugin-validation.md
