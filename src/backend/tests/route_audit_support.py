@@ -218,6 +218,14 @@ def _kind_for(path: str) -> str:
     return "doc"
 
 
+IDENTITY_RECORD_IDENTIFIERS = (
+    "observation_id",
+    "relationship_id",
+    "counter_id",
+    "decision_id",
+)
+
+
 def resolve_path(template: str, ids: dict[str, str]) -> str | None:
     """Fill a route template with one tenant's identifiers; None if a parameter is unknown."""
     anime = "/api/anime" in template
@@ -257,6 +265,10 @@ def resolve_path(template: str, ids: dict[str, str]) -> str | None:
         "filename": "owner.txt" if "/files" in template else "owner.png",
         "session_id": ids["session_id"] if "/sessions/me" in template else str(uuid4()),
     }
+    # Game identity records (observations, counters, decisions, relationships) have no
+    # fixture: a fresh identifier proves a caller cannot reach a record that is not theirs.
+    for name in IDENTITY_RECORD_IDENTIFIERS:
+        values[name] = str(uuid4())
     if "{item_id}" in template:
         values["item_id"] = ids[
             "list_item_id"
