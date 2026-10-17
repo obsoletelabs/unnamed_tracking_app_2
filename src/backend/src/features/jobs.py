@@ -144,6 +144,8 @@ def _summarize_sweep(r: dict[str, Any]) -> str:
     purged = sum(v for k, v in r.items() if k.startswith("purged_") and isinstance(v, int))
     text = f"{purged} expired item(s) purged, {r.get('expired_sessions_removed') or 0} session(s)"
     return f"{text}, {r['failed_parts']} step(s) failed" if r.get("failed_parts") else text
+
+
 def _summarize_plugin_updates(r: dict[str, Any]) -> str:
     if r.get("error"):
         return str(r["error"])
