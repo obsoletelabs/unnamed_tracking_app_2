@@ -9,10 +9,16 @@ from sqlalchemy import delete
 
 from src.core.preferences import load_preferences, save_preferences
 from src.database.models.notification import Notification
+from src.database.models.notification_story import NotificationStory, NotificationStoryRevision
 from src.database.models.user import User
 from src.database.models.user_preferences import UserPreferences
 from src.database.session import SessionLocal
-from src.features.notification_inbox import InboxQuery, query_inbox, retention_policy
+from src.features.notification_inbox import (
+    InboxQuery,
+    lifecycle_state,
+    query_inbox,
+    retention_policy,
+)
 from src.features.notifications import generate_for_user
 
 
@@ -66,6 +72,7 @@ async def test_counts_cover_pages_filters_and_owner_scope(inbox_owner):
         first, summary = await query_inbox(db, owner, InboxQuery(limit=1))
         assert len(first) == 1
         assert summary == dict(
+            states=dict(active=3, dismissed=1, expired=0, deleted=0, history=4),
             total=3,
             unread=2,
             counts=dict(all=3, unread=2, episodes=0, seasons=0, releases=2, security=1, plugins=0),
@@ -240,5 +247,88 @@ async def test_routing_metadata_is_owner_scoped_secret_free_and_policy_checked(i
         async with SessionLocal() as db:
             assert (await load_preferences(db, stranger))["notification_routes"] == {}
             assert (await db.get(NotificationDestination, hidden_id)).enabled
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+async def test_lifecycle_history_slices_page_and_stay_owner_scoped(inbox_owner):
+    owner, stranger = inbox_owner
+    now = int(time.time())
+    async with SessionLocal() as db:
+        db.add_all(
+            [
+                notification(owner, title="active"),
+                notification(owner, title="dismissed", dismissed_at=now),
+                notification(owner, title="expired", inbox_visible=False),
+                notification(owner, title="", body="", deleted_at=now, inbox_visible=False),
+                notification(stranger, title="theirs", dismissed_at=now),
+            ]
+        )
+        await db.commit()
+        for state, expected in (("active", 1), ("dismissed", 1), ("expired", 1), ("deleted", 1)):
+            rows, summary = await query_inbox(db, owner, InboxQuery(state=state))
+            assert len(rows) == summary["total"] == expected, state
+            assert all(row.user_id == owner for row in rows)
+            assert summary["unread"] == 1
+        history, summary = await query_inbox(db, owner, InboxQuery(state="history", limit=3))
+        assert summary["total"] == 4 and summary["next_offset"] == 3
+        assert summary["states"] == dict(active=1, dismissed=1, expired=1, deleted=1, history=4)
+        rest, _ = await query_inbox(db, owner, InboxQuery(state="history", limit=3, offset=3))
+        assert {n.id for n in history}.isdisjoint(n.id for n in rest) and len(rest) == 1
+        assert sorted(lifecycle_state(n, now) for n in [*history, *rest]) == [
+            "deleted",
+            "dismissed",
+            "expired",
+            "unread",
+        ]
+        searched, _ = await query_inbox(db, owner, InboxQuery(state="dismissed", search="active"))
+        assert searched == []
+
+
+async def test_http_items_expose_lifecycle_and_story_details(inbox_owner):
+    from src.core.auth import get_current_user
+    from src.main import app
+
+    owner, _ = inbox_owner
+    async with SessionLocal() as db:
+        story = NotificationStory(
+            user_id=owner,
+            event_type="game.sale.started",
+            scope_key="host",
+            story_key="k",
+            source="store.example",
+            phase="resolved",
+            revision=2,
+        )
+        db.add(story)
+        await db.flush()
+        db.add_all(
+            NotificationStoryRevision(
+                story_id=story.id,
+                revision=revision,
+                phase="resolved",
+                decision="create_story",
+                receipt_key=f"r{revision}",
+                occurred_at=1,
+            )
+            for revision in (1, 2)
+        )
+        db.add(notification(owner, dismissed_at=int(time.time()), story_id=story.id))
+        await db.commit()
+        user = await db.get(User, owner)
+    app.dependency_overrides[get_current_user] = lambda: user
+    try:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            assert (await client.get("/api/notifications")).json()["items"] == []
+            body = (await client.get("/api/notifications?state=dismissed")).json()
+            assert body["items"][0]["state"] == "dismissed" and body["items"][0]["story"] == {
+                "phase": "resolved",
+                "resolved": True,
+                "revisions": 2,
+            }
+            assert body["states"]["dismissed"] == 1 and body["unread"] == 0
+            assert (await client.get("/api/notifications?state=bogus")).status_code == 422
     finally:
         app.dependency_overrides.pop(get_current_user, None)
