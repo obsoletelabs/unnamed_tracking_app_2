@@ -1,3 +1,4 @@
+import { friendlyError } from "./apiError";
 import { createSpeedTracker } from "../utils/uploadSpeed";
 import type { DateSource } from "../utils/mediaDate";
 
@@ -104,9 +105,10 @@ function uploadFiles(
           );
         }
       } else {
+        // A proxy's own HTML error page is not worth showing; say what it means.
         reject(
           new Error(
-            `Upload failed: ${xhr.status} ${xhr.statusText} ${xhr.responseText}`,
+            `Upload failed: ${friendlyError(xhr.status, xhr.responseText)}`,
           ),
         );
       }

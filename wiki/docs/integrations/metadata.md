@@ -98,10 +98,75 @@ only. A whole-provider opt-out also blocks explicit metadata requests. Its saved
 Automatic Search choice is preserved and resumes when the provider is re-enabled.
 Local library filtering continues to work.
 
-New unsaved game-provider orders place Steam before GOG. Existing stored orders
-remain unchanged, including an existing order that matched an older default.
+### Provider order
 
-The refresh uses the same generic metadata handler as search. Providers run concurrently. The user's provider order determines field authority, while artwork is a separate selected-entity operation. Provider failures are reported without discarding successful results from other providers.
+**Settings → Metadata → Scan & providers** orders the providers this server
+offers, built in and plugin alike, from the same provider registry as
+**Sources & API keys**. Choose **Games**, **Movies**, **TV** or **Anime** to see
+the providers for that media type. Each account keeps its own order:
+
+- **Search & metadata order** decides whose details win when several providers
+  describe the same title, and which equally good match is listed first.
+- **Artwork order** decides whose artwork is offered first. Each provider still
+  ranks its own images; the order only decides between providers.
+
+The lists show only providers your account uses. Providers you turned off with
+**Use for metadata** are named below the lists instead, with a link back to
+**Sources & API keys**; they keep their position for when you turn them on
+again. A provider the server cannot use yet stays in the list with its reason,
+so you can still place it:
+
+| Shown as | Meaning | Who can fix it |
+| --- | --- | --- |
+| Ready / Awaiting validation | Used by searches | — |
+| Temporarily unavailable / Rate limited | Still tried; may not return results right now | The provider |
+| Needs credentials / Invalid configuration | Skipped until credentials are added or corrected | You, for personal credentials; an administrator, for server-only credentials |
+| Disabled on this server | Its plugin is installed but disabled | An administrator, in Plugin Manager |
+| Plugin unavailable | Its plugin is not running or needs an update | An administrator, in Plugin Manager |
+
+Administrators get a link to the setting that fixes each state; other accounts
+see who can fix it. An uninstalled plugin's providers leave the list. A provider
+that covers several media types, such as TMDB, has one position shared by those
+types. When you swap two providers, whichever of the two changes the other media
+types' order least is moved. Saving changes only your account.
+
+The order applies to every metadata path: typing and explicit searches,
+selecting a result, **Look up metadata**, metadata refresh, library imports and
+scheduled TV/anime updates. Orders are stored by provider ID. Orders saved before
+optional providers became plugins used display names such as `GiantBomb`; those
+keep working, and a plugin can never take the place of a built-in provider's
+name. A newly installed provider starts at the end of your order until you move
+it. New unsaved game-provider orders place Steam before GOG. Existing stored
+orders remain unchanged until you move a provider and save, including an existing
+order that matched an older default. Saving only the field choices below never
+rewrites the order.
+
+Each row shows when that provider last supplied a result you selected, a game
+metadata refresh used, or a game search returned.
+
+### Policy precedence
+
+The choices combine in this order; a later step only narrows the earlier ones:
+
+1. **Server availability.** Built-in providers are always registered. A plugin
+   provider needs its plugin installed, enabled and running, with its
+   metadata permissions granted.
+2. **Credentials.** Your personal credentials override the server's for fields
+   that allow both. Server-only fields need an administrator.
+3. **Use for metadata.** Your account's opt-out wins over server credentials.
+4. **Automatic Search** further limits typing-triggered searches only.
+5. **Provider order** ranks the providers that remain.
+
+The refresh uses the same generic metadata handler as search. Providers run concurrently. The user's provider order determines field authority, while artwork is a separate selected-entity operation ordered by the artwork order. Provider failures are reported without discarding successful results from other providers.
+
+![Scan & providers, Modern, administrator](../assets/metadata-provider-order/modern-dark-admin.jpg)
+
+| Classic, administrator | Classic, other account |
+| --- | --- |
+| ![Classic administrator](../assets/metadata-provider-order/classic-dark-admin.jpg) | ![Classic member](../assets/metadata-provider-order/classic-light-member.jpg) |
+
+[Modern, other account](../assets/metadata-provider-order/modern-dark-member.jpg) and
+[Classic phone](../assets/metadata-provider-order/classic-dark-phone-member.jpg).
 
 Provider credentials are declared by each built-in or optional provider and configured in the host provider panel. Field-save toggles remain in metadata preferences. The game editor uses that same configuration.
 
@@ -163,10 +228,13 @@ than leaving the page.
 
 ![SteamGridDB system configuration with the stored secret hidden](../assets/plugin-metadata/provider-configuration.jpg)
 
-The Add Game editor retains its Find, General, Ratings & Tags, Media, Links,
-Ownership and Page tabs. Identity results appear before artwork; failed optional
+The full game editor's **Look up metadata** opens the same search above any of
+its eight tabs. Identity results appear before artwork; failed optional
 providers produce a short warning while successful results stay selectable.
-Selecting a result populates the existing fields and starts artwork lookup.
+Selecting a result opens the review and starts artwork lookup; offered covers
+and banners are then available on the **Artwork** tab. These screenshots predate
+the tabbed editor; see the [games guide](../user-guide/games.md#adding-a-game)
+for the current layout.
 
 ![Portal 2 search with built-in Steam results](../assets/plugin-metadata/game-search.jpg)
 

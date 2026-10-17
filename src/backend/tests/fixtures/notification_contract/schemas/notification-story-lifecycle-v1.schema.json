@@ -1,0 +1,122 @@
+{
+  "$defs": {
+    "StoryPhase": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[a-z][a-z0-9_]{0,31}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "severity": {
+          "anyOf": [
+            {
+              "enum": [
+                "info",
+                "warning",
+                "error"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Severity"
+        },
+        "terminal": {
+          "default": false,
+          "title": "Terminal",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "label"
+      ],
+      "title": "StoryPhase",
+      "type": "object"
+    },
+    "StoryTransition": {
+      "additionalProperties": false,
+      "properties": {
+        "from_phase": {
+          "pattern": "^[a-z][a-z0-9_]{0,31}$",
+          "title": "From Phase",
+          "type": "string"
+        },
+        "to_phase": {
+          "pattern": "^[a-z][a-z0-9_]{0,31}$",
+          "title": "To Phase",
+          "type": "string"
+        }
+      },
+      "required": [
+        "from_phase",
+        "to_phase"
+      ],
+      "title": "StoryTransition",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Declared phases for one event type; self-transitions allow in-phase content updates.",
+  "properties": {
+    "contract_version": {
+      "title": "Contract Version",
+      "type": "string"
+    },
+    "event_type": {
+      "maxLength": 128,
+      "minLength": 3,
+      "pattern": "^[a-z0-9][a-z0-9._-]*$",
+      "title": "Event Type",
+      "type": "string"
+    },
+    "initial_phases": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{0,31}$",
+        "type": "string"
+      },
+      "maxItems": 16,
+      "minItems": 1,
+      "title": "Initial Phases",
+      "type": "array"
+    },
+    "phases": {
+      "items": {
+        "$ref": "#/$defs/StoryPhase"
+      },
+      "maxItems": 16,
+      "minItems": 1,
+      "title": "Phases",
+      "type": "array"
+    },
+    "transitions": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/StoryTransition"
+      },
+      "maxItems": 64,
+      "title": "Transitions",
+      "type": "array"
+    }
+  },
+  "required": [
+    "contract_version",
+    "event_type",
+    "phases",
+    "initial_phases"
+  ],
+  "title": "StoryLifecycleDeclaration",
+  "type": "object",
+  "x-notification-contract-version": "1.0.0"
+}

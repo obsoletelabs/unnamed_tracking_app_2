@@ -1,0 +1,1371 @@
+{
+  "contract_version": "1.0.0",
+  "description": "Shared canonical notification contract conformance cases. A conforming validator accepts every valid document and rejects every invalid one.",
+  "cases": [
+    {
+      "name": "rich event",
+      "document_type": "notification-canonical-event-v1",
+      "valid": true,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "event_id": "update:example.sync:2.1.0:available",
+        "occurred_at": 1767225600,
+        "story": {
+          "key": "update:example.sync:2.1.0",
+          "phase": "available"
+        },
+        "grouping_key": "plugin-updates",
+        "urgency": "normal",
+        "content": {
+          "title": "2 plugin updates available",
+          "summary": "Example Sync 2.1.0 and Example Theme 1.4.0 can be installed.",
+          "blocks": [
+            {
+              "type": "text",
+              "text": "Updates are verified before activation.\nThe previous package is retained."
+            },
+            {
+              "type": "markdown",
+              "markdown": "**Example Sync** fixes [import paging](https://docs.example.org/sync)."
+            }
+          ],
+          "facts": [
+            {
+              "key": "available",
+              "label": "Available updates",
+              "value": {
+                "kind": "integer",
+                "value": 2
+              }
+            },
+            {
+              "key": "price",
+              "label": "Sale price",
+              "value": {
+                "kind": "money",
+                "amount": "9.99",
+                "currency": "EUR"
+              }
+            },
+            {
+              "key": "discount",
+              "label": "Discount",
+              "value": {
+                "kind": "decimal",
+                "value": "0.25"
+              }
+            },
+            {
+              "key": "airs_at",
+              "label": "Airs",
+              "value": {
+                "kind": "timestamp",
+                "value": 1767225600
+              }
+            },
+            {
+              "key": "verified",
+              "label": "Signed",
+              "value": {
+                "kind": "boolean",
+                "value": true
+              }
+            },
+            {
+              "key": "channel",
+              "label": "Channel",
+              "value": {
+                "kind": "text",
+                "value": "stable"
+              }
+            }
+          ],
+          "images": [
+            {
+              "role": "artwork",
+              "source": {
+                "kind": "external",
+                "url": "https://images.example.org/sync.png?size=256"
+              },
+              "alt": "Example Sync icon"
+            },
+            {
+              "role": "thumbnail",
+              "source": {
+                "kind": "host_media",
+                "media_type": "game",
+                "media_id": "00000000-0000-4000-8000-000000000001"
+              }
+            }
+          ],
+          "actions": [
+            {
+              "id": "review",
+              "label": "Review updates",
+              "style": "primary",
+              "target": {
+                "kind": "host_route",
+                "path": "/plugins?tab=updates"
+              }
+            },
+            {
+              "id": "notes",
+              "label": "Release notes",
+              "target": {
+                "kind": "link",
+                "url": "https://docs.example.org/releases"
+              }
+            },
+            {
+              "id": "install",
+              "label": "Install",
+              "target": {
+                "kind": "plugin_action",
+                "action_id": "updates.install",
+                "input": {
+                  "plugin": "example.sync",
+                  "confirm": true
+                }
+              }
+            }
+          ],
+          "attribution": {
+            "label": "Example Catalogue",
+            "url": "https://catalogue.example.org"
+          },
+          "expires_at": 1767312000
+        }
+      }
+    },
+    {
+      "name": "minimal event without story",
+      "document_type": "notification-canonical-event-v1",
+      "valid": true,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "event_id": "update:example.sync:2.1.0:available",
+        "occurred_at": 1767225600,
+        "story": null,
+        "grouping_key": null,
+        "urgency": "normal",
+        "content": {
+          "title": "Released",
+          "summary": "A release is available."
+        }
+      }
+    },
+    {
+      "name": "minimal content",
+      "document_type": "notification-canonical-content-v1",
+      "valid": true,
+      "document": {
+        "title": "Released",
+        "summary": "A release is available."
+      }
+    },
+    {
+      "name": "newer minor versions are rejected by this host",
+      "document_type": "notification-canonical-event-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.1.0",
+        "event_type": "example.sync.update",
+        "event_id": "update:example.sync:2.1.0:available",
+        "occurred_at": 1767225600,
+        "content": {
+          "title": "Released",
+          "summary": "A release is available."
+        }
+      }
+    },
+    {
+      "name": "other major versions are rejected",
+      "document_type": "notification-canonical-event-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "2.0.0",
+        "event_type": "example.sync.update",
+        "event_id": "update:example.sync:2.1.0:available",
+        "occurred_at": 1767225600,
+        "content": {
+          "title": "Released",
+          "summary": "A release is available."
+        }
+      }
+    },
+    {
+      "name": "versions are strict semantic versions",
+      "document_type": "notification-canonical-event-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0",
+        "event_type": "example.sync.update",
+        "event_id": "update:example.sync:2.1.0:available",
+        "occurred_at": 1767225600,
+        "content": {
+          "title": "Released",
+          "summary": "A release is available."
+        }
+      }
+    },
+    {
+      "name": "recipient chosen by producer",
+      "document_type": "notification-canonical-event-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "event_id": "update:example.sync:2.1.0:available",
+        "occurred_at": 1767225600,
+        "content": {
+          "title": "Released",
+          "summary": "A release is available."
+        },
+        "user_id": "00000000-0000-4000-8000-000000000002"
+      }
+    },
+    {
+      "name": "destination chosen by producer",
+      "document_type": "notification-canonical-event-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "event_id": "update:example.sync:2.1.0:available",
+        "occurred_at": 1767225600,
+        "content": {
+          "title": "Released",
+          "summary": "A release is available."
+        },
+        "destination_id": "00000000-0000-4000-8000-000000000002"
+      }
+    },
+    {
+      "name": "trust asserted by producer",
+      "document_type": "notification-canonical-event-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "event_id": "update:example.sync:2.1.0:available",
+        "occurred_at": 1767225600,
+        "content": {
+          "title": "Released",
+          "summary": "A release is available."
+        },
+        "required_trust": "PUBLIC"
+      }
+    },
+    {
+      "name": "purpose asserted by producer",
+      "document_type": "notification-canonical-event-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "event_id": "update:example.sync:2.1.0:available",
+        "occurred_at": 1767225600,
+        "content": {
+          "title": "Released",
+          "summary": "A release is available."
+        },
+        "purpose": "recovery"
+      }
+    },
+    {
+      "name": "installation asserted by producer",
+      "document_type": "notification-canonical-event-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "event_id": "update:example.sync:2.1.0:available",
+        "occurred_at": 1767225600,
+        "content": {
+          "title": "Released",
+          "summary": "A release is available."
+        },
+        "installation_id": "00000000-0000-4000-8000-000000000002"
+      }
+    },
+    {
+      "name": "unknown top-level field",
+      "document_type": "notification-canonical-event-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "event_id": "update:example.sync:2.1.0:available",
+        "occurred_at": 1767225600,
+        "content": {
+          "title": "Released",
+          "summary": "A release is available."
+        },
+        "priority": 5
+      }
+    },
+    {
+      "name": "unknown content field",
+      "document_type": "notification-canonical-event-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "event_id": "update:example.sync:2.1.0:available",
+        "occurred_at": 1767225600,
+        "content": {
+          "title": "Released",
+          "summary": "A release is available.",
+          "html": "<b>x</b>"
+        }
+      }
+    },
+    {
+      "name": "unknown block type",
+      "document_type": "notification-canonical-event-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "event_id": "update:example.sync:2.1.0:available",
+        "occurred_at": 1767225600,
+        "content": {
+          "title": "Released",
+          "summary": "A release is available.",
+          "blocks": [
+            {
+              "type": "html",
+              "html": "<b>x</b>"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "unknown block field",
+      "document_type": "notification-canonical-event-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "event_id": "update:example.sync:2.1.0:available",
+        "occurred_at": 1767225600,
+        "content": {
+          "title": "Released",
+          "summary": "A release is available.",
+          "blocks": [
+            {
+              "type": "text",
+              "text": "x",
+              "style": "bold"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "unknown fact kind",
+      "document_type": "notification-canonical-event-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "event_id": "update:example.sync:2.1.0:available",
+        "occurred_at": 1767225600,
+        "content": {
+          "title": "Released",
+          "summary": "A release is available.",
+          "facts": [
+            {
+              "key": "a",
+              "label": "A",
+              "value": {
+                "kind": "float",
+                "value": 1.5
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "integer fact rejects booleans",
+      "document_type": "notification-canonical-event-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "event_id": "update:example.sync:2.1.0:available",
+        "occurred_at": 1767225600,
+        "content": {
+          "title": "Released",
+          "summary": "A release is available.",
+          "facts": [
+            {
+              "key": "a",
+              "label": "A",
+              "value": {
+                "kind": "integer",
+                "value": true
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "money uses exact decimals",
+      "document_type": "notification-canonical-event-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "event_id": "update:example.sync:2.1.0:available",
+        "occurred_at": 1767225600,
+        "content": {
+          "title": "Released",
+          "summary": "A release is available.",
+          "facts": [
+            {
+              "key": "a",
+              "label": "A",
+              "value": {
+                "kind": "money",
+                "amount": "1e3",
+                "currency": "EUR"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "duplicate fact keys",
+      "document_type": "notification-canonical-event-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "event_id": "update:example.sync:2.1.0:available",
+        "occurred_at": 1767225600,
+        "content": {
+          "title": "Released",
+          "summary": "A release is available.",
+          "facts": [
+            {
+              "key": "available",
+              "label": "Available updates",
+              "value": {
+                "kind": "integer",
+                "value": 2
+              }
+            },
+            {
+              "key": "available",
+              "label": "Channel",
+              "value": {
+                "kind": "text",
+                "value": "stable"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "unknown image source",
+      "document_type": "notification-canonical-event-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "event_id": "update:example.sync:2.1.0:available",
+        "occurred_at": 1767225600,
+        "content": {
+          "title": "Released",
+          "summary": "A release is available.",
+          "images": [
+            {
+              "source": {
+                "kind": "data",
+                "url": "data:image/png;base64,AA"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "image URL must be https",
+      "document_type": "notification-canonical-event-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "event_id": "update:example.sync:2.1.0:available",
+        "occurred_at": 1767225600,
+        "content": {
+          "title": "Released",
+          "summary": "A release is available.",
+          "images": [
+            {
+              "source": {
+                "kind": "external",
+                "url": "http://images.example.org/a.png"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "image URL must not target private addresses",
+      "document_type": "notification-canonical-event-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "event_id": "update:example.sync:2.1.0:available",
+        "occurred_at": 1767225600,
+        "content": {
+          "title": "Released",
+          "summary": "A release is available.",
+          "images": [
+            {
+              "source": {
+                "kind": "external",
+                "url": "https://192.168.1.10/a.png"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "image URL must not carry credentials",
+      "document_type": "notification-canonical-event-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "event_id": "update:example.sync:2.1.0:available",
+        "occurred_at": 1767225600,
+        "content": {
+          "title": "Released",
+          "summary": "A release is available.",
+          "images": [
+            {
+              "source": {
+                "kind": "external",
+                "url": "https://user:secret@images.example.org/a.png"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "unknown action target",
+      "document_type": "notification-canonical-event-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "event_id": "update:example.sync:2.1.0:available",
+        "occurred_at": 1767225600,
+        "content": {
+          "title": "Released",
+          "summary": "A release is available.",
+          "actions": [
+            {
+              "id": "run",
+              "label": "Run",
+              "target": {
+                "kind": "script",
+                "code": "alert(1)"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "action links cannot use javascript",
+      "document_type": "notification-canonical-event-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "event_id": "update:example.sync:2.1.0:available",
+        "occurred_at": 1767225600,
+        "content": {
+          "title": "Released",
+          "summary": "A release is available.",
+          "actions": [
+            {
+              "id": "run",
+              "label": "Run",
+              "target": {
+                "kind": "link",
+                "url": "javascript:alert(1)"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "host routes cannot target the API",
+      "document_type": "notification-canonical-event-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "event_id": "update:example.sync:2.1.0:available",
+        "occurred_at": 1767225600,
+        "content": {
+          "title": "Released",
+          "summary": "A release is available.",
+          "actions": [
+            {
+              "id": "go",
+              "label": "Go",
+              "target": {
+                "kind": "host_route",
+                "path": "/api/notifications/email-unsubscribe"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "host routes cannot be protocol-relative",
+      "document_type": "notification-canonical-event-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "event_id": "update:example.sync:2.1.0:available",
+        "occurred_at": 1767225600,
+        "content": {
+          "title": "Released",
+          "summary": "A release is available.",
+          "actions": [
+            {
+              "id": "go",
+              "label": "Go",
+              "target": {
+                "kind": "host_route",
+                "path": "//evil.example/x"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "too many actions",
+      "document_type": "notification-canonical-event-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "event_id": "update:example.sync:2.1.0:available",
+        "occurred_at": 1767225600,
+        "content": {
+          "title": "Released",
+          "summary": "A release is available.",
+          "actions": [
+            {
+              "id": "a0",
+              "label": "Open",
+              "target": {
+                "kind": "host_route",
+                "path": "/"
+              }
+            },
+            {
+              "id": "a1",
+              "label": "Open",
+              "target": {
+                "kind": "host_route",
+                "path": "/"
+              }
+            },
+            {
+              "id": "a2",
+              "label": "Open",
+              "target": {
+                "kind": "host_route",
+                "path": "/"
+              }
+            },
+            {
+              "id": "a3",
+              "label": "Open",
+              "target": {
+                "kind": "host_route",
+                "path": "/"
+              }
+            },
+            {
+              "id": "a4",
+              "label": "Open",
+              "target": {
+                "kind": "host_route",
+                "path": "/"
+              }
+            },
+            {
+              "id": "a5",
+              "label": "Open",
+              "target": {
+                "kind": "host_route",
+                "path": "/"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "titles are single lines",
+      "document_type": "notification-canonical-event-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "event_id": "update:example.sync:2.1.0:available",
+        "occurred_at": 1767225600,
+        "content": {
+          "title": "Line one\nLine two",
+          "summary": "A release is available."
+        }
+      }
+    },
+    {
+      "name": "titles reject Unicode line separators",
+      "document_type": "notification-canonical-event-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "event_id": "update:example.sync:2.1.0:available",
+        "occurred_at": 1767225600,
+        "content": {
+          "title": "Line one\u2028Line two",
+          "summary": "A release is available."
+        }
+      }
+    },
+    {
+      "name": "summaries reject control characters",
+      "document_type": "notification-canonical-event-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "event_id": "update:example.sync:2.1.0:available",
+        "occurred_at": 1767225600,
+        "content": {
+          "title": "Released",
+          "summary": "Bell\u0007"
+        }
+      }
+    },
+    {
+      "name": "blank titles are rejected",
+      "document_type": "notification-canonical-event-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "event_id": "update:example.sync:2.1.0:available",
+        "occurred_at": 1767225600,
+        "content": {
+          "title": "   ",
+          "summary": "A release is available."
+        }
+      }
+    },
+    {
+      "name": "expiry must follow occurrence",
+      "document_type": "notification-canonical-event-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "event_id": "update:example.sync:2.1.0:available",
+        "occurred_at": 1767225600,
+        "content": {
+          "title": "Released",
+          "summary": "A release is available.",
+          "expires_at": 1767225600
+        }
+      }
+    },
+    {
+      "name": "story phases are identifiers",
+      "document_type": "notification-canonical-event-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "event_id": "update:example.sync:2.1.0:available",
+        "occurred_at": 1767225600,
+        "content": {
+          "title": "Released",
+          "summary": "A release is available."
+        },
+        "story": {
+          "key": "x",
+          "phase": "Installed!"
+        }
+      }
+    },
+    {
+      "name": "reference plugin-update lifecycle",
+      "document_type": "notification-story-lifecycle-v1",
+      "valid": true,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "phases": [
+          {
+            "id": "available",
+            "label": "Update available"
+          },
+          {
+            "id": "failed",
+            "label": "Update failed",
+            "severity": "error"
+          },
+          {
+            "id": "installed",
+            "label": "Update installed",
+            "terminal": true
+          },
+          {
+            "id": "resolved",
+            "label": "No longer applicable",
+            "terminal": true
+          }
+        ],
+        "initial_phases": [
+          "available"
+        ],
+        "transitions": [
+          {
+            "from_phase": "available",
+            "to_phase": "available"
+          },
+          {
+            "from_phase": "available",
+            "to_phase": "installed"
+          },
+          {
+            "from_phase": "available",
+            "to_phase": "failed"
+          },
+          {
+            "from_phase": "available",
+            "to_phase": "resolved"
+          },
+          {
+            "from_phase": "failed",
+            "to_phase": "failed"
+          },
+          {
+            "from_phase": "failed",
+            "to_phase": "installed"
+          },
+          {
+            "from_phase": "failed",
+            "to_phase": "resolved"
+          }
+        ]
+      }
+    },
+    {
+      "name": "terminal phases cannot transition",
+      "document_type": "notification-story-lifecycle-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "phases": [
+          {
+            "id": "available",
+            "label": "Update available"
+          },
+          {
+            "id": "failed",
+            "label": "Update failed",
+            "severity": "error"
+          },
+          {
+            "id": "installed",
+            "label": "Update installed",
+            "terminal": true
+          },
+          {
+            "id": "resolved",
+            "label": "No longer applicable",
+            "terminal": true
+          }
+        ],
+        "initial_phases": [
+          "available"
+        ],
+        "transitions": [
+          {
+            "from_phase": "available",
+            "to_phase": "available"
+          },
+          {
+            "from_phase": "available",
+            "to_phase": "installed"
+          },
+          {
+            "from_phase": "available",
+            "to_phase": "failed"
+          },
+          {
+            "from_phase": "available",
+            "to_phase": "resolved"
+          },
+          {
+            "from_phase": "failed",
+            "to_phase": "failed"
+          },
+          {
+            "from_phase": "failed",
+            "to_phase": "installed"
+          },
+          {
+            "from_phase": "failed",
+            "to_phase": "resolved"
+          },
+          {
+            "from_phase": "installed",
+            "to_phase": "available"
+          }
+        ]
+      }
+    },
+    {
+      "name": "every phase must be reachable",
+      "document_type": "notification-story-lifecycle-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "phases": [
+          {
+            "id": "available",
+            "label": "Update available"
+          },
+          {
+            "id": "failed",
+            "label": "Update failed",
+            "severity": "error"
+          },
+          {
+            "id": "installed",
+            "label": "Update installed",
+            "terminal": true
+          },
+          {
+            "id": "resolved",
+            "label": "No longer applicable",
+            "terminal": true
+          }
+        ],
+        "initial_phases": [
+          "available"
+        ],
+        "transitions": [
+          {
+            "from_phase": "available",
+            "to_phase": "available"
+          }
+        ]
+      }
+    },
+    {
+      "name": "initial phases must be declared",
+      "document_type": "notification-story-lifecycle-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "phases": [
+          {
+            "id": "available",
+            "label": "Update available"
+          },
+          {
+            "id": "failed",
+            "label": "Update failed",
+            "severity": "error"
+          },
+          {
+            "id": "installed",
+            "label": "Update installed",
+            "terminal": true
+          },
+          {
+            "id": "resolved",
+            "label": "No longer applicable",
+            "terminal": true
+          }
+        ],
+        "initial_phases": [
+          "queued"
+        ],
+        "transitions": [
+          {
+            "from_phase": "available",
+            "to_phase": "available"
+          },
+          {
+            "from_phase": "available",
+            "to_phase": "installed"
+          },
+          {
+            "from_phase": "available",
+            "to_phase": "failed"
+          },
+          {
+            "from_phase": "available",
+            "to_phase": "resolved"
+          },
+          {
+            "from_phase": "failed",
+            "to_phase": "failed"
+          },
+          {
+            "from_phase": "failed",
+            "to_phase": "installed"
+          },
+          {
+            "from_phase": "failed",
+            "to_phase": "resolved"
+          }
+        ]
+      }
+    },
+    {
+      "name": "rich provider capabilities",
+      "document_type": "notification-provider-capabilities-v1",
+      "valid": true,
+      "document": {
+        "contract_version": "1.0.0",
+        "max_batch_items": 10,
+        "message_updates": "edit",
+        "threaded_follow_ups": true,
+        "text_formats": [
+          "plain",
+          "markdown"
+        ],
+        "rich_embeds": true,
+        "images": {
+          "max_images": 4,
+          "external_urls": true,
+          "proxied_urls": true
+        },
+        "action_buttons": 5,
+        "links": true,
+        "live_page_links": true,
+        "max_title_chars": 256,
+        "max_text_chars": 4096,
+        "max_payload_bytes": 8192
+      }
+    },
+    {
+      "name": "default provider capabilities",
+      "document_type": "notification-provider-capabilities-v1",
+      "valid": true,
+      "document": {
+        "contract_version": "1.0.0"
+      }
+    },
+    {
+      "name": "capabilities cannot assert trust",
+      "document_type": "notification-provider-capabilities-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "max_batch_items": 10,
+        "message_updates": "edit",
+        "threaded_follow_ups": true,
+        "text_formats": [
+          "plain",
+          "markdown"
+        ],
+        "rich_embeds": true,
+        "images": {
+          "max_images": 4,
+          "external_urls": true,
+          "proxied_urls": true
+        },
+        "action_buttons": 5,
+        "links": true,
+        "live_page_links": true,
+        "max_title_chars": 256,
+        "max_text_chars": 4096,
+        "max_payload_bytes": 8192,
+        "trust": "SECURE"
+      }
+    },
+    {
+      "name": "capabilities cannot assert verification",
+      "document_type": "notification-provider-capabilities-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "max_batch_items": 10,
+        "message_updates": "edit",
+        "threaded_follow_ups": true,
+        "text_formats": [
+          "plain",
+          "markdown"
+        ],
+        "rich_embeds": true,
+        "images": {
+          "max_images": 4,
+          "external_urls": true,
+          "proxied_urls": true
+        },
+        "action_buttons": 5,
+        "links": true,
+        "live_page_links": true,
+        "max_title_chars": 256,
+        "max_text_chars": 4096,
+        "max_payload_bytes": 8192,
+        "verification_supported": true
+      }
+    },
+    {
+      "name": "plain text is always required",
+      "document_type": "notification-provider-capabilities-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "max_batch_items": 10,
+        "message_updates": "edit",
+        "threaded_follow_ups": true,
+        "text_formats": [
+          "markdown"
+        ],
+        "rich_embeds": true,
+        "images": {
+          "max_images": 4,
+          "external_urls": true,
+          "proxied_urls": true
+        },
+        "action_buttons": 5,
+        "links": true,
+        "live_page_links": true,
+        "max_title_chars": 256,
+        "max_text_chars": 4096,
+        "max_payload_bytes": 8192
+      }
+    },
+    {
+      "name": "unknown text format",
+      "document_type": "notification-provider-capabilities-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "max_batch_items": 10,
+        "message_updates": "edit",
+        "threaded_follow_ups": true,
+        "text_formats": [
+          "plain",
+          "html"
+        ],
+        "rich_embeds": true,
+        "images": {
+          "max_images": 4,
+          "external_urls": true,
+          "proxied_urls": true
+        },
+        "action_buttons": 5,
+        "links": true,
+        "live_page_links": true,
+        "max_title_chars": 256,
+        "max_text_chars": 4096,
+        "max_payload_bytes": 8192
+      }
+    },
+    {
+      "name": "live-page links require links",
+      "document_type": "notification-provider-capabilities-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "max_batch_items": 10,
+        "message_updates": "edit",
+        "threaded_follow_ups": true,
+        "text_formats": [
+          "plain",
+          "markdown"
+        ],
+        "rich_embeds": true,
+        "images": {
+          "max_images": 4,
+          "external_urls": true,
+          "proxied_urls": true
+        },
+        "action_buttons": 0,
+        "links": false,
+        "live_page_links": true,
+        "max_title_chars": 256,
+        "max_text_chars": 4096,
+        "max_payload_bytes": 8192
+      }
+    },
+    {
+      "name": "field contribution",
+      "document_type": "notification-renderer-contribution-v1",
+      "valid": true,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "surface": "chat",
+        "kind": "fields",
+        "fields": [
+          "title",
+          "facts",
+          "actions",
+          "live_link"
+        ]
+      }
+    },
+    {
+      "name": "email HTML contribution",
+      "document_type": "notification-renderer-contribution-v1",
+      "valid": true,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "surface": "email",
+        "kind": "html_template",
+        "template": "<h1>{title}</h1><p>{summary}</p>{blocks}<p>Version {fact_available}</p><a href=\"{live_link}\">Open</a>"
+      }
+    },
+    {
+      "name": "markdown contribution",
+      "document_type": "notification-renderer-contribution-v1",
+      "valid": true,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "surface": "card",
+        "kind": "markdown_template",
+        "fields": [],
+        "template": "**{title}**\n\n{summary}\n\n{facts}"
+      }
+    },
+    {
+      "name": "HTML is limited to email",
+      "document_type": "notification-renderer-contribution-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "surface": "chat",
+        "kind": "html_template",
+        "template": "<h1>{title}</h1><p>{summary}</p>{blocks}<p>Version {fact_available}</p><a href=\"{live_link}\">Open</a>"
+      }
+    },
+    {
+      "name": "templates cannot run scripts",
+      "document_type": "notification-renderer-contribution-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "surface": "email",
+        "kind": "html_template",
+        "template": "<script>alert(1)</script>{title}"
+      }
+    },
+    {
+      "name": "templates cannot add event handlers",
+      "document_type": "notification-renderer-contribution-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "surface": "email",
+        "kind": "html_template",
+        "template": "<img src=x onerror=alert(1)>{title}"
+      }
+    },
+    {
+      "name": "templates cannot use javascript URLs",
+      "document_type": "notification-renderer-contribution-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "surface": "email",
+        "kind": "html_template",
+        "template": "<a href=\"javascript:alert(1)\">{title}</a>"
+      }
+    },
+    {
+      "name": "templates cannot embed frames",
+      "document_type": "notification-renderer-contribution-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "surface": "email",
+        "kind": "html_template",
+        "template": "<iframe src=\"https://evil.example\"></iframe>"
+      }
+    },
+    {
+      "name": "templates use declared placeholders only",
+      "document_type": "notification-renderer-contribution-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "surface": "email",
+        "kind": "html_template",
+        "template": "<p>{recipient_email}</p>"
+      }
+    },
+    {
+      "name": "templates cannot access attributes",
+      "document_type": "notification-renderer-contribution-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "surface": "email",
+        "kind": "html_template",
+        "template": "<p>{title.__class__}</p>"
+      }
+    },
+    {
+      "name": "templates cannot format values",
+      "document_type": "notification-renderer-contribution-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "surface": "email",
+        "kind": "html_template",
+        "template": "<p>{title:>1000000}</p>"
+      }
+    }
+  ]
+}

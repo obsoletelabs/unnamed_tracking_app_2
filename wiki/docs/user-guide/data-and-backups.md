@@ -67,24 +67,6 @@ The Notes UI translates validation, conflict, loading, saving, deletion, and ren
 
 Named save archives are stored under the game directory in `saves/` or `world_saves/`.
 
-## Game trash
-
-Deleted screenshots, clips, soundtracks, documents, modpacks, save archives and archive versions move to a `_trash/` folder inside their game's directory:
-
-```text
-/data/users/<user-id>/games/<folder-location>/_trash/
-```
-
-A deleted game's whole directory, including its own `_trash/`, moves to:
-
-```text
-/data/users/_trash/<game-id>/
-```
-
-Trashed items can be restored for **7** days. A background sweep runs at startup and then every six hours, and permanently removes anything older than that. Back up these folders together with the rest of `/data` if you want to keep items that are still restorable.
-
-The sweep skips an item and logs `Trash sweep kept … for a later pass` when its storage is not safe to use, for example when a game's folder rename was interrupted or a directory on its path is a symbolic link. Nothing is removed for a skipped item. Retrying the game's folder-name save reconciles an interrupted rename, and the next sweep then removes the item. Do not delete the `.folder-moves/` recovery records by hand.
-
 ## The image cache
 
 Smaller copies of artwork are kept in a cache folder for each user:
