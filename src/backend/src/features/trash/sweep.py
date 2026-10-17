@@ -40,6 +40,7 @@ from src.features.trash.archive_trash import purge_archive_trash, trash_files_di
 from src.features.trash.game_trash import game_trash_dir, purge_game_trash
 from src.features.trash.inbox_trash import purge_inbox_file
 from src.features.trash.media_trash import media_trash_dir, purge_media_file
+from src.features.trash.media_titles import purge_expired_media_titles
 from src.helpers import save_game_asset
 from src.helpers.async_storage import finish_storage_operation
 
@@ -350,6 +351,12 @@ async def run_sweep_loop() -> None:
     while True:
         try:
             await purge_expired_trash()
+        try:
+            await purge_expired_media_titles()
+        # Keep media-title retention independent of game-file cleanup.
+        # pylint: disable-next=broad-exception-caught
+        except Exception:
+            logger.exception("Media-title trash sweep failed")
         # Keep the periodic cleanup boundary alive after an unexpected failed pass.
         # pylint: disable-next=broad-exception-caught
         except Exception:
