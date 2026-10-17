@@ -1,7 +1,7 @@
 """move the AniList import schedule into personal job settings
 
 Revision ID: a55b7c1d9e20
-Revises: e4a0157eef4b
+Revises: a7d3c91e5b20
 Create Date: 2026-10-16 09:00:00.000000
 
 """
@@ -16,7 +16,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "a55b7c1d9e20"
-down_revision: Union[str, None] = "e4a0157eef4b"
+down_revision: Union[str, None] = "a7d3c91e5b20"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
