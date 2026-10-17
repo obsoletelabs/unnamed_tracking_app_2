@@ -396,6 +396,7 @@ are redacted. Validation errors never echo submitted values.
 | GET | `/api/media` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
 | GET | `/api/media-image/{media_type}/{item_id}/{which}` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
 | GET | `/api/media-stats` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
+| GET | `/api/media-stats/activity/day` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
 | GET | `/api/media/inbox` | user | Inbox file belongs to the caller's storage and row. |
 | POST | `/api/media/inbox` | user | Inbox file belongs to the caller's storage and row. |
 | GET | `/api/media/inbox/trash` | user | Inbox file belongs to the caller's storage and row. |
