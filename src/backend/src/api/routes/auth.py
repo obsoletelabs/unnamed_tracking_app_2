@@ -44,6 +44,26 @@ from src.features.metadata.games.psn import PSNClient, PSNError
 from src.features.notification_urls import remember_app_url
 from src.features.profile_pictures import profile_picture_version
 
+
+def _account_conflict_detail(exc: IntegrityError) -> str:
+    """Say which unique field collided so the form can show it at the right input."""
+    # PostgreSQL names the violated constraint in the error text; the offending value (which a
+    # user controls) appears only in the separate DETAIL line, so match the quoted name.
+    message = str(exc.orig)
+    constraint = (
+        "username"
+        if '"users_username_key"' in message
+        else "email"
+        if '"users_email_key"' in message
+        else ""
+    )
+    if constraint == "username":
+        return "That username is already taken. Choose a different username."
+    if constraint == "email":
+        return "That email address is already in use."
+    return "Username or email already exists."
+
+
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
@@ -58,7 +78,7 @@ class ApiKeyCreateRequest(BaseModel):
 
 
 class UserCreateRequest(BaseModel):
-    username: str = Field(min_length=1, max_length=100)
+    username: str
     email: str = Field(min_length=3, max_length=320)
     password: str = Field(min_length=1)
     is_admin: bool = False
@@ -89,7 +109,7 @@ class PsnConnectRequest(BaseModel):
 
 
 class UserProfileUpdateRequest(BaseModel):
-    username: str | None = Field(default=None, min_length=1, max_length=100)
+    username: str | None = None
     email: str | None = Field(default=None, min_length=3, max_length=320)
     # Omitted keeps the current value; blank clears it so the username is shown again.
     display_name: str | None = Field(default=None, max_length=200)
@@ -292,7 +312,7 @@ async def update_current_user(
     except IntegrityError as exc:
         await db.rollback()
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="Username or email already exists."
+            status_code=status.HTTP_409_CONFLICT, detail=_account_conflict_detail(exc)
         ) from exc
 
     return {
@@ -461,7 +481,7 @@ async def create_user(
     except IntegrityError as exc:
         await db.rollback()
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="Username or email already exists."
+            status_code=status.HTTP_409_CONFLICT, detail=_account_conflict_detail(exc)
         ) from exc
 
     return {

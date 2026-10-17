@@ -544,6 +544,40 @@ describe("plugin extension registry", () => {
     expect(native.activate).not.toHaveBeenCalled();
   });
 
+  it("skips a background reload right after one finished but never an explicit one", async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify([])));
+    vi.stubGlobal("fetch", fetcher);
+    await refreshPluginExtensions({ background: true });
+    await refreshPluginExtensions({ background: true });
+    await refreshPluginExtensions({ background: true });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    await refreshPluginExtensions();
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("reloads in the background again once the freshness window has passed", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetcher = vi.fn(async () => new Response(JSON.stringify([])));
+      vi.stubGlobal("fetch", fetcher);
+      await refreshPluginExtensions({ background: true });
+      vi.advanceTimersByTime(2500);
+      await refreshPluginExtensions({ background: true });
+      expect(fetcher).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not skip the first background load for a new account", async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify([])));
+    vi.stubGlobal("fetch", fetcher);
+    await refreshPluginExtensions({ background: true });
+    clearPluginExtensions();
+    await refreshPluginExtensions({ background: true });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
   it("refuses to load native code from a legacy UI document", async () => {
     vi.stubGlobal(
       "fetch",

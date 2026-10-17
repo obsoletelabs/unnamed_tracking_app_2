@@ -26,6 +26,8 @@ User API keys are created for individual accounts and can be revoked. The backen
 
 The game API and other authenticated routes resolve the caller from either the bearer API key or the normal session cookie.
 
+The [API access matrix](api-access-matrix.md) lists every route with the credential class it enforces, the ownership rules behind it and the policy for legacy API keys.
+
 ## Title protection
 
 Library PATCH requests distinguish missing fields, nulls and real values. Omitted
