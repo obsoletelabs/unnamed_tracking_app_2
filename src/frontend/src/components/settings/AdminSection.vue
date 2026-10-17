@@ -9,12 +9,17 @@ import {
 } from "../../services/admin";
 import ToggleButton from "./ToggleButton.vue";
 import PasswordInput from "../PasswordInput.vue";
+import UsernameField from "../UsernameField.vue";
 import type { AdminUser } from "../../services/admin";
 import PasswordRequirements from "./PasswordRequirements.vue";
 import PluginAdminActions from "../plugins/PluginAdminActions.vue";
 import PluginExtensionSlot from "../plugins/PluginExtensionSlot.vue";
 import AdminUserEditDialog from "./AdminUserEditDialog.vue";
 import { listInvitations, type Invitation } from "../../services/adminUsers";
+import {
+  usernameFieldError,
+  usernameServerError,
+} from "../../services/usernameValidation";
 import {
   fetchPasswordPolicy,
   passwordValidationErrors,
@@ -84,8 +89,20 @@ const confirmPassword = ref("");
 const newIsAdmin = ref(false);
 const creating = ref(false);
 const createError = ref<string | null>(null);
+const usernameServerMessage = ref<{ message: string; value: string } | null>(
+  null,
+);
+const usernameField = ref<InstanceType<typeof UsernameField> | null>(null);
+const createAttempted = ref(false);
 
 async function handleCreateUser() {
+  createAttempted.value = true;
+  usernameServerMessage.value = null;
+  if (usernameFieldError(newUsername.value)) {
+    createError.value = null;
+    usernameField.value?.focus();
+    return;
+  }
   const validationErrors = passwordPolicy.value
     ? passwordValidationErrors(newPassword.value, passwordPolicy.value)
     : ["Password requirements could not be loaded."];
@@ -97,6 +114,7 @@ async function handleCreateUser() {
     createError.value = "The passwords do not match.";
     return;
   }
+  const submittedUsername = newUsername.value;
   creating.value = true;
   createError.value = null;
   try {
@@ -116,8 +134,17 @@ async function handleCreateUser() {
     showCreateForm.value = false;
     await loadUsers();
   } catch (err) {
-    createError.value =
-      err instanceof Error ? err.message : "Failed to create user";
+    const reason = err instanceof Error ? err.message : null;
+    const usernameReply = usernameServerError(reason);
+    usernameServerMessage.value = usernameReply
+      ? { message: usernameReply, value: submittedUsername }
+      : null;
+    if (usernameServerMessage.value) {
+      createError.value = null;
+      usernameField.value?.focus();
+    } else {
+      createError.value = reason ?? "Failed to create user";
+    }
   } finally {
     creating.value = false;
   }
@@ -157,6 +184,8 @@ async function toggleAdmin(user: AdminUser) {
 }
 
 function openCreateForm() {
+  createAttempted.value = false;
+  usernameServerMessage.value = null;
   newUsername.value = "";
   newDisplayName.value = "";
   newEmail.value = "";
@@ -282,20 +311,13 @@ function openCreateForm() {
         class="create-form"
         @submit.prevent="handleCreateUser"
       >
-        <label class="field"
-          ><span>Username</span
-          ><input
-            v-model="newUsername"
-            type="text"
-            maxlength="100"
-            aria-label="Username"
-            aria-describedby="new-user-username-help"
-            required
-          /><small id="new-user-username-help"
-            >Use 1–100 ASCII letters, digits, underscores, hyphens or dots. No
-            spaces.</small
-          ></label
-        >
+        <UsernameField
+          ref="usernameField"
+          v-model="newUsername"
+          required
+          :server-error="usernameServerMessage"
+          :show-errors="createAttempted"
+        />
         <label class="field"
           ><span>Display name (optional)</span
           ><input

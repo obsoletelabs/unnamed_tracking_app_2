@@ -107,6 +107,12 @@ async def create_permission_request(
     """Reuse a pending proposal without granting or broadening its requested access."""
     if payload.user_id is not None and payload.user_id != user.id and not user.is_admin:
         raise HTTPException(status_code=403, detail="Cannot request permissions for another user.")
+    if payload.user_id is None and not user.is_admin:
+        # An installation-wide proposal reaches the administrator review queue, so only an
+        # administrator may raise one; ordinary users can only ask for their own scope.
+        raise HTTPException(
+            status_code=403, detail="Only an administrator can request installation-wide access."
+        )
     await _declared_permission(
         payload.plugin_id,
         payload.installation_id,
