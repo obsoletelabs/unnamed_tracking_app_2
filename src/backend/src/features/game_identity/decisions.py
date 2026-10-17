@@ -24,6 +24,7 @@ from src.database.models.game_identity import (
     RecordOrigin,
     RelationshipKind,
 )
+from src.features.game_identity import counters
 from src.features.game_identity.graph import (
     IdentityConflict,
     IdentityInvalid,
@@ -591,6 +592,8 @@ async def move_observation(
         decision_id=decision.id,
         now=stamp,
     )
+    if link is not None:
+        await counters.follow_observation(db, user_id, observation_id, now=stamp)
     return MoveResult(link, decision, previous)
 
 

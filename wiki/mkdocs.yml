@@ -107,6 +107,7 @@ nav:
       - Game Identity Data Model: development/game-identity-model.md
       - Game Ingestion: development/game-ingestion.md
       - Game Identity Decisions: development/game-identity-decisions.md
+      - Game Identity Counters: development/game-identity-counters.md
       - Plugin Palettes & Appearance: development/plugin-themes.md
       - Plugin Home Widgets: development/plugin-home-widgets.md
       - Custom Plugin Frontend Sandbox: development/plugin-ui-sandbox.md
