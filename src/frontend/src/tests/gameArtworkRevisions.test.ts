@@ -71,6 +71,11 @@ describe("server artwork revisions", () => {
       id: "map-game",
       title: "T",
       status: "BACKLOG",
+      created_at: 1,
+      last_played_at: null,
+      stale_since: null,
+      completion_date: null,
+      purchase_date: null,
     } as unknown as BackendGame);
     expect(game.bannerImageUrl).toBe(
       `/api/game/map-game/assets/banner?v=${REVISION}`,
