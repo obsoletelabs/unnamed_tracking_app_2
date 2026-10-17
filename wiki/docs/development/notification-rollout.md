@@ -139,7 +139,7 @@ downgrade invalidates links but erases no history.
 | Every producer, provider, preference, route, adapter and migration is inventoried | `test_notification_rollout_inventory.py` |
 | SMTP captured transport | `test_notification_smtp_rich.py` (local SMTP server) |
 | Discord and plugin transports | `test_plugin_rich_delivery.py`, `test_plugin_notification_provider_contract.py`; companion `official.discord-bot-notifications` through `check_host_contract.py` |
-| PWA / Web Push worker | `test_notification_browser_story.py`, `src/frontend/.../notification_push_worker.test.mjs` |
+| PWA / Web Push worker | `test_notification_browser_story.py`, `src/backend/tests/notification_push_worker.test.mjs` |
 | Signed packages | `test_plugin_notification_packages.py` (throwaway keys), companion `check_host_contract.py` |
 | Diagnostics, previews, safe test sends | `test_notification_diagnostics.py` |
 
