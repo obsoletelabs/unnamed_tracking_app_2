@@ -355,9 +355,14 @@ Contract 1.1.2 adds `notification_sources.register`, `notification_sources.unreg
 [canonical notification contract](notification-contract.md) (`1.0.0`): event,
 content, story lifecycle, provider capability and renderer contribution models,
 `notification_contract_schemas()` and version negotiation helpers. These are
-published schemas only; no gateway operation accepts them in Plugin API 1.1.13,
-and existing notification operations are unchanged. SDKs can pin the reviewed
-schema snapshots and conformance cases without importing host internals.
+published schemas, and Plugin API 1.1.14 adds the gateway operations that accept
+them (`notifications.publish`, `notifications.contract`, canonical
+`notification_sources.register`) behind the explicit `notifications.canonical`,
+`notifications.actions`, `notifications.urgency` and `notifications.templates.html`
+capabilities. Existing notification operations are unchanged. See the
+[plugin contract](notification-contract.md#plugin-contract-plugin-api-1114). SDKs
+can pin the reviewed schema snapshots and conformance cases without importing host
+internals.
 
 ## Notification lifecycle replay (1.1.4)
 

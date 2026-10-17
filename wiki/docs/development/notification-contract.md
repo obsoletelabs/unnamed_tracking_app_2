@@ -17,21 +17,21 @@ core and [plugin notification providers](notification-providers.md).
 | Contract tests | `tests/test_notification_contract.py`, `tests/test_notification_contract_adapters.py` |
 
 The contract version is `NOTIFICATION_CONTRACT_VERSION = "1.0.0"`. It is
-independent of the Plugin API wire version, which stays **1.1.13**: no gateway
-operation accepts these documents yet. Plugin-facing operations that adopt them
-arrive with the plugin contract work (#115) under a new Plugin API minor version.
-Until then every existing producer, provider and plugin keeps working unchanged
-through the [compatibility adapters](#compatibility-adapters).
+independent of the Plugin API wire version. Plugin API **1.1.14** (#115) is the
+first version whose gateway accepts these documents: see
+[Plugin contract](#plugin-contract-plugin-api-1114). Every older producer,
+provider and plugin keeps working unchanged through the
+[compatibility adapters](#compatibility-adapters).
 
 ## What is implemented and what adopts it
 
 | Implemented in 1.0.0 | Adopted by |
 | --- | --- |
-| Typed, strict wire models with JSON Schemas and shared conformance fixtures | SDK/types (#115), producers (#116) |
+| Typed, strict wire models with JSON Schemas and shared conformance fixtures | Plugin API 1.1.14 and the companion SDK (done, #115), producers (#116) |
 | Item, delivery and attempt transition tables verified against the current routes and dispatcher | Dispatcher (done, #110), full page (#113) |
 | Story revision decision (`decide_revision`) for read/dismissed items | Persisted by the controller since 1.0.0 revision 2 ([Story persistence](#story-persistence-and-idempotency)); first host producer: plugin updates |
 | Capability model, discovery profiles for every current provider and the edit/follow-up fallback | Dispatcher (done, #110), SMTP (#111), Discord (#112), PWA (#114) |
-| Renderer contribution model and template rules | Enforced by the host since #109 ([Rich content](#rich-content-live-story-pages-and-actions)); plugin contract (#115) |
+| Renderer contribution model and template rules | Enforced by the host since #109 ([Rich content](#rich-content-live-story-pages-and-actions)); declared and authorised per plugin by #115 ([Plugin contract](#plugin-contract-plugin-api-1114)) |
 | Explicit adapters for every existing producer, record and notification Plugin API surface | All downstream issues until #118 retires adapters |
 
 The contract itself adds no gateway methods, permissions or provider behaviour.
@@ -103,7 +103,7 @@ Acceptance happens in the caller's transaction without provider I/O, in this ord
 
 Urgency never changes trust, purpose, required trust, destination eligibility or
 consent. Host and user policy (#108) decide whether it bypasses timing. Plugins
-need the dedicated urgency grant defined by #115 before `critical` is accepted.
+need the dedicated `notifications.urgency` grant (#115) before `critical` is accepted.
 
 ## Content
 
@@ -238,8 +238,8 @@ receipts remain in history. A reinstall creates new stories.
 ### Story persistence and idempotency
 
 Implemented by `NotificationController._accept` and `src/features/notification_stories.py`
-(#106). Only host producers can reference a story today (`NotificationDraft.story`); no
-gateway operation accepts one until #115.
+(#106). Host producers reference a story through `NotificationDraft.story`; plugins do so
+through `notifications.publish` since Plugin API 1.1.14 (#115).
 
 | Record | Table | Contents |
 | --- | --- | --- |
@@ -263,8 +263,9 @@ replay, while a changed payload under one event ID is a conflict.
 
 The audit stream is unchanged. A new linked item records `created` like any item. An
 in-place revision records **no** new lifecycle status, because the pinned lifecycle
-replay statuses must not be reused with another meaning; a versioned status arrives
-with #115.
+replay statuses must not be reused with another meaning. Plugin API 1.1.14 adds the
+versioned status `revised`, replayed only to consumers that ask for it
+(`include_revisions`), see [Lifecycle replay](#lifecycle-replay-of-revisions).
 
 Retention, deletion and uninstall:
 
@@ -309,8 +310,8 @@ State precedence is deleted, retention-expired, dismissed, read, then unread
 (`item_state`). Lifecycle replay (Plugin API 1.1.4) uses exactly these statuses,
 `created` and the delivery statuses below. Its status list is a pinned public
 schema: in-place revisions must not reuse an existing status with a different
-meaning, so they are published only after a versioned status is added with the
-companion schema (#115).
+meaning, so the in-place revision status `revised` was added only with Plugin API
+1.1.14 and the companion schema (#115), and is opt-in.
 
 ## Delivery and attempts
 
@@ -575,7 +576,8 @@ Discovery (`provider_capability_profile`):
 1. Built-in providers have fixed host profiles.
 2. Plugin registrations use the baseline of their existing transport.
 3. A generic `plugin` registration may declare capabilities (the Plugin API
-   surface arrives with #115). Only then does it receive canonical content. The
+   surface is `NotificationProviderDefinition.capabilities`, #115). Only then does it
+   receive canonical content. The
    dispatcher re-resolves the profile from the live adapter at every dispatch
    (`resolve_profile`), and narrows a declaration the adapter cannot back (message
    updates need an `edit` implementation); the downgrade is recorded as a fallback.
@@ -613,8 +615,9 @@ rejected early when they contain scripts, frames, objects, embeds, forms, `base`
 attribute URLs, CSS expressions or `@import`; the host allowlist sanitiser (#109)
 remains the enforcement point. Contributions never add data, never receive
 recipient or destination details and never apply to PUBLIC projections.
-Accepting them requires grants that #115 defines; HTML templates additionally
-require an explicit high-risk grant.
+Accepting them requires the plugin to declare each contribution in its registration
+and to hold `notifications.canonical`; HTML templates additionally require the
+critical `notifications.templates.html` grant (#115).
 
 ## Rich content, live story pages and actions
 
@@ -658,8 +661,7 @@ attributes (`href` HTTPS/app path only, `title`, `lang`, `dir`, table spans and
 alignment), and `style` reduced to colour, font, alignment and spacing properties
 with strict value syntax. Scripts, frames, forms, SVG/MathML, comments, `url()`
 and unknown elements are dropped; links gain `rel="noopener noreferrer nofollow"`.
-HTML templates require the existing high-risk `notifications.sensitive` grant until
-#115 defines a dedicated one.
+HTML templates require the critical `notifications.templates.html` grant (#115).
 
 ### Public projection and live links
 
@@ -719,8 +721,10 @@ rechecks, at invocation, that
 2. the story is the live head and the item is not erased or expired;
 3. the source installation still has a non-revoked registration for the event type
    (a reinstalled plugin cannot act on an older installation's stories);
-4. the installation's current grant (`notifications.emit`, until #115 defines
-   action-specific grants) covers the owner, honouring revocation tombstones;
+4. the installation's current grants (`notifications.actions`, `notifications.canonical`
+   and every capability the action declares in `requires`) cover the owner, honouring
+   revocation tombstones, and the plugin's *current* declaration still lists the
+   action with a matching typed input;
 5. destructive actions (`style: danger`) were confirmed.
 
 The host then calls the runtime route
@@ -730,6 +734,185 @@ transport, `PluginRuntimeClient.notification_story_action`) with
 message is bounded to 300 printable characters. Plugin JavaScript never runs in
 notification content, and plugin action entries in views expose no plugin id,
 input or target.
+
+## Plugin contract (Plugin API 1.1.14)
+
+Issue #115 exposes the canonical contract to plugins. Plugin API **1.1.14** is
+additive: manifests and operations of 1.0.0 to 1.1.13 are unchanged. The host owns
+recipients, destinations, trust, consent, retention, scheduling, aggregation,
+dispatch, audit and canonical story persistence; a plugin supplies facts, story
+identity and presentation hints for event types in its own namespace.
+
+| Part | Location |
+| --- | --- |
+| Registration, delivery and negotiation documents, event conformance | `src/plugin_api/notification_plugin_contracts.py`, `notification_contracts.py` |
+| Registration, publication, negotiation | `src/features/notification_plugin_events.py`, `notification_canonical_registry.py` |
+| Contributions applied at dispatch | `src/features/notification_contributions.py` |
+| Story action route in the plugin runtime | `src/plugin-runtime/runtime.py` (`notification_story_action`) |
+| Schema snapshots and conformance cases | `tests/fixtures/notification_contract/plugin_schemas/`, `plugin_conformance.json` |
+
+### Capabilities
+
+Every capability is explicit: none is implied by `notifications`, `notifications.emit`
+or `api.full`, and none implies another. Manifests declaring any of them must
+target API 1.1.14 or later (`PluginManifest` rejects older versions, even when
+correctly signed).
+
+| Capability | Risk | Lets the plugin |
+| --- | --- | --- |
+| `notifications.canonical` | high | Register canonical types, publish canonical events, negotiate the contract version. |
+| `notifications.actions` | high | Declare plugin actions and have the host run them on the recipient's request. |
+| `notifications.urgency` | high | Publish events with `urgency: critical`. Timing policy and user limits still decide whether it bypasses anything. |
+| `notifications.templates.html` | critical | Declare sanitised HTML email templates. |
+
+Securing content for `SECURE` destinations still needs `notifications.sensitive`.
+
+### Gateway operations
+
+| Operation | Capability | Purpose |
+| --- | --- | --- |
+| `notification_sources.register` | `notification_sources.register` plus those the declaration needs | A document with `contract_version` is a canonical registration (`CanonicalNotificationTypeRegistration`); without it, the legacy template form is used unchanged. |
+| `notifications.publish` | `notifications.canonical` | Publish one `CanonicalNotificationEvent` for the authenticated account. |
+| `notifications.contract` | `notifications.canonical` | Version negotiation. |
+| `notifications.lifecycle.poll` | `notifications.lifecycle.read` | Optional `include_revisions` (see below). |
+
+### Registration
+
+`CanonicalNotificationTypeRegistration` declares, for one event type under the
+plugin's namespace:
+
+- `lifecycle`: phases, initial phases and transitions (the same
+  `StoryLifecycleDeclaration`; its `event_type` must match);
+- `story_key_prefix`: events' story keys must start with it, so keys stay stable;
+- `grouping`: `strategy` `none` (events carry no grouping key) or `key` (they must),
+  and `merge` `digest` (the key joins host digests, #107) or `separate`. Aggregation
+  windows and user timing rules remain host policy;
+- `facts`: structured facts by key, label and kind (`text`, `integer`, `decimal`,
+  `money`, `timestamp`, `boolean`) with `required`; undeclared facts, wrong kinds
+  and missing required facts are rejected;
+- `actions`: typed actions with `action_id`, label, typed `input` (string, integer,
+  boolean with bounds), `output` (`none` or `message`) and `requires` (extra
+  capabilities the installation must hold for the recipient at invocation; whole-API
+  and sensitive authority cannot be required);
+- `renderers`: up to 8 `RendererContribution`s, each unique per surface and kind;
+- `required_trust`, `purpose` (`standard` or `security`; security requires `SECURE`),
+  `severity`, `max_urgency` and `default_category` (host-assigned: always `plugin`).
+
+Registration needs every grant the declaration uses (`notifications.canonical`,
+`notifications.urgency` for `max_urgency: critical`, `notifications.actions` when
+actions are declared, `notifications.templates.html` for HTML templates,
+`notifications.sensitive` for `SECURE`). Changing a declaration retires unsent work
+for that type, like the legacy form. At most 32 types are registered per plugin.
+
+### Publication
+
+`notifications.publish` validates the document against its schema and then against
+the plugin's *current* registration (`check_event_against_registration`):
+event type, story key prefix and phase, urgency ceiling, grouping, fact schema and
+typed action inputs. The host then runs the normal acceptance: unsafe or oversized
+HTML, Markdown, URLs, credential-shaped text and actions are rejected before a
+receipt is consumed (`notification_safety`), identical replays are no-ops, changed
+payloads under one `event_id` conflict and story transitions are decided under the
+story row lock. The receipt key uses the plugin, event type and `event_id`, with
+the existing per-account source quota. Error messages name the failing field, never
+echo the value.
+
+A document can contain none of: recipient, user, destination, installation, source,
+trust, purpose, severity, credential or delivery-state fields (`extra=forbid`), and
+no executable markup or script (it is rejected, not rewritten). Plugin JavaScript
+never runs in notification content: actions are data that the host executes through
+its own route.
+
+### Render contributions
+
+Contributions only re-arrange canonical content the host accepted. At each physical
+dispatch the host re-reads the registration, picks the first declared contribution
+for the provider's surface (`email` for HTML email, `chat` for Markdown or rich
+embeds, otherwise `text`) and rechecks the installation's grants
+(`contribution_authorised`). Markdown template output is shown as Markdown only if
+the provider declared `markdown`, otherwise as plain text (recorded as
+`contribution_markdown_to_plain`); HTML template output passes the allowlist
+sanitiser, so links and styles outside it are removed. Contributions never apply to
+the public or media-shared projection, and a revoked grant, retired registration or
+disabled installation falls back to host rendering.
+
+### Provider capabilities and edits
+
+`NotificationProviderDefinition` gains optional `capabilities`
+(`NotificationProviderCapabilities`) and `edit_action`. Declaring message updates
+(`edit` or `replace`) requires an `edit_action` and vice versa. Capabilities describe
+presentation only: they cannot claim trust, verification, sensitive or recovery
+support. A generic provider that declares them receives `PluginCanonicalDelivery`
+(the minimal `PluginNotificationContent` fields plus `contract_version`, `operation`
+(`send`, `edit`, `follow_up`), `revision`, `remote_ref`, `idempotency_key` and the
+host-sanitised `html`, link buttons and image URLs). The adapter exposes `edit` only
+when updates were declared, so the dispatcher's capability narrowing (#110) works on
+real plugins. Verification and test messages keep the minimal payload. A plugin
+result may add an opaque `remote_ref` (stored only by the host) and `gone: true` when
+an earlier message cannot be edited, which makes the host send a follow-up. Plugin
+error text is never stored. Providers without a declaration keep the legacy payload.
+
+### Story actions
+
+The host route `POST /api/notifications/stories/{id}/actions/{action_id}` (#109) now
+also requires that the registration still declares the action with matching typed
+input, that the installation holds `notifications.actions`, `notifications.canonical`
+and each `requires` capability for the recipient, and that the runtime reports the
+installation as live (enabled, compatible, running). The runtime route
+`POST /plugins/{plugin_id}/notification-story-actions/{action_id}` receives `values`,
+`user_id`, `installation_id`, `story_id` and `revision`; the runtime requires the
+plugin manifest to declare `notifications.actions`, re-authorises it with the host,
+rejects values that replace reserved context and passes the handler a private
+`_notification_context` (`operation: "story_action"`, `story_id`, `revision`,
+`installation_id`) that a public action can never supply. It returns
+`{"ok": true, "message": ...}` with the message trimmed to 300 printable characters.
+
+### Disablement, revocation and retention
+
+Disabling, uninstalling or reinstalling a plugin retires its registrations
+(`retire_sources`), which suppresses its unsent deliveries; revoking
+`notifications.canonical` (or `notifications.urgency` for a critical request,
+`notifications.sensitive` for `SECURE`) fails the dispatch-time check
+(`source_delivery_allowed`) for already accepted work; revoking `notifications.actions`
+or an action's `requires` stops action invocation. None of this erases history:
+items, stories, revisions and receipts are retained under the existing retention
+rules, and a reinstall starts new stories (story scope is the installation).
+
+### Lifecycle replay of revisions
+
+An unread story item updated in place now records `revised` in the installation's
+lifecycle stream (ids and status only, never content). Consumers receive it only
+when `notifications.lifecycle.poll` is called with `include_revisions: true`, so a
+1.1.4 consumer sees exactly the statuses it knew.
+
+### Version negotiation and compatibility
+
+Documents carry `contract_version`. `notifications.contract` answers
+`{host_contract_version, plugin_api_version, negotiated, reason, supported_major,
+features}`: the same major at or below the host version negotiates to
+`min(declared, host)` (a newer same-major SDK should then send the negotiated
+version), another major or a malformed version yields `negotiated: null` with a
+reason, and producer documents newer than the host are rejected rather than
+silently downgraded. Older manifests (1.0.0 to 1.1.13) keep using `notifications.send`,
+`notifications.emit` and the legacy provider registration; a legacy type cannot
+publish canonical events and a canonical type cannot be emitted with
+`notifications.emit`. Release order: this host version first, then the SDK; an SDK
+declaring 1.1.14 must not be published against an older host.
+
+Schemas for these documents are exported by `tools/export_notification_contract.py`
+(legacy, canonical and 1.1.14 schemas in one directory). Regenerate the host
+snapshots after an intentional change:
+
+```bash
+cd src/backend && PYTHONPATH=. python - <<'PY'
+import json
+from pathlib import Path
+from src.plugin_api import plugin_notification_schemas
+for name, schema in plugin_notification_schemas().items():
+    path = Path("tests/fixtures/notification_contract/plugin_schemas") / f"{name}.schema.json"
+    path.write_text(json.dumps(schema, indent=2, ensure_ascii=False) + "\n")
+PY
+```
 
 ## Compatibility adapters
 
@@ -806,10 +989,10 @@ These invariants hold for every adopter:
 | #106 | Done: persisted with `decide_revision` under transactional locks, installation-scoped story identity, receipts separate from content, no reuse of replay statuses. See [Story persistence](#story-persistence-and-idempotency). |
 | #107 | Done: see [Aggregation windows and digests](#aggregation-windows-and-digests). |
 | #108 | Done: see [Timing policy](#timing-policy). Urgency is a request constrained by server, user and policy limits, never by trust. |
-| #109 | Done: see [Rich content, live story pages and actions](#rich-content-live-story-pages-and-actions). Providers (#110-#114) call `render_plain`, `render_email_html` and `live_url`; #115 declares the grants and the runtime route for story actions. |
+| #109 | Done: see [Rich content, live story pages and actions](#rich-content-live-story-pages-and-actions). Providers (#110-#114) call `render_plain`, `render_email_html` and `live_url`; #115 declared the grants and implemented the runtime route for story actions. |
 | #110 | Done: see [Capability-aware dispatch](#capability-aware-dispatch). |
 | #111–#114 | Provider renderers consuming negotiated content or `legacy_text`, and their capability profiles. |
-| #115 | Gateway operations, grants and SDK types for these schemas under a new Plugin API minor. |
+| #115 | Done: see [Plugin contract](#plugin-contract-plugin-api-1114). |
 | #116 | Official producers declaring lifecycles and canonical content. |
 | #117 | Safe reason codes for rejected transitions, fallbacks and suppressed revisions. |
 | #118 | Retiring adapters only after proving no supported caller depends on them. |
