@@ -32,7 +32,7 @@ from src.features.smtp_configuration import (
 
 from .base import DeliveryResult, NotificationMessage, ProviderDestination
 from .eligibility import endpoint_route_enabled, revalidate_delivery_attempt
-from .email_rendering import render_email
+from .email_rendering import render_email, render_plain_email
 
 
 @dataclass(frozen=True)
@@ -60,7 +60,7 @@ def send_mail(
     if message.urgency == "critical":
         mail["Importance"] = "high"
         mail["X-Priority"] = "1"
-    mail.set_content(message.body)
+    mail.set_content(render_plain_email(message, unsubscribe_url))
     if unsubscribe_url:
         mail["List-Unsubscribe"] = f"<{unsubscribe_url}>"
         mail["Precedence"] = "bulk"
