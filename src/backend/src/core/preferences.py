@@ -43,6 +43,10 @@ DEFAULTS: dict[str, Any] = {
     "notify_season_started": True,
     "notify_sequel_announced": True,
     "notify_movie_released": True,
+    # Completed anime franchise checks are opt-in, separately for new seasons and for
+    # movies/OVAs/specials; new and existing accounts both start with them off.
+    "notify_franchise_season": False,
+    "notify_franchise_extra": False,
     "notify_session_anomaly": True,
     "notify_game_released": True,
     "notify_game_sale": True,
@@ -67,6 +71,9 @@ DEFAULTS: dict[str, Any] = {
     "anilist_import_interval_minutes": 24 * 60,
     "anilist_import_update_existing": False,
     "anilist_import_last_run_at": None,
+    # Scheduled attempts, including failures, keep the import on its cadence.
+    "anilist_import_last_attempt_at": None,
+    "anilist_import_last_error": "",
     # genres from the tags Steam players vote on (Souls-like, Open World ...)
     # instead of only Steam's broad official genres
     "steam_user_tags": True,
@@ -145,9 +152,15 @@ def _validate_anilist_interval(value: Any) -> int:
     return value
 
 
-def _validate_anilist_last_run(value: Any) -> int | None:
+def _validate_anilist_timestamp(key: str, value: Any) -> int | None:
     if value is not None and (not isinstance(value, int) or isinstance(value, bool) or value < 0):
-        raise ValueError("anilist_import_last_run_at must be a Unix timestamp or null")
+        raise ValueError(f"{key} must be a Unix timestamp or null")
+    return value
+
+
+def _validate_anilist_error(value: Any) -> str:
+    if not isinstance(value, str) or len(value) > 300:
+        raise ValueError("anilist_import_last_error must be a string of at most 300 characters")
     return value
 
 
@@ -341,7 +354,13 @@ _VALUE_VALIDATORS: dict[str, Callable[[Any], Any]] = {
     "game_page": partial(validate_page_settings, partial=False),
     "anilist_import_username": _validate_anilist_username,
     "anilist_import_interval_minutes": _validate_anilist_interval,
-    "anilist_import_last_run_at": _validate_anilist_last_run,
+    "anilist_import_last_run_at": partial(
+        _validate_anilist_timestamp, "anilist_import_last_run_at"
+    ),
+    "anilist_import_last_attempt_at": partial(
+        _validate_anilist_timestamp, "anilist_import_last_attempt_at"
+    ),
+    "anilist_import_last_error": _validate_anilist_error,
     "media_trash_retention_days": _validate_media_trash_retention,
 }
 

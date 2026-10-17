@@ -74,9 +74,9 @@ Imported entries are created with a season record containing the AniList episode
 
 Automatic imports use the application's existing background scheduler rather than a separate worker.
 
-The scheduler wakes approximately once per minute and checks enabled AniList preferences for users whose configured interval has elapsed.
+The scheduler wakes approximately once per minute and selects enabled accounts whose configured interval has elapsed since their last scheduled attempt. Only due accounts count towards the batch, oldest attempt first, so accounts that are not due yet cannot hold back accounts that are.
 
-The scheduler processes at most **4 users per tick** so that a large multi-user deployment cannot monopolize the application scheduler.
+The scheduler processes at most **4 users per tick** so that a large multi-user deployment cannot monopolize the application scheduler. Disabled accounts are never imported.
 
 Each user has an independent:
 
@@ -84,11 +84,12 @@ Each user has an independent:
 - AniList username;
 - import interval;
 - update-existing preference;
-- last-run timestamp.
+- last successful import time;
+- last scheduled attempt time and failure reason.
 
 A user's schedule does not change another user's schedule.
 
-The scheduler records the last-run time after an import attempt has completed. If the AniList username is empty, that user's scheduled import is skipped.
+Every scheduled attempt is recorded, whether it succeeds or fails. A failed import keeps the last successful import time, shows its reason in the AniList Import settings, and is tried again when the interval next elapses, not every minute. A later successful import clears the reason. If the AniList username is empty, that user's scheduled import is skipped.
 
 ## Defaults
 
@@ -100,10 +101,14 @@ New users receive these AniList import defaults:
 | AniList username | Empty |
 | Import frequency | Daily (24 hours) |
 | Update existing titles | Disabled |
-| Last run | None |
+| Last successful import | None |
+| Last scheduled attempt and failure reason | None |
 
 ## Manual versus automatic import
 
 The scheduled path uses the reusable AniList import service rather than maintaining a separate import implementation. The scheduler is responsible for deciding when an enabled user's import is due.
 
-For troubleshooting an import, first check the AniList username, confirm that the list is public, and verify that automatic import is enabled if you expect it to run on a schedule.
+For troubleshooting an import, first check the AniList username, confirm that the list is public, and verify that automatic import is enabled if you expect it to run on a schedule. A failed scheduled import shows its reason below the import options; a manual import from the anime library does not change the schedule.
+
+![AniList Import settings with a failed scheduled attempt (Modern)](../assets/anime-franchise-checks/anilist-import-failure-modern.png)
+

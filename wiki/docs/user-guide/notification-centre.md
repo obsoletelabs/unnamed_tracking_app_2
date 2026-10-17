@@ -30,4 +30,17 @@ Administrators set `NOTIFICATION_RETENTION_DEFAULT_DAYS` (default 30) and `NOTIF
 
 ![Inbox retention and game preferences](../assets/notification-centre/settings-retention.png)
 
+### Completed anime franchises
+
+Two optional types follow anime you marked Watched or Favorite. Both start off, for new and existing accounts, and each is switched on separately:
+
+- **Anime franchise seasons** — a new season was listed for that franchise. When it is on, these seasons are sent with this type instead of **Sequel announcements**, so each season arrives once.
+- **Anime franchise movies, OVAs and specials** — a new movie, OVA or special was listed for that franchise.
+
+Switching either on adds your account to the server's scheduled **Anime franchise check**, which looks at a few franchises at a time; your whole library may take several runs. Opening an anime's Related tab checks that franchise immediately. A franchise's first check only records what is already listed, and titles already in your library are not announced. A scheduled check never sends a Sequel announcement on your behalf: with Anime franchise seasons off, opening the title still announces a new season through Sequel announcements as before. Both types use the Anime media filter, routing, trust and inbox rules of the other release types, and appear under the **Seasons** and **Releases** inbox categories.
+
+![Anime franchise notification types are off by default (Modern)](../assets/anime-franchise-checks/notification-types-modern.png)
+
+![The same choices in Classic](../assets/anime-franchise-checks/notification-types-classic.png)
+
 See [notification providers](notification-providers.md) for the existing external-delivery compatibility boundary.

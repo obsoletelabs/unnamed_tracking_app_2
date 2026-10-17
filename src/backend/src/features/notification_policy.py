@@ -14,6 +14,8 @@ MEDIA_KINDS = {
     "season_started",
     "sequel_announced",
     "movie_released",
+    "franchise_season",
+    "franchise_extra",
     "game_released",
     "game_sale",
     "game_price_hit",
