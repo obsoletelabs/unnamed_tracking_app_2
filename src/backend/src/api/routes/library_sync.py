@@ -630,7 +630,7 @@ async def _sync_steam_library(
 
 
 # Keep the established workflow and public parameters together.
-# pylint: disable=too-many-locals
+# pylint: disable=too-many-locals,too-many-statements
 @router.post("/retroachievements")
 async def sync_retroachievements_library(
     db: AsyncSession = Depends(get_db),
@@ -756,11 +756,11 @@ async def _sync_retroachievements_library(db: AsyncSession, current_user: User) 
     }
 
 
-# pylint: enable=too-many-locals
+# pylint: enable=too-many-locals,too-many-statements
 
 
 # Keep the established workflow and public parameters together.
-# pylint: disable=too-many-locals
+# pylint: disable=too-many-locals,too-many-statements
 @router.post("/psn")
 async def sync_psn_library(
     db: AsyncSession = Depends(get_db),
@@ -894,4 +894,4 @@ async def _sync_psn_library(db: AsyncSession, current_user: User) -> dict:
     }
 
 
-# pylint: enable=too-many-locals
+# pylint: enable=too-many-locals,too-many-statements

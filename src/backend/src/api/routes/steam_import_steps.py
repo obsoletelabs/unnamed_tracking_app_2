@@ -94,6 +94,7 @@ async def import_achievements(
     return await _save_achievement_batch(db, current_user.id, fetched, set(body.status_game_ids))
 
 
+# pylint: disable-next=too-many-locals
 async def _save_achievement_batch(
     db: AsyncSession,
     user_id: UUID,

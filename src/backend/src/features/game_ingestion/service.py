@@ -285,6 +285,8 @@ async def _locked_observations(
     return {row.external_id: row for row in rows}
 
 
+# One batch touches connection, observations, revisions and links together.
+# pylint: disable-next=too-many-locals
 async def ingest_batch(
     db: AsyncSession,
     user_id: UUID,
@@ -376,6 +378,7 @@ async def ingest_batch(
     return result
 
 
+# pylint: disable-next=too-many-locals
 async def _attach(
     db: AsyncSession, user_id: UUID, targets: Mapping[UUID, UUID], stamp: int
 ) -> None:
