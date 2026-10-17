@@ -19,6 +19,9 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    if sa.inspect(op.get_bind()).has_table("admin_user_audit"):
+        return
+
     op.create_table(
         "admin_user_audit",
         sa.Column("id", sa.UUID(), nullable=False),
@@ -41,6 +44,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    if not sa.inspect(op.get_bind()).has_table("admin_user_audit"):
+        return
+
     op.drop_index(op.f("ix_admin_user_audit_target_id"), table_name="admin_user_audit")
     op.drop_index(op.f("ix_admin_user_audit_actor_id"), table_name="admin_user_audit")
     op.drop_table("admin_user_audit")
