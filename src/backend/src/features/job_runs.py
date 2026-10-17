@@ -110,12 +110,15 @@ def lease_active(row: JobSetting, now: int | None = None) -> bool:
     return bool(row.lease_expires_at and row.lease_expires_at >= (now or int(time.time())))
 
 
-def apply_outcome(row: JobSetting, result: dict[str, Any], now: int) -> dict[str, Any]:
+def apply_outcome(
+    row: JobSetting, result: dict[str, Any], now: int, *, backoff: bool = True
+) -> dict[str, Any]:
     """Update run health from one step's result and return the bounded public result.
 
     A result without `completed` (the built-in jobs) counts as a success. A step that saved a
-    checkpoint continues quickly; a failure backs off, honouring a provider's `retry_after_seconds`
-    and never retrying forever."""
+    checkpoint continues quickly; with `backoff` a failure is retried sooner, honouring a
+    provider's `retry_after_seconds` and never retrying forever; without it the failed run
+    simply waits for the job's interval."""
     public = dict(result)
     completed = result.get("completed", True) is not False
     row.retry_at = None
@@ -133,9 +136,9 @@ def apply_outcome(row: JobSetting, result: dict[str, Any], now: int) -> dict[str
     else:
         row.failure_count += 1
         row.status = "failed"
-        if row.failure_count <= MAX_RETRIES:
-            backoff = BACKOFF_SECONDS[min(row.failure_count, len(BACKOFF_SECONDS)) - 1]
-            row.retry_at = now + max(backoff, bounded_delay(result.get("retry_after_seconds")) or 0)
+        if backoff and row.failure_count <= MAX_RETRIES:
+            delay = BACKOFF_SECONDS[min(row.failure_count, len(BACKOFF_SECONDS)) - 1]
+            row.retry_at = now + max(delay, bounded_delay(result.get("retry_after_seconds")) or 0)
     if row.paused and row.status not in {"disabled", "cancelled"}:
         row.status = "paused"
     return public
@@ -152,9 +155,10 @@ def next_run_at(row: JobSetting, now: int) -> int | None:
     delay = row.interval_minutes * 60
     result = row.last_result or {}
     continuation = bounded_delay(result.get("continue_after_seconds"))
-    # Only a personal task may resume a batch sooner; administrator and plugin server
-    # tasks keep their configured interval, as before.
-    if row.user_id is not None and result.get("completed") is False and continuation is not None:
+    # Personal and built-in tasks may resume an unfinished batch sooner; plugin server tasks
+    # keep their configured interval, as before.
+    resumable = row.user_id is not None or not row.job_id.startswith("plugin:")
+    if resumable and result.get("completed") is False and continuation is not None:
         delay = continuation
     return row.last_run_at + delay
 

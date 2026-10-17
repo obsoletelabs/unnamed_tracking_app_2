@@ -164,9 +164,9 @@ function formatTime(epochSeconds: number | null): string {
       Choose what runs automatically for your account. Autosync starts off and
       uses your connected accounts and approved plugin permissions. Saved
       imports run even when this page is closed. Each configured Steam,
-      PlayStation and RetroAchievements connection gets its own task alongside
-      approved plugin tasks. Disconnecting turns a task off and keeps its
-      interval and history.
+      PlayStation and RetroAchievements connection gets its own task, as does
+      your AniList import, alongside approved plugin tasks. Disconnecting turns
+      a task off and keeps its interval and history.
     </p>
     <p v-else class="section-hint">
       Built-in jobs and approved plugin tasks use the app's scheduler. Each one

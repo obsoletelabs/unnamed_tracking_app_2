@@ -357,6 +357,7 @@ async def test_personal_schedules_use_non_admin_owner_and_cannot_be_managed_by_a
         actor.is_admin = False
         await db.commit()
         personal = await job_routes.list_user_jobs(db, actor)
+        personal = [job for job in personal if not job["id"].startswith("user-anilist:")]
         assert len(personal) == 1 and personal[0]["available"] and not personal[0]["enabled"]
         assert await plugin_jobs.get_plugin_jobs(db) == []
         other = await db.get(User, other_id)
@@ -370,7 +371,11 @@ async def test_personal_schedules_use_non_admin_owner_and_cannot_be_managed_by_a
             job_id, job_routes.JobUpdate(enabled=True, interval_minutes=60), db, actor
         )
         assert (await db.get(JobSetting, job_id)).user_id == actor_id
-        assert [spec.id for spec in await jobs.get_scheduled_user_jobs(db)] == [job_id]
+        assert [
+            spec.id
+            for spec in await jobs.get_scheduled_user_jobs(db)
+            if not spec.id.startswith("user-anilist:")
+        ] == [job_id]
         assert await job_routes.run_user_job(job_id, db, actor) == {"running": True}
     await asyncio.gather(*list(plugin_jobs._running.values()))
     transport.run_scheduled_task.assert_awaited_once_with(
@@ -440,6 +445,14 @@ def _row(**changes):
         "last_success_at": None,
     }
     return JobSetting(**{**values, **changes})
+
+
+def test_schedules_without_backoff_wait_for_their_interval_after_a_failure():
+    row = _row(job_id="airing_check", user_id=None)
+    job_runs.apply_outcome(row, {"completed": False, "error": "down"}, 2000, backoff=False)
+    assert (row.status, row.failure_count, row.retry_at) == ("failed", 1, None)
+    row.last_run_at = 2000
+    assert job_runs.next_run_at(row, 2000) == 2000 + 60 * 60
 
 
 def test_failures_back_off_honour_rate_limits_and_stop_retrying():
@@ -613,7 +626,7 @@ async def test_manual_and_scheduled_starts_cannot_overlap_across_processes(perso
         assert held
         async with SessionLocal() as db:
             view = await job_routes.list_user_jobs(db, await db.get(User, actor_id))
-            assert view[0]["running"]
+            assert next(task for task in view if task["id"] == job_id)["running"]
         spec.start("needed")
         await asyncio.gather(*list(plugin_jobs._running.values()))
     transport.run_scheduled_task.assert_not_awaited()

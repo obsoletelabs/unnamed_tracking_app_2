@@ -124,10 +124,11 @@ async def test_epic_schedule_is_listed_only_for_the_granted_account_and_starts_o
     job_id = plugin_jobs.task_job_id(installation_id, "autosync", actor_id)
     async with SessionLocal() as db:
         listed = await job_routes.list_user_jobs(db, await db.get(User, actor_id))
-        (job,) = listed
+        (job,) = [task for task in listed if task["id"].startswith("user-plugin:")]
         assert job["id"] == job_id and job["available"] and not job["enabled"]
         denied = await job_routes.list_user_jobs(db, await db.get(User, other_id))
-        assert not denied[0]["available"]
+        (denied_job,) = [task for task in denied if task["id"].startswith("user-plugin:")]
+        assert not denied_job["available"]
         assert await plugin_jobs.get_plugin_jobs(db) == []  # not a server task
 
 

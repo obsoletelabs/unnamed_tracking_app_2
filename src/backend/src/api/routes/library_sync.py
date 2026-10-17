@@ -37,6 +37,8 @@ from src.database.models.game import Game, GameStatus
 from src.database.models.user import User
 from src.database.session import SessionLocal, get_db
 from src.features.connection_jobs import sync_scope
+from src.features.game_ingestion import legacy as ingestion
+from src.features.game_ingestion.contract import SourceObservationV1
 from src.features.imports import steam_connection
 from src.features.imports.game_progression import apply_provider_progress
 from src.features.imports.library_games import LibraryIndex, lock_imported_game
@@ -531,6 +533,7 @@ async def _sync_steam_library(
             existing.stale_since = None
     games_added = games_updated = achievements_synced = 0
     newly_created: list[tuple[Game, int]] = []
+    observations: list[tuple[UUID, SourceObservationV1 | None]] = []
     synced_titles: list[str] = []
     achievements_unavailable: list[str] = []
     achievement_ids: list[str] = []
@@ -565,6 +568,29 @@ async def _sync_steam_library(
         elif unlocked is None:
             achievements_unavailable.append(title)
 
+        observations.append(
+            (
+                game.id,
+                ingestion.build_observation(
+                    str(app_id),
+                    title=title,
+                    provider_ids={"steam": str(app_id)},
+                    owned=True,
+                    playtime_seconds=entry["playtime_forever"] * 60
+                    if "playtime_forever" in entry
+                    else None,
+                    last_played_at=int(entry["rtime_last_played"])
+                    if entry.get("rtime_last_played")
+                    else None,
+                    achievements_total=total_achievements
+                    if unlocked is not None and schema
+                    else None,
+                    achievements_unlocked=unlocked_count
+                    if unlocked is not None and schema
+                    else None,
+                ),
+            )
+        )
         apply_provider_progress(
             game,
             owned=True,
@@ -580,6 +606,9 @@ async def _sync_steam_library(
             _add_source_tag_and_collection(game, "Steam")
             newly_created.append((game, app_id))
 
+    # Steam's response can omit demos and refunded licences, so absence never
+    # marks a record unavailable (#72); only what was reported is recorded.
+    await ingestion.record_observations(db, current_user.id, ingestion.STEAM, observations)
     current_user.steam_library_synced_at = int(time.time())
     await db.commit()
     return {
@@ -601,7 +630,7 @@ async def _sync_steam_library(
 
 
 # Keep the established workflow and public parameters together.
-# pylint: disable=too-many-locals
+# pylint: disable=too-many-locals,too-many-statements
 @router.post("/retroachievements")
 async def sync_retroachievements_library(
     db: AsyncSession = Depends(get_db),
@@ -647,6 +676,7 @@ async def _sync_retroachievements_library(db: AsyncSession, current_user: User) 
     synced_titles: list[str] = []
     achievements_unavailable: list[str] = []
     touched_ids: set[UUID] = set()
+    observations: list[tuple[UUID, SourceObservationV1 | None]] = []
     for entry, progress in zip(owned_games, progress_results, strict=False):
         title = entry.get("Title")
         if not title:
@@ -670,6 +700,20 @@ async def _sync_retroachievements_library(db: AsyncSession, current_user: User) 
         else:
             await _replace_achievements(db, game.id, "RetroAchievements", rows)
             achievements_synced += len(rows)
+        observations.append(
+            (
+                game.id,
+                ingestion.build_observation(
+                    entry.get("GameID"),
+                    title=title,
+                    owned=True,
+                    achievements_total=len(rows) if progress is not None else None,
+                    achievements_unlocked=(
+                        sum(1 for row in rows if row["unlocked"]) if progress is not None else None
+                    ),
+                ),
+            )
+        )
 
         apply_provider_progress(
             game,
@@ -690,6 +734,16 @@ async def _sync_retroachievements_library(db: AsyncSession, current_user: User) 
     games_flagged_stale = await _flag_stale_games(
         db, current_user.id, "RetroAchievements", touched_ids
     )
+    await ingestion.record_observations(
+        db, current_user.id, ingestion.RETROACHIEVEMENTS, observations
+    )
+    # The pull above completed, so the user's whole list was seen.
+    await ingestion.record_complete_inventory(
+        db,
+        current_user.id,
+        ingestion.RETROACHIEVEMENTS,
+        {item.external_id for _, item in observations if item is not None},
+    )
     current_user.retroachievements_library_synced_at = int(time.time())
     await db.commit()
     return {
@@ -702,11 +756,11 @@ async def _sync_retroachievements_library(db: AsyncSession, current_user: User) 
     }
 
 
-# pylint: enable=too-many-locals
+# pylint: enable=too-many-locals,too-many-statements
 
 
 # Keep the established workflow and public parameters together.
-# pylint: disable=too-many-locals
+# pylint: disable=too-many-locals,too-many-statements
 @router.post("/psn")
 async def sync_psn_library(
     db: AsyncSession = Depends(get_db),
@@ -762,6 +816,7 @@ async def _sync_psn_library(db: AsyncSession, current_user: User) -> dict:
     synced_titles: list[str] = []
     achievements_unavailable: list[str] = []
     touched_ids: set[UUID] = set()
+    observations: list[tuple[UUID, SourceObservationV1 | None]] = []
     result_index = 0
     for entry in titles:
         title = entry["trophyTitleName"]
@@ -787,6 +842,21 @@ async def _sync_psn_library(db: AsyncSession, current_user: User) -> dict:
         else:
             await _replace_achievements(db, game.id, "PlayStation", rows)
             achievements_synced += len(rows)
+        observations.append(
+            (
+                game.id,
+                ingestion.build_observation(
+                    entry.get("npCommunicationId"),
+                    title=title,
+                    platform=entry.get("trophyTitlePlatform"),
+                    owned=True,
+                    achievements_total=len(rows) if trophies is not None else None,
+                    achievements_unlocked=(
+                        sum(1 for row in rows if row["unlocked"]) if trophies is not None else None
+                    ),
+                ),
+            )
+        )
 
         apply_provider_progress(
             game,
@@ -805,6 +875,13 @@ async def _sync_psn_library(db: AsyncSession, current_user: User) -> dict:
     await asyncio.gather(*(_enrich(g) for g in newly_created))
 
     games_flagged_stale = await _flag_stale_games(db, current_user.id, "PlayStation", touched_ids)
+    await ingestion.record_observations(db, current_user.id, ingestion.PLAYSTATION, observations)
+    await ingestion.record_complete_inventory(
+        db,
+        current_user.id,
+        ingestion.PLAYSTATION,
+        {item.external_id for _, item in observations if item is not None},
+    )
     current_user.psn_library_synced_at = int(time.time())
     await db.commit()
     return {
@@ -817,4 +894,4 @@ async def _sync_psn_library(db: AsyncSession, current_user: User) -> dict:
     }
 
 
-# pylint: enable=too-many-locals
+# pylint: enable=too-many-locals,too-many-statements

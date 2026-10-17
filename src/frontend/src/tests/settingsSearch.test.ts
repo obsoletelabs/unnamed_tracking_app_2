@@ -4,8 +4,6 @@ import { reactive } from "vue";
 import { flushPromises, mount, shallowMount } from "@vue/test-utils";
 import SettingsSearch from "../components/settings/SettingsSearch.vue";
 import SettingsView from "../views/Settings.vue";
-import LibrarySettings from "../components/settings/LibrarySettings.vue";
-import MetadataSettings from "../components/settings/MetadataSettings.vue";
 import { currentUser } from "../state/auth";
 import {
   clearPluginExtensions,
@@ -37,7 +35,9 @@ vi.mock("vue-router", async (original) => ({
   useRouter: () => ({ replace: routing.replace, push: routing.push }),
 }));
 
-afterEach(() => {
+afterEach(async () => {
+  // Settings sections load lazily; let them finish before the environment closes.
+  await vi.dynamicImportSettled();
   clearPluginExtensions();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
@@ -442,7 +442,7 @@ describe("Settings page navigation from search", () => {
     expect(routing.replace).toHaveBeenCalledWith({
       query: { section: "library", tab: "trash" },
     });
-    expect(view.getComponent(LibrarySettings).props("initialTab")).toBe(
+    expect(view.get("library-settings-stub").attributes("initial-tab")).toBe(
       "trash",
     );
     expect(document.activeElement).toBe(view.get(".settings-card").element);
@@ -456,7 +456,7 @@ describe("Settings page navigation from search", () => {
       section: "metadata",
       tab: "refresh",
     });
-    expect(view.getComponent(MetadataSettings).props("initialTab")).toBe(
+    expect(view.get("metadata-settings-stub").attributes("initial-tab")).toBe(
       "refresh",
     );
 
@@ -471,7 +471,7 @@ describe("Settings page navigation from search", () => {
     signIn(false);
     const view = renderSettings({ section: "media-trash" });
     await flushPromises();
-    expect(view.getComponent(LibrarySettings).props("initialTab")).toBe(
+    expect(view.get("library-settings-stub").attributes("initial-tab")).toBe(
       "trash",
     );
     view.unmount();

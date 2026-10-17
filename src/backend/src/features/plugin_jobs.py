@@ -238,6 +238,7 @@ def _job_spec(
         unavailable_reason=reason,
         user_id=user_id,
         revoked=revoked,
+        retry_backoff=True,
     )
     return spec
 

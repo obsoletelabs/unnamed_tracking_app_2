@@ -292,7 +292,11 @@ async function onFileSelected(e: Event) {
 
     <div v-if="backupStatus" class="tile backup-status-tile">
       <h3>Automatic backups</h3>
-      <p class="tile-desc">
+      <p v-if="!backupStatus.enabled" class="tile-desc">
+        Automatic backups are switched off by the administrator (Settings →
+        Tasks → Library backups). Use the manual export below.
+      </p>
+      <p v-else class="tile-desc">
         A snapshot like the one above is written automatically every
         {{ backupStatus.interval_hours }} hours, keeping the last
         {{ backupStatus.backups_kept }} on this server, a safety net, not a

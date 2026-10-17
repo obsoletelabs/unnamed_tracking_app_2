@@ -66,6 +66,11 @@ describe("username rules", () => {
     expect(usernameServerError("The email or username is already in use")).toBe(
       null,
     );
+    // The non-enumerating reply for ordinary users names neither field, so it
+    // stays in the form's general error area rather than under the username.
+    expect(
+      usernameServerError("That username or email is already in use."),
+    ).toBeNull();
     expect(usernameServerError(null)).toBeNull();
   });
 });
@@ -99,5 +104,24 @@ describe("conflict replies keep the server's reason", () => {
         isAdmin: false,
       }),
     ).rejects.toThrow("That username is already taken.");
+  });
+});
+
+describe("profile conflict for an ordinary user", () => {
+  it("surfaces the combined message without naming a field", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            detail: "That username or email is already in use.",
+          }),
+          { status: 409 },
+        ),
+      ),
+    );
+    await expect(
+      updateProfile({ email: "taken@example.test" }),
+    ).rejects.toThrow("That username or email is already in use.");
   });
 });

@@ -18,7 +18,7 @@ from src.database.models.job_setting import JobSetting
 from src.database.models.user import User
 from src.database.session import SessionLocal
 from src.features.job_runs import job_lease
-from src.features.jobs import JobSpec, get_setting, record_run
+from src.features.jobs import JobSpec, get_setting, personal_job_defaults, record_run
 
 logger = logging.getLogger(__name__)
 CONNECTIONS = {"steam": "Steam", "psn": "PlayStation", "retroachievements": "RetroAchievements"}
@@ -93,9 +93,7 @@ def _job_spec(user_id: UUID, provider: str, label: str, reason: str) -> JobSpec:
         "Existing notes, ratings and manual status use the same protections as Sync / import.",
         min_interval_minutes=5,
         max_interval_minutes=7 * 24 * 60,
-        default_interval_minutes=24 * 60,
-        default_enabled=False,
-        manual_mode="all",
+        **personal_job_defaults(),
         start=start,
         is_running=is_running,
         summarize=lambda result: str(result.get("summary") or "")[:512],
@@ -103,6 +101,7 @@ def _job_spec(user_id: UUID, provider: str, label: str, reason: str) -> JobSpec:
         unavailable_reason=reason,
         user_id=user_id,
         revoked=bool(reason),
+        retry_backoff=True,
     )
     return spec
 
