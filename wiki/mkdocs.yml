@@ -103,6 +103,7 @@ nav:
       - Game Library Identity Audit: development/game-library-identity-audit.md
       - Game Identity Data Model: development/game-identity-model.md
       - Game Ingestion: development/game-ingestion.md
+      - Playnite Observations: development/playnite-observations.md
       - Game Identity Decisions: development/game-identity-decisions.md
       - Game Identity Counters: development/game-identity-counters.md
       - Game Identity Matching: development/game-identity-matching.md

@@ -92,7 +92,7 @@ is not duplicated and its link follows the new active game.
 
 ## 5. Not included
 
-The public HTTP ingestion endpoint and the Playnite library scope belong to #100; identity
+The Playnite evidence API, library scope and inventory signal are described in [Playnite observations](playnite-observations.md) (#100); identity
 decisions to #95; counters and reconciliation to #96; the existing-library backfill, which
 links `legacy` observations for rows imported before this change, to #102. Rows imported
 before this change get their observation the next time their source syncs.

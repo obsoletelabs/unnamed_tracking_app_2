@@ -141,6 +141,7 @@ from src.database.models.user import User
 from src.database.session import get_db
 from src.features import game_folders, game_ownership
 from src.features.game_identity import manual
+from src.features.game_ingestion import playnite
 from src.features.game_ingestion.legacy import (
     has_manual_observation,
     record_manual_fields,
@@ -564,6 +565,7 @@ async def update_game(
 
     sent = payload.model_dump(exclude_unset=True)
     updates = _drop_nulls_for_required_fields(dict(sent))
+    kept_locks = playnite.guard_update(game, updates, actor)
     authorize_title_update(game, updates, actor)
     old_folder = game.folder_location
     manual_status = manual.guard_status_update(
@@ -598,6 +600,7 @@ async def update_game(
 
     _record_field_changes(game, updates, db)
     apply_updates_with_locking(game, updates, frozenset(_GAME_METADATA_FIELDS), actor=actor)
+    playnite.restore_locks(game, kept_locks)
 
     # Keep sort_title in sync if title changed but sort_title wasn't explicitly
     # set, or was cleared (a blank sorting name means "sort by the title")
