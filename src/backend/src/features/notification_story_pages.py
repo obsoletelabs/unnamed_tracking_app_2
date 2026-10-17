@@ -28,9 +28,11 @@ from src.database.models.notification_story import (
 )
 from src.database.models.plugin_notification_type import PluginNotificationTypeRegistration
 from src.database.models.user import User
+from src.features.notification_canonical_registry import canonical_declaration
 from src.features.notification_images import effective_image_mode, resolve_images
 from src.features.notification_rich import build_view, humanize_phase, public_projection
-from src.plugin_api.grants import has_capability_grant
+from src.plugin_api.grants import has_capability_grant, installation_is_executable
+from src.plugin_api.notification_plugin_contracts import check_action_target
 from src.plugin_api.notification_story_contracts import (
     NotificationContent,
     PluginActionTarget,
@@ -46,7 +48,9 @@ TOKEN_PREFIX = "nls1_"
 MAX_ACTIVE_LINKS_PER_STORY = 20
 LIVE_PATH = "/api/notifications/live"
 # The source's reviewed emit grant is the action permission until #115 defines finer scopes.
-ACTION_CAPABILITY = "notifications.emit"
+ACTION_CAPABILITY = "notifications.actions"
+CANONICAL_CAPABILITY = "notifications.canonical"
+HTML_TEMPLATES_CAPABILITY = "notifications.templates.html"
 _LAST_USED_GRANULARITY = 60
 
 
@@ -315,24 +319,59 @@ async def _authorised_action(
         installation_id = UUID(state.story.scope_key)
     except ValueError as exc:
         raise ActionDenied("Action unavailable") from exc
-    plugin_id = state.story.source
-    registration = await db.scalar(
-        select(PluginNotificationTypeRegistration.id).where(
-            PluginNotificationTypeRegistration.plugin_id == plugin_id,
+    await _recheck_source(db, state, action.target, installation_id, user_id)
+    return action.target, installation_id
+
+
+async def _recheck_source(
+    db: AsyncSession,
+    state: StoryState,
+    target: PluginActionTarget,
+    installation_id: UUID,
+    user_id: UUID,
+) -> None:
+    """The source's current declaration and grants still cover this exact action."""
+    definition = await db.scalar(
+        select(PluginNotificationTypeRegistration.definition).where(
+            PluginNotificationTypeRegistration.plugin_id == state.story.source,
             PluginNotificationTypeRegistration.installation_id == installation_id,
             PluginNotificationTypeRegistration.event_type == state.story.event_type,
             PluginNotificationTypeRegistration.revoked_at.is_(None),
         )
     )
-    if registration is None or not await has_capability_grant(
-        db,
-        plugin_id=plugin_id,
-        installation_id=installation_id,
-        capability=ACTION_CAPABILITY,
-        user_id=user_id,
-    ):
+    declared = canonical_declaration(definition)
+    # Typed actions: the target must still satisfy the plugin's *current* declaration.
+    try:
+        declaration = check_action_target(declared, target) if declared else None
+    except ValueError:
+        declaration = None
+    if declaration is None:
         raise ActionDenied("The source of this notification is no longer authorised")
-    return action.target, installation_id
+    for capability in (ACTION_CAPABILITY, CANONICAL_CAPABILITY, *declaration.requires):
+        if not await has_capability_grant(
+            db,
+            plugin_id=state.story.source,
+            installation_id=installation_id,
+            capability=capability,
+            user_id=user_id,
+        ):
+            raise ActionDenied("The source of this notification is no longer authorised")
+
+
+async def _installation_live(
+    client: PluginRuntimeClient, plugin_id: str, installation_id: UUID
+) -> bool:
+    """Disabled, uninstalled or replaced installations cannot run actions."""
+    try:
+        installed = await client.plugins()
+    except (PluginRuntimeRequestError, PluginRuntimeUnavailable) as exc:
+        raise ActionUnavailable("The source could not complete this action") from exc
+    matches = [item for item in installed if item.get("plugin_id") == plugin_id]
+    return (
+        len(matches) == 1
+        and matches[0].get("installation_id") == str(installation_id)
+        and installation_is_executable(matches[0])
+    )
 
 
 async def invoke_story_action(
@@ -356,6 +395,8 @@ async def invoke_story_action(
         db, state, user_id, action_id, confirmed=confirmed
     )
     client = runtime or PluginRuntimeClient()
+    if not await _installation_live(client, state.story.source, installation_id):
+        raise ActionDenied("The source of this notification is no longer authorised")
     try:
         result = await client.notification_story_action(
             state.story.source,
@@ -385,22 +426,26 @@ async def contribution_authorised(
 ) -> bool:
     """Whether a producer may present its own event type with this template.
 
-    The type must be an active registration of this installation and the installation needs its
-    emit grant; HTML templates additionally need the explicit high-risk `notifications.sensitive`
-    grant (until #115 defines a dedicated one). Contributions never reach PUBLIC projections.
+    The contribution must be one the active registration of this installation declares, and the
+    installation needs the canonical grant; HTML templates additionally need the high-risk
+    `notifications.templates.html` grant. Contributions never reach PUBLIC projections.
     """
-    registered = await db.scalar(
-        select(PluginNotificationTypeRegistration.id).where(
+    definition = await db.scalar(
+        select(PluginNotificationTypeRegistration.definition).where(
             PluginNotificationTypeRegistration.plugin_id == plugin_id,
             PluginNotificationTypeRegistration.installation_id == installation_id,
             PluginNotificationTypeRegistration.event_type == contribution.event_type,
             PluginNotificationTypeRegistration.revoked_at.is_(None),
         )
     )
-    required = [ACTION_CAPABILITY]
+    declared = canonical_declaration(definition)
+    required = [CANONICAL_CAPABILITY]
     if contribution.kind == "html_template":
-        required.append("notifications.sensitive")
-    if registered is None:
+        required.append(HTML_TEMPLATES_CAPABILITY)
+    registered = declared is not None and any(
+        item.model_dump() == contribution.model_dump() for item in declared.renderers
+    )
+    if not registered:
         return False
     for capability in required:
         if not await has_capability_grant(

@@ -22,12 +22,21 @@ from src.core.config import settings
 from src.database.models.notification import Notification
 from src.database.models.notification_story import NotificationStoryRevision
 from src.features.notification_contract import content_from_notification
-from src.features.notification_providers.base import MessageAction, NotificationMessage
+from src.features.notification_contributions import contributed_text, selected_contribution
+from src.features.notification_diagnostic_fixtures import test_content, variant_of
+from src.features.notification_providers.base import (
+    MessageAction,
+    MessageFact,
+    NotificationMessage,
+)
 from src.features.notification_providers.capabilities import ResolvedProfile
-from src.features.notification_rich import render_email_html, render_plain
-from src.plugin_api.notification_story_contracts import NotificationContent
+from src.features.notification_rich import format_fact, render_email_html, render_plain
+from src.plugin_api.notification_story_contracts import NotificationContent, RendererContribution
 
 ELLIPSIS = "…"
+MAX_EMBED_FACTS = 25
+FACT_LABEL_CHARS = 100
+FACT_TEXT_CHARS = 500
 PAYLOAD_OVERHEAD = 512
 
 
@@ -55,6 +64,9 @@ async def _content(
     """Canonical content of the notification's current revision (private projection only)."""
     if projection != "canonical":
         return None
+    if notification.purpose == "test":
+        # Host-authored fixture content, so test sends exercise the real renderer richly.
+        return test_content(variant_of(notification.group_key))
     if notification.story_id is not None:
         stored = await db.scalar(
             select(NotificationStoryRevision.content).where(
@@ -84,22 +96,41 @@ def story_link(base: str | None, notification: Notification) -> str | None:
     return base.rstrip("/") + suffix
 
 
-def _presentation(
+def _body_fields(
     content: NotificationContent,
     profile: ResolvedProfile,
-    link: str | None,
     base: str | None,
-) -> tuple[dict, list[str]]:
-    """Fields a canonical provider receives, narrowed to its declared capabilities."""
-    caps = profile.capabilities
-    fallbacks: list[str] = []
-    body = render_plain(content).split("\n\n", 1)
-    text = body[1] if len(body) > 1 else content.summary
-    fields: dict = {"title": content.title, "body": text}
-    if "html_email" in caps.text_formats:
-        fields["html"] = render_email_html(content, base_url=base or "")
-    elif content.blocks or content.facts:
-        fallbacks.append("rich_text_plain")
+    contribution: RendererContribution | None,
+    fields: dict,
+) -> list[str]:
+    """HTML or body text for the provider's surface, honouring an authorised contribution."""
+    if "html_email" in profile.capabilities.text_formats:
+        fields["html"] = render_email_html(content, base_url=base or "", contribution=contribution)
+        return []
+    if contribution is None:
+        return (
+            ["rich_text_plain"]
+            if content.blocks or (content.facts and "facts" not in fields)
+            else []
+        )
+    contributed, note = contributed_text(contribution, content, profile)
+    if contributed:
+        fields["body"] = contributed
+    return [note] if note else []
+
+
+def _embed_facts(content: NotificationContent) -> tuple[MessageFact, ...]:
+    shown = [format_fact(fact) for fact in content.facts][:MAX_EMBED_FACTS]
+    return tuple(
+        MessageFact(_clip(item["label"], FACT_LABEL_CHARS), _clip(item["text"], FACT_TEXT_CHARS))
+        for item in shown
+    )
+
+
+def _action_buttons(
+    content: NotificationContent, limit: int, base: str | None
+) -> tuple[MessageAction, ...]:
+    """Link and host-route actions that fit the provider's button budget."""
     buttons: list[MessageAction] = []
     for action in content.actions:
         target = action.target
@@ -110,12 +141,13 @@ def _presentation(
             if target.kind == "host_route" and base
             else None
         )
-        if url and len(buttons) < caps.action_buttons:
+        if url and len(buttons) < limit:
             buttons.append(MessageAction(action.label, url))
-    if content.actions and len(buttons) < len(content.actions):
-        # Plugin actions never leave the signed-in app; the story page offers every action.
-        fallbacks.append("actions_via_story_link" if link else "actions_dropped")
-    fields["actions"] = tuple(buttons)
+    return tuple(buttons)
+
+
+def _image_urls(content: NotificationContent, caps: Any) -> tuple[str, ...]:
+    """External image URLs the provider may embed, when the deployment allows them."""
     images: list[str] = []
     if (
         caps.images is not None
@@ -125,9 +157,37 @@ def _presentation(
         for image in content.images:
             if image.source.kind == "external" and len(images) < caps.images.max_images:
                 images.append(image.source.url)
+    return tuple(images)
+
+
+def _presentation(
+    content: NotificationContent,
+    profile: ResolvedProfile,
+    link: str | None,
+    base: str | None,
+    contribution: RendererContribution | None = None,
+) -> tuple[dict, list[str]]:
+    """Fields a canonical provider receives, narrowed to its declared capabilities."""
+    caps = profile.capabilities
+    fallbacks: list[str] = []
+    # Structured embeds carry facts as labelled fields, so the body does not repeat them.
+    embed_facts = caps.rich_embeds and bool(content.facts)
+    _, _, text = render_plain(content, facts=not embed_facts).partition("\n\n")
+    fields: dict = {"title": content.title, "body": text or content.summary}
+    if embed_facts:
+        fields["facts"] = _embed_facts(content)
+        if len(content.facts) > MAX_EMBED_FACTS:
+            fallbacks.append("facts_truncated")
+    fallbacks += _body_fields(content, profile, base, contribution, fields)
+    buttons = _action_buttons(content, caps.action_buttons, base)
+    if content.actions and len(buttons) < len(content.actions):
+        # Plugin actions never leave the signed-in app; the story page offers every action.
+        fallbacks.append("actions_via_story_link" if link else "actions_dropped")
+    fields["actions"] = buttons
+    images = _image_urls(content, caps)
     if content.images and len(images) < len(content.images):
         fallbacks.append("images_dropped")
-    fields["images"] = tuple(images)
+    fields["images"] = images
     return fields, fallbacks
 
 
@@ -156,7 +216,13 @@ async def _presentation_changes(
     content = await _content(db, notification, projection)
     changes: dict = {}
     if content is not None and profile.canonical:
-        fields, notes = _presentation(content, profile, link, link_base)
+        fields, notes = _presentation(
+            content,
+            profile,
+            link,
+            link_base,
+            await selected_contribution(db, notification, profile),
+        )
         fallbacks += notes
         changes |= fields
     elif content is not None and (
@@ -191,6 +257,7 @@ def _rendering_digest(base_title: str, rendered: NotificationMessage) -> str:
                 rendered.html,
                 [(a.label, a.url) for a in rendered.actions],
                 list(rendered.images),
+                [(f.label, f.text) for f in rendered.facts],
                 rendered.link,
             ],
             separators=(",", ":"),

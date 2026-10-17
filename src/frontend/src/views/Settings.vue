@@ -31,6 +31,7 @@ import {
   visiblePluginSettingsNavigation,
   type SettingsSearchEntry,
 } from "../state/settingsRegistry";
+import { settingsLinkNeedsFallback } from "../services/pluginDeepLink";
 import AccountChip from "../components/AccountChip.vue";
 import PageHeader from "../components/PageHeader.vue";
 import AppIcon from "../components/AppIcon.vue";
@@ -205,6 +206,22 @@ watch(
     if (activeSection.value !== next.section)
       activeSection.value = next.section;
   },
+);
+
+// Admin-only locations (for example a plugin update notification link) fall back
+// to the default page for everyone else, identically for known and unknown ids.
+watch(
+  [activeSection, () => currentUser.value, () => route.query.area],
+  ([section, user, queryArea]) => {
+    if (!user) return;
+    if (
+      settingsLinkNeedsFallback(!!user.is_admin, section as string, queryArea)
+    ) {
+      activeSection.value = "profile";
+      void router.replace({ path: route.path, query: { section: "profile" } });
+    }
+  },
+  { immediate: true },
 );
 
 watch(activeSection, (section) => {

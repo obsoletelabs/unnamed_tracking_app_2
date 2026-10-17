@@ -703,6 +703,8 @@ async def delete_plugin(
     except PluginRuntimeUnavailable as exc:
         raise runtime.runtime_error(exc) from exc
     await _purge_plugin_database(db, plugin_id)
+    # The plugin is gone, so an announced update can no longer be acted on; history is retained.
+    await catalogues.resolve_plugin_update_stories(db, plugin_id)
     await db.commit()
     manager_state().remove(plugin_id)
     return Response(status_code=204)

@@ -8,6 +8,7 @@ from uuid import UUID
 from pydantic import Field, StrictBool, StrictInt, StrictStr, model_validator
 
 from .base_contracts import ContractModel
+from .notification_story_contracts import NotificationProviderCapabilities
 from .ui_contracts import UiField
 
 
@@ -125,11 +126,21 @@ class NotificationProviderDefinition(ContractModel):
         default=None, min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$"
     )
     features: NotificationProviderFeatures = Field(default_factory=NotificationProviderFeatures)
+    # Plugin API 1.1.14: presentation capabilities (never trust, proof, consent or grants). A
+    # provider that declares them receives canonical, capability-narrowed deliveries.
+    capabilities: NotificationProviderCapabilities | None = None
+    # Action that applies an edit of an earlier message; required when updates are declared.
+    edit_action: str | None = Field(
+        default=None, min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$"
+    )
 
     @model_validator(mode="after")
     def validate_definition(self) -> Self:
         if len({destination.kind for destination in self.destinations}) != len(self.destinations):
             raise ValueError("Destination kinds require unique IDs")
+        updates = self.capabilities is not None and self.capabilities.message_updates != "none"
+        if updates != (self.edit_action is not None):
+            raise ValueError("Message updates and the edit action must be declared together")
         validate_configuration_fields(self.server_fields)
         return self
 
@@ -170,9 +181,64 @@ class PluginNotificationContent(ContractModel):
     link: str | None = Field(default=None, max_length=2048)
 
 
+class PluginDeliveryAction(ContractModel):
+    """A host-checked link button; plugin actions never reach external destinations."""
+
+    label: str = Field(min_length=1, max_length=40)
+    url: str = Field(min_length=1, max_length=2048)
+
+
+class PluginDeliveryFact(ContractModel):
+    """One host-formatted fact (label and display text) for providers that declared embeds."""
+
+    label: str = Field(min_length=1, max_length=100)
+    text: str = Field(min_length=1, max_length=500)
+
+
+class PluginDeliveryItem(ContractModel):
+    """One member of a digest message. Text is what the destination's projection may show."""
+
+    title: str = Field(min_length=1, max_length=500)
+    body: str = Field(default="", max_length=10_000)
+    event_at: StrictInt = Field(ge=0)
+    url: str | None = Field(default=None, max_length=2048)
+
+
+class PluginCanonicalDelivery(PluginNotificationContent):
+    """Capability-narrowed delivery for providers that declared canonical capabilities (1.1.14).
+
+    The host has already applied the recipient's projection, the provider's limits and its own
+    sanitiser; ``html`` is sanitised email markup, never executable. ``operation`` is ``send``,
+    ``edit`` (``remote_ref`` is the provider's earlier message) or ``follow_up``. The
+    ``idempotency_key`` is stable across retries of one obligation.
+    """
+
+    contract_version: str = Field(min_length=5, max_length=16)
+    operation: Literal["send", "edit", "follow_up"] = "send"
+    revision: StrictInt = Field(ge=0)
+    remote_ref: str | None = Field(default=None, min_length=1, max_length=512)
+    idempotency_key: str = Field(min_length=1, max_length=128)
+    html: str | None = Field(default=None, max_length=200_000)
+    actions: tuple[PluginDeliveryAction, ...] = Field(default=(), max_length=10)
+    images: tuple[str, ...] = Field(default=(), max_length=10)
+    # Additive optional fields: facts only for providers that declared ``rich_embeds`` and only
+    # in the private canonical projection; items only for a digest of several members.
+    facts: tuple[PluginDeliveryFact, ...] = Field(default=(), max_length=25)
+    items: tuple[PluginDeliveryItem, ...] = Field(default=(), max_length=50)
+
+    @model_validator(mode="after")
+    def edits_name_their_message(self) -> Self:
+        if self.operation == "edit" and self.remote_ref is None:
+            raise ValueError("An edit needs the reference of the message to change")
+        return self
+
+
 class NotificationLifecycleQuery(ContractModel):
     cursor: str | None = Field(default=None, min_length=1, max_length=1024)
     limit: int = Field(default=100, ge=1, le=200, strict=True)
+    # Plugin API 1.1.14: also replay ``revised`` (a story's unread item was updated in place).
+    # Absent or false keeps the 1.1.4 status set, so older SDKs never see a status they lack.
+    include_revisions: StrictBool = False
 
 
 class NotificationLifecycleEvent(ContractModel):
@@ -186,6 +252,7 @@ class NotificationLifecycleEvent(ContractModel):
         "dismissed",
         "deleted",
         "expired",
+        "revised",
         "pending",
         "processing",
         "sent",

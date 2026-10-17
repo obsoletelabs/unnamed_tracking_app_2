@@ -358,7 +358,11 @@ BUILTIN_PROFILES: Mapping[str, ProviderCapabilityProfile] = {
         "legacy", _baseline(links=True), critical_supported=True
     ),
     "core.browser": ProviderCapabilityProfile(
-        "legacy", _baseline(max_payload_bytes=4096), generic_preview_only=True
+        "legacy",
+        # A tag replaces the earlier alert on the device, so a later story revision is a
+        # `replace` without any per-message reference from the push service.
+        _baseline(max_payload_bytes=4096, message_updates="replace"),
+        generic_preview_only=True,
     ),
 }
 TRANSPORT_PROFILES: Mapping[str, ProviderCapabilityProfile] = {
@@ -422,4 +426,8 @@ LEGACY_ADAPTERS: Mapping[str, LegacyAdapter] = {
     "notification_destinations.status": LegacyAdapter(
         "1.1.11", ("NotificationDestinationStatusPage",), "unchanged"
     ),
+    # Plugin API 1.1.14: native canonical surfaces, so no legacy mapping is involved.
+    "notifications.publish": LegacyAdapter("1.1.14", ("CanonicalNotificationEvent",), "unchanged"),
+    "notifications.contract": LegacyAdapter("1.1.14", ("ContractNegotiationRequest",), "unchanged"),
+    "notification-story-actions": LegacyAdapter("1.1.14", ("PluginActionTarget",), "unchanged"),
 }

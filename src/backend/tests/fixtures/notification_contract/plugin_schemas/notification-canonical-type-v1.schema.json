@@ -1,0 +1,481 @@
+{
+  "$defs": {
+    "ActionDeclaration": {
+      "additionalProperties": false,
+      "description": "A typed, host-authorised action. Execution always reruns the host's checks.",
+      "properties": {
+        "action_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9._-]*$",
+          "title": "Action Id",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 40,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "input": {
+          "maxProperties": 8,
+          "patternProperties": {
+            "^[a-z][a-z0-9_]{0,31}$": {
+              "$ref": "#/$defs/ActionInputDeclaration"
+            }
+          },
+          "title": "Input",
+          "type": "object"
+        },
+        "output": {
+          "default": "message",
+          "enum": [
+            "none",
+            "message"
+          ],
+          "title": "Output",
+          "type": "string"
+        },
+        "requires": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 4,
+          "title": "Requires",
+          "type": "array"
+        }
+      },
+      "required": [
+        "action_id",
+        "label"
+      ],
+      "title": "ActionDeclaration",
+      "type": "object"
+    },
+    "ActionInputDeclaration": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "enum": [
+            "string",
+            "integer",
+            "boolean"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "max_length": {
+          "default": 500,
+          "maximum": 500,
+          "minimum": 1,
+          "title": "Max Length",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "ActionInputDeclaration",
+      "type": "object"
+    },
+    "FactDeclaration": {
+      "additionalProperties": false,
+      "description": "One structured fact an event type may carry; the kind is fixed so renderers can format it.",
+      "properties": {
+        "key": {
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,31}$",
+          "title": "Key",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "text",
+            "integer",
+            "decimal",
+            "money",
+            "timestamp",
+            "boolean"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "key",
+        "label",
+        "kind"
+      ],
+      "title": "FactDeclaration",
+      "type": "object"
+    },
+    "GroupingDeclaration": {
+      "additionalProperties": false,
+      "description": "``key`` events carry a grouping key; ``separate`` asks the host not to merge into digests.\n\nAggregation timing, windows and digests stay host policy (and user preference).",
+      "properties": {
+        "strategy": {
+          "default": "none",
+          "enum": [
+            "none",
+            "key"
+          ],
+          "title": "Strategy",
+          "type": "string"
+        },
+        "merge": {
+          "default": "digest",
+          "enum": [
+            "digest",
+            "separate"
+          ],
+          "title": "Merge",
+          "type": "string"
+        }
+      },
+      "title": "GroupingDeclaration",
+      "type": "object"
+    },
+    "RendererContribution": {
+      "additionalProperties": false,
+      "description": "Presentation for one of the producer's own types; it never adds data or authority.",
+      "properties": {
+        "contract_version": {
+          "title": "Contract Version",
+          "type": "string"
+        },
+        "event_type": {
+          "maxLength": 128,
+          "minLength": 3,
+          "pattern": "^[a-z0-9][a-z0-9._-]*$",
+          "title": "Event Type",
+          "type": "string"
+        },
+        "surface": {
+          "enum": [
+            "card",
+            "email",
+            "chat",
+            "push",
+            "text"
+          ],
+          "title": "Surface",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "fields",
+            "markdown_template",
+            "html_template"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "fields": {
+          "default": [],
+          "items": {
+            "enum": [
+              "title",
+              "summary",
+              "blocks",
+              "facts",
+              "images",
+              "actions",
+              "attribution",
+              "occurred_at",
+              "expires_at",
+              "live_link"
+            ],
+            "type": "string"
+          },
+          "maxItems": 10,
+          "title": "Fields",
+          "type": "array"
+        },
+        "template": {
+          "anyOf": [
+            {
+              "maxLength": 20000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Template"
+        }
+      },
+      "required": [
+        "contract_version",
+        "event_type",
+        "surface",
+        "kind"
+      ],
+      "title": "RendererContribution",
+      "type": "object"
+    },
+    "StoryLifecycleDeclaration": {
+      "additionalProperties": false,
+      "description": "Declared phases for one event type; self-transitions allow in-phase content updates.",
+      "properties": {
+        "contract_version": {
+          "title": "Contract Version",
+          "type": "string"
+        },
+        "event_type": {
+          "maxLength": 128,
+          "minLength": 3,
+          "pattern": "^[a-z0-9][a-z0-9._-]*$",
+          "title": "Event Type",
+          "type": "string"
+        },
+        "phases": {
+          "items": {
+            "$ref": "#/$defs/StoryPhase"
+          },
+          "maxItems": 16,
+          "minItems": 1,
+          "title": "Phases",
+          "type": "array"
+        },
+        "initial_phases": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]{0,31}$",
+            "type": "string"
+          },
+          "maxItems": 16,
+          "minItems": 1,
+          "title": "Initial Phases",
+          "type": "array"
+        },
+        "transitions": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/StoryTransition"
+          },
+          "maxItems": 64,
+          "title": "Transitions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "contract_version",
+        "event_type",
+        "phases",
+        "initial_phases"
+      ],
+      "title": "StoryLifecycleDeclaration",
+      "type": "object"
+    },
+    "StoryPhase": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[a-z][a-z0-9_]{0,31}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "terminal": {
+          "default": false,
+          "title": "Terminal",
+          "type": "boolean"
+        },
+        "severity": {
+          "anyOf": [
+            {
+              "enum": [
+                "info",
+                "warning",
+                "error"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Severity"
+        }
+      },
+      "required": [
+        "id",
+        "label"
+      ],
+      "title": "StoryPhase",
+      "type": "object"
+    },
+    "StoryTransition": {
+      "additionalProperties": false,
+      "properties": {
+        "from_phase": {
+          "pattern": "^[a-z][a-z0-9_]{0,31}$",
+          "title": "From Phase",
+          "type": "string"
+        },
+        "to_phase": {
+          "pattern": "^[a-z][a-z0-9_]{0,31}$",
+          "title": "To Phase",
+          "type": "string"
+        }
+      },
+      "required": [
+        "from_phase",
+        "to_phase"
+      ],
+      "title": "StoryTransition",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Versioned declaration of one canonical event type owned by the registering plugin.",
+  "properties": {
+    "contract_version": {
+      "title": "Contract Version",
+      "type": "string"
+    },
+    "event_type": {
+      "maxLength": 128,
+      "minLength": 3,
+      "pattern": "^[a-z0-9][a-z0-9._-]*$",
+      "title": "Event Type",
+      "type": "string"
+    },
+    "label": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Label",
+      "type": "string"
+    },
+    "description": {
+      "default": "",
+      "maxLength": 500,
+      "title": "Description",
+      "type": "string"
+    },
+    "required_trust": {
+      "default": "PRIVATE",
+      "enum": [
+        "PRIVATE",
+        "SECURE"
+      ],
+      "title": "Required Trust",
+      "type": "string"
+    },
+    "purpose": {
+      "default": "standard",
+      "enum": [
+        "standard",
+        "security"
+      ],
+      "title": "Purpose",
+      "type": "string"
+    },
+    "severity": {
+      "default": "info",
+      "enum": [
+        "info",
+        "warning",
+        "error"
+      ],
+      "title": "Severity",
+      "type": "string"
+    },
+    "default_category": {
+      "const": "plugin",
+      "default": "plugin",
+      "title": "Default Category",
+      "type": "string"
+    },
+    "max_urgency": {
+      "default": "normal",
+      "enum": [
+        "normal",
+        "critical"
+      ],
+      "title": "Max Urgency",
+      "type": "string"
+    },
+    "lifecycle": {
+      "$ref": "#/$defs/StoryLifecycleDeclaration"
+    },
+    "story_key_prefix": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Story Key Prefix"
+    },
+    "grouping": {
+      "$ref": "#/$defs/GroupingDeclaration"
+    },
+    "facts": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/FactDeclaration"
+      },
+      "maxItems": 24,
+      "title": "Facts",
+      "type": "array"
+    },
+    "actions": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ActionDeclaration"
+      },
+      "maxItems": 5,
+      "title": "Actions",
+      "type": "array"
+    },
+    "renderers": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/RendererContribution"
+      },
+      "maxItems": 8,
+      "title": "Renderers",
+      "type": "array"
+    }
+  },
+  "required": [
+    "contract_version",
+    "event_type",
+    "label",
+    "lifecycle"
+  ],
+  "title": "CanonicalNotificationTypeRegistration",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "x-api-contract-version": "1.1.14",
+  "x-notification-contract-version": "1.0.0"
+}

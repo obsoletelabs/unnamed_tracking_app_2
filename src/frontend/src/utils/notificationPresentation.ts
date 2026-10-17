@@ -81,9 +81,12 @@ export function groupNotifications(items: MediaNotification[]): {
 }
 
 export function notificationDestination(
-  n: Pick<MediaNotification, "mediaType" | "mediaId"> &
+  n: Pick<MediaNotification, "mediaType" | "mediaId" | "link"> &
     Partial<Pick<MediaNotification, "kind">>,
 ): string | null {
+  // Host-issued in-app links (plugin updates). Only same-origin paths are followed.
+  if (n.link && n.link.startsWith("/") && !n.link.startsWith("//"))
+    return n.link;
   if (n.kind === "plugin_update") {
     return "/settings?area=administration&section=plugins";
   }

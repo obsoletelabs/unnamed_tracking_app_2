@@ -6,6 +6,7 @@ import { ref, computed, onMounted } from "vue";
 import SegmentedControl from "./SegmentedControl.vue";
 import NotificationRoutingSection from "./NotificationRoutingSection.vue";
 import NotificationTimingSection from "./NotificationTimingSection.vue";
+import NotificationDeliveryHistory from "./NotificationDeliveryHistory.vue";
 import {
   DEFAULT_PREFERENCES,
   fetchPreferences,
@@ -112,6 +113,7 @@ function chooseRetention(value: string) {
       :loaded="loaded"
       @change="change"
     />
+    <NotificationDeliveryHistory />
     <h3>Inbox history</h3>
 
     <p class="section-hint">

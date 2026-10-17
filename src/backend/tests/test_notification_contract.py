@@ -415,10 +415,11 @@ def test_item_state_precedence_and_operations_table():
 
 
 def test_lifecycle_replay_vocabulary_matches_contract_tables():
-    """Existing 1.1.4 replay statuses are exactly item operations plus delivery states."""
+    """Replay statuses are exactly item operations, delivery states and the 1.1.14 revision."""
     replay = set(get_args(NotificationLifecycleEvent.model_fields["status"].annotation))
     items = {operation.lifecycle_status for operation in INBOX_OPERATIONS.values()}
-    assert replay == {"created"} | items | set(contract.DELIVERY_TRANSITIONS)
+    # "revised" is the Plugin API 1.1.14 addition, replayed only on request.
+    assert replay == {"created", "revised"} | items | set(contract.DELIVERY_TRANSITIONS)
     for status, targets in contract.DELIVERY_TRANSITIONS.items():
         assert targets.issubset(contract.DELIVERY_TRANSITIONS), status
     assert contract.DELIVERY_INITIAL_STATUSES <= set(contract.DELIVERY_TRANSITIONS)

@@ -64,6 +64,10 @@ class Settings(BaseSettings):
     # cannot edit the earlier message: "all" sends a follow-up for every revision, "important"
     # only for warning/error/critical revisions, "none" never. Edits are always allowed.
     NOTIFICATION_FOLLOW_UPS: Literal["all", "important", "none"] = "important"
+    # What a browser/PWA notification may show on the device: "generic" (a constant message, the
+    # default, safe for locked screens) or "story" (the item's own title, summary, one external
+    # image and same-origin actions, still generic for any non-standard or non-private projection).
+    NOTIFICATION_BROWSER_PREVIEWS: Literal["generic", "story"] = "generic"
     NOTIFICATION_IMAGE_CACHE_DIR: str = "/data/cache/notification-images"
     NOTIFICATION_IMAGE_MAX_BYTES: int = Field(default=5 * 1024 * 1024, ge=1024, le=15 * 1024 * 1024)
     NOTIFICATION_IMAGE_FAILURE_SECONDS: int = Field(default=300, ge=0, le=86400)

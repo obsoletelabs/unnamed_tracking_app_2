@@ -1,0 +1,2197 @@
+{
+  "api_contract_version": "1.1.14",
+  "contract_version": "1.0.0",
+  "description": "Valid and invalid Plugin API 1.1.14 notification documents. Each invalid case isolates one rule.",
+  "cases": [
+    {
+      "name": "complete type declaration",
+      "document_type": "notification-canonical-type-v1",
+      "valid": true,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "label": "Update",
+        "description": "A plugin update lifecycle.",
+        "max_urgency": "critical",
+        "story_key_prefix": "update:",
+        "grouping": {
+          "strategy": "key",
+          "merge": "digest"
+        },
+        "lifecycle": {
+          "contract_version": "1.0.0",
+          "event_type": "example.sync.update",
+          "phases": [
+            {
+              "id": "available",
+              "label": "Available"
+            },
+            {
+              "id": "installed",
+              "label": "Installed",
+              "terminal": true
+            },
+            {
+              "id": "failed",
+              "label": "Failed",
+              "terminal": true,
+              "severity": "error"
+            }
+          ],
+          "initial_phases": [
+            "available"
+          ],
+          "transitions": [
+            {
+              "from_phase": "available",
+              "to_phase": "available"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "installed"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "failed"
+            }
+          ]
+        },
+        "facts": [
+          {
+            "key": "version",
+            "label": "Version",
+            "kind": "text"
+          },
+          {
+            "key": "size",
+            "label": "Size",
+            "kind": "integer",
+            "required": false
+          }
+        ],
+        "actions": [
+          {
+            "action_id": "install.apply",
+            "label": "Install",
+            "input": {
+              "channel": {
+                "type": "string",
+                "max_length": 20
+              }
+            }
+          }
+        ],
+        "renderers": [
+          {
+            "contract_version": "1.0.0",
+            "event_type": "example.sync.update",
+            "surface": "chat",
+            "kind": "markdown_template",
+            "template": "**{title}** {fact_version}"
+          }
+        ]
+      }
+    },
+    {
+      "name": "minimal type declaration",
+      "document_type": "notification-canonical-type-v1",
+      "valid": true,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.notice",
+        "label": "Notice",
+        "lifecycle": {
+          "contract_version": "1.0.0",
+          "event_type": "example.sync.notice",
+          "phases": [
+            {
+              "id": "open",
+              "label": "Open"
+            }
+          ],
+          "initial_phases": [
+            "open"
+          ]
+        }
+      }
+    },
+    {
+      "name": "type: recipient field",
+      "document_type": "notification-canonical-type-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "label": "Update",
+        "description": "A plugin update lifecycle.",
+        "max_urgency": "critical",
+        "story_key_prefix": "update:",
+        "grouping": {
+          "strategy": "key",
+          "merge": "digest"
+        },
+        "lifecycle": {
+          "contract_version": "1.0.0",
+          "event_type": "example.sync.update",
+          "phases": [
+            {
+              "id": "available",
+              "label": "Available"
+            },
+            {
+              "id": "installed",
+              "label": "Installed",
+              "terminal": true
+            },
+            {
+              "id": "failed",
+              "label": "Failed",
+              "terminal": true,
+              "severity": "error"
+            }
+          ],
+          "initial_phases": [
+            "available"
+          ],
+          "transitions": [
+            {
+              "from_phase": "available",
+              "to_phase": "available"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "installed"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "failed"
+            }
+          ]
+        },
+        "facts": [
+          {
+            "key": "version",
+            "label": "Version",
+            "kind": "text"
+          },
+          {
+            "key": "size",
+            "label": "Size",
+            "kind": "integer",
+            "required": false
+          }
+        ],
+        "actions": [
+          {
+            "action_id": "install.apply",
+            "label": "Install",
+            "input": {
+              "channel": {
+                "type": "string",
+                "max_length": 20
+              }
+            }
+          }
+        ],
+        "renderers": [
+          {
+            "contract_version": "1.0.0",
+            "event_type": "example.sync.update",
+            "surface": "chat",
+            "kind": "markdown_template",
+            "template": "**{title}** {fact_version}"
+          }
+        ],
+        "recipient": "someone"
+      }
+    },
+    {
+      "name": "type: destination field",
+      "document_type": "notification-canonical-type-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "label": "Update",
+        "description": "A plugin update lifecycle.",
+        "max_urgency": "critical",
+        "story_key_prefix": "update:",
+        "grouping": {
+          "strategy": "key",
+          "merge": "digest"
+        },
+        "lifecycle": {
+          "contract_version": "1.0.0",
+          "event_type": "example.sync.update",
+          "phases": [
+            {
+              "id": "available",
+              "label": "Available"
+            },
+            {
+              "id": "installed",
+              "label": "Installed",
+              "terminal": true
+            },
+            {
+              "id": "failed",
+              "label": "Failed",
+              "terminal": true,
+              "severity": "error"
+            }
+          ],
+          "initial_phases": [
+            "available"
+          ],
+          "transitions": [
+            {
+              "from_phase": "available",
+              "to_phase": "available"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "installed"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "failed"
+            }
+          ]
+        },
+        "facts": [
+          {
+            "key": "version",
+            "label": "Version",
+            "kind": "text"
+          },
+          {
+            "key": "size",
+            "label": "Size",
+            "kind": "integer",
+            "required": false
+          }
+        ],
+        "actions": [
+          {
+            "action_id": "install.apply",
+            "label": "Install",
+            "input": {
+              "channel": {
+                "type": "string",
+                "max_length": 20
+              }
+            }
+          }
+        ],
+        "renderers": [
+          {
+            "contract_version": "1.0.0",
+            "event_type": "example.sync.update",
+            "surface": "chat",
+            "kind": "markdown_template",
+            "template": "**{title}** {fact_version}"
+          }
+        ],
+        "destination_id": "3f2a9b7e-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "name": "type: category other than plugin",
+      "document_type": "notification-canonical-type-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "label": "Update",
+        "description": "A plugin update lifecycle.",
+        "max_urgency": "critical",
+        "story_key_prefix": "update:",
+        "grouping": {
+          "strategy": "key",
+          "merge": "digest"
+        },
+        "lifecycle": {
+          "contract_version": "1.0.0",
+          "event_type": "example.sync.update",
+          "phases": [
+            {
+              "id": "available",
+              "label": "Available"
+            },
+            {
+              "id": "installed",
+              "label": "Installed",
+              "terminal": true
+            },
+            {
+              "id": "failed",
+              "label": "Failed",
+              "terminal": true,
+              "severity": "error"
+            }
+          ],
+          "initial_phases": [
+            "available"
+          ],
+          "transitions": [
+            {
+              "from_phase": "available",
+              "to_phase": "available"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "installed"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "failed"
+            }
+          ]
+        },
+        "facts": [
+          {
+            "key": "version",
+            "label": "Version",
+            "kind": "text"
+          },
+          {
+            "key": "size",
+            "label": "Size",
+            "kind": "integer",
+            "required": false
+          }
+        ],
+        "actions": [
+          {
+            "action_id": "install.apply",
+            "label": "Install",
+            "input": {
+              "channel": {
+                "type": "string",
+                "max_length": 20
+              }
+            }
+          }
+        ],
+        "renderers": [
+          {
+            "contract_version": "1.0.0",
+            "event_type": "example.sync.update",
+            "surface": "chat",
+            "kind": "markdown_template",
+            "template": "**{title}** {fact_version}"
+          }
+        ],
+        "default_category": "system"
+      }
+    },
+    {
+      "name": "type: security purpose without SECURE destinations",
+      "document_type": "notification-canonical-type-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "label": "Update",
+        "description": "A plugin update lifecycle.",
+        "max_urgency": "critical",
+        "story_key_prefix": "update:",
+        "grouping": {
+          "strategy": "key",
+          "merge": "digest"
+        },
+        "lifecycle": {
+          "contract_version": "1.0.0",
+          "event_type": "example.sync.update",
+          "phases": [
+            {
+              "id": "available",
+              "label": "Available"
+            },
+            {
+              "id": "installed",
+              "label": "Installed",
+              "terminal": true
+            },
+            {
+              "id": "failed",
+              "label": "Failed",
+              "terminal": true,
+              "severity": "error"
+            }
+          ],
+          "initial_phases": [
+            "available"
+          ],
+          "transitions": [
+            {
+              "from_phase": "available",
+              "to_phase": "available"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "installed"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "failed"
+            }
+          ]
+        },
+        "facts": [
+          {
+            "key": "version",
+            "label": "Version",
+            "kind": "text"
+          },
+          {
+            "key": "size",
+            "label": "Size",
+            "kind": "integer",
+            "required": false
+          }
+        ],
+        "actions": [
+          {
+            "action_id": "install.apply",
+            "label": "Install",
+            "input": {
+              "channel": {
+                "type": "string",
+                "max_length": 20
+              }
+            }
+          }
+        ],
+        "renderers": [
+          {
+            "contract_version": "1.0.0",
+            "event_type": "example.sync.update",
+            "surface": "chat",
+            "kind": "markdown_template",
+            "template": "**{title}** {fact_version}"
+          }
+        ],
+        "purpose": "security"
+      }
+    },
+    {
+      "name": "type: recovery purpose",
+      "document_type": "notification-canonical-type-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "label": "Update",
+        "description": "A plugin update lifecycle.",
+        "max_urgency": "critical",
+        "story_key_prefix": "update:",
+        "grouping": {
+          "strategy": "key",
+          "merge": "digest"
+        },
+        "lifecycle": {
+          "contract_version": "1.0.0",
+          "event_type": "example.sync.update",
+          "phases": [
+            {
+              "id": "available",
+              "label": "Available"
+            },
+            {
+              "id": "installed",
+              "label": "Installed",
+              "terminal": true
+            },
+            {
+              "id": "failed",
+              "label": "Failed",
+              "terminal": true,
+              "severity": "error"
+            }
+          ],
+          "initial_phases": [
+            "available"
+          ],
+          "transitions": [
+            {
+              "from_phase": "available",
+              "to_phase": "available"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "installed"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "failed"
+            }
+          ]
+        },
+        "facts": [
+          {
+            "key": "version",
+            "label": "Version",
+            "kind": "text"
+          },
+          {
+            "key": "size",
+            "label": "Size",
+            "kind": "integer",
+            "required": false
+          }
+        ],
+        "actions": [
+          {
+            "action_id": "install.apply",
+            "label": "Install",
+            "input": {
+              "channel": {
+                "type": "string",
+                "max_length": 20
+              }
+            }
+          }
+        ],
+        "renderers": [
+          {
+            "contract_version": "1.0.0",
+            "event_type": "example.sync.update",
+            "surface": "chat",
+            "kind": "markdown_template",
+            "template": "**{title}** {fact_version}"
+          }
+        ],
+        "purpose": "recovery"
+      }
+    },
+    {
+      "name": "type: newer contract version",
+      "document_type": "notification-canonical-type-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.9.0",
+        "event_type": "example.sync.update",
+        "label": "Update",
+        "description": "A plugin update lifecycle.",
+        "max_urgency": "critical",
+        "story_key_prefix": "update:",
+        "grouping": {
+          "strategy": "key",
+          "merge": "digest"
+        },
+        "lifecycle": {
+          "contract_version": "1.0.0",
+          "event_type": "example.sync.update",
+          "phases": [
+            {
+              "id": "available",
+              "label": "Available"
+            },
+            {
+              "id": "installed",
+              "label": "Installed",
+              "terminal": true
+            },
+            {
+              "id": "failed",
+              "label": "Failed",
+              "terminal": true,
+              "severity": "error"
+            }
+          ],
+          "initial_phases": [
+            "available"
+          ],
+          "transitions": [
+            {
+              "from_phase": "available",
+              "to_phase": "available"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "installed"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "failed"
+            }
+          ]
+        },
+        "facts": [
+          {
+            "key": "version",
+            "label": "Version",
+            "kind": "text"
+          },
+          {
+            "key": "size",
+            "label": "Size",
+            "kind": "integer",
+            "required": false
+          }
+        ],
+        "actions": [
+          {
+            "action_id": "install.apply",
+            "label": "Install",
+            "input": {
+              "channel": {
+                "type": "string",
+                "max_length": 20
+              }
+            }
+          }
+        ],
+        "renderers": [
+          {
+            "contract_version": "1.0.0",
+            "event_type": "example.sync.update",
+            "surface": "chat",
+            "kind": "markdown_template",
+            "template": "**{title}** {fact_version}"
+          }
+        ]
+      }
+    },
+    {
+      "name": "type: other major contract version",
+      "document_type": "notification-canonical-type-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "2.0.0",
+        "event_type": "example.sync.update",
+        "label": "Update",
+        "description": "A plugin update lifecycle.",
+        "max_urgency": "critical",
+        "story_key_prefix": "update:",
+        "grouping": {
+          "strategy": "key",
+          "merge": "digest"
+        },
+        "lifecycle": {
+          "contract_version": "1.0.0",
+          "event_type": "example.sync.update",
+          "phases": [
+            {
+              "id": "available",
+              "label": "Available"
+            },
+            {
+              "id": "installed",
+              "label": "Installed",
+              "terminal": true
+            },
+            {
+              "id": "failed",
+              "label": "Failed",
+              "terminal": true,
+              "severity": "error"
+            }
+          ],
+          "initial_phases": [
+            "available"
+          ],
+          "transitions": [
+            {
+              "from_phase": "available",
+              "to_phase": "available"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "installed"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "failed"
+            }
+          ]
+        },
+        "facts": [
+          {
+            "key": "version",
+            "label": "Version",
+            "kind": "text"
+          },
+          {
+            "key": "size",
+            "label": "Size",
+            "kind": "integer",
+            "required": false
+          }
+        ],
+        "actions": [
+          {
+            "action_id": "install.apply",
+            "label": "Install",
+            "input": {
+              "channel": {
+                "type": "string",
+                "max_length": 20
+              }
+            }
+          }
+        ],
+        "renderers": [
+          {
+            "contract_version": "1.0.0",
+            "event_type": "example.sync.update",
+            "surface": "chat",
+            "kind": "markdown_template",
+            "template": "**{title}** {fact_version}"
+          }
+        ]
+      }
+    },
+    {
+      "name": "type: lifecycle describes another type",
+      "document_type": "notification-canonical-type-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "label": "Update",
+        "description": "A plugin update lifecycle.",
+        "max_urgency": "critical",
+        "story_key_prefix": "update:",
+        "grouping": {
+          "strategy": "key",
+          "merge": "digest"
+        },
+        "lifecycle": {
+          "contract_version": "1.0.0",
+          "event_type": "example.sync.other",
+          "phases": [
+            {
+              "id": "available",
+              "label": "Available"
+            },
+            {
+              "id": "installed",
+              "label": "Installed",
+              "terminal": true
+            },
+            {
+              "id": "failed",
+              "label": "Failed",
+              "terminal": true,
+              "severity": "error"
+            }
+          ],
+          "initial_phases": [
+            "available"
+          ],
+          "transitions": [
+            {
+              "from_phase": "available",
+              "to_phase": "available"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "installed"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "failed"
+            }
+          ]
+        },
+        "facts": [
+          {
+            "key": "version",
+            "label": "Version",
+            "kind": "text"
+          },
+          {
+            "key": "size",
+            "label": "Size",
+            "kind": "integer",
+            "required": false
+          }
+        ],
+        "actions": [
+          {
+            "action_id": "install.apply",
+            "label": "Install",
+            "input": {
+              "channel": {
+                "type": "string",
+                "max_length": 20
+              }
+            }
+          }
+        ],
+        "renderers": [
+          {
+            "contract_version": "1.0.0",
+            "event_type": "example.sync.update",
+            "surface": "chat",
+            "kind": "markdown_template",
+            "template": "**{title}** {fact_version}"
+          }
+        ]
+      }
+    },
+    {
+      "name": "type: duplicate fact keys",
+      "document_type": "notification-canonical-type-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "label": "Update",
+        "description": "A plugin update lifecycle.",
+        "max_urgency": "critical",
+        "story_key_prefix": "update:",
+        "grouping": {
+          "strategy": "key",
+          "merge": "digest"
+        },
+        "lifecycle": {
+          "contract_version": "1.0.0",
+          "event_type": "example.sync.update",
+          "phases": [
+            {
+              "id": "available",
+              "label": "Available"
+            },
+            {
+              "id": "installed",
+              "label": "Installed",
+              "terminal": true
+            },
+            {
+              "id": "failed",
+              "label": "Failed",
+              "terminal": true,
+              "severity": "error"
+            }
+          ],
+          "initial_phases": [
+            "available"
+          ],
+          "transitions": [
+            {
+              "from_phase": "available",
+              "to_phase": "available"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "installed"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "failed"
+            }
+          ]
+        },
+        "facts": [
+          {
+            "key": "a",
+            "label": "A",
+            "kind": "text"
+          },
+          {
+            "key": "a",
+            "label": "A",
+            "kind": "text"
+          }
+        ],
+        "actions": [
+          {
+            "action_id": "install.apply",
+            "label": "Install",
+            "input": {
+              "channel": {
+                "type": "string",
+                "max_length": 20
+              }
+            }
+          }
+        ],
+        "renderers": [
+          {
+            "contract_version": "1.0.0",
+            "event_type": "example.sync.update",
+            "surface": "chat",
+            "kind": "markdown_template",
+            "template": "**{title}** {fact_version}"
+          }
+        ]
+      }
+    },
+    {
+      "name": "type: unknown fact kind",
+      "document_type": "notification-canonical-type-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "label": "Update",
+        "description": "A plugin update lifecycle.",
+        "max_urgency": "critical",
+        "story_key_prefix": "update:",
+        "grouping": {
+          "strategy": "key",
+          "merge": "digest"
+        },
+        "lifecycle": {
+          "contract_version": "1.0.0",
+          "event_type": "example.sync.update",
+          "phases": [
+            {
+              "id": "available",
+              "label": "Available"
+            },
+            {
+              "id": "installed",
+              "label": "Installed",
+              "terminal": true
+            },
+            {
+              "id": "failed",
+              "label": "Failed",
+              "terminal": true,
+              "severity": "error"
+            }
+          ],
+          "initial_phases": [
+            "available"
+          ],
+          "transitions": [
+            {
+              "from_phase": "available",
+              "to_phase": "available"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "installed"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "failed"
+            }
+          ]
+        },
+        "facts": [
+          {
+            "key": "a",
+            "label": "A",
+            "kind": "float"
+          }
+        ],
+        "actions": [
+          {
+            "action_id": "install.apply",
+            "label": "Install",
+            "input": {
+              "channel": {
+                "type": "string",
+                "max_length": 20
+              }
+            }
+          }
+        ],
+        "renderers": [
+          {
+            "contract_version": "1.0.0",
+            "event_type": "example.sync.update",
+            "surface": "chat",
+            "kind": "markdown_template",
+            "template": "**{title}** {fact_version}"
+          }
+        ]
+      }
+    },
+    {
+      "name": "type: action requires whole-API authority",
+      "document_type": "notification-canonical-type-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "label": "Update",
+        "description": "A plugin update lifecycle.",
+        "max_urgency": "critical",
+        "story_key_prefix": "update:",
+        "grouping": {
+          "strategy": "key",
+          "merge": "digest"
+        },
+        "lifecycle": {
+          "contract_version": "1.0.0",
+          "event_type": "example.sync.update",
+          "phases": [
+            {
+              "id": "available",
+              "label": "Available"
+            },
+            {
+              "id": "installed",
+              "label": "Installed",
+              "terminal": true
+            },
+            {
+              "id": "failed",
+              "label": "Failed",
+              "terminal": true,
+              "severity": "error"
+            }
+          ],
+          "initial_phases": [
+            "available"
+          ],
+          "transitions": [
+            {
+              "from_phase": "available",
+              "to_phase": "available"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "installed"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "failed"
+            }
+          ]
+        },
+        "facts": [
+          {
+            "key": "version",
+            "label": "Version",
+            "kind": "text"
+          },
+          {
+            "key": "size",
+            "label": "Size",
+            "kind": "integer",
+            "required": false
+          }
+        ],
+        "actions": [
+          {
+            "action_id": "a.b",
+            "label": "A",
+            "requires": [
+              "api.full"
+            ]
+          }
+        ],
+        "renderers": [
+          {
+            "contract_version": "1.0.0",
+            "event_type": "example.sync.update",
+            "surface": "chat",
+            "kind": "markdown_template",
+            "template": "**{title}** {fact_version}"
+          }
+        ]
+      }
+    },
+    {
+      "name": "type: action requires sensitive notification authority",
+      "document_type": "notification-canonical-type-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "label": "Update",
+        "description": "A plugin update lifecycle.",
+        "max_urgency": "critical",
+        "story_key_prefix": "update:",
+        "grouping": {
+          "strategy": "key",
+          "merge": "digest"
+        },
+        "lifecycle": {
+          "contract_version": "1.0.0",
+          "event_type": "example.sync.update",
+          "phases": [
+            {
+              "id": "available",
+              "label": "Available"
+            },
+            {
+              "id": "installed",
+              "label": "Installed",
+              "terminal": true
+            },
+            {
+              "id": "failed",
+              "label": "Failed",
+              "terminal": true,
+              "severity": "error"
+            }
+          ],
+          "initial_phases": [
+            "available"
+          ],
+          "transitions": [
+            {
+              "from_phase": "available",
+              "to_phase": "available"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "installed"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "failed"
+            }
+          ]
+        },
+        "facts": [
+          {
+            "key": "version",
+            "label": "Version",
+            "kind": "text"
+          },
+          {
+            "key": "size",
+            "label": "Size",
+            "kind": "integer",
+            "required": false
+          }
+        ],
+        "actions": [
+          {
+            "action_id": "a.b",
+            "label": "A",
+            "requires": [
+              "notifications.sensitive"
+            ]
+          }
+        ],
+        "renderers": [
+          {
+            "contract_version": "1.0.0",
+            "event_type": "example.sync.update",
+            "surface": "chat",
+            "kind": "markdown_template",
+            "template": "**{title}** {fact_version}"
+          }
+        ]
+      }
+    },
+    {
+      "name": "type: action requires unknown capability",
+      "document_type": "notification-canonical-type-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "label": "Update",
+        "description": "A plugin update lifecycle.",
+        "max_urgency": "critical",
+        "story_key_prefix": "update:",
+        "grouping": {
+          "strategy": "key",
+          "merge": "digest"
+        },
+        "lifecycle": {
+          "contract_version": "1.0.0",
+          "event_type": "example.sync.update",
+          "phases": [
+            {
+              "id": "available",
+              "label": "Available"
+            },
+            {
+              "id": "installed",
+              "label": "Installed",
+              "terminal": true
+            },
+            {
+              "id": "failed",
+              "label": "Failed",
+              "terminal": true,
+              "severity": "error"
+            }
+          ],
+          "initial_phases": [
+            "available"
+          ],
+          "transitions": [
+            {
+              "from_phase": "available",
+              "to_phase": "available"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "installed"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "failed"
+            }
+          ]
+        },
+        "facts": [
+          {
+            "key": "version",
+            "label": "Version",
+            "kind": "text"
+          },
+          {
+            "key": "size",
+            "label": "Size",
+            "kind": "integer",
+            "required": false
+          }
+        ],
+        "actions": [
+          {
+            "action_id": "a.b",
+            "label": "A",
+            "requires": [
+              "nonsense.capability"
+            ]
+          }
+        ],
+        "renderers": [
+          {
+            "contract_version": "1.0.0",
+            "event_type": "example.sync.update",
+            "surface": "chat",
+            "kind": "markdown_template",
+            "template": "**{title}** {fact_version}"
+          }
+        ]
+      }
+    },
+    {
+      "name": "type: action input of unsupported type",
+      "document_type": "notification-canonical-type-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "label": "Update",
+        "description": "A plugin update lifecycle.",
+        "max_urgency": "critical",
+        "story_key_prefix": "update:",
+        "grouping": {
+          "strategy": "key",
+          "merge": "digest"
+        },
+        "lifecycle": {
+          "contract_version": "1.0.0",
+          "event_type": "example.sync.update",
+          "phases": [
+            {
+              "id": "available",
+              "label": "Available"
+            },
+            {
+              "id": "installed",
+              "label": "Installed",
+              "terminal": true
+            },
+            {
+              "id": "failed",
+              "label": "Failed",
+              "terminal": true,
+              "severity": "error"
+            }
+          ],
+          "initial_phases": [
+            "available"
+          ],
+          "transitions": [
+            {
+              "from_phase": "available",
+              "to_phase": "available"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "installed"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "failed"
+            }
+          ]
+        },
+        "facts": [
+          {
+            "key": "version",
+            "label": "Version",
+            "kind": "text"
+          },
+          {
+            "key": "size",
+            "label": "Size",
+            "kind": "integer",
+            "required": false
+          }
+        ],
+        "actions": [
+          {
+            "action_id": "a.b",
+            "label": "A",
+            "input": {
+              "x": {
+                "type": "object"
+              }
+            }
+          }
+        ],
+        "renderers": [
+          {
+            "contract_version": "1.0.0",
+            "event_type": "example.sync.update",
+            "surface": "chat",
+            "kind": "markdown_template",
+            "template": "**{title}** {fact_version}"
+          }
+        ]
+      }
+    },
+    {
+      "name": "type: duplicate action IDs",
+      "document_type": "notification-canonical-type-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "label": "Update",
+        "description": "A plugin update lifecycle.",
+        "max_urgency": "critical",
+        "story_key_prefix": "update:",
+        "grouping": {
+          "strategy": "key",
+          "merge": "digest"
+        },
+        "lifecycle": {
+          "contract_version": "1.0.0",
+          "event_type": "example.sync.update",
+          "phases": [
+            {
+              "id": "available",
+              "label": "Available"
+            },
+            {
+              "id": "installed",
+              "label": "Installed",
+              "terminal": true
+            },
+            {
+              "id": "failed",
+              "label": "Failed",
+              "terminal": true,
+              "severity": "error"
+            }
+          ],
+          "initial_phases": [
+            "available"
+          ],
+          "transitions": [
+            {
+              "from_phase": "available",
+              "to_phase": "available"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "installed"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "failed"
+            }
+          ]
+        },
+        "facts": [
+          {
+            "key": "version",
+            "label": "Version",
+            "kind": "text"
+          },
+          {
+            "key": "size",
+            "label": "Size",
+            "kind": "integer",
+            "required": false
+          }
+        ],
+        "actions": [
+          {
+            "action_id": "a.b",
+            "label": "A"
+          },
+          {
+            "action_id": "a.b",
+            "label": "A"
+          }
+        ],
+        "renderers": [
+          {
+            "contract_version": "1.0.0",
+            "event_type": "example.sync.update",
+            "surface": "chat",
+            "kind": "markdown_template",
+            "template": "**{title}** {fact_version}"
+          }
+        ]
+      }
+    },
+    {
+      "name": "type: template references an undeclared fact",
+      "document_type": "notification-canonical-type-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "label": "Update",
+        "description": "A plugin update lifecycle.",
+        "max_urgency": "critical",
+        "story_key_prefix": "update:",
+        "grouping": {
+          "strategy": "key",
+          "merge": "digest"
+        },
+        "lifecycle": {
+          "contract_version": "1.0.0",
+          "event_type": "example.sync.update",
+          "phases": [
+            {
+              "id": "available",
+              "label": "Available"
+            },
+            {
+              "id": "installed",
+              "label": "Installed",
+              "terminal": true
+            },
+            {
+              "id": "failed",
+              "label": "Failed",
+              "terminal": true,
+              "severity": "error"
+            }
+          ],
+          "initial_phases": [
+            "available"
+          ],
+          "transitions": [
+            {
+              "from_phase": "available",
+              "to_phase": "available"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "installed"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "failed"
+            }
+          ]
+        },
+        "facts": [
+          {
+            "key": "version",
+            "label": "Version",
+            "kind": "text"
+          },
+          {
+            "key": "size",
+            "label": "Size",
+            "kind": "integer",
+            "required": false
+          }
+        ],
+        "actions": [
+          {
+            "action_id": "install.apply",
+            "label": "Install",
+            "input": {
+              "channel": {
+                "type": "string",
+                "max_length": 20
+              }
+            }
+          }
+        ],
+        "renderers": [
+          {
+            "contract_version": "1.0.0",
+            "event_type": "example.sync.update",
+            "surface": "chat",
+            "kind": "markdown_template",
+            "template": "{fact_undeclared}"
+          }
+        ]
+      }
+    },
+    {
+      "name": "type: duplicate renderer contributions",
+      "document_type": "notification-canonical-type-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "label": "Update",
+        "description": "A plugin update lifecycle.",
+        "max_urgency": "critical",
+        "story_key_prefix": "update:",
+        "grouping": {
+          "strategy": "key",
+          "merge": "digest"
+        },
+        "lifecycle": {
+          "contract_version": "1.0.0",
+          "event_type": "example.sync.update",
+          "phases": [
+            {
+              "id": "available",
+              "label": "Available"
+            },
+            {
+              "id": "installed",
+              "label": "Installed",
+              "terminal": true
+            },
+            {
+              "id": "failed",
+              "label": "Failed",
+              "terminal": true,
+              "severity": "error"
+            }
+          ],
+          "initial_phases": [
+            "available"
+          ],
+          "transitions": [
+            {
+              "from_phase": "available",
+              "to_phase": "available"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "installed"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "failed"
+            }
+          ]
+        },
+        "facts": [
+          {
+            "key": "version",
+            "label": "Version",
+            "kind": "text"
+          },
+          {
+            "key": "size",
+            "label": "Size",
+            "kind": "integer",
+            "required": false
+          }
+        ],
+        "actions": [
+          {
+            "action_id": "install.apply",
+            "label": "Install",
+            "input": {
+              "channel": {
+                "type": "string",
+                "max_length": 20
+              }
+            }
+          }
+        ],
+        "renderers": [
+          {
+            "contract_version": "1.0.0",
+            "event_type": "example.sync.update",
+            "surface": "chat",
+            "kind": "markdown_template",
+            "template": "**{title}** {fact_version}"
+          },
+          {
+            "contract_version": "1.0.0",
+            "event_type": "example.sync.update",
+            "surface": "chat",
+            "kind": "markdown_template",
+            "template": "**{title}** {fact_version}"
+          }
+        ]
+      }
+    },
+    {
+      "name": "type: html template with a script",
+      "document_type": "notification-canonical-type-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "label": "Update",
+        "description": "A plugin update lifecycle.",
+        "max_urgency": "critical",
+        "story_key_prefix": "update:",
+        "grouping": {
+          "strategy": "key",
+          "merge": "digest"
+        },
+        "lifecycle": {
+          "contract_version": "1.0.0",
+          "event_type": "example.sync.update",
+          "phases": [
+            {
+              "id": "available",
+              "label": "Available"
+            },
+            {
+              "id": "installed",
+              "label": "Installed",
+              "terminal": true
+            },
+            {
+              "id": "failed",
+              "label": "Failed",
+              "terminal": true,
+              "severity": "error"
+            }
+          ],
+          "initial_phases": [
+            "available"
+          ],
+          "transitions": [
+            {
+              "from_phase": "available",
+              "to_phase": "available"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "installed"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "failed"
+            }
+          ]
+        },
+        "facts": [
+          {
+            "key": "version",
+            "label": "Version",
+            "kind": "text"
+          },
+          {
+            "key": "size",
+            "label": "Size",
+            "kind": "integer",
+            "required": false
+          }
+        ],
+        "actions": [
+          {
+            "action_id": "install.apply",
+            "label": "Install",
+            "input": {
+              "channel": {
+                "type": "string",
+                "max_length": 20
+              }
+            }
+          }
+        ],
+        "renderers": [
+          {
+            "contract_version": "1.0.0",
+            "event_type": "example.sync.update",
+            "surface": "email",
+            "kind": "html_template",
+            "template": "<script>x</script>"
+          }
+        ]
+      }
+    },
+    {
+      "name": "type: more than 24 facts",
+      "document_type": "notification-canonical-type-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "label": "Update",
+        "description": "A plugin update lifecycle.",
+        "max_urgency": "critical",
+        "story_key_prefix": "update:",
+        "grouping": {
+          "strategy": "key",
+          "merge": "digest"
+        },
+        "lifecycle": {
+          "contract_version": "1.0.0",
+          "event_type": "example.sync.update",
+          "phases": [
+            {
+              "id": "available",
+              "label": "Available"
+            },
+            {
+              "id": "installed",
+              "label": "Installed",
+              "terminal": true
+            },
+            {
+              "id": "failed",
+              "label": "Failed",
+              "terminal": true,
+              "severity": "error"
+            }
+          ],
+          "initial_phases": [
+            "available"
+          ],
+          "transitions": [
+            {
+              "from_phase": "available",
+              "to_phase": "available"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "installed"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "failed"
+            }
+          ]
+        },
+        "facts": [
+          {
+            "key": "k0",
+            "label": "A",
+            "kind": "text"
+          },
+          {
+            "key": "k1",
+            "label": "A",
+            "kind": "text"
+          },
+          {
+            "key": "k2",
+            "label": "A",
+            "kind": "text"
+          },
+          {
+            "key": "k3",
+            "label": "A",
+            "kind": "text"
+          },
+          {
+            "key": "k4",
+            "label": "A",
+            "kind": "text"
+          },
+          {
+            "key": "k5",
+            "label": "A",
+            "kind": "text"
+          },
+          {
+            "key": "k6",
+            "label": "A",
+            "kind": "text"
+          },
+          {
+            "key": "k7",
+            "label": "A",
+            "kind": "text"
+          },
+          {
+            "key": "k8",
+            "label": "A",
+            "kind": "text"
+          },
+          {
+            "key": "k9",
+            "label": "A",
+            "kind": "text"
+          },
+          {
+            "key": "k10",
+            "label": "A",
+            "kind": "text"
+          },
+          {
+            "key": "k11",
+            "label": "A",
+            "kind": "text"
+          },
+          {
+            "key": "k12",
+            "label": "A",
+            "kind": "text"
+          },
+          {
+            "key": "k13",
+            "label": "A",
+            "kind": "text"
+          },
+          {
+            "key": "k14",
+            "label": "A",
+            "kind": "text"
+          },
+          {
+            "key": "k15",
+            "label": "A",
+            "kind": "text"
+          },
+          {
+            "key": "k16",
+            "label": "A",
+            "kind": "text"
+          },
+          {
+            "key": "k17",
+            "label": "A",
+            "kind": "text"
+          },
+          {
+            "key": "k18",
+            "label": "A",
+            "kind": "text"
+          },
+          {
+            "key": "k19",
+            "label": "A",
+            "kind": "text"
+          },
+          {
+            "key": "k20",
+            "label": "A",
+            "kind": "text"
+          },
+          {
+            "key": "k21",
+            "label": "A",
+            "kind": "text"
+          },
+          {
+            "key": "k22",
+            "label": "A",
+            "kind": "text"
+          },
+          {
+            "key": "k23",
+            "label": "A",
+            "kind": "text"
+          },
+          {
+            "key": "k24",
+            "label": "A",
+            "kind": "text"
+          }
+        ],
+        "actions": [
+          {
+            "action_id": "install.apply",
+            "label": "Install",
+            "input": {
+              "channel": {
+                "type": "string",
+                "max_length": 20
+              }
+            }
+          }
+        ],
+        "renderers": [
+          {
+            "contract_version": "1.0.0",
+            "event_type": "example.sync.update",
+            "surface": "chat",
+            "kind": "markdown_template",
+            "template": "**{title}** {fact_version}"
+          }
+        ]
+      }
+    },
+    {
+      "name": "type: oversized description",
+      "document_type": "notification-canonical-type-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "event_type": "example.sync.update",
+        "label": "Update",
+        "description": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "max_urgency": "critical",
+        "story_key_prefix": "update:",
+        "grouping": {
+          "strategy": "key",
+          "merge": "digest"
+        },
+        "lifecycle": {
+          "contract_version": "1.0.0",
+          "event_type": "example.sync.update",
+          "phases": [
+            {
+              "id": "available",
+              "label": "Available"
+            },
+            {
+              "id": "installed",
+              "label": "Installed",
+              "terminal": true
+            },
+            {
+              "id": "failed",
+              "label": "Failed",
+              "terminal": true,
+              "severity": "error"
+            }
+          ],
+          "initial_phases": [
+            "available"
+          ],
+          "transitions": [
+            {
+              "from_phase": "available",
+              "to_phase": "available"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "installed"
+            },
+            {
+              "from_phase": "available",
+              "to_phase": "failed"
+            }
+          ]
+        },
+        "facts": [
+          {
+            "key": "version",
+            "label": "Version",
+            "kind": "text"
+          },
+          {
+            "key": "size",
+            "label": "Size",
+            "kind": "integer",
+            "required": false
+          }
+        ],
+        "actions": [
+          {
+            "action_id": "install.apply",
+            "label": "Install",
+            "input": {
+              "channel": {
+                "type": "string",
+                "max_length": 20
+              }
+            }
+          }
+        ],
+        "renderers": [
+          {
+            "contract_version": "1.0.0",
+            "event_type": "example.sync.update",
+            "surface": "chat",
+            "kind": "markdown_template",
+            "template": "**{title}** {fact_version}"
+          }
+        ]
+      }
+    },
+    {
+      "name": "canonical send delivery",
+      "document_type": "notification-canonical-delivery-v1",
+      "valid": true,
+      "document": {
+        "notification_id": "3f2a9b7e-0000-4000-8000-000000000002",
+        "event_type": "example.sync.update",
+        "title": "Update ready",
+        "body": "Version 2.1.0",
+        "event_at": 1767225600,
+        "urgency": "normal",
+        "link": "https://app.example.test/notifications/stories/1",
+        "contract_version": "1.0.0",
+        "operation": "send",
+        "revision": 1,
+        "idempotency_key": "obligation-1"
+      }
+    },
+    {
+      "name": "canonical edit delivery",
+      "document_type": "notification-canonical-delivery-v1",
+      "valid": true,
+      "document": {
+        "notification_id": "3f2a9b7e-0000-4000-8000-000000000002",
+        "event_type": "example.sync.update",
+        "title": "Update ready",
+        "body": "Version 2.1.0",
+        "event_at": 1767225600,
+        "urgency": "normal",
+        "link": "https://app.example.test/notifications/stories/1",
+        "contract_version": "1.0.0",
+        "operation": "edit",
+        "revision": 2,
+        "idempotency_key": "obligation-1",
+        "remote_ref": "msg-1",
+        "html": "<p>Version 2.1.0</p>",
+        "actions": [
+          {
+            "label": "Open",
+            "url": "https://example.com/open"
+          }
+        ]
+      }
+    },
+    {
+      "name": "delivery: edit without a message reference",
+      "document_type": "notification-canonical-delivery-v1",
+      "valid": false,
+      "document": {
+        "notification_id": "3f2a9b7e-0000-4000-8000-000000000002",
+        "event_type": "example.sync.update",
+        "title": "Update ready",
+        "body": "Version 2.1.0",
+        "event_at": 1767225600,
+        "urgency": "normal",
+        "link": "https://app.example.test/notifications/stories/1",
+        "contract_version": "1.0.0",
+        "operation": "edit",
+        "revision": 1,
+        "idempotency_key": "obligation-1"
+      }
+    },
+    {
+      "name": "delivery: unknown operation",
+      "document_type": "notification-canonical-delivery-v1",
+      "valid": false,
+      "document": {
+        "notification_id": "3f2a9b7e-0000-4000-8000-000000000002",
+        "event_type": "example.sync.update",
+        "title": "Update ready",
+        "body": "Version 2.1.0",
+        "event_at": 1767225600,
+        "urgency": "normal",
+        "link": "https://app.example.test/notifications/stories/1",
+        "contract_version": "1.0.0",
+        "operation": "delete",
+        "revision": 1,
+        "idempotency_key": "obligation-1"
+      }
+    },
+    {
+      "name": "delivery: recipient field",
+      "document_type": "notification-canonical-delivery-v1",
+      "valid": false,
+      "document": {
+        "notification_id": "3f2a9b7e-0000-4000-8000-000000000002",
+        "event_type": "example.sync.update",
+        "title": "Update ready",
+        "body": "Version 2.1.0",
+        "event_at": 1767225600,
+        "urgency": "normal",
+        "link": "https://app.example.test/notifications/stories/1",
+        "contract_version": "1.0.0",
+        "operation": "send",
+        "revision": 1,
+        "idempotency_key": "obligation-1",
+        "user_id": "3f2a9b7e-0000-4000-8000-000000000003"
+      }
+    },
+    {
+      "name": "delivery: oversized reference",
+      "document_type": "notification-canonical-delivery-v1",
+      "valid": false,
+      "document": {
+        "notification_id": "3f2a9b7e-0000-4000-8000-000000000002",
+        "event_type": "example.sync.update",
+        "title": "Update ready",
+        "body": "Version 2.1.0",
+        "event_at": 1767225600,
+        "urgency": "normal",
+        "link": "https://app.example.test/notifications/stories/1",
+        "contract_version": "1.0.0",
+        "operation": "send",
+        "revision": 1,
+        "idempotency_key": "obligation-1",
+        "remote_ref": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      }
+    },
+    {
+      "name": "negotiation request",
+      "document_type": "notification-contract-negotiation-request-v1",
+      "valid": true,
+      "document": {
+        "contract_version": "1.0.0"
+      }
+    },
+    {
+      "name": "negotiation request: empty version",
+      "document_type": "notification-contract-negotiation-request-v1",
+      "valid": false,
+      "document": {
+        "contract_version": ""
+      }
+    },
+    {
+      "name": "negotiation request: extra field",
+      "document_type": "notification-contract-negotiation-request-v1",
+      "valid": false,
+      "document": {
+        "contract_version": "1.0.0",
+        "features": [
+          "x"
+        ]
+      }
+    },
+    {
+      "name": "negotiation result",
+      "document_type": "notification-contract-negotiation-result-v1",
+      "valid": true,
+      "document": {
+        "host_contract_version": "1.0.0",
+        "plugin_api_version": "1.1.14",
+        "negotiated": "1.0.0",
+        "reason": null,
+        "supported_major": 1,
+        "features": [
+          "canonical_events"
+        ]
+      }
+    },
+    {
+      "name": "negotiation result: refused version",
+      "document_type": "notification-contract-negotiation-result-v1",
+      "valid": true,
+      "document": {
+        "host_contract_version": "1.0.0",
+        "plugin_api_version": "1.1.14",
+        "negotiated": null,
+        "reason": "unsupported major version",
+        "supported_major": 1,
+        "features": [
+          "canonical_events"
+        ]
+      }
+    },
+    {
+      "name": "negotiation result: extra field",
+      "document_type": "notification-contract-negotiation-result-v1",
+      "valid": false,
+      "document": {
+        "host_contract_version": "1.0.0",
+        "plugin_api_version": "1.1.14",
+        "negotiated": "1.0.0",
+        "reason": null,
+        "supported_major": 1,
+        "features": [
+          "canonical_events"
+        ],
+        "token": "x"
+      }
+    }
+  ]
+}

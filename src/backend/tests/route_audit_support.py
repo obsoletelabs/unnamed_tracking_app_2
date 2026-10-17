@@ -37,6 +37,7 @@ from src.database.models.media_extras import (
 from src.database.models.media_item import MediaItem
 from src.database.models.movies import Movie
 from src.database.models.notification import Notification
+from src.database.models.notification_delivery import NotificationDelivery
 from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_story import (
     NotificationLiveLink,
@@ -208,7 +209,7 @@ async def seed_owner(db, tenant: Tenant) -> None:
 
 
 async def _seed_story(db, tenant: Tenant, movie_id) -> None:
-    """A host story with one revision and an active live link, all owned by the tenant."""
+    """A host story with one revision, an active live link and a sent delivery, all owned by the tenant."""
     now = int(time.time())
     story = NotificationStory(
         user_id=tenant.user.id,
@@ -253,9 +254,13 @@ async def _seed_story(db, tenant: Tenant, movie_id) -> None:
         title="Owner story",
         body="Owner story body",
     )
-    db.add_all([link, revision])
+    # A finished delivery: retrying it is refused even for its owner, never picked by workers.
+    delivery = NotificationDelivery(
+        notification_id=head.id, provider_id="core.inbox", status="sent", attempts=1
+    )
+    db.add_all([link, revision, delivery])
     await db.flush()
-    tenant.ids.update(story_id=story.id, link_id=link.id, live_token=token)
+    tenant.ids.update(story_id=story.id, link_id=link.id, live_token=token, delivery_id=delivery.id)
 
 
 @dataclass
@@ -338,6 +343,7 @@ def resolve_path(template: str, ids: dict[str, str]) -> str | None:
         "filename": "owner.txt" if "/files" in template else "owner.png",
         "session_id": ids["session_id"] if "/sessions/me" in template else str(uuid4()),
         "story_id": ids["story_id"],
+        "delivery_id": ids["delivery_id"],
         "link_id": ids["link_id"],
         "token": ids["live_token"],
         "index": "0",

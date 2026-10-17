@@ -45,7 +45,7 @@ except ImportError:  # pragma: no cover - Windows development/test fallback
     resource = None  # type: ignore[assignment]
 
 _PLUGIN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
-PLUGIN_API_CONTRACT_VERSION = "1.1.13"
+PLUGIN_API_CONTRACT_VERSION = "1.1.14"
 _ENTRYPOINT = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*(?::[A-Za-z_][A-Za-z0-9_]*)?$")
 # Linux parent-death signals follow the spawning thread. HTTP request threads
 # end after their response, while supervised workers must live until shutdown.
@@ -79,6 +79,7 @@ _RESERVED_PLUGIN_ROUTE_ROOTS = {
     "actions",
     "notification-deliveries",
     "notification-layouts",
+    "notification-story-actions",
     "notification-transports",
     "changelog",
     "capabilities",
@@ -590,6 +591,10 @@ class PluginSupervisor:
                 "media.sync": "media.write",
                 "notifications.send": "notifications.send",
                 "notifications.emit": "notifications.emit",
+                # Plugin API 1.1.14: a worker declares and publishes story events for the
+                # subscribed account; the host still validates, routes and authorises each one.
+                "notification_sources.register": "notification_sources.register",
+                "notifications.publish": "notifications.canonical",
             }
             if payload.get("method") not in operations or operations[
                 payload["method"]
@@ -3044,6 +3049,7 @@ class PluginRegistry:
         generic = not _render_only and set(values) == {"delivery", "destination"}
         if (set(values) != {"delivery"} and not generic) or not isinstance(values.get("delivery"), dict):
             raise RuntimePolicyError("Notification delivery work is invalid")
+        self._validate_canonical_delivery(values["delivery"])
         self.supervisor._authorize_capability(
             plugin_id, "notification_providers.deliver", user_id=user_id
         )
@@ -3067,6 +3073,57 @@ class PluginRegistry:
             user_id=user_id,
             _notification_authorized=not _render_only, _notification_context=context,
         )
+
+    @staticmethod
+    def _validate_canonical_delivery(delivery: dict[str, Any]) -> None:
+        """Plugin API 1.1.14 deliveries name an operation; an edit must name its earlier message."""
+        if "operation" not in delivery:
+            return
+        operation = delivery["operation"]
+        reference = delivery.get("remote_ref")
+        if (operation not in {"send", "edit", "follow_up"}
+                or (reference is not None and (not isinstance(reference, str) or not 1 <= len(reference) <= 512))
+                or (operation == "edit" and reference is None)
+                or not isinstance(delivery.get("idempotency_key"), str)
+                or (delivery.get("html") is not None and (not isinstance(delivery["html"], str)
+                                                          or len(delivery["html"]) > 200_000))):
+            raise RuntimePolicyError("Notification delivery operation is invalid")
+
+    def notification_story_action(
+        self, plugin_id: str, action_id: str, values: dict[str, Any], *,
+        user_id: str, installation_id: str, story_id: str, revision: int,
+    ) -> dict[str, Any]:
+        """Host-authorised notification action; the host rechecked actor, story, source and grants.
+
+        The runtime repeats the checks it can make itself (live installation, declared action,
+        the notification-action grant) and gives the handler the private story context in the
+        reserved field, which a public action cannot supply. Only a bounded message returns.
+        """
+        UUID(user_id)
+        UUID(story_id)
+        if type(revision) is not int or revision < 1:
+            raise RuntimePolicyError("Notification story revision is invalid")
+        package, manifest = self.package(plugin_id)
+        if self._item(package).get("installation_id") != str(UUID(installation_id)):
+            raise RuntimePolicyError("Notification action belongs to another installation")
+        if not any(item.get("name") == "notifications.actions"
+                   for item in manifest.get("capabilities", [])):
+            raise RuntimePolicyError("Plugin does not declare notification actions")
+        if (not isinstance(values, dict) or len(values) > 8
+                or any(key.startswith("_") or not isinstance(key, str) for key in values)):
+            raise RuntimePolicyError("Notification action input is invalid")
+        self.supervisor._authorize_capability(plugin_id, "notifications.actions", user_id=user_id)
+        result = self.action(
+            plugin_id, action_id,
+            {**values, "_plugin_context": {"user_id": str(UUID(user_id)), "is_admin": False}},
+            user_id=user_id,
+            _notification_context={
+                "operation": "story_action", "story_id": str(UUID(story_id)),
+                "revision": revision, "installation_id": str(UUID(installation_id)),
+            },
+        )
+        message = result.get("message") if isinstance(result, dict) else None
+        return {"ok": True, "message": message[:300] if isinstance(message, str) and message.isprintable() else None}
 
     def notification_provider_action(
         self, plugin_id: str, action_id: str, configuration: dict[str, Any], *,
@@ -3443,6 +3500,20 @@ class RuntimeHandler(BaseHTTPRequestHandler):
                     attempt_id=str(payload.get("attempt_id", "")),
                     **({"server_revision": payload.get("server_revision")}
                        if parts[2] == "notification-deliveries" else {}),
+                )
+                self._json(200, result)
+                return
+            if len(parts) == 4 and parts[0] == "plugins" and parts[2] == "notification-story-actions":
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 1 <= length <= 16384:
+                    raise RuntimePolicyError("Notification action work exceeds its bounds")
+                payload = json.loads(self.rfile.read(length))
+                result = self.server.registry.notification_story_action(
+                    parts[1], parts[3], payload.get("values", {}),
+                    user_id=str(payload.get("user_id", "")),
+                    installation_id=str(payload.get("installation_id", "")),
+                    story_id=str(payload.get("story_id", "")),
+                    revision=payload.get("revision"),
                 )
                 self._json(200, result)
                 return

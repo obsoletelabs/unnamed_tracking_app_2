@@ -12,6 +12,7 @@ from src.database.models.notification_delivery import NotificationDelivery
 from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_receipt import NotificationReceipt
 from src.database.models.user import User
+from src.features.notification_diagnostic_fixtures import VARIANTS
 from src.features.notification_enrollment import EnrollmentError
 from src.features.notification_policy import Trust, select_projection
 from src.features.notification_providers.base import NotificationMessage
@@ -19,6 +20,7 @@ from src.features.notification_providers.delivery import ensure_deliveries
 from src.features.notification_providers.smtp import deliver_mail
 from src.features.smtp_configuration import normalize_email, smtp_configuration
 
+MAX_TEST_BATCH = 5
 TEST_EVENT = "notification.provider.test"
 TEST_TITLE = "Test notification"
 TEST_BODY = "Example release: A new episode is available. This is a delivery test."
@@ -80,8 +82,21 @@ async def test_smtp(db: AsyncSession, user_id: UUID, address: str) -> dict:
     return {"sent": result.success, "error": result.error, "retryable": result.retryable}
 
 
-async def queue_destination_test(db: AsyncSession, user_id: UUID, destination_id: UUID) -> dict:
-    """Tests use the same concrete endpoint, trust/preference checks and dispatcher as real work."""
+async def queue_destination_test(
+    db: AsyncSession,
+    user_id: UUID,
+    destination_id: UUID,
+    *,
+    variant: str = "basic",
+    batch_size: int = 1,
+) -> dict:
+    """Tests use the same concrete endpoint, trust/preference checks and dispatcher as real work.
+
+    The notification is bound to the one destination and carries the `test` purpose, so it can
+    neither reach another endpoint nor impersonate a verification or recovery message. The
+    variant selects representative canonical content; the real renderer applies the provider's
+    capabilities to it.
+    """
     destination = await db.scalar(
         select(NotificationDestination).where(
             NotificationDestination.id == destination_id,
@@ -91,9 +106,45 @@ async def queue_destination_test(db: AsyncSession, user_id: UUID, destination_id
     )
     if destination is None:
         raise EnrollmentError("Notification destination not found", 404)
+    if variant not in VARIANTS or not 1 <= batch_size <= MAX_TEST_BATCH:
+        raise EnrollmentError("Unsupported test variant or batch size", 422)
     preferences = await load_preferences(db, user_id)
     now = int(time.time())
-    notice = Notification(
+    deliveries: list[dict] = []
+    for position in range(batch_size):
+        notice = _test_notice(user_id, destination_id, now, variant, position)
+        if not select_projection(notice, destination, preferences):
+            raise EnrollmentError("Enable this destination and its routing before sending a test")
+        identity = await reserve_test(db, user_id)
+        notice.id = identity
+        notice.dedupe_key = f"provider-test:{identity}"
+        db.add(notice)
+        await db.flush()
+        await ensure_deliveries(db, [notice.id], preferences=preferences)
+        delivery = await db.scalar(
+            select(NotificationDelivery).where(
+                NotificationDelivery.notification_id == notice.id,
+                NotificationDelivery.destination_id == destination_id,
+            )
+        )
+        if delivery is None:
+            await db.rollback()
+            raise EnrollmentError("Enable this provider before sending a test")
+        await db.commit()
+        deliveries.append({"delivery_id": str(delivery.id), "status": delivery.status})
+    return {
+        **deliveries[0],
+        "variant": variant,
+        "queued": len(deliveries),
+        "deliveries": deliveries,
+    }
+
+
+def _test_notice(
+    user_id: UUID, destination_id: UUID, now: int, variant: str, position: int
+) -> Notification:
+    suffix = f" ({position + 1})" if position else ""
+    return Notification(
         id=uuid4(),
         user_id=user_id,
         kind="provider_test",
@@ -101,30 +152,12 @@ async def queue_destination_test(db: AsyncSession, user_id: UUID, destination_id
         source="host.test",
         media_type="notification_destination",
         media_id=destination_id,
-        title=TEST_TITLE,
+        title=TEST_TITLE + suffix,
         body=TEST_BODY,
+        group_key=f"variant:{variant}",
         event_at=now,
         required_trust=int(Trust.PUBLIC),
         purpose="test",
         inbox_visible=False,
         expires_at=now + 600,
     )
-    if not select_projection(notice, destination, preferences):
-        raise EnrollmentError("Enable this destination and its routing before sending a test")
-    identity = await reserve_test(db, user_id)
-    notice.id = identity
-    notice.dedupe_key = f"provider-test:{identity}"
-    db.add(notice)
-    await db.flush()
-    await ensure_deliveries(db, [notice.id], preferences=preferences)
-    delivery = await db.scalar(
-        select(NotificationDelivery).where(
-            NotificationDelivery.notification_id == notice.id,
-            NotificationDelivery.destination_id == destination_id,
-        )
-    )
-    if delivery is None:
-        await db.rollback()
-        raise EnrollmentError("Enable this provider before sending a test")
-    await db.commit()
-    return {"delivery_id": str(delivery.id), "status": delivery.status}
