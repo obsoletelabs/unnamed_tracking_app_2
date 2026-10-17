@@ -400,14 +400,16 @@ async def _apply_automatic_update(
     plugin: dict[str, Any],
     counts: dict[str, int],
     store: ManagerState,
+    outcomes: dict[str, dict[str, Any]] | None = None,
 ) -> None:
+    outcomes = outcomes if outcomes is not None else {}
     path = None
     try:
         update = await catalogues.check_plugin_update(plugin, admin)
         store.patch(plugin["plugin_id"], available_update=update)
         if not update.get("update_available"):
             return
-        await catalogues.notify_plugin_update(db, update)
+        outcomes[plugin["plugin_id"]] = {**update, "status": "available"}
         path, _, _ = await acquisition.download_remote_file(update["url"])
         inspected = _validate_automatic_archive(path, plugin, update)
         plan = await acquisition.plugin_installer().plan_update(plugin["plugin_id"], inspected, db)
@@ -434,9 +436,10 @@ async def _apply_automatic_update(
             )
             if result["status"] == "rolled_back":
                 counts["failed"] += 1
-                await catalogues.notify_plugin_update(db, update, failed=True)
+                outcomes[plugin["plugin_id"]] = {**update, "status": "failed"}
             else:
                 counts["installed"] += 1
+                outcomes[plugin["plugin_id"]] = {**update, "status": "updated"}
     # Keep one failed update isolated while recording its rollback and notifying administrators.
     # pylint: disable-next=broad-exception-caught
     except Exception as exc:
@@ -448,7 +451,7 @@ async def _apply_automatic_update(
         )
         failure = store.read()["plugins"][plugin["plugin_id"]].get("available_update")
         if failure and failure.get("update_available"):
-            await catalogues.notify_plugin_update(db, failure, failed=True)
+            outcomes[plugin["plugin_id"]] = {**failure, "status": "failed"}
     finally:
         if path is not None:
             path.unlink(missing_ok=True)
@@ -458,6 +461,7 @@ async def run_automatic_plugin_updates(db: AsyncSession, admin: User) -> dict[st
     """Discover, validate and stage releases, then apply policy without granting scopes."""
     counts = {"checked": 0, "installed": 0, "staged": 0, "failed": 0}
     store = manager_state()
+    notification_batch: dict[str, dict[str, Any]] = {}
     for plugin in await runtime.installed_plugins():
         source = plugin.get("source", {})
         if source.get("type") != "catalogue":
@@ -473,7 +477,10 @@ async def run_automatic_plugin_updates(db: AsyncSession, admin: User) -> dict[st
         if configured is None:
             continue
         counts["checked"] += 1
-        await _apply_automatic_update(db, admin, plugin, counts, store)
+        await _apply_automatic_update(
+            db, admin, plugin, counts, store, outcomes=notification_batch
+        )
+    await catalogues.notify_plugin_updates(db, list(notification_batch.values()))
     await db.commit()
     return counts
 
