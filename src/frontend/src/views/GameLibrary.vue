@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AutomaticMatchBanner from "../components/game/AutomaticMatchBanner.vue";
 import { sizedAssetUrl } from "../utils/gameImages";
 import HeartIcon from "../components/HeartIcon.vue";
 import GameCard from "../components/GameCard.vue";
@@ -164,6 +165,7 @@ const compactPreview = computed(
     </GameTopBar>
 
     <div ref="libraryContent" class="content">
+      <AutomaticMatchBanner />
       <div class="page-head">
         <div>
           <h1>Games</h1>

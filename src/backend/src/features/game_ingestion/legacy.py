@@ -30,6 +30,7 @@ from src.database.models.game_identity import (
     HostSource,
     SourceKind,
 )
+from src.features.game_identity.review import run_matching
 from src.features.game_ingestion.contract import (
     ObservationBatchV1,
     ObservedFacts,
@@ -162,6 +163,8 @@ async def record_complete_inventory(
 ) -> None:
     """Only after a pull that completed without error."""
     await complete_inventory(db, user_id, connection, seen_external_ids)
+    # A confirmed-complete inventory is the only moment automatic matching may merge (#99).
+    await run_matching(db, user_id)
 
 
 async def record_disconnect(
