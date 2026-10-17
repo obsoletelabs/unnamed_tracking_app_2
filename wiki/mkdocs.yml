@@ -109,6 +109,7 @@ nav:
       - Notification Core: development/notification-core.md
       - Notification Contract: development/notification-contract.md
       - Notification Rollout: development/notification-rollout.md
+      - Notification Overhaul Board: development/notification-overhaul.md
       - Authentication plugin flows: development/plugin-auth-flows.md
       - Reference Plugins: development/reference-plugins.md
       - Plugin Integration Validation: development/plugin-validation.md

@@ -365,6 +365,9 @@ async def _emit_update_phase(
                         "poster_url": None,
                         "event_at": now,
                         "dedupe_key": dedupe_key,
+                        # A lifecycle phase has one stable identity. Installed-version text may
+                        # differ when the same availability check is replayed during an update.
+                        "fingerprint": f"plugin-update:{plugin_id}:{version}:{phase}",
                         "story": _update_story(plugin_id, version, phase),
                     }
                 ],

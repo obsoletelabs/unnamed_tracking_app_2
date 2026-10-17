@@ -71,8 +71,11 @@ export function groupNotifications(items: MediaNotification[]): {
 }
 
 export function notificationDestination(
-  n: Pick<MediaNotification, "mediaType" | "mediaId">,
+  n: Pick<MediaNotification, "mediaType" | "mediaId" | "link">,
 ): string | null {
+  // Host-issued in-app links (plugin updates). Only same-origin paths are followed.
+  if (n.link && n.link.startsWith("/") && !n.link.startsWith("//"))
+    return n.link;
   if (!n.mediaId) return null;
   const roots: Record<string, string> = {
     game: "/games",

@@ -109,6 +109,16 @@ async def test_update_revisions_carry_typed_facts_and_a_plugin_manager_action(ad
     assert "could not be activated" in stored_content(revisions[1]).summary
 
 
+async def test_replayed_availability_keeps_one_stable_event_identity(admin):
+    await notify(info())
+    # The lifecycle can observe the same target release again with refreshed installed-version
+    # metadata while an automatic update is starting. It is still the same availability event.
+    await notify(info(current_version="1.0.1"))
+    revisions = await revisions_of(admin)
+    assert [revision.phase for revision in revisions] == ["available"]
+    assert len(await items_of(admin)) == 1
+
+
 async def test_unread_update_evolves_in_place_and_read_update_keeps_history(admin):
     await notify(info())
     await notify(info(), failed=True)

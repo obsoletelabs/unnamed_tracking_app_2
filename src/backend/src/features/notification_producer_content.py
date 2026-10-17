@@ -33,6 +33,26 @@ def plugin_update_route(plugin_id: str) -> str:
     return f"{PLUGINS_SETTINGS_ROUTE}&{urlencode({'plugin': plugin_id}, quote_via=quote)}"
 
 
+_UPDATE_DEDUPE_PREFIX = "plugin-update:"
+_UPDATE_PHASE_SUFFIXES = tuple(f":{phase}" for phase in ("installed", "failed", "resolved"))
+
+
+def plugin_update_route_from_dedupe(dedupe_key: str) -> str | None:
+    """The Plugin Manager route for a plugin update inbox row, from its dedupe key.
+
+    Keys are ``plugin-update:<plugin id>:<version>`` with an optional phase suffix.
+    """
+    if not dedupe_key.startswith(_UPDATE_DEDUPE_PREFIX):
+        return None
+    rest = dedupe_key[len(_UPDATE_DEDUPE_PREFIX) :]
+    for suffix in _UPDATE_PHASE_SUFFIXES:
+        if rest.endswith(suffix):
+            rest = rest[: -len(suffix)]
+            break
+    plugin_id, _, version = rest.rpartition(":")
+    return plugin_update_route(plugin_id) if plugin_id and version else None
+
+
 def plugin_update_title(phase: str, plugin_id: str) -> str:
     return f"{_UPDATE_TITLES[phase]}: {plugin_id}"
 
