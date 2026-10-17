@@ -8,6 +8,9 @@ export interface MetadataProviderStatus {
   plugin_id: string;
   included?: boolean;
   account_enabled?: boolean;
+  // Effective ranks from this account's saved orders; lower is used first.
+  priority?: number;
+  artwork_priority?: number;
   automatic_search?: {
     enabled: boolean;
     account_enabled: boolean;
