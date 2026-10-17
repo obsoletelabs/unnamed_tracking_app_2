@@ -10,10 +10,10 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.database.base import Base
-from src.database.models import (  # noqa: F401  # pylint: disable=unused-import
-    notification_aggregation,  # noqa: F401  # pylint: disable=unused-import
-    notification_remote_reference,
-)
+
+# Register the related tables so the delivery foreign keys resolve.
+# pylint: disable-next=unused-import
+from src.database.models import notification_aggregation, notification_remote_reference  # noqa: F401
 
 # Statuses that still owe work: held in a window, queued, leased or waiting to retry.
 ACTIVE_DELIVERY_STATUSES = ("pending", "processing", "retry_wait", "aggregating")

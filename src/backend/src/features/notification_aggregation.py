@@ -11,10 +11,12 @@ can neither lose nor double a batch beyond the existing at-least-once provider s
 from __future__ import annotations
 
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
+from typing import Any
 from uuid import UUID, uuid5
 
-from sqlalchemy import and_, delete, exists, func, select, update
+from sqlalchemy import Row, and_, delete, exists, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,6 +40,7 @@ from src.features.notification_aggregation_policy import (
 )
 from src.features.notification_plugin_policy import delivery_projection
 from src.features.notification_policy import INBOX_PROVIDER
+from src.features.notification_providers import registry
 from src.features.notification_providers.base import (
     DigestItem,
     NotificationMessage,
@@ -155,11 +158,6 @@ async def count_member(db: AsyncSession, window_id: UUID) -> None:
 
 async def live_profile(db: AsyncSession, provider_id: str) -> ResolvedProfile | None:
     """Capability profile of the live adapter, or None when it is not (or no longer) available."""
-    # Imported lazily: the registry pulls in the plugin runtime client.
-    from src.features.notification_providers import (
-        registry,  # pylint: disable=import-outside-toplevel
-    )
-
     provider = (await registry.get_notification_providers(db)).get(provider_id)
     return resolve_profile(provider) if provider is not None else None
 
@@ -211,20 +209,10 @@ async def seal_due_windows(db: AsyncSession, *, now: int | None = None, limit: i
     return sealed
 
 
-async def _seal(db: AsyncSession, window: NotificationAggregationWindow, now: int) -> None:
-    rows = (
-        await db.execute(
-            select(NotificationDelivery, Notification)
-            .join(Notification, Notification.id == NotificationDelivery.notification_id)
-            .where(
-                NotificationDelivery.window_id == window.id,
-                NotificationDelivery.status == "aggregating",
-            )
-            .with_for_update(of=NotificationDelivery)
-        )
-    ).all()
-    profile = await live_profile(db, window.provider_id)
-    base = await item_link_base(db, profile, window.destination_id)
+def _live_members(
+    rows: Sequence[Row[Any]], base: str | None
+) -> dict[UUID, tuple[NotificationDelivery, DigestItem]]:
+    """Keep each mutable story's newest revision only; older ones are suppressed in place."""
     newest: dict[UUID, int] = {}
     for _, notice in rows:
         if notice.story_id is not None:
@@ -242,10 +230,15 @@ async def _seal(db: AsyncSession, window: NotificationAggregationWindow, now: in
             delivery,
             _linked(digest_item(notice, delivery.projection), notice, base),
         )
-    limits = provider_limits(
-        window.provider_id, await _transport(db, window.provider_id), profile=profile
-    )
-    chunks = chunk_items([item for _, item in members.values()], limits)
+    return members
+
+
+def _assign_batches(
+    window: NotificationAggregationWindow,
+    chunks: Sequence[Sequence[DigestItem]],
+    members: dict[UUID, tuple[NotificationDelivery, DigestItem]],
+) -> None:
+    """Give each chunk a stable batch ID and make its first member the lead."""
     for index, chunk in enumerate(chunks):
         batch_id = uuid5(window.id, f"chunk:{index}")
         for position, item in enumerate(chunk):
@@ -255,6 +248,28 @@ async def _seal(db: AsyncSession, window: NotificationAggregationWindow, now: in
             if position == 0:
                 delivery.status = "pending"
                 delivery.next_attempt_at = window.window_end
+
+
+async def _seal(db: AsyncSession, window: NotificationAggregationWindow, now: int) -> None:
+    rows = (
+        await db.execute(
+            select(NotificationDelivery, Notification)
+            .join(Notification, Notification.id == NotificationDelivery.notification_id)
+            .where(
+                NotificationDelivery.window_id == window.id,
+                NotificationDelivery.status == "aggregating",
+            )
+            .with_for_update(of=NotificationDelivery)
+        )
+    ).all()
+    profile = await live_profile(db, window.provider_id)
+    base = await item_link_base(db, profile, window.destination_id)
+    members = _live_members(rows, base)
+    limits = provider_limits(
+        window.provider_id, await _transport(db, window.provider_id), profile=profile
+    )
+    chunks = chunk_items([item for _, item in members.values()], limits)
+    _assign_batches(window, chunks, members)
     window.status = "sealed"
     window.sealed_at = now
     await db.flush()
@@ -455,6 +470,22 @@ def _linked(item: DigestItem, notice: Notification, base: str | None) -> DigestI
     return replace(item, url=url) if url else item
 
 
+async def _chunk_members(db: AsyncSession, lead: NotificationDelivery) -> Sequence[Row[Any]]:
+    """Lock the lead's still-waiting chunk mates with their notifications."""
+    return (
+        await db.execute(
+            select(NotificationDelivery, Notification)
+            .join(Notification, Notification.id == NotificationDelivery.notification_id)
+            .where(
+                NotificationDelivery.batch_id == lead.batch_id,
+                NotificationDelivery.status == "aggregating",
+                NotificationDelivery.id != lead.id,
+            )
+            .with_for_update(of=NotificationDelivery)
+        )
+    ).all()
+
+
 async def plan_batch(
     db: AsyncSession,
     lead: NotificationDelivery,
@@ -468,19 +499,7 @@ async def plan_batch(
     link_base: str | None = None,
 ) -> BatchPlan:
     """Revalidate every member at dispatch time and compose the chunk's single message."""
-    now = int(time.time())
-    rows = (
-        await db.execute(
-            select(NotificationDelivery, Notification)
-            .join(Notification, Notification.id == NotificationDelivery.notification_id)
-            .where(
-                NotificationDelivery.batch_id == lead.batch_id,
-                NotificationDelivery.status == "aggregating",
-                NotificationDelivery.id != lead.id,
-            )
-            .with_for_update(of=NotificationDelivery)
-        )
-    ).all()
+    rows = await _chunk_members(db, lead)
     items = [_linked(digest_item(lead_notice, lead.projection), lead_notice, link_base)]
     included = [lead.id]
     for delivery, notice in rows:
@@ -490,7 +509,7 @@ async def plan_batch(
             notice=notice,
             endpoint=endpoint,
             preferences=preferences,
-            now=now,
+            now=int(time.time()),
         )
         if verdict is not None:
             delivery.status, delivery.last_error = verdict

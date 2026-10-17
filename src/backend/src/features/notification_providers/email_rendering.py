@@ -100,6 +100,23 @@ def render_plain_email(message: NotificationMessage, unsubscribe_url: str | None
     return "\n".join(lines).strip() + "\n"
 
 
+def _body_html(message: NotificationMessage, action: str | None, accent: str) -> str:
+    """Body markup: escaped paragraphs, or the rich blocks with the live-story button."""
+    if is_rich(message):
+        return _rich_body(message, accent) + (
+            _live_button(message, accent) if not message.items else ""
+        )
+    # Sensitive bearer links belong in the action, not an unreadably long paragraph.
+    body = message.body.replace(action, "Use the button below.") if action else message.body
+    return "".join(
+        '<p style="margin:0 0 18px;line-height:1.65;overflow-wrap:anywhere">'
+        + escape(paragraph).replace("\n", "<br>")
+        + "</p>"
+        for paragraph in body.split("\n\n")
+        if paragraph.strip()
+    )
+
+
 def render_email(message: NotificationMessage, unsubscribe_url: str | None = None) -> str:
     """Render all mail purposes consistently without changing routing or disclosure."""
     action = _safe_link(message.action_url)
@@ -125,20 +142,7 @@ def render_email(message: NotificationMessage, unsubscribe_url: str | None = Non
     }.get(message.purpose, "Notification")
     if message.kind == "destination_verification":
         category = "Email verification"
-    # Sensitive bearer links belong in the action, not an unreadably long paragraph.
-    body = message.body.replace(action, "Use the button below.") if action else message.body
-    paragraphs = "".join(
-        '<p style="margin:0 0 18px;line-height:1.65;overflow-wrap:anywhere">'
-        + escape(paragraph).replace("\n", "<br>")
-        + "</p>"
-        for paragraph in body.split("\n\n")
-        if paragraph.strip()
-    )
-    rich = is_rich(message)
-    if rich:
-        paragraphs = _rich_body(message, accent) + (
-            _live_button(message, accent) if not message.items else ""
-        )
+    paragraphs = _body_html(message, action, accent)
     button = (
         f'<p style="margin:28px 0"><a style="display:inline-block;background:{accent};'
         'color:#fff;text-decoration:none;padding:14px 22px;border-radius:10px;font-weight:600" '
@@ -167,7 +171,7 @@ def render_email(message: NotificationMessage, unsubscribe_url: str | None = Non
         f'letter-spacing:1px;text-transform:uppercase">{escape(category)}</p>'
         + (
             ""
-            if rich
+            if is_rich(message)
             else f'<h1 style="margin:0 0 24px;font-size:26px;line-height:1.3">{escape(heading)}</h1>'
         )
         + f"{paragraphs}{button}"
