@@ -397,6 +397,31 @@ def _update_notification_state(update: dict[str, Any]) -> str:
     )
 
 
+def adopt_legacy_update_notification(
+    plugin_id: str,
+    previous_update: dict[str, Any] | None,
+    current_update: dict[str, Any],
+) -> None:
+    """Avoid a rollout duplicate when the legacy per-plugin notice already existed."""
+    if not current_update.get("update_available") or not isinstance(previous_update, dict):
+        return
+    if (
+        not previous_update.get("update_available")
+        or previous_update.get("current_version") != current_update.get("current_version")
+        or previous_update.get("available_version") != current_update.get("available_version")
+    ):
+        return
+    store = manager_state()
+    record = store.read().get("plugins", {}).get(plugin_id, {})
+    if record.get("last_notified_update_state") is None:
+        store.patch(
+            plugin_id,
+            last_notified_update_state=_update_notification_state(
+                {**current_update, "status": "available"}
+            ),
+        )
+
+
 def plugin_update_batch_changed(updates: list[dict[str, Any]]) -> bool:
     """Return whether any plugin's notification-worthy update state changed."""
     records = manager_state().read().get("plugins", {})
@@ -438,7 +463,13 @@ async def check_plugin_updates(
                 "error": str(exc.detail),
             }
         updates.append(update)
-        manager_state().patch(str(plugin["plugin_id"]), available_update=update)
+        store = manager_state()
+        plugin_id = str(plugin["plugin_id"])
+        previous_update = (
+            store.read().get("plugins", {}).get(plugin_id, {}).get("available_update")
+        )
+        adopt_legacy_update_notification(plugin_id, previous_update, update)
+        store.patch(plugin_id, available_update=update)
         if update.get("update_available"):
             notification_batch.append({**update, "status": "available"})
     if notification_batch and plugin_update_batch_changed(notification_batch):
