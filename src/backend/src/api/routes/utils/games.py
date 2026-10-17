@@ -96,6 +96,20 @@ def _scan_settings_to_preferences(scan_settings: UserScanSettings) -> dict:
     }
 
 
+def _record_provider_use(scan_settings: UserScanSettings, provider_ids: list[str]) -> None:
+    """Remember when registered providers last supplied a result; the caller commits.
+
+    Keys are provider IDs. Older name keys stay readable until that provider is used again.
+    """
+    if not provider_ids:
+        return
+    now = int(time.time())
+    scan_settings.provider_last_used = {
+        **scan_settings.provider_last_used,
+        **{provider_id: now for provider_id in provider_ids},
+    }
+
+
 def _field_change_value_to_text(value: object, field: str = "") -> str | None:
     if value is None:
         return None

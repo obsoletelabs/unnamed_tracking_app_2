@@ -4,6 +4,8 @@
 // as the manual-collections list and cover picks, so Collections can offer
 // what Media's lists have without a backend row.
 import { ref } from "vue";
+import type { Game } from "../types/game";
+import { smartCollections } from "./smartCollections";
 
 export interface CollectionMeta {
   description?: string;
@@ -50,6 +52,18 @@ export function updateMeta(name: string, patch: Partial<CollectionMeta>) {
   else delete all[name];
   collectionMeta.value = all;
   writeJson(META_KEY, all);
+}
+
+// Collections a game can join by hand: every name on a game plus the empty
+// manual ones, sorted. Smart collections (including Favorites) fill
+// themselves from their rule, so they are never offered as a target.
+export function manualCollectionNames(games: readonly Game[]): string[] {
+  const names = new Set(readJson<string[]>(MANUAL_KEY, []));
+  for (const game of games) game.collections.forEach((name) => names.add(name));
+  const smart = new Set(smartCollections.value.map((rule) => rule.name));
+  return [...names]
+    .filter((name) => name.trim() && !smart.has(name))
+    .sort((a, b) => a.localeCompare(b));
 }
 
 // the whole "My order": each name's position is its index in `names`

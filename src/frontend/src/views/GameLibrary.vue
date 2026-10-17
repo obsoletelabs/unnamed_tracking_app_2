@@ -7,6 +7,7 @@ import GameFormModal from "../components/GameFormModal.vue";
 import BulkEditModal from "../components/BulkEditModal.vue";
 import RandomGamePicker from "../components/RandomGamePicker.vue";
 import FilterCombobox from "../components/FilterCombobox.vue";
+import TagFilterPicker from "../components/TagFilterPicker.vue";
 import CollectionPickerModal from "../components/CollectionPickerModal.vue";
 import GameTopBar from "../components/GameTopBar.vue";
 import LibrarySyncMenu from "../components/LibrarySyncMenu.vue";
@@ -66,8 +67,10 @@ const {
   achievementsFilter,
   retroAchievementsOnly,
   missingFilter,
-  toggleTagFilter,
-  isTagSelected,
+  tagsFilter,
+  excludedTags,
+  toggleTagChoice,
+  removeTagChoice,
   isExcluded,
   toggleExclusion,
   exclusionGroups,
@@ -90,7 +93,7 @@ const {
   statusCounts,
   platformOptions,
   platformExtraOptions,
-  genreOptions,
+  tagOptions,
   franchiseOptions,
   collectionOptions,
   companyOptions,
@@ -413,6 +416,13 @@ const compactPreview = computed(
             placeholder="Platform"
             all-label="All platforms"
           />
+          <TagFilterPicker
+            :options="tagOptions"
+            :included="tagsFilter"
+            :excluded="excludedTags"
+            @toggle="toggleTagChoice"
+            @remove="removeTagChoice"
+          />
         </div>
         <div class="advanced-field">
           <label>Franchise</label>
@@ -502,22 +512,6 @@ const compactPreview = computed(
             <option value="tags">No tags</option>
             <option value="description">No description</option>
           </select>
-        </div>
-        <div class="advanced-field advanced-field-wide">
-          <label>Tags &amp; genres (any of)</label>
-          <div class="tags-multiselect">
-            <button
-              v-for="tag in genreOptions"
-              :key="tag"
-              type="button"
-              class="tag-chip"
-              :class="{ active: isTagSelected(tag) }"
-              :aria-pressed="isTagSelected(tag)"
-              @click="toggleTagFilter(tag)"
-            >
-              {{ tag }}
-            </button>
-          </div>
         </div>
         <fieldset
           v-for="group in exclusionGroups"

@@ -1,7 +1,13 @@
 """Filter declarative integrations at the public host permission boundary."""
 
-from .contracts import Capability, PluginUiDocument
+import math
+from collections.abc import Mapping
+
+from .contracts import Capability, PluginUiDocument, UiFieldType
 from .ui_placement import place_navigation, place_settings
+
+# Controls whose emptied optional value the declarative renderer saves as "".
+_CLEARABLE_FIELD_TYPES = frozenset({UiFieldType.NUMBER, UiFieldType.SELECT})
 
 
 def filter_ui_document(
@@ -109,3 +115,38 @@ def filter_ui_document(
             ),
         }
     )
+
+
+def filter_setting_values(
+    document: PluginUiDocument,
+    saved: Mapping[str, object],
+) -> dict[str, object]:
+    """Release saved values only for declared, non-secret fields that still fit them.
+
+    Secret and password fields are write-only, so their stored values never reach the
+    browser. Undeclared keys stay runtime-private. A value that no longer matches an
+    updated declaration's type or options is omitted so the field shows its default.
+    """
+    fields = [field for section in document.settings for field in section.fields]
+    concealed = {field.id for field in fields if field.secret or field.type is UiFieldType.PASSWORD}
+    values: dict[str, object] = {}
+    for field in fields:
+        if field.id in concealed or field.id not in saved:
+            continue
+        value = saved[field.id]
+        if value == "" and not field.required and field.type in _CLEARABLE_FIELD_TYPES:
+            values[field.id] = value
+            continue
+        if isinstance(value, float) and not math.isfinite(value):
+            continue
+        candidate = (
+            tuple(value)
+            if field.type is UiFieldType.MULTISELECT and isinstance(value, list)
+            else value
+        )
+        try:
+            field.validate_value(candidate)
+        except ValueError:
+            continue
+        values[field.id] = value
+    return values

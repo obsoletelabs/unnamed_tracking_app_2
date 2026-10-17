@@ -2748,14 +2748,36 @@ class PluginRegistry:
         self._transition(plugin_id, last_health=healthy)
         return healthy
 
+    def _settings_fields(self, plugin_id: str) -> tuple[set[str], set[str]]:
+        """Split declared settings field IDs into ordinary and write-only secret IDs."""
+        ordinary: set[str] = set()
+        secret: set[str] = set()
+        for section in self.ui(plugin_id).get("settings", []):
+            if not isinstance(section, dict):
+                continue
+            for field in section.get("fields", []):
+                if not isinstance(field, dict):
+                    continue
+                concealed = (
+                    field.get("secret") is True or field.get("type") == "password"
+                )
+                (secret if concealed else ordinary).add(str(field.get("id")))
+        return ordinary - secret, secret
+
+    def saved_settings(self, plugin_id: str) -> dict[str, Any]:
+        """Return persisted values only for declared, non-secret settings fields."""
+        package, _ = self.package(plugin_id)
+        ordinary, _ = self._settings_fields(plugin_id)
+        self.supervisor._package_paths[plugin_id] = package
+        return {
+            key: value
+            for key, value in self.supervisor._settings(plugin_id).items()
+            if key in ordinary
+        }
+
     def settings(self, plugin_id: str, values: dict[str, Any]) -> None:
         package, _ = self.package(plugin_id)
-        secret_ids = {
-            str(field.get("id"))
-            for section in self.ui(plugin_id).get("settings", [])
-            for field in section.get("fields", [])
-            if field.get("secret") is True
-        }
+        _, secret_ids = self._settings_fields(plugin_id)
         if secret_ids.intersection(values):
             raise RuntimePolicyError(
                 "secret settings may only be supplied to a plugin action"
@@ -3308,6 +3330,9 @@ class RuntimeHandler(BaseHTTPRequestHandler):
                 )
             elif len(parts) == 3 and parts[0] == "plugins" and parts[2] == "ui":
                 self._json(200, self.server.registry.ui(parts[1]))  # type: ignore[attr-defined]
+            elif len(parts) == 3 and parts[0] == "plugins" and parts[2] == "settings":
+                values = self.server.registry.saved_settings(parts[1])  # type: ignore[attr-defined]
+                self._json(200, {"values": values})
             elif len(parts) == 3 and parts[0] == "plugins" and parts[2] == "health":
                 self._json(200, {"healthy": self.server.registry.health(parts[1])})  # type: ignore[attr-defined]
             elif len(parts) == 3 and parts[0] == "plugins" and parts[2] == "logs":

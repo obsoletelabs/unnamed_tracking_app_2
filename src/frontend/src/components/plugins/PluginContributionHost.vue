@@ -8,7 +8,9 @@ import type {
 } from "../../services/pluginUi";
 import {
   dispatchPluginAction,
+  openExternalDestination,
   pluginExternalDestination,
+  reserveExternalTab,
 } from "../../services/pluginUi";
 import { pluginRequestError } from "../../services/apiError";
 import { approvePluginAction } from "../../services/pluginUi";
@@ -71,15 +73,20 @@ async function save(values: UiValues) {
 }
 
 async function run(action: UiAction, values: UiValues) {
-  const result = await dispatchPluginAction(
-    props.pluginId,
-    action.id,
-    values,
-    props.actionContext,
-    Boolean(action.confirmation),
-  );
-  const destination = pluginExternalDestination(action, result);
-  if (destination) window.location.assign(destination);
+  const tab = reserveExternalTab(action);
+  let destination: string | null = null;
+  try {
+    const result = await dispatchPluginAction(
+      props.pluginId,
+      action.id,
+      values,
+      props.actionContext,
+      Boolean(action.confirmation),
+    );
+    destination = pluginExternalDestination(action, result);
+  } finally {
+    openExternalDestination(destination, tab);
+  }
 }
 
 const nativeHost = computed(() => ({

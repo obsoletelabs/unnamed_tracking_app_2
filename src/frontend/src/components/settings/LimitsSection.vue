@@ -10,7 +10,12 @@ const limits: { key: keyof UploadLimits; label: string; hint: string }[] = [
   {
     key: "max_upload_size_mb",
     label: "Images & general files",
-    hint: "Cover art, banners, screenshots, documents and other general uploads.",
+    hint: "Cover art, banners, screenshots and other general uploads.",
+  },
+  {
+    key: "max_doc_size_mb",
+    label: "Documents",
+    hint: "Each file added to a game's Docs tab, of any file type.",
   },
   {
     key: "max_save_archive_size_mb",

@@ -43,8 +43,10 @@ class BrandingUpdate(BaseModel):
 
 
 @router.get("")
-async def get_branding(db: AsyncSession = _DB) -> dict[str, str | None]:
+async def get_branding(response: Response, db: AsyncSession = _DB) -> dict[str, str | None]:
     """Available before login so public and signed-in pages share one identity."""
+    # The asset URLs are content-addressed, so only this document must never be stale.
+    response.headers["Cache-Control"] = "no-store"
     return public_branding(await load_branding(db))
 
 
