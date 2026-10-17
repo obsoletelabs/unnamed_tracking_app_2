@@ -97,5 +97,24 @@ The additive `job_settings.user_id` migration preserves existing server schedule
 A personal action can return `completed: false` with `continue_after_seconds`
 to resume a checkpoint before its ordinary interval. The host bounds this delay to
 60–3600 seconds and only continues while the user keeps autosync enabled. Completion
-restores the chosen interval; failure without a continuation waits for that interval.
-All steps retain the existing action timeout and no-overlap checks.
+restores the chosen interval. All steps retain the existing action timeout.
+
+A failed personal step (`completed: false` without a continuation) is retried by the
+host with backoff (1, 2, 4, 8 then 15 minutes, five attempts) before it waits for the
+chosen interval. Two optional, additive result fields refine this and are ignored by
+hosts that do not know them:
+
+* `retry_after_seconds` (integer, bounded to 60–3600): the provider is rate limiting; the
+  retry waits at least this long.
+* `disable_schedule: true`: the account was disconnected or the provider rejected the
+  saved sign-in. The host turns the owner's schedule off and keeps the checkpoint.
+
+Only the bounded public `summary` is stored; any other field, and every token, is dropped.
+The host also turns a personal schedule off when its grant is revoked, the plugin is
+disabled or the installation is removed. A runtime outage only pauses it.
+
+Overlap protection is a database lease on the job's `job_settings` row, renewed while a
+step runs and released when it ends. It prevents a manual and a scheduled start, two host
+processes, or a restarted host from running the same job at once; the lease of a crashed
+process expires on its own and the saved checkpoint resumes. A plugin must still make each
+step bounded and resumable and mark items unavailable only after a complete inventory.

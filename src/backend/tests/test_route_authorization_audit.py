@@ -168,6 +168,7 @@ CATALOGUE_IDENTIFIERS = [
     "/api/settings/notification-providers/{provider_id}",
     "/api/settings/user-jobs/{job_id}",
     "/api/settings/user-jobs/{job_id}/run",
+    "/api/settings/user-jobs/{job_id}/{control}",
 ]
 # The same filename exists in the attacker's own inbox, so the call legitimately succeeds.
 OWN_INBOX_NAMES = {
