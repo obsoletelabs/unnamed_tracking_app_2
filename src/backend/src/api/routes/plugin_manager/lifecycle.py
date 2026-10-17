@@ -386,28 +386,36 @@ def _automatic_update_block_reason(
     denied: bool,
 ) -> str | None:
     """Explain the first policy gate that prevents unattended activation."""
-    if denied:
-        return "This exact release was previously denied and requires a new review."
     mode = plugin.get("automatic_updates", "follow")
-    if mode not in {"follow", "enabled", "disabled"}:
-        return "The plugin automatic-update policy is invalid; review its settings."
-    if mode == "disabled":
-        return "Automatic updates are disabled for this plugin."
-    if mode == "follow" and not store.settings()["automatic_updates"]:
-        return "Global automatic updates are disabled."
-    if plugin.get("version_pin"):
-        return "A version pin prevents automatic activation."
-    if not update.get("automatic_update") or not inspected.package.manifest.automatic_update:
-        return "The catalogue release or package manifest does not permit automatic updates."
-    if not inspected.package.distribution.get("automatic_update", True):
-        return "The package distribution policy does not permit automatic updates."
-    if not inspected.trust.is_verified:
-        return "The package publisher is not verified."
-    if not plan.dependencies.ready:
-        return "One or more dependencies are not ready."
-    if plan.permissions.newly_requested_grants:
-        return "The update requests new permissions that require administrator review."
-    return None
+    checks = (
+        (denied, "This exact release was previously denied and requires a new review."),
+        (
+            mode not in {"follow", "enabled", "disabled"},
+            "The plugin automatic-update policy is invalid; review its settings.",
+        ),
+        (mode == "disabled", "Automatic updates are disabled for this plugin."),
+        (
+            mode == "follow" and not store.settings()["automatic_updates"],
+            "Global automatic updates are disabled.",
+        ),
+        (bool(plugin.get("version_pin")), "A version pin prevents automatic activation."),
+        (
+            not update.get("automatic_update")
+            or not inspected.package.manifest.automatic_update,
+            "The catalogue release or package manifest does not permit automatic updates.",
+        ),
+        (
+            not inspected.package.distribution.get("automatic_update", True),
+            "The package distribution policy does not permit automatic updates.",
+        ),
+        (not inspected.trust.is_verified, "The package publisher is not verified."),
+        (not plan.dependencies.ready, "One or more dependencies are not ready."),
+        (
+            bool(plan.permissions.newly_requested_grants),
+            "The update requests new permissions that require administrator review.",
+        ),
+    )
+    return next((reason for blocked, reason in checks if blocked), None)
 
 
 def _validate_automatic_archive(
