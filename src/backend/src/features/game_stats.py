@@ -4,12 +4,21 @@ pile, cost per hour, backlog hours, achievement completion.
 Everything is exact or reported as missing. "No playtime recorded" means the
 platform reported none (it is not a claim the game was never played), the
 backlog hours only sum games that have a time-to-beat and say how many do
-not, and cost per hour only uses games that have both a price and playtime."""
+not, and cost per hour only uses games that have both a price and playtime.
+
+Current-library statistics describe the caller's active games only: a game in
+Trash keeps its rows (playtime, achievements, history) but stops contributing
+until it is restored. ``active_owned_games`` is the shared predicate for that."""
 
 from collections import Counter
 from datetime import date, datetime
 from statistics import median
 from typing import Any
+from uuid import UUID
+
+from sqlalchemy import ColumnElement, and_
+
+from src.database.models.game import Game
 
 _HOUR = 3600
 _BUCKETS = (
@@ -21,6 +30,16 @@ _BUCKETS = (
     ("50 to 100h", 50, 100),
     ("100h or more", 100, None),
 )
+
+
+def active_owned_games(user_id: UUID) -> ColumnElement[bool]:
+    """Games owned by ``user_id`` that are not soft-deleted (in Trash).
+
+    Use it in the WHERE clause of any current-library aggregate, including
+    queries over rows joined to ``Game`` (achievements, metadata changes), so
+    trashing a game removes all of its contributions and restoring it brings
+    them back unchanged."""
+    return and_(Game.user_id == user_id, Game.deleted_at.is_(None))
 
 
 def _money(amounts: dict[str, float]) -> list[dict[str, Any]]:

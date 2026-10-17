@@ -42,11 +42,19 @@ def has_index(table: str, name: str) -> bool:
     return any(index["name"] == name for index in _inspector().get_indexes(table))
 
 
-def has_constraint(name: str) -> bool:
-    """Whether any constraint in the database has this name."""
+def has_constraint(table: str, name: str) -> bool:
+    """Whether the table exists and has a constraint with this name.
+
+    The table is resolved through the search_path, exactly as the op.* call
+    that follows resolves it. A constraint with the same name on another
+    table, or in another schema, does not count."""
     # pylint: disable-next=no-member
     row = op.get_bind().execute(
-        sa.text("SELECT 1 FROM pg_constraint WHERE conname = :name"), {"name": name}
+        sa.text(
+            "SELECT 1 FROM pg_constraint "
+            "WHERE conname = :name AND conrelid = to_regclass(quote_ident(:table))"
+        ),
+        {"name": name, "table": table},
     )
     return row.first() is not None
 
@@ -87,8 +95,9 @@ def drop_index_if_exists(name: str, table: str) -> None:
 
 
 def create_unique_constraint_if_missing(name: str, table: str, columns: list[str]) -> None:
-    """op.create_unique_constraint, skipped when the name is taken."""
-    if not has_constraint(name):
+    """op.create_unique_constraint, skipped when the table already has a
+    constraint with this name."""
+    if not has_constraint(table, name):
         # pylint: disable-next=no-member
         op.create_unique_constraint(name, table, columns)
 

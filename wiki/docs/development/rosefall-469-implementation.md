@@ -196,6 +196,16 @@ Until then, PRs remain available for review with current validation and screensh
   INTEGER range is now a validation error rather than a database failure.
 - **Remaining K (#144, #149) and L–O:** approved; not implemented yet. The
   package details below describe intended work, not completed behavior.
+- **M / 45–46:** issue [#146](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/146)
+  implements per-kind Empty trash (explicit `confirm: true`, confirmed deletion-time
+  bound, 200-title batches, per-title savepoints and deleted/failed/remaining counts)
+  and opt-in `media_trash_retention_days` (Never default; 7/14/30/90) in the existing
+  trash sweep with a bounded budget and an in-transaction recheck. Purging stays in
+  `features/trash/media_titles.py`, separate from the #151 game-file sweep paths.
+  No migration. Modern/Classic screenshots are in the media library guide.
+  Review, hosted checks and merge remain pending; row 53 stays with #152.
+- **K–O:** approved; not implemented yet. The package details below describe
+  intended work, not completed behavior.
 
 ### Issue-by-issue execution order
 
