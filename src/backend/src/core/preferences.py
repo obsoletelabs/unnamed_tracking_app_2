@@ -63,6 +63,8 @@ DEFAULTS: dict[str, Any] = {
     # good when their owner deletes them or chooses one of the periods below
     "media_trash_retention_days": 0,
     "library_default_layout": "list",
+    "library_version_display": "grouped",
+    "library_relationship_display": {},
     "title_language": "english",
     "lists_default_sort": "custom",
     "stats_include_plan": True,
@@ -89,6 +91,7 @@ _CHOICES: dict[str, tuple[Any, ...]] = {
     "calendar_week_start": (0, 1),
     "notification_retention_days": (0, 7, 14, 30, 90, 180, 365),
     "library_default_layout": ("list", "shelf", "board"),
+    "library_version_display": ("grouped", "separate"),
     "lists_default_sort": ("custom", "name", "count", "recent"),
     "title_language": ("english", "romaji", "native"),
 }
@@ -138,6 +141,39 @@ def _validate_anilist_username(value: Any) -> str:
     if not isinstance(value, str) or len(value.strip()) > 100:
         raise ValueError("anilist_import_username must be a string of at most 100 characters")
     return value.strip()
+
+
+_RELATIONSHIP_RULE_KINDS = frozenset(
+    {
+        "version_of",
+        "remake_of",
+        "remaster_of",
+        "port_of",
+        "dlc_of",
+        "expansion_of",
+        "standalone_expansion_of",
+        "mod_of",
+        "modpack_of",
+        "total_conversion_of",
+        "series_member",
+        "collection_member",
+        "related_to",
+        "custom",
+    }
+)
+
+
+def _validate_relationship_display(value: Any) -> dict[str, str]:
+    """Validate the user's display choice for each supported relationship kind."""
+    if (
+        not isinstance(value, dict)
+        or any(kind not in _RELATIONSHIP_RULE_KINDS for kind in value)
+        or any(rule not in ("link", "nest", "hidden") for rule in value.values())
+    ):
+        raise ValueError(
+            "library_relationship_display maps a relationship kind to link, nest or hidden"
+        )
+    return dict(value)
 
 
 def _validate_media_trash_retention(value: Any) -> int:
@@ -328,6 +364,7 @@ _VALUE_VALIDATORS: dict[str, Callable[[Any], Any]] = {
     "ui_custom_palette": _validate_custom_palette,
     "keyboard_shortcut_overrides": validate_shortcut_overrides,
     "game_page": partial(validate_page_settings, partial=False),
+    "library_relationship_display": _validate_relationship_display,
     "anilist_import_username": _validate_anilist_username,
     "media_trash_retention_days": _validate_media_trash_retention,
 }

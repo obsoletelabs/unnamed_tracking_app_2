@@ -151,6 +151,15 @@ log "Migrations completed"
 printf '%s\n' "Database migrations completed successfully. Detailed migration output is retained at /run/unnamed-tracking/migration.log." >> "$DETAILS_FILE"
 write_status "DATABASE_READY" "starting" "ready" "ready" "unknown" "unknown" "Database migrations completed."
 
+# Maps existing games onto the game identity model (#102): additive, resumable and
+# idempotent, so it runs beside the server and never delays or fails start-up. A run that
+# is interrupted continues on the next start. GAME_IDENTITY_BACKFILL=off skips it (run
+# `python -m src.features.game_identity_backfill` yourself). The report holds counts only.
+if [ "${GAME_IDENTITY_BACKFILL:-auto}" != "off" ]; then
+  (python -m src.features.game_identity_backfill >/run/unnamed-tracking/game-identity-backfill.log 2>&1 \
+    || log "Game identity backfill did not finish; it resumes on the next start") &
+fi
+
 log "Starting backend (FastAPI)"
 write_status "STARTING_BACKEND" "starting" "ready" "ready" "starting" "unknown" "Starting FastAPI."
 

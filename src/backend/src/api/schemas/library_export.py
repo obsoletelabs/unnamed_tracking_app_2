@@ -1,5 +1,7 @@
 """The portable library snapshot shared by manual exports and backups."""
 
+from typing import Any
+
 from pydantic import BaseModel
 
 from src.api.schemas.anime import AnimeRead
@@ -16,3 +18,6 @@ class LibraryExport(BaseModel):
     movies: list[MovieRead] = []
     tv_shows: list[TVShowRead] = []
     anime: list[AnimeRead] = []
+    # the user's own achievements and completion choices (#97); absent in older exports
+    manual_achievements: list[dict[str, Any]] = []
+    manual_completion: list[dict[str, Any]] = []
