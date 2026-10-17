@@ -1,7 +1,7 @@
 """add background job run controls
 
 Revision ID: 3a3fb6dccb3e
-Revises: a55b7c1d9e20
+Revises: a80c5e1d7b42
 Create Date: 2026-10-16 22:20:16.392286
 
 """
@@ -15,7 +15,7 @@ from src.database import migration_helpers as h
 
 # revision identifiers, used by Alembic.
 revision: str = "3a3fb6dccb3e"
-down_revision: Union[str, None] = "a55b7c1d9e20"
+down_revision: Union[str, None] = "a80c5e1d7b42"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
