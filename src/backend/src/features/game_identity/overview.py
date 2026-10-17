@@ -65,7 +65,7 @@ async def _alive_keys(db: AsyncSession, user_id: UUID, ids: Iterable[UUID]) -> d
             Game.user_id == user_id, Game.id.in_(wanted), Game.deleted_at.is_(None)
         )
     )
-    return {game_id: sort_title for game_id, sort_title in rows.tuples()}
+    return dict(rows.tuples().all())
 
 
 def _representative(group: set[UUID], root: UUID, alive: dict[UUID, str]) -> UUID | None:
