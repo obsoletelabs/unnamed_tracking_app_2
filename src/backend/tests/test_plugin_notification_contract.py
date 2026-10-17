@@ -171,7 +171,11 @@ class Source:
                 await db.scalars(
                     select(Notification)
                     .where(Notification.user_id == self.owner)
-                    .order_by(Notification.event_at, Notification.created_at)
+                    .order_by(
+                        Notification.event_at,
+                        Notification.created_at,
+                        Notification.story_revision.nulls_first(),
+                    )
                 )
             )
 
