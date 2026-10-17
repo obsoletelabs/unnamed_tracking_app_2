@@ -152,7 +152,9 @@ def next_run_at(row: JobSetting, now: int) -> int | None:
     delay = row.interval_minutes * 60
     result = row.last_result or {}
     continuation = bounded_delay(result.get("continue_after_seconds"))
-    if result.get("completed") is False and continuation is not None:
+    # Only a personal task may resume a batch sooner; administrator and plugin server
+    # tasks keep their configured interval, as before.
+    if row.user_id is not None and result.get("completed") is False and continuation is not None:
         delay = continuation
     return row.last_run_at + delay
 

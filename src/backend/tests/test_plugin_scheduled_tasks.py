@@ -426,6 +426,7 @@ async def test_disabled_personal_schedule_cannot_start_a_queued_step(scheduled):
 def _row(**changes):
     values = {
         "job_id": "user-plugin:fixture",
+        "user_id": uuid4(),
         "enabled": True,
         "paused": False,
         "cancel_requested": False,
@@ -466,6 +467,15 @@ def test_partial_steps_continue_quickly_and_keep_the_last_success():
     row.last_run_at, row.last_result = 2000, public
     assert job_runs.next_run_at(row, 2001) == 2060
     assert not job_runs.is_due(row, 2059) and job_runs.is_due(row, 2060)
+
+
+def test_server_tasks_keep_their_interval_when_a_batch_is_unfinished():
+    row = _row(job_id="plugin:fixture:sync", user_id=None)
+    row.last_result = {"completed": False, "continue_after_seconds": 60}
+    # an administrator or plugin server task is never rushed by its own result
+    assert job_runs.next_run_at(row, 2001) == 1000 + 60 * 60
+    row.user_id = uuid4()
+    assert job_runs.next_run_at(row, 2001) == 1060
 
 
 def test_pause_disable_and_leases_gate_the_scheduler():
