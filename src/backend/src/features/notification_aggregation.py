@@ -30,21 +30,22 @@ from src.features.notification_aggregation_policy import (
     MAX_WINDOW_MEMBERS,
     SEALED_WINDOW_RETENTION_SECONDS,
     AggregationPolicy,
-    bypasses,
     chunk_items,
     compose_digest,
-    policy_for,
     provider_limits,
     scope_key,
     window_bounds,
 )
 from src.features.notification_plugin_policy import delivery_projection
+from src.features.notification_policy import INBOX_PROVIDER
 from src.features.notification_providers.base import (
     DigestItem,
     NotificationMessage,
     notification_message,
 )
 from src.features.notification_source_policy import source_delivery_allowed
+from src.features.notification_timing import decide_for
+from src.features.notification_timing_policy import TimingDecision
 
 LIVE_LEAD_STATUSES = ("pending", "processing", "retry_wait")
 # A failed lead with one of these outcomes says the destination, not the member, is unusable.
@@ -69,39 +70,35 @@ LABELS = {
 }
 
 
-def policy_of(notification: Notification) -> AggregationPolicy:
-    return policy_for(
-        event_type=notification.event_type,
-        kind=notification.kind,
-        purpose=notification.purpose,
-        group_key=notification.group_key,
-        # Legacy rows derive group_key from their own ID; only producer hints can group.
-        has_group_hint=notification.source_installation_id is not None
-        and notification.event_type != "plugin.notice",
-    )
-
-
 async def assign_window(
     db: AsyncSession,
     notification: Notification,
     destination: NotificationDestination,
     *,
-    requested_urgency: str,
+    decision: TimingDecision,
     now: int,
 ) -> UUID | None:
-    """Return the window a new delivery must join, or None for immediate delivery."""
-    policy = policy_of(notification)
-    if policy.strategy == "immediate" or bypasses(
-        policy, requested_urgency=requested_urgency, severity=notification.severity
-    ):
+    """Return the window a new delivery must join, or None for immediate delivery.
+
+    ``decision`` is the effective timing policy: either a held release (quiet hours or a user
+    digest schedule, one shared window per release instant) or an aggregation policy.
+    """
+    if decision.action == "hold" and decision.release_at is not None:
+        policy = AggregationPolicy("digest", max(decision.release_at - now, 1), "event_type")
+        key = f"timing:{decision.release_at}"
+        bounds = (now, decision.release_at)
+    elif decision.action == "aggregate" and decision.aggregation.strategy != "immediate":
+        policy = decision.aggregation
+        key = scope_key(
+            policy,
+            event_type=notification.event_type,
+            media_id=notification.media_id,
+            event_at=notification.event_at,
+            group_key=notification.group_key or "",
+        )
+        bounds = window_bounds(policy, now)
+    else:
         return None
-    key = scope_key(
-        policy,
-        event_type=notification.event_type,
-        media_id=notification.media_id,
-        event_at=notification.event_at,
-        group_key=notification.group_key or "",
-    )
     for _ in range(3):
         window = await db.scalar(
             select(NotificationAggregationWindow)
@@ -125,7 +122,7 @@ async def assign_window(
             window = None
         if window is not None:
             return window.id
-        start, end = window_bounds(policy, now)
+        start, end = bounds
         await db.execute(
             pg_insert(NotificationAggregationWindow)
             .values(
@@ -364,6 +361,11 @@ async def _member_verdict(
     if not await source_delivery_allowed(db, notice):
         return "suppressed", "source_revoked"
     projection = await delivery_projection(db, notice, endpoint, preferences)
+    if (
+        endpoint.provider_id != INBOX_PROVIDER
+        and decide_for(notice, endpoint, preferences, now=now).action == "mute"
+    ):
+        return "suppressed", "muted"
     if projection != delivery.projection or (
         notice.expires_at is not None and notice.expires_at <= now
     ):

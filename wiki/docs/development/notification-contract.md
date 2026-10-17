@@ -418,6 +418,57 @@ headless by a bulk cancellation or crash. Delivery stays at least once. Per-memb
 attempt rows and remote references remain #110; the inbox keeps per-item history
 and actions, which is where digests point readers.
 
+## Timing policy
+
+Issue #108 extends the existing preference document and routing; there is no second store. User
+choices live in the `notification_timing` preference (validated by
+`core/notification_timing_schema.py`, evaluated by the pure
+`features/notification_timing_policy.py`). A missing key means the behaviour described above.
+
+| Field | Meaning |
+| --- | --- |
+| `timezone` | IANA zone for quiet hours and digest times; empty means UTC. Names such as `localtime` and path-like values are rejected. |
+| `quiet_hours` | `{enabled, start, end}` as local `HH:MM`. `[start, end)`, overnight ranges wrap, equal times are rejected. |
+| `urgent_threshold` | `critical` (default, keeps the #107 behaviour) or `off` (nothing interrupts). |
+| `plugin_urgent_bypass` | Off by default. A plugin's urgency request counts only when the user turns this on. |
+| `digest_times` | 1 to 6 local `HH:MM` times used by the digest mode. |
+| `rules` | At most 64 `{category, destination_id, mode, quiet_hours, urgent}` rules, one per category and destination pair. |
+
+Categories are `media`, `game`, `system` and `plugin` (any plugin-sourced event). Modes are
+`inherit` (the event type's #107 policy), `immediate` (no batching), `coalesce` (15-minute
+window), `digest` (next scheduled digest time) and `mute` (no external delivery).
+
+Effective policy, strongest first. The result is deterministic, never depends on the order of
+`rules`, and is explained by `GET /api/settings/notification-timing/preview` (the Settings page
+shows the same reasons).
+
+1. Hard gates are decided before timing and are never relaxed: disabled route, type or
+   destination, provider opt-in, server blocks, trust and consent.
+2. Immune traffic: every non-`standard` purpose (security, recovery, verification, invitation,
+   test) and the in-app inbox ignore all timing rules.
+3. User rules, most specific first: category + destination, destination, category, everything.
+   Mode, quiet hours and the urgency override are each taken from the most specific rule that
+   sets them.
+4. Account defaults, then the event type's #107 aggregation policy.
+5. `mute` is final. Otherwise urgency may bypass quiet hours and aggregation, but only when the
+   server allows it (`NOTIFICATION_URGENT_BYPASS_ENABLED`), the aggregation policy has
+   `urgent_bypass`, the user's threshold is not `off` and no rule says `deny`. Requests come from
+   the user's own Critical route choice, a `critical` host severity, or (only with
+   `plugin_urgent_bypass`) the producer's `requested_urgency`, stored on the notification.
+   `NOTIFICATION_TIMING_ENABLED=false` makes the server ignore user timing entirely.
+
+Holds reuse the #107 windows. A quiet-hours or digest hold is a `digest` window keyed
+`timing:<release instant>`, so everything held for the same release arrives as one digest; the
+delivery records `timing_reason`. A skipped local time (spring forward) resolves to the first
+instant after the gap; a repeated one (fall back) releases at the first matching instant after
+now. Quiet nights therefore end at the local end time on 23- and 25-hour days.
+
+Disabled routes queue nothing. A delivery is also revalidated when it is claimed: a route
+disabled, a destination or provider changed, or a type muted after queueing suppresses the held
+work (`routing_changed`, `muted`) instead of replaying it later; re-enabling affects only
+notifications that arrive afterwards. Urgency and timing never touch PUBLIC/PRIVATE/SECURE
+trust, projections, consent or recovery capability, and `TimingDecision` carries none of them.
+
 ## Provider capabilities and discovery
 
 Schema `notification-provider-capabilities-v1` (`NotificationProviderCapabilities`):
@@ -558,7 +609,7 @@ These invariants hold for every adopter:
 | --- | --- |
 | #106 | Done: persisted with `decide_revision` under transactional locks, installation-scoped story identity, receipts separate from content, no reuse of replay statuses. See [Story persistence](#story-persistence-and-idempotency). |
 | #107 | Done: see [Aggregation windows and digests](#aggregation-windows-and-digests). |
-| #108 | Urgency as a request constrained by policy, never by trust. |
+| #108 | Done: see [Timing policy](#timing-policy). Urgency is a request constrained by server, user and policy limits, never by trust. |
 | #109 | Markdown/HTML/URL enforcement, image proxying, host media resolution, action routes and live story links. |
 | #110 | Capability declarations and discovery, per-revision deliveries, batches, remote references and `reconciliation_operation`. |
 | #111–#114 | Provider renderers consuming negotiated content or `legacy_text`, and their capability profiles. |

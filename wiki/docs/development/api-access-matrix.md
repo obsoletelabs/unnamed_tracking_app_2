@@ -548,6 +548,7 @@ are redacted. Validation errors never echo submitted values.
 | DELETE | `/api/settings/notification-providers/webhook-destinations/{destination_id}` | user | Destination must belong to the caller (404 otherwise). |
 | PATCH | `/api/settings/notification-providers/webhook-destinations/{destination_id}` | user | Destination must belong to the caller (404 otherwise). |
 | PUT | `/api/settings/notification-providers/{provider_id}` | user | Rows filtered by `user_id == caller`. |
+| GET | `/api/settings/notification-timing/preview` | user | `destination_id` query must name the caller's own destination (404 otherwise); read-only preview, nothing is queued. |
 
 ### Sessions
 

@@ -72,6 +72,10 @@ class Notification(Base):
     required_trust: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     purpose: Mapped[str] = mapped_column(String(32), nullable=False, default="standard")
     severity: Mapped[str] = mapped_column(String(16), nullable=False, default="info")
+    # A producer's request only; host and user timing policy decide whether it bypasses delays.
+    requested_urgency: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="normal", server_default="normal"
+    )
     group_key: Mapped[str | None] = mapped_column(String(200), nullable=True)
     inbox_visible: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     dismissed_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)

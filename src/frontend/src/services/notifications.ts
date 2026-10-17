@@ -661,3 +661,37 @@ export function removeBrowserDestination(id: string) {
     "DELETE",
   );
 }
+
+export interface TimingPreview {
+  event_type: string;
+  destination_id: string;
+  category: string;
+  evaluated_at: number;
+  route_enabled: boolean;
+  decision: {
+    action: "deliver" | "hold" | "aggregate" | "mute" | "none";
+    mode: string;
+    release_at: number | null;
+    bypassed_by_urgency: boolean;
+    matched_rule: string;
+    reasons: string[];
+  };
+}
+
+export async function previewNotificationTiming(
+  eventType: string,
+  destinationId: string,
+  options: { urgent?: boolean } = {},
+): Promise<TimingPreview> {
+  const query = new URLSearchParams({
+    event_type: eventType,
+    destination_id: destinationId,
+  });
+  if (options.urgent) query.set("severity", "critical");
+  const response = await fetch(
+    `/api/settings/notification-timing/preview?${query}`,
+    { credentials: "include" },
+  );
+  if (!response.ok) throw new Error("Failed to preview notification timing.");
+  return response.json();
+}

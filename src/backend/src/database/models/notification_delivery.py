@@ -10,7 +10,10 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.database.base import Base
-from src.database.models import notification_aggregation  # noqa: F401  # pylint: disable=unused-import
+
+# Registers the aggregation window table so the delivery foreign key resolves.
+# pylint: disable-next=unused-import
+from src.database.models import notification_aggregation  # noqa: F401
 
 # Statuses that still owe work: held in a window, queued, leased or waiting to retry.
 ACTIVE_DELIVERY_STATUSES = ("pending", "processing", "retry_wait", "aggregating")
@@ -65,6 +68,8 @@ class NotificationDelivery(Base):
     )
     batch_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     batch_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Why timing policy held this delivery (rule/quiet/digest code); NULL when sent directly.
+    timing_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
     attempted_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     next_attempt_at: Mapped[int] = mapped_column(
         BigInteger,

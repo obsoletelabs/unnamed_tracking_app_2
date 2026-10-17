@@ -60,6 +60,8 @@ Notification representations additionally carry event type, source, severity, pu
 
 The existing preference service accepts `notification_routes`: a map of event type to destination UUID to `{enabled, urgency}`. It is bounded to 128 types and 512 choices; urgency is `normal` or `critical`, default Normal. Extra security/verification/capability assertions are rejected. Type and destination global opt-outs still apply. Every attempt rechecks the route, so disabling it suppresses queued work independently of inbox history. A foreign user's UUID in an owner's preferences grants no authority over that destination.
 
+Timing (quiet hours, digest times, per-category and per-destination modes, mute and urgency limits) is the separate `notification_timing` preference in the same document; see [Timing policy](notification-contract.md#timing-policy). Legacy preferences without it behave exactly as before, and migration `a3c81e5d7f20` only adds defaulted columns (`notifications.requested_urgency`, `notification_deliveries.timing_reason`). `NOTIFICATION_TIMING_ENABLED` and `NOTIFICATION_URGENT_BYPASS_ENABLED` are the administrator limits.
+
 The core records requested and effective delivery urgency. Built-in SMTP supports Critical through high-priority email headers, subject to mail-client behavior. The inbox and legacy plugin adapters deliver Normal while retaining the requested choice. Urgency cannot weaken sensitivity, destination trust, administrative policy or plugin permissions. The UI distinguishes concrete personal email destinations from shared legacy webhooks.
 
 ## Built-in SMTP enrollment and proof

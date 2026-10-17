@@ -2,6 +2,43 @@
 import { DEFAULT_PAGE_SETTINGS } from "../utils/gamePage";
 import type { PageSettings } from "../utils/gamePage";
 
+export type TimingMode =
+  "inherit" | "immediate" | "coalesce" | "digest" | "mute";
+export type TimingCategory = "*" | "media" | "game" | "system" | "plugin";
+
+export interface QuietHours {
+  enabled: boolean;
+  start: string;
+  end: string;
+}
+
+export interface TimingRule {
+  category: TimingCategory;
+  destination_id: string | null;
+  mode: TimingMode;
+  urgent: "inherit" | "allow" | "deny";
+  quiet_hours?: Partial<QuietHours>;
+}
+
+// Quiet hours, digests and urgency limits; stored with the other routing choices.
+export interface NotificationTiming {
+  timezone: string;
+  quiet_hours: QuietHours;
+  urgent_threshold: "critical" | "off";
+  plugin_urgent_bypass: boolean;
+  digest_times: string[];
+  rules: TimingRule[];
+}
+
+export const DEFAULT_NOTIFICATION_TIMING: NotificationTiming = {
+  timezone: "",
+  quiet_hours: { enabled: false, start: "22:00", end: "07:00" },
+  urgent_threshold: "critical",
+  plugin_urgent_bypass: false,
+  digest_times: ["08:00"],
+  rules: [],
+};
+
 export interface Preferences {
   ui_theme: "system" | "light" | "dark";
   ui_theme_package: string;
@@ -43,6 +80,7 @@ export interface Preferences {
     string,
     Record<string, { enabled: boolean; urgency: "normal" | "critical" }>
   >;
+  notification_timing: NotificationTiming;
   notify_statuses: ("watching" | "plan" | "hold")[];
   calendar_airing_statuses: ("watching" | "plan" | "hold")[];
   notify_media_types: ("anime" | "tv" | "movie")[];
@@ -107,6 +145,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   notification_destinations: {},
   notification_url: "",
   notification_routes: {},
+  notification_timing: structuredClone(DEFAULT_NOTIFICATION_TIMING),
   notify_statuses: ["watching", "plan", "hold"],
   notify_media_types: ["anime", "tv", "movie"],
   notification_retention_days: 30,

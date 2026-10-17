@@ -35,6 +35,7 @@ from src.features.notification_pending import invitation_message
 from src.features.notification_plugin_policy import delivery_projection
 from src.features.notification_policy import INBOX_PROVIDER, Trust, route_choice
 from src.features.notification_source_policy import source_delivery_allowed
+from src.features.notification_timing import decide_for
 from src.plugin_api.runtime_client import PluginRuntimeUnavailable
 
 from .base import DeliveryResult, NotificationProvider, ProviderDestination, notification_message
@@ -84,13 +85,15 @@ async def ensure_deliveries(
             requested_urgency = route_choice(notification.event_type, str(destination.id), prefs)[
                 "urgency"
             ]
-            # The in-app inbox is never delayed; external destinations follow the declared policy.
+            decision = decide_for(notification, destination, prefs, now=now)
+            if decision.action == "mute":
+                # A muted route leaves no queued work; the inbox keeps its history.
+                continue
+            # The in-app inbox is never delayed; external destinations follow the timing policy.
             window_id = (
                 None
                 if inbox
-                else await assign_window(
-                    db, notification, destination, requested_urgency=requested_urgency, now=now
-                )
+                else await assign_window(db, notification, destination, decision=decision, now=now)
             )
             delivery_id = await db.scalar(
                 pg_insert(NotificationDelivery)
@@ -102,6 +105,7 @@ async def ensure_deliveries(
                     projection=projection,
                     requested_urgency=requested_urgency,
                     window_id=window_id,
+                    timing_reason=None if inbox or not window_id else decision.code[:64],
                     status="sent" if inbox else "aggregating" if window_id else "pending",
                     attempts=0,
                     next_attempt_at=now,
@@ -348,7 +352,7 @@ async def _open_attempt(
 
 
 # Separate exits ensure source revocation is rechecked before transport I/O.
-# pylint: disable-next=too-many-return-statements
+# pylint: disable-next=too-many-return-statements,too-many-locals,too-many-statements
 async def _dispatch(db: AsyncSession, delivery_id: UUID, token: UUID) -> bool:
     delivery = await db.get(NotificationDelivery, delivery_id, populate_existing=True)
     if delivery is None or delivery.status != "processing" or delivery.claim_token != token:
@@ -381,6 +385,13 @@ async def _dispatch(db: AsyncSession, delivery_id: UUID, token: UUID) -> bool:
         != delivery.projection
     ):
         await _finish(db, delivery_id, token, "suppressed", "routing_changed")
+        return False
+    if (
+        endpoint.provider_id != INBOX_PROVIDER
+        and decide_for(notification, endpoint, current_preferences, now=int(time.time())).action
+        == "mute"
+    ):
+        await _finish(db, delivery_id, token, "suppressed", "muted")
         return False
     # Built-in endpoint transports resolve again after the final policy refresh;
     # a deployment TLS change cannot reuse the earlier configuration snapshot.
