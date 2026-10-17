@@ -3,19 +3,32 @@ import { sizedAssetUrl } from "../utils/gameImages";
 import HeartIcon from "../components/HeartIcon.vue";
 import GameCard from "../components/GameCard.vue";
 import CheckIcon from "../components/CheckIcon.vue";
-import GameFormModal from "../components/GameFormModal.vue";
-import BulkEditModal from "../components/BulkEditModal.vue";
-import RandomGamePicker from "../components/RandomGamePicker.vue";
 import FilterCombobox from "../components/FilterCombobox.vue";
 import TagFilterPicker from "../components/TagFilterPicker.vue";
-import CollectionPickerModal from "../components/CollectionPickerModal.vue";
 import GameTopBar from "../components/GameTopBar.vue";
 import LibrarySyncMenu from "../components/LibrarySyncMenu.vue";
 import SegmentedTabs from "../components/SegmentedTabs.vue";
 import type { ViewMode, CardDensity } from "../composables/useGameLibrary";
 import { useGameLibrary } from "../composables/useGameLibrary";
-import { computed, ref } from "vue";
+import { computed, ref, defineAsyncComponent } from "vue";
 import { quickTourActive } from "../state/quickTour";
+
+// Loaded on demand so they stay out of the initial route chunk.
+const BulkEditModal = defineAsyncComponent(
+  () => import("../components/BulkEditModal.vue"),
+);
+const RandomGamePicker = defineAsyncComponent(
+  () => import("../components/RandomGamePicker.vue"),
+);
+const CollectionPickerModal = defineAsyncComponent(
+  () => import("../components/CollectionPickerModal.vue"),
+);
+const GameQuickEditModal = defineAsyncComponent(
+  () => import("../components/game/GameQuickEditModal.vue"),
+);
+const GameFormModal = defineAsyncComponent(
+  () => import("../components/GameFormModal.vue"),
+);
 const {
   loadGames,
   viewportWidth,
@@ -104,6 +117,10 @@ const {
   setView,
   openAddModal,
   openEditModal,
+  quickEditingGame,
+  editDraft,
+  openFullEditor,
+  onQuickEdited,
   onGameSaved,
   onDeleteFromModal,
   toggleFavorite,
@@ -1112,10 +1129,20 @@ const compactPreview = computed(
         </div>
       </template>
 
+      <GameQuickEditModal
+        v-if="quickEditingGame"
+        :key="quickEditingGame.id"
+        :game="quickEditingGame"
+        @close="quickEditingGame = null"
+        @saved="onQuickEdited"
+        @more="openFullEditor(quickEditingGame, $event)"
+      />
+
       <GameFormModal
         v-if="showFormModal"
         :game="editingGame"
         :quick-add="!editingGame"
+        :draft="editDraft"
         @close="showFormModal = false"
         @saved="onGameSaved"
         @delete="onDeleteFromModal"

@@ -1,26 +1,37 @@
-"""Keep bearer proof/opt-out/live-link tokens out of Uvicorn's request access log."""
+"""Keep bearer proof, opt-out, live-link, calendar-feed and OIDC exchange values out of the access log."""
 
 import logging
+import re
+
+_CALENDAR_FEED_PATH = re.compile(r"^(/api/calendar/feed/)[^/?]+(\.ics)$")
+_LIVE_LINK_PREFIXES = ("/api/notifications/live/", "/api/notifications/stories/by-link/")
+_REDACTED_LIVE_LINK = "/api/notifications/live/<redacted>"
+_QUERY_SECRET_PATHS = (
+    "/api/notifications/email-verify",
+    "/api/notifications/email-unsubscribe",
+    "/api/auth/oidc/callback",
+)
+
+
+def redact_request_target(target: str) -> str:
+    """Drop live-link tokens, credential-bearing query strings and the calendar feed token from a logged path."""
+    if target.startswith(_LIVE_LINK_PREFIXES):
+        return _REDACTED_LIVE_LINK
+    path, _, _query = target.partition("?")
+    if path in _QUERY_SECRET_PATHS or path.startswith("/api/auth/oidc/callback/"):
+        return path
+    feed = _CALENDAR_FEED_PATH.match(path)
+    if feed:
+        return f"{feed.group(1)}[redacted]{feed.group(2)}"
+    return target
 
 
 class NotificationLinkFilter(logging.Filter):  # pylint: disable=too-few-public-methods
     def filter(self, record: logging.LogRecord) -> bool:
         if isinstance(record.args, tuple) and len(record.args) == 5:
             path = record.args[2]
-            if isinstance(path, str) and path.startswith(
-                ("/api/notifications/live/", "/api/notifications/stories/by-link/")
-            ):
-                record.args = (
-                    *record.args[:2],
-                    "/api/notifications/live/<redacted>",
-                    *record.args[3:],
-                )
-                return True
-            if isinstance(path, str) and path.partition("?")[0] in {
-                "/api/notifications/email-verify",
-                "/api/notifications/email-unsubscribe",
-            }:
-                record.args = (*record.args[:2], path.partition("?")[0], *record.args[3:])
+            if isinstance(path, str):
+                record.args = (*record.args[:2], redact_request_target(path), *record.args[3:])
         return True
 
 

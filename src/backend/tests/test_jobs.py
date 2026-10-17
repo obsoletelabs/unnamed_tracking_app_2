@@ -38,7 +38,11 @@ async def test_airing_job_does_not_overlap_and_can_restart_after_completion(monk
     await task
     assert not spec.is_running()
     if fails:
-        record_mock.assert_not_awaited()
+        # A failed run is recorded so its interval, not the next tick, paces the retry.
+        record_mock.assert_awaited_once()
+        job_id, result = record_mock.await_args.args
+        assert job_id == "airing_check"
+        assert result["completed"] is False and "retry" in result["error"]
     else:
         record_mock.assert_awaited_once_with("airing_check", {"checked": 3})
 

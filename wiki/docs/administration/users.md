@@ -4,6 +4,12 @@ Administrators can list, create, update, and delete local users from Settings. A
 
 The configured primary user is reconciled at application startup when `PRIMARY_USER_USERNAME`, `PRIMARY_USER_EMAIL`, and `PRIMARY_USER_PASSWORD` are present. Treat those values as deployment secrets and rotate them through the supported configuration path.
 
+## Usernames
+
+New and renamed usernames are 1-100 ASCII letters, digits, underscores, hyphens or dots, with no spaces. The profile form, the administrator "Create user" form, the invitation form and the first-administrator step of setup check this rule while you type and when you leave the field, and name the exact problem (for example `Username cannot contain spaces.`, `Username is too long: use at most 100 characters (this one has 101).`, or `Enter a username.`). The message is attached to the field for screen readers and the field is marked invalid.
+
+The server applies the same rule when you save and is authoritative. Whether a name is already taken is deliberately not checked while typing, because that would let anyone probe which accounts exist. A profile save by an ordinary user that collides with another account reports one combined message, `That username or email is already in use.`, whatever field collided, so a signed-in user cannot probe which usernames or email addresses are registered. Administrators, who can already list every account, still get the specific `That username is already taken.` or `That email address is already in use.` reply, and user creation (administrator only) keeps it too. The public invitation form likewise keeps one combined message for either collision. No names are reserved. Existing usernames that predate the rule (for example ones containing spaces or `@`) keep working for sign-in, and keeping your current username unchanged on the profile form is never flagged.
+
 ## Editing a user
 
 **Settings → Administration → Users → Edit** opens a popup for one account. Only administrators can use it, and every action is written to an append-only activity log shown at the bottom of the popup (actor, action, outcome, time, no secrets). Promote, demote and delete are logged too.

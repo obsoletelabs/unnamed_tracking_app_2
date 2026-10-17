@@ -67,7 +67,7 @@ The extension first uses its generated `folder_location` association and then fa
 
 If a game already exists, the extension updates it through the game's update endpoint. Otherwise it creates the game first and then uploads available artwork.
 
-Creating a game that carries a `playnite_guid` is safe to repeat. If the account already has a game with that GUID, or a game in the same folder that no other Playnite entry has claimed, the create returns that game (HTTP 200, and the GUID is recorded on it) instead of failing on the folder name. Two syncs racing to create the same game also end up with one game. A folder that already belongs to a *different* Playnite GUID is still reported as a conflict (HTTP 409).
+Creating a game that carries a `playnite_guid` is safe to repeat. If the account already has a game with that GUID, or a game in the same folder that no other Playnite entry has claimed, the create returns that game (HTTP 200, and the GUID is recorded on it) instead of failing on the folder name. Two syncs racing to create the same game also end up with one game. A folder that already belongs to a *different* Playnite GUID is still reported as a conflict (HTTP 409). A GUID whose game is in the host's Trash is also reported as HTTP 409 (`playnite_game_in_trash`, with the trashed game's ID) instead of creating a second game for the same Playnite entry; restore the game or let Trash purge it. Every create and update is additionally recorded as a Playnite observation (see [Game ingestion](../development/game-ingestion.md)); only the fields the request carried are recorded.
 
 ## Supported API contract
 

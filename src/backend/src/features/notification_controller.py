@@ -41,6 +41,8 @@ EVENT_TYPES = {
     "season_started": "media.season.started",
     "sequel_announced": "media.sequel.announced",
     "movie_released": "media.movie.released",
+    "franchise_season": "media.franchise.season",
+    "franchise_extra": "media.franchise.extra",
     "session_anomaly": "security.session.anomaly",
     "plugin_update": "system.plugin.update",
     "plugin": "plugin.notice",
