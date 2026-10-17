@@ -350,11 +350,11 @@ metadata through cascades.
   API-key title change returns 403 for the whole PATCH, including playtime and status
   (`tests/test_title_protection_api.py::test_api_unprotected_edit_remains_usable_and_automatically_locks`).
   How the extension reports or retries this is *unverified*.
-- **Playnite writes look like manual edits.** Changed metadata fields join `locked_fields`,
+- **Playnite writes look like manual edits** (at audit time; fixed in #100, see [Playnite observations](playnite-observations.md)).** Changed metadata fields joined `locked_fields`,
   so later metadata refreshes skip them, and #98 cannot tell user locks from Playnite locks.
 - **Last writer wins.** Each sync overwrites `status`, `playtime_seconds`, `favorite`,
   `notes` and ratings with Playnite's values; there is no provenance or conflict.
-- **No last played, achievements or platform/edition** reach the host from Playnite today.
+- **No last played, achievements or platform/edition** reached the host from Playnite at audit time (platform, last played and installed state now travel through the [observation API](playnite-observations.md); Playnite has no achievements).
 - **Trash.** `_find_playnite_game` ignores trashed rows, so a sync after deleting a
   Playnite game creates a new row; restoring the old one then fails with a folder 409.
 

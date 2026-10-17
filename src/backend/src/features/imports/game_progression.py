@@ -19,6 +19,8 @@ def apply_provider_progress(
     existing Played choice is retained: old rows cannot distinguish manual and
     automatic Played. Empty/unavailable evidence never implies completion.
     """
+    if "status" in (game.locked_fields or []):
+        return  # the user chose this status by hand (#97)
     if game.deleted_at is not None or game.status not in {
         GameStatus.BACKLOG,
         GameStatus.WISHLIST,

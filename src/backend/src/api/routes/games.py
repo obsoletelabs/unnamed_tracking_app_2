@@ -140,6 +140,8 @@ from src.database.models.game_field_change import GameFieldChange
 from src.database.models.user import User
 from src.database.session import get_db
 from src.features import game_folders, game_ownership
+from src.features.game_identity import manual
+from src.features.game_ingestion import playnite
 from src.features.game_ingestion.legacy import (
     has_manual_observation,
     record_manual_fields,
@@ -398,8 +400,10 @@ async def create_game(
     reconciles rather than erroring (#184). A manual create (no GUID) still
     gets 409 for a folder name that's taken."""
     sent = payload.model_dump(exclude_unset=True)
+    # A rollback expires ORM attributes; retain the owner ID for the create-race retry.
+    user_id = current_user.id
     if payload.playnite_guid is not None:
-        existing = await _find_playnite_game(payload, current_user.id, db)
+        existing = await _find_playnite_game(payload, user_id, db)
         if existing is not None:
             await record_playnite_fields(
                 db, current_user.id, existing.id, payload.playnite_guid, sent
@@ -450,11 +454,9 @@ async def create_game(
         # another sync created the same Playnite game between the check
         # above and this insert: hand back the row that won the race
         if payload.playnite_guid is not None:
-            existing = await _find_playnite_game(payload, current_user.id, db)
+            existing = await _find_playnite_game(payload, user_id, db)
             if existing is not None:
-                await record_playnite_fields(
-                    db, current_user.id, existing.id, payload.playnite_guid, sent
-                )
+                await record_playnite_fields(db, user_id, existing.id, payload.playnite_guid, sent)
                 await db.commit()
                 response.status_code = status.HTTP_200_OK
                 return existing
@@ -570,8 +572,12 @@ async def update_game(
 
     sent = payload.model_dump(exclude_unset=True)
     updates = _drop_nulls_for_required_fields(dict(sent))
+    kept_locks = playnite.guard_update(game, updates, actor)
     authorize_title_update(game, updates, actor)
     old_folder = game.folder_location
+    manual_status = manual.guard_status_update(
+        game, updates, automation=getattr(actor, "credential_kind", None) == "api_key"
+    )
 
     if "folder_location" in updates and updates["folder_location"] is not None:
         await _ensure_folder_location_available(
@@ -580,9 +586,12 @@ async def update_game(
 
     if "parent_game_id" in updates or "relationship_type" in updates:
         effective_parent = updates.get("parent_game_id", game.parent_game_id)
-        effective_relationship = updates.get("relationship_type", game.relationship_type)
         await _validate_game_relationship(
-            effective_parent, effective_relationship, db, current_user.id, game_id
+            effective_parent,
+            updates.get("relationship_type", game.relationship_type),
+            db,
+            current_user.id,
+            game_id,
         )
 
     if "folder_location" in updates:
@@ -601,6 +610,7 @@ async def update_game(
 
     _record_field_changes(game, updates, db)
     apply_updates_with_locking(game, updates, frozenset(_GAME_METADATA_FIELDS), actor=actor)
+    playnite.restore_locks(game, kept_locks)
 
     # Keep sort_title in sync if title changed but sort_title wasn't explicitly
     # set, or was cleared (a blank sorting name means "sort by the title")
@@ -614,6 +624,8 @@ async def update_game(
     # stays "when I first 100%'d this" rather than "when I last did"
     if updates.get("status") == GameStatus.MASTERED and game.completion_date is None:
         game.completion_date = int(time.time())
+
+    await manual.record_user_status(db, game, manual_status)
 
     await _record_update_observation(db, game, actor, sent)
 
@@ -695,10 +707,13 @@ async def bulk_update_games(
     )
     games = result.scalars().all()
     for game in games:
+        previous = game.status
         for field, value in updates.items():
             setattr(game, field, value)
         if updates.get("status") == GameStatus.MASTERED and game.completion_date is None:
             game.completion_date = int(time.time())
+        if updates.get("status") is not None and updates["status"] != previous:
+            await manual.set_completion(db, current_user.id, game.id, updates["status"], game=game)
     await db.commit()
     return {"updated": len(games)}
 

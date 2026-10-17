@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AutomaticMatchBanner from "../components/game/AutomaticMatchBanner.vue";
 import { sizedAssetUrl } from "../utils/gameImages";
 import HeartIcon from "../components/HeartIcon.vue";
 import GameCard from "../components/GameCard.vue";
@@ -12,6 +13,8 @@ import type { ViewMode, CardDensity } from "../composables/useGameLibrary";
 import { useGameLibrary } from "../composables/useGameLibrary";
 import { computed, ref, defineAsyncComponent } from "vue";
 import { quickTourActive } from "../state/quickTour";
+import type { Game } from "../types/game";
+import { relationshipKindLabel } from "../utils/gameIdentityGroups";
 
 // Loaded on demand so they stay out of the initial route chunk.
 const BulkEditModal = defineAsyncComponent(
@@ -39,6 +42,9 @@ const {
   games,
   libraryEntries,
   ownedCopyCount,
+  versionsOf,
+  nestedUnder,
+  searchContext,
   possibleDuplicateIds,
   loading,
   error,
@@ -154,6 +160,17 @@ const compactControls = computed(
 const compactPreview = computed(
   () => compactControls.value && viewMode.value === "detail",
 );
+function contextFor(game: Game) {
+  const found = searchContext(game);
+  return found ? { label: found.label, gameId: found.game.id } : null;
+}
+function nestedLabel(game: Game): string | null {
+  const nested = nestedUnder(game);
+  if (!nested.length) return null;
+  return nested.length === 1
+    ? `+ ${relationshipKindLabel(nested[0].kind, nested[0].label)}: ${nested[0].game.title}`
+    : `+ ${nested.length} related games`;
+}
 </script>
 
 <template>
@@ -184,6 +201,7 @@ const compactPreview = computed(
     </GameTopBar>
 
     <div ref="libraryContent" class="content">
+      <AutomaticMatchBanner />
       <div class="page-head">
         <div>
           <h1>Games</h1>
@@ -703,6 +721,9 @@ const compactPreview = computed(
               :key="game.id"
               :game="game"
               :owned-copy-count="ownedCopyCount(game)"
+              :version-count="versionsOf(game).length"
+              :version-context="contextFor(game)"
+              :nested-label="nestedLabel(game)"
               :possible-duplicate="possibleDuplicateIds.has(game.id)"
               :rank="rankByGameId.get(game.id) ?? null"
               :select-mode="selectMode"
@@ -790,6 +811,15 @@ const compactPreview = computed(
                 @click.stop
                 >Review possible duplicate</RouterLink
               >
+              <div v-if="contextFor(game)" class="list-sub">
+                {{ contextFor(game)?.label }}
+              </div>
+              <div v-else-if="versionsOf(game).length > 1" class="list-sub">
+                {{ versionsOf(game).length }} versions
+              </div>
+              <div v-if="nestedLabel(game)" class="list-sub">
+                {{ nestedLabel(game) }}
+              </div>
               <div v-if="ownedCopyCount(game) > 1" class="list-sub">
                 {{ ownedCopyCount(game) }} owned copies
               </div>
