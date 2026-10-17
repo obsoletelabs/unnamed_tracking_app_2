@@ -1,4 +1,4 @@
-"""Keep bearer proof/opt-out tokens out of Uvicorn's request access log."""
+"""Keep bearer proof/opt-out/live-link tokens out of Uvicorn's request access log."""
 
 import logging
 
@@ -7,6 +7,15 @@ class NotificationLinkFilter(logging.Filter):  # pylint: disable=too-few-public-
     def filter(self, record: logging.LogRecord) -> bool:
         if isinstance(record.args, tuple) and len(record.args) == 5:
             path = record.args[2]
+            if isinstance(path, str) and path.startswith(
+                ("/api/notifications/live/", "/api/notifications/stories/by-link/")
+            ):
+                record.args = (
+                    *record.args[:2],
+                    "/api/notifications/live/<redacted>",
+                    *record.args[3:],
+                )
+                return True
             if isinstance(path, str) and path.partition("?")[0] in {
                 "/api/notifications/email-verify",
                 "/api/notifications/email-unsubscribe",

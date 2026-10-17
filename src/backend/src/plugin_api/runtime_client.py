@@ -339,6 +339,31 @@ class PluginRuntimeClient:
             timeout=_ACTION_REQUEST_TIMEOUT,
         )
 
+    async def notification_story_action(
+        self,
+        plugin_id: str,
+        action_id: str,
+        values: dict[str, Any],
+        *,
+        user_id: str,
+        installation_id: str,
+        story_id: str,
+        revision: int,
+    ) -> dict[str, Any]:
+        """Host callback for a declared story action; authority was rechecked by the host."""
+        return await self._request(
+            "POST",
+            f"/plugins/{quote(plugin_id, safe='')}/notification-story-actions/{quote(action_id, safe='')}",
+            json={
+                "values": values,
+                "user_id": user_id,
+                "installation_id": installation_id,
+                "story_id": story_id,
+                "revision": revision,
+            },
+            timeout=_ACTION_REQUEST_TIMEOUT,
+        )
+
     async def notification_provider_action(
         self,
         plugin_id: str,

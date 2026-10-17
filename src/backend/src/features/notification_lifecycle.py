@@ -9,7 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.database.models.notification import Notification
 from src.database.models.notification_delivery import ACTIVE_DELIVERY_STATUSES, NotificationDelivery
 from src.database.models.notification_destination import NotificationDestination
-from src.database.models.notification_story import NotificationStoryRevision
+from src.database.models.notification_story import (
+    NotificationLiveLink,
+    NotificationStory,
+    NotificationStoryRevision,
+)
 from src.database.models.notification_verification import NotificationVerification
 from src.features.notification_audit import change_deliveries, change_notices, record_notices
 
@@ -110,8 +114,24 @@ async def delete_notice(db: AsyncSession, user_id: UUID, notification_id: UUID) 
     await db.execute(
         update(NotificationStoryRevision)
         .where(NotificationStoryRevision.notification_id == notification_id)
-        .values(title=None, body=None)
+        .values(title=None, body=None, content=None)
     )
+    if notification.story_id is not None:
+        # A live link shows the story's latest item; once that item is erased the link is dead.
+        await db.execute(
+            update(NotificationLiveLink)
+            .where(
+                NotificationLiveLink.story_id == notification.story_id,
+                NotificationLiveLink.revoked_at.is_(None),
+                NotificationLiveLink.story_id.in_(
+                    select(NotificationStory.id).where(
+                        NotificationStory.id == notification.story_id,
+                        NotificationStory.revision == notification.story_revision,
+                    )
+                ),
+            )
+            .values(revoked_at=int(time.time()))
+        )
     await change_deliveries(
         db,
         update(NotificationDelivery)

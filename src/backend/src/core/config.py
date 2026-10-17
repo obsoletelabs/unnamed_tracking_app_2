@@ -57,6 +57,14 @@ class Settings(BaseSettings):
     NOTIFICATION_RETENTION_DEFAULT_DAYS: int = Field(default=30, ge=0, le=3650)
     NOTIFICATION_AUDIT_RETENTION_DAYS: int = Field(default=90, ge=1, le=3650)
     NOTIFICATION_RETENTION_MAXIMUM_DAYS: int = Field(default=0, ge=0, le=3650)
+    # How producer-supplied images reach rich notification pages: re-encoded and cached by this
+    # server ("proxied"), loaded directly by the viewer's browser ("external") or not shown ("off").
+    NOTIFICATION_IMAGE_MODE: Literal["proxied", "external", "off"] = "proxied"
+    NOTIFICATION_IMAGE_CACHE_DIR: str = "/data/cache/notification-images"
+    NOTIFICATION_IMAGE_MAX_BYTES: int = Field(default=5 * 1024 * 1024, ge=1024, le=15 * 1024 * 1024)
+    NOTIFICATION_IMAGE_FAILURE_SECONDS: int = Field(default=300, ge=0, le=86400)
+    NOTIFICATION_LIVE_LINK_DEFAULT_DAYS: int = Field(default=7, ge=1, le=365)
+    NOTIFICATION_LIVE_LINK_MAXIMUM_DAYS: int = Field(default=30, ge=1, le=365)
     MAX_UPLOAD_SIZE_MB: int = 15
     MAX_DOC_SIZE_MB: int = 500
     MAX_SAVE_ARCHIVE_SIZE_MB: int = 4096

@@ -3,7 +3,7 @@
 import hashlib
 import json
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Literal
 from uuid import UUID, uuid4
 
@@ -18,7 +18,12 @@ from src.database.models.notification_destination import NotificationDestination
 from src.database.models.notification_receipt import NotificationReceipt
 from src.database.models.user import User
 from src.features.notification_audit import record_notices
-from src.features.notification_contract import STORY_PURPOSES, RevisionDecision
+from src.features.notification_contract import (
+    SINGLE_ITEM_PHASE,
+    STORY_PURPOSES,
+    RevisionDecision,
+    single_item_lifecycle,
+)
 from src.features.notification_plugin_policy import delivery_projection
 from src.features.notification_policy import (
     MEDIA_KINDS,
@@ -26,7 +31,10 @@ from src.features.notification_policy import (
     preference_enabled,
 )
 from src.features.notification_providers.delivery import ensure_deliveries
+from src.features.notification_rich import render_plain
+from src.features.notification_safety import validate_rich_content
 from src.features.notification_stories import StoryReference, apply_revision
+from src.plugin_api.notification_story_contracts import NotificationContent
 
 EVENT_TYPES = {
     "episode_aired": "media.episode.aired",
@@ -177,6 +185,8 @@ class NotificationDraft:  # pylint: disable=too-many-instance-attributes
     story: StoryReference | None = None
     # A producer's request only; timing policy (#108) decides whether it bypasses any delay.
     requested_urgency: Literal["normal", "critical"] = "normal"
+    # Validated canonical rich content (#109). When present, title and body are derived from it.
+    content: NotificationContent | None = None
 
 
 @dataclass(frozen=True)
@@ -232,6 +242,9 @@ async def _accept(
     """Flush atomically; the caller owns commit and no provider is contacted here."""
     if event.kind not in EVENT_TYPES:
         raise ValueError("Unknown host notification type")
+    content = validate_rich_content(event.content) if event.content is not None else None
+    if content is not None:
+        event = _with_content(event, content, interpretation)
     if (
         len(event.dedupe_key) > 200
         or len(event.source) > 128
@@ -276,7 +289,10 @@ async def _accept(
         severity=interpretation.severity if interpretation else "warning" if security else "info",
         group_key=event.group_key,
         requested_urgency=event.requested_urgency,
-        expires_at=event.occurred_at + lifetime,
+        expires_at=min(
+            event.occurred_at + lifetime,
+            content.expires_at if content and content.expires_at else event.occurred_at + lifetime,
+        ),
         public_title=event.public_title if event.kind in MEDIA_KINDS else None,
         public_body=event.public_body if event.kind in MEDIA_KINDS else None,
         inbox_visible=False,
@@ -298,7 +314,13 @@ async def _accept(
     async with db.begin_nested():
         if not await _record_receipt(db, event, notification):
             return None
-        outcome = await apply_revision(db, notification, event.story, preferences=preferences)
+        outcome = await apply_revision(
+            db,
+            notification,
+            event.story,
+            preferences=preferences,
+            content=content.model_dump(mode="json") if content else None,
+        )
     if outcome.decision != RevisionDecision.UPDATE_IN_PLACE:
         await record_notices(db, [outcome.item], "created")
     # Idempotent: an in-place revision only adds work for destinations that have none yet.
@@ -306,11 +328,40 @@ async def _accept(
     return outcome.item.id
 
 
+def _with_content(
+    event: NotificationDraft,
+    content: NotificationContent,
+    interpretation: NotificationInterpretation | None,
+) -> NotificationDraft:
+    """Title and body for legacy surfaces come from the content; plain events become one-item
+    stories so a live page and revisions exist for them."""
+    if event.kind == "session_anomaly" and interpretation is None:
+        purpose = "security"
+    else:
+        purpose = interpretation.purpose if interpretation else "standard"
+    if purpose not in STORY_PURPOSES:
+        raise ValueError("Only standard and security notifications can carry rich content")
+    event_type = interpretation.event_type if interpretation else EVENT_TYPES[event.kind]
+    story = event.story or StoryReference(
+        key=event.dedupe_key[:128],
+        phase=SINGLE_ITEM_PHASE,
+        lifecycle=single_item_lifecycle(event_type),
+    )
+    return replace(
+        event,
+        title=content.title,
+        body=render_plain(content)[:10000],
+        story=story,
+    )
+
+
 def _story_fingerprint(event: NotificationDraft) -> str | None:
     """Replay identity of a story event: key, phase and text, never the occurrence time."""
     if event.story is None:
         return event.fingerprint
     facts = [event.story.key, event.story.phase, event.title, event.body]
+    if event.content is not None:
+        facts.append(event.content.model_dump_json())
     digest = hashlib.sha256(json.dumps(facts, separators=(",", ":")).encode()).hexdigest()
     return event.fingerprint or digest
 

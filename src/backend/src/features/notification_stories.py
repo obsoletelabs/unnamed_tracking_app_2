@@ -193,11 +193,13 @@ async def apply_revision(
     *,
     preferences: dict[str, Any],
     now: int | None = None,
+    content: dict[str, Any] | None = None,
 ) -> StoryOutcome:
     """Persist one accepted event; raises `StoryTransitionError` (caller rolls the savepoint back).
 
     `candidate` is the not-yet-added item built from the event. It is added for a new story or a
-    linked follow-up item and discarded when the unread head is updated in place.
+    linked follow-up item and discarded when the unread head is updated in place. `content` is the
+    validated canonical document (JSON) of this revision; it is stored only on the revision.
     """
     now = int(time.time()) if now is None else now
     if candidate.user_id is None or candidate.purpose not in STORY_PURPOSES:
@@ -264,6 +266,7 @@ async def apply_revision(
             accepted_at=now,
             title=candidate.title,
             body=candidate.body,
+            content=content,
         )
     )
     await db.flush()
