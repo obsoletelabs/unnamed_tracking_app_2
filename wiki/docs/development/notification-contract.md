@@ -33,7 +33,7 @@ provider and plugin keeps working unchanged through the
 | Typed, strict wire models with JSON Schemas and shared conformance fixtures | Plugin API 1.1.14 and the companion SDK (done, #115), producers (#116) |
 | Item, delivery and attempt transition tables verified against the current routes and dispatcher | Dispatcher (done, #110), full page (#113) |
 | Story revision decision (`decide_revision`) for read/dismissed items | Persisted by the controller since 1.0.0 revision 2 ([Story persistence](#story-persistence-and-idempotency)); first host producer: plugin updates |
-| Capability model, discovery profiles for every current provider and the edit/follow-up fallback | Dispatcher (done, #110), SMTP (#111), Discord (#112), PWA (#114) |
+| Capability model, discovery profiles for every current provider and the edit/follow-up fallback | Dispatcher (done, #110), SMTP (done, #111), Discord (#112), PWA (#114) |
 | Renderer contribution model and template rules | Enforced by the host since #109 ([Rich content](#rich-content-live-story-pages-and-actions)); declared and authorised per plugin by #115 ([Plugin contract](#plugin-contract-plugin-api-1114)) |
 | Explicit adapters for every existing producer, record and notification Plugin API surface | All downstream issues until #118 retires adapters |
 
@@ -592,7 +592,7 @@ Discovery (`provider_capability_profile`):
 | Provider | Renderer | Current profile |
 | --- | --- | --- |
 | `core.inbox` | legacy | Plain text, one host-proxied artwork image, no external links |
-| `core.smtp` | legacy | Plain text plus the host link footer, critical supported |
+| `core.smtp` | canonical | Sanitised standalone HTML plus equivalent plain text, links, live story link, up to 20 items per digest, no edits, critical supported |
 | `core.browser` | legacy | Generic preview by default (opt-in story previews), `replace` by stable tag, 4,096-byte Web Push payload |
 | `legacy` plugin transport | legacy | Title/body DTO, no links |
 | `discord_webhook` | legacy | Approved fields as embed, links, 256-character title, 4,096-character text |
@@ -741,6 +741,39 @@ transport, `PluginRuntimeClient.notification_story_action`) with
 message is bounded to 300 printable characters. Plugin JavaScript never runs in
 notification content, and plugin action entries in views expose no plugin id,
 input or target.
+
+## SMTP rich email
+
+The built-in SMTP provider (`core.smtp`) uses the canonical renderer. Transport, TLS modes,
+write-only secrets, URL precedence, verification and recovery are unchanged.
+
+- **Two equivalent parts.** Every standard notification is sent as `multipart/alternative`. The
+  HTML part is the allowlist-sanitised output of `render_email_html` (sanitised again when the
+  message is composed) inside the host shell; the text part carries the same title, summary,
+  blocks, facts, external action links and live link. The unsubscribe bearer link is only in the
+  HTML footer and the `List-Unsubscribe` header, never in the text part (which points to the mail
+  client's Unsubscribe option). Plugin HTML templates still need `notifications.templates.html`
+  and pass the same sanitiser, so scripts, handlers, iframes and `javascript:` URLs cannot reach
+  the wire.
+- **Images are optional.** Remote artwork is linked (never embedded or proxied) only when
+  `NOTIFICATION_IMAGE_MODE=external`; otherwise the dispatcher records `images_dropped` and the
+  message reads the same without it. An `<img>` carries alt text.
+- **Live story link.** The mail carries `/notifications/stories/{id}` of the destination's
+  verified origin. It is the signed-in owner page: only the owner sees the story, the page shows
+  the current revision (not the delivered text) and marks expired content as stale. No bearer
+  token is placed in email; the mail says it does not change.
+- **No edits, selective follow-ups.** `message_updates` is `none`, so a later revision follows
+  the `NOTIFICATION_FOLLOW_UPS` rule (#110): by default only important changes send a new mail
+  titled `Update: ...`; trivial edits send nothing. Quiet hours and digest windows apply first.
+- **Digests.** A window chunk (up to 20 items) is one mail: a numbered text list and one HTML
+  section per item, each with its own live link, plus a link to all notifications. Item text is
+  the projection-permitted text of the destination; one story's rich content never replaces a
+  digest.
+- **Host-owned messages.** Verification codes, recovery, invitation and test mail keep their own
+  text and layout and are never replaced by story content.
+- **Unsubscribe (#52).** The existing scoped opt-out (`notification_unsubscribe`) is reused: the
+  token names one destination, revision and event type, so unsubscribing from a rich mail affects
+  only that subscription.
 
 ## Plugin contract (Plugin API 1.1.14)
 

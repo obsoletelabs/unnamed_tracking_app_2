@@ -34,6 +34,13 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    h.refuse_if_populated(
+        "notifications", "notification urgency history", "requested_urgency <> 'normal'"
+    )
+    h.refuse_if_populated(
+        "notification_deliveries", "notification timing reasons", "timing_reason IS NOT NULL"
+    )
+
     for table, column in (
         ("notification_deliveries", "timing_reason"),
         ("notifications", "requested_urgency"),
