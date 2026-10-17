@@ -186,6 +186,7 @@ async def test_game_asset_url_route_uses_the_same_public_network_policy(
 ):
     game_id, user_id = uuid4(), uuid4()
     owner = AsyncMock(return_value=SimpleNamespace(id=game_id, user_id=user_id))
+    (tmp_path / "key_art.png").write_bytes(b"saved artwork")
     save = AsyncMock(return_value=tmp_path / "key_art.png")
     monkeypatch.setattr(game_assets, "_get_game_or_404", owner)
     monkeypatch.setattr(game_assets, "get_max_upload_size_mb", AsyncMock(return_value=15))

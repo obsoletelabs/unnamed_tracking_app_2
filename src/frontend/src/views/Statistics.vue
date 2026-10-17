@@ -461,7 +461,12 @@ const episodic = computed<EpisodicStats | null>(() => {
             </section>
             <section class="stats-panel wide">
               <h2>Activity, last 52 weeks</h2>
-              <ActivityHeatmap :days="stats.overview.activity.per_day" />
+              <ActivityHeatmap
+                :days="stats.overview.activity.per_day"
+                :start="stats.overview.activity.start"
+                :end="stats.overview.activity.end"
+                :timezone="stats.overview.activity.timezone"
+              />
               <p v-if="stats.overview.activity.busiest_day" class="note">
                 Busiest day: {{ stats.overview.activity.busiest_day.date }} with
                 {{ busiestDayText }}.

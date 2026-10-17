@@ -17,7 +17,7 @@ class InviteAcceptance(BaseModel):
     model_config = ConfigDict(extra="forbid")
     id: UUID
     token: str = Field(min_length=32, max_length=128)
-    username: str = Field(min_length=1, max_length=100)
+    username: str
     password: str = Field(min_length=1, max_length=1024)
 
 

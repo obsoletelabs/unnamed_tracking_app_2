@@ -84,6 +84,25 @@ export function useCalendar() {
       map.set(`${m.mediaType}-${m.mediaId}`, m.posterUrl);
     return map;
   });
+  // Posters come from the media libraries. Fetching all three lists is only
+  // worth it when something on screen links to a title; otherwise the lists
+  // wait until the title picker opens.
+  function needsLibraryPosters(): boolean {
+    return (
+      historyEntries.value.some(
+        (a) =>
+          a.eventType === "episodes_watched" || a.eventType === "rewatched",
+      ) || eventEntries.value.some((e) => e.mediaType && e.mediaId)
+    );
+  }
+  async function loadPostersWhenNeeded() {
+    if (manualLibraryLoaded.value || !needsLibraryPosters()) return;
+    try {
+      await loadManualLibrary();
+    } catch {
+      // chips fall back to text without posters
+    }
+  }
   async function loadManualLibrary() {
     if (manualLibraryLoaded.value) return;
     const [movies, shows, anime] = await Promise.all([
@@ -307,6 +326,7 @@ export function useCalendar() {
         loadGameHistory(),
         loadEvents(),
       ]);
+      void loadPostersWhenNeeded();
     } finally {
       refreshing.value = false;
     }
@@ -318,7 +338,6 @@ export function useCalendar() {
       appliedDefaultView = true;
       calView.value = prefs.value.calendar_default_view;
     }
-    loadManualLibrary();
   });
   useKeptAlive(refreshAll);
 

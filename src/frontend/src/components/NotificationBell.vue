@@ -120,7 +120,7 @@ function onResize() {
 }
 
 onMounted(() => {
-  void refreshMediaNotifications();
+  void refreshMediaNotifications({ shared: true });
   document.addEventListener("click", onDocumentClick);
   document.addEventListener("keydown", onKeydown);
   window.addEventListener("resize", onResize);

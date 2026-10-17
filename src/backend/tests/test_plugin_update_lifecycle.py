@@ -154,10 +154,146 @@ async def test_update_notification_uses_controller(monkeypatch) -> None:
             "update_available": True,
         },
     )
+    assert emit.await_count == 1
     assert emit.await_args.args[:2] == (db, admin_id)
-    notice = emit.await_args.args[2][0]
+    notices = emit.await_args.args[2]
+    assert len(notices) == 1
+    notice = notices[0]
     assert notice["kind"] == "plugin_update"
-    assert notice["dedupe_key"] == "plugin-update:example.update:2.0.0"
+    assert notice["title"] == "Plugin updates: 1 plugin(s) updated or need attention"
+    assert "example.update (1.0.0 → 2.0.0)" in notice["body"]
+    assert "/settings?area=administration&section=plugins" in notice["body"]
+    assert notice["dedupe_key"].startswith("plugin-update-batch:")
+
+
+@pytest.mark.asyncio
+async def test_four_plugin_updates_are_one_consolidated_notification(monkeypatch) -> None:
+    admin_id = uuid4()
+
+    class Db:
+        async def scalars(self, statement):
+            del statement
+            return [admin_id]
+
+    db = Db()
+    from unittest.mock import AsyncMock
+
+    emit = AsyncMock(return_value=[uuid4()])
+    monkeypatch.setattr(plugin_catalogues, "emit_legacy_rows", emit)
+    monkeypatch.setattr(plugin_catalogues.settings, "PUBLIC_APP_URL", "https://tracking.example")
+    updates = [
+        {
+            "plugin_id": f"example.plugin{i}",
+            "current_version": f"1.{i}.0",
+            "available_version": f"2.{i}.0",
+            "update_available": True,
+            "status": "available",
+        }
+        for i in range(4)
+    ]
+
+    await plugin_catalogues.notify_plugin_updates(db, updates)
+
+    assert emit.await_count == 1
+    notices = emit.await_args.args[2]
+    assert len(notices) == 1
+    body = notices[0]["body"]
+    for update in updates:
+        assert update["plugin_id"] in body
+        assert f"{update['current_version']} → {update['available_version']}" in body
+    assert notices[0]["dedupe_key"].startswith("plugin-update-batch:")
+    assert "https://tracking.example/settings?area=administration&section=plugins" in body
+
+
+@pytest.mark.asyncio
+async def test_batch_summarizes_mixed_automatic_update_outcomes(monkeypatch) -> None:
+    admin_id = uuid4()
+
+    class Db:
+        async def scalars(self, statement):
+            del statement
+            return [admin_id]
+
+    from unittest.mock import AsyncMock
+
+    emit = AsyncMock(return_value=[uuid4()])
+    monkeypatch.setattr(plugin_catalogues, "emit_legacy_rows", emit)
+    await plugin_catalogues.notify_plugin_updates(
+        Db(),
+        [
+            {
+                "plugin_id": "example.updated",
+                "current_version": "1.0.0",
+                "available_version": "2.0.0",
+                "status": "updated",
+            },
+            {
+                "plugin_id": "example.failed",
+                "current_version": "3.0.0",
+                "available_version": "4.0.0",
+                "status": "failed",
+            },
+            {
+                "plugin_id": "example.pending",
+                "current_version": "5.0.0",
+                "available_version": "6.0.0",
+                "status": "available",
+                "reason": "Global automatic updates are disabled.",
+            },
+        ],
+    )
+
+    body = emit.await_args.args[2][0]["body"]
+    assert "Updated automatically: example.updated (1.0.0 → 2.0.0)" in body
+    assert "Automatic update failed: example.failed (3.0.0 → 4.0.0)" in body
+    assert "Update still available: example.pending (5.0.0 → 6.0.0)" in body
+    assert "Global automatic updates are disabled." in body
+
+
+@pytest.mark.asyncio
+async def test_unchanged_plugin_update_batch_is_not_notified_twice(monkeypatch) -> None:
+    records: dict[str, dict[str, object]] = {}
+
+    class Store:
+        def read(self):
+            return {"plugins": records}
+
+        def patch(self, plugin_id: str, **changes):
+            records.setdefault(plugin_id, {}).update(changes)
+
+    store = Store()
+    monkeypatch.setattr(plugin_catalogues, "manager_state", lambda: store)
+    batch = [
+        {
+            "plugin_id": "example.one",
+            "current_version": "1.0.0",
+            "available_version": "2.0.0",
+            "status": "available",
+        },
+        {
+            "plugin_id": "example.two",
+            "current_version": "3.0.0",
+            "available_version": "4.0.0",
+            "status": "available",
+        },
+    ]
+
+    assert plugin_catalogues.plugin_update_batch_changed(batch)
+    plugin_catalogues.mark_plugin_update_batch_notified(batch)
+    assert not plugin_catalogues.plugin_update_batch_changed(batch)
+
+    changed = [{**batch[0], "available_version": "2.1.0"}, batch[1]]
+    assert plugin_catalogues.plugin_update_batch_changed(changed)
+
+    legacy = {
+        "plugin_id": "example.legacy",
+        "current_version": "1.0.0",
+        "available_version": "2.0.0",
+        "update_available": True,
+    }
+    store.patch("example.legacy", available_update=legacy)
+    plugin_catalogues.adopt_legacy_update_notification("example.legacy", legacy, legacy)
+    assert not plugin_catalogues.plugin_update_batch_changed([{**legacy, "status": "available"}])
 
 
 @pytest.mark.asyncio

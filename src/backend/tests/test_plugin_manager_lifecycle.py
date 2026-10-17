@@ -344,9 +344,20 @@ async def test_automatic_update_policy_downloads_without_unauthorized_activation
     assert gate.registry.package(gate.plugin_id)[1]["version"] == (
         "2.0.0" if install_update else "1.0.0"
     )
+    if install_update:
+        assert store.read()["plugins"][gate.plugin_id].get("available_update") is None
     if not install_update:
         assert store.read()["plugins"][gate.plugin_id]["staged_update"]["status"] == "downloaded"
         assert store.stage_path(gate.plugin_id).exists()
+        if not global_enabled and override == "follow":
+            from src.database.models.notification import Notification
+
+            notifications = await gate.db.scalars(
+                select(Notification).where(Notification.kind == "plugin_update")
+            )
+            assert any(
+                "Global automatic updates are disabled." in item.body for item in notifications
+            )
     assert_owned_data(gate)
     if not healthy:
         from src.database.models.notification import Notification
@@ -355,10 +366,11 @@ async def test_automatic_update_policy_downloads_without_unauthorized_activation
         assert gate.registry.health(gate.plugin_id)
         notifications = await gate.db.scalars(
             select(Notification).where(
-                Notification.dedupe_key.like(f"plugin-update:{gate.plugin_id}:%:failed")
+                Notification.dedupe_key.like("plugin-update-batch:%"),
+                Notification.kind == "plugin_update",
             )
         )
-        assert any("failed" in item.title for item in notifications)
+        assert any("Automatic update failed" in item.body for item in notifications)
 
 
 @pytest.mark.asyncio

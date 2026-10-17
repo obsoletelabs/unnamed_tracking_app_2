@@ -6,14 +6,19 @@ from html import escape
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import FileResponse, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.routes.utils.games import _DATA_ROOT, ALLOWED_ASSET_KINDS, _get_game_or_404
 from src.core.auth import get_current_user
 from src.database.models.user import User
 from src.database.session import get_db
+from src.helpers.artwork_revisions import (
+    artwork_response,
+    bytes_revision,
+    stored_file_revision,
+)
 from src.helpers.asset_previews import ensure_preview, preview_path
 from src.helpers.async_storage import finish_storage_operation
 from src.helpers.save_game_asset import ASSET_FILENAMES, AssetKind
@@ -100,18 +105,22 @@ async def preview_default_cover(
 
 
 # Parallel routes/models intentionally share this shape.
-# pylint: disable=duplicate-code
+# pylint: disable=duplicate-code,too-many-positional-arguments
 @router.get("/{game_id}/assets/{asset_kind}")
 async def get_game_asset_with_fallback(
+    request: Request,
     game_id: UUID,
     asset_kind: AssetKind,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
     # Preview stored artwork at the requested display width.
     w: Annotated[int | None, Query(ge=64, le=4096)] = None,
+    # Revision of the stored artwork, from an upload response; see artwork_revisions.
+    v: Annotated[str | None, Query(max_length=64)] = None,
 ) -> Response:
     """Serve stored artwork (or a resized JPEG of it with `w`), falling back to
-    generated cover art when needed."""
+    generated cover art when needed. Every answer carries an ETag derived from the
+    served bytes and honours If-None-Match with a 304."""
     if asset_kind not in ALLOWED_ASSET_KINDS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -129,8 +138,10 @@ async def get_game_asset_with_fallback(
 
     if asset_path.is_file():
         media_type = "image/png"
+        source_revision = await stored_file_revision(asset_path)
+        served_path = asset_path
         if w is not None:
-            asset_path, media_type = await finish_storage_operation(
+            served_path, media_type = await finish_storage_operation(
                 asyncio.to_thread(
                     ensure_preview,
                     asset_path,
@@ -140,10 +151,18 @@ async def get_game_asset_with_fallback(
                     w,
                 )
             )
-        return FileResponse(
-            asset_path,
+        revision = (
+            source_revision
+            if served_path == asset_path
+            else await stored_file_revision(served_path)
+        )
+        return artwork_response(
+            request,
+            revision=revision,
+            source_revision=source_revision,
+            version=v,
             media_type=media_type,
-            headers={"Cache-Control": "private, max-age=3600, must-revalidate"},
+            path=served_path,
         )
 
     if asset_kind != "key_art":
@@ -152,12 +171,19 @@ async def get_game_asset_with_fallback(
             detail=f"Asset '{asset_kind}' has not been uploaded for game {game_id}.",
         )
 
-    return Response(
-        content=_default_cover_svg(game.id, game.title),
+    cover = _default_cover_svg(game.id, game.title).encode("utf-8")
+    revision = bytes_revision(cover)
+    return artwork_response(
+        request,
+        revision=revision,
+        source_revision=revision,
+        version=None,
         media_type="image/svg+xml",
-        # Artwork can arrive at this same URL after an upload or metadata refresh.
-        headers={"Cache-Control": "private, no-cache"},
+        content=cover,
+        # Artwork can arrive at this same URL after an upload or metadata refresh,
+        # so the generated cover is always revalidated (a 304 is still cheap).
+        cache_control="private, no-cache",
     )
 
 
-# pylint: enable=duplicate-code
+# pylint: enable=duplicate-code,too-many-positional-arguments
