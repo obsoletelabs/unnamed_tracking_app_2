@@ -96,3 +96,7 @@ the next run rather than in the middle of one provider request.
 ![Personal autosync with run controls on desktop](../assets/background-sync/background-tasks-modern-desktop.png)
 
 ![A paused task with Resume on a phone](../assets/background-sync/background-tasks-modern-phone.png)
+
+![Classic presentation, desktop](../assets/background-sync/background-tasks-classic-desktop.png)
+
+![Classic presentation, phone](../assets/background-sync/background-tasks-classic-phone.png)
