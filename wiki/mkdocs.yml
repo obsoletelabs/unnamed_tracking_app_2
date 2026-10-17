@@ -102,6 +102,7 @@ nav:
       - Games and Media Migration Review: development/games-ui-migration.md
       - Game Library Identity Audit: development/game-library-identity-audit.md
       - Game Identity Data Model: development/game-identity-model.md
+      - Game Ingestion: development/game-ingestion.md
       - Plugin Palettes & Appearance: development/plugin-themes.md
       - Plugin Home Widgets: development/plugin-home-widgets.md
       - Custom Plugin Frontend Sandbox: development/plugin-ui-sandbox.md
