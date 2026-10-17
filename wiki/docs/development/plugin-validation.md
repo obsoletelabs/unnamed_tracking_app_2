@@ -61,6 +61,11 @@ staging/revocation, release opt-out/opt-in, startup failure recovery, notificati
 retention, management-token scope isolation, confirmed purge and uninstall.
 Only acquisition of the simulated release catalogue is substituted; the official
 downloads, public gateway, runtime HTTP and workers are real.
+`tools/tests/test_plugin_acceptance_acquisition.py` keeps that substitution attached
+to the host's current download function on every Backend checks run: fixture URLs
+are served from the release source and every other URL reaches the host's own
+download path. See [Repository-level tool tests](index.md#repository-level-tool-tests)
+for the local commands.
 
 Add `--browser` after building `src/frontend` and installing the plugin
 repository's npm/Playwright dependencies to verify rendered catalogue filtering,

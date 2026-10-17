@@ -5,15 +5,10 @@ import LibraryManagementSection from "./LibraryManagementSection.vue";
 import MediaPreferencesSection from "./MediaPreferencesSection.vue";
 import MediaTrashSection from "./MediaTrashSection.vue";
 import DuplicateGamesSection from "./DuplicateGamesSection.vue";
+import { LIBRARY_SETTINGS_TABS as TABS } from "../../state/settingsRegistry";
 
 const props = defineProps<{ initialTab?: string }>();
 
-const TABS = [
-  { id: "manage", label: "Library" },
-  { id: "preferences", label: "Preferences" },
-  { id: "duplicates", label: "Duplicates" },
-  { id: "trash", label: "Trash" },
-];
 const tab = ref(
   TABS.some((t) => t.id === props.initialTab) ? props.initialTab! : "manage",
 );

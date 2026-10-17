@@ -218,6 +218,51 @@ curl --fail --silent --show-error -b "$ARTIFACT_DIR/cookies.txt" \
   "$BASE_URL/api/game/$game_id/screenshots" >"$ARTIFACT_DIR/upload-rejection.json"
 grep -qi 'content-type: application/json' "$ARTIFACT_DIR/upload-response-headers.txt"
 python3 -c 'import json,sys; assert "Larger than 1 MB." in str(json.load(open(sys.argv[1])))' "$ARTIFACT_DIR/upload-rejection.json"
+echo "Checking that a Word document over the image cap uploads to Docs and downloads as an attachment."
+python3 - "$ARTIFACT_DIR/walkthrough.docx" <<'PY'
+import os
+import sys
+import zipfile
+
+main = "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"
+with zipfile.ZipFile(sys.argv[1], "w", zipfile.ZIP_DEFLATED) as archive:
+    archive.writestr(
+        "[Content_Types].xml",
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        '<Default Extension="xml" ContentType="application/xml"/>'
+        f'<Override PartName="/word/document.xml" ContentType="{main}"/></Types>',
+    )
+    archive.writestr(
+        "word/document.xml",
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        "<w:body><w:p><w:r><w:t>Walkthrough</w:t></w:r></w:p></w:body></w:document>",
+    )
+    # An embedded 1.5 MB screenshot puts the document over the 1 MB image cap set above.
+    picture = zipfile.ZipInfo("word/media/image1.png")
+    archive.writestr(picture, os.urandom(1536 * 1024), zipfile.ZIP_STORED)
+PY
+docx_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+curl --fail --silent --show-error -b "$ARTIFACT_DIR/cookies.txt" \
+  -F "files=@$ARTIFACT_DIR/walkthrough.docx;type=$docx_type" \
+  "$BASE_URL/api/game/$game_id/files/doc" >"$ARTIFACT_DIR/docs-upload.json"
+doc_name="$(python3 -c 'import json,sys; result = json.load(open(sys.argv[1]))["results"][0]; assert result["status"] == "saved", result; print(result["filename"])' "$ARTIFACT_DIR/docs-upload.json")"
+curl --fail --silent --show-error -b "$ARTIFACT_DIR/cookies.txt" \
+  -D "$ARTIFACT_DIR/docs-download-headers.txt" -o "$ARTIFACT_DIR/walkthrough-download.docx" \
+  "$BASE_URL/api/game/$game_id/files/doc/$doc_name"
+cmp "$ARTIFACT_DIR/walkthrough.docx" "$ARTIFACT_DIR/walkthrough-download.docx"
+grep -qi '^content-disposition: attachment; filename="walkthrough.docx"' "$ARTIFACT_DIR/docs-download-headers.txt"
+grep -qi '^content-type: application/octet-stream' "$ARTIFACT_DIR/docs-download-headers.txt"
+grep -qi '^x-content-type-options: nosniff' "$ARTIFACT_DIR/docs-download-headers.txt"
+echo "Checking that Docs enforce their own documents cap."
+curl --fail --silent --show-error -b "$ARTIFACT_DIR/cookies.txt" -X PUT \
+  -H 'Content-Type: application/json' -d '{"max_doc_size_mb":1}' \
+  "$BASE_URL/api/settings/upload-limit" >/dev/null
+curl --fail --silent --show-error -b "$ARTIFACT_DIR/cookies.txt" \
+  -F "files=@$ARTIFACT_DIR/walkthrough.docx;type=$docx_type" \
+  "$BASE_URL/api/game/$game_id/files/doc" >"$ARTIFACT_DIR/docs-rejection.json"
+python3 -c 'import json,sys; result = json.load(open(sys.argv[1]))["results"][0]; assert result["status"] == "rejected" and result["reason"] == "Larger than 1 MB.", result' "$ARTIFACT_DIR/docs-rejection.json"
 echo "Checking that anonymous bodies over 1 MB are refused without being stored."
 anonymous_status="$(curl --silent --show-error -o "$ARTIFACT_DIR/anonymous-upload.json" -w '%{http_code}' \
   -H 'Content-Type: application/json' --data-binary "@$ARTIFACT_DIR/oversized.png" \

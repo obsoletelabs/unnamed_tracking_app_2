@@ -1,39 +1,43 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from "vue";
+import { ref, onMounted, watch, computed } from "vue";
 import { fetchScanSettings, updateScanSettings } from "../../services/settings";
-import type { DataProvider, ImageProvider } from "../../services/settings";
+import type { ScanSettingsUpdate } from "../../services/settings";
+import { fetchMetadataProviders } from "../../services/metadata";
+import type {
+  MetadataMediaType,
+  MetadataProviderStatus,
+} from "../../services/metadata";
+import { currentUser } from "../../state/auth";
+import {
+  MEDIA_TYPE_LABELS,
+  METADATA_SETTINGS_LINKS,
+  effectiveProviderOrder,
+  moveProvider,
+  participatesIn,
+} from "../../utils/metadataProviders";
+import type { ProviderOrderKind } from "../../utils/metadataProviders";
+import ProviderOrderList from "./ProviderOrderList.vue";
+import SegmentedControl from "./SegmentedControl.vue";
 import ToggleButton from "./ToggleButton.vue";
-
-const DATA_PROVIDER_LABELS: Record<DataProvider, string> = {
-  Steam: "Steam",
-  IGDB: "IGDB",
-  GiantBomb: "Giant Bomb",
-  GOG: "GOG",
-  RetroAchievements: "RetroAchievements",
-  HowLongToBeat: "HowLongToBeat (time to beat only)",
-};
-const IMAGE_PROVIDER_LABELS: Record<ImageProvider, string> = {
-  SteamGridDB: "SteamGridDB",
-  ScreenScraper: "ScreenScraper",
-};
 
 const loading = ref(true);
 const saving = ref(false);
 const error = ref<string | null>(null);
+const providerError = ref<string | null>(null);
 const saveSuccess = ref(false);
 
-const providerOrder = ref<DataProvider[]>([
-  "IGDB",
-  "GiantBomb",
-  "Steam",
-  "GOG",
-  "RetroAchievements",
-  "HowLongToBeat",
-]);
-const imageProviderOrder = ref<ImageProvider[]>([
-  "SteamGridDB",
-  "ScreenScraper",
-]);
+// Core and plugin providers come from the same registry as Sources & API keys.
+const providers = ref<MetadataProviderStatus[]>([]);
+const providersLoaded = ref(false);
+// Full saved orders (every provider, not only the visible media type).
+const providerOrder = ref<string[]>([]);
+const imageProviderOrder = ref<string[]>([]);
+// An order is sent only after it was moved, so a toggle save never rewrites it.
+const orderChanged = ref<Record<ProviderOrderKind, boolean>>({
+  metadata: false,
+  artwork: false,
+});
+const mediaType = ref<MetadataMediaType>("game");
 const saveDeveloper = ref(true);
 const savePublisher = ref(true);
 const saveSeries = ref(true);
@@ -49,21 +53,97 @@ const saveLogo = ref(true);
 const saveIcon = ref(true);
 const providerLastUsed = ref<Record<string, number>>({});
 
-function lastUsedLabel(provider: string): string {
-  const at = providerLastUsed.value[provider];
-  if (!at) return "never used";
-  const seconds = Date.now() / 1000 - at;
-  if (seconds < 60) return "used just now";
-  if (seconds < 3600) return `used ${Math.round(seconds / 60)}m ago`;
-  if (seconds < 86400) return `used ${Math.round(seconds / 3600)}h ago`;
-  return `used ${Math.round(seconds / 86400)}d ago`;
+const isAdmin = computed(() => Boolean(currentUser.value?.is_admin));
+const mediaTypeOptions = computed(() =>
+  (Object.keys(MEDIA_TYPE_LABELS) as MetadataMediaType[])
+    .filter((type) =>
+      providers.value.some((provider) => provider.media_types.includes(type)),
+    )
+    .map((type) => ({ value: type, label: MEDIA_TYPE_LABELS[type] })),
+);
+const providersById = computed(
+  () =>
+    new Map(
+      providers.value.map((provider) => [provider.provider_id, provider]),
+    ),
+);
+const mediaTypesById = computed(
+  () =>
+    new Map(
+      providers.value.map((provider) => [
+        provider.provider_id,
+        provider.media_types as readonly string[],
+      ]),
+    ),
+);
+// Only providers this account uses appear in its order; the server's own
+// availability is shown on each row instead of hiding the provider.
+function visible(kind: ProviderOrderKind): MetadataProviderStatus[] {
+  const order =
+    kind === "metadata" ? providerOrder.value : imageProviderOrder.value;
+  return order
+    .map((id) => providersById.value.get(id))
+    .filter(
+      (provider): provider is MetadataProviderStatus =>
+        !!provider &&
+        provider.account_enabled !== false &&
+        provider.media_types.includes(mediaType.value) &&
+        participatesIn(provider, kind),
+    );
+}
+const metadataProviders = computed(() => visible("metadata"));
+const artworkProviders = computed(() => visible("artwork"));
+const optedOut = computed(() =>
+  providers.value.filter(
+    (provider) =>
+      provider.account_enabled === false &&
+      provider.media_types.includes(mediaType.value),
+  ),
+);
+
+function move(kind: ProviderOrderKind, providerId: string, direction: -1 | 1) {
+  const order = kind === "metadata" ? providerOrder : imageProviderOrder;
+  const next = moveProvider(
+    order.value,
+    visible(kind).map((provider) => provider.provider_id),
+    providerId,
+    direction,
+    mediaTypesById.value,
+  );
+  if (!next) return;
+  order.value = next;
+  orderChanged.value[kind] = true;
 }
 
 onMounted(async () => {
+  const [settingsResult, providersResult] = await Promise.allSettled([
+    fetchScanSettings(),
+    fetchMetadataProviders(),
+  ]);
+  if (providersResult.status === "fulfilled") {
+    providers.value = providersResult.value;
+    providersLoaded.value = true;
+    if (!mediaTypeOptions.value.some((item) => item.value === mediaType.value))
+      mediaType.value = mediaTypeOptions.value[0]?.value ?? "game";
+  } else {
+    providerError.value =
+      providersResult.reason instanceof Error
+        ? providersResult.reason.message
+        : "Provider status is unavailable.";
+  }
   try {
-    const settings = await fetchScanSettings();
-    providerOrder.value = settings.provider_order;
-    imageProviderOrder.value = settings.image_provider_order;
+    if (settingsResult.status === "rejected") throw settingsResult.reason;
+    const settings = settingsResult.value;
+    providerOrder.value = effectiveProviderOrder(
+      providers.value,
+      "metadata",
+      settings.provider_order,
+    );
+    imageProviderOrder.value = effectiveProviderOrder(
+      providers.value,
+      "artwork",
+      settings.image_provider_order,
+    );
     saveDeveloper.value = settings.save_developer;
     savePublisher.value = settings.save_publisher;
     saveSeries.value = settings.save_series;
@@ -113,32 +193,18 @@ watch(
   { deep: true },
 );
 
-function reorder<T>(list: T[], index: number, direction: -1 | 1): T[] | null {
-  const target = index + direction;
-  if (target < 0 || target >= list.length) return null;
-  const next = [...list];
-  [next[index], next[target]] = [next[target], next[index]];
-  return next;
-}
-
-function moveDataProvider(index: number, direction: -1 | 1) {
-  const next = reorder(providerOrder.value, index, direction);
-  if (next) providerOrder.value = next;
-}
-
-function moveImageProvider(index: number, direction: -1 | 1) {
-  const next = reorder(imageProviderOrder.value, index, direction);
-  if (next) imageProviderOrder.value = next;
-}
-
 async function save() {
   saving.value = true;
   error.value = null;
   saveSuccess.value = false;
+  const orders: ScanSettingsUpdate = {};
+  if (providersLoaded.value && orderChanged.value.metadata)
+    orders.provider_order = providerOrder.value;
+  if (providersLoaded.value && orderChanged.value.artwork)
+    orders.image_provider_order = imageProviderOrder.value;
   try {
     await updateScanSettings({
-      provider_order: providerOrder.value,
-      image_provider_order: imageProviderOrder.value,
+      ...orders,
       save_developer: saveDeveloper.value,
       save_publisher: savePublisher.value,
       save_series: saveSeries.value,
@@ -153,6 +219,7 @@ async function save() {
       save_logo: saveLogo.value,
       save_icon: saveIcon.value,
     });
+    orderChanged.value = { metadata: false, artwork: false };
     saveSuccess.value = true;
   } catch (err) {
     error.value =
@@ -173,82 +240,54 @@ async function save() {
 
     <p v-if="loading">Loading…</p>
     <template v-else>
-      <div class="provider-order-row">
-        <div class="field-block">
-          <span class="field-label">Data provider order</span>
-          <p class="field-sublabel">
-            Which provider's text/data fields win when more than one has a
-            match.
-          </p>
-          <ol class="provider-list">
-            <li
-              v-for="(provider, index) in providerOrder"
-              :key="provider"
-              class="provider-item"
-            >
-              <span class="provider-item-label">
-                {{ DATA_PROVIDER_LABELS[provider] }}
-                <small class="provider-last-used">{{
-                  lastUsedLabel(provider)
-                }}</small>
-              </span>
-              <div class="provider-arrows">
-                <button
-                  type="button"
-                  :disabled="index === 0"
-                  @click="moveDataProvider(index, -1)"
-                >
-                  ↑
-                </button>
-                <button
-                  type="button"
-                  :disabled="index === providerOrder.length - 1"
-                  @click="moveDataProvider(index, 1)"
-                >
-                  ↓
-                </button>
-              </div>
-            </li>
-          </ol>
-        </div>
-
-        <div class="field-block">
-          <span class="field-label">Image provider order</span>
-          <p class="field-sublabel">
-            Which provider's art wins when more than one has art.
-          </p>
-          <ol class="provider-list">
-            <li
-              v-for="(provider, index) in imageProviderOrder"
-              :key="provider"
-              class="provider-item"
-            >
-              <span class="provider-item-label">
-                {{ IMAGE_PROVIDER_LABELS[provider] }}
-                <small class="provider-last-used">{{
-                  lastUsedLabel(provider)
-                }}</small>
-              </span>
-              <div class="provider-arrows">
-                <button
-                  type="button"
-                  :disabled="index === 0"
-                  @click="moveImageProvider(index, -1)"
-                >
-                  ↑
-                </button>
-                <button
-                  type="button"
-                  :disabled="index === imageProviderOrder.length - 1"
-                  @click="moveImageProvider(index, 1)"
-                >
-                  ↓
-                </button>
-              </div>
-            </li>
-          </ol>
-        </div>
+      <div class="field-block">
+        <span class="field-label">Provider order</span>
+        <p class="field-sublabel">
+          Lists the built-in and plugin providers this server offers that your
+          account uses. Providers the server cannot use yet keep their place and
+          show why. A provider that covers several media types has one shared
+          position.
+        </p>
+        <p v-if="providerError" class="form-error" role="alert">
+          {{ providerError }} Provider order cannot be changed right now.
+        </p>
+        <SegmentedControl
+          v-else-if="mediaTypeOptions.length > 1"
+          :model-value="mediaType"
+          :options="mediaTypeOptions"
+          aria-label="Media type"
+          @update:model-value="mediaType = $event as MetadataMediaType"
+        />
       </div>
+      <div v-if="providersLoaded" class="provider-order-row">
+        <ProviderOrderList
+          id="metadata-provider-order"
+          title="Search & metadata order"
+          hint="Whose details win when several providers describe the same title, and which equally good match is listed first."
+          :providers="metadataProviders"
+          :last-used="providerLastUsed"
+          :is-admin="isAdmin"
+          :disabled="saving"
+          @move="(id, direction) => move('metadata', id, direction)"
+        />
+        <ProviderOrderList
+          id="artwork-provider-order"
+          title="Artwork order"
+          hint="Whose artwork is offered first when several providers have art."
+          :providers="artworkProviders"
+          :last-used="providerLastUsed"
+          :is-admin="isAdmin"
+          :disabled="saving"
+          @move="(id, direction) => move('artwork', id, direction)"
+        />
+      </div>
+      <p v-if="optedOut.length" class="field-sublabel opted-out">
+        Not used by your account:
+        {{ optedOut.map((provider) => provider.name).join(", ") }}.
+        <router-link :to="METADATA_SETTINGS_LINKS.sources"
+          >Turn providers on in Sources &amp; API keys</router-link
+        >
+      </p>
 
       <div class="field-block">
         <span class="field-label">Images to save from a search result</span>
@@ -346,12 +385,9 @@ async function save() {
 }
 .provider-order-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 24px;
-  margin-bottom: 20px;
-}
-.provider-order-row .field-block {
-  margin-bottom: 0;
+  margin-bottom: 16px;
 }
 .field-label {
   display: block;
@@ -365,51 +401,11 @@ async function save() {
   line-height: 1.5;
   margin: 0 0 12px;
 }
-.provider-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+.opted-out {
+  margin-bottom: 20px;
 }
-.provider-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: var(--ui-bg);
-  border: 1px solid var(--ui-border-strong);
-  border-radius: var(--ui-radius-control);
-  padding: 10px 12px;
-  color: var(--ui-text);
-  font-size: 0.85rem;
-}
-.provider-item-label {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.provider-last-used {
-  color: var(--ui-faint);
-  font-size: 0.7rem;
-  font-weight: 400;
-}
-.provider-arrows {
-  display: flex;
-  gap: 4px;
-}
-.provider-arrows button {
-  background: color-mix(in srgb, var(--ui-text) 8%, transparent);
-  border: none;
-  border-radius: 6px;
-  color: var(--ui-text);
-  width: 26px;
-  height: 26px;
-  cursor: pointer;
-}
-.provider-arrows button:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
+.opted-out a {
+  color: var(--ui-accent-text);
 }
 .refresh-options {
   display: flex;

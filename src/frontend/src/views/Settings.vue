@@ -12,7 +12,7 @@ import { currentUser } from "../state/auth";
 import { activeSettingsArea } from "../state/settingsArea";
 import { startTrackingSaves, stopTrackingSaves } from "../state/saveStatus";
 import SettingsNav from "../components/settings/SettingsNav.vue";
-import type { SettingsGroup } from "../components/settings/SettingsNav.vue";
+import SettingsSearch from "../components/settings/SettingsSearch.vue";
 import SaveStatus from "../components/settings/SaveStatus.vue";
 import ProfileSection from "../components/settings/ProfileSection.vue";
 import GamePageSection from "../components/settings/GamePageSection.vue";
@@ -46,12 +46,19 @@ import ThemesSection from "../components/settings/ThemesSection.vue";
 import PwaSettingsSection from "../components/settings/PwaSettingsSection.vue";
 import PluginContributionHost from "../components/plugins/PluginContributionHost.vue";
 import {
-  pluginSettingsSections,
-  pluginNavigation,
   pageReplacement,
   pageReplacementConflicts,
   refreshPluginExtensions,
 } from "../state/pluginExtensions";
+import {
+  SETTINGS_AREA_NAMES,
+  resolveSettingsSection,
+  settingsGroups,
+  settingsSearchLocation,
+  visiblePluginSettings,
+  visiblePluginSettingsNavigation,
+  type SettingsSearchEntry,
+} from "../state/settingsRegistry";
 import AccountChip from "../components/AccountChip.vue";
 import PageHeader from "../components/PageHeader.vue";
 import AppIcon from "../components/AppIcon.vue";
@@ -67,66 +74,6 @@ watch(
   { immediate: true },
 );
 onMounted(() => void refreshPluginExtensions({ background: true }));
-
-const coreSectionIds = new Set([
-  "admin",
-  "limits",
-  "dev-tools",
-  "metadata",
-  "connections",
-  "notifications",
-  "admin-notifications",
-  "calendar",
-  "shortcuts",
-  "profile",
-  "interface",
-  "appearance",
-  "game-page",
-  "app-installation",
-  "branding",
-  "api-keys",
-  "connected-apps",
-  "integration-policy",
-  "sessions",
-  "admin-sessions",
-  "calendar-notifications",
-  "upload",
-  "library",
-  "media-prefs",
-  "media-trash",
-  "scan",
-  "sources",
-  "media-refresh",
-  "export",
-  "oidc",
-  "password-policy",
-  "server-integrations",
-  "app-settings",
-  "users",
-  "plugins",
-  "themes",
-  "stats",
-  "tasks",
-  "background-tasks",
-  "logs",
-]);
-const visiblePluginSettings = computed(() => {
-  const seen = new Set<string>();
-  return pluginSettingsSections.value.filter((item) => {
-    if (item.adminOnly && !currentUser.value?.is_admin) return false;
-    if (
-      coreSectionIds.has(item.contributionId) ||
-      seen.has(item.contributionId)
-    )
-      return false;
-    seen.add(item.contributionId);
-    return true;
-  });
-});
-
-function pluginSettingsId(contributionId: string): string {
-  return contributionId;
-}
 
 const settingsReplacement = computed(() => pageReplacement("settings"));
 const settingsReplacementConflicts = computed(() =>
@@ -152,25 +99,9 @@ function setAdvancedSessions(enabled: boolean) {
 
 const activePluginSettings = computed(() =>
   visiblePluginSettings.value.find(
-    (item) => pluginSettingsId(item.contributionId) === activeSection.value,
+    (item) => item.contributionId === activeSection.value,
   ),
 );
-const visiblePluginSettingsNavigation = computed(() => {
-  const seen = new Set(
-    visiblePluginSettings.value.map((item) => item.contributionId),
-  );
-  return pluginNavigation.value.filter((item) => {
-    if (item.location !== "settings.sidebar" || !item.pageId) return false;
-    if (item.adminOnly && !currentUser.value?.is_admin) return false;
-    if (
-      coreSectionIds.has(item.contributionId) ||
-      seen.has(item.contributionId)
-    )
-      return false;
-    seen.add(item.contributionId);
-    return true;
-  });
-});
 const activePluginSettingsNavigation = computed(() =>
   visiblePluginSettingsNavigation.value.find(
     (item) => item.contributionId === activeSection.value,
@@ -180,154 +111,17 @@ const activePluginSettingsNavigation = computed(() =>
 onMounted(startTrackingSaves);
 onBeforeUnmount(stopTrackingSaves);
 
-const groups = computed<SettingsGroup[]>(() => {
-  const result: SettingsGroup[] = [
-    {
-      label: "Account",
-      area: "account",
-      sections: [
-        { id: "profile", label: "Profile" },
-        { id: "connections", label: "Connections" },
-        { id: "background-tasks", label: "Background tasks" },
-        { id: "notifications", label: "Notifications" },
-        { id: "api-keys", label: "API Keys" },
-        { id: "connected-apps", label: "Connected apps" },
-        { id: "sessions", label: "Sessions" },
-      ],
-    },
-    {
-      label: "Preferences",
-      area: "preferences",
-      sections: [
-        { id: "appearance", label: "Appearance & interface" },
-        { id: "app-installation", label: "App installation" },
-        { id: "game-page", label: "Game page" },
-        { id: "calendar", label: "Calendar" },
-        { id: "shortcuts", label: "Keyboard Shortcuts" },
-      ],
-    },
-    {
-      label: "Library",
-      area: "preferences",
-      sections: [
-        { id: "library", label: "Library" },
-        { id: "metadata", label: "Metadata" },
-        { id: "export", label: "Export / Import" },
-      ],
-    },
-  ];
-  if (currentUser.value?.is_admin)
-    result.push(
-      {
-        label: "Users & access",
-        area: "administration",
-        sections: [
-          { id: "users", label: "Users" },
-          { id: "admin-sessions", label: "Session Manager" },
-          { id: "oidc", label: "Single sign-on" },
-          { id: "password-policy", label: "Password policy" },
-          { id: "integration-policy", label: "Integration access" },
-        ],
-      },
-      {
-        label: "Application & extensions",
-        area: "administration",
-        sections: [
-          { id: "app-settings", label: "Application" },
-          { id: "branding", label: "App branding" },
-          { id: "plugins", label: "Plugins" },
-          { id: "themes", label: "Themes" },
-        ],
-      },
-      {
-        label: "Operations",
-        area: "administration",
-        sections: [
-          { id: "admin-notifications", label: "Notifications" },
-          { id: "server-integrations", label: "Server integrations" },
-          { id: "limits", label: "Upload limits" },
-          { id: "tasks", label: "Background tasks" },
-          { id: "stats", label: "Storage & usage" },
-          { id: "dev-tools", label: "Developer tools" },
-        ],
-      },
-    );
-  else
-    result.push({
-      label: "Information",
-      area: "preferences",
-      sections: [{ id: "stats", label: "Storage & usage" }],
-    });
-  if (
-    visiblePluginSettings.value.length ||
-    visiblePluginSettingsNavigation.value.length
-  ) {
-    for (const item of visiblePluginSettings.value) {
-      let group = result.find(
-        (candidate) =>
-          candidate.area === item.area && candidate.label === item.group,
-      );
-      if (!group) {
-        group = { label: item.group, area: item.area, sections: [] };
-        result.push(group);
-      }
-      group.sections.push({
-        id: pluginSettingsId(item.contributionId),
-        label: item.label,
-        folders: item.folders,
-      });
-    }
-    for (const item of visiblePluginSettingsNavigation.value) {
-      let group = result.find(
-        (candidate) =>
-          candidate.area === item.area && candidate.label === item.group,
-      );
-      if (!group) {
-        group = { label: item.group, area: item.area, sections: [] };
-        result.push(group);
-      }
-      group.sections.push({
-        id: item.contributionId,
-        label: item.label,
-        folders: item.folders,
-      });
-    }
-  }
-  return result;
-});
-
-// Sections that used to be their own entries and now live inside a
-// merged page as a tab, so old links (command palette, bookmarks) still
-// land in the right place.
-const SECTION_ALIASES: Record<string, { section: string; tab?: string }> = {
-  interface: { section: "appearance" },
-  "calendar-notifications": { section: "notifications" },
-  "media-prefs": { section: "library", tab: "preferences" },
-  "media-trash": { section: "library", tab: "trash" },
-  sources: { section: "metadata", tab: "sources" },
-  scan: { section: "metadata", tab: "scan" },
-  "media-refresh": { section: "metadata", tab: "refresh" },
-};
+// Groups, aliases and the containing-tab resolver live in the shared settings
+// registry so search and the command palette navigate exactly like the sidebar.
+const groups = settingsGroups;
 function resolveSection(id: string | undefined): {
   section: string;
   tab?: string;
 } {
-  const raw = id || "";
-  if (raw === "admin") {
-    const legacyTab =
-      typeof route.query.tab === "string" ? route.query.tab : "users";
-    const sections: Record<string, string> = {
-      users: "users",
-      sso: "oidc",
-      integrations: "server-integrations",
-      app: "app-settings",
-      notifications: "admin-notifications",
-      limits: "limits",
-      "dev-tools": "dev-tools",
-    };
-    return { section: sections[legacyTab] ?? "users" };
-  }
-  return SECTION_ALIASES[raw] ?? { section: raw };
+  return resolveSettingsSection(
+    id,
+    typeof route.query.tab === "string" ? route.query.tab : undefined,
+  );
 }
 const initial = resolveSection(route.query.section as string | undefined);
 const activeSection = ref(initial.section);
@@ -394,11 +188,7 @@ watch(
 onBeforeUnmount(() => {
   activeSettingsArea.value = "preferences";
 });
-const areaNames = {
-  preferences: "Preferences",
-  account: "Account",
-  administration: "Administration",
-};
+const areaNames = SETTINGS_AREA_NAMES;
 const areaDescriptions = {
   preferences: "Make your library feel like yours.",
   account: "Your profile, security and connected services.",
@@ -419,6 +209,18 @@ function openArea(next: string) {
 }
 function backToArea() {
   openArea(area.value);
+}
+// Update the URL first so the route watchers resolve the same section and
+// containing tab, then move focus into the opened section.
+async function openSearchResult(entry: SettingsSearchEntry) {
+  const { query } = settingsSearchLocation(entry);
+  await router.replace({
+    query: { ...route.query, area: undefined, tab: undefined, ...query },
+  });
+  initialTab.value = entry.tab;
+  activeSection.value = entry.section;
+  await nextTick();
+  card.value?.focus();
 }
 </script>
 
@@ -450,22 +252,25 @@ function backToArea() {
   <main v-else class="settings-page">
     <AccountChip fixed />
     <div class="settings-layout">
-      <nav class="settings-areas" aria-label="Settings areas">
-        <button
-          v-for="next in [
-            'preferences',
-            'account',
-            ...(currentUser?.is_admin ? ['administration'] : []),
-          ]"
-          :key="next"
-          type="button"
-          :class="{ active: area === next }"
-          :aria-current="area === next ? 'page' : undefined"
-          @click="openArea(next)"
-        >
-          {{ areaNames[next as keyof typeof areaNames] }}
-        </button>
-      </nav>
+      <div class="settings-toolbar">
+        <nav class="settings-areas" aria-label="Settings areas">
+          <button
+            v-for="next in [
+              'preferences',
+              'account',
+              ...(currentUser?.is_admin ? ['administration'] : []),
+            ]"
+            :key="next"
+            type="button"
+            :class="{ active: area === next }"
+            :aria-current="area === next ? 'page' : undefined"
+            @click="openArea(next)"
+          >
+            {{ areaNames[next as keyof typeof areaNames] }}
+          </button>
+        </nav>
+        <SettingsSearch @select="openSearchResult" />
+      </div>
       <button
         v-if="selectedSection"
         type="button"
@@ -691,13 +496,20 @@ function backToArea() {
   margin: auto;
   color: var(--ui-text);
 }
+.settings-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 24px;
+  padding-bottom: 18px;
+  margin-bottom: 30px;
+  border-bottom: 1px solid var(--ui-border-soft);
+}
 .settings-areas {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  padding-bottom: 18px;
-  margin-bottom: 30px;
-  border-bottom: 1px solid var(--ui-border-soft);
 }
 .settings-areas button {
   min-height: var(--ui-control-height);
@@ -813,11 +625,16 @@ function backToArea() {
   .settings-page {
     padding-top: 24px;
   }
+  .settings-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+  }
   .settings-areas {
     flex-wrap: nowrap;
-    margin-bottom: 16px;
     gap: 4px;
-    padding-bottom: 12px;
   }
   .settings-areas button {
     flex: 1;

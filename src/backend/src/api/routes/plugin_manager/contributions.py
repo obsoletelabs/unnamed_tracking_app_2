@@ -55,6 +55,7 @@ from src.plugin_api.gateway import dispatch_gateway_request, runtime_token_is_va
 from src.plugin_api.grants import has_capability_grant, installation_is_executable
 from src.plugin_api.lifecycle import plugin_contract_active
 from src.plugin_api.runtime_client import PluginRuntimeRequestError, PluginRuntimeUnavailable
+from src.plugin_api.ui_permissions import filter_setting_values
 from src.plugin_api.ui_permissions import filter_ui_document as _filter_ui_document
 
 from . import models, runtime
@@ -202,19 +203,10 @@ async def plugin_native_frontend(
     )
 
 
-@router.get("/{plugin_id}/ui")
-async def plugin_ui(
-    plugin_id: str,
-    db: AsyncSession = _PLUGIN_DB,
-    user: User = _PLUGIN_USER,
-) -> dict:
-    plugin, capabilities = await runtime.plugin_and_capabilities(plugin_id, db, user)
-    try:
+async def _validated_ui_document(plugin_id: str, plugin: dict[str, Any]) -> PluginUiDocument:
+    """Read the runtime UI document and require it to match the live installation."""
+    with runtime.runtime_errors():
         payload = await runtime.client.plugin_ui(quote(plugin_id, safe=""))
-    except PluginRuntimeRequestError as exc:
-        raise runtime.runtime_request_error(exc) from exc
-    except PluginRuntimeUnavailable as exc:
-        raise runtime.runtime_error(exc) from exc
     try:
         document = PluginUiDocument.model_validate(payload)
     except ValidationError as exc:
@@ -228,6 +220,17 @@ async def plugin_ui(
         raise HTTPException(
             status_code=409, detail="Plugin UI and manifest API contracts must match."
         )
+    return document
+
+
+@router.get("/{plugin_id}/ui")
+async def plugin_ui(
+    plugin_id: str,
+    db: AsyncSession = _PLUGIN_DB,
+    user: User = _PLUGIN_USER,
+) -> dict:
+    plugin, capabilities = await runtime.plugin_and_capabilities(plugin_id, db, user)
+    document = await _validated_ui_document(plugin_id, plugin)
     if is_legacy_contract(document.api_contract_version):
         document = document.model_copy(
             update={
@@ -288,14 +291,10 @@ async def save_plugin_secret(
     return {"plugin_id": plugin_id, "key": key, "saved": True}
 
 
-@router.put("/{plugin_id}/settings")
-async def save_plugin_settings(
-    plugin_id: str,
-    payload: dict[str, Any] = _PLUGIN_SETTINGS_BODY,
-    db: AsyncSession = _PLUGIN_DB,
-    user: User = _PLUGIN_USER,
-) -> dict:
-    plugin = await runtime.live_plugin(plugin_id)
+async def _require_settings_grant(
+    db: AsyncSession, plugin_id: str, plugin: dict[str, Any], user: User
+) -> None:
+    """Reading and writing ordinary settings share one installation-scoped grant."""
     if not await has_capability_grant(
         db,
         plugin_id=plugin_id,
@@ -306,10 +305,36 @@ async def save_plugin_settings(
         raise HTTPException(
             status_code=403, detail="Permission plugin.settings has not been granted."
         )
-    try:
+
+
+@router.get("/{plugin_id}/settings", dependencies=[Depends(runtime.private_plugin_response)])
+async def plugin_settings(
+    plugin_id: str,
+    db: AsyncSession = _PLUGIN_DB,
+    user: User = _PLUGIN_USER,
+) -> dict[str, Any]:
+    """Return saved values for declared non-secret fields so forms can reload them."""
+    plugin = await runtime.live_plugin(plugin_id)
+    await _require_settings_grant(db, plugin_id, plugin, user)
+    document = await _validated_ui_document(plugin_id, plugin)
+    with runtime.runtime_errors():
+        saved = await runtime.client.read_settings(quote(plugin_id, safe=""))
+    return {"plugin_id": plugin_id, "values": filter_setting_values(document, saved)}
+
+
+@router.put("/{plugin_id}/settings")
+async def save_plugin_settings(
+    plugin_id: str,
+    payload: dict[str, Any] = _PLUGIN_SETTINGS_BODY,
+    db: AsyncSession = _PLUGIN_DB,
+    user: User = _PLUGIN_USER,
+) -> dict:
+    plugin = await runtime.live_plugin(plugin_id)
+    await _require_settings_grant(db, plugin_id, plugin, user)
+    # Runtime policy rejections, such as a secret field in an ordinary save, keep their
+    # reviewed 4xx status instead of surfacing as an internal server error.
+    with runtime.runtime_errors():
         await runtime.client.save_settings(quote(plugin_id, safe=""), payload)
-    except PluginRuntimeUnavailable as exc:
-        raise runtime.runtime_error(exc) from exc
     return {"plugin_id": plugin_id, "saved": True}
 
 
