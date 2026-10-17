@@ -296,7 +296,9 @@ async def notify_plugin_updates(
     }
     items: list[dict[str, str]] = []
     for update in updates:
-        status = str(update.get("status") or ("available" if update.get("update_available") else ""))
+        status = str(
+            update.get("status") or ("available" if update.get("update_available") else "")
+        )
         if status not in statuses:
             continue
         plugin_id = str(update.get("plugin_id") or "").strip()
@@ -304,12 +306,14 @@ async def notify_plugin_updates(
         new_version = str(update.get("available_version") or update.get("new_version") or "unknown")
         if not plugin_id or new_version == "unknown":
             continue
-        items.append({
-            "plugin_id": plugin_id,
-            "old_version": old_version,
-            "new_version": new_version,
-            "status": status,
-        })
+        items.append(
+            {
+                "plugin_id": plugin_id,
+                "old_version": old_version,
+                "new_version": new_version,
+                "status": status,
+            }
+        )
     if not items:
         return
 
@@ -331,10 +335,16 @@ async def notify_plugin_updates(
         f"({item['old_version']} → {item['new_version']})"
         for item in items
     ]
-    body = "Plugin update batch results:\n" + "\n".join(lines) + f"\n\nManage plugins: {action_url}"
+    body = (
+        "Plugin update batch results:\n"
+        + "\n".join(lines)
+        + f"\n\nManage plugins: {action_url}"
+    )
     title = f"Plugin updates: {len(items)} plugin(s) updated or need attention"
     now = int(time.time())
-    media_id = uuid5(NAMESPACE_URL, f"urn:unnamed-tracking:plugin-update-batch:{dedupe_key}")
+    media_id = uuid5(
+        NAMESPACE_URL, f"urn:unnamed-tracking:plugin-update-batch:{dedupe_key}"
+    )
     for user_id in admin_ids:
         await emit_legacy_rows(
             db,
