@@ -155,6 +155,22 @@ def test_markdown_renders_the_safe_subset():
     assert plain_text(nodes).startswith("Title")
 
 
+@pytest.mark.parametrize(
+    "text",
+    ["my_plugin_id", "run snake_case_name now", "path/to/file_name_v2.txt", "a_b_c and x_y"],
+)
+def test_underscores_inside_words_stay_literal(text):
+    assert plain_text(render_markdown(text)) == text
+    assert not [
+        node for block in render_markdown(text) for node in block["c"] if node["t"] != "text"
+    ]
+
+
+def test_underscore_emphasis_still_works_between_words():
+    nodes = render_markdown("an _emphasised_ word")[0]["c"]
+    assert [node["t"] for node in nodes] == ["text", "em", "text"]
+
+
 def test_markdown_never_produces_markup_or_unsafe_links():
     nodes = render_markdown(
         "<b>html</b> ![tracker](https://evil.example/t.png) "

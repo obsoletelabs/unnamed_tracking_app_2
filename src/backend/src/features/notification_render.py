@@ -13,6 +13,7 @@ import json
 from dataclasses import dataclass, replace
 from uuid import UUID
 
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -73,7 +74,10 @@ async def _content(
             )
         )
         if stored:
-            return NotificationContent.model_validate(stored)
+            try:
+                return NotificationContent.model_validate(stored)
+            except ValidationError:  # stored under an older contract: use the item's own text
+                pass
     try:
         return content_from_notification(notification, projection)
     except ValueError:

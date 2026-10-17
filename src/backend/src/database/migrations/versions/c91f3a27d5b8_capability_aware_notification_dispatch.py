@@ -92,13 +92,6 @@ def downgrade() -> None:
     )
     if h.has_table("notification_remote_references"):
         op.drop_table("notification_remote_references")
-    # Keep one delivery per (notification, destination): the newest revision survives.
-    op.execute(
-        "DELETE FROM notification_deliveries d USING notification_deliveries n "
-        "WHERE d.notification_id = n.notification_id AND d.destination_id = n.destination_id "
-        "AND (d.story_revision < n.story_revision "
-        "OR (d.story_revision = n.story_revision AND d.id < n.id))"
-    )
     if h.has_constraint("notification_deliveries", UNIQUE):
         op.drop_constraint(UNIQUE, "notification_deliveries", type_="unique")
     op.create_unique_constraint(
