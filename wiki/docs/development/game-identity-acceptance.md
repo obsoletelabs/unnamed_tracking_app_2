@@ -4,7 +4,7 @@ Final gate of the game identity overhaul
 ([#91](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/91)), delivered for
 [#103](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/103). This page records
 what was run, what it showed and what was fixed because of it. Every command and number below
-was produced in this change's working copy; nothing is quoted from memory. Backend paths start
+was produced in the stated validation environment. Backend paths start
 `src/backend/`.
 
 ## 1. Verdict
@@ -14,8 +14,16 @@ was produced in this change's working copy; nothing is quoted from memory. Backe
 | Is every row of the #91 scenario matrix an executable end-to-end test? | Yes (section 3). They drive the real HTTP routes as the Playnite extension and the web app do. |
 | Were defects found? | Yes, five, all fixed here (section 5): a request that failed when two Playnite creates raced, four scaling problems (library layout, overview, review/matching, backfill) and a missing library-list index. |
 | Is any known data loss left? | None found. Every scenario asserts that observations, links, games and history are unchanged after merge, split, disconnect, partial import and repeated migration. |
-| Was the Playnite extension (C#) built and tested? | **No.** `dotnet` is not installed in this environment (`which dotnet` prints nothing). The host side of the contract is covered by the backend tests below; the extension's own tests (`tests/Companion.Tests` in `obsoletelabs/unnamed_tracking_playnite`) must be run by the repository's CI (section 8). |
-| Is hosted CI green? | Not known from here. Local results are in section 4; the hosted jobs that cannot run in this sandbox are listed there. |
+| Was the Playnite extension (C#) built and tested? | Yes. The portable harness passed 197 assertions in .NET 8; hosted Windows builds and package validation passed on `ba07d668`. See section 8. |
+| Is hosted CI green? | Check the current integrated PR head before merging. On `ebc4b018`, frontend checks, backend lint/types, migration graph, plugin runtime policies and production container builds passed; the backend suite was still running when this record was updated. |
+
+The original performance measurements below used the acceptance branch's Linux sandbox.
+During integration on 2026-10-17, the complete reconciled host was also tested in isolated
+Docker containers against PostgreSQL 16: 3,587 backend tests passed and eight were skipped;
+one timezone test failed because the container lacked the repository-pinned `tzdata` package,
+then passed after installing it. Frontend lint, formatting and type checks passed, with
+888 tests passing in 141 files. Strict MkDocs build and Ruff checks passed. The published
+main migration head `3a3fb6dccb3e` upgrades to the single game head `c4e8a1f6b3d7`.
 
 ## 2. Children of #91 and their pull requests
 
@@ -311,12 +319,13 @@ Schema concepts: [data model](game-identity-model.md). Decision rules:
   create (idempotent, concurrent-safe), update with user locks, `/api/playnite/contract`,
   `/observations`, `/inventory`, an existing connection continuing after the backfill and
   previously imported IDs.
-- **Extension (C#)**: not built or run here. `dotnet` is not installed in this environment.
-  The extension changes live in `obsoletelabs/unnamed_tracking_playnite` pull request
-  [#2](https://github.com/obsoletelabs/unnamed_tracking_playnite/pull/2) (a draft for that
-  reason). Before it is merged its CI (`build.yml`, `build-pext.yml`) and
-  `tests/Companion.Tests`, `validate-extension.ps1`, `validate-package.ps1` must pass.
-  This change does not touch that repository.
+- **Extension (C#)**: pull request
+  [#2](https://github.com/obsoletelabs/unnamed_tracking_playnite/pull/2) is ready for review.
+  Its harness now distinguishes the contract-negotiation request from paginated library
+  requests, checking both independently. The portable .NET 8 run passed 197 assertions;
+  [Windows build, harness and package checks](https://github.com/obsoletelabs/unnamed_tracking_playnite/actions/runs/39045128710)
+  and [extension packaging](https://github.com/obsoletelabs/unnamed_tracking_playnite/actions/runs/39045128711)
+  passed on `ba07d668`. Ship the compatible host first, then the extension.
 
 ## 9. Known limitations
 
@@ -332,5 +341,5 @@ Schema concepts: [data model](game-identity-model.md). Decision rules:
 - Same-second reports tie on freshness (section 3).
 - Title search is a substring `ILIKE` over the user's rows (about 14 ms at 20,000 games); a
   trigram index was considered and not added.
-- The hosted jobs that need Docker, the production runtime smoke test and the strict MkDocs
-  build with the repository's pinned plugins were not run in this sandbox.
+- Physical Playnite desktop interaction was not exercised in Docker; the portable harness
+  and hosted Windows validation cover the extension contract and package.

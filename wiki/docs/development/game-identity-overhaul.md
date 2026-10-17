@@ -5,8 +5,10 @@ Coordination page for the epic
 issues, pull requests, invariants, contracts, merge order and open risks. The detail lives in the
 per-phase pages listed in section 9; this page does not repeat it.
 
-Status was read from GitHub on 2026-10-17 (`main` at `f8452cd6`, after #180 and the Alembic
-merge revision #237). It is a snapshot: re-check before merging.
+Integration was checked on 2026-10-17 against `main` at `de175cf1`. The audit, model,
+ingestion and decisions are already on `main`; the host Playnite and name changes have
+merged into the counter branch. PR #223 reconciles the remaining stack with current `main`.
+The linked pull requests are the source of current merge status.
 
 ## 1. Dependency graph
 
@@ -41,9 +43,9 @@ on #96. #101 needs all four. Each is stacked on the pull request before it.
 | [#103](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/103) | Acceptance, performance, operations | [#222](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/222) | open, **draft** | #216 | [Acceptance](game-identity-acceptance.md) |
 | #91 | This board | the pull request that adds this page | open, stacked on #222 | #222 | this page |
 
-#92 and #93 are on `main`. The next unblocked work is to review and merge #196; every other
-pull request is stacked on it. #103's pull request (#222) stays a draft until the verification
-listed in section 8 is done.
+#92 through #95 are on `main`. The table records the original review boundaries; some
+branches already contain merged siblings. #103's pull request (#222) stays a draft until
+the integrated verification in section 7 passes.
 
 Existing issues the epic told us to coordinate, checked on the same date:
 
@@ -94,25 +96,24 @@ No plugin-repo change is required by any child.
 
 ## 6. Merge order and Alembic chain
 
-Merge strictly in this order, retargeting each pull request to `main` after its base merges:
-**#196, #202, #205, then #209, #210, #213 and #212 (any order among them, but #213 before
-#214), #214, #216, #222, then this page**; the extension #2 after the host pull requests.
+Integrate descendants into their parents before merging the root into `main`. Reconcile
+the sibling changes (#209, #210 and #212) with #213 first. PR #223 contains that reconciliation
+and the #214, #216 and #222 changes. Preserve this tested result while merging back through
+the stack to #205, then release extension #2 after the host. Check remote heads before each
+update so concurrent work cannot be overwritten.
 
 Migration chain (files under `src/backend/src/database/migrations/versions/`):
 
 ```text
-<main head> -> a3c5e7b9d102 (#102 backfill progress) -> c4e8a1f6b3d7 (#103 library list index)
+3a3fb6dccb3e -> a3c5e7b9d102 (#102 backfill progress) -> c4e8a1f6b3d7 (#103 library list index)
 ```
 
-`716a1e2c451d` (#93 canonical model) is already on `main`, and the merge revision
-`50b007897f73` (#237) joined it with the display name revision `a7d3c91e5b20`, so `main` has one
-head today. #94 to #101 add no migration. Only `a3c5e7b9d102` (#102) and `c4e8a1f6b3d7` (#103) are
-still to land. The stack branches were written before #180 merged, so their `a3c5e7b9d102`
-declares `716a1e2c451d` as its `down_revision`; merging it as is would create a second head next
-to `50b007897f73` and fail the CI migration-graph job. Before merging #216, merge `main` into the
-stack and set the `down_revision` of `a3c5e7b9d102` to the then-current `main` head (and keep that
-on every later branch of the stack). Other open pull requests that add a migration will do the
-same, so re-check `alembic heads` after each merge. This page changes no migration.
+`3a3fb6dccb3e` is the published head on `de175cf1`; it includes the earlier model and
+display-name merge. The unpublished backfill migration now follows that head, and the
+library index follows the backfill migration. No published migration was changed. The
+integrated graph has one head, `c4e8a1f6b3d7`, and upgrade from the published head succeeds.
+Other stacks that add migrations must follow the resulting head; check `alembic heads`
+after integration.
 
 ## 7. Verification per child
 
@@ -141,11 +142,12 @@ Whole-stack gate (on the #222 branch, as recorded in [Acceptance](game-identity-
 
 ## 8. Open risks and limitations
 
-- Hosted CI has not confirmed the stack. The Docker build, production smoke test, plugin
-  integration workflow and the extension's .NET build and tests were not run in the sandbox.
-  This is why #103 and extension #2 are drafts.
-- Two plugin-upload tests fail in the sandbox only (no DNS); they also fail on clean `main` here.
-- The migration-head move in section 6 must be fixed at merge time.
+- Final hosted checks must pass on the integrated head before the root merges. Production
+  container builds and plugin runtime policy checks have passed on the reconciled branch.
+  Extension #2 is ready: both Windows builds/package validation and its test harness pass.
+- The isolated Docker run passed 3,587 backend tests; one timezone test initially lacked the
+  pinned `tzdata` dependency and passed after installing it. Eight tests were skipped.
+  Frontend lint, format and type checks pass, with 888 tests passing in 141 files.
 - Several paths are linear in CPU (library layout, duplicates list); the library list is paged at
   200 rows. The first matching run on a large unmatched library is slow and holds the user's
   identity lock. See [Acceptance](game-identity-acceptance.md), sections 6 and 9.
@@ -153,20 +155,20 @@ Whole-stack gate (on the #222 branch, as recorded in [Acceptance](game-identity-
 - Backfill cannot recover plugin IDs or account scopes that legacy rows never stored; those
   games keep updating and gain scoped observations on their next import. Scheduled backups do not
   contain identities and are not a rollback ([Migration](game-identity-migration.md), section 6).
-- The stack is long. A late change to #180 or #196 means rebasing every later pull request.
+- Concurrent branch changes require a fresh comparison and verification before integration.
 
 ## 9. Definition of done for #91
 
 | Criterion from the epic | Evidence | State |
 | --- | --- | --- |
-| Each child has tests and acceptance evidence | Pages above; test files in section 7 | Written; only #92 merged |
+| Each child has tests and acceptance evidence | Pages above; test files in section 7 | Implemented and tested on the reconciled stack |
 | No data loss in populated migration tests; merge and unmerge reversible | `test_game_identity_migration*`, scenarios 3 and 11 | Passing locally |
 | Repeated imports idempotent | `test_game_ingestion.py`, scenario 1 | Passing locally |
-| Playnite works with real payloads and existing connections | `test_playnite_*`, backfill Playnite tests | Host passes; extension not built |
+| Playnite works with real payloads and existing connections | `test_playnite_*`, backfill Playnite tests; extension CI | Host tests pass; extension harness passes 197 assertions |
 | Manual edits survive imports | scenario 9 | Passing locally |
-| All relevant CI passes | - | **Not yet known** |
+| All relevant CI passes | GitHub checks on the integrated branch | Required before root merge |
 | Docs explain model, workflows, source contract, migration | Pages in section 2 | Done |
 
 The epic is complete when #180 to #222 and the extension are merged, hosted CI is green on the
-merged result, and the three open items in section 8 (CI, extension build, head rebase) are
-closed. This page does not close the epic.
+merged result, and the remaining integration gate is closed. The root PR links the epic and
+all completed child issues so they close when their implementation reaches `main`.
