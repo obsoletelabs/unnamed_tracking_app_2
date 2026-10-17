@@ -60,7 +60,7 @@ class ServerTimingPolicy:
 
 
 @dataclass(frozen=True)
-class TimingFacts:
+class TimingFacts:  # pylint: disable=too-many-instance-attributes
     """The immutable facts a decision depends on (no ORM objects, so tests are trivial)."""
 
     event_type: str
@@ -214,6 +214,8 @@ def _urgent_requested(facts: TimingFacts, timing: dict[str, Any]) -> str | None:
     return None
 
 
+# One linear derivation keeps the precedence readable in a single place.
+# pylint: disable-next=too-many-locals,too-many-return-statements
 def decide(
     facts: TimingFacts,
     timing: dict[str, Any] | None,

@@ -324,7 +324,7 @@ async def _resolve_work(
 
 
 # Separate exits ensure source revocation is rechecked before transport I/O.
-# pylint: disable-next=too-many-return-statements
+# pylint: disable-next=too-many-return-statements,too-many-locals,too-many-statements
 async def _dispatch(db: AsyncSession, delivery_id: UUID, token: UUID) -> bool:
     delivery = await db.get(NotificationDelivery, delivery_id, populate_existing=True)
     if delivery is None or delivery.status != "processing" or delivery.claim_token != token:

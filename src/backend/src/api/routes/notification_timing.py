@@ -26,6 +26,7 @@ _USER = Depends(get_current_user)
 
 
 @router.get("/preview")
+# pylint: disable-next=too-many-positional-arguments
 async def preview_timing(
     event_type: str = Query(pattern=r"^[a-zA-Z0-9._:-]{1,200}$"),
     destination_id: UUID = Query(),
