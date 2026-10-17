@@ -36,7 +36,7 @@ router = APIRouter(
 
 def _read(n: Notification) -> dict:
     link = (
-        plugin_update_route_from_dedupe(n.dedupe_key)
+        plugin_update_route_from_dedupe(n.dedupe_key or "")
         if n.kind == "plugin_update" and n.media_type == "plugin"
         else None
     )
