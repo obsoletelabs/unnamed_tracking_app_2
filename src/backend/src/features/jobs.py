@@ -30,7 +30,6 @@ from src.database.models.job_setting import JobSetting
 from src.database.models.user import User
 from src.database.session import SessionLocal
 from src.features import job_runs
-from src.features.imports.anilist import import_anilist_library
 from src.features.anime_franchise import run_franchise_check
 from src.features.backup.scheduler import run_all_backups
 from src.features.metadata import refresh_job
