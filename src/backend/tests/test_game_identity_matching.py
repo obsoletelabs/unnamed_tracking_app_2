@@ -9,7 +9,7 @@ from src.database.models.game import Game
 from src.database.models.game_identity import GameSourceConnection
 from src.database.session import SessionLocal
 from src.features import game_duplicates
-from src.features.game_identity import decisions, matching, review
+from src.features.game_identity import counters, decisions, matching, review
 from src.features.game_identity.matching import Candidate, assess
 from src.features.game_ingestion.contract import SourceConnectionRef
 from src.features.game_ingestion.service import complete_inventory, disconnect_connection
@@ -352,3 +352,41 @@ async def test_http_queue_and_banner_flow(users, api):  # noqa: F811
         assert (
             await client.post(f"/api/game-identity/review/queue/{entry['id']}/merge")
         ).status_code == 404
+
+
+async def _record_with_facts(user, connection, ext):
+    game = await record(user, connection, ext, observed=False)
+    await ingest(
+        user,
+        {
+            "external_id": ext,
+            "title": FACTS["title"],
+            "facts": {"playtime_seconds": FACTS["playtime"], "last_played_at": FACTS["last"]},
+        },
+        attach={ext: game},
+        connection=connection,
+    )
+    return game
+
+
+async def _playtime(user, game):
+    async with SessionLocal() as db:
+        view = await counters.reconcile(db, user, game)
+        await db.commit()
+    return view["metrics"]["playtime"]["effective"]
+
+
+async def test_automatic_merge_counts_one_copy_once_and_undo_restores_each(users):  # noqa: F811
+    user = await users()
+    a = await _record_with_facts(user, STEAM, "10")
+    b = await _record_with_facts(user, PLAYNITE, "guid-1")
+    assert (await match(user)).associated == 1
+    # two reports of one copy are the same hour count, not the sum of both
+    assert await _playtime(user, a) == 3600
+    assert await _playtime(user, b) == 3600
+    banner = (await automatic(user))[0]
+    async with SessionLocal() as db:
+        await review.undo_automatic(db, user, banner["id"])
+        await db.commit()
+    assert await _playtime(user, a) == 3600
+    assert await _playtime(user, b) == 3600
