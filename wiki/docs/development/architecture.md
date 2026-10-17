@@ -168,6 +168,21 @@ Container identifiers follow the [Ogg framing specification](https://xiph.org/og
 
 `services/games.ts` keeps every game it has fetched in an entity cache (`peekGame`). Opening a game from the library draws it from that cache straight away and refreshes it from the server behind it. Its achievements, variants and parent game are requested in parallel with the game, and fill in when they arrive instead of holding the page back. The hero and poster downloads start before the game's details have returned. When there is nothing cached (opening the address directly), a loading screen is shown whose hero, poster and tab bar match the real page's sizes, so the page does not jump when it replaces it.
 
+## Keeping page loads small
+
+Every routed view in `router/index.ts` is a dynamic `import()`, so opening a page only downloads that page's code. Inside a page, anything that is not on screen at first is loaded the same way:
+
+- Settings builds each section with `defineAsyncComponent`, so opening Settings downloads the section list and the one section the person picked, not all thirty.
+- Game detail loads the Notes, Stats, Accounts, Worlds, Saves, Docs and media panels and the edit dialogs when their tab or dialog is first shown. `GameFormModal`, the bulk editor, the random picker and the collection picker are loaded by the Games library and Home when first opened.
+- Statistics requests only the selected tab (`/api/media-stats?section=...`) and keeps the answer for the tab it came from; switching back does not ask again.
+- The calendar fetches the three media libraries (for poster thumbnails) only when its history or linked events refer to a title, or when the title picker is opened.
+
+Requests that several components make at the same moment are shared. `refreshMediaNotifications({ shared: true })` joins an unfinished request for the same account, and a background `refreshPluginExtensions` is skipped for two seconds after another one finished. Explicit refreshes (opening the bell, installing or removing a plugin) never take the shared path. The five-second session and plugin check in `App.vue` pauses while the browser tab is hidden and runs once when the tab becomes visible again.
+
+The game list is read in pages of 200 (`GET /api/game/list?skip=&limit=`). The body is still a plain array, and the response also carries `X-Total-Count`, the number of games matching the filters. `services/gamePages.ts` uses it to request the remaining pages four at a time instead of one after another, and falls back to sequential reads when the header is missing. The Games library, Home and the collection views still read the whole list because filtering, sorting, grouping of owned copies and duplicate review run in the browser over the full set.
+
+`src/tests/routeSplitting.test.ts` fails if a route, a Settings section or a Game detail panel goes back to being a static import.
+
 ## Shared building blocks
 
 Game duplicate review is host-owned in `features/game_duplicates.py`. The authenticated `GET /api/game-duplicates` reads compact active entries across all import sources without provider calls, suggests conservative title or shared-identity matches, and bounds each response to at most 100 pairs. Known conflicting years, platforms and identities are excluded. `POST /api/game-duplicates/keep-both` records a canonical, user-owned pair in `game_duplicate_dismissals`; repeat/reversed requests are idempotent and ordinary provider replays retain the decision. Neither endpoint merges or deletes library entries.

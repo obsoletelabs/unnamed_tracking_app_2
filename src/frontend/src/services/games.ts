@@ -1,3 +1,4 @@
+import { fetchAllGamePages } from "./gamePages";
 import type { MetadataSearchResult } from "./metadata";
 export type { MetadataSearchResult } from "./metadata";
 import { mockGames } from "../data/mockGames";
@@ -283,30 +284,12 @@ function rememberFetchedGame(game: Game, started: number): Game {
 // /api/game/list caps a single page at 200, page through until a page
 // comes back short, otherwise only the first 50 (the endpoint's default)
 // ever reached the library view once a synced library grew past that.
-const GAMES_PAGE_SIZE = 200;
-
 export async function fetchGames(): Promise<Game[]> {
   if (import.meta.env.VITE_USE_MOCK_DATA === "true") {
     return mockGames;
   }
   const started = mutationVersion;
-  const all: BackendGame[] = [];
-  let skip = 0;
-  while (true) {
-    const response = await fetch(
-      `/api/game/list?skip=${skip}&limit=${GAMES_PAGE_SIZE}`,
-      { credentials: "include" },
-    );
-    if (!response.ok) {
-      throw new Error(
-        `Failed to fetch games: ${response.status} ${response.statusText}`,
-      );
-    }
-    const page: BackendGame[] = await response.json();
-    all.push(...page);
-    if (page.length < GAMES_PAGE_SIZE) break;
-    skip += GAMES_PAGE_SIZE;
-  }
+  const all = await fetchAllGamePages<BackendGame>();
   const games = all.map((raw) =>
     rememberFetchedGame(mapBackendGame(raw), started),
   );
