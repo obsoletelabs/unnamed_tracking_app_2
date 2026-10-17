@@ -76,7 +76,7 @@ async def test_event_to_history_with_replay_partial_failure_and_retention(
             )
         ).all()
         assert len(receipts) == 1
-        assert len((await db.scalars(select(NotificationStory))).all()) == 1
+        assert len((await db.scalars(world.stories())).all()) == 1
 
     # policy -> aggregate -> render -> deliver: the healthy destination gets rich mail even
     # though the other destination fails, and the failure keeps its own retry state.
