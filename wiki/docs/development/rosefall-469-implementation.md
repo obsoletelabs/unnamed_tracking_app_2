@@ -211,13 +211,18 @@ Until then, PRs remain available for review with current validation and screensh
   No migration. Modern/Classic screenshots are in the media library guide.
   Merged as #168; row 53 was delivered separately by merged #166.
   Review, hosted checks and merge remain pending; row 53 stays with #152.
+- **L / 43–44:** issue #148. Game artwork, normalized `?w=` variants and generated
+  covers carry content-derived `ETag`s with `304` handling; unversioned URLs have a
+  finite 60-second cache, `?v=<revision>` URLs are immutable, and saving artwork
+  invalidates every cached variant. Semantics are in the
+  [architecture guide](architecture.md).
 - **O / 51–52 (activity heatmap and day detail):** issue
   [#147](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/147), stacked on the
   game-statistics predicate from #152. A bounded owned day endpoint, month labels, keyboard
   and pointer access and one shared Modern/Classic dialog are implemented; see
   [Statistics activity](../user-guide/statistics.md) and the architecture notes. Settings
   search (68) and selective copy (71) in package O are separate.
-- **K–N and the rest of O:** approved; not implemented yet. The package details below describe
+- **K, N and the rest of O:** approved; not implemented yet. The package details below describe
   intended work, not completed behavior.
 
 ### Issue-by-issue execution order
