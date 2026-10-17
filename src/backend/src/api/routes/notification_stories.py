@@ -14,6 +14,7 @@ from src.database.models.notification_story import NotificationLiveLink
 from src.database.models.user import User
 from src.database.session import get_db
 from src.features.notification_images import FALLBACK_ARTWORK, cached_image, effective_image_mode
+from src.features.notification_reconcile import story_delivery_diagnostics
 from src.features.notification_story_pages import (
     ActionDenied,
     ActionUnavailable,
@@ -90,6 +91,18 @@ async def get_story(story_id: UUID, db: AsyncSession = _DB, user: User = _USER) 
     except StoryNotFound as exc:
         raise _not_found(exc) from exc
     return _json(data)
+
+
+@router.get("/{story_id}/deliveries")
+async def get_story_deliveries(
+    story_id: UUID, db: AsyncSession = _DB, user: User = _USER
+) -> Response:
+    """Diagnostics: per destination and revision, the operation, outcome and fallbacks used."""
+    try:
+        await owner_view(db, user.id, story_id, proxy_path=f"{PREFIX}/{story_id}/images")
+    except StoryNotFound as exc:
+        raise _not_found(exc) from exc
+    return _json({"deliveries": await story_delivery_diagnostics(db, user.id, story_id)})
 
 
 def _json(data: dict, code: int = 200) -> Response:

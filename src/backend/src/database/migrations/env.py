@@ -42,6 +42,7 @@ from src.database.models import (
     notification_destination,  # noqa: F401
     notification_provider_setting,  # noqa: F401
     notification_receipt,  # noqa: F401
+    notification_remote_reference,  # noqa: F401
     notification_story,  # noqa: F401
     notification_verification,  # noqa: F401
     oidc_provider,  # noqa: F401

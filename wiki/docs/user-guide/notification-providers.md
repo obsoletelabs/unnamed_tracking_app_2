@@ -46,6 +46,8 @@ Below the routing choices, **Quiet hours and timing** controls when external not
 
 A route you disabled stays disabled: nothing is queued for it, and re-enabling it does not send what arrived meanwhile. Administrators can limit this with `NOTIFICATION_TIMING_ENABLED` and `NOTIFICATION_URGENT_BYPASS_ENABLED` (both default to true).
 
+When a story you were already told about changes (for example an update that then fails), a destination whose provider can edit its message gets the edit. Other destinations get a short follow-up that starts with "Update:" only for warnings and errors by default; administrators can send follow-ups for every change or never with `NOTIFICATION_FOLLOW_UPS` (`important`, `all`, `none`). The old message is never silently presented as changed.
+
 ## Email unsubscribe
 
 Notification links follow destination URL preference → personal notification URL → shared public app URL → your last-used app origin. Configure your preferences under **Settings → Notifications → Notification links**; blank overrides inherit the default. Configure the shared URL under **Settings → Administration → Application**, setup, or `PUBLIC_APP_URL` through the existing ENV handler. That shared value must use HTTPS and a public fully qualified domain name. Its public DNS is managed by the administrator. The app remembers each user's origin when they open it while signed in, including a local IP or different domain. API-key/plugin traffic cannot change it. All of these URLs are independent of OIDC sign-in callbacks. Ordinary email receives no unsubscribe link until at least one usable URL exists.

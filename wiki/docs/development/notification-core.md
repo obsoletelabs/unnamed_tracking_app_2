@@ -285,3 +285,12 @@ verify each new account; no legacy proof or credentials are automatically copied
 ![A verified account alongside a PRIVATE account](../assets/notification-verification/secure-desktop-dark.png)
 
 ![Host possession-proof controls on a phone](../assets/notification-verification/private-mobile-dark.png)
+
+## Capability-aware dispatch
+
+The dispatcher resolves each provider's capability profile from the live adapter, delivers
+related items together within its limits, and reconciles later story revisions with an edit
+when the provider can edit (otherwise a follow-up under `NOTIFICATION_FOLLOW_UPS`). Remote
+message references are opaque, host-held per destination revision and removed with the
+item. Authorization, trust, grants and routing are rechecked immediately before every
+physical send. See [Capability-aware dispatch](notification-contract.md#capability-aware-dispatch).

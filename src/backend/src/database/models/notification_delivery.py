@@ -10,8 +10,9 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.database.base import Base
-from src.database.models import (
+from src.database.models import (  # noqa: F401  # pylint: disable=unused-import
     notification_aggregation,  # noqa: F401  # pylint: disable=unused-import
+    notification_remote_reference,
 )
 
 # Statuses that still owe work: held in a window, queued, leased or waiting to retry.
@@ -30,6 +31,7 @@ class NotificationDelivery(Base):
         UniqueConstraint(
             "notification_id",
             "destination_id",
+            "story_revision",
             name="uq_notification_delivery_notification_destination",
         ),
         Index("ix_notification_delivery_pending", "status", "next_attempt_at"),
@@ -49,6 +51,16 @@ class NotificationDelivery(Base):
     )
     destination_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     projection: Mapped[str] = mapped_column(String(32), nullable=False, default="canonical")
+    # The story revision this obligation presents (0 for notifications outside a story).
+    story_revision: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    # The physical operation the dispatcher expects: send, edit or follow_up (re-planned per attempt).
+    operation: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="send", server_default="send"
+    )
+    # Comma-separated host fallback codes (unsupported capability, policy) for diagnostics.
+    fallback: Mapped[str | None] = mapped_column(String(160), nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
     claim_token: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     lease_until: Mapped[int | None] = mapped_column(BigInteger, nullable=True)

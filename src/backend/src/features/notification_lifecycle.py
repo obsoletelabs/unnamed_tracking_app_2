@@ -3,12 +3,13 @@
 import time
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.notification import Notification
 from src.database.models.notification_delivery import ACTIVE_DELIVERY_STATUSES, NotificationDelivery
 from src.database.models.notification_destination import NotificationDestination
+from src.database.models.notification_remote_reference import NotificationRemoteReference
 from src.database.models.notification_story import (
     NotificationLiveLink,
     NotificationStory,
@@ -132,6 +133,12 @@ async def delete_notice(db: AsyncSession, user_id: UUID, notification_id: UUID) 
             )
             .values(revoked_at=int(time.time()))
         )
+    # Remote messages cannot be recalled, but the host stops holding an address for them.
+    await db.execute(
+        delete(NotificationRemoteReference).where(
+            NotificationRemoteReference.notification_id == notification_id
+        )
+    )
     await change_deliveries(
         db,
         update(NotificationDelivery)

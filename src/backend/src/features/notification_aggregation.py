@@ -43,9 +43,11 @@ from src.features.notification_providers.base import (
     NotificationMessage,
     notification_message,
 )
+from src.features.notification_providers.capabilities import ResolvedProfile, resolve_profile
 from src.features.notification_source_policy import source_delivery_allowed
 from src.features.notification_timing import decide_for
 from src.features.notification_timing_policy import TimingDecision
+from src.features.notification_urls import notification_url
 
 LIVE_LEAD_STATUSES = ("pending", "processing", "retry_wait")
 # A failed lead with one of these outcomes says the destination, not the member, is unusable.
@@ -151,6 +153,17 @@ async def count_member(db: AsyncSession, window_id: UUID) -> None:
     )
 
 
+async def live_profile(db: AsyncSession, provider_id: str) -> ResolvedProfile | None:
+    """Capability profile of the live adapter, or None when it is not (or no longer) available."""
+    # Imported lazily: the registry pulls in the plugin runtime client.
+    from src.features.notification_providers import (
+        registry,  # pylint: disable=import-outside-toplevel
+    )
+
+    provider = (await registry.get_notification_providers(db)).get(provider_id)
+    return resolve_profile(provider) if provider is not None else None
+
+
 async def _transport(db: AsyncSession, provider_id: str) -> str | None:
     return await db.scalar(
         select(PluginNotificationProviderRegistration.transport).where(
@@ -210,6 +223,8 @@ async def _seal(db: AsyncSession, window: NotificationAggregationWindow, now: in
             .with_for_update(of=NotificationDelivery)
         )
     ).all()
+    profile = await live_profile(db, window.provider_id)
+    base = await item_link_base(db, profile, window.destination_id)
     newest: dict[UUID, int] = {}
     for _, notice in rows:
         if notice.story_id is not None:
@@ -223,8 +238,13 @@ async def _seal(db: AsyncSession, window: NotificationAggregationWindow, now: in
             delivery.status = "suppressed"
             delivery.last_error = "superseded"
             continue
-        members[notice.id] = (delivery, digest_item(notice, delivery.projection))
-    limits = provider_limits(window.provider_id, await _transport(db, window.provider_id))
+        members[notice.id] = (
+            delivery,
+            _linked(digest_item(notice, delivery.projection), notice, base),
+        )
+    limits = provider_limits(
+        window.provider_id, await _transport(db, window.provider_id), profile=profile
+    )
     chunks = chunk_items([item for _, item in members.values()], limits)
     for index, chunk in enumerate(chunks):
         batch_id = uuid5(window.id, f"chunk:{index}")
@@ -381,8 +401,9 @@ async def _compose(
     *,
     base: NotificationMessage,
     transport: str | None,
+    profile: ResolvedProfile | None,
 ) -> NotificationMessage:
-    limits = provider_limits(lead.provider_id, transport)
+    limits = provider_limits(lead.provider_id, transport, profile=profile)
     parts = int(
         await db.scalar(
             select(func.count(func.distinct(NotificationDelivery.batch_id))).where(  # pylint: disable=not-callable
@@ -410,6 +431,30 @@ async def _compose(
     )
 
 
+async def item_link_base(
+    db: AsyncSession, profile: ResolvedProfile | None, destination_id: UUID | None
+) -> str | None:
+    """Origin for item links, only when the provider declared canonical link support."""
+    if profile is None or not (profile.canonical and profile.capabilities.links):
+        return None
+    endpoint = await db.get(NotificationDestination, destination_id) if destination_id else None
+    if endpoint is None or endpoint.user_id is None:
+        return None
+    return await notification_url(db, endpoint.user_id, endpoint) or None
+
+
+def story_url(base: str | None, notice: Notification) -> str | None:
+    """Signed-in story page of an item; None when links are unsupported or there is no story."""
+    if not base or notice.story_id is None:
+        return None
+    return f"{base.rstrip('/')}/notifications/stories/{notice.story_id}"
+
+
+def _linked(item: DigestItem, notice: Notification, base: str | None) -> DigestItem:
+    url = story_url(base, notice)
+    return replace(item, url=url) if url else item
+
+
 async def plan_batch(
     db: AsyncSession,
     lead: NotificationDelivery,
@@ -419,6 +464,8 @@ async def plan_batch(
     *,
     base: NotificationMessage,
     transport: str | None,
+    profile: ResolvedProfile | None = None,
+    link_base: str | None = None,
 ) -> BatchPlan:
     """Revalidate every member at dispatch time and compose the chunk's single message."""
     now = int(time.time())
@@ -434,7 +481,7 @@ async def plan_batch(
             .with_for_update(of=NotificationDelivery)
         )
     ).all()
-    items = [digest_item(lead_notice, lead.projection)]
+    items = [_linked(digest_item(lead_notice, lead.projection), lead_notice, link_base)]
     included = [lead.id]
     for delivery, notice in rows:
         verdict = await _member_verdict(
@@ -448,13 +495,15 @@ async def plan_batch(
         if verdict is not None:
             delivery.status, delivery.last_error = verdict
             continue
-        items.append(digest_item(notice, delivery.projection))
+        items.append(_linked(digest_item(notice, delivery.projection), notice, link_base))
         included.append(delivery.id)
     if len(items) == 1:
         return BatchPlan(tuple(included), base)
     return BatchPlan(
         tuple(included),
-        await _compose(db, lead, lead_notice, items, base=base, transport=transport),
+        await _compose(
+            db, lead, lead_notice, items, base=base, transport=transport, profile=profile
+        ),
     )
 
 

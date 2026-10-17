@@ -28,9 +28,9 @@ through the [compatibility adapters](#compatibility-adapters).
 | Implemented in 1.0.0 | Adopted by |
 | --- | --- |
 | Typed, strict wire models with JSON Schemas and shared conformance fixtures | SDK/types (#115), producers (#116) |
-| Item, delivery and attempt transition tables verified against the current routes and dispatcher | Dispatcher (#110), full page (#113) |
+| Item, delivery and attempt transition tables verified against the current routes and dispatcher | Dispatcher (done, #110), full page (#113) |
 | Story revision decision (`decide_revision`) for read/dismissed items | Persisted by the controller since 1.0.0 revision 2 ([Story persistence](#story-persistence-and-idempotency)); first host producer: plugin updates |
-| Capability model, discovery profiles for every current provider and the edit/follow-up fallback | Dispatcher (#110), SMTP (#111), Discord (#112), PWA (#114) |
+| Capability model, discovery profiles for every current provider and the edit/follow-up fallback | Dispatcher (done, #110), SMTP (#111), Discord (#112), PWA (#114) |
 | Renderer contribution model and template rules | Enforced by the host since #109 ([Rich content](#rich-content-live-story-pages-and-actions)); plugin contract (#115) |
 | Explicit adapters for every existing producer, record and notification Plugin API surface | All downstream issues until #118 retires adapters |
 
@@ -50,9 +50,9 @@ does not change any wire document, so the contract version stays 1.0.0.
 | Content | Canonical PRIVATE structured content of one revision. | Producer, validated by host | `Notification.title`, `body`, `poster_url` | #109 persists the canonical document |
 | Projection | Host-built copy for less-trusted destinations. | Host | `public_title`/`public_body`, `NotificationDelivery.projection` | Unchanged |
 | Destination | Concrete endpoint, revision, privacy, proof, consent and activation. | Host and owner | `NotificationDestination` | Unchanged |
-| Provider/renderer | Presents an approved representation within declared capabilities. | Provider; host decides what it receives | Provider adapters and registry | #110 declared capabilities |
-| Delivery | Obligation to present one story revision at one destination revision. | Host | `NotificationDelivery` | #110 adds story revision |
-| Attempt | One physical send, edit or follow-up operation. | Host | `NotificationDeliveryAttempt` | #110 adds operation and batch ID |
+| Provider/renderer | Presents an approved representation within declared capabilities. | Provider; host decides what it receives | Provider adapters and registry | Capability profile resolved from the live adapter at every dispatch (#110) |
+| Delivery | Obligation to present one story revision at one destination revision. | Host | `NotificationDelivery` | `story_revision`, `operation`, `fallback` (#110) |
+| Attempt | One physical send, edit or follow-up operation. | Host | `NotificationDeliveryAttempt` | `operation` and `batch_id` (#110) |
 
 ## Identifiers
 
@@ -65,11 +65,11 @@ does not change any wire document, so the contract version stays 1.0.0.
 | Story revision | Host | Integer from 1, incremented for each accepted revision. | Never chosen by producers. |
 | Grouping key | Producer hint | Per recipient, source and `event_type`; 1–64 characters. | Drives aggregation (#107) and presentation only. It never merges identities, receipts or stories. Persisted today as `<event_type>:<key>` (sources) or `<kind>:<media_id>` (legacy rows). |
 | Notification ID | Host | UUID of a story item. | Existing IDs and read state are preserved. |
-| Delivery ID | Host | Unique per (`notification_id`, `destination_id`) today. | #110 extends uniqueness with the story revision. |
+| Delivery ID | Host | Unique per (`notification_id`, `destination_id`, `story_revision`); revision 0 for work outside a story and for the inbox. | A later revision of an item adds a delivery; unsent older work is `suppressed` as `superseded`. |
 | Attempt ID / number | Host | Unique per (`delivery_id`, `number`); bound to a claim token. | Existing. |
 | Destination ID / revision | Host | Existing. | A revision change invalidates proof, consent, remote references and unsent work. |
-| Batch ID | Host | Groups the attempts of one physical multi-item operation. | Added by #110. |
-| Remote message reference | Provider-supplied, host-stored | Per story, destination and destination revision. | Opaque; never exposed to producers. Added by #110. |
+| Batch ID | Host | Groups the attempts of one physical multi-item operation. | Stored on each attempt (#110). |
+| Remote message reference | Provider-supplied, host-stored | Per item, destination and destination revision (`notification_remote_references`). | Opaque; never returned by any API or given to producers (#110). |
 
 ## Event document
 
@@ -410,9 +410,92 @@ in the same transaction. A retryable failure retries the lead with the existing
 attempt limit. `failed_permanent` and destination-level suppression end the whole
 chunk with the same status. Other lead outcomes (for example a deleted
 notification) promote the next member. Upkeep also re-leads any chunk left
-headless by a bulk cancellation or crash. Delivery stays at least once. Per-member
-attempt rows and remote references remain #110; the inbox keeps per-item history
-and actions, which is where digests point readers.
+headless by a bulk cancellation or crash. Delivery stays at least once. A provider that declared canonical
+capabilities decides the chunk size (`max_batch_items`; one means individual
+messages) and receives a story link under each item when it supports links. The
+inbox keeps per-item history and actions, which is where digests point readers.
+
+## Capability-aware dispatch
+
+Implemented by #110 on the existing durable dispatcher (`notification_providers/delivery.py`),
+with `notification_reconcile.py` (operation planning and references),
+`notification_render.py` (rendering) and `notification_providers/capabilities.py`
+(profile resolution). Leases, retries, attempt caps, per-destination failure
+isolation and the at-least-once guarantee are unchanged.
+
+**Profiles.** `resolve_profile(provider)` is evaluated for the live adapter on every
+dispatch and every window sealing. Built-in and legacy-transport adapters keep their
+fixed profiles. An in-process adapter or a generic `plugin` registration may expose
+`capabilities` (`notification-provider-capabilities-v1`) and, for message updates, an
+`async edit(db, destination, message)` method. A declaration that the adapter cannot
+back is narrowed (`edit_not_implemented`); a declaration on an adapter that may not
+declare is ignored (`declaration_ignored`). Declarations carry no trust, proof,
+consent or grants.
+
+**Per-revision work.** A delivery presents one story revision. When an in-place revision
+is accepted, every external destination owes that revision (the inbox keeps its single
+evolving item). Older work that was never sent is `suppressed` (`superseded`) and the
+new revision joins the normal path; a revision for a destination that already received
+the story is never held in a digest window.
+
+**Operation.** At each attempt the dispatcher takes the destination's reference and
+calls `reconciliation_operation`:
+
+| Situation | Operation | Fallback code |
+| --- | --- | --- |
+| First presentation at this destination revision | `send` | none |
+| Provider declares `edit`/`replace`, reference is current and not shared | `edit` | none |
+| Provider cannot edit | `follow_up` | `edit_unsupported` |
+| No remote reference (provider returned none) | `follow_up` | `reference_unavailable` |
+| The earlier message was a digest of several items | `follow_up` | `shared_message` |
+| An earlier edit was refused | `follow_up` | `edit_failed_earlier` |
+| Same rendering as already presented | none | `unchanged` (recorded as sent) |
+| Revision already presented (retry after commit) | none | `already_reconciled` |
+
+A follow-up is subject to `NOTIFICATION_FOLLOW_UPS`: `important` (default) sends it only for
+warning, error or critical revisions, `all` for every revision, `none` never (this also
+turns edits off). A revision the rule drops is recorded as `suppressed` with reason
+`follow_up_policy` or `revision_policy`, and no provider is called. An edit is
+never dropped by the `important` rule.
+
+**Edit failures.** A retryable edit failure retries the edit under the existing attempt
+cap. A refused edit (`DeliveryResult.gone` or a non-retryable failure) marks the reference
+`stale`, keeps the delivery in `retry_wait` as a `follow_up` and records `edit_failed`; the
+follow-up is a separate attempt, so the old message is never reported as changed.
+
+**References.** `notification_remote_references` stores, per item, destination and
+destination revision, the provider's opaque `remote_ref`, the delivered revision, a hash
+of the presented rendering and whether the message was shared by a digest. It is written
+in the same transaction as the delivery's `sent` transition, deleted with the item, never
+returned by an API and passed only to the adapter that produced it (as `remote_ref` on an
+edit, and on a follow-up only when the provider declares `threaded_follow_ups`). A new
+destination revision never reuses an older reference.
+
+**Rendering.** Canonical content is rendered only for the canonical projection. Canonical
+adapters receive `render_plain` text, sanitised `render_email_html` when they declare
+`html_email`, at most `action_buttons` link buttons (plugin actions stay in the signed-in
+app: `actions_via_story_link`), external HTTPS images when `images.external_urls` is
+declared and the host image mode is `external` (otherwise `images_dropped`), and the
+signed-in story page as `link` (no live link is created automatically). Titles, text and
+bytes are clipped to the declared limits (`truncated`). Legacy adapters keep plain
+title and body. Fallback codes are stored on the delivery (`fallback`) and the attempt
+stores its `operation` and `batch_id`.
+
+**Rechecks.** The full revalidation (lease, deletion and expiry, source installation and
+grants, routing and destination revision, proof/consent projection, timing mute, provider
+registration, installation and transport security) runs when work is claimed and again
+immediately before every physical send, edit or follow-up. A delivery stopped at that
+point records a `skipped` attempt.
+
+**Failure semantics.** Delivery is at least once. A crash after the provider accepted a
+message but before the commit re-sends after the lease expires; both attempts carry the
+same `idempotency_key` (`uuid5(delivery, operation:revision)`), which a provider that
+supports deduplication can use. An edit repeated after a crash is naturally idempotent.
+Failures stay per delivery and per destination.
+
+**Diagnostics.** `GET /api/notifications/stories/{id}/deliveries` (owner only) lists revision,
+provider, destination name, operation, status, attempts, reason and fallback codes, never
+remote identifiers or content.
 
 ## Timing policy
 
@@ -491,9 +574,11 @@ Discovery (`provider_capability_profile`):
 
 1. Built-in providers have fixed host profiles.
 2. Plugin registrations use the baseline of their existing transport.
-3. A generic `plugin` registration may declare capabilities (#110/#115, new Plugin
-   API minor). Only then does it receive canonical content. #110 re-evaluates
-   discovery with the current registration at each dispatch.
+3. A generic `plugin` registration may declare capabilities (the Plugin API
+   surface arrives with #115). Only then does it receive canonical content. The
+   dispatcher re-resolves the profile from the live adapter at every dispatch
+   (`resolve_profile`), and narrows a declaration the adapter cannot back (message
+   updates need an `edit` implementation); the downgrade is recorded as a fallback.
 
 | Provider | Renderer | Current profile |
 | --- | --- | --- |
@@ -722,7 +807,7 @@ These invariants hold for every adopter:
 | #107 | Done: see [Aggregation windows and digests](#aggregation-windows-and-digests). |
 | #108 | Done: see [Timing policy](#timing-policy). Urgency is a request constrained by server, user and policy limits, never by trust. |
 | #109 | Done: see [Rich content, live story pages and actions](#rich-content-live-story-pages-and-actions). Providers (#110-#114) call `render_plain`, `render_email_html` and `live_url`; #115 declares the grants and the runtime route for story actions. |
-| #110 | Capability declarations and discovery, per-revision deliveries, batches, remote references and `reconciliation_operation`. |
+| #110 | Done: see [Capability-aware dispatch](#capability-aware-dispatch). |
 | #111–#114 | Provider renderers consuming negotiated content or `legacy_text`, and their capability profiles. |
 | #115 | Gateway operations, grants and SDK types for these schemas under a new Plugin API minor. |
 | #116 | Official producers declaring lifecycles and canonical content. |
