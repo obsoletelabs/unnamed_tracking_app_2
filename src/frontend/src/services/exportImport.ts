@@ -6,6 +6,8 @@ export interface ImportResult {
   created: number;
   skipped: number;
   errors: string[];
+  manual_achievements?: number;
+  manual_completion?: number;
 }
 
 export async function fetchLibraryExport(): Promise<unknown> {
@@ -40,12 +42,14 @@ export async function fetchBackupStatus(): Promise<BackupStatus> {
   return await response.json();
 }
 
-export async function importLibrary(games: unknown[]): Promise<ImportResult> {
+// `payload` is either a bare games list or a whole export, whose manual
+// achievements and completion are restored onto the games it creates.
+export async function importLibrary(payload: unknown): Promise<ImportResult> {
   const response = await fetch("/api/import/library", {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(games),
+    body: JSON.stringify(payload),
   });
   if (!response.ok) {
     const message = await response.text();

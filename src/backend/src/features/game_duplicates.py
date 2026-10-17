@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.game import Game
 from src.database.models.game_duplicate_dismissal import GameDuplicateDismissal
+from src.database.models.game_identity import GameIdentityDecision
 from src.features.game_identity.decisions import separate_identities
 
 _SUMMARY_FIELDS = (
@@ -86,12 +87,22 @@ async def suggestions(db: AsyncSession, user_id: UUID, limit: int = 50) -> dict[
             .order_by(Game.id)
         )
     ).mappings()
+    # a keep-both dismissal, or a person's keep-separate decision in the identity model
     dismissed = set(
         (
             await db.execute(
-                select(
-                    GameDuplicateDismissal.first_game_id, GameDuplicateDismissal.second_game_id
-                ).where(GameDuplicateDismissal.user_id == user_id)
+                select(GameDuplicateDismissal.first_game_id, GameDuplicateDismissal.second_game_id)
+                .where(GameDuplicateDismissal.user_id == user_id)
+                .union(
+                    select(
+                        GameIdentityDecision.first_game_id, GameIdentityDecision.second_game_id
+                    ).where(
+                        GameIdentityDecision.user_id == user_id,
+                        GameIdentityDecision.subject_kind == "identity_pair",
+                        GameIdentityDecision.outcome == "confirmed_separate",
+                        GameIdentityDecision.superseded_at.is_(None),
+                    )
+                )
             )
         ).all()
     )

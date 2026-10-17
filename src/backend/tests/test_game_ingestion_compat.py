@@ -14,6 +14,7 @@ from src.database.models.game_identity import (
     GameSourceObservationLink,
     GameSourceObservationRevision,
 )
+from src.database.models.game_identity_tracking import GameFieldValue
 from src.database.models.user import User
 from src.database.session import SessionLocal
 from src.features.imports import steam_connection
@@ -174,6 +175,8 @@ async def test_manual_entries_are_recorded_under_their_own_id_and_edits_update_t
 async def test_a_user_edit_of_an_imported_game_is_not_source_evidence(flow, monkeypatch):  # noqa: F811
     await provider_game(flow, "Steam", GameStatus.BACKLOG)
     async with SessionLocal() as db:
+        # name provenance (#98) refers to the observation, which the database protects
+        await db.execute(delete(GameFieldValue).where(GameFieldValue.user_id == flow.user_id))
         await db.execute(
             delete(GameSourceObservation).where(GameSourceObservation.user_id == flow.user_id)
         )

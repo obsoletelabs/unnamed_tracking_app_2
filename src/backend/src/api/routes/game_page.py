@@ -14,6 +14,7 @@ from src.core.auth import get_current_user
 from src.database.models.achievement import Achievement
 from src.database.models.game_archive import GameArchive
 from src.database.models.game_file_item import GameFileItem
+from src.database.models.game_identity_tracking import GameManualAchievement
 from src.database.models.media_item import MediaItem
 from src.database.models.user import User
 from src.database.session import get_db
@@ -47,7 +48,15 @@ async def content_counts(
         if directory.exists():
             notes = sum(1 for p in directory.iterdir() if p.is_file() and p.suffix.lower() == ".md")
     return {
-        "achievements": await count(Achievement, Achievement.game_id == game_id),
+        # imported ones plus the user's own (#97), so a tab holding only manual
+        # achievements still shows when the page is set to hide empty tabs
+        "achievements": await count(Achievement, Achievement.game_id == game_id)
+        + await count(
+            GameManualAchievement,
+            GameManualAchievement.game_id == game_id,
+            GameManualAchievement.user_id == current_user.id,
+            GameManualAchievement.archived_at.is_(None),
+        ),
         "screenshots": media["screenshot"],
         "clips": media["clip"],
         "soundtrack": media["soundtrack"],

@@ -1,0 +1,74 @@
+.tab {
+  display: grid;
+  gap: 28px;
+  min-width: 0;
+}
+h3 {
+  margin: 0 0 8px;
+  font-size: 1rem;
+}
+.rows {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.rows > li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding: 12px 0;
+  border-top: 1px solid var(--ui-border);
+  overflow-wrap: anywhere;
+}
+.grow {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.sub {
+  color: var(--ui-dim);
+  font-size: 0.85rem;
+  margin: 4px 0 0;
+}
+.tag {
+  margin-left: 8px;
+  padding: 1px 7px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-control);
+  color: var(--ui-dim);
+  font-size: 0.72rem;
+}
+.inline {
+  display: grid;
+  gap: 4px;
+  font-size: 0.8rem;
+  color: var(--ui-dim);
+}
+.form {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--ui-border);
+}
+a {
+  color: var(--ui-accent-text);
+}
+.history {
+  margin-top: 12px;
+}
+.num {
+  font-variant-numeric: tabular-nums;
+}
+.mono {
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+}
+@media (max-width: 600px) {
+  .form > *,
+  .rows > li > .inline {
+    flex: 1 1 100%;
+  }
+}

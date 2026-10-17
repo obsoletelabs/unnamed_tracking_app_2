@@ -252,4 +252,4 @@ work; #93 only guarantees the schema can hold it without changing any `games.id`
 | #99 matching | decisions with evidence, rule version and confidence |
 | #100 Playnite | `playnite` connections and observations keyed by GUID |
 | #101 UI | umbrellas, identities, `presentation`, `display` |
-| #102 migration | the mapping in section 8.3 |
+| #102 migration | the mapping in section 8.3, run by the [resumable backfill](game-identity-migration.md); progress in `game_identity_backfills` |

@@ -22,7 +22,9 @@ import {
 } from "../utils/achievements";
 import type { AchFilter } from "../composables/useGameAchievements";
 import GamePlayPanel from "../components/game/GamePlayPanel.vue";
+import GameVersionsPanel from "../components/game/GameVersionsPanel.vue";
 import GameOwnedCopiesPanel from "../components/game/GameOwnedCopiesPanel.vue";
+import GameManualTrackingPanel from "../components/game/GameManualTrackingPanel.vue";
 import { provide, defineAsyncComponent } from "vue";
 import { useGameDetail } from "../composables/useGameDetail";
 import { gameDetailKey } from "../composables/gameDetailContext";
@@ -500,10 +502,22 @@ const {
     </div>
 
     <section v-if="activeTab === 'Overview'" class="overview">
+      <GameVersionsPanel
+        :key="`versions-${game.id}`"
+        :game-id="game.id"
+        :title="game.title"
+        @changed="onGameSaved"
+      />
       <GameOwnedCopiesPanel
         :key="game.id"
         :game="game"
         :copies="ownedCopies"
+        @changed="onGameSaved"
+      />
+      <GameManualTrackingPanel
+        :key="`completion-${game.id}`"
+        :game-id="game.id"
+        part="completion"
         @changed="onGameSaved"
       />
       <div v-if="overviewFacts.length" class="meta-block">
@@ -881,6 +895,11 @@ const {
     </section>
 
     <section v-else-if="activeTab === 'Achievements'" class="achievements">
+      <GameManualTrackingPanel
+        :key="`achievements-${game.id}`"
+        :game-id="game.id"
+        part="achievements"
+      />
       <div class="ach-head">
         <h2 class="ach-title">Achievements</h2>
         <span class="ach-count"

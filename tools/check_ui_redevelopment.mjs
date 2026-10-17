@@ -35,6 +35,7 @@ import { checkPluginUpdateUi } from "./check_plugin_update_ui.mjs";
 import { checkSettingsLayout } from "./check_settings_layout.mjs";
 import { checkGameDuplicates } from "./check_game_duplicates.mjs";
 import { checkGameOwnership } from "./check_game_ownership.mjs";
+import { checkGameIdentityUi } from "./check_game_identity_ui.mjs";
 
 const [pluginsRoot, evidenceRoot, backendUrl] = process.argv.slice(2);
 const reviewStage = process.argv[5] ?? "shell";
@@ -42,6 +43,7 @@ const reviewStages = ["shell", "settings-layout", "shortcut-priority", "plugin-u
 reviewStages.push("achievement-navigation");
 reviewStages.push("game-duplicates");
 reviewStages.push("game-ownership");
+reviewStages.push("game-identity");
 assert(reviewStages.includes(reviewStage), `Unknown review stage: ${reviewStage}`);
 assert(pluginsRoot && evidenceRoot && backendUrl && process.env.UI_REVIEW_USERNAME && process.env.UI_REVIEW_PASSWORD, "Supply a disposable backend and review credentials.");
 const require = createRequire(path.resolve(pluginsRoot, "package.json"));
@@ -113,6 +115,11 @@ try {
       await writeFile(path.join(evidenceRoot, "game-ownership-conformance.json"), JSON.stringify(report, null, 2) + "\n");
       console.log(JSON.stringify({ passed: report.passed }, null, 2));
     } finally { await owner.close(); }
+  } else if (reviewStage === "game-identity") {
+    report.library_records = "real owned-game API fixtures merged through the identity API";
+    await checkGameIdentityUi({ browser, admin, origin, evidenceRoot, report });
+    await writeFile(path.join(evidenceRoot, "game-identity-conformance.json"), JSON.stringify(report, null, 2) + "\n");
+    console.log(JSON.stringify({ passed: report.passed }, null, 2));
   } else if (reviewStage === "game-duplicates") {
     report.library_records = "real owned-game API review fixtures";
     await checkGameDuplicates({ browser, admin, origin, evidenceRoot, report });
