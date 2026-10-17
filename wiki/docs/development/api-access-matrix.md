@@ -243,6 +243,23 @@ are redacted. Validation errors never echo submitted values.
 
 ### Games and game content
 
+| Method | Route | Authority | Access |
+| --- | --- | --- | --- |
+| DELETE | `/api/game-identity/counters/{counter_id}/adjustment` | user | Own game identity state and source observations; foreign identifiers are refused. |
+| GET | `/api/game-identity/games/{game_id}/metrics` | user | Own game identity state and source observations; foreign identifiers are refused. |
+| GET | `/api/game-identity/names/games/{game_id}` | user | Own game identity state and source observations; foreign identifiers are refused. |
+| GET | `/api/game-identity/names/reviews` | user | Own game identity state and source observations; foreign identifiers are refused. |
+| GET | `/api/playnite/contract` | user | Own game identity state and source observations; foreign identifiers are refused. |
+| POST | `/api/game-identity/counters/{counter_id}/group` | user | Own game identity state and source observations; foreign identifiers are refused. |
+| POST | `/api/game-identity/counters/{counter_id}/members/{observation_id}/ungroup` | user | Own game identity state and source observations; foreign identifiers are refused. |
+| POST | `/api/game-identity/names/repair` | user | Own game identity state and source observations; foreign identifiers are refused. |
+| POST | `/api/game-identity/names/reviews/{review_id}/keep` | user | Own game identity state and source observations; foreign identifiers are refused. |
+| POST | `/api/game-identity/names/reviews/{review_id}/update` | user | Own game identity state and source observations; foreign identifiers are refused. |
+| POST | `/api/playnite/inventory` | user | Own game identity state and source observations; foreign identifiers are refused. |
+| POST | `/api/playnite/observations` | user | Own game identity state and source observations; foreign identifiers are refused. |
+| PUT | `/api/game-identity/counters/{counter_id}/members/{observation_id}/priority` | user | Own game identity state and source observations; foreign identifiers are refused. |
+| PUT | `/api/game-identity/games/{game_id}/metrics/playtime` | user | Own game identity state and source observations; foreign identifiers are refused. |
+
 | Method | Path | Authority | Ownership and effect |
 | --- | --- | --- | --- |
 | GET | `/api/achievement-icon/{achievement_id}` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
