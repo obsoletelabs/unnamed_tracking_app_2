@@ -338,16 +338,10 @@ async def notify_plugin_updates(
         + (f" — {item['reason']}" if item.get("reason") else "")
         for item in items
     ]
-    body = (
-        "Plugin update batch results:\n"
-        + "\n".join(lines)
-        + f"\n\nManage plugins: {action_url}"
-    )
+    body = "Plugin update batch results:\n" + "\n".join(lines) + f"\n\nManage plugins: {action_url}"
     title = f"Plugin updates: {len(items)} plugin(s) updated or need attention"
     now = int(time.time())
-    media_id = uuid5(
-        NAMESPACE_URL, f"urn:unnamed-tracking:plugin-update-batch:{dedupe_key}"
-    )
+    media_id = uuid5(NAMESPACE_URL, f"urn:unnamed-tracking:plugin-update-batch:{dedupe_key}")
     for user_id in admin_ids:
         await emit_legacy_rows(
             db,
@@ -465,9 +459,7 @@ async def check_plugin_updates(
         updates.append(update)
         store = manager_state()
         plugin_id = str(plugin["plugin_id"])
-        previous_update = (
-            store.read().get("plugins", {}).get(plugin_id, {}).get("available_update")
-        )
+        previous_update = store.read().get("plugins", {}).get(plugin_id, {}).get("available_update")
         adopt_legacy_update_notification(plugin_id, previous_update, update)
         store.patch(plugin_id, available_update=update)
         if update.get("update_available"):

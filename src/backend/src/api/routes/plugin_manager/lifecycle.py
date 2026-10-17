@@ -400,8 +400,7 @@ def _automatic_update_block_reason(
         ),
         (bool(plugin.get("version_pin")), "A version pin prevents automatic activation."),
         (
-            not update.get("automatic_update")
-            or not inspected.package.manifest.automatic_update,
+            not update.get("automatic_update") or not inspected.package.manifest.automatic_update,
             "The catalogue release or package manifest does not permit automatic updates.",
         ),
         (
@@ -450,9 +449,7 @@ async def _apply_automatic_update(
         previous_update = (
             store.read().get("plugins", {}).get(plugin["plugin_id"], {}).get("available_update")
         )
-        catalogues.adopt_legacy_update_notification(
-            plugin["plugin_id"], previous_update, update
-        )
+        catalogues.adopt_legacy_update_notification(plugin["plugin_id"], previous_update, update)
         store.patch(plugin["plugin_id"], available_update=update)
         if not update.get("update_available"):
             store.patch(plugin["plugin_id"], last_notified_update_state=None)
@@ -535,9 +532,7 @@ async def run_automatic_plugin_updates(db: AsyncSession, admin: User) -> dict[st
         if configured is None:
             continue
         counts["checked"] += 1
-        await _apply_automatic_update(
-            db, admin, plugin, counts, store, outcomes=notification_batch
-        )
+        await _apply_automatic_update(db, admin, plugin, counts, store, outcomes=notification_batch)
     batch = list(notification_batch.values())
     if batch and catalogues.plugin_update_batch_changed(batch):
         await catalogues.notify_plugin_updates(db, batch)

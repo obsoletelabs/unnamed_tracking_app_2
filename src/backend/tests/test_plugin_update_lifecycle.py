@@ -180,9 +180,7 @@ async def test_four_plugin_updates_are_one_consolidated_notification(monkeypatch
 
     emit = AsyncMock(return_value=[uuid4()])
     monkeypatch.setattr(plugin_catalogues, "emit_legacy_rows", emit)
-    monkeypatch.setattr(
-        plugin_catalogues.settings, "PUBLIC_APP_URL", "https://tracking.example"
-    )
+    monkeypatch.setattr(plugin_catalogues.settings, "PUBLIC_APP_URL", "https://tracking.example")
     updates = [
         {
             "plugin_id": f"example.plugin{i}",
@@ -202,12 +200,9 @@ async def test_four_plugin_updates_are_one_consolidated_notification(monkeypatch
     body = notices[0]["body"]
     for update in updates:
         assert update["plugin_id"] in body
-        assert f'{update["current_version"]} → {update["available_version"]}' in body
+        assert f"{update['current_version']} → {update['available_version']}" in body
     assert notices[0]["dedupe_key"].startswith("plugin-update-batch:")
-    assert (
-        "https://tracking.example/settings?area=administration&section=plugins"
-        in body
-    )
+    assert "https://tracking.example/settings?area=administration&section=plugins" in body
 
 
 @pytest.mark.asyncio
@@ -298,9 +293,7 @@ async def test_unchanged_plugin_update_batch_is_not_notified_twice(monkeypatch) 
     }
     store.patch("example.legacy", available_update=legacy)
     plugin_catalogues.adopt_legacy_update_notification("example.legacy", legacy, legacy)
-    assert not plugin_catalogues.plugin_update_batch_changed(
-        [{**legacy, "status": "available"}]
-    )
+    assert not plugin_catalogues.plugin_update_batch_changed([{**legacy, "status": "available"}])
 
 
 @pytest.mark.asyncio

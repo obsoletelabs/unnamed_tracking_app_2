@@ -355,7 +355,9 @@ async def test_automatic_update_policy_downloads_without_unauthorized_activation
             notifications = await gate.db.scalars(
                 select(Notification).where(Notification.kind == "plugin_update")
             )
-            assert any("Global automatic updates are disabled." in item.body for item in notifications)
+            assert any(
+                "Global automatic updates are disabled." in item.body for item in notifications
+            )
     assert_owned_data(gate)
     if not healthy:
         from src.database.models.notification import Notification
