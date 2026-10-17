@@ -160,6 +160,8 @@ def test_retired_schedule_preferences_are_rejected():
         "anilist_import_enabled",
         "anilist_import_interval_minutes",
         "anilist_import_last_run_at",
+        "anilist_import_last_attempt_at",
+        "anilist_import_last_error",
     ):
         with pytest.raises(ValueError):
             validate_preference(key, 60)
@@ -180,6 +182,9 @@ async def test_migration_moves_saved_schedules_and_downgrade_restores_them(accou
                         "anilist_import_enabled": True,
                         "anilist_import_interval_minutes": 360,
                         "anilist_import_last_run_at": 1700000000,
+                        # A later failed attempt keeps the cadence; its report is retired.
+                        "anilist_import_last_attempt_at": 1700000600,
+                        "anilist_import_last_error": "Could not reach AniList.",
                         "theme": "keep",
                     },
                 ),
@@ -203,7 +208,7 @@ async def test_migration_moves_saved_schedules_and_downgrade_restores_them(accou
             actor_id,
             True,
             360,
-            1700000000,
+            1700000600,
         )
         data = await db.scalar(
             select(UserPreferences.data).where(UserPreferences.user_id == actor_id)

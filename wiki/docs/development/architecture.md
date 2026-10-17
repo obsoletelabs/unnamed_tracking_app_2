@@ -90,9 +90,16 @@ deployment limits are resolved before the final storage lock. New/imported games
 check pending-name reservations before creating their directories. No plugin
 contract or migration is needed.
 
-**Games.** `GET /api/game/<id>/assets/<kind>` accepts `?w=<pixels>` (64 to 4096) and returns a JPEG no wider than that. The route that serves it is `api/routes/default_game_assets.py`, which is registered before the one in `games.py` and so is the one that answers. Copies live at `<data>/users/<user-id>/.cache/asset-previews/<game-id>/<kind>-<width>.jpg` and are rebuilt when the original is newer. They are written to a temporary file and moved into place, so a request never reads half a file. The widths the app uses (banner 1920 and 800, cover 400) are also made as soon as artwork is saved (`helpers/asset_previews.py`). An image already as small as asked for is sent unchanged.
+**Games.** `GET /api/game/<id>/assets/<kind>` accepts `?w=<pixels>` (64 to 4096) and returns a JPEG no wider than that. The route that serves it is `api/routes/default_game_assets.py`, which is registered before the one in `games.py` and so is the one that answers. Copies live at `<data>/users/<user-id>/.cache/asset-previews/<game-id>/<kind>-<width>.jpg` and are rebuilt when the original is newer. Saving artwork also removes every cached copy of that asset first (including widths the app does not pre-make), and the PNG itself is written to a temporary file and moved into place. They are written to a temporary file and moved into place, so a request never reads half a file. The widths the app uses (banner 1920 and 800, cover 400) are also made as soon as artwork is saved (`helpers/asset_previews.py`). An image already as small as asked for is sent unchanged.
 
-Stored game artwork keeps its private one-hour browser cache. Generated covers for games without artwork use `private, no-cache`, requiring revalidation when the URL is requested again so a newly uploaded cover can replace the placeholder. The standalone default-cover preview still uses its existing one-hour cache.
+**Artwork revisions and caching.** Every answer from `GET /api/game/<id>/assets/<kind>` (full size, `?w=` copies and the generated cover) carries a strong `ETag` that is the first 32 hex digits of the SHA-256 of the bytes actually served (`helpers/artwork_revisions.py`). Hashes are remembered per file identity (path, inode, size, change times), so an unchanged file costs a `stat` and a replaced one is hashed again. `If-None-Match` (including weak validators and `*`) gets `304 Not Modified` with the same `ETag` and `Cache-Control`; ownership is checked first, so another user's game or a missing file still answers 404 and never leaks a validator.
+
+- Unversioned URLs (every URL that existed before, including plugin and API consumers) are mutable: `private, max-age=60, must-revalidate`. Another device sees replacement art within a minute at most, with one cheap conditional request.
+- `?v=<revision>` is accepted. The revision is that of the *stored* artwork (what the upload and from-url responses return as `revision`). When `v` equals the current revision the answer is `private, max-age=31536000, immutable`; a stale or invented `v` still serves the current bytes but only with the mutable policy, so a replacement is never hidden. For `?w=` copies the `ETag` follows the resized bytes while `v` still names the stored original.
+- Generated covers (no stored `key_art`) are always `private, no-cache` with an `ETag` of the SVG; `v` never makes them immutable. When art arrives at the same URL its bytes, hence `ETag`, change.
+- The standalone default-cover preview keeps its existing one-hour cache.
+
+The client never invents a revision: `utils/gameImages.ts` remembers the `revision` returned by an upload or download and `gameAssetUrl` then appends `?v=`; other devices keep using plain URLs and revalidate. A browser timestamp is not used.
 
 **Movies, TV shows and anime.** Their posters and backdrops are addresses on TMDB or AniList. `GET /api/media-image/<movie|tv|anime>/<id>/<poster|backdrop|hero>` downloads the picture once, shrinks it (posters to 400 pixels, backdrops to 1920) and keeps it under `.cache/media-images/`. `hero` is the backdrop, or the poster when there is no backdrop. The file name includes a hash of the source address, so editing the address makes a fresh copy and removes the old one.
 
@@ -164,9 +171,73 @@ Container identifiers follow the [Ogg framing specification](https://xiph.org/og
 
 ![Classic media editor](../assets/media-safety/classic-editor.jpg)
 
+## Game trash retention
+
+`features/trash/sweep.py` runs in the backend process once at startup and then every
+six hours, using the same in-process loop as before (no separate worker). It
+permanently removes trash older than the seven-day retention window. Game files are
+resolved where the storage routes keep them, never under the retired `/data/games`
+layout:
+
+| Trashed item | Location |
+| --- | --- |
+| Screenshot, clip or soundtrack | `<data>/users/<user-id>/games/<folder>/_trash/<kind>/<file>` |
+| Document or modpack | `<data>/users/<user-id>/games/<folder>/_trash/<doc or modpack>/<file>` |
+| Save or world archive | `<data>/users/<user-id>/games/<folder>/_trash/<save or world_save>/<archive-id>/` |
+| Archive version | `<archive trash>/files/<file>` |
+| Whole game | `<data>/users/_trash/<game-id>/` (the moved game folder, nested trash included) |
+
+The trash of a deleted game's files, archives and versions is purged inside its
+`_trash/<game-id>` folder rather than under its old folder name, which another game
+may have taken since. Restoring that game therefore cannot revive expired files. An
+expired archive version is removed from its archive's trash folder even when the
+whole archive was trashed later, so restoring the archive returns only versions still
+within retention.
+
+Each expired row is purged in its own transaction. Before using a path, the sweep
+takes the same Game row lock as the storage routes (shared for files and archives,
+exclusive for a whole game), then locks the trashed row and re-checks that it is
+still deleted and past retention. Folder renames wait for a purge in progress, or
+finish first and the purge uses the new name. Restores either finish first, so the
+purge skips the row, or wait and then return 404. Uploads and downloads use shared
+locks and continue alongside it. A second sweep, for example from another backend
+process, waits and finds nothing left to purge. File and media restores lock their
+trashed row, and archive and version restores lock the archive, for this purpose.
+Removal runs in a worker thread. Cancellation, such as shutdown, waits for the
+current row's files and transaction before it stops the sweep.
+
+The sweep reuses the `features/game_folders.py` checks. A row is kept, with the log
+warning `Trash sweep kept <kind> <id> for a later pass`, when:
+
+- its game has an unfinished folder move recorded in `.folder-moves`, including an
+  ambiguous one where both names exist;
+- an owner, game, trash, kind or whole-game trash directory on its path is a symlink;
+- its stored file name is not a plain name (for example it contains `..` or `/`); or
+- its files could not be removed.
+
+A kept row is retried on every pass. No files are removed for it unless a removal
+failed partway through. Fix the reported storage problem instead of deleting rows
+or recovery records by hand. For example, retry saving the game's folder name to
+reconcile an interrupted move.
+
 ## How a game page opens
 
 `services/games.ts` keeps every game it has fetched in an entity cache (`peekGame`). Opening a game from the library draws it from that cache straight away and refreshes it from the server behind it. Its achievements, variants and parent game are requested in parallel with the game, and fill in when they arrive instead of holding the page back. The hero and poster downloads start before the game's details have returned. When there is nothing cached (opening the address directly), a loading screen is shown whose hero, poster and tab bar match the real page's sizes, so the page does not jump when it replaces it.
+
+## Keeping page loads small
+
+Every routed view in `router/index.ts` is a dynamic `import()`, so opening a page only downloads that page's code. Inside a page, anything that is not on screen at first is loaded the same way:
+
+- Settings builds each section with `defineAsyncComponent`, so opening Settings downloads the section list and the one section the person picked, not all thirty.
+- Game detail loads the Notes, Stats, Accounts, Worlds, Saves, Docs and media panels and the edit dialogs when their tab or dialog is first shown. `GameFormModal`, the bulk editor, the random picker and the collection picker are loaded by the Games library and Home when first opened.
+- Statistics requests only the selected tab (`/api/media-stats?section=...`) and keeps the answer for the tab it came from; switching back does not ask again.
+- The calendar fetches the three media libraries (for poster thumbnails) only when its history or linked events refer to a title, or when the title picker is opened.
+
+Requests that several components make at the same moment are shared. `refreshMediaNotifications({ shared: true })` joins an unfinished request for the same account, and a background `refreshPluginExtensions` is skipped for two seconds after another one finished. Explicit refreshes (opening the bell, installing or removing a plugin) never take the shared path. The five-second session and plugin check in `App.vue` pauses while the browser tab is hidden and runs once when the tab becomes visible again.
+
+The game list is read in pages of 200 (`GET /api/game/list?skip=&limit=`). The body is still a plain array, and the response also carries `X-Total-Count`, the number of games matching the filters. `services/gamePages.ts` uses it to request the remaining pages four at a time instead of one after another, and falls back to sequential reads when the header is missing. The Games library, Home and the collection views still read the whole list because filtering, sorting, grouping of owned copies and duplicate review run in the browser over the full set.
+
+`src/tests/routeSplitting.test.ts` fails if a route, a Settings section or a Game detail panel goes back to being a static import.
 
 ## Shared building blocks
 
