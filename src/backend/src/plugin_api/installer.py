@@ -239,6 +239,31 @@ class InstallationPlan:
     permissions: PermissionDelta
     installed: dict[str, Any] | None = None
     can_retain_grants: bool = False
+    # A different verified signing identity (or loss/gain of one) replaces the installed
+    # publisher. The lifecycle instance continues, but notification proof does not.
+    identity_replaced: bool = False
+
+
+def signing_identity_replaced(
+    inspected: InspectedPackage, installed: dict[str, Any], operation: str = "update"
+) -> bool:
+    """Whether the candidate is signed by a different verified publisher key than the install.
+
+    Only a verified signature establishes an identity. An exact reinstall is always the
+    same release; every other operation compares the installed verified key with the
+    candidate's, so unsigned-to-signed, signed-to-unsigned and key-to-key all count.
+    """
+    if operation == "reinstall":
+        return False
+    installed_trust = installed.get("trust")
+    installed_trust = installed_trust if isinstance(installed_trust, dict) else {}
+    previous_key = (
+        installed_trust.get("publisher_key_id")
+        if installed_trust.get("status") == PackageTrustStatus.TRUSTED.value
+        else None
+    )
+    candidate_key = inspected.trust.publisher_key_id if inspected.trust.is_verified else None
+    return previous_key != candidate_key
 
 
 class PluginInstaller:
@@ -321,6 +346,10 @@ class PluginInstaller:
             )
         installation_id = UUID(str(installed["installation_id"]))
         can_retain = self._can_retain_grants(inspected, installed, operation)
+        identity_replaced = signing_identity_replaced(inspected, installed, operation)
+        if identity_replaced and operation == "rollback":
+            # A retained package from another publisher must not inherit the current grants.
+            can_retain = False
         delta = await self._permission_delta(
             db,
             plugin_id,
@@ -330,11 +359,17 @@ class PluginInstaller:
             can_retain=can_retain,
             operation=operation,
         )
-        dependencies = plan_dependencies(
-            manifest, (item for item in installed_plugins if item.get("plugin_id") != plugin_id)
-        )
         return InstallationPlan(
-            inspected, installation_id, dependencies, delta, installed, can_retain
+            inspected,
+            installation_id,
+            plan_dependencies(
+                manifest,
+                (item for item in installed_plugins if item.get("plugin_id") != plugin_id),
+            ),
+            delta,
+            installed,
+            can_retain,
+            identity_replaced,
         )
 
     @staticmethod
@@ -614,5 +649,6 @@ __all__ = [
     "PackageTrustStatus",
     "inspect_package",
     "plan_dependencies",
+    "signing_identity_replaced",
     "permission_key",
 ]
