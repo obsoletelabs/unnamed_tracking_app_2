@@ -63,6 +63,7 @@ import type { Game, GameStatus } from "../types/game";
 import { gameOwnershipGroups } from "../utils/gameOwnership";
 import { fetchGameDuplicates } from "../services/gameDuplicates";
 import { usePrompt } from "../state/dialog";
+import type { GameEditDraft } from "../utils/gameEditDraft";
 export function useGameLibrary() {
   const prompt = usePrompt();
 
@@ -91,6 +92,9 @@ export function useGameLibrary() {
 
   const showFormModal = ref(false);
   const editingGame = ref<Game | null>(null);
+  // the light editor; "Edit more" turns it into the full editor with a draft
+  const quickEditingGame = ref<Game | null>(null);
+  const editDraft = ref<GameEditDraft | null>(null);
 
   const deletingGame = ref<Game | null>(null);
   const deleting = ref(false);
@@ -894,6 +898,7 @@ export function useGameLibrary() {
   function anyModalOpen(): boolean {
     return (
       showFormModal.value ||
+      !!quickEditingGame.value ||
       !!deletingGame.value ||
       showBulkEditModal.value ||
       !!collectionPickerGame.value ||
@@ -1009,17 +1014,30 @@ export function useGameLibrary() {
 
   function openAddModal() {
     editingGame.value = null;
+    editDraft.value = null;
     showFormModal.value = true;
   }
 
   function openEditModal(game: Game) {
+    quickEditingGame.value = game;
+  }
+
+  function openFullEditor(game: Game, draft: GameEditDraft | null = null) {
+    quickEditingGame.value = null;
+    editDraft.value = draft;
     editingGame.value = game;
     showFormModal.value = true;
+  }
+
+  function onQuickEdited(updated: Game) {
+    quickEditingGame.value = null;
+    onGameUpdated(updated);
   }
 
   async function onGameSaved() {
     showFormModal.value = false;
     editingGame.value = null;
+    editDraft.value = null;
     await loadGames();
   }
 
@@ -1557,6 +1575,10 @@ export function useGameLibrary() {
     error,
     showFormModal,
     editingGame,
+    quickEditingGame,
+    editDraft,
+    openFullEditor,
+    onQuickEdited,
     deletingGame,
     deleting,
     deleteError,
