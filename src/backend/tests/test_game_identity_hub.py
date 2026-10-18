@@ -64,7 +64,7 @@ async def test_make_main_flattens_chains_and_carries_each_copys_display(users): 
         await db.execute(
             update(GameRelationship)
             .where(GameRelationship.from_game_id == a, GameRelationship.ended_at.is_(None))
-            .values(display="separate")
+            .values(display="link")
         )
         await db.commit()
 
@@ -81,7 +81,7 @@ async def test_make_main_flattens_chains_and_carries_each_copys_display(users): 
                 )
             ).all()
         )
-    assert shown == {a: "separate", c: "default"}
+    assert shown == {a: "link", c: "default"}
 
 
 async def test_split_copy_removes_only_that_copy(users):  # noqa: F811
@@ -173,11 +173,11 @@ async def test_main_page_lists_saves_and_media_of_every_copy(users, api):  # noq
     switch = await copy(user, "Hades")
     await run(decisions.merge_identities, user, steam, epic)  # Epic is the main copy
     await run(decisions.merge_identities, user, switch, epic)
-    async with SessionLocal() as db:  # the Switch copy is shown as its own library entry
+    async with SessionLocal() as db:  # the Switch copy is listed as its own library entry
         await db.execute(
             update(GameRelationship)
             .where(GameRelationship.from_game_id == switch, GameRelationship.ended_at.is_(None))
-            .values(display="separate")
+            .values(display="link")
         )
         await db.commit()
     steam_save = await add_save(steam, "Playnite save")

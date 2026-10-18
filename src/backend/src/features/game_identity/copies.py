@@ -17,10 +17,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.game import Game
+from src.database.models.game_identity import GameIdentity
 from src.features.game_identity import graph
 
-# A copy shown as its own library entry keeps its content on its own page.
-_OWN_PAGE = frozenset({"separate"})
+# A copy listed as its own library entry ("Listed separately": an edge shown as a
+# link, or an identity presented separately) keeps its content on its own page.
+_OWN_PAGE = frozenset({"link"})
 
 
 @dataclass(frozen=True)
@@ -48,10 +50,20 @@ async def page_copies(db: AsyncSession, user_id: UUID, game_id: UUID) -> list[Co
     merged = await graph.merge_graph(db, user_id, readonly=True)
     members = {game_id}
     if merged.root(game_id) == game_id:
+        others = merged.group(game_id) - {game_id}
+        separate = set(
+            await db.scalars(
+                select(GameIdentity.game_id).where(
+                    GameIdentity.user_id == user_id,
+                    GameIdentity.game_id.in_(others),
+                    GameIdentity.presentation == "separate",
+                )
+            )
+        )
         members |= {
             member
-            for member in merged.group(game_id) - {game_id}
-            if merged.edge[member].display not in _OWN_PAGE
+            for member in others
+            if member not in separate and merged.edge[member].display not in _OWN_PAGE
         }
     rows = await db.execute(
         select(Game.id, Game.title, Game.source, Game.platform).where(
