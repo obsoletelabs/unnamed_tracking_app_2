@@ -23,7 +23,7 @@ from .config_registry import (
     ConfigSpec,
     DefaultMode,
 )
-from .fernet_key import persistent_fernet_key
+from .fernet_key import persistent_fernet_key, validate_fernet_key
 
 
 @dataclass(frozen=True)
@@ -101,6 +101,8 @@ class EnvConfigHandler:
         spec = next(spec for spec in CONFIG_REGISTRY if spec.name == name)
         raw = self.environ.get(name)
         if raw is not None and raw.strip():
+            if name == "SECRET_KEY":
+                return validate_fernet_key(raw.strip())
             return self._coerce(spec.input_type, raw)
         if self.mode is DefaultMode.TESTING:
             if spec.testing_default is not None:

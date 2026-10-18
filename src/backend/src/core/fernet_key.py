@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-from collections import Counter
 from pathlib import Path
 
 from cryptography.fernet import Fernet
@@ -29,6 +28,18 @@ def _valid_key(value: str) -> bool:
         return False
 
 
+def validate_fernet_key(value: str) -> str:
+    """Reject an invalid deployment key without disclosing it or suggesting rotation."""
+    if not _valid_key(value):
+        raise RuntimeError(
+            "SECRET_KEY in the deployment environment or selected .env is not a valid Fernet key. "
+            "For an existing installation, restore the original matching key from its backup; "
+            "a new key cannot decrypt existing secrets. On a fresh installation with no saved "
+            "data, omit SECRET_KEY to generate a persistent key automatically."
+        )
+    return value
+
+
 def persistent_fernet_key() -> str:
     """Return a stable installation key, generating and persisting it when needed.
 
@@ -41,25 +52,42 @@ def persistent_fernet_key() -> str:
         os.getenv("SECRET_KEY", "").strip()
         or str(dotenv_values(".env").get("SECRET_KEY") or "").strip()
     )
+    if env_key:
+        validate_fernet_key(env_key)
 
     valid: list[str] = []
+    had_saved_key = False
     for path in paths:
         try:
             value = path.read_text(encoding="utf-8").strip()
-        except OSError:
+        except FileNotFoundError:
             continue
+        except UnicodeError:
+            value = ""  # A damaged copy, never include its bytes in diagnostics.
+        except OSError as exc:
+            raise RuntimeError(
+                f"Could not read the persistent Fernet key in {path.parent}. "
+                "Mount APP_DATA_DIR as a writable persistent volume and check its permissions."
+            ) from exc
+        had_saved_key = True
         if _valid_key(value):
             valid.append(value)
 
     if not valid:
+        if had_saved_key and not env_key:
+            raise RuntimeError(
+                "No valid persistent Fernet key remains for this existing installation. "
+                f"Restore the original matching key from backup in {paths[0].parent}. "
+                "Refusing to generate a replacement that cannot decrypt existing secrets."
+            )
         key = env_key or Fernet.generate_key().decode("utf-8")
     else:
-        counts = Counter(valid)
-        key, count = counts.most_common(1)[0]
-        if count < 2 <= len(valid):
+        key = valid[0]
+        if len(set(valid)) > 1 or (env_key and env_key != key):
             raise RuntimeError(
-                "Persistent Fernet key copies disagree. Refusing to start; "
-                f"restore at least two matching copies in {paths[0].parent}."
+                "The deployment SECRET_KEY and/or persistent Fernet key copies disagree. "
+                "Refusing to overwrite valid keys; restore the original matching deployment "
+                f"key and copies from backup in {paths[0].parent}."
             )
 
     _write_current_key(key, paths)
