@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { WEEKDAY_NAMES, type WeekStart } from "../utils/calendarWeeks";
 import UiModal from "../components/UiModal.vue";
 import AppTopBar from "../components/AppTopBar.vue";
 import SegmentedTabs from "../components/SegmentedTabs.vue";
@@ -69,8 +70,24 @@ const {
   saveEvent,
   removeEvent,
   openLinkedTitle,
+  weekStart,
+  setWeekStart,
+  rangeState,
+  rangeError,
+  retryRange,
+  monthIsFar,
   showFeed,
   feedUrl,
+  feedChoice,
+  FEED_CHOICES,
+  manualEpisodes,
+  manualLibraryError,
+  manualSearchState,
+  manualIsMovie,
+  manualEpisodeError,
+  manualSummary,
+  retryManualLibrary,
+  addMissingTitle,
   feedError,
   feedCopied,
   feedBusy,
@@ -225,6 +242,29 @@ const {
                 calView = $event as 'month' | 'week' | 'agenda'
               "
             />
+            <label class="week-start-pick">
+              <span class="sr-only">Week starts on</span>
+              <select
+                :value="String(weekStart)"
+                aria-label="Week starts on"
+                title="Week starts on"
+                @change="
+                  setWeekStart(
+                    Number(
+                      ($event.target as HTMLSelectElement).value,
+                    ) as WeekStart,
+                  )
+                "
+              >
+                <option
+                  v-for="(name, index) in WEEKDAY_NAMES"
+                  :key="name"
+                  :value="String(index)"
+                >
+                  {{ name }}
+                </option>
+              </select>
+            </label>
             <button
               type="button"
               class="refresh-btn"
@@ -363,6 +403,33 @@ const {
         </div>
 
         <p v-if="calError" class="ui-state error">{{ calError }}</p>
+        <p
+          v-if="rangeState === 'loading' && calView !== 'agenda'"
+          class="ui-state"
+          role="status"
+        >
+          Loading that part of the calendar…
+        </p>
+        <p
+          v-else-if="rangeState === 'error' && calView !== 'agenda'"
+          class="ui-state error"
+          role="alert"
+        >
+          {{ rangeError }}
+          <button type="button" class="ui-btn ui-btn-sm" @click="retryRange">
+            Try again
+          </button>
+        </p>
+        <p
+          v-else-if="monthIsFar && calView === 'month'"
+          class="ui-state"
+          role="note"
+        >
+          This far ahead only release dates that are already known appear, plus
+          each show's later episodes as dashed estimates. Airing dates are
+          confirmed only for the next episode of a show, so an empty month does
+          not mean nothing will air.
+        </p>
 
         <template v-if="calView === 'month'">
           <div class="weekday-row">
@@ -741,6 +808,20 @@ const {
         like a password. The app has to be reachable from the internet for
         Google Calendar to fetch it.
       </p>
+      <fieldset class="feed-choices">
+        <legend>What to subscribe to</legend>
+        <label v-for="choice in FEED_CHOICES" :key="choice.key">
+          <input
+            v-model="feedChoice"
+            type="radio"
+            name="feed-choice"
+            :value="choice.key"
+          />
+          <span
+            ><strong>{{ choice.label }}</strong> {{ choice.hint }}</span
+          >
+        </label>
+      </fieldset>
       <input
         class="ui-field"
         type="text"
@@ -750,6 +831,12 @@ const {
         placeholder="Loading…"
         @focus="($event.target as HTMLInputElement).select()"
       />
+      <p class="modal-hint">
+        Each link adds its own calendar. Your calendar app decides what color it
+        draws it in: the link suggests one, but Google Calendar, Apple Calendar
+        and Outlook may ignore it, so set the color there. A new link replaces
+        all of them at once.
+      </p>
       <p v-if="feedError" class="ui-error-box feed-error">{{ feedError }}</p>
       <div class="ui-modal-actions">
         <button
@@ -878,7 +965,8 @@ const {
     >
       <p class="modal-hint">
         For anything the app didn't catch automatically: watch history from
-        before you added this title, or an import.
+        before you added this title, or an import. This records history only; to
+        change what counts as watched, use the title's own page.
       </p>
 
       <label class="modal-field">
@@ -890,8 +978,44 @@ const {
           class="ui-field"
           @input="manualPicked = null"
         />
+        <p
+          v-if="manualSearchState === 'loading'"
+          class="modal-hint"
+          role="status"
+        >
+          Loading your library…
+        </p>
+        <p
+          v-else-if="manualSearchState === 'error'"
+          class="ui-error-box"
+          role="alert"
+        >
+          {{ manualLibraryError }}
+          <button
+            type="button"
+            class="ui-btn ui-btn-sm"
+            @click="retryManualLibrary"
+          >
+            Try again
+          </button>
+        </p>
+        <p
+          v-else-if="manualSearchState === 'none'"
+          class="modal-hint"
+          role="status"
+        >
+          Nothing in your library matches "{{ manualSearch.trim() }}".
+          <button
+            type="button"
+            class="ui-btn ui-btn-sm ui-btn-secondary"
+            @click="addMissingTitle"
+          >
+            Search and add it
+          </button>
+          You will come back here with the day {{ manualDate }} kept.
+        </p>
         <div
-          v-if="manualSearchResults.length && !manualPicked"
+          v-if="manualSearchState === 'results'"
           class="modal-search-results"
         >
           <button
@@ -926,18 +1050,42 @@ const {
           <input v-model="manualDate" type="date" class="ui-field" />
         </label>
         <label
-          v-if="manualEventType === 'episodes_watched'"
+          v-if="manualEventType === 'episodes_watched' && !manualIsMovie"
           class="modal-field"
         >
-          <span>Episodes</span>
+          <span>How many episodes</span>
           <input
             v-model.number="manualCount"
             type="number"
             min="1"
             class="ui-field"
+            :disabled="manualEpisodes.trim() !== ''"
           />
         </label>
       </div>
+      <label
+        v-if="manualEventType === 'episodes_watched' && !manualIsMovie"
+        class="modal-field"
+      >
+        <span>Which episodes (optional)</span>
+        <input
+          v-model="manualEpisodes"
+          type="text"
+          class="ui-field"
+          placeholder="e.g. 3, 5-7"
+          :aria-invalid="manualEpisodeError !== null"
+          aria-describedby="manual-episodes-help"
+        />
+        <small
+          id="manual-episodes-help"
+          :class="{ 'ui-error-text': manualEpisodeError }"
+        >
+          {{
+            manualEpisodeError ||
+            "List exact episode numbers to log them in any order; the count then follows the list. Leave empty to log just a number of episodes."
+          }}
+        </small>
+      </label>
 
       <label class="modal-field">
         <span>Note (optional)</span>
@@ -949,6 +1097,7 @@ const {
         />
       </label>
 
+      <p class="modal-hint" role="status">{{ manualSummary }}</p>
       <p v-if="manualError" class="ui-error-box">{{ manualError }}</p>
 
       <div class="ui-modal-actions">
@@ -962,7 +1111,7 @@ const {
         <button
           type="button"
           class="ui-btn ui-btn-primary"
-          :disabled="manualSaving"
+          :disabled="manualSaving || manualEpisodeError !== null"
           @click="submitManualEntry"
         >
           {{ manualSaving ? "Logging…" : "Log entry" }}

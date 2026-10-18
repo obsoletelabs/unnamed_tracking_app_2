@@ -91,7 +91,7 @@ _CHOICES: dict[str, tuple[Any, ...]] = {
     "ui_density": ("comfortable", "compact"),
     "ui_style": ("archive-pocket", "classic"),
     "calendar_default_view": ("month", "week", "agenda"),
-    "calendar_week_start": (0, 1),
+    "calendar_week_start": (0, 1, 2, 3, 4, 5, 6),  # 0 Sunday .. 6 Saturday
     "notification_retention_days": (0, 7, 14, 30, 90, 180, 365),
     "library_default_layout": ("list", "shelf", "board"),
     "library_version_display": ("grouped", "separate"),
@@ -221,7 +221,7 @@ def validate_preference(key: str, value: Any) -> Any:
 
     if key in _CHOICES:
         choices = _CHOICES[key]
-        if value not in choices:
+        if isinstance(value, bool) or value not in choices:  # True would equal 1
             raise ValueError(f"{key} must be one of {list(choices)}")
         return value
 

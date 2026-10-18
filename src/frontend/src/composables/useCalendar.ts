@@ -22,8 +22,9 @@ import { blurOnLeave } from "../utils/blurOnLeave";
 
 import {
   fetchCalendar,
+  fetchCalendarRange,
   fetchActivity,
-  fetchCalendarFeedUrl,
+  fetchCalendarFeeds,
   fetchCalendarGames,
   fetchCalendarEvents,
   createCalendarEvent,
@@ -35,6 +36,7 @@ import {
 } from "../services/mediaExtras";
 import type {
   ActivityEventType,
+  CalendarFeedKey,
   CalendarEntry,
   CalendarGameEntry,
   CalendarEventEntry,
@@ -54,6 +56,19 @@ import { fetchMovies } from "../services/movies";
 import { fetchTVShows } from "../services/tvShows";
 import { fetchAnime } from "../services/anime";
 import { displayTitle } from "../utils/displayTitle";
+import {
+  CALENDAR_INITIAL_DAYS,
+  daysBetween,
+  dayKey,
+  insideInitialWindow,
+  isWeekStart,
+  monthGridRange,
+  monthReachable,
+  startOfWeek as startOfWeekFor,
+  weekdayLabels,
+  type WeekStart,
+} from "../utils/calendarWeeks";
+import { parseEpisodeSelection } from "../utils/episodeSelection";
 export function useCalendar() {
   const router = useRouter();
   const route = useRoute();
@@ -171,7 +186,21 @@ export function useCalendar() {
       !prefs.value.calendar_hide_games &&
       (prefs.value.calendar_game_releases || prefs.value.calendar_game_history),
   );
-  const weekStart = computed(() => prefs.value.calendar_week_start);
+  const weekStart = computed<WeekStart>(() =>
+    isWeekStart(prefs.value.calendar_week_start)
+      ? prefs.value.calendar_week_start
+      : 0,
+  );
+  // saved with the other calendar settings, so the choice follows the account
+  async function setWeekStart(value: WeekStart) {
+    const previous = prefs.value.calendar_week_start;
+    prefs.value = { ...prefs.value, calendar_week_start: value };
+    try {
+      await queuePreferences({ calendar_week_start: value });
+    } catch {
+      prefs.value = { ...prefs.value, calendar_week_start: previous };
+    }
+  }
   async function loadPreferences() {
     try {
       prefs.value = await fetchPreferences();
@@ -236,7 +265,7 @@ export function useCalendar() {
       viewYear.value === today.getFullYear() &&
       viewMonth.value === today.getMonth(),
   );
-  const CAL_MAX_DAYS = 90;
+  const CAL_MAX_DAYS = CALENDAR_INITIAL_DAYS;
   // Back as far as the oldest entry of any kind (watch history, game history and
   // release dates, your own entries), never earlier than the current month, so a
   // brand-new account still has somewhere sensible to stand; forward as far as
@@ -258,10 +287,12 @@ export function useCalendar() {
   const canGoPrev = computed(
     () => viewYear.value * 12 + viewMonth.value > earliestMonth.value,
   );
-  const canGoNext = computed(() => {
-    const firstOfNext = new Date(viewYear.value, viewMonth.value + 1, 1);
-    return firstOfNext.getTime() - today.getTime() < CAL_MAX_DAYS * 86_400_000;
-  });
+  // Forward as far as the calendar supports (about a year). Beyond the first
+  // 90 days only dates that are really known, plus each show's weekly estimate,
+  // exist, and the months are fetched when you get to them.
+  const canGoNext = computed(() =>
+    monthReachable(viewYear.value, viewMonth.value + 1, today),
+  );
   const jumpMonthValue = computed(
     () => `${viewYear.value}-${String(viewMonth.value + 1).padStart(2, "0")}`,
   );
@@ -270,13 +301,72 @@ export function useCalendar() {
     if (!/^\d{4}-\d{2}$/.test(value)) return;
     const [y, m] = value.split("-").map(Number);
     const index = y * 12 + (m - 1);
-    const max =
-      today.getFullYear() * 12 +
-      today.getMonth() +
-      Math.ceil(CAL_MAX_DAYS / 30);
-    if (index < earliestMonth.value || index > max) return;
+    if (index < earliestMonth.value || !monthReachable(y, m - 1, today)) return;
     viewYear.value = y;
     viewMonth.value = m - 1;
+  }
+
+  // Months past the first window are fetched as bounded date ranges when you
+  // browse to them, then kept. `rangeState` tells the page whether a month is
+  // loading, failed, or simply has nothing known yet.
+  const loadedRanges = new Set<string>();
+  const rangeEntries = ref<CalendarEntry[]>([]);
+  const rangeState = ref<"idle" | "loading" | "error">("idle");
+  const rangeError = ref<string | null>(null);
+  let rangeToken = 0;
+  async function ensureRange(first: Date, last: Date) {
+    if (insideInitialWindow(last, today)) return;
+    const key = `${dayKey(first)}..${dayKey(last)}`;
+    if (loadedRanges.has(key)) return;
+    const token = ++rangeToken;
+    rangeState.value = "loading";
+    rangeError.value = null;
+    try {
+      // the server answers at most ~3 months at a time
+      const fresh = await fetchCalendarRange(dayKey(first), dayKey(last));
+      if (token !== rangeToken) return; // you have moved on; a newer request owns the state
+      const seen = new Set(rangeEntries.value.map(entryKey));
+      rangeEntries.value = [
+        ...rangeEntries.value,
+        ...fresh.filter((e) => !seen.has(entryKey(e))),
+      ];
+      loadedRanges.add(key);
+      rangeState.value = "idle";
+    } catch (e) {
+      if (token !== rangeToken) return;
+      rangeState.value = "error";
+      rangeError.value =
+        e instanceof Error ? e.message : "Could not load that month.";
+    }
+  }
+  const entryKey = (e: CalendarEntry) =>
+    `${e.mediaType}-${e.mediaId}-${e.kind}-${e.nextEpisodeNumber ?? 0}`;
+  // later months you can browse to but that hold nothing known yet
+  const monthIsFar = computed(
+    () =>
+      daysBetween(
+        today,
+        monthGridRange(viewYear.value, viewMonth.value, weekStart.value).first,
+      ) > CAL_MAX_DAYS,
+  );
+  function loadVisibleRange() {
+    if (tab.value !== "calendar") return;
+    if (calView.value === "week") {
+      const end = new Date(weekAnchor.value);
+      end.setDate(end.getDate() + 6);
+      void ensureRange(weekAnchor.value, end);
+    } else {
+      const { first, last } = monthGridRange(
+        viewYear.value,
+        viewMonth.value,
+        weekStart.value,
+      );
+      void ensureRange(first, last);
+    }
+  }
+  function retryRange() {
+    loadedRanges.clear();
+    loadVisibleRange();
   }
 
   // Only a first load (nothing on screen yet) shows the loading state; later
@@ -289,6 +379,10 @@ export function useCalendar() {
       // enough for every month the nav allows; past cells get their content
       // from the watched layer instead.
       entries.value = await fetchCalendar(CAL_MAX_DAYS);
+      // anything fetched for later months may have changed too
+      rangeEntries.value = [];
+      loadedRanges.clear();
+      loadVisibleRange();
     } catch (e) {
       calError.value =
         e instanceof Error ? e.message : "Failed to load the calendar.";
@@ -338,6 +432,7 @@ export function useCalendar() {
       appliedDefaultView = true;
       calView.value = prefs.value.calendar_default_view;
     }
+    void resumePendingLog();
   });
   useKeptAlive(refreshAll);
 
@@ -360,7 +455,7 @@ export function useCalendar() {
   }
 
   function keyOfDate(d: Date): string {
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    return dayKey(d);
   }
   function timeLabel(airAt: number): string {
     return new Date(airAt * 1000).toLocaleTimeString(undefined, {
@@ -482,6 +577,7 @@ export function useCalendar() {
   const upcomingByDay = computed(() =>
     indexByDay([
       ...entries.value.map(fromEntry),
+      ...rangeEntries.value.map(fromEntry),
       ...eventEntries.value.map(fromEvent),
     ]),
   );
@@ -526,11 +622,7 @@ export function useCalendar() {
     "November",
     "December",
   ];
-  const ALL_WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const WEEKDAY_LABELS = computed(() => [
-    ...ALL_WEEKDAYS.slice(weekStart.value),
-    ...ALL_WEEKDAYS.slice(0, weekStart.value),
-  ]);
+  const WEEKDAY_LABELS = computed(() => weekdayLabels(weekStart.value));
 
   interface DayCell {
     day: number;
@@ -545,14 +637,16 @@ export function useCalendar() {
   const gridCells = computed<DayCell[]>(() => {
     const y = viewYear.value;
     const m = viewMonth.value;
-    const firstWeekday = (new Date(y, m, 1).getDay() - weekStart.value + 7) % 7;
-    const daysInMonth = new Date(y, m + 1, 0).getDate();
     // Always a full 6 rows would leave a blank final week most months, so
     // pad only to the end of the week the month actually reaches.
-    const total = Math.ceil((firstWeekday + daysInMonth) / 7) * 7;
+    const { first, cells: total } = monthGridRange(y, m, weekStart.value);
     const cells: DayCell[] = [];
     for (let i = 0; i < total; i++) {
-      const d = new Date(y, m, 1 - firstWeekday + i);
+      const d = new Date(
+        first.getFullYear(),
+        first.getMonth(),
+        first.getDate() + i,
+      );
       const key = keyOfDate(d);
       cells.push({
         day: d.getDate(),
@@ -585,14 +679,12 @@ export function useCalendar() {
     }
   }
   function startOfWeek(d: Date): Date {
-    const start = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    start.setDate(
-      start.getDate() - ((start.getDay() - weekStart.value + 7) % 7),
-    );
-    return start;
+    return startOfWeekFor(d, weekStart.value);
   }
   const weekAnchor = ref(startOfWeek(today));
   watch(weekStart, () => (weekAnchor.value = startOfWeek(weekAnchor.value)));
+  // browsing to a month or week the first request did not cover loads just that range
+  watch([viewYear, viewMonth, calView, weekStart, tab], loadVisibleRange);
   interface WeekDay {
     key: string;
     label: string;
@@ -632,11 +724,11 @@ export function useCalendar() {
   const isCurrentWeek = computed(
     () => keyOfDate(weekAnchor.value) === keyOfDate(startOfWeek(today)),
   );
-  const canWeekNext = computed(
-    () =>
-      weekAnchor.value.getTime() + 7 * 86_400_000 - today.getTime() <
-      CAL_MAX_DAYS * 86_400_000,
-  );
+  const canWeekNext = computed(() => {
+    const next = new Date(weekAnchor.value);
+    next.setDate(next.getDate() + 7);
+    return monthReachable(next.getFullYear(), next.getMonth(), today);
+  });
   const canWeekPrev = computed(() => {
     const first = new Date(
       Math.floor(earliestMonth.value / 12),
@@ -649,6 +741,7 @@ export function useCalendar() {
     const next = new Date(weekAnchor.value);
     next.setDate(next.getDate() + weeks * 7);
     weekAnchor.value = next;
+    loadVisibleRange();
   }
   function goToday() {
     viewYear.value = today.getFullYear();
@@ -889,7 +982,39 @@ export function useCalendar() {
 
   // ---- subscribe (iCal feed) ----
   const showFeed = ref(false);
-  const feedUrl = ref("");
+  // every link shares one secret; which one you copy decides what the calendar app shows
+  const feedUrls = ref<Partial<Record<CalendarFeedKey, string>>>({});
+  const feedChoice = ref<CalendarFeedKey>("combined");
+  const FEED_CHOICES: { key: CalendarFeedKey; label: string; hint: string }[] =
+    [
+      {
+        key: "combined",
+        label: "Everything",
+        hint: "One calendar with all layers.",
+      },
+      {
+        key: "anime",
+        label: "Anime",
+        hint: "Airing episodes and releases of anime.",
+      },
+      { key: "tv", label: "TV shows", hint: "Airing episodes and premieres." },
+      {
+        key: "movie",
+        label: "Movies",
+        hint: "Release dates of movies you plan to watch.",
+      },
+      {
+        key: "game",
+        label: "Games",
+        hint: "Release dates of games in your library.",
+      },
+      {
+        key: "manual",
+        label: "My entries",
+        hint: "Only the entries you added yourself.",
+      },
+    ];
+  const feedUrl = computed(() => feedUrls.value[feedChoice.value] ?? "");
   const feedError = ref<string | null>(null);
   const feedCopied = ref(false);
   const feedBusy = ref(false);
@@ -899,7 +1024,7 @@ export function useCalendar() {
     feedCopied.value = false;
     if (feedUrl.value) return;
     try {
-      feedUrl.value = await fetchCalendarFeedUrl();
+      feedUrls.value = await fetchCalendarFeeds();
     } catch (e) {
       feedError.value =
         e instanceof Error ? e.message : "Couldn't load the feed link.";
@@ -918,13 +1043,13 @@ export function useCalendar() {
   async function regenerateFeed() {
     const ok = await confirm({
       message:
-        "Make a new link? Anything subscribed to the old one stops updating.",
+        "Make new links? Everything subscribed to an old link, of any layer, stops updating.",
       confirmLabel: "Make new link",
     });
     if (!ok) return;
     feedBusy.value = true;
     try {
-      feedUrl.value = await fetchCalendarFeedUrl(true);
+      feedUrls.value = await fetchCalendarFeeds(true);
       feedCopied.value = false;
     } catch (e) {
       feedError.value =
@@ -1096,6 +1221,10 @@ export function useCalendar() {
   const manualDetail = ref("");
   const manualError = ref<string | null>(null);
   const manualSaving = ref(false);
+  // which episodes, written as "3, 5-7"; optional, and never changes progress
+  const manualEpisodes = ref("");
+  const manualLibraryError = ref<string | null>(null);
+  const manualLibraryLoading = ref(false);
 
   const EVENT_TYPE_LABELS: Record<ActivityEventType, string> = {
     episodes_watched: "Episodes watched",
@@ -1104,13 +1233,75 @@ export function useCalendar() {
     rated: "Rated",
   };
 
-  async function openManualForm(date?: string) {
+  async function loadManualLibraryVisibly() {
+    manualLibraryError.value = null;
+    manualLibraryLoading.value = !manualLibraryLoaded.value;
+    try {
+      await loadManualLibrary();
+    } catch (e) {
+      manualLibraryError.value =
+        e instanceof Error ? e.message : "Could not load your library.";
+    } finally {
+      manualLibraryLoading.value = false;
+    }
+  }
+  async function openManualForm(date?: string, search = "") {
     showManualForm.value = true;
     manualPicked.value = null;
-    manualSearch.value = "";
+    manualSearch.value = search;
+    manualEpisodes.value = "";
+    manualCount.value = 1;
     manualError.value = null;
     manualDate.value = date ?? keyOfDate(new Date());
-    await loadManualLibrary();
+    await loadManualLibraryVisibly();
+  }
+  function retryManualLibrary() {
+    void loadManualLibraryVisibly();
+  }
+
+  // A title that is not in your library yet is added through the normal add
+  // flow. The chosen day is kept for when you come back, so adding the title
+  // does not lose what you were logging.
+  const PENDING_LOG_KEY = "calendar-pending-log-v1";
+  function addMissingTitle() {
+    try {
+      sessionStorage.setItem(
+        PENDING_LOG_KEY,
+        JSON.stringify({
+          date: manualDate.value,
+          search: manualSearch.value.trim(),
+          at: Date.now(),
+        }),
+      );
+    } catch {
+      /* the day is only a convenience */
+    }
+    showManualForm.value = false;
+    void router.push({
+      path: "/media/search",
+      query: manualSearch.value.trim() ? { q: manualSearch.value.trim() } : {},
+    });
+  }
+  async function resumePendingLog() {
+    try {
+      const raw = sessionStorage.getItem(PENDING_LOG_KEY);
+      if (!raw) return;
+      sessionStorage.removeItem(PENDING_LOG_KEY);
+      const saved = JSON.parse(raw) as {
+        date?: string;
+        search?: string;
+        at?: number;
+      };
+      if (
+        typeof saved.date !== "string" ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(saved.date) ||
+        Date.now() - Number(saved.at ?? 0) > 60 * 60 * 1000
+      )
+        return;
+      await openManualForm(saved.date, String(saved.search ?? ""));
+    } catch {
+      /* nothing to resume */
+    }
   }
   function closeManualForm() {
     showManualForm.value = false;
@@ -1132,6 +1323,43 @@ export function useCalendar() {
       .filter((m) => m.title.toLowerCase().includes(q))
       .slice(0, 8);
   });
+  // what the title box should say: nothing typed, still loading, failed, no match, or matches
+  const manualSearchState = computed<
+    "idle" | "loading" | "error" | "none" | "results"
+  >(() => {
+    if (manualLibraryError.value) return "error";
+    if (manualLibraryLoading.value) return "loading";
+    if (!manualSearch.value.trim() || manualPicked.value) return "idle";
+    return manualSearchResults.value.length ? "results" : "none";
+  });
+  const manualIsMovie = computed(
+    () => manualPicked.value?.mediaType === "movie",
+  );
+  const manualSelection = computed(() =>
+    manualEventType.value === "episodes_watched" && !manualIsMovie.value
+      ? parseEpisodeSelection(manualEpisodes.value)
+      : null,
+  );
+  const manualEpisodeError = computed(() =>
+    manualSelection.value && "error" in manualSelection.value
+      ? manualSelection.value.error
+      : null,
+  );
+  // exactly what saving will do, in words, so nothing is a surprise
+  const manualSummary = computed(() => {
+    const title = manualPicked.value?.title ?? "the title";
+    const when = manualDate.value;
+    const what =
+      manualEventType.value === "episodes_watched"
+        ? manualIsMovie.value
+          ? `that you watched ${title}`
+          : manualSelection.value && "numbers" in manualSelection.value
+            ? `that you watched episode${manualSelection.value.numbers.length === 1 ? "" : "s"} ${manualSelection.value.label} of ${title}`
+            : `${manualCount.value} episode${manualCount.value === 1 ? "" : "s"} of ${title}`
+        : EVENT_TYPE_LABELS[manualEventType.value].toLowerCase() +
+          ` for ${title}`;
+    return `Adds one history entry on ${when}: ${what}. This only records history. It does not change your watched progress or the title's status.`;
+  });
   function pickManualMedia(m: PickableMedia) {
     manualPicked.value = m;
     manualSearch.value = m.title;
@@ -1145,13 +1373,26 @@ export function useCalendar() {
     manualSaving.value = true;
     manualError.value = null;
     try {
+      const selection = manualSelection.value;
+      if (selection && "error" in selection) {
+        manualError.value = selection.error;
+        return;
+      }
+      const listed = selection && "numbers" in selection ? selection : null;
+      const note = manualDetail.value.trim();
       const created = await createActivityEntry({
         mediaType: manualPicked.value.mediaType,
         mediaId: manualPicked.value.mediaId,
         eventType: manualEventType.value,
         eventDate: manualDate.value,
-        count: manualCount.value,
-        detail: manualDetail.value || null,
+        // watching a movie is one viewing, whatever the episode box last held
+        count: manualIsMovie.value
+          ? 1
+          : (listed?.numbers.length ?? manualCount.value),
+        detail:
+          [listed ? `Episodes ${listed.label}` : "", note]
+            .filter(Boolean)
+            .join(" · ") || null,
       });
       // Same upsert semantics as the backend's automatic logging — if a
       // bucket for this exact (media, event type, day) already existed,
@@ -1188,6 +1429,12 @@ export function useCalendar() {
     viewMonth,
     isCurrentMonth,
     CAL_MAX_DAYS,
+    weekStart,
+    setWeekStart,
+    rangeState,
+    rangeError,
+    retryRange,
+    monthIsFar,
     canGoPrev,
     canGoNext,
     jumpMonthValue,
@@ -1238,6 +1485,8 @@ export function useCalendar() {
     openLinkedTitle,
     showFeed,
     feedUrl,
+    feedChoice,
+    FEED_CHOICES,
     feedError,
     feedCopied,
     feedBusy,
@@ -1277,6 +1526,15 @@ export function useCalendar() {
     manualDetail,
     manualError,
     manualSaving,
+    manualEpisodes,
+    manualLibraryError,
+    manualLibraryLoading,
+    manualSearchState,
+    manualIsMovie,
+    manualEpisodeError,
+    manualSummary,
+    retryManualLibrary,
+    addMissingTitle,
     EVENT_TYPE_LABELS,
     openManualForm,
     closeManualForm,

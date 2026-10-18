@@ -16,6 +16,7 @@ import {
   unavailableText,
 } from "../../services/preferenceDependencies";
 import { preferences as sharedPreferences } from "../../state/preferences";
+import { WEEKDAY_NAMES } from "../../utils/calendarWeeks";
 
 const prefs = ref<Preferences>({ ...DEFAULT_PREFERENCES });
 const loaded = ref(false);
@@ -82,10 +83,6 @@ const viewOptions = [
   { value: "month", label: "Month" },
   { value: "week", label: "Week" },
   { value: "agenda", label: "Agenda" },
-];
-const weekOptions = [
-  { value: "0", label: "Sunday" },
-  { value: "1", label: "Monday" },
 ];
 </script>
 
@@ -182,23 +179,43 @@ const weekOptions = [
       />
     </div>
     <div class="field">
-      <span>Week starts on</span>
-      <SegmentedControl
-        :model-value="String(prefs.calendar_week_start)"
-        :options="weekOptions"
-        @update:model-value="
+      <label for="calendar-week-start">Week starts on</label>
+      <select
+        id="calendar-week-start"
+        class="week-start-select"
+        :value="String(prefs.calendar_week_start)"
+        :disabled="!loaded"
+        @change="
           change({
             calendar_week_start: Number(
-              $event,
+              ($event.target as HTMLSelectElement).value,
             ) as Preferences['calendar_week_start'],
           })
         "
-      />
+      >
+        <option
+          v-for="(name, index) in WEEKDAY_NAMES"
+          :key="name"
+          :value="String(index)"
+        >
+          {{ name }}
+        </option>
+      </select>
     </div>
   </section>
 </template>
 
 <style scoped>
+.week-start-select {
+  align-self: flex-start;
+  min-height: var(--ui-control-height);
+  background: var(--ui-bg);
+  border: 1px solid var(--ui-border-strong);
+  border-radius: var(--ui-radius-control);
+  color: var(--ui-text);
+  padding: 10px 12px;
+  font: inherit;
+}
 .settings-section h2 {
   margin: 0 0 12px;
   font: var(--ui-weight-heading) var(--ui-font-heading)/1.4

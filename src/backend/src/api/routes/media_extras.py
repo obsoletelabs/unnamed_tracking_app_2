@@ -489,7 +489,12 @@ async def delete_activity_entry(
 # Keep the established workflow and public parameters together.
 # pylint: disable=too-many-locals
 async def build_calendar_entries(
-    db: AsyncSession, user_id: UUID, days: int, game_releases: bool = False
+    db: AsyncSession,
+    user_id: UUID,
+    days: int,
+    game_releases: bool = False,
+    *,
+    window: tuple[date, date] | None = None,
 ) -> list[dict]:
     """Two kinds of entry, both media the real-calendar view groups by
     day: "episode" entries are anime/TV already airing with a known
@@ -499,7 +504,12 @@ async def build_calendar_entries(
     a movie you're waiting on, or a show whose first season hasn't
     started yet. `days` windows both directions loosely — something that
     just aired/released stays visible for a day so "today" doesn't look
-    empty the moment it passes."""
+    empty the moment it passes.
+
+    `window` asks for exactly the entries on or between two dates (a bounded range for
+    navigating further ahead). Only each show's next episode is a confirmed date; later
+    episodes are the usual weekly guess, flagged `is_projected`, so a far-off range is mostly
+    projected or empty rather than pretending the dates are known."""
     prefs = await load_preferences(db, user_id)
     language = str(prefs["title_language"])
     airing = prefs["calendar_airing_statuses"]
@@ -509,6 +519,11 @@ async def build_calendar_entries(
     today = date.today()
     date_window_end = today + timedelta(days=days)
     date_window_start = today - timedelta(days=1)
+    if window is not None:
+        first, last = window
+        window_start = _date_to_unix(first) - 12 * 3600
+        window_end = _date_to_unix(last) + 12 * 3600 + 86399
+        date_window_start, date_window_end = first, last
 
     result: list[dict] = []
 
@@ -520,7 +535,8 @@ async def build_calendar_entries(
                     Anime.deleted_at.is_(None),
                     Anime.status.in_(tracked_statuses(AnimeStatus, airing)),
                     Anime.next_episode_air_at.isnot(None),
-                    Anime.next_episode_air_at >= window_start,
+                    # in a range the later (projected) episodes of an earlier show also count
+                    *([] if window else [Anime.next_episode_air_at >= window_start]),
                     Anime.next_episode_air_at <= window_end,
                 )
             )
@@ -540,7 +556,7 @@ async def build_calendar_entries(
                     TVShow.deleted_at.is_(None),
                     TVShow.status.in_(tracked_statuses(TVShowStatus, airing)),
                     TVShow.next_episode_air_at.isnot(None),
-                    TVShow.next_episode_air_at >= window_start,
+                    *([] if window else [TVShow.next_episode_air_at >= window_start]),
                     TVShow.next_episode_air_at <= window_end,
                 )
             )
@@ -667,6 +683,8 @@ async def build_calendar_entries(
                 }
             )
 
+    if window is not None:
+        result = [r for r in result if window_start <= r["air_at"] <= window_end]
     result.sort(key=lambda r: r["air_at"])
     return result
 
@@ -674,19 +692,54 @@ async def build_calendar_entries(
 # pylint: enable=too-many-locals
 
 
+CALENDAR_MAX_RANGE_DAYS = 92
+CALENDAR_MAX_AHEAD_DAYS = 400
+CALENDAR_MAX_BEHIND_DAYS = 400
+
+
 @router.get("/calendar", response_model=list[CalendarEntryRead])
 async def get_calendar(
     days: int = Query(default=14, ge=1, le=90),
+    from_date: date | None = Query(default=None, description="First day of a bounded range"),
+    to_date: date | None = Query(default=None, description="Last day of a bounded range"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[dict]:
+    """Upcoming entries: the next `days`, or exactly `from_date`..`to_date` for navigating
+    further ahead (at most 92 days at a time, within about a year of today)."""
+    window = _calendar_range(from_date, to_date)
     prefs = await load_preferences(db, current_user.id)
     return await build_calendar_entries(
         db,
         current_user.id,
         days,
         game_releases=bool(prefs["calendar_game_releases"]) and not prefs["calendar_hide_games"],
+        window=window,
     )
+
+
+def _calendar_range(first: date | None, last: date | None) -> tuple[date, date] | None:
+    if first is None and last is None:
+        return None
+    if first is None or last is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Give both from_date and to_date, or neither.",
+        )
+    today = date.today()
+    if last < first or (last - first).days + 1 > CALENDAR_MAX_RANGE_DAYS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Ask for at most {CALENDAR_MAX_RANGE_DAYS} days at a time.",
+        )
+    if first < today - timedelta(days=CALENDAR_MAX_BEHIND_DAYS) or last > today + timedelta(
+        days=CALENDAR_MAX_AHEAD_DAYS
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="That range is further from today than the calendar supports.",
+        )
+    return first, last
 
 
 # Keep the established workflow and public parameters together.

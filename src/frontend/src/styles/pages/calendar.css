@@ -808,3 +808,52 @@
     display: none;
   }
 }
+
+/* week start, feed choices and the manual-log hints */
+.week-start-pick select {
+  min-height: var(--ui-control-height);
+  background: color-mix(in srgb, var(--ui-text) 6%, transparent);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-control);
+  color: var(--ui-text);
+  padding: 0 10px;
+  font: inherit;
+  font-size: 0.82rem;
+}
+.week-start-pick .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.feed-choices {
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-control);
+  margin: 0 0 12px;
+  padding: 8px 12px 10px;
+  display: grid;
+  gap: 6px;
+}
+.feed-choices legend {
+  padding: 0 6px;
+  font-weight: 600;
+  font-size: 0.82rem;
+}
+.feed-choices label {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.feed-choices label span {
+  color: var(--ui-dim);
+}
+.feed-choices label strong {
+  color: var(--ui-text);
+}
+.ui-error-text {
+  color: var(--ui-error);
+}
