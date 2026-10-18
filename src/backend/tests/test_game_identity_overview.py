@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
-from sqlalchemy import update
+from sqlalchemy import event, update
 
 from src.core.auth import get_current_user
 from src.core.preferences import save_preferences, validate_preference
@@ -260,3 +260,67 @@ async def test_first_umbrella_wide_achievement_places_the_merged_group(users):  
     assert [r.game_id for r in rows if r.is_primary] == [java]
     body = await run(overview.game_overview, user, bedrock)
     assert body["aggregate"]["achievements"]["total"] == 2
+
+
+async def two_copy_group(user, title, steam_hours, epic_hours, now):
+    steam = await make_game(user, f"{title} Steam")
+    epic = await make_game(user, f"{title} Epic")
+    await run(decisions.merge_identities, user, epic, steam)
+    await report(user, steam, PLAYNITE, f"{title}-s", steam_hours, now)
+    await report(user, epic, MANUAL, f"{title}-e", epic_hours, now + 1)
+    return steam, epic
+
+
+async def library_with_statements(user):
+    statements = []
+
+    def record(_connection, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(statement)
+
+    async with SessionLocal() as db:
+        event.listen(db.bind.sync_engine, "before_cursor_execute", record)
+        try:
+            found = await overview.library_layout(db, user)
+            await db.commit()
+        finally:
+            event.remove(db.bind.sync_engine, "before_cursor_execute", record)
+    return found, len(statements)
+
+
+async def test_library_playtime_equals_the_game_page_reconciliation(users):  # noqa: F811
+    user = await users()
+    steam, epic = await two_copy_group(user, "Hades", 61, 4, 10)
+    found = await layout(user)
+    assert found["groups"][0]["playtime_seconds"] == 65 * HOUR
+    page = await run(overview.game_overview, user, epic)
+    assert found["groups"][0]["playtime_seconds"] == page["aggregate"]["playtime_seconds"]
+    assert found["groups"][0]["umbrella_id"] == steam
+
+
+async def test_library_playtime_counts_a_shared_counter_once_and_falls_back_to_records(
+    users,  # noqa: F811
+):
+    user = await users()
+    java, bedrock, _ = await minecraft(user)
+    await report(user, java, PLAYNITE, "p1", 200, 10)
+    await set_fields(bedrock, playtime_seconds=50 * HOUR)
+    page = await run(overview.game_overview, user, java)
+    found = await layout(user)
+    assert found["groups"][0]["playtime_seconds"] == 250 * HOUR
+    assert found["groups"][0]["playtime_seconds"] == page["aggregate"]["playtime_seconds"]
+
+
+async def test_library_playtime_uses_a_constant_number_of_statements(users):  # noqa: F811
+    user = await users()
+    await two_copy_group(user, "One", 10, 1, 10)
+    await library_with_statements(user)  # first read materialises the counters
+    _, few = await library_with_statements(user)
+    for number in range(4):
+        await two_copy_group(user, f"More{number}", 5 + number, 2, 100 + number * 10)
+    await library_with_statements(user)
+    found, many = await library_with_statements(user)
+    assert len(found["groups"]) == 5
+    assert many == few
+    for entry in found["groups"]:
+        page = await run(overview.game_overview, user, entry["umbrella_id"])
+        assert entry["playtime_seconds"] == page["aggregate"]["playtime_seconds"]

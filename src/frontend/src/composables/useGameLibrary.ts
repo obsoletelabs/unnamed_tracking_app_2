@@ -1193,7 +1193,30 @@ export function useGameLibrary() {
     }
   }
 
+  // Playtime of an entry that folds several copies of one game: the same
+  // reconciled figure the game page shows (copies reporting the same counter
+  // count once), not the main record's alone (#277).
+  const reconciledMinutes = computed(() => {
+    const found = new Map<string, number>();
+    for (const group of layout.value?.groups ?? []) {
+      const head = grouping.value.entryOf.get(group.umbrellaId);
+      if (
+        head === undefined ||
+        group.playtimeSeconds == null ||
+        !grouping.value.versions.has(head)
+      )
+        continue;
+      found.set(head, Math.floor(group.playtimeSeconds / 60));
+    }
+    return found;
+  });
+  function reconciledPlaytimeMinutes(game: Game): number | null {
+    return reconciledMinutes.value.get(game.id) ?? null;
+  }
+
   function gameTotalMinutes(game: Game): number {
+    const reconciled = reconciledPlaytimeMinutes(game);
+    if (reconciled !== null) return reconciled;
     return game.platforms.reduce((sum, p) => sum + p.playtimeMinutes, 0);
   }
 
@@ -1778,6 +1801,7 @@ export function useGameLibrary() {
     onCollectionAdded,
     confirmDelete,
     totalPlaytime,
+    reconciledPlaytimeMinutes,
     gameLastPlayed,
     openGame,
     filteredGames,

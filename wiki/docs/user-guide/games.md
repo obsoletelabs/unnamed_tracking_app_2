@@ -154,7 +154,8 @@ that report the same counter are counted once.
 
 The **Overview** tab starts with **Copies & versions**: the game-wide playtime, last
 played, completion and achievements, then one row per copy, named by edition, store
-and platform, with its own figures.
+and platform, with its own figures. The library card, list view and playtime sorting use the
+same game-wide playtime (copies reporting the same counter are counted once).
 
 ![Copies & versions on a game page](../assets/game-identity-hub/after-copies-panel.jpg)
 

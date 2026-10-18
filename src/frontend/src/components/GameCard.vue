@@ -21,6 +21,8 @@ const props = defineProps<{
   // the copies folded under this entry, or the store of a lone copy whose
   // title repeats ("2 copies · Steam, Epic", "Nintendo Switch") (#274)
   copySummary?: string | null;
+  /** Reconciled playtime across a grouped game's copies (#277). */
+  reconciledPlaytimeMinutes?: number | null;
   versionContext?: { label: string; gameId: string } | null;
   nestedLabel?: string | null;
 }>();
@@ -182,8 +184,10 @@ async function chooseStatus(status: GameStatus) {
   closeMenu();
 }
 
-const totalPlaytimeMinutes = computed(() =>
-  props.game.platforms.reduce((sum, p) => sum + p.playtimeMinutes, 0),
+const totalPlaytimeMinutes = computed(
+  () =>
+    props.reconciledPlaytimeMinutes ??
+    props.game.platforms.reduce((sum, p) => sum + p.playtimeMinutes, 0),
 );
 const playtimeLabel = computed(() => {
   const m = totalPlaytimeMinutes.value;

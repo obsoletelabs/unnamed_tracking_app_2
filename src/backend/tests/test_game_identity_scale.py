@@ -137,7 +137,10 @@ async def test_reads_cost_the_same_for_a_small_and_a_large_library(users):  # no
     large_shape = await library(large, 160)
     small_cost, large_cost = await costs(small, small_shape), await costs(large, large_shape)
     assert small_cost == large_cost, (small_cost, large_cost)  # no per-row work
-    ceilings = {"layout": 12, "overview": 90, "sources": 70, "metrics": 60, "queue": 8, "banner": 6}
+    # The layout also materialises the playtime counters of merged groups once, in bulk (#277):
+    # a constant number of statements however large the library, so the ceiling is higher
+    # than a read that only groups games.
+    ceilings = {"layout": 30, "overview": 90, "sources": 70, "metrics": 60, "queue": 8, "banner": 6}
     for name, ceiling in ceilings.items():
         assert large_cost[name] <= ceiling, (name, large_cost[name])
     # reading one logical game loads that group's rows, never the library's

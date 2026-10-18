@@ -13,7 +13,7 @@ identity model, so the library, the game page and the identity dialog agree:
   relationships, decisions (including rejections) and metric counters.
 """
 
-# pylint: disable=too-many-locals
+# pylint: disable=too-many-locals,too-many-branches
 
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ from src.database.models.game_identity import (
     GameSourceObservationLink,
     RelationshipKind,
 )
-from src.features.game_identity import counters, graph, manual
+from src.features.game_identity import counters, graph, group_playtime, manual
 
 _SAME_GAME = RelationshipKind.SAME_GAME.value
 _PLAYTIME = "playtime"
@@ -52,6 +52,39 @@ async def _alive_games(db: AsyncSession, user_id: UUID, ids: Iterable[UUID]) -> 
         select(Game).where(Game.user_id == user_id, Game.id.in_(wanted), Game.deleted_at.is_(None))
     )
     return {game.id: game for game in rows}
+
+
+async def _record_playtime(db: AsyncSession, user_id: UUID, ids: Iterable[UUID]) -> dict[UUID, int]:
+    """Playtime recorded on the live games among `ids` (one query for every group)."""
+    wanted = set(ids)
+    if not wanted:
+        return {}
+    rows = await db.execute(
+        select(Game.id, Game.playtime_seconds).where(
+            Game.user_id == user_id, Game.id.in_(wanted), Game.deleted_at.is_(None)
+        )
+    )
+    return dict(rows.tuples().all())
+
+
+async def _group_playtime(
+    db: AsyncSession, user_id: UUID, merge: graph.MergeGraph, heads: list[UUID]
+) -> dict[UUID, int]:
+    """The reconciled playtime of each merged group, as the game page's aggregate shows it.
+
+    Counters are materialised for the merged groups first (idempotent, the same lazy step
+    the game page takes), then every group is read in bulk: games holding a counter count
+    their reconciled value, the others their own record."""
+    groups = {head: merge.group(head) for head in heads}
+    await counters.sync_many(db, user_id, list(groups))
+    reconciled = await group_playtime.playtime_by_group(db, user_id, groups)
+    records = await _record_playtime(db, user_id, set().union(*groups.values()) if groups else ())
+    return {
+        head: sum(
+            reconciled[head][g] if g in reconciled[head] else records.get(g, 0) for g in members
+        )
+        for head, members in groups.items()
+    }
 
 
 async def _alive_keys(db: AsyncSession, user_id: UUID, ids: Iterable[UUID]) -> dict[UUID, str]:
@@ -108,7 +141,7 @@ async def library_layout(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
     for child in merge.parent:
         if child in alive:
             groups.setdefault(merge.root(child), {merge.root(child)}).add(child)
-    result = []
+    result: list[dict[str, Any]] = []
     for root, group in groups.items():
         head = _representative(group, root, alive)
         if head is None:
@@ -132,6 +165,9 @@ async def library_layout(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
             )
         if members:
             result.append({"umbrella_id": head, "members": members})
+    totals = await _group_playtime(db, user_id, merge, [g["umbrella_id"] for g in result])
+    for entry in result:
+        entry["playtime_seconds"] = totals[entry["umbrella_id"]]
     related = []
     for edge in related_edges:
         if edge.from_game_id not in alive or edge.to_game_id not in alive:

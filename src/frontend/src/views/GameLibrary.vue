@@ -135,6 +135,7 @@ const {
   onCollectionAdded,
   confirmDelete,
   totalPlaytime,
+  reconciledPlaytimeMinutes,
   gameLastPlayed,
   openGame,
   filteredGames,
@@ -721,6 +722,7 @@ function nestedLabel(game: Game): string | null {
               :key="game.id"
               :game="game"
               :copy-summary="copySummary(game)"
+              :reconciled-playtime-minutes="reconciledPlaytimeMinutes(game)"
               :version-context="contextFor(game)"
               :nested-label="nestedLabel(game)"
               :possible-duplicate="possibleDuplicateIds.has(game.id)"

@@ -188,3 +188,57 @@ describe("umbrella library", () => {
     expect(ids(view)).toContain("bedrock");
   });
 });
+
+describe("reconciled playtime of grouped copies (#277)", () => {
+  async function grouped(playtimeSeconds: number | null) {
+    const view = await library();
+    const [java, , , , hades] = view.games.value;
+    java!.platforms = [{ platform: "PC", playtimeMinutes: 61 * 60 }] as never;
+    hades!.platforms = [{ platform: "PC", playtimeMinutes: 30 * 60 }] as never;
+    view.layout.value = {
+      ...view.layout.value!,
+      groups: [{ ...view.layout.value!.groups[0]!, playtimeSeconds }],
+    };
+    await nextTick();
+    return view;
+  }
+
+  it("shows the group's reconciled playtime on the entry instead of the main copy's", async () => {
+    const view = await grouped(65 * 3600);
+    const java = view.games.value[0]!;
+    expect(view.reconciledPlaytimeMinutes(java)).toBe(65 * 60);
+    expect(view.totalPlaytime(java)).toBe("65h");
+    expect(view.reconciledPlaytimeMinutes(view.games.value[4]!)).toBeNull();
+    expect(view.totalPlaytime(view.games.value[4]!)).toBe("30h");
+  });
+
+  it("sorts by the reconciled playtime", async () => {
+    const view = await grouped(65 * 3600);
+    view.sortBy.value = "playtime";
+    expect(view.filteredGames.value.map((item) => item.id).slice(0, 2)).toEqual(
+      ["java", "hades"],
+    );
+    const lower = await grouped(10 * 3600);
+    lower.sortBy.value = "playtime";
+    expect(
+      lower.filteredGames.value.map((item) => item.id).slice(0, 2),
+    ).toEqual(["hades", "java"]);
+  });
+
+  it("falls back to the record when no reconciled value is known", async () => {
+    const view = await grouped(null);
+    expect(view.reconciledPlaytimeMinutes(view.games.value[0]!)).toBeNull();
+    expect(view.totalPlaytime(view.games.value[0]!)).toBe("61h");
+  });
+
+  it("maps the playtime a library layout response carries", async () => {
+    const { mapLayout } = await import("../services/gameIdentity");
+    const layout = mapLayout({
+      groups: [
+        { umbrella_id: "a", members: [], playtime_seconds: 234000 },
+        { umbrella_id: "b", members: [] },
+      ],
+    });
+    expect(layout.groups.map((g) => g.playtimeSeconds)).toEqual([234000, null]);
+  });
+});
