@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { describeThisBrowser } from "../../utils/browserLabel";
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import ToggleButton from "./ToggleButton.vue";
 import {
@@ -28,7 +29,7 @@ const emit = defineEmits<{
   change: [changes: Partial<Preferences>];
 }>();
 const configuration = ref<BrowserPushConfiguration | null>(null);
-const label = ref("This browser");
+const label = ref(describeThisBrowser());
 const busy = ref(false);
 const error = ref("");
 const status = ref("");
