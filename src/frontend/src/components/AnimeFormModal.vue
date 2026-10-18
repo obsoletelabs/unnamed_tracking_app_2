@@ -347,6 +347,7 @@ async function remove() {
     <template #lookup>
       <MediaMetadataSearch
         v-model:query="search.query.value"
+        media-type="anime"
         label="Search AniList / MyAnimeList"
         noun="anime"
         :results="searchResults"

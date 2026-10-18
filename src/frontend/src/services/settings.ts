@@ -1,3 +1,4 @@
+import { announceProviderChange } from "./providerEvents";
 export interface ScanSettings {
   id: string;
   user_id: string;
@@ -112,7 +113,9 @@ export async function updateScanSettings(
       `Failed to update scan settings: ${response.status} ${response.statusText} ${message}`,
     );
   }
-  return await response.json();
+  const saved = await response.json();
+  announceProviderChange();
+  return saved;
 }
 
 export interface UploadLimits {
@@ -304,7 +307,9 @@ export async function saveProviderCredentials(
       `Failed to save ${provider} credentials: ${response.status} ${response.statusText} ${message}`,
     );
   }
-  return await response.json();
+  const saved = await response.json();
+  announceProviderChange();
+  return saved;
 }
 
 export async function deleteProviderCredentials(
@@ -392,7 +397,9 @@ export async function updateAppIntegrations(payload: {
       `Failed to save app integrations: ${response.status} ${response.statusText} ${message}`,
     );
   }
-  return await response.json();
+  const saved = await response.json();
+  announceProviderChange();
+  return saved;
 }
 
 export interface MediaRefreshProgress {
