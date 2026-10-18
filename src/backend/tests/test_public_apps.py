@@ -11,6 +11,7 @@ from sqlalchemy import delete, select
 
 from src.api.routes import public_apps as public_routes
 from src.api.routes.plugin_manager import contributions
+from src.core.app_integrations import get_or_create_app_integration_settings
 from src.core.auth import hash_token
 from src.database.models.delegation import IntegrationPolicy
 from src.database.models.plugin_permissions import PluginPermissionGrant
@@ -136,6 +137,112 @@ async def sign_in(flow):
     return {"Authorization": "Bearer " + result["session_token"]}, UUID(result["participant"]["id"])
 
 
+@pytest.fixture
+async def public_app_url(monkeypatch, tmp_path):
+    monkeypatch.delenv("PUBLIC_APP_URL", raising=False)
+    env_file = tmp_path / ".env"
+    monkeypatch.setenv("ENV_FILE", str(env_file))
+    async with SessionLocal() as db:
+        row = await get_or_create_app_integration_settings(db)
+        previous = row.public_app_url
+        row.public_app_url = None
+        await db.commit()
+        try:
+            yield db, row, env_file
+        finally:
+            await db.rollback()
+            row.public_app_url = previous
+            await db.commit()
+
+
+@pytest.mark.parametrize("configuration", ["saved", "environment", "env-file"])
+async def test_source_link_uses_effective_public_app_url(
+    public_flow, public_app_url, monkeypatch, configuration
+):
+    db, row, env_file = public_app_url
+    row.public_app_url = "https://saved.example/"
+    await db.commit()
+    operator = "https://saved.example"
+    if configuration != "saved":
+        operator = "https://override.example"
+        if configuration == "environment":
+            monkeypatch.setenv("PUBLIC_APP_URL", operator + "/")
+        else:
+            env_file.write_text(f"PUBLIC_APP_URL={operator}/\n", encoding="utf-8")
+    flow = public_flow
+    headers, actor_id = await sign_in(flow)
+    requests = []
+    client_id = str(uuid4())
+
+    def remote(origin, path, **options):
+        assert origin == "https://source.example"
+        requests.append((path, options.get("body")))
+        if path.endswith("/instance"):
+            return {
+                "status": 200,
+                "data": {
+                    "enabled": True,
+                    "protocol_version": "1.0",
+                    "instance_id": str(uuid4()),
+                    "clients": [],
+                    "allow_any_origin": True,
+                },
+            }
+        if path.endswith("/clients/register"):
+            assert options["body"]["origin"] == operator
+            return {"status": 201, "data": {"id": client_id, "origin": operator}}
+        assert path.endswith("/requests")
+        assert options["body"]["client_id"] == client_id
+        return {
+            "status": 201,
+            "data": {"request_id": str(uuid4()), "expires_at": int(time.time()) + 600},
+        }
+
+    monkeypatch.setattr(public_app_sources, "public_instance_request", remote)
+    response = await flow.client.post(
+        flow.base + "/sources",
+        headers={**headers, "Host": "123.discordsays.com"},
+        json={"origin": "https://source.example"},
+    )
+    assert response.status_code == 201, response.text
+    assert len(requests) == 3
+    assert response.json()["consent_url"].startswith("https://source.example/integration-access/")
+    assert response.json()["scopes"] == []
+    async with SessionLocal() as check_db:
+        source = await check_db.scalar(
+            select(PublicAppSource).where(PublicAppSource.actor_id == actor_id)
+        )
+        assert source.state == "pending" and source.credential is None
+
+
+@pytest.mark.parametrize("saved_url", [None, "http://operator.example", "https://192.168.1.5"])
+async def test_source_link_without_public_url_reports_setup_error(
+    public_flow, public_app_url, monkeypatch, saved_url
+):
+    db, row, _env_file = public_app_url
+    row.public_app_url = saved_url
+    await db.commit()
+    flow = public_flow
+    headers, actor_id = await sign_in(flow)
+    requests = []
+    monkeypatch.setattr(
+        public_app_sources, "public_instance_request", lambda *args, **kwargs: requests.append(args)
+    )
+    response = await flow.client.post(
+        flow.base + "/sources", headers=headers, json={"origin": "https://source.example"}
+    )
+    assert response.status_code == 503, response.text
+    assert "Settings > Administration > Application" in response.json()["detail"]
+    assert requests == []
+    async with SessionLocal() as check_db:
+        assert (
+            await check_db.scalar(
+                select(PublicAppSource).where(PublicAppSource.actor_id == actor_id)
+            )
+            is None
+        )
+
+
 async def test_admin_management_requires_explicit_capability_admin_and_installation(public_flow):
     flow = public_flow
     headers, actor_id = await sign_in(flow)
@@ -235,7 +342,7 @@ async def test_source_consent_requests_only_chosen_capabilities(
     flow = public_flow
     headers, _actor = await sign_in(flow)
     origin, operator = "https://source.example", "https://operator.example"
-    monkeypatch.setattr(public_app_sources.settings, "PUBLIC_APP_URL", operator)
+    monkeypatch.setenv("PUBLIC_APP_URL", operator)
     requests = []
 
     def remote(_origin, path, **options):
