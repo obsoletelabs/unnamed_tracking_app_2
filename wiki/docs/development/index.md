@@ -46,11 +46,37 @@ mypy --config-file pyproject.toml src
 pylint --rcfile=pyproject.toml src
 ```
 
-Run the backend tests with the development database running:
+Run backend tests against a **separate test database**, alongside the running development
+stack. The suite creates, alters and drops schema objects; do not select a database
+containing development or production data.
+
+Create a test database once (replace the placeholder with your Compose database user):
 
 ```bash
-docker compose exec -e PYTHONPATH=/app backend python -m pytest tests -q
+docker compose exec db createdb -U <db-user> unnamed_tracking_test
 ```
+
+Apply migrations to that database with the normal Compose credentials, then pass its
+full connection URL explicitly to pytest. URL-encode special characters in the user
+and password:
+
+```bash
+docker compose exec -e POSTGRES_DB=unnamed_tracking_test backend alembic upgrade head
+docker compose exec -e PYTHONPATH=/app \
+  -e TEST_DATABASE_URL=postgresql+psycopg://<db-user>:<db-password>@db:5432/unnamed_tracking_test \
+  backend python -m pytest tests -q
+```
+
+Outside Docker, set `DATABASE_URL` (or `TEST_DATABASE_URL`) to a dedicated migrated
+PostgreSQL database reachable from your host, then run `python -m pytest tests -q`
+from `src/backend`. CI already supplies `DATABASE_URL` for its isolated database.
+
+Before collecting tests, pytest disables `.env` discovery and removes inherited
+`POSTGRES_USER`, `POSTGRES_PASSWORD` and `POSTGRES_DB` components so they cannot
+override the test URL. `TEST_DATABASE_URL` takes precedence over an inherited
+`DATABASE_URL`, which lets a Compose shell keep its development defaults. Without
+either explicit URL, collection stops with a configuration error. Pytest does not
+create or migrate the selected database automatically.
 
 The pytest configuration uses automatic asyncio support and the test suite is under `src/backend/tests`.
 

@@ -170,7 +170,9 @@ _settings_values = {
     for spec in CONFIG_REGISTRY
     if spec.name != "VITE_USE_MOCK_DATA" and _handler.get(spec.name) is not None
 }
-settings = Settings(**_settings_values)  # type: ignore[call-arg]
+# EnvConfigHandler owns file discovery (including ENV_FILE); a second Pydantic
+# .env read would reintroduce values the handler intentionally did not load.
+settings = Settings(_env_file=None, **_settings_values)  # type: ignore[call-arg]
 if not settings.SECRET_KEY:
     # Preserve the environment-named field when supplying its persistent default.
     settings.SECRET_KEY = _handler.resolved()["SECRET_KEY"]  # pylint: disable=invalid-name
