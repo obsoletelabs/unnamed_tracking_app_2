@@ -48,11 +48,14 @@ async function loadJobs(retainDrafts = false) {
   loading = true;
   try {
     jobError.value = null;
+    // unsaved edits survive polling; untouched drafts follow the saved value
+    const edited = new Set(jobs.value.filter(isDirty).map((j) => j.id));
     jobs.value = await fetchJobs(props.personal);
     if (!retainDrafts) resetDrafts();
     else
       jobs.value.forEach((job) => {
-        drafts.value[job.id] ??= split(job.intervalMinutes);
+        if (!edited.has(job.id) || !drafts.value[job.id])
+          drafts.value[job.id] = split(job.intervalMinutes);
       });
   } catch (err) {
     jobError.value = err instanceof Error ? err.message : "Failed to load jobs";
@@ -80,9 +83,31 @@ async function changeJob(
     saving.value[job.id] = false;
   }
 }
-function saveInterval(job: CleanupJob) {
+function draftMinutes(job: CleanupJob): number {
   const draft = drafts.value[job.id];
-  const minutes = Math.round(draft.amount * UNIT_MINUTES[draft.unit]);
+  if (!draft) return job.intervalMinutes;
+  return Math.round(draft.amount * UNIT_MINUTES[draft.unit]);
+}
+function isDirty(job: CleanupJob): boolean {
+  return draftMinutes(job) !== job.intervalMinutes;
+}
+// units that can express at least one allowed whole-number interval
+function unitChoices(job: CleanupJob): Unit[] {
+  const units = (Object.keys(UNIT_MINUTES) as Unit[]).filter(
+    (unit) =>
+      Math.ceil(job.minIntervalMinutes / UNIT_MINUTES[unit]) *
+        UNIT_MINUTES[unit] <=
+      job.maxIntervalMinutes,
+  );
+  const current = drafts.value[job.id]?.unit;
+  return current && !units.includes(current) ? [...units, current] : units;
+}
+function resetInterval(job: CleanupJob) {
+  delete intervalErrors.value[job.id];
+  drafts.value[job.id] = split(job.intervalMinutes);
+}
+function saveInterval(job: CleanupJob) {
+  const minutes = draftMinutes(job);
   if (
     !Number.isFinite(minutes) ||
     minutes < job.minIntervalMinutes ||
@@ -237,7 +262,7 @@ function formatTime(epochSeconds: number | null): string {
               :aria-invalid="Boolean(intervalErrors[job.id])"
               :aria-describedby="`interval-help-${job.id}`"
               :aria-label="`How often ${job.name} runs`"
-              @change="saveInterval(job)"
+              @keydown.enter.prevent="saveInterval(job)"
             />
             <select
               v-model="drafts[job.id].unit"
@@ -246,14 +271,33 @@ function formatTime(epochSeconds: number | null): string {
               :aria-invalid="Boolean(intervalErrors[job.id])"
               :aria-describedby="`interval-help-${job.id}`"
               aria-label="Unit of time"
-              @change="saveInterval(job)"
             >
-              <option value="minutes">minutes</option>
-              <option value="hours">hours</option>
-              <option value="days">days</option>
-              <option value="weeks">weeks</option>
+              <option
+                v-for="unit in unitChoices(job)"
+                :key="unit"
+                :value="unit"
+              >
+                {{ unit }}
+              </option>
             </select>
           </label>
+          <button
+            type="button"
+            class="secondary-button interval-save"
+            :disabled="saving[job.id] || !job.available || !isDirty(job)"
+            @click="saveInterval(job)"
+          >
+            {{ saving[job.id] ? "Saving…" : "Save" }}
+          </button>
+          <button
+            v-if="isDirty(job) || intervalErrors[job.id]"
+            type="button"
+            class="secondary-button interval-reset"
+            :disabled="saving[job.id]"
+            @click="resetInterval(job)"
+          >
+            Reset
+          </button>
           <p
             :id="`interval-help-${job.id}`"
             class="interval-help"
@@ -262,7 +306,7 @@ function formatTime(epochSeconds: number | null): string {
           >
             {{
               intervalErrors[job.id] ||
-              `Allowed: ${describe(job.minIntervalMinutes)} to ${describe(job.maxIntervalMinutes)}.`
+              `Allowed: ${describe(job.minIntervalMinutes)} to ${describe(job.maxIntervalMinutes)}.${isDirty(job) ? " Unsaved change." : ""}`
             }}
           </p>
         </div>
@@ -454,7 +498,14 @@ function formatTime(epochSeconds: number | null): string {
   margin: 8px 0 0;
 }
 .interval-field {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
   max-width: 100%;
+}
+.interval-field .interval-help {
+  flex-basis: 100%;
 }
 .interval-help {
   color: var(--ui-dim);

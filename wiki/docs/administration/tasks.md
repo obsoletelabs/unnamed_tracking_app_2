@@ -51,7 +51,10 @@ there is no arbitrary action/user override. Existing process limits and the
 results retain only `completed` and a summary of at most 512 characters. Removing
 a declaration hides its job without deleting saved settings.
 
-Invalid intervals stay in the edited field with nearby guidance. Saving one job
+Interval amount and unit form one draft per task, saved only with **Save**;
+**Reset** restores the saved value. The allowed range and only the units that fit
+it are shown beside each task. An invalid or refused draft stays in the field with
+nearby guidance. Editing a draft never switches scheduling on, and saving one job
 or refreshing run status preserves other drafts. Settings confirms successful
 writes for twelve seconds, then shows a quiet Saved state; a concurrent failed
 write cannot be hidden by another successful response. Native and sandboxed
