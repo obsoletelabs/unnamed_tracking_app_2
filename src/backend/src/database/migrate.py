@@ -24,7 +24,9 @@ start. New migrations should still be written to be safe to run twice
 
 from __future__ import annotations
 
+import importlib
 import logging
+import pkgutil
 import sys
 import time
 from dataclasses import dataclass
@@ -65,12 +67,20 @@ def decide(current: set[str], known: set[str], has_tables: bool) -> Plan:
     return Plan("upgrade", "recorded version is in the history")
 
 
+def _register_models() -> None:
+    from src.database import models  # pylint: disable=import-outside-toplevel
+
+    for module in pkgutil.walk_packages(models.__path__, models.__name__ + "."):
+        importlib.import_module(module.name)
+
+
 def missing_from_database(engine: Engine) -> list[str]:
     """What the models need that the database does not have: whole tables
     and columns. Extra things in the database (an old index, a spare
     column) are harmless and ignored."""
-    # Register application models only when comparing a live database's schema.
-    import src.main  # noqa: F401  # pylint: disable=import-outside-toplevel,unused-import
+    # Register every model without importing the application: a broken app module
+    # must fail at backend start, not be reported as a migration failure.
+    _register_models()
 
     # Extra tables and indexes are expected here; keep the per-start check quiet.
     quiet = [logging.getLogger(name) for name in ("alembic.autogenerate", "alembic.ddl")]

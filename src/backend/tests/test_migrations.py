@@ -498,3 +498,22 @@ def test_known_version_with_complete_schema_is_left_alone(monkeypatch):
     migrate._repair_skipped_migrations(object(), "base-rev", object())
 
     assert not calls
+
+
+def test_schema_check_registers_models_without_importing_the_application():
+    """The production smoke test replaces src.main with a crashing module; the
+    migration step must still succeed so the failure is reported as the backend's."""
+    import subprocess
+    import sys
+
+    code = (
+        "import sys; sys.modules['src.main'] = None\n"
+        "from src.database import migrate\n"
+        "from src.database.base import Base\n"
+        "migrate._register_models()\n"
+        "assert {'games', 'job_settings', 'game_identities'} <= set(Base.metadata.tables)\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=False
+    )
+    assert result.returncode == 0, result.stderr
