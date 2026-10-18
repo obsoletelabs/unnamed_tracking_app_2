@@ -32,6 +32,7 @@ async function save() {
       allow_guests: policy.value.allow_guests,
       allow_any_origin: policy.value.allow_any_origin,
       allow_legacy_api_keys: policy.value.allow_legacy_api_keys,
+      allow_desktop_apps: policy.value.allow_desktop_apps,
       guest_retention_hours: policy.value.guest_retention_hours,
       maximum_grant_hours: policy.value.maximum_grant_hours,
     });
@@ -80,8 +81,17 @@ onMounted(load);
     <template v-if="policy">
       <form class="policy" @submit.prevent="save">
         <label
+          ><input v-model="policy.allow_desktop_apps" type="checkbox" /> Let
+          people connect desktop apps such as Playnite</label
+        >
+        <p>
+          Desktop apps sign in through each person's browser, ask only for what
+          they sync and show up in Connected apps. This is separate from web
+          integrations below and replaces pasting an API key.
+        </p>
+        <label
           ><input v-model="policy.enabled" type="checkbox" /> Enable
-          user-delegated integrations</label
+          user-delegated web integrations</label
         >
         <label
           ><input v-model="policy.allow_guests" type="checkbox" /> Allow guests
@@ -134,10 +144,12 @@ onMounted(load);
         approve their own data and capabilities. Guest participation never
         creates an account.
       </p>
-      <h3>Approved integration origins</h3>
+      <h3>Approved apps and integration origins</h3>
       <article v-for="client in policy.clients" :key="client.id" class="client">
         <strong>{{ client.name }}</strong
-        ><span>{{ client.origin }}</span
+        ><span>{{
+          client.kind === "desktop" ? "Desktop app" : client.origin
+        }}</span
         ><span>{{ client.enabled ? "Allowed" : "Disabled" }}</span>
         <button :disabled="busy" @click="saveClient(client)">
           {{ client.enabled ? "Disable" : "Allow" }}

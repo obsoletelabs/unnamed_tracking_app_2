@@ -133,7 +133,7 @@ from src.api.schemas.game import (
     GameRead,
     GameUpdate,
 )
-from src.core.auth import AuthenticatedActor, get_current_actor, get_current_user
+from src.core.auth import AuthenticatedActor, app_grant, get_current_actor, get_current_user
 from src.database.models.achievement import Achievement
 from src.database.models.game import Game, GameLink, GameStatus
 from src.database.models.game_field_change import GameFieldChange
@@ -385,6 +385,7 @@ async def _validate_game_relationship(
         }
     },
 )
+@app_grant("library.sync")
 async def create_game(
     payload: GameCreate,
     response: Response,
@@ -468,6 +469,7 @@ async def create_game(
 # Keep the established workflow and public parameters together.
 # pylint: disable=too-many-positional-arguments
 @router.get("/list", response_model=list[GameRead])
+@app_grant("library.sync")
 async def list_games(
     response: Response,
     db: AsyncSession = _DB_DEPENDENCY,
@@ -558,6 +560,7 @@ async def get_game_variants(
         }
     },
 )
+@app_grant("library.sync")
 async def update_game(
     game_id: UUID,
     payload: GameUpdate,

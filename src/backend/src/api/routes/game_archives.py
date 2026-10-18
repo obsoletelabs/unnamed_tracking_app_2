@@ -28,7 +28,7 @@ from sqlalchemy.orm import selectinload
 
 from src.api.routes.utils.games import _DATA_ROOT, _get_game_or_404
 from src.core.app_integrations import get_upload_limits_mb
-from src.core.auth import get_current_user
+from src.core.auth import app_grant, get_current_user
 from src.database.models.game_archive import GameArchive, GameArchiveVersion
 from src.database.models.user import User
 from src.database.session import get_db
@@ -164,6 +164,7 @@ class RenameArchiveRequest(BaseModel):
 
 
 @router.get("/{game_id}/archives/{kind}")
+@app_grant("saves.read")
 async def list_archives(
     game_id: UUID,
     kind: ArchiveKind,
@@ -228,6 +229,7 @@ async def list_archive_trash(
 # Keep the established workflow and public parameters together.
 # pylint: disable=too-many-positional-arguments
 @router.post("/{game_id}/archives/{kind}")
+@app_grant("saves.write")
 async def create_archive(
     game_id: UUID,
     kind: ArchiveKind,
@@ -281,6 +283,7 @@ async def create_archive(
 # Parallel routes/models intentionally share this shape.
 # pylint: disable=duplicate-code
 @router.post("/{game_id}/archives/{archive_id}/versions")
+@app_grant("saves.write")
 async def add_archive_version(
     game_id: UUID,
     archive_id: UUID,
@@ -331,6 +334,7 @@ async def add_archive_version(
 
 
 @router.patch("/{game_id}/archives/{archive_id}")
+@app_grant("saves.write")
 async def rename_archive(
     game_id: UUID,
     archive_id: UUID,
@@ -492,6 +496,7 @@ async def restore_archive_version(
 @router.get(
     "/{game_id}/archives/{archive_id}/versions/{version_id}/download", response_class=FileResponse
 )
+@app_grant("saves.read")
 async def download_archive_version(
     game_id: UUID,
     archive_id: UUID,

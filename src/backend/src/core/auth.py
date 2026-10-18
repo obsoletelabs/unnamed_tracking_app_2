@@ -6,7 +6,7 @@ import secrets
 import time
 import unicodedata
 from dataclasses import dataclass
-from typing import Final, Literal
+from typing import Any, Callable, Final, Literal, TypeVar
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request, status
@@ -27,6 +27,7 @@ _DB_DEPENDENCY = Depends(get_db)
 SESSION_COOKIE_PREFIX: Final = "session_"
 SESSION_TTL_SECONDS: Final = 30 * 24 * 60 * 60
 API_KEY_PREFIX: Final = "utk_"
+_Endpoint = TypeVar("_Endpoint", bound=Callable[..., Any])
 
 
 @dataclass(frozen=True)
@@ -243,6 +244,46 @@ async def purge_expired_sessions(db: AsyncSession, now: int | None = None) -> in
     return int(result.rowcount or 0)
 
 
+APP_GRANT_ATTRIBUTE: Final = "__app_grant_scope__"
+
+
+def app_grant(scope: str) -> Callable[[_Endpoint], _Endpoint]:
+    """Let a user-approved app credential (`utd_`) call this route with `scope`.
+
+    Everything else about the route is unchanged: sessions and `utk_` keys still
+    work, the handler sees the consenting user, and object checks stay the same.
+    Without this marker `get_current_user` refuses every `utd_` credential."""
+
+    def mark(endpoint: _Endpoint) -> _Endpoint:
+        setattr(endpoint, APP_GRANT_ATTRIBUTE, scope)
+        return endpoint
+
+    return mark
+
+
+def app_grant_scope(request: Request) -> str | None:
+    """The scope the matched route accepts from an app credential, if any."""
+    return getattr(request.scope.get("endpoint"), APP_GRANT_ATTRIBUTE, None)
+
+
+async def _app_grant_user(request: Request, db: AsyncSession, token: str, scope: str) -> User:
+    # Imported here: the delegation feature imports this module for token hashing.
+    from src.features.delegation import (  # pylint: disable=import-outside-toplevel
+        authenticate_grant,
+    )
+
+    grant, user = await authenticate_grant(db, token)
+    if scope not in grant.scopes:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This app has not been granted the required capability.",
+        )
+    request.state.app_grant = grant
+    # Behaves like the API key it replaces: automation, never a browser sign-in.
+    request.state.authenticated_actor = AuthenticatedActor(user.id, "api_key")
+    return user
+
+
 async def get_current_user(
     request: Request,
     db: AsyncSession = _DB_DEPENDENCY,
@@ -260,6 +301,9 @@ async def get_current_user(
                 headers={"WWW-Authenticate": "Bearer"},
             )
         api_key = authorization[7:].strip()
+        scope = app_grant_scope(request)
+        if api_key.startswith("utd_") and scope is not None:
+            return await _app_grant_user(request, db, api_key, scope)
         if api_key.startswith(("utd_", "utp_")):
             raise HTTPException(
                 status_code=403,

@@ -32,7 +32,7 @@ from src.api.routes.utils.games import (
     _get_game_or_404,
 )
 from src.core.app_integrations import get_max_upload_size_mb, get_upload_limits_mb
-from src.core.auth import get_current_user
+from src.core.auth import app_grant, get_current_user
 from src.database.models.game import Game
 from src.database.models.media_item import MediaItem
 from src.database.models.user import User
@@ -153,6 +153,7 @@ async def get_game_asset(
         status.HTTP_404_NOT_FOUND: {"description": "Game not found"},
     },
 )
+@app_grant("library.sync")
 async def upload_game_asset(
     game_id: UUID,
     asset_kind: AssetKind,

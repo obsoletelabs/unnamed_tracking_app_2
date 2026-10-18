@@ -13,7 +13,7 @@ from uuid import uuid4
 
 from fastapi.routing import APIRoute
 
-from src.core.auth import create_api_key
+from src.core.auth import APP_GRANT_ATTRIBUTE, create_api_key
 from src.database.models.achievement import Achievement
 from src.database.models.anime import Anime, AnimeEpisode, AnimeSeason
 from src.database.models.auth import UserApiKey, UserSession
@@ -444,6 +444,9 @@ def route_authority(method: str, path: str, route: APIRoute) -> str:
     if route.endpoint.__module__.endswith("public_apps"):
         return "public" if route.endpoint.__name__ in _PUBLIC_APP_OPEN else "public-app-session"
     names = _dependency_names(route.dependant)
+    # A user route that also accepts a user-approved app credential with its scope.
+    if "get_current_user" in names and getattr(route.endpoint, APP_GRANT_ATTRIBUTE, None):
+        return "user-or-app"
     for dependency, authority in _DEPENDENCY_AUTHORITY:
         if dependency in names:
             return authority

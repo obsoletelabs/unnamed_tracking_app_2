@@ -38,6 +38,8 @@ CATCH_ALL = "route_path"
 NOT_USER_CREDENTIAL = {"public", "plugin-runtime", "plugin-route", "public-app-session"}
 # Authorities that ordinary user credentials can never satisfy.
 ADMIN_CLASSES = {"admin", "plugin-admin"}
+# Authorities an ordinary user satisfies; "user-or-app" also takes a scoped app grant.
+USER_CLASSES = {"user", "user-or-app"}
 
 
 @pytest.fixture(autouse=True)
@@ -102,7 +104,7 @@ async def test_anonymous_requests_never_reach_authenticated_handlers(client):
 async def test_integration_and_management_credentials_are_not_user_credentials(client, prefix):
     leaked = []
     for (method, path), authority in live_matrix().items():
-        if authority != "user":
+        if authority not in USER_CLASSES or (authority == "user-or-app" and prefix == "utd_"):
             continue
         response = await client.request(
             method,
@@ -144,7 +146,9 @@ def _sweep_requests(ids: dict[str, str]):
     skipped += ("/api/themes", "/api/branding", "/pwa", "/api/calendar/feed/", "world-map")
     skipped += ("/api/settings/provider-credentials", "/api/metadata/sessions")
     for (method, template), authority in live_matrix().items():
-        if authority != "user" or "{" not in template or any(s in template for s in skipped):
+        if authority not in USER_CLASSES or "{" not in template:
+            continue
+        if any(s in template for s in skipped):
             continue
         path = resolve_path(template, ids)
         route = next(r for p, r in walk_routes(app.router) if p == template)
@@ -234,3 +238,17 @@ async def test_victim_controls_prove_the_sweep_is_not_vacuous(client, tenants):
         response = await client.get(path, headers=tenants.victim.headers)
         owner_ok += response.status_code == 200
     assert owner_ok >= 25
+
+
+async def test_unknown_app_credentials_are_refused_on_app_routes(client):
+    """An app route checks the grant itself; a made-up `utd_` value is never a user."""
+    leaked = []
+    for (method, path), authority in live_matrix().items():
+        if authority != "user-or-app":
+            continue
+        response = await client.request(
+            method, generic_path(path), headers={"Authorization": f"Bearer utd_{uuid4().hex}"}
+        )
+        if response.status_code != 401:
+            leaked.append((method, path, response.status_code))
+    assert leaked == []
