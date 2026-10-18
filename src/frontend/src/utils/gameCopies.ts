@@ -1,4 +1,4 @@
-import type { GameCopyLabel } from "../types/game";
+import type { Game, GameCopyLabel } from "../types/game";
 
 // Store names as people know them. Playnite and imports report sources in
 // several spellings ("steam", "Epic", "Epic Games Store"); manual entries have
@@ -39,8 +39,8 @@ export function storeName(source: string | null | undefined): string | null {
  * "Steam · PC (Windows)", "Nintendo Switch", "Added manually".
  */
 export function copyName(copy: {
-  source: string | null | undefined;
-  platform: string | null | undefined;
+  source?: string | null;
+  platform?: string | null;
 }): string {
   const parts = [storeName(copy.source), copy.platform?.trim() || null].filter(
     (part): part is string => !!part,
@@ -51,4 +51,19 @@ export function copyName(copy: {
 /** Items from another copy show where they came from; the page's own do not. */
 export function copyBadge(copy: GameCopyLabel | undefined): string | null {
   return copy && !copy.is_main ? copyName(copy) : null;
+}
+
+/** A library game named as a copy: "Steam · PC (Windows)". */
+export function gameCopyName(game: Game): string {
+  return copyName({
+    source: game.source,
+    platform: game.platform ?? game.platforms[0]?.platform ?? null,
+  });
+}
+
+/** Total recorded playtime of one library record, in seconds. */
+export function gamePlaytimeSeconds(game: Game): number {
+  return (
+    game.platforms.reduce((sum, p) => sum + (p.playtimeMinutes ?? 0), 0) * 60
+  );
 }

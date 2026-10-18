@@ -21,6 +21,7 @@ export interface VersionAchievements {
   gameId: string;
   title: string;
   platform: string | null;
+  source?: string | null;
   provider: { total: number; unlocked: number };
   manual: { total: number; unlocked: number };
   total: number;
@@ -44,6 +45,7 @@ export interface VersionCompletion {
   gameId: string;
   title: string;
   platform: string | null;
+  source?: string | null;
   status: string;
   completed: boolean;
   userSet: boolean;
@@ -99,6 +101,7 @@ function mapCompletion(raw: any): CompletionTotals {
       gameId: v.game_id,
       title: v.title,
       platform: v.platform,
+      source: v.source ?? null,
       status: v.status,
       completed: v.completed,
       userSet: v.user_set,

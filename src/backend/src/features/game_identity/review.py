@@ -353,6 +353,9 @@ async def queue(db: AsyncSession, user_id: UUID, limit: int = 50) -> dict[str, A
     )
     dismissed = await _dismissed(db, user_id)
     entries: list[dict[str, Any]] = []
+    # Once copies are grouped, a third record matches each of them; ask once per
+    # pair of groups (the strongest suggestion first, as the rows are ordered).
+    asked: set[tuple[UUID, UUID]] = set()
     for row in rows:
         pair = _members(row)
         if (
@@ -362,6 +365,10 @@ async def queue(db: AsyncSession, user_id: UUID, limit: int = 50) -> dict[str, A
             or graph.root(pair[0]) == graph.root(pair[1])
         ):
             continue
+        groups = _ordered(graph.root(pair[0]), graph.root(pair[1]))
+        if groups in asked:
+            continue
+        asked.add(groups)
         entries.append(
             {
                 "id": row.id,

@@ -665,6 +665,11 @@ export function useGameDetail() {
   // title: the first five of these that apply, in this order. Score, rank and
   // playtime always show, with a dash when empty. Everything else is under "More details".
   type TabName = (typeof tabs)[number];
+  const pagePlaytimeSeconds = ref<number | null>(null);
+  watch(
+    () => game.value?.id,
+    () => (pagePlaytimeSeconds.value = null),
+  );
   const overviewFacts = computed(() => {
     const g = game.value;
     if (!g) return [];
@@ -693,7 +698,12 @@ export function useGameDetail() {
           : { label: "Rank", value: "–", muted: true },
       );
     }
-    const minutes = g.platforms.reduce((sum, p) => sum + p.playtimeMinutes, 0);
+    // the reconciled playtime the Copies & versions panel shows, so both agree
+    const recorded = g.platforms.reduce((sum, p) => sum + p.playtimeMinutes, 0);
+    const minutes =
+      pagePlaytimeSeconds.value !== null
+        ? Math.round(pagePlaytimeSeconds.value / 60)
+        : recorded;
     facts.push(
       minutes > 0
         ? { label: "Playtime", value: formatPlaytime(minutes) }
@@ -1851,6 +1861,7 @@ export function useGameDetail() {
     libraryLink,
     ratingParts,
     overviewFacts,
+    pagePlaytimeSeconds,
     completionEstimates,
     mainTags,
     moreTags,

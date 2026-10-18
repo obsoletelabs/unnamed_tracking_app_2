@@ -457,3 +457,15 @@ async def test_accepting_a_copy_suggestion_keeps_the_most_played_copy_as_main(us
         merged = await client.post(f"/api/game-identity/review/queue/{entry['id']}/merge")
         assert merged.status_code == 204, merged.text
     assert (await root_of(user, little), await root_of(user, most)) == (most, most)
+
+
+async def test_queue_asks_once_per_pair_of_groups(users):  # noqa: F811
+    user = await users()
+    steam = await record(user, STEAM, "10", platform="PC")
+    epic = await record(user, PLAYNITE, "g", platform="PC", playtime=7)
+    switch = await record(user, PLAYNITE, "s", platform="Switch", playtime=9)
+    await run(decisions.merge_identities, user, epic, steam)
+    await match(user)
+    entries = await queue(user)
+    assert len(entries) == 1
+    assert switch in {entries[0]["first"]["id"], entries[0]["second"]["id"]}

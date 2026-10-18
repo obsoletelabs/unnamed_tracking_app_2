@@ -23,6 +23,8 @@ vi.mock("../services/gameIdentity", async (original) => ({
   clearAdjustment: vi.fn(async () => {}),
   setCounterPriority: vi.fn(async () => {}),
   groupCounters: vi.fn(async () => {}),
+  makeMainCopy: vi.fn(async () => {}),
+  splitCopy: vi.fn(async () => {}),
 }));
 vi.mock("../services/games", () => ({
   fetchGames: vi.fn(async () => [
@@ -31,6 +33,8 @@ vi.mock("../services/games", () => ({
   ]),
 }));
 const confirmMock = vi.hoisted(() => vi.fn(async () => true));
+const pushMock = vi.hoisted(() => vi.fn(async () => {}));
+vi.mock("vue-router", () => ({ useRouter: () => ({ push: pushMock }) }));
 vi.mock("../state/dialog", () => ({ useConfirm: () => confirmMock }));
 vi.mock("../services/gameTracking", () => ({
   fetchCompletion: vi.fn(async () => ({
@@ -153,8 +157,62 @@ it("shows overall values apart from each version's own and says which versions a
   expect(rows[1].text()).toContain("50h");
   expect(rows[1].text()).toContain("Xbox");
   expect(rows[0].text()).toContain("Main");
-  expect(wrapper.text()).toContain("Overall, across all versions");
-  expect(wrapper.text()).toContain("Each version on its own");
+  // copies are named by edition, store and platform, not by a bare title
+  expect(rows[0].text()).toContain("Java Edition · Playnite · PC");
+  expect(rows[1].text()).toContain("Bedrock Edition · Playnite · Xbox");
+  expect(wrapper.text()).toContain("2 copies tracked as one game");
+});
+
+it("makes a copy main, lists it separately and removes it after confirming", async () => {
+  vi.mocked(identity.fetchUmbrellaOverview).mockResolvedValue(
+    overview([
+      version({}),
+      version({
+        game_id: "bedrock",
+        title: "Minecraft Bedrock Edition",
+        label: "Bedrock Edition",
+        is_primary: false,
+        relationship_id: "edge-1",
+      }),
+    ]),
+  );
+  const wrapper = panel();
+  await flushPromises();
+  const row = wrapper.findAll('[data-testid="version-row"]')[1];
+  const button = (label: string) =>
+    row.findAll("button").find((b) => b.text() === label)!;
+  await button("Make main").trigger("click");
+  await flushPromises();
+  expect(identity.makeMainCopy).toHaveBeenCalledWith("bedrock");
+  expect(pushMock).toHaveBeenCalledWith("/games/bedrock");
+  await button("List separately").trigger("click");
+  await flushPromises();
+  expect(identity.setRelationshipDisplay).toHaveBeenCalledWith(
+    "edge-1",
+    "link",
+  );
+  await button("Remove").trigger("click");
+  await flushPromises();
+  expect(confirmMock).toHaveBeenCalled();
+  expect(identity.splitCopy).toHaveBeenCalledWith("bedrock");
+  expect(wrapper.emitted("changed")).toHaveLength(3);
+  // the main copy offers neither "Make main" nor a display change
+  const mainRow = wrapper.findAll('[data-testid="version-row"]')[0];
+  expect(mainRow.text()).not.toContain("Make main");
+  expect(mainRow.text()).not.toContain("List separately");
+});
+
+it("tells a copy's own page which game it belongs to", async () => {
+  vi.mocked(identity.fetchUmbrellaOverview).mockResolvedValue(overview());
+  const wrapper = mount(GameVersionsPanel, {
+    props: { gameId: "bedrock", title: "Minecraft Bedrock Edition" },
+    global: { stubs },
+  });
+  wrappers.push(wrapper);
+  await flushPromises();
+  expect(wrapper.text()).toContain(
+    "This is one copy of Minecraft Java Edition",
+  );
 });
 
 it("keeps ordinary browsing quiet for a game with one record", async () => {
@@ -164,8 +222,11 @@ it("keeps ordinary browsing quiet for a game with one record", async () => {
   const wrapper = panel();
   await flushPromises();
   expect(wrapper.find('[data-testid="overall-playtime"]').exists()).toBe(false);
-  expect(wrapper.text()).toContain("One entry, no other versions");
-  expect(wrapper.get("button").text()).toBe("Manage identity");
+  expect(wrapper.text()).toContain("Add it as a copy");
+  expect(wrapper.findAll("button").map((b) => b.text())).toEqual([
+    "Add a copy",
+    "Advanced",
+  ]);
 });
 
 it("shows an error with a retry, and folds hidden versions behind a toggle", async () => {
