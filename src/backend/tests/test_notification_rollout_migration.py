@@ -17,6 +17,9 @@ from src.core.config import settings
 
 # The head of main before the notification overhaul (#106 to #117) added any schema.
 PRE_OVERHAUL_HEAD = "e4a0157eef4b"
+# The last notification overhaul revision. Later, unrelated migrations are stepped
+# down first, so the relative "-1" steps below always land on notification revisions.
+NOTIFICATION_HEAD = "c91f3a27d5b8"
 DIRECTORY = Path(__file__).resolve().parents[1]
 EXPIRED_AT = 1_000
 
@@ -205,6 +208,7 @@ def test_downgrade_is_refused_while_new_history_exists_and_lossless_otherwise():
         connection.execute(
             "UPDATE notification_deliveries SET story_revision = 2 WHERE id = %s", (delivery,)
         )
+        migrate("downgrade", NOTIFICATION_HEAD)
         blocked = migrate("downgrade", "-1", successful=False)
         assert "per-revision notification deliveries" in blocked.stderr
         connection.execute(

@@ -239,3 +239,11 @@ async def test_an_operator_can_disable_and_re_allow_the_desktop_client(desktop):
         assert bad.status_code == 422
     finally:
         app.dependency_overrides.pop(get_current_admin, None)
+
+
+async def test_signing_out_revokes_the_apps_own_grant(desktop):
+    headers = await connect(desktop)
+    signed_out = await desktop.client.delete(f"{BASE}/credential", headers=headers)
+    assert signed_out.status_code == 200 and signed_out.json()["revoked_at"]
+    assert (await desktop.client.get("/api/game/list", headers=headers)).status_code == 401
+    assert (await desktop.client.delete(f"{BASE}/credential", headers=headers)).status_code == 401

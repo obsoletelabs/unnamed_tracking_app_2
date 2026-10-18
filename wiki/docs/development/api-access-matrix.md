@@ -192,6 +192,7 @@ are redacted. Validation errors never echo submitted values.
 | PUT | `/api/delegation/v1/clients` | admin | Administrator only. |
 | POST | `/api/delegation/v1/clients/register` | public | Enabled open-origin policy: Bounded registration only; disabled client remains disabled |
 | POST | `/api/delegation/v1/desktop/{app}/requests` | public | Known first-party desktop app and `allow_desktop_apps`: starts consent only; the user approves each capability in their browser |
+| DELETE | `/api/delegation/v1/credential` | delegated-grant | Live delegated grant: Revokes only the presenting grant (an app signing out) |
 | GET | `/api/delegation/v1/credential` | delegated-grant | Live delegated grant: Own scopes and expiry only |
 | POST | `/api/delegation/v1/credential/rotate` | delegated-grant | Live delegated grant: Replace only the presented credential; scopes/expiry unchanged |
 | GET | `/api/delegation/v1/games` | delegated-grant | `games.read`: Own nondeleted games; paginated 1–200 |

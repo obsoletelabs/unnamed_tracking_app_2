@@ -274,6 +274,12 @@ async def rotate_credential(
     return {"access_token": token, "expires_at": row.expires_at, "scopes": row.scopes}
 
 
+@router.delete("/credential")
+async def revoke_own_credential(actor: DelegatedActor = _ACTOR, db: AsyncSession = _DB) -> dict:
+    """An app signs out: its own grant is revoked, exactly as from Connected apps."""
+    return await delegation.change_grant(db, actor.user.id, actor.grant.id, None)
+
+
 @router.get("/credential")
 async def credential_status(actor: DelegatedActor = _ACTOR) -> dict:
     return {"scopes": actor.grant.scopes, "expires_at": actor.grant.expires_at}
