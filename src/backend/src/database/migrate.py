@@ -112,6 +112,27 @@ def _engine() -> Engine:
     return create_engine(settings.DATABASE_URL.replace("+asyncpg", "+psycopg"), pool_pre_ping=True)
 
 
+# PostgreSQL answered and refused the connection: waiting will not change the answer.
+_CONFIGURATION_ERRORS = (
+    "password authentication failed",
+    "no pg_hba.conf entry",
+    "does not exist",  # role "x" / database "x" does not exist
+)
+
+
+def configuration_error(exc: BaseException) -> str | None:
+    """A recovery message when the database refused the connection because of the
+    configured credentials or name, or None when the failure may be temporary."""
+    detail = str(exc).lower()
+    if any(marker in detail for marker in _CONFIGURATION_ERRORS):
+        return (
+            "The database refused the configured credentials or database name. Check "
+            "POSTGRES_USER, POSTGRES_PASSWORD and POSTGRES_DB (or DATABASE_URL) against the "
+            "database server; waiting will not fix this."
+        )
+    return None
+
+
 def _wait_for_database(engine: Engine) -> None:
     deadline = time.time() + _WAIT_SECONDS
     last = ""
@@ -122,9 +143,14 @@ def _wait_for_database(engine: Engine) -> None:
             return
         except (SQLAlchemyError, OSError) as exc:
             last = str(exc).splitlines()[0]
+            refused = configuration_error(exc)
+            if refused:
+                raise SystemExit(f"Database configuration error: {last}. {refused}") from exc
             if time.time() > deadline:
                 raise SystemExit(
-                    f"Database is not reachable after {_WAIT_SECONDS}s: {last}"
+                    f"Database is not reachable after {_WAIT_SECONDS}s: {last}. This is usually "
+                    "temporary: check that the database is running and that POSTGRES_HOST and "
+                    "POSTGRES_PORT point at it, then restart."
                 ) from exc
             print(f"Waiting for the database ({last})...", flush=True)
             time.sleep(2)
@@ -213,10 +239,21 @@ def main() -> None:
     print("Database is up to date.", flush=True)
 
 
+def _report_failure(exc: Exception) -> None:
+    first_line = str(exc).splitlines()[0] if str(exc) else type(exc).__name__
+    print(
+        f"Migration failed ({type(exc).__name__}): {first_line}. The full error is in the "
+        "migration log. Fix the cause, for example permissions of the database user to "
+        "create tables, and restart; the migration is safe to run again.",
+        file=sys.stderr,
+        flush=True,
+    )
+
+
 if __name__ == "__main__":
     try:
         main()
     # The CLI reports unexpected failures before exiting with a nonzero status.
     except Exception as exc:  # pylint: disable=broad-exception-caught
-        print(f"Migration failed: {exc}", file=sys.stderr, flush=True)
+        _report_failure(exc)
         raise SystemExit(1) from exc

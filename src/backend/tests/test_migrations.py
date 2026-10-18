@@ -38,6 +38,35 @@ def test_database_startup_reports_timeout(monkeypatch):
         migrate._wait_for_database(engine)
 
 
+@pytest.mark.parametrize(
+    "message",
+    [
+        'FATAL:  password authentication failed for user "archive"',
+        'FATAL:  database "missing" does not exist',
+        "FATAL:  no pg_hba.conf entry for host",
+    ],
+)
+def test_database_startup_fails_fast_on_refused_credentials(monkeypatch, message):
+    engine = MagicMock()
+    engine.connect.side_effect = OperationalError("connect", {}, OSError(message))
+    delays = []
+    monkeypatch.setattr(migrate.time, "sleep", delays.append)
+    with pytest.raises(SystemExit, match="POSTGRES_PASSWORD") as excinfo:
+        migrate._wait_for_database(engine)
+    assert delays == []
+    assert "Database configuration error" in str(excinfo.value)
+
+
+def test_database_timeout_names_the_recovery_action(monkeypatch):
+    engine = MagicMock()
+    engine.connect.side_effect = OperationalError("connect", {}, OSError("offline"))
+    times = iter([0, 61])
+    monkeypatch.setattr(migrate.time, "time", lambda: next(times))
+    with pytest.raises(SystemExit, match="POSTGRES_HOST") as excinfo:
+        migrate._wait_for_database(engine)
+    assert "temporary" in str(excinfo.value)
+
+
 def test_database_startup_does_not_retry_programming_errors(monkeypatch):
     engine = MagicMock()
     engine.connect.side_effect = TypeError("invalid engine configuration")

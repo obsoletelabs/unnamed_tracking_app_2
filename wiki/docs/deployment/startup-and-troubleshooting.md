@@ -94,6 +94,26 @@ Do not inspect Docker's internal logging-driver files directly.
 - `FRONTEND_FAILED`
 - `BACKEND_CRASHED`
 
+## Failure matrix
+
+Each row names the failing component, whether waiting can help (**retryable**) or the
+configuration must change (**configuration**), and the safe first action. The message
+column is what the startup page or log actually says; the full, redacted detail stays
+in the container logs.
+
+| Component | Class | What you see | First action |
+| --- | --- | --- | --- |
+| Database unreachable | Retryable | `DATABASE_FAILED`: "PostgreSQL did not become ready within 120 seconds. Check that the database container is running and that POSTGRES_HOST and POSTGRES_PORT point at it." The migration step logs "Database is not reachable after 60s ... usually temporary" | Start the database or fix the host/port, then restart. Nothing else needs repair. |
+| Database refuses login or name | Configuration | `MIGRATION_FAILED`; `migration.log` reads "Database configuration error: ... Check POSTGRES_USER, POSTGRES_PASSWORD and POSTGRES_DB". It fails at once instead of waiting a minute. | Correct the credentials or database name. |
+| Migration failure | Configuration or schema | `MIGRATION_FAILED`: "A refused login means the database credentials are wrong; a permission error means the database user cannot create tables." `migration.log` ends with "Migration failed (ErrorType): reason ... safe to run again" | Grant the database user schema privileges, or read the reason in `migration.log`; restart. A database made by an older history that cannot be completed stops with the missing table or column names. |
+| Unwritable persistent storage | Configuration | `BACKEND_FAILED`; `backend.log` reads "Could not read the persistent Fernet key in ... Mount APP_DATA_DIR as a writable persistent volume" | Mount `APP_DATA_DIR` (default `/data`) as a writable volume owned by the container user. |
+| Invalid encryption or configuration | Configuration | `BACKEND_FAILED` ("usually because of invalid configuration (for example SECRET_KEY) or an unwritable APP_DATA_DIR") with `backend.log` naming the setting, for example "SECRET_KEY ... is not a valid Fernet key" | Restore the original key from backup; see [environment variables](../setup/environment-variables.md). Key material is never printed. |
+| Provider network failure | Retryable unless `invalid_configuration` | Provider and job results carry a structured code: `timeout`, `unavailable` and `rate_limited` (retry later, with backoff and `Retry-After` honoured) versus `invalid_configuration` / `not_configured` (HTTP 400/401/403 or missing key) | Retryable codes need no action. For `invalid_configuration` fix the provider key in settings. Failures never stop startup. |
+| Plugin runtime readiness | Configuration | The plugin runtime health shows the Bubblewrap probe result; an unavailable runtime is never reported as healthy and plugin processes are not started | See [plugin runtime](../development/plugin-runtime.md); plugin events carry redacted lifecycle and stderr lines. |
+
+Failures in log output (for example an unwritable log file) are reported on the
+console only; they do not stop startup or request handling.
+
 ## Diagnostic endpoints
 
 Inspect:

@@ -113,7 +113,7 @@ attempt=1
 database_deadline=$(($(date +%s) + 120))
 while :; do
   if [ "$(date +%s)" -ge "$database_deadline" ]; then
-    fail_startup "DATABASE_FAILED" "PostgreSQL did not become ready within 120 seconds." "failed" "unknown" "unknown" "unknown"
+    fail_startup "DATABASE_FAILED" "PostgreSQL did not become ready within 120 seconds. Check that the database container is running and that POSTGRES_HOST and POSTGRES_PORT point at it." "failed" "unknown" "unknown" "unknown"
   fi
   if [ "${DB_HEALTH_MODE:-url}" = "components" ]; then
     if timeout 2s pg_isready -t 2 -h "$DB_HEALTH_HOST" -p "$DB_HEALTH_PORT" -U "$DB_HEALTH_USER" -d "$DB_HEALTH_DB" >/dev/null 2>&1; then
@@ -144,7 +144,7 @@ wait "$MIGRATION_TAIL_PID" || true
 rm -f "$MIGRATION_FIFO"
 if [ "$MIGRATION_RESULT" -ne 0 ]; then
   printf '%s\n' "Database migration failed. See /run/unnamed-tracking/migration.log for redacted diagnostics." >> "$DETAILS_FILE"
-  fail_startup "MIGRATION_FAILED" "Database migrations failed. Redacted diagnostics are retained at /run/unnamed-tracking/migration.log." "ready" "failed" "unknown" "unknown"
+  fail_startup "MIGRATION_FAILED" "Database migrations failed. A refused login means the database credentials are wrong; a permission error means the database user cannot create tables. Redacted diagnostics are retained at /run/unnamed-tracking/migration.log." "ready" "failed" "unknown" "unknown"
 fi
 
 log "Migrations completed"
@@ -176,7 +176,7 @@ while ! curl -fsS http://127.0.0.1:8000/health >/dev/null 2>&1; do
   if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
     log "Backend crashed during startup"
     printf '%s\n' "Backend process exited during startup. See /run/unnamed-tracking/backend.log for detailed backend output." >> "$DETAILS_FILE"
-    fail_startup "BACKEND_FAILED" "The backend process exited during startup. Detailed backend output is retained at /run/unnamed-tracking/backend.log." "ready" "ready" "failed" "unknown"
+    fail_startup "BACKEND_FAILED" "The backend process exited during startup, usually because of invalid configuration (for example SECRET_KEY) or an unwritable APP_DATA_DIR. Detailed backend output is retained at /run/unnamed-tracking/backend.log." "ready" "ready" "failed" "unknown"
   fi
   if [ "$attempt" -ge 60 ]; then
     log "Backend health timeout"
