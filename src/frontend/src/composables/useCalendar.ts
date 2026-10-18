@@ -54,6 +54,8 @@ import { fetchMovies } from "../services/movies";
 import { fetchTVShows } from "../services/tvShows";
 import { fetchAnime } from "../services/anime";
 import { displayTitle } from "../utils/displayTitle";
+import { useMediaPicker } from "./useMediaPicker";
+import type { PickableMedia } from "./useMediaPicker";
 export function useCalendar() {
   const router = useRouter();
   const route = useRoute();
@@ -70,12 +72,6 @@ export function useCalendar() {
   ];
 
   // ---- shared library lookup (posters for watched chips + title picker) ----
-  interface PickableMedia {
-    mediaType: MediaType;
-    mediaId: string;
-    title: string;
-    posterUrl: string | null;
-  }
   const manualLibrary = ref<PickableMedia[]>([]);
   const manualLibraryLoaded = ref(false);
   const posterByMedia = computed(() => {
@@ -740,7 +736,7 @@ export function useCalendar() {
   const eventError = ref<string | null>(null);
   const eventSaving = ref(false);
 
-  async function openEventForm(date?: string) {
+  function openEventForm(date?: string) {
     eventId.value = null;
     eventTitle.value = "";
     eventDate.value = date ?? keyOfDate(new Date());
@@ -750,7 +746,6 @@ export function useCalendar() {
     eventLinkSearch.value = "";
     eventError.value = null;
     showEventForm.value = true;
-    if (!manualLibraryLoaded.value) await loadManualLibrary();
   }
   async function openEventEditor(id: string) {
     const e = eventEntries.value.find((x) => x.id === id);
@@ -773,13 +768,8 @@ export function useCalendar() {
   function closeEventForm() {
     showEventForm.value = false;
   }
-  const eventLinkResults = computed(() => {
-    const q = eventLinkSearch.value.trim().toLowerCase();
-    if (!q || eventLink.value) return [];
-    return manualLibrary.value
-      .filter((m) => m.title.toLowerCase().includes(q))
-      .slice(0, 6);
-  });
+  const eventLinkPicker = useMediaPicker(eventLinkSearch, eventLink);
+  const eventLinkResults = computed(() => eventLinkPicker.results.value);
   function pickEventLink(m: PickableMedia) {
     eventLink.value = m;
     eventLinkSearch.value = m.title;
@@ -1022,13 +1012,8 @@ export function useCalendar() {
   function cancelEdit() {
     editingId.value = null;
   }
-  const editSearchResults = computed(() => {
-    const q = editMediaSearch.value.trim().toLowerCase();
-    if (!q) return [];
-    return manualLibrary.value
-      .filter((m) => m.title.toLowerCase().includes(q))
-      .slice(0, 8);
-  });
+  const editPicker = useMediaPicker(editMediaSearch, editMediaPicked);
+  const editSearchResults = computed(() => editPicker.results.value);
   function pickEditMedia(m: PickableMedia) {
     editMediaPicked.value = m;
     editMediaSearch.value = m.title;
@@ -1104,42 +1089,94 @@ export function useCalendar() {
     rated: "Rated",
   };
 
-  async function openManualForm(date?: string) {
+  function openManualForm(date?: string) {
     showManualForm.value = true;
     manualPicked.value = null;
     manualSearch.value = "";
     manualError.value = null;
     manualDate.value = date ?? keyOfDate(new Date());
-    await loadManualLibrary();
+    manualCount.value = 1;
+    manualDetail.value = "";
+    manualEventType.value = "episodes_watched";
   }
   function closeManualForm() {
     showManualForm.value = false;
   }
+  // Where "Not in your library? Add it" goes: the established add flow, told
+  // which day to come back to so the chosen date is not lost.
+  const addMediaLink = computed(() => ({
+    path: "/search",
+    query: {
+      logDate: manualDate.value,
+    },
+  }));
+  // Back from the add flow: reopen the log form on the same day with the new
+  // title's name already searched.
+  function resumeLogFromRoute() {
+    const date = route.query.log;
+    if (route.path !== "/calendar" || typeof date !== "string") return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+    const title = route.query.title;
+    tab.value = "calendar";
+    openManualForm(date);
+    if (typeof title === "string") manualSearch.value = title;
+    void router.replace({ path: "/calendar" });
+  }
+  watch(() => route.query.log, resumeLogFromRoute);
+  onMounted(resumeLogFromRoute);
+  onActivated(resumeLogFromRoute);
   function addEventForDrawerDay() {
     const key = drawerKey.value;
     closeDrawer();
-    void openEventForm(key ?? undefined);
+    openEventForm(key ?? undefined);
   }
   function logForDrawerDay() {
     const key = drawerKey.value ?? undefined;
     closeDrawer();
     openManualForm(key);
   }
-  const manualSearchResults = computed(() => {
-    const q = manualSearch.value.trim().toLowerCase();
-    if (!q) return [];
-    return manualLibrary.value
-      .filter((m) => m.title.toLowerCase().includes(q))
-      .slice(0, 8);
-  });
+  const manualPicker = useMediaPicker(manualSearch, manualPicked);
+  const manualSearchResults = computed(() => manualPicker.results.value);
   function pickManualMedia(m: PickableMedia) {
     manualPicked.value = m;
     manualSearch.value = m.title;
   }
+  // A movie is watched once per entry; the episode count only applies to
+  // shows. Watched progress is never changed from here, only the history.
+  const manualIsMovie = computed(
+    () => manualPicked.value?.mediaType === "movie",
+  );
+  const manualEffect = computed(() => {
+    const what = manualPicked.value
+      ? `"${manualPicked.value.title}"`
+      : "the chosen title";
+    const kind =
+      manualEventType.value === "episodes_watched"
+        ? manualIsMovie.value
+          ? "one watch"
+          : `${manualCount.value || 0} episode${manualCount.value === 1 ? "" : "s"} watched`
+        : EVENT_TYPE_LABELS[manualEventType.value].toLowerCase();
+    return `Adds a history entry on ${manualDate.value || "the chosen day"}: ${kind} for ${what}. Your watched progress on the title is not changed.`;
+  });
+  watch(manualPicked, (m) => {
+    if (m?.mediaType === "movie") manualCount.value = 1;
+  });
   async function submitManualEntry() {
     if (manualSaving.value) return;
     if (!manualPicked.value) {
       manualError.value = "Pick a title first.";
+      return;
+    }
+    if (!manualDate.value) {
+      manualError.value = "Pick a date.";
+      return;
+    }
+    const count = manualIsMovie.value ? 1 : manualCount.value;
+    if (
+      manualEventType.value === "episodes_watched" &&
+      (!Number.isInteger(count) || count < 1)
+    ) {
+      manualError.value = "Enter how many episodes you watched (1 or more).";
       return;
     }
     manualSaving.value = true;
@@ -1150,8 +1187,8 @@ export function useCalendar() {
         mediaId: manualPicked.value.mediaId,
         eventType: manualEventType.value,
         eventDate: manualDate.value,
-        count: manualCount.value,
-        detail: manualDetail.value || null,
+        count: manualEventType.value === "episodes_watched" ? count : 1,
+        detail: manualDetail.value.trim() || null,
       });
       // Same upsert semantics as the backend's automatic logging — if a
       // bucket for this exact (media, event type, day) already existed,
@@ -1233,6 +1270,7 @@ export function useCalendar() {
     closeEventForm,
     eventLinkResults,
     pickEventLink,
+    eventLinkPicker,
     saveEvent,
     removeEvent,
     openLinkedTitle,
@@ -1266,6 +1304,7 @@ export function useCalendar() {
     cancelEdit,
     editSearchResults,
     pickEditMedia,
+    editPicker,
     saveEdit,
     removeHistoryEntry,
     showManualForm,
@@ -1284,6 +1323,10 @@ export function useCalendar() {
     logForDrawerDay,
     manualSearchResults,
     pickManualMedia,
+    manualPicker,
+    manualIsMovie,
+    manualEffect,
+    addMediaLink,
     submitManualEntry,
   };
 }

@@ -32,6 +32,15 @@ Release/premiere dates are date-only events. They do not have a real time-of-day
 
 Manual all-day entries are exported as all-day `VALUE=DATE` events. Manual timed entries are stored as the user's local clock time and exported as a floating iCalendar time without a time-zone identifier.
 
+## Logging a watch
+
+**Log a watch** (Calendar and History tabs) adds a line to your history. It does **not** change which episodes are marked watched on the title; edit progress on the title page for that.
+
+- The title picker searches your whole library on the server (movies, TV and anime), so titles beyond the first page are found. It shows separate searching, no-match and error states.
+- If the title is not tracked yet, **Not in your library? Add it** opens the normal Add media flow. After adding, **Back to the calendar to log it** reopens the form on the same day with the new title searched.
+- A movie is logged as one watch. For shows, enter how many episodes and optionally name them (for example `S2E9 then S2E5`). Episodes can be watched in any order: the history stores the count and your text, not a chronological position.
+- The form states exactly what will be added before you save.
+
 ## Importing another ICS feed
 
 External `.ics` importing is **not implemented by this feature**. A separate design issue, **#243**, tracks the future importer architecture. The current calendar model is designed around application-owned events and per-user manual entries, while an external importer would require a separate source/synchronization model.

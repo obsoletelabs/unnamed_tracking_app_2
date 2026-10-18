@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { RouterLink } from "vue-router";
+import PickerStatus from "../components/PickerStatus.vue";
 import UiModal from "../components/UiModal.vue";
 import AppTopBar from "../components/AppTopBar.vue";
 import SegmentedTabs from "../components/SegmentedTabs.vue";
@@ -116,6 +118,12 @@ const {
   addEventForDrawerDay,
   logForDrawerDay,
   manualSearchResults,
+  manualPicker,
+  manualIsMovie,
+  manualEffect,
+  addMediaLink,
+  eventLinkPicker,
+  editPicker,
   pickManualMedia,
   submitManualEntry,
 } = useCalendar();
@@ -560,6 +568,11 @@ const {
                           }}</span>
                         </button>
                       </div>
+                      <PickerStatus
+                        :state="editPicker.state.value"
+                        :error="editPicker.error.value"
+                        @retry="editPicker.retry()"
+                      />
                     </div>
                   </template>
                   <template v-else>
@@ -823,6 +836,11 @@ const {
             <span class="modal-search-kind">{{ m.mediaType }}</span>
           </button>
         </div>
+        <PickerStatus
+          :state="eventLinkPicker.state.value"
+          :error="eventLinkPicker.error.value"
+          @retry="eventLinkPicker.retry()"
+        />
       </label>
       <label class="modal-field">
         <span>Note (optional)</span>
@@ -878,7 +896,9 @@ const {
     >
       <p class="modal-hint">
         For anything the app didn't catch automatically: watch history from
-        before you added this title, or an import.
+        before you added this title, or an import. This only adds a line to your
+        history. It does not change which episodes are marked watched on the
+        title.
       </p>
 
       <label class="modal-field">
@@ -905,6 +925,19 @@ const {
             <span class="modal-search-kind">{{ m.mediaType }}</span>
           </button>
         </div>
+        <PickerStatus
+          :state="manualPicker.state.value"
+          :error="manualPicker.error.value"
+          @retry="manualPicker.retry()"
+        />
+        <RouterLink
+          v-if="!manualPicked"
+          class="modal-add-link"
+          :to="addMediaLink"
+          @click="closeManualForm"
+        >
+          Not in your library? Add it, then come back to log it
+        </RouterLink>
       </label>
 
       <label class="modal-field">
@@ -926,28 +959,48 @@ const {
           <input v-model="manualDate" type="date" class="ui-field" />
         </label>
         <label
-          v-if="manualEventType === 'episodes_watched'"
+          v-if="manualEventType === 'episodes_watched' && !manualIsMovie"
           class="modal-field"
         >
-          <span>Episodes</span>
+          <span>How many episodes</span>
           <input
             v-model.number="manualCount"
             type="number"
             min="1"
+            step="1"
             class="ui-field"
           />
         </label>
       </div>
 
       <label class="modal-field">
-        <span>Note (optional)</span>
+        <span>
+          {{
+            manualEventType === "episodes_watched" && !manualIsMovie
+              ? "Which episodes (optional)"
+              : "Note (optional)"
+          }}
+        </span>
         <input
           v-model="manualDetail"
           type="text"
           class="ui-field"
-          placeholder="e.g. rewatched with friends"
+          :placeholder="
+            manualEventType === 'episodes_watched' && !manualIsMovie
+              ? 'e.g. S2E5 and S2E9, or rewatched with friends'
+              : 'e.g. rewatched with friends'
+          "
         />
+        <small
+          v-if="manualEventType === 'episodes_watched' && !manualIsMovie"
+          class="picker-status"
+        >
+          Episodes can be watched in any order. Name them here if it matters;
+          the history keeps this text and a count, not a chronological position.
+        </small>
       </label>
+
+      <p class="modal-hint" role="status">{{ manualEffect }}</p>
 
       <p v-if="manualError" class="ui-error-box">{{ manualError }}</p>
 

@@ -54,6 +54,13 @@ const added = ref<{
   path: string;
   progressWarning: boolean;
 } | null>(null);
+// Arrived from the calendar's "log a watch" form: offer the way back to the
+// same day once the missing title has been added.
+const logBack = computed(() => {
+  const date = route.query.logDate;
+  if (typeof date !== "string" || !added.value) return null;
+  return { path: "/calendar", query: { log: date, title: added.value.title } };
+});
 const noResults = computed(
   () => media.hasSearched.value && !searching.value && !results.value.length,
 );
@@ -104,7 +111,9 @@ onDeactivated(media.stop);
     />
     <p v-if="added" class="saved-message" role="status">
       Added {{ added.title }}.
-      <RouterLink :to="added.path">Open title</RouterLink
+      <RouterLink :to="added.path">Open title</RouterLink>
+      <RouterLink v-if="logBack" :to="logBack">
+        Back to the calendar to log it</RouterLink
       ><span v-if="added.progressWarning">
         Episode progress could not be fully saved. Open the title to update
         it.</span

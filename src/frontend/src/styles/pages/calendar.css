@@ -693,6 +693,11 @@
   font-size: 0.7rem;
   text-transform: uppercase;
 }
+.modal-add-link {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 0.85rem;
+}
 
 /* week view: seven day columns, one per day, stacking on a phone */
 .week-grid {
