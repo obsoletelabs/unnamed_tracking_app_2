@@ -68,6 +68,39 @@ async def _alive_keys(db: AsyncSession, user_id: UUID, ids: Iterable[UUID]) -> d
     return dict(rows.tuples().all())
 
 
+async def _group_playtime(
+    db: AsyncSession,
+    user_id: UUID,
+    groups: dict[UUID, set[UUID]],
+    alive: dict[UUID, str],
+) -> dict[UUID, tuple[int, str]]:
+    """Reconciled playtime of every merge group, the number the game page shows (#277).
+
+    Counters are read for all groups at once rather than per game. A live game with no counter
+    contributes its own record's playtime, exactly as `game_overview` does."""
+    every = {game for group in groups.values() for game in group}
+    # Observations reported since a game page was last opened have no counter yet; make them real
+    # first, in bounded sets, exactly as opening each game would (the caller commits).
+    await counters.sync_many(db, user_id, every)
+    counted = await counters.playtime_by_game(db, user_id, every)
+    records: dict[UUID, int] = {}
+    wanted = {game for game in every if game in alive and game not in counted}
+    if wanted:
+        rows = await db.execute(
+            select(Game.id, Game.playtime_seconds).where(
+                Game.user_id == user_id, Game.id.in_(wanted)
+            )
+        )
+        records = {game_id: seconds or 0 for game_id, seconds in rows.tuples().all()}
+    result: dict[UUID, tuple[int, str]] = {}
+    for root, group in groups.items():
+        reconciled = sum(counted.get(game, 0) for game in group)
+        from_records = sum(records.get(game, 0) for game in group)
+        basis = "reconciled" if any(game in counted for game in group) else "record"
+        result[root] = (reconciled + from_records, basis)
+    return result
+
+
 def _representative(group: set[UUID], root: UUID, alive: dict[UUID, str]) -> UUID | None:
     """The merge root, or (when it is in Trash) the first live member by title."""
     if root in alive:
@@ -108,6 +141,7 @@ async def library_layout(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
     for child in merge.parent:
         if child in alive:
             groups.setdefault(merge.root(child), {merge.root(child)}).add(child)
+    totals = await _group_playtime(db, user_id, groups, alive)
     result = []
     for root, group in groups.items():
         head = _representative(group, root, alive)
@@ -131,7 +165,15 @@ async def library_layout(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
                 }
             )
         if members:
-            result.append({"umbrella_id": head, "members": members})
+            seconds, basis = totals[root]
+            result.append(
+                {
+                    "umbrella_id": head,
+                    "members": members,
+                    "playtime_seconds": seconds,
+                    "playtime_basis": basis,
+                }
+            )
     related = []
     for edge in related_edges:
         if edge.from_game_id not in alive or edge.to_game_id not in alive:

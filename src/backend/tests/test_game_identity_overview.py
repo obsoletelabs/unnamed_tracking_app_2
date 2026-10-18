@@ -260,3 +260,25 @@ async def test_first_umbrella_wide_achievement_places_the_merged_group(users):  
     assert [r.game_id for r in rows if r.is_primary] == [java]
     body = await run(overview.game_overview, user, bedrock)
     assert body["aggregate"]["achievements"]["total"] == 2
+
+
+async def test_library_layout_carries_the_same_playtime_the_game_page_shows(users):  # noqa: F811
+    """#277: a card must not show only the main copy's hours when the page shows the reconciled total."""
+    user = await users()
+    java, bedrock, dungeons = await minecraft(user)
+    await report(user, java, PLAYNITE, "p1", 61, 10)  # reconciled through a counter
+    await set_fields(bedrock, playtime_seconds=4 * HOUR)  # a record with no counter yet
+    await set_fields(dungeons, playtime_seconds=9 * HOUR)  # a different game, not in any group
+    found = await layout(user)
+    assert [g["umbrella_id"] for g in found["groups"]] == [java]
+    group = found["groups"][0]
+    page = await run(overview.game_overview, user, java)
+    assert group["playtime_seconds"] == page["aggregate"]["playtime_seconds"] == 65 * HOUR
+    assert group["playtime_basis"] == "reconciled"
+    # copies reporting the very same counter are counted once, not summed
+    await report(user, bedrock, PLAYNITE, "p1", 61, 10)
+    again = (await layout(user))["groups"][0]
+    assert (
+        again["playtime_seconds"]
+        == (await run(overview.game_overview, user, java))["aggregate"]["playtime_seconds"]
+    )

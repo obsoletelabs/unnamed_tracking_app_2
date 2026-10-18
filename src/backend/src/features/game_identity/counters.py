@@ -128,11 +128,18 @@ def _retire(row: GameMetricAdjustment | GameMetricCounterMember, stamp: int) -> 
 
 
 async def _load(
-    db: AsyncSession, user_id: UUID, games: set[UUID], *, counter_ids: set[UUID] | None = None
+    db: AsyncSession,
+    user_id: UUID,
+    games: set[UUID],
+    *,
+    counter_ids: set[UUID] | None = None,
+    metric: str | None = None,
 ) -> list[_CounterData]:
     statement = select(GameMetricCounter).where(
         GameMetricCounter.user_id == user_id, GameMetricCounter.archived_at.is_(None)
     )
+    if metric is not None:
+        statement = statement.where(GameMetricCounter.metric == metric)
     if counter_ids is not None:
         statement = statement.where(GameMetricCounter.id.in_(counter_ids))
     else:
@@ -828,17 +835,40 @@ def _adjustment_view(item: _CounterData) -> dict[str, Any] | None:
     }
 
 
-def _counter_view(item: _CounterData) -> dict[str, Any]:
-    metric, winner = item.counter.metric, item.winner
+def _effective(item: _CounterData) -> tuple[Reading | None, Any, Any]:
+    """The winning reading, its raw value and the effective value after any adjustment."""
+    winner = item.winner
     raw = winner.value if winner else None
     effective = raw
-    if metric == _PLAYTIME and item.adjustment is not None:
+    if item.counter.metric == _PLAYTIME and item.adjustment is not None:
         effective = policy.apply_playtime_adjustment(
             raw if raw is None else int(raw),
             item.adjustment.kind,
             item.adjustment.offset_value,
             item.adjustment.override_value,
         )
+    return winner, raw, effective
+
+
+async def playtime_by_game(db: AsyncSession, user_id: UUID, games: set[UUID]) -> dict[UUID, int]:
+    """Reconciled playtime of every game that already has playtime counters, in a few statements.
+
+    Read only: it never creates counters, so a game that has none is simply absent and the caller
+    falls back to the figure on its own record (as the game page does). Independent counters of one
+    game add up; observations of the same counter were already reduced to one value."""
+    found: dict[UUID, int] = {}
+    if not games:
+        return found
+    for item in await _load(db, user_id, games, metric=_PLAYTIME):
+        effective = _effective(item)[2]
+        if effective is not None:
+            found[item.counter.game_id] = found.get(item.counter.game_id, 0) + int(effective)
+    return found
+
+
+def _counter_view(item: _CounterData) -> dict[str, Any]:
+    metric = item.counter.metric
+    winner, raw, effective = _effective(item)
     priorities = {m.observation_id: m.priority for m in item.members}
     return {
         "counter_id": item.counter.id,

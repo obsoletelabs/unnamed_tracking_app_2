@@ -14,6 +14,7 @@ export const GAME_SORT_KEYS = [
   "priority",
   "release",
   "length",
+  "relevance",
 ] as const;
 export const GAME_STATUS_OPTIONS: (GameStatus | "all")[] = [
   "all",

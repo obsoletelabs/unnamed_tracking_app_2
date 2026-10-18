@@ -108,6 +108,59 @@ def plugin_update_content(
     )
 
 
+MAX_BATCH_FACTS = 24
+MAX_BATCH_PLUGIN_ACTIONS = 4
+
+
+def plugin_update_batch_content(
+    items: list[dict[str, str]], status_labels: dict[str, str]
+) -> NotificationContent:
+    """The combined update item: one fact per plugin and a link to each plugin's own page.
+
+    The first action opens the whole Plugin Manager; up to four more open the individual plugins
+    behind the notification, so the reason for the message is always one click away.
+    """
+    facts = []
+    for index, item in enumerate(items[:MAX_BATCH_FACTS]):
+        text = f"{status_labels[item['status']]}: {item['old_version']} → {item['new_version']}"
+        if item.get("reason"):
+            text = f"{text} ({' '.join(item['reason'].split())})"
+        facts.append(
+            ContentFact(
+                key=f"plugin_{index}",
+                label=item["plugin_id"][:64],
+                value=TextFactValue(kind="text", value=text[:1000]),
+            )
+        )
+    actions = [
+        ContentAction(
+            id="manage_plugins",
+            label="Manage plugins",
+            style="primary",
+            target=HostRouteTarget(kind="host_route", path=PLUGINS_SETTINGS_ROUTE),
+        )
+    ]
+    for index, item in enumerate(items[:MAX_BATCH_PLUGIN_ACTIONS]):
+        if len(items) == 1:
+            break  # the only plugin already is the headline action's destination
+        actions.append(
+            ContentAction(
+                id=f"open_plugin_{index}",
+                label=f"Open {item['plugin_id']}"[:40],
+                target=HostRouteTarget(
+                    kind="host_route", path=plugin_update_route(item["plugin_id"])
+                ),
+            )
+        )
+    count = len(items)
+    return NotificationContent(
+        title=f"Plugin updates: {count} plugin{'s' if count != 1 else ''} updated or need attention",
+        summary="Plugin update results. Open the Plugin Manager to review, update or roll back.",
+        facts=tuple(facts),
+        actions=tuple(actions[:5]),
+    )
+
+
 def open_game_action(game_id: UUID) -> ContentAction:
     return ContentAction(
         id="open_game",

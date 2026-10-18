@@ -7,6 +7,7 @@ export const MEDIA_SORT_KEYS = [
   "year_new",
   "year_old",
   "progress",
+  "relevance",
 ] as const;
 export type MediaSortKey = (typeof MEDIA_SORT_KEYS)[number];
 

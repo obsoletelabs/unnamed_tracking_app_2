@@ -79,6 +79,13 @@ export const LIBRARY_SETTINGS_TABS: SettingsTab[] = [
   { id: "trash", label: "Trash" },
 ];
 
+export const NOTIFICATION_SETTINGS_TABS: SettingsTab[] = [
+  { id: "providers", label: "Providers" },
+  { id: "types", label: "What you get" },
+  { id: "timing", label: "Quiet hours & timing" },
+  { id: "history", label: "History" },
+];
+
 export const METADATA_SETTINGS_TABS: SettingsTab[] = [
   { id: "sources", label: "Sources & API keys" },
   { id: "scan", label: "Scan & providers" },
@@ -93,7 +100,7 @@ export const SETTINGS_SECTION_ALIASES: Record<
   { section: string; tab?: string }
 > = {
   interface: { section: "appearance" },
-  "calendar-notifications": { section: "notifications" },
+  "calendar-notifications": { section: "notifications", tab: "types" },
   "media-prefs": { section: "library", tab: "preferences" },
   "media-trash": { section: "library", tab: "trash" },
   sources: { section: "metadata", tab: "sources" },
@@ -338,6 +345,30 @@ const TAB_ENTRIES: {
     tab: "trash",
     label: "Media trash",
     keywords: ["trash", "deleted", "restore"],
+  },
+  {
+    section: "notifications",
+    tab: "providers",
+    label: "Notification providers",
+    keywords: ["discord", "email", "webhook", "push", "destinations"],
+  },
+  {
+    section: "notifications",
+    tab: "types",
+    label: "Notification types",
+    keywords: ["what you get", "which notifications", "release alerts"],
+  },
+  {
+    section: "notifications",
+    tab: "timing",
+    label: "Quiet hours and timing",
+    keywords: ["do not disturb", "digest", "schedule", "quiet"],
+  },
+  {
+    section: "notifications",
+    tab: "history",
+    label: "Notification history",
+    keywords: ["inbox", "deliveries", "retention", "retry"],
   },
   {
     section: "metadata",

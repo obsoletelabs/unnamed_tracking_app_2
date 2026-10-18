@@ -89,3 +89,45 @@ async def test_global_sorting_has_stable_ties_and_unknowns_last(flow, kind, mode
     assert (
         await flow.client.get(f"/api/{kind}/list", params={"sort": "unknown"})
     ).status_code == 422
+
+
+@pytest.mark.parametrize(("kind", "model"), [("movie", Movie), ("tv", TVShow), ("anime", Anime)])
+async def test_best_match_orders_search_results_by_how_closely_titles_match(flow, kind, model):
+    """#245: typing a search can rank results by match quality instead of the chosen ordering."""
+    titles = {
+        1: "The Last Hunt",  # contains the text
+        2: "Hunt",  # exact
+        3: "Hunters of the Dawn",  # starts with it
+        4: "A Hunt for Red October",  # a word starts with it
+        5: "Unrelated",  # not a match at all
+        6: "Manhunt",  # contains it inside a word
+    }
+    async with SessionLocal() as db:
+        for number, title in titles.items():
+            db.add(
+                model(
+                    id=UUID(int=number),
+                    user_id=flow.user_id,
+                    title=title,
+                    sort_title=title.lower(),
+                    created_at=number,
+                    status="WATCHLIST",
+                )
+            )
+        await db.commit()
+
+    async def order(sort: str, search: str = "hunt") -> list[int]:
+        response = await flow.client.get(
+            f"/api/{kind}/list", params={"sort": sort, "search": search}
+        )
+        assert response.status_code == 200, response.text
+        return [UUID(item["id"]).int for item in response.json()["items"]]
+
+    assert await order("relevance") == [2, 3, 4, 1, 6]
+    assert await order("title") == [4, 2, 3, 6, 1]  # the chosen ordering is unchanged
+    assert await order("relevance", "100%") == []  # wildcard characters match themselves
+    # without a search the option falls back to the ordinary title order
+    response = await flow.client.get(f"/api/{kind}/list", params={"sort": "relevance"})
+    assert [item["title"] for item in response.json()["items"]] == sorted(
+        titles.values(), key=str.lower
+    )

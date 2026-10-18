@@ -415,6 +415,8 @@ async function openSearchResult(entry: SettingsSearchEntry) {
           />
           <NotificationSettingsSection
             v-else-if="activeSection === 'notifications'"
+            :key="'notifications' + initialTab"
+            :initial-tab="initialTab"
           />
           <AdminNotificationSettings
             v-else-if="

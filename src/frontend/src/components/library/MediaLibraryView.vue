@@ -884,6 +884,7 @@ defineExpose({ openQuickAdd });
           <option value="year_new">Sort: Release year, newest</option>
           <option value="year_old">Sort: Release year, oldest</option>
           <option value="progress">Sort: Progress</option>
+          <option value="relevance">Sort: Best match (when searching)</option>
         </select>
         <button
           type="button"

@@ -45,7 +45,9 @@ def _edge(row: Any) -> dict[str, Any]:
 
 @router.get("/library")
 async def library(db: Db, user: Owner) -> dict[str, Any]:
-    return await overview.library_layout(db, user.id)
+    # Reading the layout brings the groups' playtime counters up to date, so it commits like the
+    # game page's own reads do.
+    return await run_action(db, overview.library_layout(db, user.id))
 
 
 @router.get("/games/{game_id}/overview")

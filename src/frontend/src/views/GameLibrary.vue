@@ -373,6 +373,7 @@ function nestedLabel(game: Game): string | null {
           <option value="priority">Priority</option>
           <option value="release">Release date (newest)</option>
           <option value="length">Time to beat (shortest)</option>
+          <option value="relevance">Best match (when searching)</option>
         </select>
         <button
           type="button"

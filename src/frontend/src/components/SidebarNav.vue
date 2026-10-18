@@ -897,10 +897,19 @@ dialog.navigation {
   font-size: 11px;
   font-weight: 600;
   flex-shrink: 0;
+  /* Definite square tracks: an auto track would take the picture's own width. */
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
 }
 .nav-avatar-img {
+  display: block;
   width: 100%;
   height: 100%;
+  min-width: 0;
+  min-height: 0;
+  aspect-ratio: 1 / 1;
   border-radius: 50%;
   object-fit: cover;
 }

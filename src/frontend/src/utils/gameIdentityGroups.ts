@@ -21,6 +21,12 @@ export interface LibraryGrouping {
   nested: Map<string, NestedGame[]>;
   /** The entry that stands for a game, whether or not it is listed on its own. */
   entryOf: Map<string, string>;
+  /**
+   * Reconciled playtime of the whole group behind an entry whose copies and versions
+   * are all folded into it, as the game page shows it (#277). Entries not listed here
+   * show their own record's playtime.
+   */
+  playtimeSeconds: Map<string, number>;
 }
 
 /**
@@ -73,6 +79,25 @@ export function libraryGrouping(
     }
   }
 
+  const playtimeSeconds = new Map<string, number>();
+  if (layout) {
+    for (const group of layout.groups) {
+      const head = entryOf.get(group.umbrellaId);
+      if (head === undefined || group.playtimeSeconds === null) continue;
+      // a version kept as its own card keeps its own hours; only a group that
+      // is entirely folded behind this entry can speak for all of them
+      const standsAlone = group.members.some((member) => {
+        const entry = entryOf.get(member.gameId);
+        return (
+          entry !== undefined &&
+          entry !== head &&
+          !(layout.mode === "grouped" && member.display !== "separate")
+        );
+      });
+      if (!standsAlone) playtimeSeconds.set(head, group.playtimeSeconds);
+    }
+  }
+
   const nested = new Map<string, NestedGame[]>();
   if (layout && !options.showAll) {
     for (const relation of layout.related) {
@@ -95,7 +120,15 @@ export function libraryGrouping(
 
   const entries = owned.entries.filter((game) => !hidden.has(game.id));
   for (const id of [...members.keys()]) if (hidden.has(id)) members.delete(id);
-  return { entries, members, versions, ownedCopies, nested, entryOf };
+  return {
+    entries,
+    members,
+    versions,
+    ownedCopies,
+    nested,
+    entryOf,
+    playtimeSeconds,
+  };
 }
 
 function nestUnder(

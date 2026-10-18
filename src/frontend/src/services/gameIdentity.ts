@@ -16,6 +16,8 @@ export interface LayoutMember {
 export interface LayoutGroup {
   umbrellaId: string;
   members: LayoutMember[];
+  /** Reconciled playtime of the whole group, the figure the game page shows (#277). */
+  playtimeSeconds: number | null;
 }
 export interface LayoutRelation {
   id: string;
@@ -194,6 +196,8 @@ export function mapLayout(raw: any): LibraryLayout {
     rules: raw.rules ?? {},
     groups: (raw.groups ?? []).map((g: any) => ({
       umbrellaId: g.umbrella_id,
+      playtimeSeconds:
+        typeof g.playtime_seconds === "number" ? g.playtime_seconds : null,
       members: g.members.map((m: any) => ({
         gameId: m.game_id,
         display: m.display,
