@@ -385,4 +385,30 @@ describe("game library filtering", () => {
     expect(shared.tagsFilter.value).toEqual(["RPG"]);
     expect(shared.filteredGames.value.map((g) => g.id)).toEqual(["Gamma"]);
   });
+
+  it("orders by best match only while searching", async () => {
+    const view = await library();
+    view.games.value = [
+      game("Teleportals", "playing", []),
+      game("Portal 2", "playing", []),
+      game("Portal", "playing", []),
+      game("Bridge Constructor: Portal", "playing", []),
+    ];
+    view.sortBy.value = "relevance";
+    await nextTick();
+    expect(view.filteredGames.value.map((item) => item.id)).toEqual([
+      "Bridge Constructor: Portal",
+      "Portal",
+      "Portal 2",
+      "Teleportals",
+    ]);
+    view.searchQuery.value = "portal";
+    await nextTick();
+    expect(view.filteredGames.value.map((item) => item.id)).toEqual([
+      "Portal",
+      "Portal 2",
+      "Bridge Constructor: Portal",
+      "Teleportals",
+    ]);
+  });
 });

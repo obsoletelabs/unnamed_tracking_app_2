@@ -73,6 +73,7 @@ import {
 } from "../utils/gameIdentityGroups";
 import { usePrompt } from "../state/dialog";
 import type { GameEditDraft } from "../utils/gameEditDraft";
+import { compareBySearchMatch } from "../utils/searchMatchRank";
 export function useGameLibrary() {
   const prompt = usePrompt();
 
@@ -1328,7 +1329,20 @@ export function useGameLibrary() {
       if (y === null) return -1;
       return compare(x, y);
     };
+    const q = searchQuery.value.trim();
     result = [...result].sort((a, b) => {
+      // best match only means something while searching; otherwise (and for
+      // equally good matches) it reads alphabetically
+      if (sortBy.value === "relevance")
+        return (
+          (q
+            ? compareBySearchMatch(
+                copiesOf(a).map((copy) => copy.title),
+                copiesOf(b).map((copy) => copy.title),
+                q,
+              )
+            : 0) || a.title.localeCompare(b.title)
+        );
       if (sortBy.value === "name") return a.title.localeCompare(b.title);
       if (sortBy.value === "name_desc") return b.title.localeCompare(a.title);
       if (sortBy.value === "recent")
