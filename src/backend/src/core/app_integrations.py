@@ -28,7 +28,7 @@ async def get_or_create_app_integration_settings(db: AsyncSession) -> AppIntegra
 
 
 async def get_public_app_url(db: AsyncSession) -> str:
-    """Only a configured public FQDN acts as the shared notification URL default."""
+    """Resolve the shared public HTTPS origin with ENV precedence over the saved setting."""
     handler = EnvConfigHandler()
     if handler.has("PUBLIC_APP_URL"):
         value = handler.get("PUBLIC_APP_URL")

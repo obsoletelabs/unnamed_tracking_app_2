@@ -47,6 +47,14 @@ Ongoing account connections survive guest retention while their credentials are
 live; room/session retention remains finite. Disconnect removes the local broker
 copy. Source-side Connected apps revocation invalidates the remote grant too.
 
+The broker identifies the Activity host using the shared public app URL saved in
+**Settings → Administration → Application** (or setup). An optional
+`PUBLIC_APP_URL` override takes precedence through the existing ENV handler;
+setting an environment variable is not required. The URL must be a public HTTPS
+origin. The broker never derives this identity from Discord's proxy or request
+headers. If no valid shared URL is configured, connection attempts return HTTP
+503 with setup instructions before contacting a source instance.
+
 The bounded HTTPS transport validates all resolved addresses as public and pins a
 validated address while preserving TLS hostname checks. It follows no redirects
 and sends no ambient cookies. Legacy mode permits only the fixed identity/library
