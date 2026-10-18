@@ -11,6 +11,7 @@ COMPOSE=(docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE")
 APP_CONTAINER="$PROJECT_NAME-app-1"
 DB_CONTAINER="$PROJECT_NAME-db-1"
 INVALID_CONTAINER="${PROJECT_NAME}-invalid-config"
+INVALID_KEY_CONTAINER="${PROJECT_NAME}-invalid-key"
 DB_FAILURE_CONTAINER="${PROJECT_NAME}-db-unavailable"
 MIGRATION_FAILURE_CONTAINER="${PROJECT_NAME}-migration-failure"
 BACKEND_FAILURE_CONTAINER="${PROJECT_NAME}-backend-failure"
@@ -42,6 +43,7 @@ collect_diagnostics() {
 
   for pair in \
     "$INVALID_CONTAINER:invalid-config" \
+    "$INVALID_KEY_CONTAINER:invalid-key" \
     "$DB_FAILURE_CONTAINER:db-unavailable" \
     "$MIGRATION_FAILURE_CONTAINER:migration-failure" \
     "$BACKEND_FAILURE_CONTAINER:backend-failure"; do
@@ -70,7 +72,7 @@ cleanup() {
   set +e
   collect_diagnostics
   "${COMPOSE[@]}" down -v --remove-orphans
-  docker rm -f "$INVALID_CONTAINER" "$DB_FAILURE_CONTAINER" "$MIGRATION_FAILURE_CONTAINER" "$BACKEND_FAILURE_CONTAINER" >/dev/null 2>&1 || true
+  docker rm -f "$INVALID_CONTAINER" "$INVALID_KEY_CONTAINER" "$DB_FAILURE_CONTAINER" "$MIGRATION_FAILURE_CONTAINER" "$BACKEND_FAILURE_CONTAINER" >/dev/null 2>&1 || true
   exit "$rc"
 }
 trap cleanup EXIT INT TERM
@@ -302,7 +304,7 @@ docker run -d --name "$DB_FAILURE_CONTAINER" -p 18082:80 \
   -e POSTGRES_USER=smoke \
   -e POSTGRES_PASSWORD=smoke-password \
   -e POSTGRES_DB=smoke \
-  -e SECRET_KEY=smoke-test-secret-key \
+  -e SECRET_KEY=XJVqc8r7Uj801VzGUYhlQV8A2tZTBepjOYEiP2pTzFk= \
   -e PRIMARY_USER_USERNAME=smoke \
   -e PRIMARY_USER_EMAIL=smoke@example.invalid \
   -e PRIMARY_USER_PASSWORD=Smoke-password \
@@ -314,6 +316,24 @@ docker rm -f "$DB_FAILURE_CONTAINER" >/dev/null
 echo "Controlled failure: migration failure."
 "${COMPOSE[@]}" start db
 wait_for_db
+
+echo "Controlled failure: invalid encryption key."
+docker run -d --name "$INVALID_KEY_CONTAINER" --network "${PROJECT_NAME}_default" \
+  -e POSTGRES_HOST=db -e POSTGRES_PORT=5432 \
+  -e POSTGRES_USER=smoke -e POSTGRES_PASSWORD=smoke-password -e POSTGRES_DB=smoke \
+  -e SECRET_KEY=invalid-key-fixture \
+  "$SMOKE_IMAGE" >/dev/null
+assert_failure_phase "$INVALID_KEY_CONTAINER" MIGRATION_FAILED
+docker exec "$INVALID_KEY_CONTAINER" cat /run/unnamed-tracking/migration.log \
+  >"$ARTIFACT_DIR/invalid-key-migration.log"
+docker logs "$INVALID_KEY_CONTAINER" >"$ARTIFACT_DIR/invalid-key-logs.txt" 2>&1
+grep -q 'not a valid Fernet key' "$ARTIFACT_DIR/invalid-key-migration.log"
+grep -q 'restore the original matching key' "$ARTIFACT_DIR/invalid-key-migration.log"
+! grep -q 'invalid-key-fixture' "$ARTIFACT_DIR/invalid-key-migration.log" "$ARTIFACT_DIR/invalid-key-logs.txt"
+docker exec "$INVALID_KEY_CONTAINER" sh -c 'test ! -e /data/config/fernet.key'
+docker rm -f "$INVALID_KEY_CONTAINER" >/dev/null
+
+echo "Controlled failure: restricted migration permissions."
 "${COMPOSE[@]}" exec -T db psql -U smoke -d smoke -v ON_ERROR_STOP=1 -c \
   "CREATE DATABASE smoke_migration_failure;"
 "${COMPOSE[@]}" exec -T db psql -U smoke -d smoke -v ON_ERROR_STOP=1 -c \
@@ -326,7 +346,7 @@ docker run -d --name "$MIGRATION_FAILURE_CONTAINER" --network "${PROJECT_NAME}_d
   -e POSTGRES_HOST=db -e POSTGRES_PORT=5432 \
   -e POSTGRES_USER=smoke_restricted -e POSTGRES_PASSWORD=restricted-password \
   -e POSTGRES_DB=smoke_migration_failure \
-  -e SECRET_KEY=smoke-test-secret-key \
+  -e SECRET_KEY=XJVqc8r7Uj801VzGUYhlQV8A2tZTBepjOYEiP2pTzFk= \
   -e PRIMARY_USER_USERNAME=smoke -e PRIMARY_USER_EMAIL=smoke@example.invalid \
   -e PRIMARY_USER_PASSWORD=Smoke-password \
   "$SMOKE_IMAGE" >/dev/null
@@ -341,7 +361,7 @@ PY
 docker run -d --name "$BACKEND_FAILURE_CONTAINER" --network "${PROJECT_NAME}_default" -p 18083:80 \
   -e POSTGRES_HOST=db -e POSTGRES_PORT=5432 \
   -e POSTGRES_USER=smoke -e POSTGRES_PASSWORD=smoke-password -e POSTGRES_DB=smoke \
-  -e SECRET_KEY=smoke-test-secret-key \
+  -e SECRET_KEY=XJVqc8r7Uj801VzGUYhlQV8A2tZTBepjOYEiP2pTzFk= \
   -e PRIMARY_USER_USERNAME=smoke -e PRIMARY_USER_EMAIL=smoke@example.invalid \
   -e PRIMARY_USER_PASSWORD=Smoke-password \
   -v "$fake_main:/app/src/main.py:ro" \
