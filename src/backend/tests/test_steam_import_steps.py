@@ -37,7 +37,7 @@ async def test_enrich_continues_after_failure_and_rolls_back_partial_details(flo
     other_provider = await create_game(flow, "Other", source="GOG", app_id="30")
     calls = []
 
-    async def enrich(game, app_id, *_args):
+    async def enrich(game, app_id, *_args, **_options):
         calls.append(app_id)
         game.description = "details"
         if app_id == 20:
@@ -49,7 +49,13 @@ async def test_enrich_continues_after_failure_and_rolls_back_partial_details(flo
         json={"game_ids": [bad, good, other_provider, str(uuid.uuid4())]},
     )
     assert response.status_code == 200, response.text
-    assert response.json() == {"enriched": 1, "failed": 1}
+    assert response.json() == {
+        "enriched": 1,
+        "failed": 1,
+        "failed_game_ids": [bad],
+        "artwork_missing": 0,
+        "artwork_missing_game_ids": [],
+    }
     assert sorted(calls) == [10, 20]
     async with SessionLocal() as db:
         assert (await db.get(Game, uuid.UUID(good))).description == "details"

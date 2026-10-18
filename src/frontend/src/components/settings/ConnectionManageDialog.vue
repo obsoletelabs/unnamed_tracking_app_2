@@ -42,6 +42,13 @@ const syncing = computed(() =>
     : false,
 );
 
+// games from the last Steam import that still lack details or a cover (#256)
+const retryCount = computed(
+  () =>
+    props.state.steamRetry.detailIds.length +
+    props.state.steamRetry.artworkIds.length,
+);
+
 const disconnecting = ref(false);
 
 onMounted(() => {
@@ -235,6 +242,19 @@ async function disconnect() {
         @click="state.handleSyncLibrary(connection.syncProvider)"
       >
         {{ syncing ? "Syncing…" : "Sync now" }}
+      </button>
+      <button
+        v-if="connection.syncProvider === 'steam' && retryCount"
+        type="button"
+        class="ui-btn ui-btn-secondary"
+        :disabled="syncing || state.steamRetrying.value"
+        @click="state.handleRetrySteamImport()"
+      >
+        {{
+          state.steamRetrying.value
+            ? "Retrying…"
+            : `Retry ${retryCount} game${retryCount === 1 ? "" : "s"}`
+        }}
       </button>
       <button
         v-if="connected"
