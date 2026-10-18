@@ -43,12 +43,12 @@ def main():
 
     # --- unwritable persistent storage is named before anything else fails -------------------------------------
     with tempfile.TemporaryDirectory() as directory:
-        good = run(PRELUDE + safe_text + storage, {"DATA_DIR": directory})
+        good = run(PRELUDE + safe_text + storage, {"APP_DATA_DIR": directory})
         assert good.returncode == 0 and good.stdout == "", good
         assert not list(Path(directory).glob(".write-check.*")), "the probe file must be removed"
         blocker = Path(directory) / "a-file"
         blocker.write_text("not a directory", encoding="utf-8")
-        bad = run(PRELUDE + safe_text + storage, {"DATA_DIR": str(blocker / "data")})
+        bad = run(PRELUDE + safe_text + storage, {"APP_DATA_DIR": str(blocker / "data")})
         assert bad.returncode == 1, bad
         phase, message = bad.stdout.strip().split("|", 1)
         assert phase == "CONFIGURATION_FAILED"

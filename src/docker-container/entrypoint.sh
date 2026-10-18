@@ -114,9 +114,9 @@ fi
 log "Checking persistent storage"
 # Uploads, artwork, saves and plugin data live under /data. Without a writable volume the
 # first upload would fail much later with a bare permission error, so say it now.
-STORAGE_DIR="${DATA_DIR:-/data}"
+STORAGE_DIR="${APP_DATA_DIR:-/data}"
 if ! mkdir -p "$STORAGE_DIR" 2>/dev/null || ! storage_probe="$(mktemp "$STORAGE_DIR/.write-check.XXXXXX" 2>/dev/null)"; then
-  fail_startup "CONFIGURATION_FAILED" "Persistent storage $(safe_text "$STORAGE_DIR" 60) is not writable by the application user ($(id -u)). Mount a writable volume there, or fix its ownership, then restart. Database and settings are untouched." "unknown" "unknown" "unknown" "unknown"
+  fail_startup "CONFIGURATION_FAILED" "Persistent storage $(safe_text "$STORAGE_DIR" 60) is not writable by the application user ($(id -u)). Mount a writable volume there (APP_DATA_DIR, default /data), or fix its ownership, then restart. Database and settings are untouched." "unknown" "unknown" "unknown" "unknown"
 fi
 rm -f "$storage_probe"
 
