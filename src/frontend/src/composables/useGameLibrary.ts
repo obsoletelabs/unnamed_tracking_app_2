@@ -60,6 +60,7 @@ import {
   type GameLibraryFilters,
 } from "../utils/gameLibraryQuery";
 import type { Game, GameStatus } from "../types/game";
+import { gameCopyName, storeName } from "../utils/gameCopies";
 import { fetchGameDuplicates } from "../services/gameDuplicates";
 import {
   fetchLibraryLayout,
@@ -122,6 +123,37 @@ export function useGameLibrary() {
   }
   function versionsOf(game: Game): Game[] {
     return grouping.value.versions.get(game.id) ?? [];
+  }
+  // Titles shown on more than one card, whose copies need telling apart.
+  const repeatedTitles = computed(() => {
+    const seen = new Map<string, number>();
+    for (const entry of libraryEntries.value) {
+      const key = entry.title.trim().toLowerCase();
+      seen.set(key, (seen.get(key) ?? 0) + 1);
+    }
+    return new Set([...seen].filter(([, n]) => n > 1).map(([key]) => key));
+  });
+  /**
+   * What a card says about its copies (#274): "2 copies · Steam, Epic" for a
+   * grouped game, or the store and platform of a lone copy whose title also
+   * appears on another card.
+   */
+  function copySummary(game: Game): string | null {
+    const copies = copiesOf(game);
+    if (copies.length > 1) {
+      const names = [
+        ...new Set(
+          copies.map(
+            (copy) =>
+              storeName(copy.source) ?? copy.platforms[0]?.platform ?? "Manual",
+          ),
+        ),
+      ];
+      return `${copies.length} copies · ${names.join(", ")}`;
+    }
+    return repeatedTitles.value.has(game.title.trim().toLowerCase())
+      ? gameCopyName(game)
+      : null;
   }
   function nestedUnder(game: Game): NestedGame[] {
     return grouping.value.nested.get(game.id) ?? [];
@@ -1632,6 +1664,7 @@ export function useGameLibrary() {
     games,
     libraryEntries,
     ownedCopyCount,
+    copySummary,
     versionsOf,
     nestedUnder,
     searchContext,
