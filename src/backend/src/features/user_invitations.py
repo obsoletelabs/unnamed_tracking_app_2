@@ -6,7 +6,7 @@ import hmac
 import json
 import secrets
 import time
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
@@ -362,13 +362,18 @@ async def list_unaccepted_invitations(db):
             .limit(100)
         )
     )
+    notification_ids = {row.notification_id for row in rows if row.notification_id is not None}
+    deliveries: dict[UUID, str] = {}
+    if notification_ids:
+        for notification_id, delivery_status in await db.execute(
+            select(NotificationDelivery.notification_id, NotificationDelivery.status).where(
+                NotificationDelivery.notification_id.in_(notification_ids)
+            )
+        ):
+            deliveries.setdefault(notification_id, delivery_status)
     result = []
     for row in rows:
-        delivery = await db.scalar(
-            select(NotificationDelivery.status)
-            .where(NotificationDelivery.notification_id == row.notification_id)
-            .limit(1)
-        )
+        delivery = deliveries.get(row.notification_id) if row.notification_id else None
         result.append(
             {
                 "id": str(row.id),

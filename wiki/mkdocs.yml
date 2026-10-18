@@ -114,6 +114,7 @@ nav:
       - Game Identity UI: development/game-identity-ui.md
       - Game Identity Migration: development/game-identity-migration.md
       - Game Identity Acceptance: development/game-identity-acceptance.md
+      - Media Query Profile: development/media-query-profile.md
       - Plugin Palettes & Appearance: development/plugin-themes.md
       - Plugin Home Widgets: development/plugin-home-widgets.md
       - Custom Plugin Frontend Sandbox: development/plugin-ui-sandbox.md

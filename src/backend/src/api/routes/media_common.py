@@ -11,6 +11,7 @@ from typing import Any
 from fastapi import HTTPException, status
 from sqlalchemy import ColumnElement, Select, case, extract, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import raiseload, selectinload
 from sqlalchemy.sql.functions import count as sql_count
 from sqlalchemy.sql.functions import sum as sql_sum
 
@@ -250,6 +251,11 @@ async def library_page(
         stmt = stmt.where(model.status.in_(filters.status_values))
     total = await db.scalar(select(sql_count()).select_from(stmt.subquery()))
     stmt = stmt.order_by(*_library_order(model, filters)).offset(skip).limit(limit)
+    seasons = getattr(model, "seasons", None)
+    if seasons is not None:
+        # Library cards show season progress only; never load every episode of the page (#260).
+        season_model = seasons.property.mapper.class_
+        stmt = stmt.options(selectinload(seasons).options(raiseload(season_model.episodes)))
     result = await db.execute(stmt)
     return PaginatedResponse(
         items=list(result.scalars().unique().all()),

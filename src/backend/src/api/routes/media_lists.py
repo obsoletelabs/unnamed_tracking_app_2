@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import noload
 from sqlalchemy.sql.functions import max as sql_max
 
 from src.api.routes.media_extras import _MODEL_BY_TYPE, _resolve_media
@@ -61,6 +62,28 @@ def _item_dict(
     }
 
 
+def _without_episode_trees(statement: Any, model: Any) -> Any:
+    """A list item shows a title and poster only: skip the season and episode rows that
+    TV and anime titles otherwise load eagerly."""
+    if getattr(model, "seasons", None) is not None:
+        return statement.options(noload(model.seasons))
+    return statement
+
+
+def _smart_statement(
+    model: Any, user_id: UUID, rule: dict, allowed_statuses: set[str] | None
+) -> Any:
+    """The rule's status, favourite and score parts as SQL; the genre match stays in Python."""
+    statement = select(model).where(model.user_id == user_id, model.deleted_at.is_(None))
+    if allowed_statuses is not None:
+        statement = statement.where(model.status.in_(allowed_statuses))
+    if rule.get("favorite") is not None:
+        statement = statement.where(model.favorite == bool(rule["favorite"]))
+    if rule.get("min_score") is not None:
+        statement = statement.where(model.rating_overall >= rule["min_score"])
+    return _without_episode_trees(statement, model)
+
+
 async def _resolve_smart_items(
     rule: dict, user_id: UUID, db: AsyncSession, language: str
 ) -> list[dict]:
@@ -71,33 +94,16 @@ async def _resolve_smart_items(
         for bucket in rule["status_buckets"]:
             allowed_statuses |= _BUCKET_STATUSES.get(bucket, set())
     genre = (rule.get("genre") or "").strip().lower()
-    min_score = rule.get("min_score")
-    favorite = rule.get("favorite")
 
     result: list[dict] = []
     for media_type in wanted_types:
         model = _MODEL_BY_TYPE.get(media_type)
         if model is None:
             continue
-        rows = (
-            (
-                await db.execute(
-                    select(model).where(model.user_id == user_id, model.deleted_at.is_(None))
-                )
-            )
-            .scalars()
-            .all()
-        )
+        statement = _smart_statement(model, user_id, rule, allowed_statuses)
+        rows = (await db.execute(statement)).scalars().all()
         for media in rows:
-            if allowed_statuses is not None and _status_str(media) not in allowed_statuses:
-                continue
-            if favorite is not None and bool(media.favorite) != favorite:
-                continue
             if genre and genre not in [g.lower() for g in (media.genres or [])]:
-                continue
-            if min_score is not None and (
-                media.rating_overall is None or float(media.rating_overall) < min_score
-            ):
                 continue
             # a smart list has no membership rows, so the media's own id
             # stands in for the item id
@@ -118,18 +124,31 @@ async def _resolve_manual_items(lst: MediaList, db: AsyncSession, language: str)
         .scalars()
         .all()
     )
+    found: dict[tuple[str, UUID], Any] = {}
+    for media_type, model in _MODEL_BY_TYPE.items():
+        ids = {item.media_id for item in items if item.media_type == media_type}
+        if ids:
+            statement = _without_episode_trees(select(model).where(model.id.in_(ids)), model)
+            for media in (await db.execute(statement)).scalars():
+                found[(media_type, media.id)] = media
     resolved: list[dict] = []
     for item in items:
-        model = _MODEL_BY_TYPE.get(item.media_type)
-        media = await db.scalar(select(model).where(model.id == item.media_id)) if model else None
+        media = found.get((item.media_type, item.media_id))
         if media is None or getattr(media, "deleted_at", None) is not None:
             continue
         resolved.append(_item_dict(item.id, item.media_type, media, item.added_at, language))
     return resolved
 
 
-async def _resolve_items(lst: MediaList, user_id: UUID, db: AsyncSession) -> list[dict]:
-    language = str((await load_preferences(db, user_id))["title_language"])
+async def _title_language(db: AsyncSession, user_id: UUID) -> str:
+    return str((await load_preferences(db, user_id))["title_language"])
+
+
+async def _resolve_items(
+    lst: MediaList, user_id: UUID, db: AsyncSession, language: str | None = None
+) -> list[dict]:
+    if language is None:
+        language = await _title_language(db, user_id)
     if lst.smart_rule is not None:
         return await _resolve_smart_items(lst.smart_rule, user_id, db, language)
     return await _resolve_manual_items(lst, db, language)
@@ -229,7 +248,10 @@ async def list_media_lists(
         .scalars()
         .all()
     )
-    return [_summary(lst, await _resolve_items(lst, current_user.id, db)) for lst in lists]
+    language = await _title_language(db, current_user.id)
+    return [
+        _summary(lst, await _resolve_items(lst, current_user.id, db, language)) for lst in lists
+    ]
 
 
 @router.get("/lists/membership")
