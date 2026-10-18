@@ -891,6 +891,9 @@ dialog.navigation {
   place-items: center;
   width: 34px;
   height: 34px;
+  min-width: 34px;
+  aspect-ratio: 1;
+  overflow: hidden;
   border-radius: 50%;
   background: var(--ui-surface-2);
   color: var(--ui-accent-text);
@@ -899,8 +902,11 @@ dialog.navigation {
   flex-shrink: 0;
 }
 .nav-avatar-img {
+  display: block;
   width: 100%;
   height: 100%;
+  aspect-ratio: 1;
+  flex-shrink: 0;
   border-radius: 50%;
   object-fit: cover;
 }
@@ -1095,6 +1101,7 @@ dialog.navigation {
   .nav-avatar {
     width: 40px;
     height: 40px;
+    min-width: 40px;
   }
   .mobile-tabs {
     display: grid;
