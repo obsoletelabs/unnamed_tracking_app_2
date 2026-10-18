@@ -15,6 +15,14 @@ These two used to run on fixed private timers; they now use the same schedule, s
 
 The per-user AniList import is a personal task in Account → Background tasks and runs through this same loop: due tasks start oldest run first, at most four imports run at once, and tasks that are not due never take a slot from tasks that are. External notification deliveries use the same loop, but their retry schedule is owned by the notification delivery coordinator rather than the task settings page.
 
+A task's **Every** amount and unit are one draft: nothing is saved until you press **Save schedule**
+(or Enter in the amount), so you can change the unit and type the number you want without passing through
+a value the server would refuse. Changing the unit keeps the same length of time (1 day becomes 1440
+minutes, ready to type over). **Save schedule** checks the combined value against the task's allowed range
+and saves only the interval; a refused save keeps your draft, and **Cancel** restores the saved schedule.
+Background refreshes never overwrite a schedule you are editing, and editing one task never switches it
+on or changes another. **Run now** works whether or not the task runs by itself.
+
 The task view shows running state, last run, and a bounded summary. A failed run is recorded like a completed one: its time counts towards the job's interval, so a persistent provider error is retried at the next scheduled time rather than every minute, and the summary says that it failed. It does not stop the API server. Run now retries immediately.
 
 ## Anime franchise check
