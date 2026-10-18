@@ -23,6 +23,11 @@ rm -f "$MIGRATION_FIFO"
 rm -f "$BACKEND_FIFO"
 BACKEND_PID=""
 
+# Text that came from the environment or a log must not break the JSON status file.
+safe_text() {
+  printf '%s' "$1" | tr -d '"\\\r' | tr '\n\t' '  ' | cut -c1-"${2:-200}"
+}
+
 write_status() {
   phase="$1"; overall="$2"; database="$3"; migrations="$4"; backend="$5"; frontend="$6"; message="$7"
   log "STATUS: $phase — $message"
@@ -106,6 +111,15 @@ else
   fail_startup "CONFIGURATION_FAILED" "Database configuration is missing. Set POSTGRES_USER, POSTGRES_PASSWORD, and POSTGRES_DB." "unknown" "unknown" "unknown" "unknown"
 fi
 
+log "Checking persistent storage"
+# Uploads, artwork, saves and plugin data live under /data. Without a writable volume the
+# first upload would fail much later with a bare permission error, so say it now.
+STORAGE_DIR="${DATA_DIR:-/data}"
+if ! mkdir -p "$STORAGE_DIR" 2>/dev/null || ! storage_probe="$(mktemp "$STORAGE_DIR/.write-check.XXXXXX" 2>/dev/null)"; then
+  fail_startup "CONFIGURATION_FAILED" "Persistent storage $(safe_text "$STORAGE_DIR" 60) is not writable by the application user ($(id -u)). Mount a writable volume there, or fix its ownership, then restart. Database and settings are untouched." "unknown" "unknown" "unknown" "unknown"
+fi
+rm -f "$storage_probe"
+
 log "Waiting for PostgreSQL"
 write_status "WAITING_FOR_DATABASE" "starting" "starting" "unknown" "unknown" "unknown" "Waiting for PostgreSQL."
 
@@ -113,7 +127,10 @@ attempt=1
 database_deadline=$(($(date +%s) + 120))
 while :; do
   if [ "$(date +%s)" -ge "$database_deadline" ]; then
-    fail_startup "DATABASE_FAILED" "PostgreSQL did not become ready within 120 seconds." "failed" "unknown" "unknown" "unknown"
+    if [ "${DB_HEALTH_MODE:-url}" = "components" ]; then
+      fail_startup "DATABASE_FAILED" "PostgreSQL at $(safe_text "$DB_HEALTH_HOST" 80):$(safe_text "$DB_HEALTH_PORT" 6) did not become ready within 120 seconds. Check that the database container is running and healthy, and that POSTGRES_HOST and POSTGRES_PORT are correct, then restart. This is usually temporary: the application starts by itself once the database answers." "failed" "unknown" "unknown" "unknown"
+    fi
+    fail_startup "DATABASE_FAILED" "The database named by DATABASE_URL did not become ready within 120 seconds. Check that it is running and reachable from this container, then restart. This is usually temporary." "failed" "unknown" "unknown" "unknown"
   fi
   if [ "${DB_HEALTH_MODE:-url}" = "components" ]; then
     if timeout 2s pg_isready -t 2 -h "$DB_HEALTH_HOST" -p "$DB_HEALTH_PORT" -U "$DB_HEALTH_USER" -d "$DB_HEALTH_DB" >/dev/null 2>&1; then
@@ -144,7 +161,11 @@ wait "$MIGRATION_TAIL_PID" || true
 rm -f "$MIGRATION_FIFO"
 if [ "$MIGRATION_RESULT" -ne 0 ]; then
   printf '%s\n' "Database migration failed. See /run/unnamed-tracking/migration.log for redacted diagnostics." >> "$DETAILS_FILE"
-  fail_startup "MIGRATION_FAILED" "Database migrations failed. Redacted diagnostics are retained at /run/unnamed-tracking/migration.log." "ready" "failed" "unknown" "unknown"
+  # The last line the runner printed is its reason (already redacted); quote it so the
+  # operator sees the cause without opening the log, then say what is safe to do.
+  migration_reason="$(grep -v '^[[:space:]]*$' "$MIGRATION_LOG" 2>/dev/null | tail -n 1)"
+  migration_reason="$(safe_text "$migration_reason" 220)"
+  fail_startup "MIGRATION_FAILED" "Database migrations failed${migration_reason:+: $migration_reason}. Your data was not deleted. Fix the cause (the full redacted output is in /run/unnamed-tracking/migration.log), or restore your last backup if the database is damaged, then restart." "ready" "failed" "unknown" "unknown"
 fi
 
 log "Migrations completed"

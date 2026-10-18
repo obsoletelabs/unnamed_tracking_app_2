@@ -2,6 +2,7 @@
 set -eu
 
 python /opt/production-tests/test-database-wait.py
+python /opt/production-tests/test-startup-diagnostics.py
 
 render=/usr/local/bin/render-production-nginx
 base=/etc/nginx/ready.conf

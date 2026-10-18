@@ -8,7 +8,8 @@ from pathlib import Path
 
 
 def main():
-    entrypoint = Path("/app/entrypoint.sh").read_text(encoding="utf-8")
+    entrypoint = Path(os.environ.get("ENTRYPOINT_PATH", "/app/entrypoint.sh")).read_text(encoding="utf-8")
+    safe_text = "safe_text() {" + entrypoint.split("safe_text() {", 1)[1].split("\n}\n", 1)[0] + "\n}\n"
     wait = entrypoint.split('log "Waiting for PostgreSQL"', 1)[1].split(
         'log "PostgreSQL is ready"', 1
     )[0]
@@ -27,6 +28,7 @@ def main():
         harness = root / "wait.sh"
         harness.write_text(
             '#!/bin/sh\nset -eu\nlog() { :; }\nwrite_status() { :; }\n'
+            + safe_text +
             'fail_startup() { printf "%s\\n" "$1"; exit 1; }\n'
             'DB_HEALTH_MODE="$TEST_MODE"; DB_HEALTH_HOST=absent; DB_HEALTH_PORT=5432\n'
             'DB_HEALTH_USER=test; DB_HEALTH_DB=test; DB_HEALTH_URL=postgresql://absent/test\n'
