@@ -18,9 +18,11 @@ INDEXES = {
 }
 
 
-def indexes(connection):
+def indexes(connection, schema):
     rows = connection.execute(
-        "SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'anime' AND indexname LIKE 'ix_anime_linked_%'"
+        "SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = %s AND tablename = 'anime' "
+        "AND indexname LIKE 'ix_anime_linked_%%'",
+        (schema,),
     ).fetchall()
     return {name: definition for name, definition in rows}
 
@@ -51,9 +53,9 @@ def test_upgrade_adds_partial_indexes_replay_is_safe_and_downgrade_removes_them(
         try:
             migrate("upgrade", "d2b7e4a91c36")
             connection.execute(sql.SQL("SET search_path TO {}").format(sql.Identifier(schema)))
-            assert indexes(connection) == {}
+            assert indexes(connection, schema) == {}
             migrate("upgrade", "head")
-            found = indexes(connection)
+            found = indexes(connection, schema)
             assert set(found) == set(INDEXES)
             for name, column in INDEXES.items():
                 assert (
@@ -63,9 +65,9 @@ def test_upgrade_adds_partial_indexes_replay_is_safe_and_downgrade_removes_them(
                 "stamp", "d2b7e4a91c36"
             )  # a replayed upgrade keeps working on a database that has them
             migrate("upgrade", "head")
-            assert set(indexes(connection)) == set(INDEXES)
+            assert set(indexes(connection, schema)) == set(INDEXES)
             migrate("downgrade", "d2b7e4a91c36")
-            assert indexes(connection) == {}
+            assert indexes(connection, schema) == {}
         finally:
             connection.execute(sql.SQL("DROP SCHEMA {} CASCADE").format(sql.Identifier(schema)))
 
