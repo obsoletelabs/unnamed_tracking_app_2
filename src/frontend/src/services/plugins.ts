@@ -1,4 +1,5 @@
 import { pluginRequestError } from "./apiError";
+import { announceMetadataProvidersChanged } from "../utils/metadataProviderEvents";
 
 export type PluginStatus =
   | "enabled"
@@ -488,11 +489,11 @@ export const fetchPluginDetails = (id: string) =>
 export const enablePlugin = (id: string) =>
   request<void>(`/api/plugins/${encodeURIComponent(id)}/enable`, {
     method: "POST",
-  });
+  }).finally(announceMetadataProvidersChanged);
 export const disablePlugin = (id: string) =>
   request<void>(`/api/plugins/${encodeURIComponent(id)}/disable`, {
     method: "POST",
-  });
+  }).finally(announceMetadataProvidersChanged);
 export const retryPlugin = (id: string) =>
   request<void>(`/api/plugins/${encodeURIComponent(id)}/retry`, {
     method: "POST",
@@ -500,7 +501,7 @@ export const retryPlugin = (id: string) =>
 export const revokePluginPermissions = (id: string) =>
   request<void>(`/api/plugins/${encodeURIComponent(id)}/permissions/revoke`, {
     method: "POST",
-  });
+  }).finally(announceMetadataProvidersChanged);
 
 export const fetchPluginLogs = (id: string) =>
   request<PluginDiagnostics>(`/api/plugins/${encodeURIComponent(id)}/logs`);
@@ -686,4 +687,5 @@ export const deletePlugin = async (id: string): Promise<void> => {
   });
   if (!response.ok && response.status !== 204)
     throw await pluginRequestError(response, "Plugin deletion failed");
+  announceMetadataProvidersChanged();
 };

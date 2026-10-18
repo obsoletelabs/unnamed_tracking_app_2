@@ -1,5 +1,6 @@
 import type { GameLink } from "../types/game";
 import { failedRequest } from "./apiError";
+import { announceMetadataProvidersChanged } from "../utils/metadataProviderEvents";
 
 export type MetadataMediaType = "game" | "movie" | "tv_show" | "anime";
 
@@ -87,6 +88,7 @@ export async function saveMetadataProviderConfiguration(
     },
   );
   if (!response.ok) throw await failedRequest(response);
+  announceMetadataProvidersChanged();
 }
 
 export interface MetadataAsset {

@@ -35,11 +35,29 @@ from src.features.metadata.providers import (
 )
 from src.helpers.remote_images import RemoteImageError
 from src.plugin_api.grants import has_capability_grant
-from src.plugin_api.metadata_contracts import MediaType, MetadataCandidate, MetadataProviderRequest
+from src.plugin_api.metadata_contracts import (
+    MediaType,
+    MetadataCandidate,
+    MetadataProviderRequest,
+    ProviderHealth,
+)
 
 router = APIRouter(prefix="/api/metadata", tags=["metadata"])
 Database = Annotated[AsyncSession, Depends(get_db)]
 CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+# States in which a provider cannot answer a search however the request is made. The client
+# explains these before submission; configuration and grants can change after it rendered,
+# so the server decides again here.
+_UNUSABLE = frozenset(
+    {
+        ProviderHealth.DISABLED,
+        ProviderHealth.NOT_CONFIGURED,
+        ProviderHealth.INVALID_CONFIGURATION,
+        ProviderHealth.PLUGIN_UNAVAILABLE,
+    }
+)
 
 
 class SearchInput(BaseModel):
@@ -127,6 +145,12 @@ async def start_search(payload: SearchInput, db: Database, user: CurrentUser) ->
             providers.append(monitor.available(provider) if enabled else provider)
         else:
             providers.append(monitor.available(provider))
+    if not any(provider.state not in _UNUSABLE for provider in providers):
+        raise HTTPException(
+            409,
+            "No metadata provider is ready for this media type. Check Settings > Metadata/API "
+            "for providers that are disabled, missing credentials or lack permission.",
+        )
     session = handler.start(
         MetadataProviderRequest(
             request_id=uuid4(),

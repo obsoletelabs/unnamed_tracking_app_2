@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 
 import httpx
 import pytest
+from fastapi import HTTPException
 from test_core_metadata import native_boundary  # noqa: F401
 from test_metadata_provider_configuration import provider_boundary  # noqa: F401
 from test_plugin_authorization_http import boundary  # noqa: F401
@@ -23,6 +24,7 @@ from src.features.metadata.automatic_search import (
 from src.features.metadata.configuration import save_configuration
 from src.features.metadata.core import discover_core_providers
 from src.features.metadata.handler import MetadataHandler
+from src.plugin_api.metadata_contracts import ProviderHealth
 
 
 @pytest.mark.parametrize("value", [None, [], {"core.steam": 1}, {"bad/key": False}])
@@ -198,6 +200,31 @@ async def test_automatic_request_does_not_validate_blocked_providers(native_boun
     assert session.candidates == {}
     assert validation == []
     routes.handler.cancel(session)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("trigger", ["explicit", "automatic"])
+async def test_search_is_refused_when_no_provider_can_answer(native_boundary, monkeypatch, trigger):  # noqa: F811 - imported fixture
+    """Configuration and grants can change after the client explained availability."""
+    item = native_boundary
+    monkeypatch.setattr(routes, "get_or_create_scan_settings", AsyncMock(return_value=None))
+    monkeypatch.setattr(routes, "_scan_settings_to_preferences", lambda _: {})
+    discovered = await discover_core_providers(item.database, item.users[0].id)
+    unusable = [replace(provider, state=ProviderHealth.NOT_CONFIGURED) for provider in discovered]
+    monkeypatch.setattr(routes, "discover_providers", AsyncMock(return_value=unusable))
+    before = len(routes.handler.sessions)
+    with pytest.raises(HTTPException) as refused:
+        await routes.start_search(
+            routes.SearchInput(query="Portal", trigger=trigger), item.database, item.users[0]
+        )
+    assert refused.value.status_code == 409
+    assert "No metadata provider is ready" in refused.value.detail
+    assert len(routes.handler.sessions) == before
+    monkeypatch.setattr(routes, "discover_providers", AsyncMock(return_value=[]))
+    with pytest.raises(HTTPException):
+        await routes.start_search(
+            routes.SearchInput(query="Portal", trigger=trigger), item.database, item.users[0]
+        )
 
 
 @pytest.mark.asyncio

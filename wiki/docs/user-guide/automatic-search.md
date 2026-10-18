@@ -35,3 +35,16 @@ metadata provider, including providers that do not use credentials.
 Personal credentials do not grant plugin permissions or bypass installation,
 authorization, health and provider capability checks. Explicit searches use the
 normal provider configuration even when Automatic Search is restricted.
+
+## When no provider can answer
+
+The game metadata search in the game editor and the Add media search show a note
+beside the search box when no provider can answer: none is installed for the media
+type, the account turned the providers off, or the remaining providers are
+disabled, lack credentials or have lost a plugin permission. The note names the
+provider and the missing setup (never a credential value) and links to the place
+that fixes it; the Search button is disabled and refers to the note. The list
+refreshes when a provider is configured, enabled, disabled or removed, and when
+the window regains focus, and text you have typed is kept. The server checks again
+when a search starts and refuses it with the same explanation if setup changed
+after the page rendered.

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onDeactivated, ref, watch } from "vue";
+import { computed, onDeactivated, ref, useId, watch } from "vue";
 import { RouterLink, useRoute } from "vue-router";
 import MediaTopBar from "../components/MediaTopBar.vue";
 import PageHeader from "../components/PageHeader.vue";
@@ -10,6 +10,8 @@ import {
   useMediaSearch,
   isMediaSearchType,
 } from "../composables/useMediaSearch";
+import { useMetadataAvailability } from "../composables/useMetadataAvailability";
+import MetadataAvailabilityNotice from "../components/MetadataAvailabilityNotice.vue";
 import { addMediaCandidate } from "../services/mediaAdd";
 import type { MetadataCandidate } from "../services/metadata";
 import type { QuickAddForm } from "../types/mediaLibrary";
@@ -17,6 +19,19 @@ import type { QuickAddForm } from "../types/mediaLibrary";
 const route = useRoute();
 const query = ref("");
 const media = useMediaSearch(query);
+const { availability, refresh: refreshProviders } = useMetadataAvailability([
+  "movie",
+  "tv_show",
+  "anime",
+]);
+const noticeId = useId();
+// a failure after the click means setup changed since the list was fetched
+watch(media.warnings, (found) => {
+  if (found.length) void refreshProviders();
+});
+function search() {
+  if (availability.value.available) void media.search();
+}
 const { results, searching, warnings, selected, enrichingMedia, filter } =
   media;
 watch(
@@ -101,8 +116,10 @@ onDeactivated(media.stop);
         v-model="query"
         type="search"
         placeholder="Movie, TV show or anime title"
-        @keyup.enter="media.search"
+        :aria-describedby="availability.available ? undefined : noticeId"
+        @keyup.enter="search"
     /></label>
+    <MetadataAvailabilityNotice :id="noticeId" :availability="availability" />
     <SegmentedTabs
       v-model="filter"
       :options="OPTIONS"

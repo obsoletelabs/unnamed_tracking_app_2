@@ -28,8 +28,8 @@ import { preferences } from "../state/preferences";
 import { manualCollectionNames } from "../state/collectionMeta";
 import { resolvePage } from "../utils/gamePage";
 import type { PageOverrides, PageSettings } from "../utils/gamePage";
-import { fetchMetadataProviders } from "../services/metadata";
-import type { MetadataProviderStatus } from "../services/metadata";
+import { useMetadataAvailability } from "../composables/useMetadataAvailability";
+import MetadataAvailabilityNotice from "./MetadataAvailabilityNotice.vue";
 import { localDateInputToUnixSeconds, toLocalDateInput } from "../utils/dates";
 import { PRIORITY_OPTIONS, isFinished } from "../utils/priority";
 import { PLATFORM_SUGGESTIONS } from "../utils/platforms";
@@ -94,17 +94,6 @@ async function loadFullFormChoices() {
 }
 onMounted(() => {
   if (!compact.value) void loadFullFormChoices();
-  if (import.meta.env.VITE_USE_MOCK_DATA === "true") return;
-  fetchMetadataProviders()
-    .then((providers) => {
-      metadataProviders.value = providers;
-    })
-    .catch(() => {
-      // the hint just stays visible
-    })
-    .finally(() => {
-      metadataProvidersLoaded.value = true;
-    });
 });
 
 function openFullForm() {
@@ -352,8 +341,13 @@ const metadataResults = computed(() =>
 const searchingMetadata = progressiveSearch.searching;
 const metadataMessage = ref<string | null>(null);
 const appliedNote = ref<string | null>(null);
-const metadataProviders = ref<MetadataProviderStatus[]>([]);
-const metadataProvidersLoaded = ref(false);
+const {
+  providers: metadataProviders,
+  loaded: metadataProvidersLoaded,
+  availability: searchAvailability,
+  refresh: refreshProviders,
+} = useMetadataAvailability(["game"]);
+const searchNoticeId = useId();
 const providerWarnings = progressiveSearch.warnings;
 
 // offered by the selected metadata result; choosing one only stages it
@@ -373,6 +367,7 @@ const hasMediaProvider = computed(() =>
 );
 
 async function searchMetadata() {
+  if (!searchAvailability.value.available) return;
   metadataApplied.value = false;
   appliedNote.value = null;
   await progressiveSearch.search();
@@ -404,9 +399,11 @@ watch(
     progressiveSearch.hasSearched,
   ],
   () => {
-    if (progressiveSearch.error.value)
+    if (progressiveSearch.error.value) {
       metadataMessage.value = progressiveSearch.error.value;
-    else if (progressiveSearch.selected.value)
+      // the server may know better than the last list: setup changed after render
+      void refreshProviders();
+    } else if (progressiveSearch.selected.value)
       metadataMessage.value = "Review the offered fields before applying them.";
     else if (!metadataApplied.value)
       metadataMessage.value =
@@ -787,6 +784,11 @@ async function submit() {
             fields.</span
           >
         </div>
+        <MetadataAvailabilityNotice
+          :id="searchNoticeId"
+          :availability="searchAvailability"
+          @navigate="emit('close')"
+        />
         <p
           v-if="metadataProvidersLoaded && !hasMediaProvider"
           class="steamgriddb-hint"
@@ -809,7 +811,10 @@ async function submit() {
           <button
             type="button"
             class="secondary-button"
-            :disabled="searchingMetadata"
+            :disabled="searchingMetadata || !searchAvailability.available"
+            :aria-describedby="
+              searchAvailability.available ? undefined : searchNoticeId
+            "
             @click="searchMetadata"
           >
             {{ searchingMetadata ? "Searching…" : "Search" }}
