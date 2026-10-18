@@ -25,9 +25,12 @@ it("loads world archives once without renderer requests or background polling", 
   const worlds = setup();
   await worlds.refreshWorlds();
   expect(worlds.worldsLoaded.value).toBe(true);
-  expect(fetch).toHaveBeenCalledWith("/api/game/first/archives/world_save", {
-    credentials: "include",
-  });
+  expect(fetch).toHaveBeenCalledWith(
+    "/api/game/first/archives/world_save?group=true",
+    {
+      credentials: "include",
+    },
+  );
   await vi.advanceTimersByTimeAsync(60_000);
   expect(fetch).toHaveBeenCalledTimes(1);
 });

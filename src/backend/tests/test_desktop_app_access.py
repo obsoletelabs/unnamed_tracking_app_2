@@ -145,6 +145,49 @@ async def test_an_app_credential_reaches_only_the_routes_its_scopes_name(desktop
     assert other.status_code == 404
 
 
+async def test_playnite_uploads_and_downloads_a_save_with_its_scoped_credential(
+    desktop, monkeypatch, tmp_path
+):
+    from src.api.routes import game_archives
+
+    monkeypatch.setattr(game_archives, "_DATA_ROOT", tmp_path)
+    headers = await connect(desktop)
+    path = f"/api/game/{desktop.game_id}/archives"
+    created = await desktop.client.post(
+        f"{path}/save",
+        headers=headers,
+        data={"name": "Playnite backup"},
+        files={"file": ("backup.zip", b"first backup", "application/zip")},
+    )
+    assert created.status_code == 200, created.text
+    archive = created.json()
+    assert archive["game_id"] == str(desktop.game_id)
+    uploaded = await desktop.client.post(
+        f"{path}/{archive['id']}/versions",
+        headers=headers,
+        files={"file": ("backup.zip", b"second backup", "application/zip")},
+    )
+    assert uploaded.status_code == 200, uploaded.text
+    listed = await desktop.client.get(f"{path}/save", headers=headers)
+    assert listed.status_code == 200
+    versions = listed.json()[0]["versions"]
+    assert len(versions) == 2
+    for version in versions:
+        downloaded = await desktop.client.get(version["url"], headers=headers)
+        assert downloaded.status_code == 200
+        assert downloaded.content in (b"first backup", b"second backup")
+    renamed = await desktop.client.patch(
+        f"{path}/{archive['id']}", headers=headers, json={"name": "Renamed backup"}
+    )
+    assert renamed.status_code == 200 and renamed.json()["name"] == "Renamed backup"
+    other = await desktop.client.get(
+        f"/api/game/{desktop.other_game_id}/archives/{archive['id']}/versions/"
+        f"{versions[0]['id']}/download",
+        headers=headers,
+    )
+    assert other.status_code == 404
+
+
 async def test_revoking_or_switching_off_desktop_apps_blocks_the_credential(desktop):
     headers = await connect(desktop)
     assert (await desktop.client.get("/api/game/list", headers=headers)).status_code == 200

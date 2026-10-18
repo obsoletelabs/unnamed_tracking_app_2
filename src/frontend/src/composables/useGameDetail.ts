@@ -406,6 +406,12 @@ export function useGameDetail() {
     await loadGame(route.params.id as string);
   }
 
+  async function onCopiesChanged() {
+    await onGameSaved();
+    resetForGame();
+    await refreshCounts();
+  }
+
   // --- resume note ("where I left off") ---------------------------------
   const resumeNoteDraft = ref("");
   const resumeNoteEditing = ref(false);
@@ -1064,7 +1070,7 @@ export function useGameDetail() {
   const thumbnailing = new Set<string>();
   function applyClip(updated: MediaItem) {
     const i = mediaItems.value.findIndex((m) => m.id === updated.id);
-    if (i !== -1) mediaItems.value[i] = updated;
+    if (i !== -1) mediaItems.value[i] = { ...mediaItems.value[i], ...updated };
   }
   async function keepThumbnail(item: MediaItem, blob: Blob, duration: number) {
     if (!game.value || thumbnailing.has(item.id)) return;
@@ -1151,7 +1157,8 @@ export function useGameDetail() {
     try {
       const updated = await updateMediaItem(ownerOf(item), item.id, patch);
       const index = mediaItems.value.findIndex((m) => m.id === item.id);
-      if (index !== -1) mediaItems.value[index] = updated;
+      if (index !== -1)
+        mediaItems.value[index] = { ...mediaItems.value[index], ...updated };
       // the item may have just moved out of the Accounts tab's currently
       // selected scope (or into it), refetch so the gallery reflects that
       if (
@@ -1180,7 +1187,8 @@ export function useGameDetail() {
       );
       for (const u of updated) {
         const index = mediaItems.value.findIndex((m) => m.id === u.id);
-        if (index !== -1) mediaItems.value[index] = u;
+        if (index !== -1)
+          mediaItems.value[index] = { ...mediaItems.value[index], ...u };
       }
     } catch (err) {
       mediaError.value = err instanceof Error ? err.message : "Failed to save";
@@ -1216,7 +1224,8 @@ export function useGameDetail() {
       ).flat();
       for (const u of found) {
         const index = mediaItems.value.findIndex((m) => m.id === u.id);
-        if (index !== -1) mediaItems.value[index] = u;
+        if (index !== -1)
+          mediaItems.value[index] = { ...mediaItems.value[index], ...u };
         outcome.set(u.id, "file");
       }
       for (const id of ids) {
@@ -1401,7 +1410,8 @@ export function useGameDetail() {
       );
       const list = filesRefFor(kind);
       const index = list.value.findIndex((f) => f.id === updated.id);
-      if (index !== -1) list.value[index] = updated;
+      if (index !== -1)
+        list.value[index] = { ...list.value[index], ...updated };
     } catch (err) {
       filesError.value = err instanceof Error ? err.message : "Failed to save";
     }
@@ -1422,7 +1432,7 @@ export function useGameDetail() {
     try {
       await deleteGameFile(ownerOf(file), kind, file.filename);
       filesRefFor(kind).value = filesRefFor(kind).value.filter(
-        (f) => f.filename !== file.filename,
+        (f) => f.id !== file.id,
       );
       await refreshFileTrash(kind);
     } catch (err) {
@@ -1840,6 +1850,7 @@ export function useGameDetail() {
     moveChecklistItem,
     removeChecklistItem,
     onGameSaved,
+    onCopiesChanged,
     resumeNoteDraft,
     resumeNoteEditing,
     resumeNoteSaving,

@@ -76,6 +76,7 @@ const {
   variants,
   profiles,
   onGameSaved,
+  onCopiesChanged: refreshCopies,
   resumeNoteDraft,
   resumeNoteEditing,
   resumeNoteSaving,
@@ -196,7 +197,7 @@ const {
 const copiesRevision = ref(0);
 async function onCopiesChanged() {
   copiesRevision.value++;
-  await onGameSaved();
+  await refreshCopies();
 }
 </script>
 <template>

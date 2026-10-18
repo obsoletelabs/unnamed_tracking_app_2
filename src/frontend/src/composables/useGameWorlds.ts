@@ -29,7 +29,7 @@ export function useGameWorlds(
     if (!game.value) return;
     const gameId = game.value.id;
     try {
-      const archives = await fetchArchives(gameId, "world_save");
+      const archives = await fetchArchives(gameId, "world_save", true);
       if (game.value?.id !== gameId) return;
       worlds.value = archives;
       worldsLoaded.value = true;
@@ -82,7 +82,7 @@ export function useGameWorlds(
   async function onAddWorldVersion(archive: GameArchiveData, files: File[]) {
     const file = files[0];
     if (!file || !game.value) return;
-    const gameId = game.value.id;
+    const gameId = archive.game_id ?? game.value.id;
     const taskId = startTask(`Uploading new version of "${archive.name}"`, 100);
 
     const attempt = async () => {

@@ -48,8 +48,9 @@ async def _identities(db: AsyncSession, user_id: UUID, games: list[Game]) -> dic
     """Which logical game each record belongs to (#274).
 
     Copies of one game (Steam and Epic Hades, Minecraft Java and for Windows) share a
-    `group_id` and the main copy's title, so an integration can show and match them as
-    one game. A record that is not grouped is its own group."""
+    `group_id` and the main copy's title for presentation. Grouping is not proof of
+    access or play compatibility: consumers still check each copy's claims.
+    A record that is not grouped is its own group."""
     merged = await graph.merge_graph(db, user_id, readonly=True)
     roots = {game.id: merged.root(game.id) for game in games}
     titles = {game.id: game.title for game in games}

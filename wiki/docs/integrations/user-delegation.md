@@ -118,6 +118,14 @@ and administration routes. Existing `utk_` API keys retain their legacy behavior
 they are not accepted as delegated credentials. Browser sessions are required
 to manage consent and grants.
 
+The delegated library's additive `identity` block (`group_id`, `is_main`, `main_title`)
+describes how this user groups copies in their library. It is presentation metadata.
+Each returned copy retains its own source, ownership/access state, platform, edition,
+and multiplayer constraints. Consumers must check those copy-level claims before
+offering play together; sharing a group or main title does not prove compatible
+editions, cross-platform support, or current access. Do not collapse copies in a way
+that lets an offline source hide another accessible copy.
+
 ## Reference client and identity-provider extension points
 
 The companion plugins repository ships a packaged, non-Discord reference consumer,
