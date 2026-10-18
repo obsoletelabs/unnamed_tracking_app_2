@@ -29,6 +29,8 @@ const {
   historyEntries,
   historyLoading,
   historyError,
+  failedLayers,
+  retryFailedLayers,
   refreshing,
   refreshAll,
   MONTH_NAMES,
@@ -403,6 +405,18 @@ const {
         </div>
 
         <p v-if="calError" class="ui-state error">{{ calError }}</p>
+        <p v-if="failedLayers.length" class="ui-state error" role="alert">
+          Could not load {{ failedLayers.join(", ") }}, so the calendar below
+          may be missing entries. What was already shown is kept.
+          <button
+            type="button"
+            class="ui-btn ui-btn-sm"
+            :disabled="refreshing"
+            @click="retryFailedLayers"
+          >
+            Try again
+          </button>
+        </p>
         <p
           v-if="rangeState === 'loading' && calView !== 'agenda'"
           class="ui-state"

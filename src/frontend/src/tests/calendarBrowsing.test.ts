@@ -346,3 +346,30 @@ it("ignores a stale or malformed pending log", async () => {
   const junk = await open();
   expect(junk.showManualForm.value).toBe(false);
 });
+
+it("names a layer that failed to load instead of looking empty, and keeps what it had (#262)", async () => {
+  extras.fetchCalendarEvents.mockResolvedValueOnce([
+    {
+      id: "e1",
+      title: "Mine",
+      eventDate: "2026-10-20",
+      eventTime: null,
+      note: null,
+      mediaType: null,
+      mediaId: null,
+    },
+  ]);
+  const cal = await open();
+  expect(cal.failedLayers.value).toEqual([]);
+  extras.fetchCalendarEvents.mockRejectedValueOnce(new Error("down"));
+  extras.fetchCalendarGames.mockRejectedValueOnce(new Error("down"));
+  await cal.refreshAll();
+  expect(cal.failedLayers.value).toEqual(["games history", "your own entries"]);
+  // what was loaded before is still there
+  expect(
+    cal.gridCells.value.some((c) => c.items.some((i) => i.title === "Mine")),
+  ).toBe(true);
+  await cal.retryFailedLayers();
+  await flushPromises();
+  expect(cal.failedLayers.value).toEqual([]);
+});

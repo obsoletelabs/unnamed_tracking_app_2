@@ -234,21 +234,28 @@ export function useCalendar() {
   }
 
   // ---- calendar data ----
+  // A layer that fails to load keeps what it had and is named in a notice, so a
+  // failure is never mistaken for "nothing there" (#262).
+  const gameHistoryFailed = ref(false);
+  const eventsFailed = ref(false);
   const gameEntries = ref<CalendarGameEntry[]>([]);
   async function loadGameHistory() {
     try {
       // the server sends nothing unless Games history is switched on
       gameEntries.value = await fetchCalendarGames();
+      gameHistoryFailed.value = false;
     } catch {
-      gameEntries.value = [];
+      gameHistoryFailed.value = true;
     }
   }
   const eventEntries = ref<CalendarEventEntry[]>([]);
   async function loadEvents() {
     try {
       eventEntries.value = await fetchCalendarEvents();
+      eventsFailed.value = false;
     } catch {
       // the rest of the calendar still works without them
+      eventsFailed.value = true;
     }
   }
   const entries = ref<CalendarEntry[]>([]);
@@ -408,6 +415,21 @@ export function useCalendar() {
     } finally {
       historyLoading.value = false;
     }
+  }
+  // which layers are missing right now, for the notice above the calendar
+  const failedLayers = computed(() =>
+    [
+      historyError.value ? "what you watched" : "",
+      gameHistoryFailed.value ? "games history" : "",
+      eventsFailed.value ? "your own entries" : "",
+    ].filter(Boolean),
+  );
+  async function retryFailedLayers() {
+    await Promise.all([
+      historyError.value ? loadHistory() : undefined,
+      gameHistoryFailed.value ? loadGameHistory() : undefined,
+      eventsFailed.value ? loadEvents() : undefined,
+    ]);
   }
   const refreshing = ref(false);
   async function refreshAll() {
@@ -1442,6 +1464,8 @@ export function useCalendar() {
     historyEntries,
     historyLoading,
     historyError,
+    failedLayers,
+    retryFailedLayers,
     refreshing,
     refreshAll,
     MONTH_NAMES,
