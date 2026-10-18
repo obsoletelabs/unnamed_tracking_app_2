@@ -136,7 +136,7 @@ describe("library sync summary", () => {
     });
     await useConnections().handleSyncLibrary("steam");
     expect(tasks.at(-1)?.detail).toBe(
-      "2 added, 1 updated, 7 achievements; wishlist not imported (Steam rejected the API key.); store details not filled in for 3 games",
+      "2 added, 1 updated, 7 achievements; wishlist not imported (Steam rejected the API key.); details or artwork missing for 3 games (use Retry details)",
     );
   });
 

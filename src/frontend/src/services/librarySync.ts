@@ -14,7 +14,11 @@ export interface LibrarySyncResult {
   wishlist_added?: number;
   wishlist_failed?: boolean;
   wishlist_error?: string;
+  // games whose details or artwork were not filled in (provider error or
+  // artwork unavailable); `enrich_retry_ids` can be passed to
+  // `retrySteamEnrichment`, which is safe to repeat
   enrich_failed?: number;
+  enrich_retry_ids?: string[];
   achievements_failed?: number;
   achievements_unavailable?: string[];
 }
@@ -40,10 +44,18 @@ export async function syncLibrary(
   }
 
   const suffix = provider === "steam" ? "?achievements=later" : "";
-  const response = await fetch(`/api/library-sync/${provider}${suffix}`, {
-    method: "POST",
-    credentials: "include",
-  });
+  let response: Response;
+  try {
+    response = await fetch(`/api/library-sync/${provider}${suffix}`, {
+      method: "POST",
+      credentials: "include",
+    });
+  } catch {
+    // The request may have finished on the server after the connection was lost.
+    throw new Error(
+      "Lost the connection before the import reported back. It may have finished on the server: check your library. Running it again is safe and will not duplicate games.",
+    );
+  }
   if (!response.ok) throw await providerRequestError(response);
   const result: SteamImportResult = await response.json();
   if (provider === "steam") await finishSteamImport(result);
@@ -100,18 +112,34 @@ async function finishSteamImport(result: SteamImportResult): Promise<void> {
     result.wishlist_failed = true;
     result.wishlist_error = e instanceof Error ? e.message : undefined;
   }
-  let failed = 0;
+  const retry = await enrichSteamGames(ids);
+  result.enrich_failed = retry.length;
+  result.enrich_retry_ids = retry;
+}
+
+// Fills in details and artwork in bounded batches and returns the ids that
+// still need another try (the request failed, or the provider or artwork was
+// unavailable). Repeating it only fills what is still empty.
+async function enrichSteamGames(ids: string[]): Promise<string[]> {
+  const retry: string[] = [];
   for (let i = 0; i < ids.length; i += ENRICH_BATCH) {
+    const batchIds = ids.slice(i, i + ENRICH_BATCH);
     try {
-      const batch = await postSteamStep<{ failed: number }>("enrich", {
-        game_ids: ids.slice(i, i + ENRICH_BATCH),
-      });
-      failed += batch.failed;
+      const batch = await postSteamStep<{ retry_game_ids?: string[] }>(
+        "enrich",
+        { game_ids: batchIds },
+      );
+      retry.push(...(batch.retry_game_ids ?? []));
     } catch {
-      failed += ids.slice(i, i + ENRICH_BATCH).length;
+      retry.push(...batchIds);
     }
   }
-  result.enrich_failed = failed;
+  return retry;
+}
+
+export async function retrySteamEnrichment(ids: string[]): Promise<string[]> {
+  if (import.meta.env.VITE_USE_MOCK_DATA === "true") return [];
+  return enrichSteamGames([...new Set(ids)]);
 }
 
 export interface SteamTagsBatch {

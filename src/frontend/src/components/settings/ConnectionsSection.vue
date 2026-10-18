@@ -223,6 +223,22 @@ watch(pluginConnections, () => void loadPluginStatus(), { immediate: true });
             }}
           </button>
           <button
+            v-if="
+              row.connection?.syncProvider === 'steam' &&
+              state.steamRetryIds.value.length
+            "
+            type="button"
+            class="btn"
+            :disabled="state.steamRetrying.value"
+            @click="state.handleRetrySteamEnrichment()"
+          >
+            {{
+              state.steamRetrying.value
+                ? "Retrying…"
+                : `Retry details (${state.steamRetryIds.value.length})`
+            }}
+          </button>
+          <button
             type="button"
             class="btn ghost"
             :aria-label="`${row.connected ? 'Manage' : 'Connect'} ${row.label}`"

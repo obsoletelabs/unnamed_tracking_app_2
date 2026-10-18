@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.routes.library_sync import (
     _SYNC_CONCURRENCY,
+    ENRICH_COMPLETE,
     _add_source_tag_and_collection,
     _enrich_steam_game_by_appid,
     _get_or_create_game,
@@ -217,9 +218,12 @@ async def enrich_games(
     body: EnrichRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> dict[str, int]:
+) -> dict[str, Any]:
     """Fill in the store details, tags, series and artwork of up to 25 of the
-    user's Steam games."""
+    user's Steam games. Safe to repeat: only empty fields are filled, manual
+    edits and locked artwork are kept, and no game is created. `retry_game_ids`
+    lists games whose provider data or artwork was unavailable this time, so the
+    caller can offer a retry instead of reporting success."""
     game_ids = (
         await db.scalars(
             select(Game.id).where(
@@ -231,7 +235,8 @@ async def enrich_games(
         )
     ).all()
     use_tags = (await load_preferences(db, current_user.id))["steam_user_tags"]
-    enriched = failed = 0
+    enriched = failed = incomplete = 0
+    retry_game_ids: list[str] = []
     for game_id in game_ids:
         try:
             async with db.begin_nested():
@@ -239,15 +244,25 @@ async def enrich_games(
                 if game is None:
                     continue
                 app_id = int(game.external_id or "")
-                await _enrich_steam_game_by_appid(
+                outcome = await _enrich_steam_game_by_appid(
                     game,
                     app_id,
                     current_user,
                     use_tags,
                 )
                 await names.reconcile_games(db, current_user.id, [game])
-            enriched += 1
+            if outcome == ENRICH_COMPLETE:
+                enriched += 1
+            else:
+                incomplete += 1
+                retry_game_ids.append(str(game_id))
         except Exception:  # pylint: disable=broad-exception-caught
             failed += 1
+            retry_game_ids.append(str(game_id))
         await db.commit()
-    return {"enriched": enriched, "failed": failed}
+    return {
+        "enriched": enriched,
+        "failed": failed,
+        "incomplete": incomplete,
+        "retry_game_ids": retry_game_ids,
+    }

@@ -8,7 +8,7 @@ import {
   deleteProviderCredentials,
 } from "../services/settings";
 import type { ProviderCredentialStatus } from "../services/settings";
-import { syncLibrary } from "../services/librarySync";
+import { retrySteamEnrichment, syncLibrary } from "../services/librarySync";
 import type { LibrarySyncProvider } from "../services/librarySync";
 import {
   startTask,
@@ -302,6 +302,34 @@ export function useConnections() {
     retroachievements: false,
   });
 
+  // Steam games whose details or artwork are still missing after the last
+  // import (kept for this session; retrying never creates or overwrites games)
+  const steamRetryIds = ref<string[]>([]);
+  const steamRetrying = ref(false);
+
+  async function handleRetrySteamEnrichment() {
+    if (!steamRetryIds.value.length || steamRetrying.value) return;
+    steamRetrying.value = true;
+    const taskId = startTask("Retrying Steam details and artwork", 1, {
+      indeterminate: true,
+    });
+    try {
+      const total = steamRetryIds.value.length;
+      steamRetryIds.value = await retrySteamEnrichment(steamRetryIds.value);
+      const left = steamRetryIds.value.length;
+      completeTask(
+        taskId,
+        left
+          ? `${total - left} of ${total} games filled in; ${left} still unavailable, try again later`
+          : `${total} games filled in`,
+      );
+    } catch (err) {
+      errorTask(taskId, err instanceof Error ? err.message : "Retry failed");
+    } finally {
+      steamRetrying.value = false;
+    }
+  }
+
   async function handleSyncLibrary(provider: LibrarySyncProvider) {
     librarySyncing[provider] = true;
     // indeterminate, the backend is one all-at-once request with no
@@ -323,8 +351,10 @@ export function useConnections() {
         result.wishlist_failed &&
           `wishlist not imported${result.wishlist_error ? ` (${result.wishlist_error})` : ""}`,
         result.enrich_failed &&
-          `store details not filled in for ${result.enrich_failed} games`,
+          `details or artwork missing for ${result.enrich_failed} games (use Retry details)`,
       ].filter((warning): warning is string => !!warning);
+      if (provider === "steam")
+        steamRetryIds.value = result.enrich_retry_ids ?? [];
       const wishlisted = result.wishlist_added
         ? `, ${result.wishlist_added} wishlisted`
         : "";
@@ -342,6 +372,9 @@ export function useConnections() {
       await loadCredentials();
     } catch (err) {
       errorTask(taskId, err instanceof Error ? err.message : "Sync failed");
+      // a failed or dropped request may still have saved games, so refresh the
+      // "last synced" line instead of leaving the earlier one in place
+      await loadCredentials().catch(() => undefined);
     } finally {
       librarySyncing[provider] = false;
     }
@@ -389,6 +422,9 @@ export function useConnections() {
     handleDisconnectPsn,
     librarySyncing,
     handleSyncLibrary,
+    steamRetryIds,
+    steamRetrying,
+    handleRetrySteamEnrichment,
     formatLastSynced,
   };
 }

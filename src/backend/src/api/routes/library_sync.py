@@ -90,10 +90,11 @@ async def _enrich_steam_game_by_appid(
     app_id: int,
     user: User,
     use_user_tags: bool = True,
-) -> None:
-    """Owned-game IDs anchor enrichment without another title match."""
+) -> str:
+    """Owned-game IDs anchor enrichment without another title match. Returns the
+    `_enrich_new_game` outcome so callers can offer a retry."""
     game.provider_ids = {**(game.provider_ids or {}), "steam": str(app_id)}
-    await _enrich_new_game(game, user, {"steam_user_tags": use_user_tags})
+    return await _enrich_new_game(game, user, {"steam_user_tags": use_user_tags})
 
 
 def _add_source_tag_and_collection(game: Game, source: str) -> None:
@@ -138,8 +139,20 @@ async def _download_asset(
         return False
 
 
-async def _enrich_new_game(game: Game, user: User, preferences: dict) -> None:
-    """Fill newly imported rows through the same scoped metadata and media operations."""
+ENRICH_COMPLETE = "complete"
+ENRICH_NO_METADATA = "no_metadata"
+ENRICH_ARTWORK_INCOMPLETE = "artwork_incomplete"
+
+
+async def _enrich_new_game(  # pylint: disable=too-many-locals,too-many-branches
+    game: Game, user: User, preferences: dict
+) -> str:
+    """Fill newly imported rows through the same scoped metadata and media operations.
+
+    Returns ENRICH_NO_METADATA when no provider record was found,
+    ENRICH_ARTWORK_INCOMPLETE when a kind of artwork had candidate URLs but none
+    could be saved, and ENRICH_COMPLETE otherwise. Callers that ignore the result
+    keep the old best-effort behaviour."""
     candidate = library_candidate(
         game.title,
         MediaType.GAME,
@@ -158,7 +171,7 @@ async def _enrich_new_game(game: Game, user: User, preferences: dict) -> None:
         if record and record.get("assets"):
             max_image_bytes = (await get_max_upload_size_mb(metadata_db)) * 1024 * 1024
     if not record:
-        return
+        return ENRICH_NO_METADATA
     match = game_result(record)
     game.provider_ids = {**(game.provider_ids or {}), **record.get("provider_ids", {})}
     if match.get("title") and names.is_weak(
@@ -198,10 +211,17 @@ async def _enrich_new_game(game: Game, user: User, preferences: dict) -> None:
         ("logo", "logo_url"),
         ("icon", "icon_url"),
     ]
+    outcome = ENRICH_COMPLETE
     for asset_kind, field in asset_fields:
-        for url in match.get(field + "s", []):
+        urls = match.get(field + "s", [])
+        saved = False
+        for url in urls:
             if await _download_asset(url, game, asset_kind, max_bytes=max_image_bytes):
+                saved = True
                 break
+        if urls and not saved:
+            outcome = ENRICH_ARTWORK_INCOMPLETE
+    return outcome
 
 
 async def _flag_stale_games(

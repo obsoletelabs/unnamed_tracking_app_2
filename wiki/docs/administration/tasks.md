@@ -90,6 +90,15 @@ and new-game metadata steps, respecting the user's import preferences. Scheduled
 foreground inventory pulls for the same account and provider do not overlap; other
 accounts and providers remain independent. Provider failures are recorded as a failed
 run without exposing credentials, and a later scheduled or manual run can retry.
+Manual Steam imports save owned games first (one request, committed together, safe to
+repeat without duplicating games or touching manual status), then fill achievements,
+the optional wishlist, store details and artwork a few games at a time. A game whose
+provider details or artwork were unavailable is reported as incomplete rather than
+successful: the sync summary names the count and Settings, Connections shows
+**Retry details (N)** beside Steam. Retrying only fills fields that are still empty,
+keeps manual edits and locked artwork, and creates no games. If the connection drops
+while the first request runs, the message says the import may have finished; running it
+again is safe. The retry list is kept for the current browser session only.
 Unavailable achievement replies retain previously saved unlocks and are reported in
 the run summary, rather than being treated as an empty snapshot.
 

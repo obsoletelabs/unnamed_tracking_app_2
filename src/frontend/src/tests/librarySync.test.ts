@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { syncLibrary } from "../services/librarySync";
+import { retrySteamEnrichment, syncLibrary } from "../services/librarySync";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -178,5 +178,60 @@ describe("Steam import steps", () => {
     expect(result.wishlist_error).toBe(
       "Steam rejected this session. Reconnect Steam in Connections.",
     );
+  });
+});
+
+describe("Steam enrichment outcomes", () => {
+  const importResponse = {
+    ok: true,
+    json: async () => ({
+      games_added: 6,
+      games: [],
+      achievements_synced: 0,
+      enrich_game_ids: ["a", "b", "c", "d", "e", "f"],
+    }),
+  };
+
+  it("keeps artwork-incomplete and failed games retryable", async () => {
+    let batch = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.includes("/steam?")) return importResponse;
+        if (url.endsWith("/enrich")) {
+          batch += 1;
+          if (batch === 2) return { ok: false, status: 503, statusText: "x" };
+          return {
+            ok: true,
+            json: async () => ({ retry_game_ids: batch === 1 ? ["b"] : [] }),
+          };
+        }
+        return { ok: true, json: async () => ({ added: 0, game_ids: [] }) };
+      }),
+    );
+    const result = await syncLibrary("steam");
+    expect(result.games_added).toBe(6);
+    expect(result.enrich_retry_ids).toEqual(["b", "f"]);
+    expect(result.enrich_failed).toBe(2);
+  });
+
+  it("retries only the given games once each", async () => {
+    const fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ retry_game_ids: [] }),
+    }));
+    vi.stubGlobal("fetch", fetch);
+    expect(await retrySteamEnrichment(["b", "b", "f"])).toEqual([]);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("says the import may have finished when the connection drops", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("network");
+      }),
+    );
+    await expect(syncLibrary("steam")).rejects.toThrow(/may have finished/);
   });
 });
