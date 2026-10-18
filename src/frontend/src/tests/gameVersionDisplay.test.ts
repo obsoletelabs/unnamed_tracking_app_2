@@ -18,15 +18,20 @@ vi.mock("../services/preferences", async (original) => ({
   queuePreferences: prefs.queuePreferences,
 }));
 
-it("shows the version count, the named version and where the card opens", async () => {
+it("names the copies, the named version and where the card opens", async () => {
   const game = { ...mockGames[0]!, id: "java" };
   const global = { stubs: { Teleport: true, RouterLink: true } };
-  const plain = mount(GameCard, { props: { game, versionCount: 3 }, global });
-  expect(plain.get('[data-testid="version-count"]').text()).toBe("3 versions");
+  const plain = mount(GameCard, {
+    props: { game, copySummary: "3 copies · Steam, Xbox, Nintendo Switch" },
+    global,
+  });
+  expect(plain.get('[data-testid="version-count"]').text()).toBe(
+    "3 copies · Steam, Xbox, Nintendo Switch",
+  );
   const named = mount(GameCard, {
     props: {
       game,
-      versionCount: 3,
+      copySummary: "3 copies · Steam, Xbox, Nintendo Switch",
       versionContext: { label: "Java Edition", gameId: "java-2" },
     },
     global,
@@ -37,7 +42,10 @@ it("shows the version count, the named version and where the card opens", async 
   );
   await named.get(".cover").trigger("click");
   expect(push).toHaveBeenCalledWith("/games/java-2");
-  const single = mount(GameCard, { props: { game, versionCount: 1 }, global });
+  const single = mount(GameCard, {
+    props: { game, copySummary: null },
+    global,
+  });
   expect(single.find('[data-testid="version-count"]').exists()).toBe(false);
 });
 

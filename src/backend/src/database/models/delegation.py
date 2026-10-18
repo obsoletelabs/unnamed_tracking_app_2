@@ -23,6 +23,12 @@ class IntegrationPolicy(Base):
     allow_legacy_api_keys: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false", nullable=False
     )
+    # First-party desktop apps (the Playnite extension) sign in through the same
+    # consent flow without an approved web origin. On by default because they
+    # replace pasted API keys, which every user could already create.
+    allow_desktop_apps: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true", nullable=False
+    )
     guest_retention_hours: Mapped[int] = mapped_column(Integer, default=48, nullable=False)
     maximum_grant_hours: Mapped[int] = mapped_column(Integer, default=336, nullable=False)
 
@@ -34,6 +40,11 @@ class IntegrationClient(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     origin: Mapped[str] = mapped_column(String(512), nullable=False, unique=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # "web": an operator-approved HTTPS origin. "desktop": a first-party app the host
+    # knows by name, whose origin is the fixed placeholder "desktop:<app>".
+    kind: Mapped[str] = mapped_column(
+        String(16), default="web", server_default="web", nullable=False
+    )
     created_at: Mapped[int] = mapped_column(BigInteger, default=unix_timestamp, nullable=False)
 
 

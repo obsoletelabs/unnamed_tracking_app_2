@@ -20,6 +20,7 @@ from src.api.schemas.delegation import (
     AchievementReportWrite,
     ClientWrite,
     CompatibilityWrite,
+    DesktopAccessRequest,
     GrantChange,
     PolicyWrite,
     TrackingWrite,
@@ -87,10 +88,17 @@ async def instance(db: AsyncSession = _DB) -> dict:
         "allow_guests": policy.allow_guests,
         "allow_any_origin": policy.allow_any_origin,
         "allow_legacy_api_keys": policy.allow_legacy_api_keys,
+        "allow_desktop_apps": policy.allow_desktop_apps,
         "guest_retention_hours": policy.guest_retention_hours,
-        "clients": [{"id": str(row.id), "name": row.name, "origin": row.origin} for row in clients]
+        "clients": [
+            {"id": str(row.id), "name": row.name, "origin": row.origin}
+            for row in clients
+            if row.kind == delegation.WEB
+        ]
         if policy.enabled
         else [],
+        # Desktop apps start consent at POST /desktop/{app}/requests.
+        "desktop_apps": sorted(delegation.DESKTOP_APPS) if policy.allow_desktop_apps else [],
         "capabilities": SCOPE_DESCRIPTIONS,
     }
 
@@ -107,10 +115,17 @@ async def read_policy(_admin: User = _ADMIN, db: AsyncSession = _DB) -> dict:
         "allow_guests": policy.allow_guests,
         "allow_any_origin": policy.allow_any_origin,
         "allow_legacy_api_keys": policy.allow_legacy_api_keys,
+        "allow_desktop_apps": policy.allow_desktop_apps,
         "guest_retention_hours": policy.guest_retention_hours,
         "maximum_grant_hours": policy.maximum_grant_hours,
         "clients": [
-            {"id": str(row.id), "name": row.name, "origin": row.origin, "enabled": row.enabled}
+            {
+                "id": str(row.id),
+                "name": row.name,
+                "origin": row.origin,
+                "enabled": row.enabled,
+                "kind": row.kind,
+            }
             for row in clients
         ],
     }
@@ -131,7 +146,8 @@ async def write_client(payload: ClientWrite, _admin: User = _ADMIN, db: AsyncSes
         select(IntegrationClient).where(IntegrationClient.origin == payload.origin)
     )
     if row is None:
-        row = IntegrationClient(origin=payload.origin, name=payload.name)
+        kind = delegation.DESKTOP if payload.origin.startswith("desktop:") else delegation.WEB
+        row = IntegrationClient(origin=payload.origin, name=payload.name, kind=kind)
         db.add(row)
     row.name, row.enabled = payload.name, payload.enabled
     await db.commit()
@@ -141,6 +157,17 @@ async def write_client(payload: ClientWrite, _admin: User = _ADMIN, db: AsyncSes
 @router.post("/requests", status_code=201)
 async def create_request(payload: AccessRequest, db: AsyncSession = _DB) -> dict:
     return await delegation.create_request(db, payload)
+
+
+@router.post("/desktop/{app}/requests", status_code=201)
+async def create_desktop_request(
+    app: str, payload: DesktopAccessRequest, db: AsyncSession = _DB
+) -> dict:
+    """A first-party desktop app (such as Playnite) asks the user for access.
+
+    The app opens `verification_path` on this instance in the user's browser and
+    polls `/requests/{id}/exchange` with its verifier, exactly like a web integration."""
+    return await delegation.create_desktop_request(db, app, payload)
 
 
 @router.post("/clients/register", status_code=201)
@@ -206,6 +233,7 @@ async def grants(user: User = _BROWSER_USER, db: AsyncSession = _DB) -> list[dic
             "id": str(grant.id),
             "name": client.name,
             "origin": client.origin,
+            "kind": client.kind,
             "enabled": client.enabled,
             "scopes": grant.scopes,
             "created_at": grant.created_at,
@@ -244,6 +272,12 @@ async def rotate_credential(
     )
     await db.commit()
     return {"access_token": token, "expires_at": row.expires_at, "scopes": row.scopes}
+
+
+@router.delete("/credential")
+async def revoke_own_credential(actor: DelegatedActor = _ACTOR, db: AsyncSession = _DB) -> dict:
+    """An app signs out: its own grant is revoked, exactly as from Connected apps."""
+    return await delegation.change_grant(db, actor.user.id, actor.grant.id, None)
 
 
 @router.get("/credential")

@@ -1,6 +1,7 @@
 import { friendlyError } from "./apiError";
 import { createSpeedTracker } from "../utils/uploadSpeed";
 import type { DateSource } from "../utils/mediaDate";
+import type { GameCopyLabel } from "../types/game";
 
 export type MediaKind = "screenshot" | "clip" | "soundtrack";
 
@@ -29,9 +30,11 @@ export interface FileDetails {
   linked_achievement_id?: string | null;
   // which GameProfile (e.g. an OSRS account) this belongs to, if any
   profile_id?: string | null;
-  // present only from the library-wide gallery endpoint
+  // the copy that owns the item; also set by the library-wide gallery endpoint
   game_id?: string;
   game_title?: string;
+  // set when a merged game's page lists every copy's items (#274)
+  copy?: GameCopyLabel;
 }
 
 export interface MediaItem extends FileDetails {
@@ -164,11 +167,14 @@ export async function listGameScreenshots(
   gameId: string,
   profileId?: string | null,
   unscopedOnly = false,
+  group = false,
 ): Promise<MediaItem[]> {
   if (import.meta.env.VITE_USE_MOCK_DATA === "true") return [...mockMedia];
   const params = new URLSearchParams();
   if (profileId) params.set("profile_id", profileId);
   else if (unscopedOnly) params.set("unscoped_only", "true");
+  // include every copy merged into this game, each item labelled with its copy
+  if (group) params.set("group", "true");
   const query = params.toString();
   const response = await fetch(
     `/api/game/${gameId}/screenshots${query ? `?${query}` : ""}`,
@@ -213,11 +219,16 @@ export interface TrashedMediaItem extends MediaItem {
 
 export async function fetchGameMediaTrash(
   gameId: string,
+  group = false,
 ): Promise<TrashedMediaItem[]> {
   if (import.meta.env.VITE_USE_MOCK_DATA === "true") return [];
-  const response = await fetch(`/api/game/${gameId}/screenshots/trash`, {
-    credentials: "include",
-  });
+  const query = group ? "?group=true" : "";
+  const response = await fetch(
+    `/api/game/${gameId}/screenshots/trash${query}`,
+    {
+      credentials: "include",
+    },
+  );
   if (!response.ok)
     throw new Error(
       `Failed to fetch media trash: ${response.status} ${response.statusText}`,
@@ -500,10 +511,12 @@ export async function uploadGameFiles(
 export async function listGameFiles(
   gameId: string,
   kind: GameFileKind,
+  group = false,
 ): Promise<GameFile[]> {
   if (import.meta.env.VITE_USE_MOCK_DATA === "true")
     return mockFiles.filter((f) => f.kind === kind);
-  const response = await fetch(`/api/game/${gameId}/files/${kind}`, {
+  const query = group ? "?group=true" : "";
+  const response = await fetch(`/api/game/${gameId}/files/${kind}${query}`, {
     credentials: "include",
   });
   if (!response.ok)
@@ -579,6 +592,9 @@ export async function updateGameFile(
 
 export interface TrashedGameFile {
   id: string;
+  // the copy that owns the file (#274)
+  game_id?: string;
+  copy?: GameCopyLabel;
   filename: string;
   deleted_at: number;
   purge_at: number;
@@ -587,11 +603,16 @@ export interface TrashedGameFile {
 export async function fetchGameFileTrash(
   gameId: string,
   kind: GameFileKind,
+  group = false,
 ): Promise<TrashedGameFile[]> {
   if (import.meta.env.VITE_USE_MOCK_DATA === "true") return [];
-  const response = await fetch(`/api/game/${gameId}/files/${kind}/trash`, {
-    credentials: "include",
-  });
+  const query = group ? "?group=true" : "";
+  const response = await fetch(
+    `/api/game/${gameId}/files/${kind}/trash${query}`,
+    {
+      credentials: "include",
+    },
+  );
   if (!response.ok)
     throw new Error(
       `Failed to fetch file trash: ${response.status} ${response.statusText}`,

@@ -17,10 +17,10 @@ const props = defineProps<{
   selected?: boolean;
   keyboardFocused?: boolean;
   rank?: number | null;
-  ownedCopyCount?: number;
   possibleDuplicate?: boolean;
-  // versions folded under this entry, and the one version a search named (#101)
-  versionCount?: number;
+  // the copies folded under this entry, or the store of a lone copy whose
+  // title repeats ("2 copies · Steam, Epic", "Nintendo Switch") (#274)
+  copySummary?: string | null;
   versionContext?: { label: string; gameId: string } | null;
   nestedLabel?: string | null;
 }>();
@@ -515,17 +515,14 @@ function copyFolderPath() {
         {{ versionContext.label }}
       </div>
       <div
-        v-else-if="(versionCount ?? 1) > 1"
+        v-else-if="copySummary"
         class="meta-row version-count"
         data-testid="version-count"
       >
-        {{ versionCount }} versions
+        {{ copySummary }}
       </div>
       <div v-if="nestedLabel" class="meta-row version-count">
         {{ nestedLabel }}
-      </div>
-      <div v-if="(ownedCopyCount ?? 1) > 1" class="meta-row ownership-count">
-        {{ ownedCopyCount }} owned copies
       </div>
       <RouterLink
         v-if="possibleDuplicate"

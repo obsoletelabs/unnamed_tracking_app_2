@@ -23,9 +23,8 @@ import {
 import type { AchFilter } from "../composables/useGameAchievements";
 import GamePlayPanel from "../components/game/GamePlayPanel.vue";
 import GameVersionsPanel from "../components/game/GameVersionsPanel.vue";
-import GameOwnedCopiesPanel from "../components/game/GameOwnedCopiesPanel.vue";
 import GameManualTrackingPanel from "../components/game/GameManualTrackingPanel.vue";
-import { provide, defineAsyncComponent } from "vue";
+import { provide, defineAsyncComponent, ref } from "vue";
 import { useGameDetail } from "../composables/useGameDetail";
 import { gameDetailKey } from "../composables/gameDetailContext";
 
@@ -75,9 +74,9 @@ const {
   parentGameTitle,
   RELATIONSHIP_LABELS,
   variants,
-  ownedCopies,
   profiles,
   onGameSaved,
+  onCopiesChanged: refreshCopies,
   resumeNoteDraft,
   resumeNoteEditing,
   resumeNoteSaving,
@@ -100,6 +99,7 @@ const {
   libraryLink,
   ratingParts,
   overviewFacts,
+  pagePlaytimeSeconds,
   completionEstimates,
   mainTags,
   moreTags,
@@ -191,6 +191,14 @@ const {
   achStats,
   formatPlaytime,
 } = model;
+
+// A copy was added, removed or made main: reload the game and remount the
+// panels that read the group, so every figure on the page agrees.
+const copiesRevision = ref(0);
+async function onCopiesChanged() {
+  copiesRevision.value++;
+  await refreshCopies();
+}
 </script>
 <template>
   <main
@@ -506,16 +514,11 @@ const {
         :key="`versions-${game.id}`"
         :game-id="game.id"
         :title="game.title"
-        @changed="onGameSaved"
-      />
-      <GameOwnedCopiesPanel
-        :key="game.id"
-        :game="game"
-        :copies="ownedCopies"
-        @changed="onGameSaved"
+        @changed="onCopiesChanged"
+        @playtime="pagePlaytimeSeconds = $event"
       />
       <GameManualTrackingPanel
-        :key="`completion-${game.id}`"
+        :key="`completion-${game.id}-${copiesRevision}`"
         :game-id="game.id"
         part="completion"
         @changed="onGameSaved"

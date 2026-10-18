@@ -14,6 +14,8 @@ export interface AccessRequestSummary {
   id: string;
   name: string;
   origin: string;
+  /** "desktop" for a first-party app such as Playnite, which has no web origin. */
+  kind?: "web" | "desktop";
   instance_id: string;
   state: string;
   expires_at: number;
@@ -29,6 +31,7 @@ export interface IntegrationGrant {
   id: string;
   name: string;
   origin: string;
+  kind?: "web" | "desktop";
   enabled: boolean;
   scopes: string[];
   created_at: number;
@@ -40,12 +43,14 @@ export interface IntegrationClient {
   name: string;
   origin: string;
   enabled: boolean;
+  kind?: "web" | "desktop";
 }
 export interface IntegrationPolicy {
   enabled: boolean;
   allow_guests: boolean;
   allow_any_origin: boolean;
   allow_legacy_api_keys: boolean;
+  allow_desktop_apps: boolean;
   guest_retention_hours: number;
   maximum_grant_hours: number;
   clients: IntegrationClient[];
@@ -60,6 +65,9 @@ export const capabilityLabels: Record<string, string> = {
   "tracking.write": "Change tracking, completion, playtime and ratings",
   "achievements.write": "Create manual achievements and local reports",
   "compatibility.write": "Save multiplayer settings for your games",
+  "library.sync": "Add and update games, artwork and launcher details",
+  "saves.read": "List and download save backups",
+  "saves.write": "Upload and rename save backups",
 };
 
 const base = "/api/delegation/v1";

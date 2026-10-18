@@ -1,10 +1,10 @@
 """What is in a game, counted, so a tab set to "show when it has content" knows
 whether to appear. Cheap on purpose: counts only, no file contents."""
 
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import ColumnElement, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.functions import count as sql_count
@@ -18,6 +18,7 @@ from src.database.models.game_identity_tracking import GameManualAchievement
 from src.database.models.media_item import MediaItem
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features.game_identity.copies import page_copies
 
 router = APIRouter(prefix="/api/game", tags=["game page"])
 
@@ -27,8 +28,13 @@ async def content_counts(
     game_id: UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    group: Annotated[bool, Query(description="Count every copy on this game's page.")] = False,
 ) -> dict[str, int]:
     game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
+    # The main copy's page shows content from every copy merged into it (#274).
+    ids = (
+        [c.game_id for c in await page_copies(db, current_user.id, game_id)] if group else [game_id]
+    )
 
     async def count(model: Any, *where: ColumnElement[bool]) -> int:
         return int(await db.scalar(select(sql_count()).select_from(model).where(*where)) or 0)
@@ -36,7 +42,7 @@ async def content_counts(
     media = {
         kind: await count(
             MediaItem,
-            MediaItem.game_id == game_id,
+            MediaItem.game_id.in_(ids),
             MediaItem.kind == kind,
             MediaItem.deleted_at.is_(None),
         )
@@ -50,10 +56,10 @@ async def content_counts(
     return {
         # imported ones plus the user's own (#97), so a tab holding only manual
         # achievements still shows when the page is set to hide empty tabs
-        "achievements": await count(Achievement, Achievement.game_id == game_id)
+        "achievements": await count(Achievement, Achievement.game_id.in_(ids))
         + await count(
             GameManualAchievement,
-            GameManualAchievement.game_id == game_id,
+            GameManualAchievement.game_id.in_(ids),
             GameManualAchievement.user_id == current_user.id,
             GameManualAchievement.archived_at.is_(None),
         ),
@@ -62,19 +68,19 @@ async def content_counts(
         "soundtrack": media["soundtrack"],
         "saves": await count(
             GameArchive,
-            GameArchive.game_id == game_id,
+            GameArchive.game_id.in_(ids),
             GameArchive.kind == "save",
             GameArchive.deleted_at.is_(None),
         ),
         "worlds": await count(
             GameArchive,
-            GameArchive.game_id == game_id,
+            GameArchive.game_id.in_(ids),
             GameArchive.kind == "world_save",
             GameArchive.deleted_at.is_(None),
         ),
         "docs": await count(
             GameFileItem,
-            GameFileItem.game_id == game_id,
+            GameFileItem.game_id.in_(ids),
             GameFileItem.kind == "doc",
             GameFileItem.deleted_at.is_(None),
         ),

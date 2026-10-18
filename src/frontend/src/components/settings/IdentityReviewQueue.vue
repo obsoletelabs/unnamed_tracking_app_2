@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from "vue";
+import { onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import {
   fetchReviewQueue,
   keepReviewEntrySeparate,
   mergeReviewEntry,
   runIdentityMatching,
   type ReviewEntry,
+  type ReviewGame,
 } from "../../services/identityReview";
+import { copyName } from "../../utils/gameCopies";
+import { hoursLabel } from "../../utils/identityDisplay";
 
 const emit = defineEmits<{ (event: "ids", ids: string[]): void }>();
 const entries = ref<ReviewEntry[]>([]);
@@ -15,6 +18,36 @@ const busy = ref<string | null>(null);
 const error = ref<string | null>(null);
 const loaded = ref(false);
 const request = new AbortController();
+// which copy stays the main entry, per suggestion (default: the most played)
+const mainChoice = reactive<Record<string, string>>({});
+
+function mainOf(entry: ReviewEntry): string {
+  return (
+    mainChoice[entry.id] ??
+    (entry.second.playtime_seconds > entry.first.playtime_seconds
+      ? entry.second.id
+      : entry.first.id)
+  );
+}
+function headline(entry: ReviewEntry): string {
+  const name = entry.first.title;
+  return entry.kind === "copy"
+    ? `Another copy of ${name}?`
+    : `Possible duplicate: ${name}`;
+}
+function copyReason(entry: ReviewEntry): string {
+  const differs = (entry.evidence.conflicts ?? []).filter((part) =>
+    ["platform", "store", "edition"].includes(part),
+  );
+  if (!differs.length) return "Same game name.";
+  const last = differs.pop()!;
+  const list = differs.length ? `${differs.join(", ")} and ${last}` : last;
+  return `Same game, on a different ${list}. Grouping keeps each copy's own saves and playtime.`;
+}
+function statusLabel(game: ReviewGame): string {
+  const words = game.status.toLowerCase().replace(/_/g, " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
 
 const FIELD_LABELS: Record<string, string> = {
   title: "Title",
@@ -99,15 +132,41 @@ defineExpose({ refresh });
     <p v-if="loaded && !entries.length" role="status">Nothing to review.</p>
     <article v-for="entry in entries" :key="entry.id" class="entry">
       <header>
-        <strong>{{ entry.first.title }}</strong>
-        <span v-if="entry.second.title !== entry.first.title">
-          and {{ entry.second.title }}</span
-        >
+        <strong>{{ headline(entry) }}</strong>
         <span class="confidence"
           >{{ Math.round(entry.confidence * 100) }}% likely</span
         >
       </header>
-      <p class="intro">
+      <fieldset class="pair">
+        <legend class="sr-only">Choose the main copy</legend>
+        <label
+          v-for="game in [entry.first, entry.second]"
+          :key="game.id"
+          class="side"
+          :class="{ chosen: mainOf(entry) === game.id }"
+        >
+          <span class="side-title">{{ game.title }}</span>
+          <span class="side-copy">{{ copyName(game) }}</span>
+          <span class="side-facts">
+            {{ hoursLabel(game.playtime_seconds) }} ·
+            {{ statusLabel(game) }}
+          </span>
+          <span class="side-main">
+            <input
+              type="radio"
+              :name="`main-${entry.id}`"
+              :value="game.id"
+              :checked="mainOf(entry) === game.id"
+              @change="mainChoice[entry.id] = game.id"
+            />
+            Main copy
+          </span>
+        </label>
+      </fieldset>
+      <p v-if="entry.kind === 'copy'" class="intro">
+        {{ copyReason(entry) }}
+      </p>
+      <p v-else class="intro">
         Matched on:
         {{
           (entry.evidence.matched || []).join(", ").replaceAll("_", " ") ||
@@ -153,9 +212,15 @@ defineExpose({ refresh });
           class="ui-btn ui-btn-primary"
           type="button"
           :disabled="busy !== null"
-          @click="resolve(entry, mergeReviewEntry, 'Could not merge.')"
+          @click="
+            resolve(
+              entry,
+              (id) => mergeReviewEntry(id, mainOf(entry)),
+              'Could not group these.',
+            )
+          "
         >
-          Merge
+          {{ entry.kind === "copy" ? "Group as copies" : "Merge" }}
         </button>
         <button
           class="ui-btn ui-btn-secondary"
@@ -198,6 +263,43 @@ h2 {
   font-size: 0.75rem;
   margin-left: 8px;
   padding: 2px 8px;
+}
+.pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+  border: 0;
+  margin: 0 0 12px;
+  padding: 0;
+}
+.side {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--ui-border);
+  border-radius: 10px;
+  cursor: pointer;
+  min-width: 0;
+}
+.side.chosen {
+  border-color: var(--ui-accent-line);
+  background: var(--ui-accent-soft);
+}
+.side-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.side-copy,
+.side-facts {
+  color: var(--ui-dim);
+  font-size: 0.85rem;
+}
+.side-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 0.85rem;
 }
 .differences {
   border-collapse: collapse;

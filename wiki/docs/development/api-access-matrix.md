@@ -17,10 +17,11 @@ runs, not from this text.
 | Authority | Accepted credential | Never accepted |
 | --- | --- | --- |
 | `public` | None. Pre-login, discovery, static or single-use-proof endpoints | - |
-| `user` | Browser session cookie or a legacy `utk_` API key, resolved to an active user | `utd_` delegated, `utp_` public-app and `utpm_` management credentials (403) |
+| `user` | Browser session cookie or a legacy `utk_` API key, resolved to an active user | `utd_` delegated, `utp_` public-app and `utpm_` management credentials (403), except on `user-or-app` routes |
 | `admin` | A `user` whose account is an administrator | The same exclusions; ordinary users get 403 |
 | `browser-session` | Browser session only (consent, Connected apps) | API keys and every integration credential |
 | `delegated-grant` | `utd_` credential with the route's scope, live grant, enabled client and active account | Browser sessions, `utk_` keys |
+| `user-or-app` | A `user` credential, or a `utd_` app grant that carries the route's scope (`library.sync`, `saves.read`, `saves.write`) for a live grant, allowed client and active account | `utp_`, `utpm_`; a `utd_` grant without the scope (403) or that is unknown, revoked or switched off (401) |
 | `plugin-admin` / `plugin-reader` | Administrator session/key, or a scoped `utpm_` management credential | Ordinary users (403), `utd_`/`utp_` |
 | `plugin-runtime` | Short-lived runtime credential; calls pass the capability gateway | Browser and API keys |
 | `plugin-route` | The plugin's declared route authentication, enforced before dispatch | - |
@@ -190,6 +191,8 @@ are redacted. Validation errors never echo submitted values.
 | --- | --- | --- | --- |
 | PUT | `/api/delegation/v1/clients` | admin | Administrator only. |
 | POST | `/api/delegation/v1/clients/register` | public | Enabled open-origin policy: Bounded registration only; disabled client remains disabled |
+| POST | `/api/delegation/v1/desktop/{app}/requests` | public | Known first-party desktop app and `allow_desktop_apps`: starts consent only; the user approves each capability in their browser |
+| DELETE | `/api/delegation/v1/credential` | delegated-grant | Live delegated grant: Revokes only the presenting grant (an app signing out) |
 | GET | `/api/delegation/v1/credential` | delegated-grant | Live delegated grant: Own scopes and expiry only |
 | POST | `/api/delegation/v1/credential/rotate` | delegated-grant | Live delegated grant: Replace only the presented credential; scopes/expiry unchanged |
 | GET | `/api/delegation/v1/games` | delegated-grant | `games.read`: Own nondeleted games; paginated 1–200 |
@@ -281,14 +284,14 @@ are redacted. Validation errors never echo submitted values.
 | GET | `/api/game-identity/games/{game_id}/metrics` | user | Own game identity state and source observations; foreign identifiers are refused. |
 | GET | `/api/game-identity/names/games/{game_id}` | user | Own game identity state and source observations; foreign identifiers are refused. |
 | GET | `/api/game-identity/names/reviews` | user | Own game identity state and source observations; foreign identifiers are refused. |
-| GET | `/api/playnite/contract` | user | Own game identity state and source observations; foreign identifiers are refused. |
+| GET | `/api/playnite/contract` | user-or-app | Own game identity state and source observations; foreign identifiers are refused. App grants need `library.sync`. |
 | POST | `/api/game-identity/counters/{counter_id}/group` | user | Own game identity state and source observations; foreign identifiers are refused. |
 | POST | `/api/game-identity/counters/{counter_id}/members/{observation_id}/ungroup` | user | Own game identity state and source observations; foreign identifiers are refused. |
 | POST | `/api/game-identity/names/repair` | user | Own game identity state and source observations; foreign identifiers are refused. |
 | POST | `/api/game-identity/names/reviews/{review_id}/keep` | user | Own game identity state and source observations; foreign identifiers are refused. |
 | POST | `/api/game-identity/names/reviews/{review_id}/update` | user | Own game identity state and source observations; foreign identifiers are refused. |
-| POST | `/api/playnite/inventory` | user | Own game identity state and source observations; foreign identifiers are refused. |
-| POST | `/api/playnite/observations` | user | Own game identity state and source observations; foreign identifiers are refused. |
+| POST | `/api/playnite/inventory` | user-or-app | Own game identity state and source observations; foreign identifiers are refused. App grants need `library.sync`. |
+| POST | `/api/playnite/observations` | user-or-app | Own game identity state and source observations; foreign identifiers are refused. App grants need `library.sync`. |
 | PUT | `/api/game-identity/counters/{counter_id}/members/{observation_id}/priority` | user | Own game identity state and source observations; foreign identifiers are refused. |
 | PUT | `/api/game-identity/games/{game_id}/metrics/playtime` | user | Own game identity state and source observations; foreign identifiers are refused. |
 
@@ -300,6 +303,8 @@ are redacted. Validation errors never echo submitted values.
 | GET | `/api/game-identity/decisions` | user | Every game, observation, counter and relationship is looked up with `user_id == caller`; another user's ID is not found. |
 | GET | `/api/game-identity/games/{game_id}` | user | Every game, observation, counter and relationship is looked up with `user_id == caller`; another user's ID is not found. |
 | POST | `/api/game-identity/merge` | user | Every game, observation, counter and relationship is looked up with `user_id == caller`; another user's ID is not found. |
+| POST | `/api/game-identity/games/{game_id}/make-main` | user | Every game in the group is looked up with `user_id == caller`; another user's ID is not found. |
+| POST | `/api/game-identity/games/{game_id}/split` | user | Every game in the group is looked up with `user_id == caller`; another user's ID is not found. |
 | POST | `/api/game-identity/observations/{observation_id}/move` | user | Every game, observation, counter and relationship is looked up with `user_id == caller`; another user's ID is not found. |
 | POST | `/api/game-identity/relationships` | user | Every game, observation, counter and relationship is looked up with `user_id == caller`; another user's ID is not found. |
 | POST | `/api/game-identity/relationships/{relationship_id}/end` | user | Every game, observation, counter and relationship is looked up with `user_id == caller`; another user's ID is not found. |
@@ -309,28 +314,28 @@ are redacted. Validation errors never echo submitted values.
 | POST | `/api/game-ownership/separate` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | GET | `/api/game/achievements-summary` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | PATCH | `/api/game/bulk-update` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
-| POST | `/api/game/create` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
+| POST | `/api/game/create` | user-or-app | Game queried with `user_id == caller`; any child ID must also belong to that game. App grants need `library.sync`. |
 | DELETE | `/api/game/delete/{game_id}` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | GET | `/api/game/get/{game_id}` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
-| GET | `/api/game/list` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
+| GET | `/api/game/list` | user-or-app | Game queried with `user_id == caller`; any child ID must also belong to that game. App grants need `library.sync`. |
 | GET | `/api/game/metadata/search` | user | Lookup using provider data or the caller's configured credentials; no stored object is addressed. |
 | GET | `/api/game/notes/search` | user | Searches only the caller's own games' notes. |
 | GET | `/api/game/preview-cover` | user | Lookup using provider data or the caller's configured credentials; no stored object is addressed. |
 | GET | `/api/game/trash` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
-| PATCH | `/api/game/update/{game_id}` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
+| PATCH | `/api/game/update/{game_id}` | user-or-app | Game queried with `user_id == caller`; any child ID must also belong to that game. App grants need `library.sync`. |
 | GET | `/api/game/{game_id}/achievements` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | DELETE | `/api/game/{game_id}/archives/{archive_id}` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
-| PATCH | `/api/game/{game_id}/archives/{archive_id}` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
+| PATCH | `/api/game/{game_id}/archives/{archive_id}` | user-or-app | Game queried with `user_id == caller`; any child ID must also belong to that game. App grants need `saves.write`. |
 | POST | `/api/game/{game_id}/archives/{archive_id}/restore` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
-| POST | `/api/game/{game_id}/archives/{archive_id}/versions` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
+| POST | `/api/game/{game_id}/archives/{archive_id}/versions` | user-or-app | Game queried with `user_id == caller`; any child ID must also belong to that game. App grants need `saves.write`. |
 | DELETE | `/api/game/{game_id}/archives/{archive_id}/versions/{version_id}` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
-| GET | `/api/game/{game_id}/archives/{archive_id}/versions/{version_id}/download` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
+| GET | `/api/game/{game_id}/archives/{archive_id}/versions/{version_id}/download` | user-or-app | Game queried with `user_id == caller`; any child ID must also belong to that game. App grants need `saves.read`. |
 | POST | `/api/game/{game_id}/archives/{archive_id}/versions/{version_id}/restore` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
-| GET | `/api/game/{game_id}/archives/{kind}` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
-| POST | `/api/game/{game_id}/archives/{kind}` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
+| GET | `/api/game/{game_id}/archives/{kind}` | user-or-app | Game queried with `user_id == caller`; any child ID must also belong to that game. App grants need `saves.read`. |
+| POST | `/api/game/{game_id}/archives/{kind}` | user-or-app | Game queried with `user_id == caller`; any child ID must also belong to that game. App grants need `saves.write`. |
 | GET | `/api/game/{game_id}/archives/{kind}/trash` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | GET | `/api/game/{game_id}/assets/{asset_kind}` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
-| POST | `/api/game/{game_id}/assets/{asset_kind}` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
+| POST | `/api/game/{game_id}/assets/{asset_kind}` | user-or-app | Game queried with `user_id == caller`; any child ID must also belong to that game. App grants need `library.sync`. |
 | POST | `/api/game/{game_id}/assets/{asset_kind}/from-url` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | GET | `/api/game/{game_id}/checklist` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | POST | `/api/game/{game_id}/checklist` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |

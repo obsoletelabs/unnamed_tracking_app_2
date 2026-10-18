@@ -8,7 +8,12 @@ The production container keeps startup diagnostics available without turning the
 2. Start Nginx with the startup configuration.
 3. Validate database configuration.
 4. Wait for PostgreSQL.
-5. Run Alembic migrations.
+5. Run Alembic migrations (`src/database/migrate.py`). After a normal upgrade the database is
+   compared with the models; if tables or columns are missing although the recorded revision
+   claims them (a database stamped by an image with a differently ordered history, as in
+   [#272](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/272)), the rerun-safe
+   history is replayed from the starting migration, keeping all data. A database that is still
+   incomplete afterwards stops startup with the missing names.
 6. Start Uvicorn on `127.0.0.1:8000`.
 7. Wait for `/health`.
 8. Select the HTTP, HTTPS, or HTTPS-redirect production Nginx configuration and render TLS certificate paths when required.

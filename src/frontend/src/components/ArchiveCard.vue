@@ -5,6 +5,7 @@
 import { computed, ref } from "vue";
 import { copyLink } from "../utils/copyMedia";
 import type { GameArchiveData } from "../services/gameArchives";
+import GameCopyBadge from "./game/GameCopyBadge.vue";
 
 const props = defineProps<{
   archive: GameArchiveData;
@@ -222,6 +223,7 @@ async function copy() {
 
     <div class="ac-body">
       <p class="ac-title" :title="archive.name">{{ archive.name }}</p>
+      <GameCopyBadge :copy="archive.copy" class="ac-copy" />
       <div class="ac-meta">
         <span v-for="f in facts" :key="f">{{ f }}</span>
         <span v-if="versionCount === 1" class="ac-faint">1 version</span>
@@ -238,6 +240,9 @@ async function copy() {
 </template>
 
 <style scoped>
+.ac-copy {
+  margin: 2px 0 4px;
+}
 .ac {
   display: flex;
   flex-direction: column;

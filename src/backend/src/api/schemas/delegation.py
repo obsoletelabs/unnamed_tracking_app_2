@@ -18,6 +18,12 @@ SCOPE_DESCRIPTIONS = {
     "tracking.write": "Change your game status, completion, playtime and ratings",
     "achievements.write": "Create manual achievements and edit local achievement reports",
     "compatibility.write": "Save your games' multiplayer settings",
+    "library.sync": (
+        "Add and update games in your library, upload their artwork and report what your "
+        "launcher holds"
+    ),
+    "saves.read": "List and download your game save backups",
+    "saves.write": "Upload new save backups and rename existing ones",
 }
 
 
@@ -31,8 +37,15 @@ def integration_scopes(value: list[str]) -> list[str]:
     return sorted(value)
 
 
+# Fixed origins of first-party desktop apps (see features/delegation.DESKTOP_APPS);
+# an operator may disable or re-allow them like a web origin.
+DESKTOP_ORIGINS = frozenset({"desktop:playnite"})
+
+
 def integration_origin(value: str) -> str:
     """Operator approval is for an exact HTTPS origin, never a URL credential or path."""
+    if value in DESKTOP_ORIGINS:
+        return value
     parts = urlsplit(value)
     if any(
         (
@@ -71,6 +84,7 @@ class PolicyWrite(DelegationSchema):
     allow_guests: bool = False
     allow_any_origin: bool = False
     allow_legacy_api_keys: bool = False
+    allow_desktop_apps: bool = True
     guest_retention_hours: int = Field(default=48, ge=1, le=8760)
     maximum_grant_hours: int = Field(default=336, ge=1, le=720)
 
@@ -88,6 +102,18 @@ class AccessRequest(DelegationSchema):
     scopes: list[str] = Field(min_length=1, max_length=len(SCOPE_DESCRIPTIONS))
     code_challenge: str = Field(pattern=r"^[a-f0-9]{64}$")
     external_account: ExternalAccount | None = None
+
+    _scopes = field_validator("scopes")(integration_scopes)
+
+
+class DesktopAccessRequest(DelegationSchema):
+    """A first-party desktop app asks the user for access from their browser."""
+
+    scopes: list[str] = Field(min_length=1, max_length=len(SCOPE_DESCRIPTIONS))
+    code_challenge: str = Field(pattern=r"^[a-f0-9]{64}$")
+    # Shown on the consent page and in Connected apps so people can tell devices apart.
+    device_name: str = Field(min_length=1, max_length=100)
+    device_id: str = Field(min_length=8, max_length=128, pattern=r"^[A-Za-z0-9._:-]+$")
 
     _scopes = field_validator("scopes")(integration_scopes)
 

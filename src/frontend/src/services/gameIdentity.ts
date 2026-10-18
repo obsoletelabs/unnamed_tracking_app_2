@@ -238,16 +238,33 @@ export async function fetchIdentitySources(
   ).json();
 }
 
+export type MainChoice = "target" | "source" | "auto";
+
 export async function mergeGames(
   sourceId: string,
   targetId: string,
   replaceSeparate = false,
+  main: MainChoice = "target",
 ): Promise<void> {
   await call("/merge", "POST", {
     source_id: sourceId,
     target_id: targetId,
     replace_separate: replaceSeparate,
+    main,
   });
+}
+
+/** Make this copy the main entry of its game (title, cover and page). */
+export async function makeMainCopy(gameId: string): Promise<void> {
+  await call(`/games/${gameId}/make-main`, "POST");
+}
+
+/** Take exactly this copy out of its game; the other copies stay together. */
+export async function splitCopy(
+  gameId: string,
+  keepSeparate = true,
+): Promise<void> {
+  await call(`/games/${gameId}/split`, "POST", { keep_separate: keepSeparate });
 }
 
 export async function unmergeGame(

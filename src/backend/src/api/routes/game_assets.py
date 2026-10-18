@@ -4,7 +4,7 @@ import asyncio
 import io
 import time
 from pathlib import Path
-from typing import Literal, cast
+from typing import Annotated, Literal, cast
 from uuid import UUID
 
 from fastapi import (
@@ -32,11 +32,12 @@ from src.api.routes.utils.games import (
     _get_game_or_404,
 )
 from src.core.app_integrations import get_max_upload_size_mb, get_upload_limits_mb
-from src.core.auth import get_current_user
+from src.core.auth import app_grant, get_current_user
 from src.database.models.game import Game
 from src.database.models.media_item import MediaItem
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features.game_identity.copies import page_copies
 from src.features.trash.media_trash import move_media_file_to_trash, restore_media_file_from_trash
 from src.features.trash.sweep import RETENTION_SECONDS
 from src.helpers.artwork_revisions import artwork_response, stored_file_revision
@@ -67,6 +68,9 @@ _VERSION_QUERY = Query(None, max_length=64, description="Revision of the stored 
 
 
 _UNSCOPED_ONLY_DEFAULT = Query(False, description="Only items with no profile_id set.")
+_GROUP_QUERY = Query(
+    description="Also list media of every copy on this game's page, with its copy."
+)
 
 
 _DB_DEPENDENCY = Depends(get_db)
@@ -149,6 +153,7 @@ async def get_game_asset(
         status.HTTP_404_NOT_FOUND: {"description": "Game not found"},
     },
 )
+@app_grant("library.sync")
 async def upload_game_asset(
     game_id: UUID,
     asset_kind: AssetKind,
@@ -258,6 +263,7 @@ async def download_game_asset(
 def _media_item_to_dict(item: MediaItem, game_id: UUID) -> dict:
     return {
         "id": str(item.id),
+        "game_id": str(game_id),
         "filename": item.filename,
         "original_filename": item.original_filename,
         "kind": item.kind,
@@ -485,15 +491,29 @@ async def list_game_screenshots(
     unscoped_only: bool = _UNSCOPED_ONLY_DEFAULT,
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
+    *,
+    group: Annotated[bool, _GROUP_QUERY] = False,
 ) -> dict[str, list[dict]]:
     await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
-    stmt = select(MediaItem).where(MediaItem.game_id == game_id, MediaItem.deleted_at.is_(None))
+    # `group=true` also lists the media of every copy merged into this one (#274).
+    copies = (
+        {c.game_id: c for c in await page_copies(db, current_user.id, game_id)} if group else {}
+    )
+    stmt = select(MediaItem).where(
+        MediaItem.game_id.in_(copies or {game_id}), MediaItem.deleted_at.is_(None)
+    )
     if profile_id is not None:
         stmt = stmt.where(MediaItem.profile_id == profile_id)
     elif unscoped_only:
         stmt = stmt.where(MediaItem.profile_id.is_(None))
     result = await db.execute(stmt.order_by(MediaItem.created_at.desc()))
-    return {"media": [_media_item_to_dict(item, game_id) for item in result.scalars().all()]}
+    media = []
+    for item in result.scalars().all():
+        entry = _media_item_to_dict(item, item.game_id)
+        if group:
+            entry["copy"] = copies[item.game_id].as_dict()
+        media.append(entry)
+    return {"media": media}
 
 
 # pylint: enable=duplicate-code
@@ -656,23 +676,28 @@ async def list_game_screenshot_trash(
     game_id: UUID,
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
+    group: Annotated[bool, _GROUP_QUERY] = False,
 ) -> dict[str, list[dict]]:
     await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
+    copies = (
+        {c.game_id: c for c in await page_copies(db, current_user.id, game_id)} if group else {}
+    )
     result = await db.execute(
         select(MediaItem)
-        .where(MediaItem.game_id == game_id, MediaItem.deleted_at.is_not(None))
+        .where(MediaItem.game_id.in_(copies or {game_id}), MediaItem.deleted_at.is_not(None))
         .order_by(MediaItem.deleted_at.desc())
     )
     media = []
     for item in result.scalars().all():
         assert item.deleted_at is not None  # guaranteed by the deleted_at.is_not(None) filter above
-        media.append(
-            {
-                **_media_item_to_dict(item, game_id),
-                "deleted_at": item.deleted_at,
-                "purge_at": item.deleted_at + RETENTION_SECONDS,
-            }
-        )
+        entry = {
+            **_media_item_to_dict(item, item.game_id),
+            "deleted_at": item.deleted_at,
+            "purge_at": item.deleted_at + RETENTION_SECONDS,
+        }
+        if group:
+            entry["copy"] = copies[item.game_id].as_dict()
+        media.append(entry)
     return {"media": media}
 
 

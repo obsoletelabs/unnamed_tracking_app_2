@@ -108,6 +108,11 @@ export function useGameDetail() {
   }
 
   const game = ref<Game | null>(null);
+  // A merged game's page lists the saves, media and docs of every copy (#274).
+  // Each item stays attached to its own copy, so changes go to that copy.
+  function ownerOf(item: { game_id?: string }): string {
+    return item.game_id ?? game.value?.id ?? "";
+  }
   usePageTitle(() => game.value?.title);
   const loading = ref(true);
   const error = ref<string | null>(null);
@@ -401,6 +406,12 @@ export function useGameDetail() {
     await loadGame(route.params.id as string);
   }
 
+  async function onCopiesChanged() {
+    await onGameSaved();
+    resetForGame();
+    await refreshCounts();
+  }
+
   // --- resume note ("where I left off") ---------------------------------
   const resumeNoteDraft = ref("");
   const resumeNoteEditing = ref(false);
@@ -660,6 +671,11 @@ export function useGameDetail() {
   // title: the first five of these that apply, in this order. Score, rank and
   // playtime always show, with a dash when empty. Everything else is under "More details".
   type TabName = (typeof tabs)[number];
+  const pagePlaytimeSeconds = ref<number | null>(null);
+  watch(
+    () => game.value?.id,
+    () => (pagePlaytimeSeconds.value = null),
+  );
   const overviewFacts = computed(() => {
     const g = game.value;
     if (!g) return [];
@@ -688,7 +704,12 @@ export function useGameDetail() {
           : { label: "Rank", value: "–", muted: true },
       );
     }
-    const minutes = g.platforms.reduce((sum, p) => sum + p.playtimeMinutes, 0);
+    // the reconciled playtime the Copies & versions panel shows, so both agree
+    const recorded = g.platforms.reduce((sum, p) => sum + p.playtimeMinutes, 0);
+    const minutes =
+      pagePlaytimeSeconds.value !== null
+        ? Math.round(pagePlaytimeSeconds.value / 60)
+        : recorded;
     facts.push(
       minutes > 0
         ? { label: "Playtime", value: formatPlaytime(minutes) }
@@ -773,7 +794,7 @@ export function useGameDetail() {
     if (!game.value) return;
     const id = game.value.id;
     try {
-      const counts = await fetchContentCounts(id);
+      const counts = await fetchContentCounts(id, true);
       if (game.value?.id === id) contentCounts.value = counts;
     } catch {
       // the tabs just stay as they are until the next try
@@ -916,10 +937,13 @@ export function useGameDetail() {
     mediaLoading.value = true;
     mediaError.value = null;
     try {
+      // The plain tabs list every copy merged into this game (#274); an account
+      // scope belongs to this record alone.
       mediaItems.value = await listGameScreenshots(
         game.value.id,
         profileId,
         unscopedOnly,
+        !profileId && !unscopedOnly,
       );
       mediaLoadedFor.value = game.value.id;
     } catch (err) {
@@ -1046,14 +1070,14 @@ export function useGameDetail() {
   const thumbnailing = new Set<string>();
   function applyClip(updated: MediaItem) {
     const i = mediaItems.value.findIndex((m) => m.id === updated.id);
-    if (i !== -1) mediaItems.value[i] = updated;
+    if (i !== -1) mediaItems.value[i] = { ...mediaItems.value[i], ...updated };
   }
   async function keepThumbnail(item: MediaItem, blob: Blob, duration: number) {
     if (!game.value || thumbnailing.has(item.id)) return;
     thumbnailing.add(item.id);
     try {
       applyClip(
-        await saveClipThumbnail(game.value.id, item.id, blob, duration),
+        await saveClipThumbnail(ownerOf(item), item.id, blob, duration),
       );
     } catch {
       // the picture is a nicety; the clip still plays and will be tried again
@@ -1077,7 +1101,7 @@ export function useGameDetail() {
   async function removeMedia(item: MediaItem) {
     if (!game.value) return;
     try {
-      await deleteGameScreenshot(game.value.id, item.kind, item.filename);
+      await deleteGameScreenshot(ownerOf(item), item.kind, item.filename);
       mediaItems.value = mediaItems.value.filter((m) => m !== item);
       await refreshMediaTrash();
     } catch (err) {
@@ -1109,7 +1133,7 @@ export function useGameDetail() {
   async function refreshMediaTrash() {
     if (!game.value) return;
     try {
-      mediaTrash.value = await fetchGameMediaTrash(game.value.id);
+      mediaTrash.value = await fetchGameMediaTrash(game.value.id, true);
     } catch {
       // trash listing failing silently isn't worth blocking the main view
     }
@@ -1118,7 +1142,7 @@ export function useGameDetail() {
   async function restoreMediaItem(item: TrashedMediaItem) {
     if (!game.value) return;
     try {
-      await restoreGameMedia(game.value.id, item.kind, item.filename);
+      await restoreGameMedia(ownerOf(item), item.kind, item.filename);
       mediaLoadedFor.value = null;
       await loadMedia();
       await refreshMediaTrash();
@@ -1131,9 +1155,10 @@ export function useGameDetail() {
   async function saveMediaItem(item: MediaItem, patch: MediaItemUpdate) {
     if (!game.value) return;
     try {
-      const updated = await updateMediaItem(game.value.id, item.id, patch);
+      const updated = await updateMediaItem(ownerOf(item), item.id, patch);
       const index = mediaItems.value.findIndex((m) => m.id === item.id);
-      if (index !== -1) mediaItems.value[index] = updated;
+      if (index !== -1)
+        mediaItems.value[index] = { ...mediaItems.value[index], ...updated };
       // the item may have just moved out of the Accounts tab's currently
       // selected scope (or into it), refetch so the gallery reflects that
       if (
@@ -1152,14 +1177,18 @@ export function useGameDetail() {
     updates: { id: string; patch: MediaItemUpdate }[],
   ) {
     if (!game.value) return;
-    const gameId = game.value.id;
+    const owners = new Map(mediaItems.value.map((m) => [m.id, ownerOf(m)]));
+    const pageId = game.value.id;
     try {
       const updated = await Promise.all(
-        updates.map((u) => updateMediaItem(gameId, u.id, u.patch)),
+        updates.map((u) =>
+          updateMediaItem(owners.get(u.id) ?? pageId, u.id, u.patch),
+        ),
       );
       for (const u of updated) {
         const index = mediaItems.value.findIndex((m) => m.id === u.id);
-        if (index !== -1) mediaItems.value[index] = u;
+        if (index !== -1)
+          mediaItems.value[index] = { ...mediaItems.value[index], ...u };
       }
     } catch (err) {
       mediaError.value = err instanceof Error ? err.message : "Failed to save";
@@ -1181,10 +1210,22 @@ export function useGameDetail() {
     for (const id of ids) outcome.set(id, "none");
     if (!game.value) return outcome;
     try {
-      const found = await detectMediaDates(game.value.id, ids);
+      // ask each copy about its own items
+      const byOwner = new Map<string, string[]>();
+      for (const id of ids) {
+        const item = mediaItems.value.find((m) => m.id === id);
+        const owner = item ? ownerOf(item) : game.value.id;
+        byOwner.set(owner, [...(byOwner.get(owner) ?? []), id]);
+      }
+      const found = (
+        await Promise.all(
+          [...byOwner].map(([owner, owned]) => detectMediaDates(owner, owned)),
+        )
+      ).flat();
       for (const u of found) {
         const index = mediaItems.value.findIndex((m) => m.id === u.id);
-        if (index !== -1) mediaItems.value[index] = u;
+        if (index !== -1)
+          mediaItems.value[index] = { ...mediaItems.value[index], ...u };
         outcome.set(u.id, "file");
       }
       for (const id of ids) {
@@ -1248,7 +1289,7 @@ export function useGameDetail() {
     if (!game.value || filesLoaded.value[kind] === game.value.id) return;
     filesError.value = null;
     try {
-      filesRefFor(kind).value = await listGameFiles(game.value.id, kind);
+      filesRefFor(kind).value = await listGameFiles(game.value.id, kind, true);
       filesLoaded.value[kind] = game.value.id;
     } catch (err) {
       filesError.value =
@@ -1362,14 +1403,15 @@ export function useGameDetail() {
         changes.taken_source = patch.taken_source;
       }
       const updated = await updateGameFile(
-        game.value.id,
+        ownerOf(file),
         kind,
         file.id,
         changes,
       );
       const list = filesRefFor(kind);
       const index = list.value.findIndex((f) => f.id === updated.id);
-      if (index !== -1) list.value[index] = updated;
+      if (index !== -1)
+        list.value[index] = { ...list.value[index], ...updated };
     } catch (err) {
       filesError.value = err instanceof Error ? err.message : "Failed to save";
     }
@@ -1388,9 +1430,9 @@ export function useGameDetail() {
   async function removeGameFile(kind: FlatFileKind, file: FileDetails) {
     if (!game.value) return;
     try {
-      await deleteGameFile(game.value.id, kind, file.filename);
+      await deleteGameFile(ownerOf(file), kind, file.filename);
       filesRefFor(kind).value = filesRefFor(kind).value.filter(
-        (f) => f.filename !== file.filename,
+        (f) => f.id !== file.id,
       );
       await refreshFileTrash(kind);
     } catch (err) {
@@ -1419,6 +1461,7 @@ export function useGameDetail() {
       fileTrashRefFor(kind).value = await fetchGameFileTrash(
         game.value.id,
         kind,
+        true,
       );
     } catch {
       // trash listing failing silently isn't worth blocking the main view
@@ -1428,7 +1471,7 @@ export function useGameDetail() {
   async function restoreFileItem(kind: FlatFileKind, item: TrashedGameFile) {
     if (!game.value) return;
     try {
-      await restoreGameFile(game.value.id, kind, item.filename);
+      await restoreGameFile(ownerOf(item), kind, item.filename);
       filesLoaded.value[kind] = null;
       await loadGameFiles(kind);
       await refreshFileTrash(kind);
@@ -1461,7 +1504,7 @@ export function useGameDetail() {
   async function refreshSaveArchives() {
     if (!game.value) return;
     try {
-      saveArchives.value = await fetchArchives(game.value.id, "save");
+      saveArchives.value = await fetchArchives(game.value.id, "save", true);
       saveArchivesLoaded.value = true;
     } catch (err) {
       filesError.value =
@@ -1511,7 +1554,7 @@ export function useGameDetail() {
   async function onAddSaveVersion(archive: GameArchiveData, files: File[]) {
     const file = files[0];
     if (!file || !game.value) return;
-    const gameId = game.value.id;
+    const gameId = ownerOf(archive);
     const taskId = startTask(`Uploading new version of "${archive.name}"`, 100);
 
     const attempt = async () => {
@@ -1556,7 +1599,7 @@ export function useGameDetail() {
   ) {
     if (!game.value) return;
     try {
-      await updateArchive(game.value.id, archive.id, patch);
+      await updateArchive(ownerOf(archive), archive.id, patch);
       if (isWorld) await refreshWorlds();
       else await refreshSaveArchives();
     } catch (err) {
@@ -1578,7 +1621,7 @@ export function useGameDetail() {
     if (!ok) return;
     try {
       for (const archive of items)
-        await deleteArchive(game.value.id, archive.id);
+        await deleteArchive(ownerOf(archive), archive.id);
       if (isWorld) {
         await refreshWorlds();
         await refreshWorldTrash();
@@ -1602,7 +1645,7 @@ export function useGameDetail() {
     });
     if (!ok) return;
     try {
-      await deleteArchive(game.value.id, archive.id);
+      await deleteArchive(ownerOf(archive), archive.id);
       if (isWorld) {
         worlds.value = worlds.value.filter((w) => w.id !== archive.id);
         await refreshWorldTrash();
@@ -1628,7 +1671,7 @@ export function useGameDetail() {
   async function refreshSaveTrash() {
     if (!game.value) return;
     try {
-      saveTrash.value = await fetchArchiveTrash(game.value.id, "save");
+      saveTrash.value = await fetchArchiveTrash(game.value.id, "save", true);
     } catch {
       // trash listing failing silently isn't worth blocking the main view
     }
@@ -1646,7 +1689,7 @@ export function useGameDetail() {
   async function onRestoreArchive(archive: TrashedArchive, isWorld: boolean) {
     if (!game.value) return;
     try {
-      await restoreArchive(game.value.id, archive.id);
+      await restoreArchive(ownerOf(archive), archive.id);
       if (isWorld) {
         await refreshWorlds();
         await refreshWorldTrash();
@@ -1679,7 +1722,7 @@ export function useGameDetail() {
     });
     if (!ok) return;
     try {
-      await deleteArchiveVersion(game.value.id, archive.id, version.id);
+      await deleteArchiveVersion(ownerOf(archive), archive.id, version.id);
       if (isWorld) await refreshWorlds();
       else await refreshSaveArchives();
     } catch (err) {
@@ -1807,6 +1850,7 @@ export function useGameDetail() {
     moveChecklistItem,
     removeChecklistItem,
     onGameSaved,
+    onCopiesChanged,
     resumeNoteDraft,
     resumeNoteEditing,
     resumeNoteSaving,
@@ -1829,6 +1873,7 @@ export function useGameDetail() {
     libraryLink,
     ratingParts,
     overviewFacts,
+    pagePlaytimeSeconds,
     completionEstimates,
     mainTags,
     moreTags,

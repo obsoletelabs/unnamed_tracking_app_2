@@ -41,10 +41,14 @@ from src.features.game_identity.graph import (
     merge_graph,
 )
 from src.features.game_identity.matching import (
+    COPY_RULE,
+    COPY_RULE_VERSION,
     RULE,
     RULE_VERSION,
     Candidate,
     assess,
+    assess_copy,
+    base_title_keys,
     title_key,
 )
 
@@ -178,6 +182,8 @@ def _pairs(found: dict[UUID, Candidate]) -> set[tuple[UUID, UUID]]:
     for game_id, item in found.items():
         if item.key:
             groups.setdefault(("title", item.key), []).append(game_id)
+        for base in base_title_keys(item.title):
+            groups.setdefault(("base", base), []).append(game_id)
         for namespace, identity in item.provider_ids.items():
             if identity:
                 groups.setdefault(("id", namespace, identity), []).append(game_id)
@@ -240,11 +246,15 @@ async def run_matching(
             result.skipped += 1
             continue
         verdict = assess(found[first], found[second])
+        rule, rule_version = RULE, RULE_VERSION
         if verdict.level not in ("auto", "review"):
-            result.skipped += 1
-            continue
+            copy = assess_copy(found[first], found[second])
+            if copy is None:
+                result.skipped += 1
+                continue
+            verdict, rule, rule_version = copy, COPY_RULE, COPY_RULE_VERSION
         merge = verdict.level == "auto" and allow_automatic and inventory_complete
-        if existing is not None and not merge and existing.rule_version == RULE_VERSION:
+        if existing is not None and not merge and existing.rule_version == rule_version:
             result.skipped += 1  # already suggested by this rule; nothing to write
             continue
         outcome = await decisions.associate_automatically(
@@ -252,8 +262,8 @@ async def run_matching(
             user_id,
             first,
             second,
-            rule=RULE,
-            rule_version=RULE_VERSION,
+            rule=rule,
+            rule_version=rule_version,
             confidence=verdict.confidence,
             reason=_reason(verdict.level, merge),
             evidence=verdict.evidence,
@@ -298,6 +308,8 @@ def _reason(level: str, merged: bool) -> str:
         )
     if level == "auto":
         return "Strong match held for review because the inventory was not confirmed complete"
+    if level == "copy":
+        return "Looks like another copy or edition of the same game"
     return "Evidence suggests these may be the same game"
 
 
@@ -341,6 +353,9 @@ async def queue(db: AsyncSession, user_id: UUID, limit: int = 50) -> dict[str, A
     )
     dismissed = await _dismissed(db, user_id)
     entries: list[dict[str, Any]] = []
+    # Once copies are grouped, a third record matches each of them; ask once per
+    # pair of groups (the strongest suggestion first, as the rows are ordered).
+    asked: set[tuple[UUID, UUID]] = set()
     for row in rows:
         pair = _members(row)
         if (
@@ -350,9 +365,15 @@ async def queue(db: AsyncSession, user_id: UUID, limit: int = 50) -> dict[str, A
             or graph.root(pair[0]) == graph.root(pair[1])
         ):
             continue
+        groups = _ordered(graph.root(pair[0]), graph.root(pair[1]))
+        if groups in asked:
+            continue
+        asked.add(groups)
         entries.append(
             {
                 "id": row.id,
+                # "copy": another platform, store or edition; "duplicate": the same copy twice
+                "kind": "copy" if (row.evidence or {}).get("level") == "copy" else "duplicate",
                 "confidence": float(row.confidence or 0),
                 "reason": row.reason,
                 "evidence": row.evidence,
@@ -436,9 +457,15 @@ async def resolve_merge(
         raise decisions.IdentityInvalid("The target must be one of the two games")
     target = target_id or first
     source = second if target == first else first
-    await decisions.merge_identities(
-        db, user_id, source, target, decisions.Actor(reason="Confirmed from the review queue")
-    )
+    actor = decisions.Actor(reason="Confirmed from the review queue")
+    await decisions.merge_identities(db, user_id, source, target, actor)
+    if target_id is None:
+        # Nobody picked the main copy: use the furthest progressed, most played one
+        # rather than whichever record happened to sort first (#274).
+        group = (await merge_graph(db, user_id)).group(target)
+        await decisions.make_main(
+            db, user_id, await decisions.choose_main(db, user_id, group), actor
+        )
 
 
 async def resolve_separate(db: AsyncSession, user_id: UUID, decision_id: UUID) -> None:

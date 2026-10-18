@@ -11,6 +11,7 @@ from src.core.auth import get_current_user
 from src.database.models.game_identity import GameIdentityDecision
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features import game_ownership
 from src.features.game_identity import counters, decisions, graph
 
 router = APIRouter(prefix="/api/game-identity", tags=["game"])
@@ -26,6 +27,20 @@ class MergeInput(_Body):
     target_id: UUID
     reason: _Reason = None
     replace_separate: bool = False
+    # Which copy becomes the group's main entry: the target (the historical
+    # behaviour), the source, or "auto" for the furthest progressed and most played.
+    main: Literal["target", "source", "auto"] = "target"
+
+
+class SplitInput(_Body):
+    keep_separate: bool = True
+    reason: _Reason = None
+
+
+class MainOut(BaseModel):
+    main_id: UUID
+    previous_main_id: UUID
+    changed: bool
 
 
 class UnmergeInput(_Body):
@@ -123,20 +138,62 @@ Db = Annotated[AsyncSession, Depends(get_db)]
 Owner = Annotated[User, Depends(get_current_user)]
 
 
+async def _merge_and_choose_main(db: AsyncSession, user_id: UUID, body: MergeInput):
+    result = await decisions.merge_identities(
+        db,
+        user_id,
+        body.source_id,
+        body.target_id,
+        _actor(body.reason),
+        replace_separate=body.replace_separate,
+    )
+    if body.main != "target":
+        main_id = body.source_id
+        if body.main == "auto":
+            merged = await graph.merge_graph(db, user_id)
+            main_id = await decisions.choose_main(db, user_id, merged.group(body.target_id))
+        await decisions.make_main(db, user_id, main_id, _actor(body.reason))
+    return result
+
+
 @router.post("/merge", response_model=IdentityChange)
 async def merge(body: MergeInput, db: Db, user: Owner):
-    result = await run_action(
-        db,
-        decisions.merge_identities(
-            db,
-            user.id,
-            body.source_id,
-            body.target_id,
-            _actor(body.reason),
-            replace_separate=body.replace_separate,
-        ),
-    )
+    result = await run_action(db, _merge_and_choose_main(db, user.id, body))
     return IdentityChange(changed=result.merged, decision=_out(result.decision))
+
+
+async def _make_main_and_align(db: AsyncSession, user_id: UUID, game_id: UUID):
+    result = await decisions.make_main(db, user_id, game_id)
+    group = (await graph.merge_graph(db, user_id)).group(game_id)
+    await game_ownership.align_with_identity(db, user_id, group)
+    return result
+
+
+async def _split_and_align(db: AsyncSession, user_id: UUID, game_id: UUID, body: SplitInput):
+    group = (await graph.merge_graph(db, user_id)).group(game_id)
+    result = await decisions.split_copy(
+        db, user_id, game_id, _actor(body.reason), keep_separate=body.keep_separate
+    )
+    await game_ownership.align_with_identity(db, user_id, group)
+    return result
+
+
+@router.post("/games/{game_id}/make-main", response_model=MainOut)
+async def make_main(game_id: UUID, db: Db, user: Owner):
+    """Show this copy as the group's main entry; nothing else about the group changes."""
+    result = await run_action(db, _make_main_and_align(db, user.id, game_id))
+    return MainOut(
+        main_id=result.main_id, previous_main_id=result.previous_main_id, changed=result.changed
+    )
+
+
+@router.post("/games/{game_id}/split", response_model=IdentityChange)
+async def split(game_id: UUID, body: SplitInput, db: Db, user: Owner):
+    """Take exactly this copy out of its group, leaving the other copies together."""
+    result = await run_action(db, _split_and_align(db, user.id, game_id, body))
+    return IdentityChange(
+        changed=True, decision=_out(result.decision), detached=sorted(result.detached)
+    )
 
 
 @router.post("/unmerge", response_model=IdentityChange)

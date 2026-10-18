@@ -11,10 +11,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.functions import count
 
 from src.api.schemas.delegation import (
+    DESKTOP_ORIGINS,
     SCOPE_DESCRIPTIONS,
     AccessDecision,
     AccessRequest,
     ClientWrite,
+    DesktopAccessRequest,
+    ExternalAccount,
 )
 from src.core.auth import hash_token
 from src.database.models.delegation import (
@@ -28,6 +31,25 @@ from src.database.models.user import User
 
 REQUEST_TTL_SECONDS = 600
 TOKEN_PREFIX = "utd_"
+WEB = "web"
+DESKTOP = "desktop"
+# First-party desktop apps the host knows by name. They have no web origin, so the
+# operator's origin approval does not apply; `allow_desktop_apps` governs them and
+# the user still approves every capability in their own browser.
+DESKTOP_APPS = {"playnite": "Unnamed Tracking for Playnite"}
+assert {f"{DESKTOP}:{app}" for app in DESKTOP_APPS} == DESKTOP_ORIGINS
+# Capabilities that change data, shown as writes on the consent page.
+WRITE_SCOPES = frozenset(
+    {scope for scope in SCOPE_DESCRIPTIONS if scope.endswith(".write")} | {"library.sync"}
+)
+
+
+def client_allowed(policy: IntegrationPolicy, client: IntegrationClient) -> bool:
+    if not client.enabled:
+        return False
+    if client.kind == DESKTOP:
+        return policy.allow_desktop_apps
+    return policy.enabled
 
 
 async def integration_policy(db: AsyncSession) -> IntegrationPolicy:
@@ -41,14 +63,48 @@ async def integration_policy(db: AsyncSession) -> IntegrationPolicy:
 
 async def enabled_client(db: AsyncSession, client_id: UUID) -> IntegrationClient:
     policy = await integration_policy(db)
-    client = await db.scalar(
-        select(IntegrationClient).where(
-            IntegrationClient.id == client_id, IntegrationClient.enabled.is_(True)
-        )
-    )
-    if not policy.enabled or client is None:
+    client = await db.scalar(select(IntegrationClient).where(IntegrationClient.id == client_id))
+    if client is None or not client_allowed(policy, client):
         raise HTTPException(403, "The instance owner has not enabled this integration.")
     return client
+
+
+async def desktop_client(db: AsyncSession, app: str) -> IntegrationClient:
+    """The client row of a known desktop app, created on first use.
+
+    An operator who disabled the row (Integration access → clients) keeps it disabled."""
+    if app not in DESKTOP_APPS:
+        raise HTTPException(404, "Unknown desktop app.")
+    policy = await integration_policy(db)
+    if not policy.allow_desktop_apps:
+        raise HTTPException(403, "The instance owner has turned off desktop app sign-in.")
+    origin = f"{DESKTOP}:{app}"
+    await db.execute(
+        insert(IntegrationClient)
+        .values(name=DESKTOP_APPS[app], origin=origin, enabled=True, kind=DESKTOP)
+        .on_conflict_do_nothing(index_elements=["origin"])
+    )
+    client = await db.scalar(select(IntegrationClient).where(IntegrationClient.origin == origin))
+    assert client is not None
+    if client.kind != DESKTOP or not client.enabled:
+        raise HTTPException(403, "The instance owner has disabled this desktop app.")
+    return client
+
+
+async def create_desktop_request(db: AsyncSession, app: str, payload: DesktopAccessRequest) -> dict:
+    """Start consent for a desktop app; the device is shown to the user as display context."""
+    client = await desktop_client(db, app)
+    return await create_request(
+        db,
+        AccessRequest(
+            client_id=client.id,
+            scopes=payload.scopes,
+            code_challenge=payload.code_challenge,
+            external_account=ExternalAccount(
+                provider=app, subject=payload.device_id, username=payload.device_name
+            ),
+        ),
+    )
 
 
 async def register_client(db: AsyncSession, payload: ClientWrite) -> dict:
@@ -151,6 +207,7 @@ async def request_summary(db: AsyncSession, request_id: UUID) -> dict:
         "id": str(row.id),
         "name": client.name,
         "origin": client.origin,
+        "kind": client.kind,
         "instance_id": str(policy.instance_id),
         "state": row.state,
         "expires_at": row.expires_at,
@@ -160,7 +217,7 @@ async def request_summary(db: AsyncSession, request_id: UUID) -> dict:
             {
                 "scope": scope,
                 "description": SCOPE_DESCRIPTIONS[scope],
-                "write": scope.endswith(".write"),
+                "write": scope in WRITE_SCOPES,
             }
             for scope in row.requested_scopes
         ],
@@ -245,7 +302,7 @@ async def authenticate_grant(db: AsyncSession, token: str) -> tuple[DelegatedGra
     policy = await integration_policy(db)
     result = (
         await db.execute(
-            select(DelegatedGrant, User)
+            select(DelegatedGrant, User, IntegrationClient)
             .join(User, User.id == DelegatedGrant.user_id)
             .join(IntegrationClient, IntegrationClient.id == DelegatedGrant.client_id)
             .where(
@@ -261,7 +318,7 @@ async def authenticate_grant(db: AsyncSession, token: str) -> tuple[DelegatedGra
             .execution_options(populate_existing=True)
         )
     ).first()
-    if not policy.enabled or result is None:
+    if result is None or not client_allowed(policy, result[2]):
         raise HTTPException(401, "The integration grant is expired, revoked or disabled.")
     return result[0], result[1]
 

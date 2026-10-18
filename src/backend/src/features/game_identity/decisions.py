@@ -14,10 +14,12 @@ from uuid import UUID
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.database.models.game import Game
 from src.database.models.game_identity import (
     DecisionActor,
     DecisionOutcome,
     DecisionSubject,
+    GameIdentity,
     GameIdentityDecision,
     GameRelationship,
     GameSourceObservation,
@@ -32,6 +34,7 @@ from src.features.game_identity.graph import (
     MergeGraph,
     lock_user_identities,
     merge_graph,
+    new_edge,
     now_seconds,
     require_games,
 )
@@ -652,3 +655,186 @@ async def list_decisions(
         statement = statement.where(GameIdentityDecision.outcome == outcome)
     ordered = statement.order_by(GameIdentityDecision.created_at.desc(), GameIdentityDecision.id)
     return list(await db.scalars(ordered.limit(limit)))
+
+
+@dataclass
+class MainResult:
+    main_id: UUID
+    previous_main_id: UUID
+    changed: bool
+
+
+async def _rebuild_star(
+    db: AsyncSession,
+    user_id: UUID,
+    graph: MergeGraph,
+    group: set[UUID],
+    main_id: UUID,
+    *,
+    origin: str,
+    stamp: int,
+) -> None:
+    """Attach every member of `group` directly to `main_id`.
+
+    Edges are ended, never deleted. Each copy keeps the display choice and the
+    decision that brought it into the group; the former main, which had no
+    edge, takes the decision the new main joined with."""
+    previous_root = graph.root(main_id)
+    joined_with = graph.edge.get(main_id)
+    for member in group:
+        edge = graph.edge.get(member)
+        if member == main_id or (edge is not None and graph.parent[member] == main_id):
+            continue
+        display = edge.display if edge is not None else "default"
+        decision_id = edge.decision_id if edge is not None else None
+        if member == previous_root and joined_with is not None:
+            decision_id = joined_with.decision_id
+        if edge is not None:
+            edge.ended_at = max(stamp, edge.created_at)
+        db.add(
+            new_edge(
+                user_id,
+                _SAME_GAME,
+                member,
+                main_id,
+                display=display,
+                origin=origin,
+                decision_id=decision_id,
+                now=stamp,
+            )
+        )
+    if joined_with is not None:
+        joined_with.ended_at = max(stamp, joined_with.created_at)
+    # End the old edges before the new ones exist: a game has one active target.
+    pending = [row for row in db.new if isinstance(row, GameRelationship)]
+    for row in pending:
+        db.expunge(row)
+    await db.flush()
+    db.add_all(pending)
+    await db.flush()
+
+
+async def _mark_primary(db: AsyncSession, user_id: UUID, group: set[UUID], main_id: UUID) -> None:
+    """Keep the umbrella's primary flag on the group's main copy."""
+    placements = list(
+        await db.scalars(
+            select(GameIdentity).where(
+                GameIdentity.user_id == user_id, GameIdentity.game_id.in_(group)
+            )
+        )
+    )
+    for row in placements:
+        row.is_primary = False
+    await db.flush()
+    for row in placements:
+        if row.game_id == main_id:
+            row.is_primary = True
+    await db.flush()
+
+
+async def make_main(
+    db: AsyncSession,
+    user_id: UUID,
+    game_id: UUID,
+    actor: Actor | None = None,
+    *,
+    now: int | None = None,
+) -> MainResult:
+    """Make one copy the main entry of its group (its title, cover and page).
+
+    Membership, observations, counters and adjustments do not change; only which
+    copy the others are attached to. Repeating it is a no-op."""
+    actor = actor or Actor()
+    _require_confirming(actor)
+    stamp = now_seconds() if now is None else now
+    await lock_user_identities(db, user_id)
+    await require_games(db, user_id, game_id)
+    graph = await merge_graph(db, user_id)
+    previous = graph.root(game_id)
+    group = graph.group(game_id)
+    flat = all(graph.parent.get(m) == game_id for m in group - {game_id})
+    if previous == game_id and flat:
+        return MainResult(game_id, previous, False)
+    await _rebuild_star(db, user_id, graph, group, game_id, origin=actor.origin, stamp=stamp)
+    await _mark_primary(db, user_id, group, game_id)
+    return MainResult(game_id, previous, previous != game_id)
+
+
+async def split_copy(
+    db: AsyncSession,
+    user_id: UUID,
+    game_id: UUID,
+    actor: Actor | None = None,
+    *,
+    keep_separate: bool = True,
+    now: int | None = None,
+) -> SplitResult:
+    """Take exactly one copy out of its group.
+
+    `unmerge_identity` detaches a game together with whatever was merged into
+    it. Users splitting one copy expect only that copy to leave, so the group is
+    first flattened around its main copy. Splitting the main copy promotes the
+    next copy (most playtime first) to main."""
+    actor = actor or Actor()
+    _require_confirming(actor)
+    stamp = now_seconds() if now is None else now
+    await lock_user_identities(db, user_id)
+    await require_games(db, user_id, game_id)
+    graph = await merge_graph(db, user_id)
+    group = graph.group(game_id)
+    if len(group) < 2:
+        raise IdentityConflict("This game is not merged into another game")
+    main_id = graph.root(game_id)
+    if main_id == game_id:
+        main_id = await choose_main(db, user_id, group - {game_id})
+    await _rebuild_star(db, user_id, graph, group, main_id, origin=actor.origin, stamp=stamp)
+    await _mark_primary(db, user_id, group, main_id)
+    return await unmerge_identity(
+        db, user_id, game_id, actor, keep_separate=keep_separate, now=stamp
+    )
+
+
+async def choose_main(db: AsyncSession, user_id: UUID, candidates: set[UUID]) -> UUID:
+    """The copy that best represents a group: furthest progressed, then most played.
+
+    Used when the user did not pick one, for example when a suggestion is
+    accepted. Ties fall back to the oldest record so the choice is stable."""
+    rows = (
+        (
+            await db.execute(
+                select(Game).where(
+                    Game.user_id == user_id, Game.id.in_(candidates), Game.deleted_at.is_(None)
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not rows:
+        raise LookupError("Game not found")
+    metrics = await counters.reconcile(db, user_id, rows[0].id)
+    playtime = {row.id: row.playtime_seconds for row in rows}
+    for view in metrics["metrics"]["playtime"]["counters"]:
+        if view["effective"] is not None and view["game_id"] in playtime:
+            playtime[view["game_id"]] = max(playtime[view["game_id"]], int(view["effective"]))
+    progress = {
+        "MASTERED": 6,
+        "BEATEN": 5,
+        "PLAYED": 4,
+        "PLAYING": 3,
+        "ON_HOLD": 2,
+        "DROPPED": 1,
+        "BACKLOG": 0,
+        "WISHLIST": -1,
+    }
+
+    def rank(row: Any) -> tuple[int, int, int, str]:
+        status = getattr(row.status, "value", row.status)
+        return (
+            -playtime.get(row.id, 0),
+            -progress.get(str(status), 0),
+            row.created_at or 0,
+            str(row.id),
+        )
+
+    return min(rows, key=rank).id

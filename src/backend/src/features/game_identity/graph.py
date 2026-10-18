@@ -184,6 +184,33 @@ async def would_cycle(
     return True
 
 
+def new_edge(
+    user_id: UUID,
+    kind: str,
+    from_id: UUID,
+    to_id: UUID,
+    *,
+    label: str = "",
+    display: str = "default",
+    origin: str,
+    decision_id: UUID | None,
+    now: int,
+) -> GameRelationship:
+    """An unsaved edge between two games; callers add it after their own checks."""
+    return GameRelationship(
+        user_id=user_id,
+        kind=kind,
+        label=label,
+        from_game_id=from_id,
+        to_game_id=to_id,
+        display=display,
+        origin=origin,
+        decision_id=decision_id,
+        created_at=now,
+        updated_at=now,
+    )
+
+
 async def add_relationship(
     db: AsyncSession,
     user_id: UUID,
@@ -215,17 +242,16 @@ async def add_relationship(
     if await would_cycle(db, user_id, kind, label, from_id=from_id, to_id=to_id):
         raise IdentityInvalid(f"A {kind} relationship cannot be circular")
     stamp = now_seconds() if now is None else now
-    relationship = GameRelationship(
-        user_id=user_id,
-        kind=kind,
+    relationship = new_edge(
+        user_id,
+        kind,
+        from_id,
+        to_id,
         label=label,
-        from_game_id=from_id,
-        to_game_id=to_id,
         display=display,
         origin=origin,
         decision_id=decision_id,
-        created_at=stamp,
-        updated_at=stamp,
+        now=stamp,
     )
     db.add(relationship)
     await db.flush()

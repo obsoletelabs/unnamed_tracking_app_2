@@ -9,6 +9,7 @@ else is queued for review or stays separate without a prompt.
 
 # pylint: disable=too-many-instance-attributes,too-many-branches
 
+import re
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
@@ -190,3 +191,97 @@ def assess(a: Candidate, b: Candidate) -> Assessment:
     if corroborated or shared:
         return Assessment("review", score, matched, missing=missing)
     return Assessment("low", score, matched, missing=missing)
+
+
+# --- another copy of the same game (#274) ----------------------------------------------------
+#
+# The rule above asks "are these the same copy?", so a different platform is a conflict.
+# Users also need "this is another copy (or edition) of a game I already have": a Steam and an
+# Android Stardew Valley, or The Witcher 3 and its Game of the Year Edition. Those are only ever
+# suggested, never merged automatically, and they compare titles with edition wording removed.
+# Remakes and remasters are different games (related with `remake_of`), so they are kept.
+
+COPY_RULE = "same-game-copy"
+COPY_RULE_VERSION = "1"
+COPY_CONFIDENCE = 0.6
+
+_COPY_EDITION_WORDS = frozenset(
+    {
+        "edition",
+        "version",
+        "goty",
+        "deluxe",
+        "definitive",
+        "complete",
+        "ultimate",
+        "gold",
+        "enhanced",
+        "anniversary",
+        "premium",
+        "legendary",
+        "collectors",
+        "directors",
+        "cut",
+        "standard",
+        "special",
+        "digital",
+    }
+)
+_KEEP_WORDS = frozenset({"remake", "remastered", "remaster", "hd", "reloaded"})
+_PLATFORM_SUFFIX = re.compile(
+    r"\s+for\s+(windows(\s+1[01])?|pc|mac|macos|linux|android|ios|iphone|ipad|"
+    r"(nintendo\s+)?switch|xbox(\s+(one|series\s+x\|?s?))?|playstation\s*\d?|ps\d)\s*$",
+    re.IGNORECASE,
+)
+_SEPARATOR = re.compile(r"\s*(?::|\s-\s|\s–\s|\s—\s)\s*")
+_PARENTHESES = re.compile(r"\s*[\(\[][^\)\]]*[\)\]]\s*$")
+
+
+def _edition_segment(segment: str) -> bool:
+    words = title_key(segment).replace("game of the year", "goty").split()
+    if not words or len(words) > 5 or _KEEP_WORDS & set(words):
+        return False
+    return bool(_COPY_EDITION_WORDS & set(words))
+
+
+def _strip_edition_words(text: str) -> str:
+    words = title_key(text).split()
+    while len(words) > 1 and words[-1] in _COPY_EDITION_WORDS and not _KEEP_WORDS & set(words):
+        words.pop()
+    return " ".join(words)
+
+
+def base_title_keys(title: str) -> frozenset[str]:
+    """What copies of one game share: the title without edition, platform or bracketed
+    suffixes. Two keys, because "Skyrim Special Edition" names the game inside its edition
+    segment while "Minecraft: Java Edition" does not; sharing either one is a suggestion."""
+    text = _PARENTHESES.sub("", _PLATFORM_SUFFIX.sub("", title.strip())).strip()
+    keys = {_strip_edition_words(text)}
+    parts = _SEPARATOR.split(text)
+    if len(parts) > 1 and _edition_segment(parts[-1]):
+        keys.add(_strip_edition_words(text[: text.rfind(parts[-1])].rstrip(" :-–—")))
+    return frozenset(key for key in keys if key)
+
+
+def assess_copy(a: Candidate, b: Candidate) -> Assessment | None:
+    """Evidence that two records are copies or editions of one game; None when they are not."""
+    if not base_title_keys(a.title) & base_title_keys(b.title):
+        return None
+    hard = {"grouped_copy", "relationship_type", "provider_id"}
+    if hard & set(_conflicts(a, b)):
+        return None
+    if a.release_date and b.release_date and abs(a.release_date.year - b.release_date.year) > 3:
+        return None  # a reboot sharing the name (DOOM 1993 and DOOM 2016), not a port
+    matched = ["base_title"]
+    if a.key == b.key:
+        matched.append("title")
+    differs = []
+    if _known_differ(a.platform, b.platform):
+        differs.append("platform")
+    if _known_differ((a.source or "").casefold(), (b.source or "").casefold()):
+        differs.append("store")
+    if a.edition != b.edition or a.key != b.key:
+        differs.append("edition")
+    if not differs:
+        return None  # identical-looking records are the same-copy rule's question
+    return Assessment("copy", COPY_CONFIDENCE, matched, conflicts=differs)

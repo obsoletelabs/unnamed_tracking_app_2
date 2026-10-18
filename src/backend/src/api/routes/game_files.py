@@ -2,7 +2,7 @@
 
 import time
 from pathlib import Path
-from typing import Literal, cast
+from typing import Annotated, Any, Literal, cast
 from uuid import UUID
 
 from fastapi import (
@@ -11,6 +11,7 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Query,
     UploadFile,
     status,
 )
@@ -25,9 +26,11 @@ from src.api.routes.utils.games import (
 )
 from src.core.app_integrations import get_upload_limits_mb
 from src.core.auth import get_current_user
+from src.database.models.game import Game
 from src.database.models.game_file_item import GameFileItem
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features.game_identity.copies import page_copies
 from src.features.trash.media_trash import move_media_file_to_trash, restore_media_file_from_trash
 from src.features.trash.sweep import RETENTION_SECONDS
 from src.helpers.media import (
@@ -109,6 +112,7 @@ def _game_file_to_dict(item: GameFileItem, game_id: UUID, game_dir: Path) -> dic
     path = game_dir / _game_file_subdir(cast(GameFileKind, item.kind)) / item.filename
     return {
         "id": str(item.id),
+        "game_id": str(game_id),
         "filename": item.filename,
         "original_filename": item.original_filename,
         "kind": item.kind,
@@ -206,30 +210,61 @@ async def upload_game_files(
 # pylint: enable=duplicate-code,too-many-locals,too-many-positional-arguments
 
 
+async def _owner_files(
+    db: AsyncSession, owner: Game, kind: GameFileKind, label: dict | None
+) -> list[dict]:
+    """One copy's live files of a kind, labelled with the copy on a grouped page."""
+    if not owner.folder_location:
+        return []
+    game_dir = _DATA_ROOT / str(owner.user_id) / "games" / owner.folder_location
+    await _sync_game_file_items(owner.id, game_dir, db)
+    result = await db.execute(
+        select(GameFileItem)
+        .where(
+            GameFileItem.game_id == owner.id,
+            GameFileItem.kind == kind,
+            GameFileItem.deleted_at.is_(None),
+        )
+        .order_by(GameFileItem.filename)
+    )
+    files = []
+    for item in result.scalars().all():
+        entry = _game_file_to_dict(item, owner.id, game_dir)
+        if label is not None:
+            entry["copy"] = label
+        files.append(entry)
+    return files
+
+
 @router.get("/{game_id}/files/{kind}")
 async def list_game_files(
     game_id: UUID,
     kind: GameFileKind,
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
+    group: Annotated[
+        bool, Query(description="Also list files of every copy on this game's page.")
+    ] = False,
 ) -> dict[str, list[dict]]:
     game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
-    if not game.folder_location:
-        return {"files": []}
-    game_dir = _DATA_ROOT / str(game.user_id) / "games" / game.folder_location
-    await _sync_game_file_items(game_id, game_dir, db)
-    result = await db.execute(
-        select(GameFileItem)
-        .where(
-            GameFileItem.game_id == game_id,
-            GameFileItem.kind == kind,
-            GameFileItem.deleted_at.is_(None),
-        )
-        .order_by(GameFileItem.filename)
-    )
-    response = {
-        "files": [_game_file_to_dict(item, game_id, game_dir) for item in result.scalars().all()]
-    }
+    copies = await page_copies(db, current_user.id, game_id) if group else []
+    owners = {game.id: game}
+    if group:
+        # Each copy keeps its files in its own folder (#274).
+        for row in await db.scalars(
+            select(Game).where(
+                Game.id.in_([c.game_id for c in copies if c.game_id != game_id]),
+                Game.user_id == current_user.id,
+            )
+        ):
+            owners[row.id] = row
+    labels = {c.game_id: c.as_dict() for c in copies}
+    files = []
+    for owner in owners.values():
+        files.extend(await _owner_files(db, owner, kind, labels.get(owner.id)))
+    if len(owners) > 1:
+        files.sort(key=lambda entry: (not entry["copy"]["is_main"], entry.get("filename", "")))
+    response = {"files": files}
     await db.commit()
     return response
 
@@ -288,12 +323,21 @@ async def list_game_file_trash(
     kind: GameFileKind,
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
+    group: Annotated[
+        bool,
+        Query(
+            description="Also list trashed items of every copy on this game's page, with their copy."
+        ),
+    ] = False,
 ) -> dict[str, list[dict]]:
     await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
+    copies = (
+        {c.game_id: c for c in await page_copies(db, current_user.id, game_id)} if group else {}
+    )
     result = await db.execute(
         select(GameFileItem)
         .where(
-            GameFileItem.game_id == game_id,
+            GameFileItem.game_id.in_(copies or {game_id}),
             GameFileItem.kind == kind,
             GameFileItem.deleted_at.is_not(None),
         )
@@ -302,15 +346,17 @@ async def list_game_file_trash(
     files = []
     for item in result.scalars().all():
         assert item.deleted_at is not None  # guaranteed by the deleted_at.is_not(None) filter above
-        files.append(
-            {
-                "id": str(item.id),
-                "filename": item.filename,
-                "original_filename": item.original_filename,
-                "deleted_at": item.deleted_at,
-                "purge_at": item.deleted_at + RETENTION_SECONDS,
-            }
-        )
+        entry: dict[str, Any] = {
+            "id": str(item.id),
+            "game_id": str(item.game_id),
+            "filename": item.filename,
+            "original_filename": item.original_filename,
+            "deleted_at": item.deleted_at,
+            "purge_at": item.deleted_at + RETENTION_SECONDS,
+        }
+        if group:
+            entry["copy"] = copies[item.game_id].as_dict()
+        files.append(entry)
     return {"files": files}
 
 

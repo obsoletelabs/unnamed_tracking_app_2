@@ -110,7 +110,8 @@ class Settings(BaseSettings):
     OIDC_USER_MATCH_FIELD: str = "email"
     OIDC_REQUIRE_VERIFIED_EMAIL: bool = False
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    # Blank values in .env (as shipped in example.env) fall back to defaults.
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", env_ignore_empty=True)
 
     @field_validator("PUBLIC_APP_URL")
     @classmethod

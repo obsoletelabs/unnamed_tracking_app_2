@@ -655,6 +655,8 @@ def foreign_calls(w):
         ("get", f"{base}/games/{g}", None),
         ("get", f"{base}/games/{g}/metrics", None),
         ("put", f"{base}/games/{g}/metrics/playtime", {"seconds": 1}),
+        ("post", f"{base}/games/{g}/make-main", None),
+        ("post", f"{base}/games/{g}/split", {"keep_separate": True}),
         ("get", f"{base}/games/{g}/overview", None),
         ("get", f"{base}/games/{g}/sources", None),
         ("get", f"{base}/games/{g}/tracking", None),

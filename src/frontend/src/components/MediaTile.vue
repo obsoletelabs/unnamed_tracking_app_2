@@ -6,6 +6,7 @@
 // a dialog instead of growing the card.
 import { ref, computed, onBeforeUnmount } from "vue";
 import MediaEditDialog from "./MediaEditDialog.vue";
+import GameCopyBadge from "./game/GameCopyBadge.vue";
 import { originalName } from "../utils/copyMedia";
 import { formatDuration, settleDuration } from "../utils/videoDuration";
 import { captureFrame } from "../utils/videoThumbnail";
@@ -356,6 +357,7 @@ function onThumbClick() {
         {{ item.game_title }}
       </p>
       <p class="title" :title="title">{{ title }}</p>
+      <GameCopyBadge :copy="item.copy" class="tile-copy" />
       <p v-if="item.title" class="file" :title="fileName">{{ fileName }}</p>
       <div class="meta">
         <span v-if="added" :title="dateHint">{{ added }}</span>
@@ -423,6 +425,9 @@ function onThumbClick() {
 </template>
 
 <style scoped>
+.tile-copy {
+  margin-top: 2px;
+}
 .tile {
   background: var(--ui-surface);
   border: 1px solid var(--ui-surface-2);

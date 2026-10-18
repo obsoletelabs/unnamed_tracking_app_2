@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
 from fastapi import (
@@ -16,6 +16,7 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Query,
     UploadFile,
     status,
 )
@@ -27,11 +28,12 @@ from sqlalchemy.orm import selectinload
 
 from src.api.routes.utils.games import _DATA_ROOT, _get_game_or_404
 from src.core.app_integrations import get_upload_limits_mb
-from src.core.auth import get_current_user
+from src.core.auth import app_grant, get_current_user
 from src.database.models.game_archive import GameArchive, GameArchiveVersion
 from src.database.models.user import User
 from src.database.session import get_db
 from src.features import game_notes
+from src.features.game_identity.copies import page_copies
 from src.features.trash import archive_trash
 from src.features.trash.sweep import RETENTION_SECONDS
 from src.helpers.media import UploadTooLargeError, save_upload_stream
@@ -135,6 +137,7 @@ def _archive_to_dict(
     )
     return {
         "id": str(archive.id),
+        "game_id": str(game_id),
         "name": archive.name,
         "note": archive.note,
         "tags": archive.tags,
@@ -161,26 +164,45 @@ class RenameArchiveRequest(BaseModel):
 
 
 @router.get("/{game_id}/archives/{kind}")
+@app_grant("saves.read")
 async def list_archives(
     game_id: UUID,
     kind: ArchiveKind,
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
+    group: Annotated[
+        bool,
+        Query(
+            description="Include archives of every copy shown on this game's page, each with its copy."
+        ),
+    ] = False,
 ) -> list[dict]:
-    """List active archives of the requested kind for a game."""
+    """List active archives of the requested kind for a game.
+
+    Each archive stays attached to the copy it was uploaded to; `group=true` lists
+    the archives of the main copy and every copy merged into it (#274)."""
     await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
+    copies = (
+        {c.game_id: c for c in await page_copies(db, current_user.id, game_id)} if group else {}
+    )
     result = await db.execute(
         select(GameArchive)
         .options(selectinload(GameArchive.versions))
         .where(
-            GameArchive.game_id == game_id,
+            GameArchive.game_id.in_(copies or {game_id}),
             GameArchive.kind == kind,
             GameArchive.deleted_at.is_(None),
         )
         .order_by(GameArchive.updated_at.desc())
     )
     archives = result.scalars().all()
-    return [_archive_to_dict(game_id, a) for a in archives]
+    listed = []
+    for archive in archives:
+        entry = _archive_to_dict(archive.game_id, archive)
+        if group:
+            entry["copy"] = copies[archive.game_id].as_dict()
+        listed.append(entry)
+    return listed
 
 
 @router.get("/{game_id}/archives/{kind}/trash")
@@ -189,26 +211,43 @@ async def list_archive_trash(
     kind: ArchiveKind,
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
+    group: Annotated[
+        bool,
+        Query(
+            description="Also list trashed items of every copy on this game's page, with their copy."
+        ),
+    ] = False,
 ) -> list[dict]:
     """Soft-deleted archives of this kind, newest-deleted first — each still
     restorable until its purge_at passes (see features/trash/sweep.py)."""
     await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
+    copies = (
+        {c.game_id: c for c in await page_copies(db, current_user.id, game_id)} if group else {}
+    )
     result = await db.execute(
         select(GameArchive)
         .options(selectinload(GameArchive.versions))
         .where(
-            GameArchive.game_id == game_id,
+            GameArchive.game_id.in_(copies or {game_id}),
             GameArchive.kind == kind,
             GameArchive.deleted_at.is_not(None),
         )
         .order_by(GameArchive.deleted_at.desc())
     )
-    return [_trash_entry(game_id, a) for a in result.scalars().all()]
+    entries = []
+    for archive in result.scalars().all():
+        entry = _trash_entry(archive.game_id, archive)
+        entry["game_id"] = str(archive.game_id)
+        if group:
+            entry["copy"] = copies[archive.game_id].as_dict()
+        entries.append(entry)
+    return entries
 
 
 # Keep the established workflow and public parameters together.
 # pylint: disable=too-many-positional-arguments
 @router.post("/{game_id}/archives/{kind}")
+@app_grant("saves.write")
 async def create_archive(
     game_id: UUID,
     kind: ArchiveKind,
@@ -262,6 +301,7 @@ async def create_archive(
 # Parallel routes/models intentionally share this shape.
 # pylint: disable=duplicate-code
 @router.post("/{game_id}/archives/{archive_id}/versions")
+@app_grant("saves.write")
 async def add_archive_version(
     game_id: UUID,
     archive_id: UUID,
@@ -312,6 +352,7 @@ async def add_archive_version(
 
 
 @router.patch("/{game_id}/archives/{archive_id}")
+@app_grant("saves.write")
 async def rename_archive(
     game_id: UUID,
     archive_id: UUID,
@@ -473,6 +514,7 @@ async def restore_archive_version(
 @router.get(
     "/{game_id}/archives/{archive_id}/versions/{version_id}/download", response_class=FileResponse
 )
+@app_grant("saves.read")
 async def download_archive_version(
     game_id: UUID,
     archive_id: UUID,

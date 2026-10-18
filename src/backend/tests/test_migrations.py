@@ -465,3 +465,55 @@ def test_integration_adoption_preserves_ongoing_grants_sources_and_saved_details
                 transaction.rollback()
     finally:
         engine.dispose()
+
+
+def test_known_version_with_skipped_migrations_replays_the_history(monkeypatch):
+    """#272: a version stamped by a differently parented build skipped ancestors."""
+    calls = []
+    monkeypatch.setattr(
+        migrate,
+        "missing_from_database",
+        lambda _engine: (
+            calls.append("check")
+            or (["column job_settings.paused"] if calls.count("check") == 1 else [])
+        ),
+    )
+    monkeypatch.setattr(
+        migrate.command, "stamp", lambda _cfg, rev, purge: calls.append(f"stamp {rev}")
+    )
+    monkeypatch.setattr(
+        migrate.command, "upgrade", lambda _cfg, rev: calls.append(f"upgrade {rev}")
+    )
+
+    migrate._repair_skipped_migrations(object(), "base-rev", object())
+
+    assert calls == ["check", "stamp base-rev", "upgrade head", "check"]
+
+
+def test_known_version_with_complete_schema_is_left_alone(monkeypatch):
+    calls = []
+    monkeypatch.setattr(migrate, "missing_from_database", lambda _engine: [])
+    monkeypatch.setattr(migrate.command, "stamp", lambda *_args, **_kw: calls.append("stamp"))
+
+    migrate._repair_skipped_migrations(object(), "base-rev", object())
+
+    assert not calls
+
+
+def test_schema_check_registers_models_without_importing_the_application():
+    """The production smoke test replaces src.main with a crashing module; the
+    migration step must still succeed so the failure is reported as the backend's."""
+    import subprocess
+    import sys
+
+    code = (
+        "import sys; sys.modules['src.main'] = None\n"
+        "from src.database import migrate\n"
+        "from src.database.base import Base\n"
+        "migrate._register_models()\n"
+        "assert {'games', 'job_settings', 'game_identities'} <= set(Base.metadata.tables)\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=False
+    )
+    assert result.returncode == 0, result.stderr

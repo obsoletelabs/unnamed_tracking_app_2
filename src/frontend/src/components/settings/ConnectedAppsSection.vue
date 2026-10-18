@@ -64,13 +64,19 @@ onMounted(load);
     <p v-if="loading" role="status">Loading connected apps…</p>
     <p v-if="error" role="alert">{{ error }}</p>
     <p v-if="!loading && !grants.length">
-      No integrations have access to your account. You can approve one when
-      connecting from an Activity.
+      No apps or integrations have access to your account. You can approve one
+      when connecting from Playnite or an Activity.
     </p>
     <article v-for="grant in grants" :key="grant.id" class="grant">
       <h3>{{ grant.name }}</h3>
-      <p class="origin">{{ grant.origin }}</p>
-      <p v-if="grant.external_account">
+      <p v-if="grant.kind === 'desktop'" class="origin">
+        Desktop app<template v-if="grant.external_account">
+          on {{ grant.external_account.username }}</template
+        >
+      </p>
+      <p v-else class="origin">{{ grant.origin }}</p>
+      <template v-if="grant.kind === 'desktop'" />
+      <p v-else-if="grant.external_account">
         <strong>Linked account: {{ grant.external_account.username }}</strong
         ><br />Account ID: {{ grant.external_account.subject }} · Reported by
         {{ grant.name }}.

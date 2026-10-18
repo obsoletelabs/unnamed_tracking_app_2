@@ -93,7 +93,7 @@ describe("integration consent", () => {
   it("denies without approving any selected scope", async () => {
     const wrapper = render();
     await flushPromises();
-    await wrapper.get("button.secondary").trigger("click");
+    await wrapper.get("button.ui-btn-secondary").trigger("click");
     await flushPromises();
     expect(decideAccessRequest).toHaveBeenCalledWith(
       "request-1",
@@ -101,5 +101,46 @@ describe("integration consent", () => {
       [],
       24,
     );
+  });
+
+  it("names a desktop app and its device, and asks for what it needs to sync", async () => {
+    vi.mocked(fetchAccessRequest).mockResolvedValue({
+      id: "request-1",
+      name: "Unnamed Tracking for Playnite",
+      origin: "desktop:playnite",
+      kind: "desktop",
+      instance_id: "instance-1",
+      state: "pending",
+      expires_at: 2000000000,
+      maximum_grant_hours: 336,
+      external_account: {
+        provider: "playnite",
+        subject: "playnite-1234",
+        username: "Gaming PC",
+      },
+      capabilities: [
+        {
+          scope: "library.sync",
+          description: "Sync your library",
+          write: true,
+        },
+        { scope: "saves.read", description: "Download saves", write: false },
+      ],
+    });
+    vi.mocked(decideAccessRequest).mockResolvedValue({ state: "approved" });
+    const wrapper = render();
+    await flushPromises();
+    expect(wrapper.text()).toContain("Connect Playnite");
+    expect(wrapper.text()).toContain("Desktop app on Gaming PC");
+    expect(wrapper.text()).not.toContain("desktop:playnite");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+    expect(decideAccessRequest).toHaveBeenCalledWith(
+      "request-1",
+      true,
+      ["library.sync", "saves.read"],
+      null,
+    );
+    expect(wrapper.text()).toContain("return to Playnite");
   });
 });

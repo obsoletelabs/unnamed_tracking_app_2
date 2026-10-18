@@ -22,8 +22,9 @@ Notes, ratings and manual status retain the provider import's existing protectio
 
 **Add game** in the library opens Quick Add: search the existing metadata providers
 or enter a title, choose a status and platform, then save. Metadata results retain
-their provider identities, including optional plugin providers. Duplicate and
-owned-copy review remains a separate confirmation step.
+their provider identities, including optional plugin providers. Grouping copies
+of a game remains a separate confirmation step (see
+[one game, several copies](#one-game-several-copies)).
 
 Selecting a result opens **Look up metadata**. Review current/offered values,
 check the changes you want and **Apply** them to the form before saving. Populated
@@ -106,7 +107,7 @@ Open **Filters** to exclude statuses, tags/genres or platform families. Status
 and platform exclusions are **Not …** chips. Tags and genres use the searchable
 picker described below, in **Exclude** mode. Exclusions take precedence; a game
 matching both an include and an exclusion stays hidden. Platform exclusions also
-check owned copies, such as PS4 and PS5 within PlayStation.
+check a game's other copies, such as PS4 and PS5 within PlayStation.
 
 Each exclusion has a removable chip. **Clear advanced filters** and
 **Clear all** remove exclusions too. Saved presets and shared filter links retain
@@ -131,40 +132,73 @@ Finished games with an empty **Where I left off** note show a compact add-note a
 instead of an empty note block. Written notes remain visible. Keyboard activation
 opens and focuses the note editor.
 
-## Possible duplicates
+## One game, several copies
 
-Open **Settings > Library > Duplicates** to compare possible duplicate games across manual entries, Steam, other stores and plugin imports. Suggestions use matching titles or shared provider identities, so a manually renamed game can still be found. Known conflicting years, platforms and provider identities are excluded. Compare each entry's source, release, status, playtime and identities; open its title to inspect notes and files. **Keep both** remembers your decision across future checks and import reruns. Nothing is merged or deleted automatically. **Check again** refreshes the review and shows additional pairs after decisions.
+You might own a game more than once: Hades on Steam and Switch, Stardew Valley on
+Steam and Android, Minecraft as Java Edition and for Windows, or The Witcher 3 and
+its Game of the Year Edition. Group them and the library shows **one game** whose
+card names its copies ("2 copies · Steam, Epic"). Opening it shows everything from
+**every copy**: saves, screenshots, clips, soundtrack, docs, playtime, completion and
+achievements. Items from another copy carry a small label such as
+*Steam · PC (Windows)*.
 
-![Duplicate comparison on a phone](../assets/game-duplicates/duplicates-390.png)
+![Library cards name their copies](../assets/game-identity-hub/after-library.jpg)
 
-## Owned copies
+Each copy stays its own record. Its saves, notes, files, status, achievements and
+import identity stay attached to it, so Steam, Playnite and plugin imports keep
+updating the right copy. Editing, deleting or restoring an item from the game page
+changes the copy that owns it. Playtime is reconciled, not blindly summed: copies
+that report the same counter are counted once.
 
-Choose **Group owned copies** in duplicate review, select the main entry, then
-confirm. The library and home shelves show one main game by default. Source,
-platform and title filters can find it through its copies; its overall status and
-favorite flag come from the main entry. Library cards and lists link current
-duplicate-review candidates to the review until you group them or keep both.
-Suggestions are bounded; additional candidates appear as earlier ones are reviewed.
+### Copies & versions
 
-The main game's **Owned copies** section lists each store/platform and reported
-playtime. Use the main entry for overall status and notes. Open a copy for its own
-progress, achievements, notes and files. **Add owned copy** can group existing
-entries even when their titles or platforms differ. **Separate** returns a copy
-to the library as its own entry without recreating it. DLC and mods remain in
-**Variants**.
+The **Overview** tab starts with **Copies & versions**: the game-wide playtime, last
+played, completion and achievements, then one row per copy, named by edition, store
+and platform, with its own figures.
 
-Each copy keeps its game ID, import identity, status, notes, protected fields,
-achievements and files. Imports continue updating the original copy. Grouping
-never automatically overwrites fields or relocates files. Reported playtime is
-shown per copy and summed in this section; provider overlap is not deduplicated.
-Statistics continue to describe the original tracked records. If the main game
-is in Trash, its active copies become visible individually; restoring it restores
-the grouped presentation.
+![Copies & versions on a game page](../assets/game-identity-hub/after-copies-panel.jpg)
 
-The [phone grouping dialog](../assets/game-ownership/ownership-confirm-390.png)
-and [desktop owned-copy summary](../assets/game-ownership/ownership-main-1440.png)
-show this workflow. [Responsive validation](../assets/game-ownership/conformance.json)
-uses disposable game records and real grouping/separation APIs.
+| Action | What it does |
+| --- | --- |
+| **Add a copy** | Pick another library entry to group here. Suggestions come first; each choice shows its store, platform and playtime. Optionally make it the main copy. |
+| **Make main** | That copy's title, cover and details lead, and the page moves to it. Nothing else changes. |
+| **List separately** / **Show together** | Keep a copy (Minecraft Bedrock, for example) as its own library card while it stays part of the game. A copy listed separately keeps its content on its own page. |
+| **Remove** | Exactly that copy becomes its own game again, with everything it holds. It is not suggested for this game again. Removing the main copy makes the most played remaining copy main. |
+| **Open** | Opens that copy's own page, which shows only its own content and links back to the game. |
+| **Advanced** | Where each value comes from (sources), past decisions and shared counters. You never need it for ordinary use. |
+
+When a group is formed without you choosing, the copy that is furthest along and
+most played becomes main, never simply whichever record was found first.
+
+![Add a copy](../assets/game-identity-hub/after-add-copy.jpg)
+
+### Suggestions
+
+Open **Settings > Library > Duplicates** to review suggestions. Each one names both
+records with their store, platform, playtime and status:
+
+- **Another copy of X?** The same game on another platform, store or edition (Hades
+  on Steam and Switch, The Witcher 3 and its GOTY edition). Choose which copy is main
+  (the most played is preselected), then **Group as copies**.
+- **Possible duplicate**: two records that look like the same copy, for example the
+  same store game imported twice. **Merge** them.
+
+**Keep separate** is remembered across checks and imports. Sequels, remakes,
+remasters and same-name games more than three years apart are not suggested.
+Suggestions are never applied automatically, nothing is deleted, and each pair of
+games is asked about once. **Check again** looks for new suggestions.
+
+![The review queue](../assets/game-identity-hub/after-review-queue.jpg)
+
+DLC, mods, remakes and series are **related games**, not copies: they link to each
+other but never merge playtime or achievements. They remain under **Variants** and
+in the Advanced tools.
+
+Filters and search match every copy of a game, so platform filters such as
+PlayStation find a game through its PS4 or PS5 copy. If the main copy is in Trash,
+the other copies appear individually until it is restored. Grouping from older
+versions (**Owned copies**) is part of the same model: existing groups keep working
+and appear under Copies & versions.
 
 ## Steam imports
 

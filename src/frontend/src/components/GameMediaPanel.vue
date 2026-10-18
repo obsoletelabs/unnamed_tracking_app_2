@@ -772,7 +772,7 @@ onBeforeUnmount(() => {
             :item="item"
             :reader-url="
               kind === 'doc' && gameId
-                ? documentReaderUrl(gameId, item)
+                ? documentReaderUrl(item.game_id ?? gameId, item)
                 : undefined
             "
             :selecting="selecting"

@@ -41,8 +41,7 @@ const {
   computeScore,
   games,
   libraryEntries,
-  ownedCopyCount,
-  versionsOf,
+  copySummary,
   nestedUnder,
   searchContext,
   possibleDuplicateIds,
@@ -720,8 +719,7 @@ function nestedLabel(game: Game): string | null {
               v-for="(game, colIndex) in cardsInRow(virtualRow.index)"
               :key="game.id"
               :game="game"
-              :owned-copy-count="ownedCopyCount(game)"
-              :version-count="versionsOf(game).length"
+              :copy-summary="copySummary(game)"
               :version-context="contextFor(game)"
               :nested-label="nestedLabel(game)"
               :possible-duplicate="possibleDuplicateIds.has(game.id)"
@@ -814,14 +812,11 @@ function nestedLabel(game: Game): string | null {
               <div v-if="contextFor(game)" class="list-sub">
                 {{ contextFor(game)?.label }}
               </div>
-              <div v-else-if="versionsOf(game).length > 1" class="list-sub">
-                {{ versionsOf(game).length }} versions
+              <div v-else-if="copySummary(game)" class="list-sub">
+                {{ copySummary(game) }}
               </div>
               <div v-if="nestedLabel(game)" class="list-sub">
                 {{ nestedLabel(game) }}
-              </div>
-              <div v-if="ownedCopyCount(game) > 1" class="list-sub">
-                {{ ownedCopyCount(game) }} owned copies
               </div>
               <div class="list-sub">
                 {{ game.tags[0] ?? "No genre"

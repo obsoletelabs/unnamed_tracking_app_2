@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { copyName } from "../../utils/gameCopies";
 import {
   createManualAchievement,
   fetchAchievementTotals,
@@ -180,7 +181,7 @@ const several = computed(() => (totals.value?.versions.length ?? 0) > 1);
             v.title
           }}</RouterLink>
           <strong v-else>{{ v.title }}</strong>
-          <span class="hint">{{ v.platform || "Unspecified platform" }}</span>
+          <span class="hint">{{ copyName(v) }}</span>
         </div>
         <label class="status">
           <span class="sr-only">Status of {{ v.title }}</span>
@@ -238,7 +239,7 @@ const several = computed(() => (totals.value?.versions.length ?? 0) > 1);
     <ul v-if="several" class="versions" aria-label="Achievements per version">
       <li v-for="v in totals.versions" :key="v.gameId">
         <span class="name"
-          >{{ v.title }}<span class="hint">{{ v.platform || "" }}</span></span
+          >{{ v.title }}<span class="hint">{{ copyName(v) }}</span></span
         >
         <span
           >{{ v.unlocked }} of {{ v.total }} earned ({{

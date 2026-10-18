@@ -74,8 +74,8 @@ onBeforeUnmount(() => request.abort());
 
 <template>
   <UiModal
-    :title="`Manage identity: ${title}`"
-    description="Where this game's versions and values come from. You never need this for ordinary browsing."
+    :title="`Advanced identity tools: ${title}`"
+    description="Where each copy's values come from, past decisions and shared counters. Everyday changes are on the game page under Copies & versions."
     size="wide"
     @close="close"
   >

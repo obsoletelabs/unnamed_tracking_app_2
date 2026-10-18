@@ -24,6 +24,9 @@ start. New migrations should still be written to be safe to run twice
 
 from __future__ import annotations
 
+import importlib
+import logging
+import pkgutil
 import sys
 import time
 from dataclasses import dataclass
@@ -64,15 +67,32 @@ def decide(current: set[str], known: set[str], has_tables: bool) -> Plan:
     return Plan("upgrade", "recorded version is in the history")
 
 
+def _register_models() -> None:
+    from src.database import models  # pylint: disable=import-outside-toplevel
+
+    for module in pkgutil.walk_packages(models.__path__, models.__name__ + "."):
+        importlib.import_module(module.name)
+
+
 def missing_from_database(engine: Engine) -> list[str]:
     """What the models need that the database does not have: whole tables
     and columns. Extra things in the database (an old index, a spare
     column) are harmless and ignored."""
-    # Register application models only when comparing a live database's schema.
-    import src.main  # noqa: F401  # pylint: disable=import-outside-toplevel,unused-import
+    # Register every model without importing the application: a broken app module
+    # must fail at backend start, not be reported as a migration failure.
+    _register_models()
 
-    with engine.connect() as conn:
-        diff = compare_metadata(MigrationContext.configure(conn), Base.metadata)
+    # Extra tables and indexes are expected here; keep the per-start check quiet.
+    quiet = [logging.getLogger(name) for name in ("alembic.autogenerate", "alembic.ddl")]
+    levels = [logger.level for logger in quiet]
+    for logger in quiet:
+        logger.setLevel(logging.WARNING)
+    try:
+        with engine.connect() as conn:
+            diff = compare_metadata(MigrationContext.configure(conn), Base.metadata)
+    finally:
+        for logger, level in zip(quiet, levels, strict=True):
+            logger.setLevel(level)
     problems: list[str] = []
     for entry in diff:
         ops = entry if isinstance(entry, list) else [entry]
@@ -110,6 +130,46 @@ def _wait_for_database(engine: Engine) -> None:
             time.sleep(2)
 
 
+def _reattach(cfg: Config, base: str, engine: Engine) -> None:
+    """Attach the database to the starting migration and replay every newer one.
+
+    The migrations after the starting one are written to be safe on a database that
+    already has part of what they add, so attach first and check afterwards: checking
+    the models first would refuse every database that predates a migration this
+    version ships."""
+    print(f"Attaching the database to migration {base}. Its data is untouched.", flush=True)
+    command.stamp(cfg, base, purge=True)
+    command.upgrade(cfg, "head")
+    problems = missing_from_database(engine)
+    if problems:
+        command.stamp(cfg, "base", purge=True)  # not attached: check again next start
+        raise SystemExit(
+            "This database was made by an older version and is missing what this version needs, "
+            "and no migration creates it: "
+            + ", ".join(problems)
+            + ". Start the previous version once so it can finish its own updates, then update again."
+        )
+
+
+def _repair_skipped_migrations(cfg: Config, base: str, engine: Engine) -> None:
+    """Replay the history when a recorded version claims migrations that never ran.
+
+    A database stamped by an image whose history placed a revision on a different
+    parent (for example a pre-merge branch build) records a version that main also
+    knows, so Alembic believes every ancestor already ran. Checking the schema after
+    the normal upgrade catches the columns and tables those skipped ancestors add."""
+    problems = missing_from_database(engine)
+    if not problems:
+        return
+    print(
+        "The recorded database version is known, but "
+        + ", ".join(problems)
+        + " is missing, so earlier migrations were skipped. Replaying the migration history.",
+        flush=True,
+    )
+    _reattach(cfg, base, engine)
+
+
 def main() -> None:
     cfg = Config("alembic.ini")
     script = ScriptDirectory.from_config(cfg)
@@ -142,28 +202,11 @@ def main() -> None:
             print(f"Database: {plan.action} ({plan.reason})", flush=True)
 
             if plan.action == "adopt":
-                # the migrations after the starting one are written to be safe on a
-                # database that already has part of what they add, so attach first
-                # and check afterwards: checking the models first would refuse every
-                # database that predates a migration this version ships
-                base = bases[0]
-                print(
-                    f"Attaching the database to migration {base}. Its data is untouched.",
-                    flush=True,
-                )
-                command.stamp(cfg, base, purge=True)
-                command.upgrade(cfg, "head")
-                problems = missing_from_database(engine)
-                if problems:
-                    command.stamp(cfg, "base", purge=True)  # not attached: check again next start
-                    raise SystemExit(
-                        "This database was made by an older version and is missing what this version needs, "
-                        "and no migration creates it: "
-                        + ", ".join(problems)
-                        + ". Start the previous version once so it can finish its own updates, then update again."
-                    )
+                _reattach(cfg, bases[0], engine)
             else:
                 command.upgrade(cfg, "head")
+                if plan.action == "upgrade":
+                    _repair_skipped_migrations(cfg, bases[0], engine)
         finally:
             lock_conn.execute(text("SELECT pg_advisory_unlock(:id)"), {"id": _LOCK_ID})
             lock_conn.commit()
