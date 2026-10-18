@@ -365,7 +365,7 @@ function toggleOpen(n: MediaNotification) {
       </div>
       <p v-if="policy" class="retention-note" data-testid="retention-note">
         {{ retentionSummary(policy) }}
-        <RouterLink to="/settings?section=notifications"
+        <RouterLink to="/settings?section=notifications&tab=history"
           >Change retention</RouterLink
         >
       </p>

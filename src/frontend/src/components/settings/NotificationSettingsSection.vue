@@ -4,6 +4,7 @@
 // change saves as soon as it is made.
 import { ref, computed, onMounted } from "vue";
 import SegmentedControl from "./SegmentedControl.vue";
+import SettingsTabs from "./SettingsTabs.vue";
 import NotificationRoutingSection from "./NotificationRoutingSection.vue";
 import NotificationTimingSection from "./NotificationTimingSection.vue";
 import NotificationDeliveryHistory from "./NotificationDeliveryHistory.vue";
@@ -15,7 +16,13 @@ import {
 import type { Preferences } from "../../services/preferences";
 import { preferences as sharedPreferences } from "../../state/preferences";
 import { fetchInboxRetentionPolicy } from "../../services/notifications";
+import { NOTIFICATION_SETTINGS_TABS as TABS } from "../../state/settingsRegistry";
 import type { InboxRetentionPolicy } from "../../services/notifications";
+
+const props = defineProps<{ initialTab?: string }>();
+const tab = ref(
+  TABS.some((t) => t.id === props.initialTab) ? props.initialTab! : "providers",
+);
 
 const prefs = ref<Preferences>({ ...DEFAULT_PREFERENCES });
 const loaded = ref(false);
@@ -103,56 +110,62 @@ function chooseRetention(value: string) {
     </p>
     <p v-if="error" class="error" role="alert">{{ error }}</p>
 
+    <SettingsTabs v-model="tab" :tabs="TABS" />
     <NotificationRoutingSection
+      v-if="tab === 'providers' || tab === 'types'"
+      :part="tab === 'types' ? 'types' : 'providers'"
       :prefs="prefs"
       :loaded="loaded"
       @change="change"
     />
     <NotificationTimingSection
+      v-else-if="tab === 'timing'"
       :prefs="prefs"
       :loaded="loaded"
       @change="change"
     />
-    <NotificationDeliveryHistory />
-    <h3>Inbox history</h3>
+    <template v-else>
+      <NotificationDeliveryHistory />
+      <h3>Inbox history</h3>
 
-    <p class="section-hint">
-      Keep your delivered notices in the notification centre. The bell shows
-      unread notices on every page.
-    </p>
-    <div class="field">
-      <span>Keep inbox history</span>
-      <SegmentedControl
-        :model-value="
-          prefs.notification_retention_inherit
-            ? 'inherit'
-            : String(prefs.notification_retention_days)
-        "
-        :options="retentionOptions"
-        @update:model-value="chooseRetention"
-      />
-    </div>
-    <p v-if="retention" class="section-hint" role="status">
-      Your inbox keeps
-      {{
-        retention.effective_days
-          ? `${retention.effective_days} days`
-          : "unlimited"
-      }}
-      of history. Server default: {{ retention.default_days || "unlimited"
-      }}{{ retention.default_days ? " days" : "" }}.<template
-        v-if="retention.maximum_days"
-      >
-        Server maximum: {{ retention.maximum_days }} days.</template
-      ><strong v-if="retention.limited">
-        Your saved choice is limited by the server maximum; it has not been
-        overwritten.</strong
-      >
-    </p>
-    <p class="section-hint">
-      Dismiss hides a notice from the inbox. Delete also cancels unsent
-      deliveries. Browser notifications are separate from this saved history.
-    </p>
+      <p class="section-hint">
+        Keep your delivered notices in the notification centre. The bell shows
+        unread notices on every page.
+      </p>
+      <div class="field">
+        <span>Keep inbox history</span>
+        <SegmentedControl
+          :model-value="
+            prefs.notification_retention_inherit
+              ? 'inherit'
+              : String(prefs.notification_retention_days)
+          "
+          :options="retentionOptions"
+          @update:model-value="chooseRetention"
+        />
+      </div>
+      <p v-if="retention" class="section-hint" role="status">
+        Your inbox keeps
+        {{
+          retention.effective_days
+            ? `${retention.effective_days} days`
+            : "unlimited"
+        }}
+        of history. Server default: {{ retention.default_days || "unlimited"
+        }}{{ retention.default_days ? " days" : "" }}.<template
+          v-if="retention.maximum_days"
+        >
+          Server maximum: {{ retention.maximum_days }} days.</template
+        ><strong v-if="retention.limited">
+          Your saved choice is limited by the server maximum; it has not been
+          overwritten.</strong
+        >
+      </p>
+      <p class="section-hint">
+        Dismiss hides a notice from the inbox. Delete also cancels unsent
+        deliveries. Browser notifications are separate from this saved history.
+      </p>
+    </template>
   </section>
 </template>
 

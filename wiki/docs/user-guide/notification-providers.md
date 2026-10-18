@@ -2,11 +2,11 @@
 
 The authenticated in-app inbox and external deliveries are separate destinations. Marking a notification read or dismissing it changes the inbox; it does not cancel external work. Deleting it cancels unsent work and removes its stored content. A delivery already in progress may finish.
 
-External providers are optional. Plugin providers also need an active installation and permission grant. **Settings → Account → Notifications** starts with your configured providers and personal destinations, followed by notification types and Normal/Critical routing choices. Calendar settings are separate. Only implemented sources appear; price observation controls appear after a connected source emits an observation for your account.
+External providers are optional. Plugin providers also need an active installation and permission grant. **Settings → Account → Notifications** opens on the **Providers** tab with your configured providers and personal destinations; notification types and Normal/Critical routing choices are on the **Notification types** tab, with **Timing & quiet hours** and **History** on their own tabs. Calendar settings are separate. Only implemented sources appear; price observation controls appear after a connected source emits an observation for your account.
 
 ## Built-in email
 
-Administrators configure SMTP under **Settings → Administration → Notifications → Email delivery** or through the existing ENV handler. SMTP is built into the host. Password reset and invitation features remain plugins; adding SMTP does not install those features.
+Administrators configure SMTP under **Settings → Administration → Notifications → Email (SMTP)** or through the existing ENV handler. SMTP is built into the host. Password reset and invitation features remain plugins; adding SMTP does not install those features.
 
 | ENV name | Meaning |
 | --- | --- |
@@ -87,7 +87,7 @@ HTTPS subscription links also advertise `List-Unsubscribe-Post: List-Unsubscribe
 The maintained companion plugin **Discord Notifications** (`official.discord-notifications`)
 declares its configuration and delivery actions through the generic plugin API.
 Install its current compatible catalogue release and approve its provider/storage/network
-permissions, then add webhooks under **Account → Notifications → Your providers → Discord**.
+permissions, then add webhooks under **Account → Notifications → Providers → Discord**.
 The plugin owns webhook secrets and transport; the core routes and minimizes content
 before handing it over. Settings never return the saved token. Multiple PUBLIC
 webhooks have independent preferences and explicit media disclosure consent.
@@ -95,7 +95,7 @@ Use **Send test notification** to queue a generic example. Forum threads are not
 
 The separate **Discord Bot Notifications** plugin supports PRIVATE username DMs before
 verification and PUBLIC destinations addressed by allowed channel ID. Administrators
-configure its generic server fields in **Administration → Notifications** and allow
+configure its generic server fields in **Administration → Notifications → Plugin providers** and allow
 text/announcement channels in its Discord settings directory. Users can select a
 default allowed channel in Discord account settings, add a channel destination in
 Notifications and choose its per-type routes. Channel destinations remain PUBLIC.
@@ -143,14 +143,14 @@ The [notification centre](notification-centre.md) provides paginated inbox filte
 ## Browser / PWA push
 
 Administrators enable the existing PWA plugin and its `frontend.pwa` permission,
-then configure **Administration → Notifications → Browser delivery**. Set an explicit
+then configure **Administration → Notifications → Browser push**. Set an explicit
 `mailto:` address or HTTPS server contact and generate a missing application key.
 ENV deployments can instead provide `WEB_PUSH_VAPID_SUBJECT` and
 `WEB_PUSH_VAPID_PRIVATE_KEY` (base64 DER P-256). Saved keys are encrypted and write-only.
 Keep the key stable: replacement/removal disables existing browser destinations and
 requires users to enroll again. ENV-owned configuration stays locked.
 
-Under **Account → Notifications → Your providers → Browser / PWA push**, enable
+Under **Account → Notifications → Providers → Browser / PWA push**, enable
 account routing, give this browser a label and choose **Enable on this browser**.
 Allow the native browser permission. HTTPS is required outside localhost; on iPhone
 and iPad, install the app on the home screen first. Each browser has its own PRIVATE

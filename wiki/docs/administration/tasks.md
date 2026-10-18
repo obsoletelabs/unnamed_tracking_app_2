@@ -19,7 +19,7 @@ The task view shows running state, last run, and a bounded summary. A failed run
 
 ## Anime franchise check
 
-Accounts opt in under **Settings → Account → Notifications** with two independent types, both off for new and existing accounts: **Anime franchise seasons** and **Anime franchise movies, OVAs and specials**. The check only looks at anime the account marked Watched or Favorite.
+Accounts opt in under **Settings → Account → Notifications → Notification types** with two independent types, both off for new and existing accounts: **Anime franchise seasons** and **Anime franchise movies, OVAs and specials**. The check only looks at anime the account marked Watched or Favorite.
 
 - **Franchise identity.** Titles whose stored AniList sequences share an entry are one franchise, identified by its lowest AniList id. Each franchise costs one fetch through the metadata provider gateway, using the completed title latest in the sequence, and respects the account's metadata provider choices.
 - **Bounded, resumable batches.** A run checks at most five franchises, visiting opted-in active accounts in a stable order. Its summary and cursor are stored with the job's last result. An unfinished pass continues five minutes later; a restart resumes from the stored cursor instead of starting over. After every opted-in account is checked, the job waits for its interval.

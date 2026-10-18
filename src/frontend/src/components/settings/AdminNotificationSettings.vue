@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
+import SettingsTabs from "./SettingsTabs.vue";
 import SmtpSettingsSection from "./SmtpSettingsSection.vue";
 import BrowserPushSettingsSection from "./BrowserPushSettingsSection.vue";
 import PluginProviderConfigurationForm from "./PluginProviderConfigurationForm.vue";
@@ -14,6 +15,9 @@ import type {
   NotificationRoutingProvider,
 } from "../../services/notifications";
 import type { UiValue } from "../../services/pluginUi";
+import { ADMIN_NOTIFICATION_SETTINGS_TABS as TABS } from "../../state/settingsRegistry";
+
+const props = defineProps<{ initialTab?: string }>();
 
 const policy = ref<InboxRetentionPolicy | null>(null);
 const error = ref("");
@@ -21,6 +25,14 @@ const status = ref("");
 const busy = ref(false);
 const providers = ref<NotificationRoutingProvider[]>([]);
 const route = useRoute();
+// A provider deep link opens the plugin providers tab with it expanded.
+const tab = ref(
+  TABS.some((t) => t.id === props.initialTab)
+    ? props.initialTab!
+    : typeof route?.query.notification_provider === "string"
+      ? "plugins"
+      : "email",
+);
 const serverProviders = computed(() =>
   providers.value
     .filter(
@@ -79,9 +91,10 @@ async function configure(
         >Account → Notifications</router-link
       >.
     </p>
-    <SmtpSettingsSection />
-    <BrowserPushSettingsSection />
-    <section>
+    <SettingsTabs v-model="tab" :tabs="TABS" />
+    <SmtpSettingsSection v-if="tab === 'email'" />
+    <BrowserPushSettingsSection v-else-if="tab === 'push'" />
+    <section v-else-if="tab === 'plugins'">
       <h3>Plugin providers</h3>
       <p class="hint">
         Install and grant notification providers under
@@ -113,7 +126,7 @@ async function configure(
         />
       </details>
     </section>
-    <section>
+    <section v-else>
       <h3>Inbox retention</h3>
       <p v-if="policy" class="hint">
         Server default:
@@ -129,8 +142,8 @@ async function configure(
         configuration. Zero means unlimited/no maximum. Restart after changing
         ENV values. Dedupe receipts are retained separately from inbox content.
       </p>
-      <p v-if="error" class="error" role="alert">{{ error }}</p>
     </section>
+    <p v-if="error" class="error" role="alert">{{ error }}</p>
   </section>
 </template>
 

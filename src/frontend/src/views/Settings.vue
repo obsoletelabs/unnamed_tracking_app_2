@@ -415,11 +415,15 @@ async function openSearchResult(entry: SettingsSearchEntry) {
           />
           <NotificationSettingsSection
             v-else-if="activeSection === 'notifications'"
+            :key="'notifications' + initialTab"
+            :initial-tab="initialTab"
           />
           <AdminNotificationSettings
             v-else-if="
               activeSection === 'admin-notifications' && currentUser?.is_admin
             "
+            :key="'admin-notifications' + initialTab"
+            :initial-tab="initialTab"
           />
           <CalendarSettingsSection v-else-if="activeSection === 'calendar'" />
           <KeyboardShortcutsSection v-else-if="activeSection === 'shortcuts'" />

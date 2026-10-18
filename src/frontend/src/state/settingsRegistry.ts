@@ -85,6 +85,22 @@ export const METADATA_SETTINGS_TABS: SettingsTab[] = [
   { id: "refresh", label: "Refresh media" },
 ];
 
+// Account → Notifications and Administration → Notifications are split by
+// context so important settings are reachable without long scrolling.
+export const NOTIFICATION_SETTINGS_TABS: SettingsTab[] = [
+  { id: "providers", label: "Providers" },
+  { id: "types", label: "Notification types" },
+  { id: "timing", label: "Timing & quiet hours" },
+  { id: "history", label: "History" },
+];
+
+export const ADMIN_NOTIFICATION_SETTINGS_TABS: SettingsTab[] = [
+  { id: "email", label: "Email (SMTP)" },
+  { id: "push", label: "Browser push" },
+  { id: "plugins", label: "Plugin providers" },
+  { id: "retention", label: "Inbox retention" },
+];
+
 // Sections that used to be their own entries and now live inside a
 // merged page as a tab, so old links (command palette, bookmarks) still
 // land in the right place.
@@ -356,6 +372,54 @@ const TAB_ENTRIES: {
     tab: "refresh",
     label: "Refresh media",
     keywords: ["refresh", "update metadata"],
+  },
+  {
+    section: "notifications",
+    tab: "providers",
+    label: "Notification providers",
+    keywords: ["destinations", "email addresses", "webhooks", "link urls"],
+  },
+  {
+    section: "notifications",
+    tab: "types",
+    label: "Notification types",
+    keywords: ["routing", "what to send", "alerts"],
+  },
+  {
+    section: "notifications",
+    tab: "timing",
+    label: "Notification timing",
+    keywords: ["quiet hours", "digest", "batching", "schedule"],
+  },
+  {
+    section: "notifications",
+    tab: "history",
+    label: "Notification history",
+    keywords: ["delivery history", "inbox history", "retention"],
+  },
+  {
+    section: "admin-notifications",
+    tab: "email",
+    label: "Email delivery (SMTP)",
+    keywords: ["smtp", "email server", "mail"],
+  },
+  {
+    section: "admin-notifications",
+    tab: "push",
+    label: "Browser push",
+    keywords: ["web push", "vapid", "push notifications"],
+  },
+  {
+    section: "admin-notifications",
+    tab: "plugins",
+    label: "Plugin notification providers",
+    keywords: ["notification plugins", "provider credentials"],
+  },
+  {
+    section: "admin-notifications",
+    tab: "retention",
+    label: "Inbox retention",
+    keywords: ["retention policy", "notification retention"],
   },
 ];
 

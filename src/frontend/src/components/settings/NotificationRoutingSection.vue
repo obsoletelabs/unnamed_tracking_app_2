@@ -29,7 +29,13 @@ import {
   unavailableText,
 } from "../../services/preferenceDependencies";
 
-const props = defineProps<{ prefs: Preferences; loaded: boolean }>();
+// `part` shows only providers or only notification types, so the settings
+// page can place each on its own tab. Without it both render.
+const props = defineProps<{
+  prefs: Preferences;
+  loaded: boolean;
+  part?: "providers" | "types";
+}>();
 const route = useRoute();
 const focusedDestination = computed(() => {
   const value = route?.query.notification_destination;
@@ -253,12 +259,12 @@ async function testDestination(destination: NotificationRoutingDestination) {
     <p v-if="error" class="error" role="alert">{{ error }}</p>
     <p v-if="testStatus" class="hint" role="status">{{ testStatus }}</p>
     <p v-if="!routing && !error" class="hint">Loading providers…</p>
-    <template v-if="routing">
+    <template v-if="routing && part !== 'types'">
       <section id="user-notification-providers" class="provider-section">
         <h3>Your providers</h3>
         <p class="hint">
           Enable external providers for your account here. Per-type choices
-          below apply within these settings.
+          under Notification types apply within these settings.
         </p>
         <details
           v-for="provider in sortedProviders"
@@ -450,6 +456,8 @@ async function testDestination(destination: NotificationRoutingDestination) {
         @change="emit('change', $event)"
         @changed="reload"
       />
+    </template>
+    <template v-if="routing && part !== 'providers'">
       <h3>Notification types</h3>
       <p class="hint">
         Switch a type on or off, then expand it to choose where it goes. Turning

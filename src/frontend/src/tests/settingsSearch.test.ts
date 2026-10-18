@@ -205,8 +205,47 @@ describe("settings search registry", () => {
     const [smtp] = searchSettings(settingsSearchIndex.value, "smtp");
     expect(smtp).toMatchObject({
       section: "admin-notifications",
+      tab: "email",
       area: "administration",
-      context: "Administration · Operations",
+      context: "Administration · Notifications",
+    });
+    expect(settingsSearchLocation(smtp!)).toEqual({
+      path: "/settings",
+      query: { section: "admin-notifications", tab: "email" },
+    });
+  });
+
+  it("deep-links notification settings to their sub-tab", () => {
+    signIn(true);
+    const first = (query: string) =>
+      searchSettings(settingsSearchIndex.value, query)[0];
+    expect(first("quiet hours")).toMatchObject({
+      section: "notifications",
+      tab: "timing",
+    });
+    expect(first("webhooks")).toMatchObject({
+      section: "notifications",
+      tab: "providers",
+    });
+    expect(first("notification types")).toMatchObject({
+      section: "notifications",
+      tab: "types",
+    });
+    expect(first("delivery history")).toMatchObject({
+      section: "notifications",
+      tab: "history",
+    });
+    expect(first("vapid")).toMatchObject({
+      section: "admin-notifications",
+      tab: "push",
+    });
+    expect(first("retention policy")).toMatchObject({
+      section: "admin-notifications",
+      tab: "retention",
+    });
+    expect(first("notification plugins")).toMatchObject({
+      section: "admin-notifications",
+      tab: "plugins",
     });
   });
 
