@@ -2,7 +2,7 @@
 
 import time
 from pathlib import Path
-from typing import Annotated, Literal, cast
+from typing import Annotated, Any, Literal, cast
 from uuid import UUID
 
 from fastapi import (
@@ -337,7 +337,7 @@ async def list_game_file_trash(
     files = []
     for item in result.scalars().all():
         assert item.deleted_at is not None  # guaranteed by the deleted_at.is_not(None) filter above
-        entry = {
+        entry: dict[str, Any] = {
             "id": str(item.id),
             "game_id": str(item.game_id),
             "filename": item.filename,
