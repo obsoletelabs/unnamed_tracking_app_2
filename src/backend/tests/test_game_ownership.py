@@ -230,3 +230,22 @@ async def test_owned_copy_is_one_grouping_with_the_identity_model(flow):
     assert (
         await flow.client.get(f"/api/game/{flow.game_id}/archives/save?group=true")
     ).json() == []
+
+
+async def test_identity_main_and_split_keep_legacy_owned_copies_in_step(flow):
+    copy_id = await add_copy(flow, source="Steam")
+    other_id = await add_copy(flow, source="GOG")
+    assert (await group(flow, flow.game_id, copy_id)).status_code == 204
+    assert (await group(flow, flow.game_id, other_id)).status_code == 204
+
+    moved = await flow.client.post(f"/api/game-identity/games/{copy_id}/make-main")
+    assert moved.status_code == 200
+    rows = {g["id"]: g for g in (await flow.client.get("/api/game/list")).json()}
+    assert rows[str(copy_id)]["parent_game_id"] is None
+    assert rows[str(other_id)]["parent_game_id"] == str(copy_id)
+
+    split = await flow.client.post(f"/api/game-identity/games/{other_id}/split", json={})
+    assert split.status_code == 200
+    rows = {g["id"]: g for g in (await flow.client.get("/api/game/list")).json()}
+    assert rows[str(other_id)]["parent_game_id"] is None
+    assert rows[str(other_id)]["relationship_type"] is None

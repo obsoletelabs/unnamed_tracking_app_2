@@ -97,3 +97,32 @@ async def separate_copy(db: AsyncSession, user_id: UUID, main_id: UUID, copy_id:
         actor = decisions.Actor(reason="Separated owned copy")
         await decisions.split_copy(db, user_id, copy_id, actor, keep_separate=True)
     await db.commit()
+
+
+async def align_with_identity(db: AsyncSession, user_id: UUID, game_ids: set[UUID]) -> None:
+    """Keep legacy owned-copy links in step with the identity group (#274).
+
+    The library still folds games by `parent_game_id`, so after a copy becomes
+    main or leaves its group, every owned copy among `game_ids` points at its
+    group's current main and a game that is no longer grouped stops being a copy.
+    Other relationship types (DLC, mods) are never touched."""
+    if not game_ids:
+        return
+    await lock_changes(db, user_id)
+    merged = await graph.merge_graph(db, user_id)
+    rows = await db.scalars(
+        select(Game)
+        .where(
+            Game.user_id == user_id,
+            Game.id.in_(game_ids),
+            Game.relationship_type == OWNED_COPY,
+        )
+        .with_for_update()
+    )
+    for game in rows:
+        main_id = merged.root(game.id)
+        if main_id == game.id:
+            game.parent_game_id, game.relationship_type = None, None
+        else:
+            game.parent_game_id = main_id
+    await db.flush()
