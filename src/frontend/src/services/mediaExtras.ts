@@ -521,8 +521,16 @@ interface BackendCalendarEntry {
   is_projected: boolean;
 }
 
-export async function fetchCalendar(days = 14): Promise<CalendarEntry[]> {
-  const response = await fetch(`/api/calendar?days=${days}`, {
+// Either the rolling look-ahead (`days`) or, with a range, exactly the days
+// from `start` to `end` ("YYYY-MM-DD", inclusive, at most 100 days wide).
+export async function fetchCalendar(
+  days = 14,
+  range?: { start: string; end: string },
+): Promise<CalendarEntry[]> {
+  const query = range
+    ? `start=${range.start}&end=${range.end}`
+    : `days=${days}`;
+  const response = await fetch(`/api/calendar?${query}`, {
     credentials: "include",
   });
   const raw = await handle<BackendCalendarEntry[]>(response, "load calendar");

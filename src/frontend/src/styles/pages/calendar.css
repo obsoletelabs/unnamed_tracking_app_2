@@ -43,7 +43,21 @@
 .month-bar-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
+}
+.week-start-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--ui-faint);
+}
+.week-start-picker select {
+  width: auto;
+}
+.range-note {
+  font-size: 0.85rem;
 }
 .refresh-btn {
   width: var(--ui-control-height);

@@ -219,6 +219,10 @@ export function useCalendar() {
     }
   }
   const entries = ref<CalendarEntry[]>([]);
+  // ranges beyond the first load, by "start..end", fetched as you navigate
+  const rangeLoaded = ref(new Map<string, CalendarEntry[]>());
+  const rangeLoading = ref(false);
+  const rangeError = ref<string | null>(null);
   const calLoading = ref(true);
   const calError = ref<string | null>(null);
 
@@ -232,47 +236,53 @@ export function useCalendar() {
       viewYear.value === today.getFullYear() &&
       viewMonth.value === today.getMonth(),
   );
+  // The agenda and the first load cover the next 90 days. The grids can go
+  // further: forward 2 years and back 10 years (the same bounds the server
+  // accepts), loading one visible range at a time.
   const CAL_MAX_DAYS = 90;
-  // Back as far as the oldest entry of any kind (watch history, game history and
-  // release dates, your own entries), never earlier than the current month, so a
-  // brand-new account still has somewhere sensible to stand; forward as far as
-  // the backend projects airings.
-  const earliestMonth = computed(() => {
-    let min = "";
-    for (const a of historyEntries.value)
-      if (!min || a.eventDate < min) min = a.eventDate;
-    for (const g of gameEntries.value) if (!min || g.date < min) min = g.date;
-    for (const e of eventEntries.value)
-      if (!min || e.eventDate < min) min = e.eventDate;
-    if (!min) return today.getFullYear() * 12 + today.getMonth();
-    const d = new Date(`${min}T00:00:00`);
-    return Math.min(
-      d.getFullYear() * 12 + d.getMonth(),
-      today.getFullYear() * 12 + today.getMonth(),
-    );
-  });
-  const canGoPrev = computed(
-    () => viewYear.value * 12 + viewMonth.value > earliestMonth.value,
+  const CAL_MAX_AHEAD_DAYS = 730;
+  const CAL_MAX_BEHIND_DAYS = 3660;
+  const earliestDay = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate() - CAL_MAX_BEHIND_DAYS,
   );
-  const canGoNext = computed(() => {
-    const firstOfNext = new Date(viewYear.value, viewMonth.value + 1, 1);
-    return firstOfNext.getTime() - today.getTime() < CAL_MAX_DAYS * 86_400_000;
-  });
+  const latestDay = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate() + CAL_MAX_AHEAD_DAYS,
+  );
+  const earliestMonth = earliestDay.getFullYear() * 12 + earliestDay.getMonth();
+  const latestMonth = latestDay.getFullYear() * 12 + latestDay.getMonth();
+  const canGoPrev = computed(
+    () => viewYear.value * 12 + viewMonth.value > earliestMonth,
+  );
+  const canGoNext = computed(
+    () => viewYear.value * 12 + viewMonth.value < latestMonth,
+  );
   const jumpMonthValue = computed(
     () => `${viewYear.value}-${String(viewMonth.value + 1).padStart(2, "0")}`,
   );
+  const jumpMonthMin = `${earliestDay.getFullYear()}-${String(earliestDay.getMonth() + 1).padStart(2, "0")}`;
+  const jumpMonthMax = `${latestDay.getFullYear()}-${String(latestDay.getMonth() + 1).padStart(2, "0")}`;
   function jumpToMonth(event: Event) {
     const value = (event.target as HTMLInputElement).value;
     if (!/^\d{4}-\d{2}$/.test(value)) return;
     const [y, m] = value.split("-").map(Number);
     const index = y * 12 + (m - 1);
-    const max =
-      today.getFullYear() * 12 +
-      today.getMonth() +
-      Math.ceil(CAL_MAX_DAYS / 30);
-    if (index < earliestMonth.value || index > max) return;
+    if (index < earliestMonth || index > latestMonth) return;
     viewYear.value = y;
     viewMonth.value = m - 1;
+  }
+  // Jump the week view to the week containing a picked day.
+  const jumpDayValue = computed(() => keyOfDate(weekAnchor.value));
+  function jumpToDay(event: Event) {
+    const value = (event.target as HTMLInputElement).value;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return;
+    const day = new Date(`${value}T00:00:00`);
+    if (Number.isNaN(day.getTime()) || day < earliestDay || day > latestDay)
+      return;
+    weekAnchor.value = startOfWeek(day);
   }
 
   // Only a first load (nothing on screen yet) shows the loading state; later
@@ -285,6 +295,8 @@ export function useCalendar() {
       // enough for every month the nav allows; past cells get their content
       // from the watched layer instead.
       entries.value = await fetchCalendar(CAL_MAX_DAYS);
+      rangeLoaded.value = new Map();
+      void ensureRange();
     } catch (e) {
       calError.value =
         e instanceof Error ? e.message : "Failed to load the calendar.";
@@ -475,12 +487,20 @@ export function useCalendar() {
     }
     return map;
   }
-  const upcomingByDay = computed(() =>
-    indexByDay([
-      ...entries.value.map(fromEntry),
-      ...eventEntries.value.map(fromEvent),
-    ]),
-  );
+  const upcomingByDay = computed(() => {
+    const seen = new Set<string>();
+    const items: CalItem[] = [];
+    for (const e of [
+      ...entries.value,
+      ...[...rangeLoaded.value.values()].flat(),
+    ]) {
+      const item = fromEntry(e);
+      if (seen.has(item.key)) continue;
+      seen.add(item.key);
+      items.push(item);
+    }
+    return indexByDay([...items, ...eventEntries.value.map(fromEvent)]);
+  });
   const watchedByDay = computed(() => {
     const items: CalItem[] = [];
     for (const a of historyEntries.value) {
@@ -521,6 +541,18 @@ export function useCalendar() {
     "October",
     "November",
     "December",
+  ];
+  const WEEK_START_OPTIONS: {
+    value: Preferences["calendar_week_start"];
+    label: string;
+  }[] = [
+    { value: 0, label: "Sunday" },
+    { value: 1, label: "Monday" },
+    { value: 2, label: "Tuesday" },
+    { value: 3, label: "Wednesday" },
+    { value: 4, label: "Thursday" },
+    { value: 5, label: "Friday" },
+    { value: 6, label: "Saturday" },
   ];
   const ALL_WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const WEEKDAY_LABELS = computed(() => [
@@ -629,18 +661,87 @@ export function useCalendar() {
     () => keyOfDate(weekAnchor.value) === keyOfDate(startOfWeek(today)),
   );
   const canWeekNext = computed(
-    () =>
-      weekAnchor.value.getTime() + 7 * 86_400_000 - today.getTime() <
-      CAL_MAX_DAYS * 86_400_000,
+    () => weekAnchor.value.getTime() + 7 * 86_400_000 <= latestDay.getTime(),
   );
-  const canWeekPrev = computed(() => {
-    const first = new Date(
-      Math.floor(earliestMonth.value / 12),
-      earliestMonth.value % 12,
-      1,
-    );
-    return weekAnchor.value.getTime() > first.getTime();
+  const canWeekPrev = computed(
+    () => weekAnchor.value.getTime() > earliestDay.getTime(),
+  );
+
+  // ---- bounded range loading for the visible grid ----
+  // The first load covers today and the next 90 days. Anything outside that
+  // is requested for just the visible days (plus a day either side for time
+  // zones) and remembered, so paging back and forth does not refetch.
+  const BASE_FIRST = keyOfDate(new Date(today.getTime() - 86_400_000));
+  const BASE_LAST = keyOfDate(
+    new Date(today.getTime() + CAL_MAX_DAYS * 86_400_000),
+  );
+  function shiftKey(key: string, days: number): string {
+    const d = new Date(`${key}T00:00:00`);
+    d.setDate(d.getDate() + days);
+    return keyOfDate(d);
+  }
+  const visibleSpan = computed(() => {
+    if (tab.value !== "calendar" || calView.value === "agenda") return null;
+    if (calView.value === "month") {
+      const cells = gridCells.value;
+      return { first: cells[0].key, last: cells[cells.length - 1].key };
+    }
+    const days = weekDays.value;
+    return { first: days[0].key, last: days[days.length - 1].key };
   });
+  let rangeSequence = 0;
+  async function ensureRange() {
+    const span = visibleSpan.value;
+    if (!span) return;
+    // A month that merely starts before today needs nothing extra: the
+    // first load already covers yesterday onward. Only views that sit
+    // wholly in the past, or reach beyond the first 90 days, are fetched.
+    const needsBefore = span.last < BASE_FIRST;
+    const needsAfter = span.last > BASE_LAST;
+    if (!needsBefore && !needsAfter) return;
+    const start = shiftKey(span.first, -1);
+    const end = shiftKey(span.last, 1);
+    const cacheKey = `${start}..${end}`;
+    if (rangeLoaded.value.has(cacheKey)) return;
+    const mine = ++rangeSequence;
+    rangeLoading.value = true;
+    rangeError.value = null;
+    try {
+      const found = await fetchCalendar(CAL_MAX_DAYS, { start, end });
+      if (mine !== rangeSequence) return;
+      rangeLoaded.value = new Map(rangeLoaded.value).set(cacheKey, found);
+    } catch (e) {
+      if (mine !== rangeSequence) return;
+      rangeError.value =
+        e instanceof Error ? e.message : "Couldn't load these dates.";
+    } finally {
+      if (mine === rangeSequence) rangeLoading.value = false;
+    }
+  }
+  watch(
+    [viewYear, viewMonth, weekAnchor, calView, tab],
+    () => void ensureRange(),
+  );
+  // What is and is not known for the dates on screen, so an empty stretch
+  // reads as "not announced / not kept" rather than "nothing happens".
+  const rangeNote = computed(() => {
+    const span = visibleSpan.value;
+    if (!span) return null;
+    if (span.last > BASE_LAST)
+      return "Airings and releases this far ahead are mostly unannounced. Only dates providers have published, and estimates counted forward from a confirmed episode, are shown.";
+    if (span.last < todayKey)
+      return "Past dates show what you watched and your own entries. Airing schedules are not kept once an episode has aired.";
+    return null;
+  });
+  async function setWeekStart(day: Preferences["calendar_week_start"]) {
+    const previous = prefs.value.calendar_week_start;
+    prefs.value = { ...prefs.value, calendar_week_start: day };
+    try {
+      await queuePreferences({ calendar_week_start: day });
+    } catch {
+      prefs.value = { ...prefs.value, calendar_week_start: previous };
+    }
+  }
   function shiftWeek(weeks: number) {
     const next = new Date(weekAnchor.value);
     next.setDate(next.getDate() + weeks * 7);
@@ -1228,7 +1329,17 @@ export function useCalendar() {
     canGoPrev,
     canGoNext,
     jumpMonthValue,
+    jumpMonthMin,
+    jumpMonthMax,
     jumpToMonth,
+    jumpDayValue,
+    jumpToDay,
+    rangeLoading,
+    rangeError,
+    rangeNote,
+    ensureRange,
+    setWeekStart,
+    WEEK_START_OPTIONS,
     historyEntries,
     historyLoading,
     historyError,

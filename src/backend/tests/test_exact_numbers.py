@@ -52,7 +52,7 @@ def test_preferences_reject_unknown_keys_and_bad_values():
     with pytest.raises(ValueError):
         validate_preference("calendar_game_releases", "yes")
     with pytest.raises(ValueError):
-        validate_preference("calendar_week_start", 3)
+        validate_preference("calendar_week_start", 7)
     with pytest.raises(ValueError):
         validate_preference("notification_retention_days", 45)
     assert validate_preference("notification_retention_days", 0) == 0

@@ -26,7 +26,17 @@ const {
   canGoPrev,
   canGoNext,
   jumpMonthValue,
+  jumpMonthMin,
+  jumpMonthMax,
   jumpToMonth,
+  jumpDayValue,
+  jumpToDay,
+  rangeLoading,
+  rangeError,
+  rangeNote,
+  ensureRange,
+  setWeekStart,
+  WEEK_START_OPTIONS,
   historyEntries,
   historyLoading,
   historyError,
@@ -185,6 +195,8 @@ const {
               {{ MONTH_NAMES[viewMonth] }} {{ viewYear }}
               <input
                 type="month"
+                :min="jumpMonthMin"
+                :max="jumpMonthMax"
                 :value="jumpMonthValue"
                 @change="jumpToMonth"
               />
@@ -208,7 +220,15 @@ const {
             >
               ‹
             </button>
-            <span class="month-label">{{ weekLabel }}</span>
+            <label class="month-label month-picker" title="Jump to a date">
+              {{ weekLabel }}
+              <input
+                type="date"
+                :value="jumpDayValue"
+                aria-label="Jump to a date"
+                @change="jumpToDay"
+              />
+            </label>
             <button
               type="button"
               class="nav-btn"
@@ -225,6 +245,32 @@ const {
             >
           </div>
           <div class="month-bar-actions">
+            <label
+              v-if="calView !== 'agenda'"
+              class="week-start-picker"
+              title="First day of the week"
+            >
+              <span>Week starts</span>
+              <select
+                class="ui-field"
+                :value="prefs.calendar_week_start"
+                @change="
+                  setWeekStart(
+                    Number(
+                      ($event.target as HTMLSelectElement).value,
+                    ) as typeof prefs.calendar_week_start,
+                  )
+                "
+              >
+                <option
+                  v-for="d in WEEK_START_OPTIONS"
+                  :key="d.value"
+                  :value="d.value"
+                >
+                  {{ d.label }}
+                </option>
+              </select>
+            </label>
             <SegmentedTabs
               :options="VIEW_OPTIONS"
               :model-value="calView"
@@ -371,6 +417,18 @@ const {
         </div>
 
         <p v-if="calError" class="ui-state error">{{ calError }}</p>
+        <p v-if="rangeError" class="ui-state error" role="alert">
+          {{ rangeError }}
+          <button type="button" class="ui-btn ui-btn-sm" @click="ensureRange">
+            Retry
+          </button>
+        </p>
+        <p v-else-if="rangeLoading" class="ui-state" role="status">
+          Loading these dates…
+        </p>
+        <p v-else-if="rangeNote" class="ui-state range-note">
+          {{ rangeNote }}
+        </p>
 
         <template v-if="calView === 'month'">
           <div class="weekday-row">

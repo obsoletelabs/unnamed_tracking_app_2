@@ -486,10 +486,20 @@ async def delete_activity_entry(
     await db.commit()
 
 
+def _utc_midnight(day: date) -> int:
+    return int(datetime(day.year, day.month, day.day, tzinfo=timezone.utc).timestamp())
+
+
 # Keep the established workflow and public parameters together.
 # pylint: disable=too-many-locals
 async def build_calendar_entries(
-    db: AsyncSession, user_id: UUID, days: int, game_releases: bool = False
+    db: AsyncSession,
+    user_id: UUID,
+    days: int,
+    game_releases: bool = False,
+    *,
+    start: date | None = None,
+    end: date | None = None,
 ) -> list[dict]:
     """Two kinds of entry, both media the real-calendar view groups by
     day: "episode" entries are anime/TV already airing with a known
@@ -499,7 +509,13 @@ async def build_calendar_entries(
     a movie you're waiting on, or a show whose first season hasn't
     started yet. `days` windows both directions loosely — something that
     just aired/released stays visible for a day so "today" doesn't look
-    empty the moment it passes."""
+    empty the moment it passes.
+
+    With `start` and `end` (UTC calendar days, inclusive) the window is that
+    exact range instead, so the calendar can page through months beyond the
+    default look-ahead. Only dates the app can actually know are returned:
+    the confirmed next episode, estimates projected from it, and release
+    dates. Nothing is invented for ranges the data does not reach."""
     prefs = await load_preferences(db, user_id)
     language = str(prefs["title_language"])
     airing = prefs["calendar_airing_statuses"]
@@ -509,6 +525,12 @@ async def build_calendar_entries(
     today = date.today()
     date_window_end = today + timedelta(days=days)
     date_window_start = today - timedelta(days=1)
+    range_start: int | None = None
+    if start is not None and end is not None:
+        range_start = _utc_midnight(start)
+        window_end = _utc_midnight(end) + 86400 - 1
+        date_window_start = start
+        date_window_end = end
 
     result: list[dict] = []
 
@@ -667,25 +689,59 @@ async def build_calendar_entries(
                 }
             )
 
+    if range_start is not None:
+        result = [r for r in result if range_start <= r["air_at"] <= window_end]
     result.sort(key=lambda r: r["air_at"])
     return result
 
 
 # pylint: enable=too-many-locals
 
+# How far a bounded range may reach: the calendar pages month by month, never
+# a whole decade in one request, and nothing is projected past two years ahead.
+CALENDAR_RANGE_MAX_DAYS = 100
+CALENDAR_RANGE_MAX_AHEAD_DAYS = 730
+CALENDAR_RANGE_MAX_BEHIND_DAYS = 3660
+
 
 @router.get("/calendar", response_model=list[CalendarEntryRead])
 async def get_calendar(
     days: int = Query(default=14, ge=1, le=90),
+    start: date | None = Query(default=None),
+    end: date | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[dict]:
+    """Upcoming airings and releases. `days` is the rolling look-ahead; with
+    `start` and `end` (inclusive UTC days) a bounded range is returned
+    instead, up to 100 days wide, 2 years ahead and 10 years back."""
+    if (start is None) != (end is None):
+        raise HTTPException(
+            status_code=422,
+            detail="Send both start and end, or neither.",
+        )
+    if start is not None and end is not None:
+        today = date.today()
+        if end < start or (end - start).days >= CALENDAR_RANGE_MAX_DAYS:
+            raise HTTPException(
+                status_code=422,
+                detail=f"The range must be 1 to {CALENDAR_RANGE_MAX_DAYS} days.",
+            )
+        if end > today + timedelta(days=CALENDAR_RANGE_MAX_AHEAD_DAYS) or start < today - timedelta(
+            days=CALENDAR_RANGE_MAX_BEHIND_DAYS
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="That range is outside the dates the calendar covers.",
+            )
     prefs = await load_preferences(db, current_user.id)
     return await build_calendar_entries(
         db,
         current_user.id,
         days,
         game_releases=bool(prefs["calendar_game_releases"]) and not prefs["calendar_hide_games"],
+        start=start,
+        end=end,
     )
 
 

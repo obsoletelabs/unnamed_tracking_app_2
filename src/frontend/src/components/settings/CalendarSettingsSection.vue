@@ -86,6 +86,11 @@ const viewOptions = [
 const weekOptions = [
   { value: "0", label: "Sunday" },
   { value: "1", label: "Monday" },
+  { value: "2", label: "Tuesday" },
+  { value: "3", label: "Wednesday" },
+  { value: "4", label: "Thursday" },
+  { value: "5", label: "Friday" },
+  { value: "6", label: "Saturday" },
 ];
 </script>
 
@@ -183,17 +188,22 @@ const weekOptions = [
     </div>
     <div class="field">
       <span>Week starts on</span>
-      <SegmentedControl
-        :model-value="String(prefs.calendar_week_start)"
-        :options="weekOptions"
-        @update:model-value="
+      <select
+        class="week-start-select"
+        aria-label="Week starts on"
+        :value="String(prefs.calendar_week_start)"
+        @change="
           change({
             calendar_week_start: Number(
-              $event,
+              ($event.target as HTMLSelectElement).value,
             ) as Preferences['calendar_week_start'],
           })
         "
-      />
+      >
+        <option v-for="o in weekOptions" :key="o.value" :value="o.value">
+          {{ o.label }}
+        </option>
+      </select>
     </div>
   </section>
 </template>
@@ -220,6 +230,16 @@ const weekOptions = [
 }
 .scope-note {
   margin-top: 10px;
+}
+.week-start-select {
+  min-height: var(--ui-control-height);
+  max-width: 100%;
+  padding: 0 10px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-control);
+  background: var(--ui-surface);
+  color: var(--ui-text);
+  font: inherit;
 }
 .section-hint {
   color: var(--ui-dim);

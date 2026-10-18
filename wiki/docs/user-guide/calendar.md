@@ -41,6 +41,13 @@ Manual all-day entries are exported as all-day `VALUE=DATE` events. Manual timed
 - A movie is logged as one watch. For shows, enter how many episodes and optionally name them (for example `S2E9 then S2E5`). Episodes can be watched in any order: the history stores the count and your text, not a chronological position.
 - The form states exactly what will be added before you save.
 
+## Week start and navigation
+
+- **Week starts** can be any day of the week. Change it in the calendar toolbar (next to the view switcher) or in **Settings > Calendar**; it is saved per account.
+- Month and week views can move up to **2 years ahead and 10 years back**. The first load covers the next 90 days; when you move beyond that, only the dates on screen are requested (at most 100 days at a time) and remembered. The month picker (month view) and date picker (week view) jump directly.
+- Far-future dates are mostly unannounced. Only dates providers have published, and estimates counted forward from a confirmed episode (dashed, and capped at 52 per show), appear. A note under the toolbar says so. Past dates show what you watched and your own entries; airing schedules are not kept once an episode has aired.
+- The Agenda view still shows the next 90 days, and the subscription feed is unchanged.
+
 ## Importing another ICS feed
 
 External `.ics` importing is **not implemented by this feature**. A separate design issue, **#243**, tracks the future importer architecture. The current calendar model is designed around application-owned events and per-user manual entries, while an external importer would require a separate source/synchronization model.
