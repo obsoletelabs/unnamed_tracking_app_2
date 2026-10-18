@@ -501,3 +501,33 @@ async def test_rotation_preserves_grants_and_invalidates_old_credential(delegati
     assert (await flow.client.get(BASE + "/profile", headers=replacement)).status_code == 200
     async with SessionLocal() as db:
         assert (await db.get(DelegatedGrant, grant_id)).expires_at == rotated["expires_at"]
+
+
+async def test_library_marks_copies_of_one_game_for_integrations(delegation_flow):
+    """#274: an integration can fold a user's copies and match them by the game's main title."""
+    from src.features.game_identity import decisions
+
+    flow = delegation_flow
+    async with SessionLocal() as db:
+        copy = Game(
+            user_id=flow.user.id,
+            title="Private game 0 for Windows",
+            sort_title="private game 0 for windows",
+            folder_location=f"delegation_{uuid4().hex}",
+            status=GameStatus.PLAYING,
+        )
+        db.add(copy)
+        await db.commit()
+        copy_id = copy.id
+    async with SessionLocal() as db:
+        await decisions.merge_identities(db, flow.user.id, copy_id, flow.game_id)
+        await db.commit()
+    headers, _ = await grant_access(flow, ["games.read"])
+    library = (await flow.client.get(BASE + "/games", headers=headers)).json()["games"]
+    identity = {row["id"]: row["identity"] for row in library}
+    assert identity[str(copy_id)] == {
+        "group_id": str(flow.game_id),
+        "is_main": False,
+        "main_title": "Private game 0",
+    }
+    assert identity[str(flow.game_id)]["is_main"] is True

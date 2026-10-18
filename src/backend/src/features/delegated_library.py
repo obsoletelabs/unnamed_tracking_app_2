@@ -12,6 +12,7 @@ from src.api.schemas.delegation import AchievementReportWrite
 from src.database.models.achievement import Achievement
 from src.database.models.achievement_override import AchievementOverride
 from src.database.models.game import Game, GameStatus
+from src.features.game_identity import graph
 from src.plugin_api.game_library import game_details, owned_game
 
 
@@ -43,6 +44,33 @@ def library_game(game: Game) -> dict:
     return jsonable_encoder(item)
 
 
+async def _identities(db: AsyncSession, user_id: UUID, games: list[Game]) -> dict[UUID, dict]:
+    """Which logical game each record belongs to (#274).
+
+    Copies of one game (Steam and Epic Hades, Minecraft Java and for Windows) share a
+    `group_id` and the main copy's title, so an integration can show and match them as
+    one game. A record that is not grouped is its own group."""
+    merged = await graph.merge_graph(db, user_id, readonly=True)
+    roots = {game.id: merged.root(game.id) for game in games}
+    titles = {game.id: game.title for game in games}
+    missing = set(roots.values()) - titles.keys()
+    if missing:
+        titles.update(
+            (row.id, row.title)
+            for row in await db.execute(
+                select(Game.id, Game.title).where(Game.user_id == user_id, Game.id.in_(missing))
+            )
+        )
+    return {
+        game.id: {
+            "group_id": str(roots[game.id]),
+            "is_main": roots[game.id] == game.id,
+            "main_title": titles.get(roots[game.id], game.title),
+        }
+        for game in games
+    }
+
+
 async def library_page(db: AsyncSession, user_id: UUID, offset: int, limit: int) -> dict:
     rows = list(
         await db.scalars(
@@ -53,8 +81,9 @@ async def library_page(db: AsyncSession, user_id: UUID, offset: int, limit: int)
             .limit(limit + 1)
         )
     )
+    identities = await _identities(db, user_id, rows[:limit])
     return {
-        "games": [library_game(row) for row in rows[:limit]],
+        "games": [{**library_game(row), "identity": identities[row.id]} for row in rows[:limit]],
         "next_offset": offset + min(limit, len(rows)),
         "complete": len(rows) <= limit,
         "retrieved_at": int(time.time()),
