@@ -2,7 +2,7 @@
 
 Unnamed Tracking App has a Playnite 10 extension for synchronizing a Playnite library with the authenticated user's game library.
 
-The extension repository is **UnnamedTrackingPlaynite**. The integration uses the application's normal user API-key authentication rather than a separate Playnite-specific credential system.
+The extension repository is **UnnamedTrackingPlaynite**. The extension signs in through [user-approved integration access](user-delegation.md#desktop-apps), the same consent flow the Discord Activity uses, so nobody pastes an API key. Older extensions and servers can still use a user API key.
 
 ## Requirements
 
@@ -11,31 +11,67 @@ The current extension targets:
 - Windows;
 - Playnite 10.x;
 - .NET Framework 4.6.2 / the Playnite 10 SDK;
-- an Unnamed Tracking user API key beginning with `utk_`.
+- an Unnamed Tracking account on a server with **desktop app sign-in** enabled (the default),
+  or a user API key beginning with `utk_` for older servers.
 
 ## Configure the extension
 
 1. Install the extension package, or load the Release output through Playnite's developer extension support while developing.
-2. Open **Add-ons → Extension settings → Unnamed Tracking**.
+2. Open **Add-ons → Extension settings → Unnamed Tracking** (or the Extensions menu entry *Sign in to Unnamed Tracking…*).
 3. Enter the base URL of the Unnamed Tracking server.
-4. Generate a user API key in Unnamed Tracking and enter it in the extension.
-5. Use **Test connection**.
-6. Use **Upload Playnite Library** for the initial synchronization.
-7. Optionally configure the ignore tag, startup synchronization, and game-stopped synchronization.
+4. Click **Sign in with your browser** and approve Playnite on the page that opens (see below).
+5. Use **Test connection**, then **Sync library now** for the initial synchronization.
+6. Optionally configure the ignore tag, startup synchronization, and game-stopped synchronization.
 
-The API key is stored in Playnite's extension settings. Treat the Playnite profile and extension settings as sensitive configuration.
+![Playnite settings after signing in](../assets/game-identity-hub/playnite-settings-signed-in.png)
 
 ## Authentication
 
-User API keys are created from the application's API-key settings. They use the `utk_` prefix.
+### Browser sign-in (recommended)
 
+The extension asks the server for access with `POST /api/delegation/v1/desktop/playnite/requests`
+and opens the returned **Connect Playnite** page in the user's browser. Signed in there, the
+user sees the computer's name and approves the capabilities the extension asks for:
+
+| Capability | Used for |
+| --- | --- |
+| `profile.read` | *Connected as …* in Playnite |
+| `library.sync` | Game list, create, update, artwork and the `/api/playnite/*` evidence routes |
+| `saves.read` | Listing and downloading save archives |
+| `saves.write` | Creating save archives, adding versions and renaming |
+
+They start selected and access defaults to **Until revoked**, because the credential replaces an
+API key; the user can untick any capability or choose a timed grant. The extension polls the
+verifier-bound exchange and receives a `utd_` credential that the server accepts **only** on the
+routes listed in the [access matrix](../development/api-access-matrix.md) as `user-or-app` with the
+matching scope; it is refused everywhere else (API keys, settings, administration, other users).
+
+![Connect Playnite consent page](../assets/game-identity-hub/playnite-consent.jpg)
+
+The extension stores the credential encrypted with Windows DPAPI and only uses it for the server it
+was issued by. **Sign out** in Playnite revokes it on the server (`DELETE /api/delegation/v1/credential`).
+Users can also reduce or revoke it under **Account → Connected apps**, where the computer is listed as
+a desktop app:
+
+![Connected apps with the Playnite desktop app](../assets/game-identity-hub/playnite-connected-apps.jpg)
+
+Instance owners can switch desktop app sign-in off under **Administration → Integration access**
+(*Let people connect desktop apps such as Playnite*) or disable the Playnite client row there;
+existing Playnite credentials stop working on their next request. It is independent of web
+integrations such as the Discord Activity.
+
+### API key (older servers and extensions)
+
+User API keys are created from the application's API-key settings and use the `utk_` prefix.
 Authenticated API requests use:
 
 ```http
 Authorization: Bearer utk_<secret>
 ```
 
-The backend accepts these bearer keys alongside normal browser session authentication. The API key is associated with the user who created it, so Playnite operations run against that user's library.
+The backend accepts these bearer keys alongside normal browser session authentication. A key is
+associated with the user who created it and has full access to that account, so prefer browser
+sign-in where the server offers it.
 
 ## Library synchronization
 
@@ -129,17 +165,31 @@ Save synchronization is separate from the normal game metadata synchronization d
 
 The extension also provides an **Unnamed Tracking** sidebar view for opening the configured server UI inside Playnite.
 
-The API key is not put into the page URL or browser storage. The embedded web UI uses the application's normal session authentication, so it may require a normal web login even though background Playnite synchronization continues to use the configured API key.
+No credential is put into the page URL or browser storage. The embedded web UI uses the application's normal session authentication, so it may require a normal web login even though background Playnite synchronization continues to use the extension's sign-in.
+
+## Links into Playnite
+
+The extension handles `playnite://unnamedtracking/settings` (open its settings),
+`playnite://unnamedtracking/sign-in` (start browser sign-in for the server already configured
+in Playnite; a link never changes the server) and `playnite://unnamedtracking/sync` (sync the
+library now).
+
+## Saves on a game with several copies
+
+Playnite uploads each save to the game whose Playnite GUID it belongs to. When that game is one
+copy of a larger game (for example the Steam copy of Hades grouped with an Epic copy), the main
+game's **Saves** tab lists it labelled with its copy, and Playnite keeps syncing the same copy.
+See [one game, several copies](../user-guide/games.md#one-game-several-copies).
 
 ## Troubleshooting
 
 ### Test connection fails
 
-Check that the server URL is correct and that the API key:
-
-- begins with `utk_`;
-- has not been revoked;
-- belongs to the account whose library you want to synchronize.
+Check that the server URL is correct. With browser sign-in, check **Account → Connected apps**
+for the Playnite entry: a revoked, reduced (missing `library.sync`) or timed-out grant needs a
+new sign-in, and an owner may have switched desktop apps off. With an API key, check that it
+begins with `utk_`, has not been revoked and belongs to the account whose library you want to
+synchronize.
 
 ### A game is duplicated
 

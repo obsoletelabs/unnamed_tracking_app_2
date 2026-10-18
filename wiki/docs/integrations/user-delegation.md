@@ -46,6 +46,24 @@ The integration retains an opaque credential, rather than a password, app
 session or unrestricted API key. Credentials are restricted to the consenting
 user, and never provide administration access, even for an administrator.
 
+## Desktop apps
+
+First-party desktop apps the host knows by name (today the
+[Playnite extension](playnite.md#authentication)) use the same consent and exchange without an
+operator-approved web origin. They start with
+`POST /api/delegation/v1/desktop/{app}/requests`, sending `scopes`, `code_challenge`, a
+`device_name` and a stable `device_id`; the device is shown on the consent page and in Connected
+apps as display context, like `external_account`. `GET /instance` lists them in `desktop_apps`.
+
+**Administration → Integration access → Let people connect desktop apps such as Playnite**
+(`allow_desktop_apps`) governs them, on by default because each user could already create a
+full-access API key; it is independent of **Enable user-delegated web integrations**. The
+desktop client appears in the client list as *Desktop app* and can be disabled like an origin.
+On the consent page a desktop app's requested capabilities start selected and its access defaults
+to Until revoked; web integrations keep writes unchecked and a timed default.
+
+An app signs out with `DELETE /api/delegation/v1/credential`, which revokes its own grant.
+
 ## Protocol v1.0
 
 All paths below are under `/api/delegation/v1`. Responses are not cacheable.
@@ -76,8 +94,15 @@ All paths below are under `/api/delegation/v1`. Responses are not cacheable.
 | `tracking.write` | `PATCH /games/{id}/tracking`: status, favorite, playtime, completion and ratings only |
 | `compatibility.write` | `PATCH /games/{id}/play-compatibility`: replace/clear your own multiplayer preset; separate from tracking writes |
 | `achievements.write` | `POST /games/{id}/achievement-reports`, `DELETE /games/{id}/achievement-reports/{report_id}`: local self reports only |
+| `library.sync` | The ordinary `GET /api/game/list`, `POST /api/game/create`, `PATCH /api/game/update/{id}`, `POST /api/game/{id}/assets/{kind}` and `/api/playnite/*` routes, as the consenting user (own games only) |
+| `saves.read` | `GET /api/game/{id}/archives/{kind}` and archive version downloads |
+| `saves.write` | `POST /api/game/{id}/archives/{kind}`, `POST .../archives/{archive_id}/versions`, `PATCH .../archives/{archive_id}` |
 
-Resource IDs never permit cross-user reads or writes. The
+The last three reach ordinary application routes marked `user-or-app` in the
+[API access matrix](../development/api-access-matrix.md); in code, `@app_grant(scope)` on the
+route lets `get_current_user` accept a `utd_` credential carrying that scope as the consenting
+user. Every unmarked route still refuses `utd_` credentials. Resource IDs never permit
+cross-user reads or writes. The
 [API access matrix](../development/api-access-matrix.md) lists every route and the
 credential class it accepts. These credentials are
 rejected on ordinary app, API-key management, authentication, plugin-management

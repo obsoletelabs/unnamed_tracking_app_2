@@ -4,6 +4,9 @@ The backend configuration registry is the source of truth for application config
 
 The application also reads a small number of deployment/runtime variables directly, and the Docker Compose deployment has its own interpolation variables. They are listed separately below.
 
+A variable set to an empty value (`SMTP_PORT=` as in `example.env`) is treated as unset and uses
+its default.
+
 ## Database
 
 The application accepts either the individual PostgreSQL variables or the legacy `DATABASE_URL` alternative.
