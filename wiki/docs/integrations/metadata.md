@@ -246,6 +246,62 @@ These screenshots were captured on 2026-10-07 using the built-in core providers
 and a disposable development library with no installed plugins. They demonstrate Steam and SteamGridDB live data;
 they do not imply that every authenticated provider has been configured or validated.
 
+## Epic Games plugin (experimental)
+
+Epic is not a core provider. The optional
+[Epic Games Library](https://github.com/obsoletelabs/unnamed_tracking_app_plugins/blob/main/official/epic-games/README.md)
+plugin (`official.epic-games`) is maintained in the companion plugin repository
+and requires Plugin API 1.1.11. Install it through **Settings → Plugins**, approve
+its permissions and enable it; **Epic Games** then appears in
+**Settings > Account > Connections**, where **Connect** or **Manage** opens the
+plugin's page in the popup shown above.
+
+**Experimental: unofficial Epic services.** Epic does not publish or support an
+API for third-party library imports, and neither this app nor the plugin is
+affiliated with Epic Games. The plugin does not use an Epic-issued OAuth client or
+Epic Online Services. It signs in through Epic's own sign-in page as the Epic
+Games Launcher does, then reads the launcher's undocumented library, playtime and
+catalogue services. Epic can change, rate-limit or withdraw them at any time, so
+sign-in, imports or playtime may stop working until a new plugin release adapts.
+
+Your password stays on Epic's site; you paste back a one-time code, which is not
+saved. The plugin keeps the resulting Epic tokens in its own per-user plugin
+storage, separate from the metadata credentials above. Plugin storage is
+restricted to the runtime by file permissions but is not encrypted at rest, so
+protect deployment data and backups. Imported games carry their title and Epic
+identity, plus the description, developer, publisher and total playtime when Epic
+supplies them. Artwork, release dates, genres/tags and achievements are not
+imported; use **Look up metadata** for those.
+
+An Epic failure is not data loss in this app. A failed sign-in, token refresh or
+Epic request stops that import step and keeps the connection, the saved import
+checkpoint and every game already in your library. The plugin never deletes
+games. Field locks, manual status, notes and ratings keep the import protections
+above, and playtime only increases. Only a complete, valid Epic inventory can
+mark games that left your Epic library as unavailable; a later import that lists
+them makes them available again. Disconnecting removes the plugin's saved Epic
+sign-in and checkpoint and keeps the imported games.
+
+To recover:
+
+- **Epic rejected the sign-in** (for example after a password change): open
+  **Connections → Epic Games → Manage**, choose **Replace sign-in** and paste a
+  fresh code. The old connection stays until Epic accepts the new code. If autosync
+  turned itself off, re-enable it in **Account → Background tasks**.
+- **Epic is busy or unreachable**: wait, then choose **Resume import**. Autosync
+  retries on its own.
+- **The host denied the action**: check in **Settings → Plugins** that the plugin
+  is enabled and its permissions are approved.
+
+The plugin's
+[troubleshooting and support notes](https://github.com/obsoletelabs/unnamed_tracking_app_plugins/blob/main/official/epic-games/README.md#troubleshooting-and-support)
+are the maintained reference for the plugin's Epic messages, and the
+[Epic plugin guide](https://obsoletelabs.github.io/unnamed_tracking_app_plugins/examples/epic-games/)
+covers its design and validation. Report Epic sign-in or import failures in the
+[plugin repository's issues](https://github.com/obsoletelabs/unnamed_tracking_app_plugins/issues),
+not to Epic. Never include the authorization code, the text of Epic's sign-in
+page, tokens or your Epic account ID.
+
 ## Safe operation
 
 - Keep secrets out of screenshots, logs, browser storage and repositories.

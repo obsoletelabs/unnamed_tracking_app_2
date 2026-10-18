@@ -60,6 +60,11 @@ Current account and data integrations include:
 - GiantBomb
 - RetroAchievements
 
+Optional plugins can add further account connections. The
+[Epic Games plugin](metadata.md#epic-games-plugin-experimental) is experimental:
+it relies on Epic's unofficial launcher services rather than a supported Epic
+API, and its support notes are maintained in the plugin repository.
+
 The exact capabilities of each integration depend on the service and the features implemented by Unnamed Tracking App.
 
 ## General configuration
