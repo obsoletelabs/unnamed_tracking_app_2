@@ -9,6 +9,14 @@ Hosted library connections request only identity and game reads by default.
 Optional progress features request achievement reads and tracking/achievement
 writes separately, with the writes still unchecked on the source consent screen.
 
+For an Activity host, save its public HTTPS URL under **Settings → Administration
+→ Application → Shared public app URL**. Setup can save the same value. No
+environment variable is required; an optional `PUBLIC_APP_URL` override takes
+precedence. Source instances must approve that exact host origin, including when
+the source and Activity are on the same instance. A connection error asking for
+the Activity host's public app URL means its administrator needs to save this
+setting. Use the host's own domain, not a `discordsays.com` proxy address.
+
 Owners can optionally enable **Allow consent requests from any HTTPS integration
 origin**. An integration may then register its requester identity using
 `POST /api/delegation/v1/clients/register` with its name and exact HTTPS origin.

@@ -11,8 +11,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.schemas.delegation import integration_origin, integration_scopes
+from src.core.app_integrations import get_public_app_url
 from src.core.auth import hash_token
-from src.core.config import settings
 from src.core.crypto import decrypt_secret, encrypt_secret
 from src.database.models.public_app import PublicAppActor, PublicAppSource
 from src.features import legacy_integrations
@@ -73,7 +73,13 @@ async def connect_source(
     if len(existing) >= 5 and not any(row.origin == origin for row in existing):
         raise HTTPException(422, "Disconnect an instance before adding a sixth connection.")
     # Source approval always names the actual operator origin, never Discord's proxy.
-    operator_origin = integration_origin(settings.PUBLIC_APP_URL)
+    operator_origin = await get_public_app_url(db)
+    if not operator_origin:
+        raise HTTPException(
+            503,
+            "The Activity host's public app URL is not configured. Ask its administrator to "
+            "set an HTTPS public URL in Settings > Administration > Application.",
+        )
     try:
         result = await asyncio.to_thread(
             public_instance_request, origin, "/api/delegation/v1/instance"
