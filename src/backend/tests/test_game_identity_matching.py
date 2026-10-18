@@ -187,8 +187,11 @@ async def test_title_only_never_merges_or_queues(users):  # noqa: F811
     await record(user, STEAM, "10", platform=None, release=None, playtime=0, last=None)
     await record(user, PLAYNITE, "g", platform=None, release=None, playtime=0, last=None)
     result = await match(user)
-    assert (result.associated, result.suggested) == (0, 0)
-    assert await queue(user) == []
+    # A title alone never makes them the same copy: no merge and no duplicate prompt. A Steam
+    # and a Playnite record are offered only as possible copies of one game (#274).
+    assert result.associated == 0
+    assert [entry["kind"] for entry in await queue(user)] == ["copy"] * result.suggested
+    assert result.suggested == 1
     async with SessionLocal() as db:  # the existing highlight still shows it
         assert len((await game_duplicates.suggestions(db, user))["pairs"]) == 1
 
@@ -288,7 +291,13 @@ async def test_conflicting_evidence_is_neither_merged_nor_queued(users):  # noqa
     await record(user, STEAM, "10")
     await record(user, PLAYNITE, "g", platform="PS5")
     await record(user, PLAYNITE, "h", release=date(2005, 1, 1))
-    assert (await match(user)).suggested == 0 and await queue(user) == []
+    result = await match(user)
+    entries = await queue(user)
+    # Conflicts still rule out "same copy". The PS5 record is offered as another copy of the
+    # game; the 2005 record is far enough apart to be a different game sharing the name.
+    assert result.associated == 0
+    assert [entry["kind"] for entry in entries] == ["copy"]
+    assert {entries[0]["first"]["platform"], entries[0]["second"]["platform"]} == {"PC", "PS5"}
 
 
 async def test_repeated_matching_and_imports_are_idempotent(users):  # noqa: F811
@@ -308,7 +317,8 @@ async def test_a_lone_edition_difference_is_not_the_same_copy(users):  # noqa: F
     await record(user, STEAM, "10")
     await record(user, PLAYNITE, "g", title="Hades Deluxe Edition")
     result = await match(user)
-    assert (result.associated, result.suggested) == (0, 0)
+    assert result.associated == 0  # an edition is never merged as the same copy
+    assert [entry["kind"] for entry in await queue(user)] == ["copy"]
 
 
 async def test_users_are_isolated(users):  # noqa: F811
@@ -390,3 +400,60 @@ async def test_automatic_merge_counts_one_copy_once_and_undo_restores_each(users
         await db.commit()
     assert await _playtime(user, a) == 3600
     assert await _playtime(user, b) == 3600
+
+
+@pytest.mark.parametrize(
+    ("first", "second", "shared"),
+    [
+        ("Minecraft: Java Edition", "Minecraft for Windows", True),
+        ("Minecraft: Java Edition", "Minecraft: Bedrock Edition", True),
+        ("The Witcher 3: Wild Hunt", "The Witcher 3: Wild Hunt - Game of the Year Edition", True),
+        ("The Elder Scrolls V: Skyrim", "The Elder Scrolls V: Skyrim Special Edition", True),
+        ("Death Stranding", "Death Stranding Director's Cut", True),
+        ("DOOM (2016)", "DOOM", True),
+        ("Minecraft", "Minecraft: Story Mode", False),
+        ("Hades", "Hades II", False),
+        ("Resident Evil 2", "Resident Evil 2 Remake", False),
+        ("Final Fantasy VII", "Final Fantasy VII Remake", False),
+    ],
+)
+def test_base_titles_group_editions_but_not_sequels_or_remakes(first, second, shared):
+    assert bool(matching.base_title_keys(first) & matching.base_title_keys(second)) is shared
+
+
+def test_copy_evidence_needs_a_reason_to_be_separate_copies():
+    steam = Candidate(id=1, title="Stardew Valley", source="Steam", platform="PC")
+    android = Candidate(id=2, title="Stardew Valley", source="manual", platform="Android")
+    verdict = matching.assess_copy(steam, android)
+    assert verdict is not None and verdict.level == "copy"
+    assert set(verdict.conflicts) == {"platform", "store"}
+    assert (
+        matching.assess_copy(
+            steam, Candidate(id=3, title="Stardew Valley", source="Steam", platform="PC")
+        )
+        is None
+    )
+    reboot = Candidate(id=4, title="DOOM", platform="PS4", release_date=date(2016, 5, 13))
+    original = Candidate(id=5, title="DOOM", platform="PC", release_date=date(1993, 12, 10))
+    assert matching.assess_copy(reboot, original) is None
+    other = Candidate(id=6, title="Stardew Valley", platform="Switch", provider_ids={"igdb": "1"})
+    assert (
+        matching.assess_copy(
+            other,
+            Candidate(id=7, title="Stardew Valley", platform="PC", provider_ids={"igdb": "2"}),
+        )
+        is None
+    )
+
+
+async def test_accepting_a_copy_suggestion_keeps_the_most_played_copy_as_main(users, api):  # noqa: F811
+    user = await users()
+    little = await record(user, STEAM, "10", platform="PC", playtime=60)
+    most = await record(user, PLAYNITE, "g", platform="Switch", playtime=90_000)
+    await match(user)
+    async with await api(user) as client:
+        entry = (await client.get("/api/game-identity/review/queue")).json()["entries"][0]
+        assert entry["kind"] == "copy"
+        merged = await client.post(f"/api/game-identity/review/queue/{entry['id']}/merge")
+        assert merged.status_code == 204, merged.text
+    assert (await root_of(user, little), await root_of(user, most)) == (most, most)
