@@ -23,7 +23,11 @@ from src.database.models.notification_story import NotificationStory
 from src.database.models.user import User
 from src.database.session import get_db
 from src.features.notification_controller import emit_legacy_rows
-from src.features.notification_producer_content import plugin_update_content
+from src.features.notification_producer_content import (
+    PLUGINS_SETTINGS_ROUTE,
+    plugin_update_batch_content,
+    plugin_update_content,
+)
 from src.features.notification_stories import (
     PLUGIN_UPDATE_EVENT_TYPE,
     PLUGIN_UPDATE_LIFECYCLE,
@@ -325,11 +329,14 @@ def _normalized_plugin_update_items(updates: list[dict[str, Any]]) -> list[dict[
         reason = update.get("reason")
         if isinstance(reason, str) and reason.strip():
             item["reason"] = reason.strip()[:300]
+        changelog_url = update.get("changelog_url")
+        if isinstance(changelog_url, str) and changelog_url.startswith("https://"):
+            item["changelog_url"] = changelog_url.strip()[:512]
         items.append(item)
     return items
 
 
-def _plugin_update_message(items: list[dict[str, str]], action_url: str) -> tuple[str, str]:
+def _plugin_update_message(items: list[dict[str, str]], action_url: str | None) -> tuple[str, str]:
     """Render a stable, bounded summary for administrators."""
     lines = [
         f"- {_PLUGIN_UPDATE_STATUS_LABELS[item['status']]}: {item['plugin_id']} "
@@ -337,7 +344,13 @@ def _plugin_update_message(items: list[dict[str, str]], action_url: str) -> tupl
         + (f" — {item['reason']}" if item.get("reason") else "")
         for item in items
     ]
-    body = "Plugin update batch results:\n" + "\n".join(lines) + f"\n\nManage plugins: {action_url}"
+    footer = (
+        f"Manage plugins: {action_url}"
+        if action_url
+        else "Manage plugins in Settings, Administration, Plugins. Set the public app URL "
+        "to get direct links in external notifications."
+    )
+    body = "Plugin update batch results:\n" + "\n".join(lines) + f"\n\n{footer}"
     title = f"Plugin updates: {len(items)} plugin(s) updated or need attention"
     return title, body
 
@@ -361,10 +374,11 @@ async def notify_plugin_updates(
     if not admin_ids:
         return
 
-    route = "/settings?area=administration&section=plugins"
     public_url = str(settings.PUBLIC_APP_URL or "").strip().rstrip("/")
-    action_url = f"{public_url}{route}" if public_url else route
+    # No public URL means no link: a relative path is dead text in Discord, email and webhooks.
+    action_url = f"{public_url}{PLUGINS_SETTINGS_ROUTE}" if public_url else None
     title, body = _plugin_update_message(items, action_url)
+    content = plugin_update_batch_content(items, _PLUGIN_UPDATE_STATUS_LABELS, public_url)
     now = int(time.time())
     media_id = uuid5(NAMESPACE_URL, f"urn:unnamed-tracking:plugin-update-batch:{dedupe_key}")
     for user_id in admin_ids:
@@ -378,6 +392,7 @@ async def notify_plugin_updates(
                     "media_id": media_id,
                     "title": title,
                     "body": body,
+                    "content": content,
                     "poster_url": None,
                     "event_at": now,
                     "dedupe_key": dedupe_key,

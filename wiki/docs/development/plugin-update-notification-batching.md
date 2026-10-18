@@ -12,6 +12,12 @@ Every supported transport should receive one event for the batch and render the 
 
 In-app navigation uses that relative route. Email and external transports use the configured `PUBLIC_APP_URL` plus the route for an absolute link; never hard-code a production domain. Deployments that need clickable external links must set `PUBLIC_APP_URL` to their own public app URL.
 
+### Links in the batch
+
+The batch carries canonical content (`plugin_update_batch_content`), not only text. Each plugin line links to that plugin in the Plugin Manager (`...&plugin=<id>`) and, when the update source records an HTTPS `changelog_url`, to its release notes. The footer reads `Manage plugins [here](<absolute URL>)`. The content also declares host-route actions (`Manage plugins` plus up to four per-plugin `Open <plugin>` actions), which providers render as buttons or links using the same base URL.
+
+When `PUBLIC_APP_URL` is not configured, no link is produced: the text says to open Settings, Administration, Plugins and to set the public app URL, and the host-route actions are dropped by external providers (the in-app notification still navigates by route). A relative path is never printed as link text.
+
 ## Required investigation
 
 - Trace the scheduler/job, update discovery, auto-update eligibility, executor, installed-version refresh and notification delivery paths.

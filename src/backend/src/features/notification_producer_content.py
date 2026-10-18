@@ -5,6 +5,7 @@ recipient sees (title, summary, typed facts and host-route actions) in the share
 contract so every surface, the live story page and digests render the same record.
 """
 
+import re
 from decimal import Decimal
 from urllib.parse import quote, urlencode
 from uuid import UUID
@@ -13,6 +14,7 @@ from src.plugin_api.notification_story_contracts import (
     ContentAction,
     ContentFact,
     HostRouteTarget,
+    MarkdownBlock,
     MoneyFactValue,
     NotificationContent,
     TextFactValue,
@@ -105,6 +107,75 @@ def plugin_update_content(
                 target=HostRouteTarget(kind="host_route", path=plugin_update_route(plugin_id)),
             ),
         ),
+    )
+
+
+_BATCH_ACTION_LIMIT = 5
+_MARKDOWN_SPECIAL = re.compile(r"([\\`*_\[\]<>()])")
+
+
+def _escape(value: str) -> str:
+    return _MARKDOWN_SPECIAL.sub(r"\\\1", value)
+
+
+def _public_link(public_url: str, path: str) -> str | None:
+    """An absolute link only when the deployment's public URL is known; never a dead path."""
+    return f"{public_url.rstrip('/')}{path}" if public_url else None
+
+
+def _batch_line(item: dict[str, str], status_label: str, public_url: str) -> str:
+    plugin_id = item["plugin_id"]
+    link = _public_link(public_url, plugin_update_route(plugin_id))
+    name = f"[{_escape(plugin_id)}]({link})" if link else _escape(plugin_id)
+    line = f"- {status_label}: {name} ({item['old_version']} → {item['new_version']})"
+    if item.get("reason"):
+        line += f" — {_escape(item['reason'])}"
+    changelog = item.get("changelog_url", "")
+    if changelog.startswith("https://") and not set(changelog) & set(" ()<>"):
+        line += f" ([release notes]({changelog}))"
+    return line
+
+
+def plugin_update_batch_content(
+    items: list[dict[str, str]], status_labels: dict[str, str], public_url: str
+) -> NotificationContent:
+    """One combined update notice: per-plugin lines that link to the plugin and its changelog.
+
+    Without a configured public URL the text says where to find the Plugin Manager instead of
+    showing a relative path that nothing can open. Host-route actions become buttons or links on
+    surfaces that know the public URL.
+    """
+    lines = [_batch_line(item, status_labels[item["status"]], public_url) for item in items]
+    manage = _public_link(public_url, PLUGINS_SETTINGS_ROUTE)
+    footer = (
+        f"Manage plugins [here]({manage})."
+        if manage
+        else "Manage plugins in Settings, Administration, Plugins. Set the public app URL "
+        "to get direct links in external notifications."
+    )
+    actions = [
+        ContentAction(
+            id="manage_plugins",
+            label="Manage plugins",
+            style="primary",
+            target=HostRouteTarget(kind="host_route", path=PLUGINS_SETTINGS_ROUTE),
+        )
+    ]
+    for index, item in enumerate(items[: _BATCH_ACTION_LIMIT - 1], start=1):
+        actions.append(
+            ContentAction(
+                id=f"plugin_{index}",
+                label=f"Open {item['plugin_id']}"[:40],
+                target=HostRouteTarget(
+                    kind="host_route", path=plugin_update_route(item["plugin_id"])
+                ),
+            )
+        )
+    return NotificationContent(
+        title=f"Plugin updates: {len(items)} plugin(s) updated or need attention",
+        summary="Plugin update batch results:",
+        blocks=(MarkdownBlock(type="markdown", markdown="\n".join(lines) + "\n\n" + footer),),
+        actions=tuple(actions),
     )
 
 

@@ -162,7 +162,10 @@ async def test_update_notification_uses_controller(monkeypatch) -> None:
     assert notice["kind"] == "plugin_update"
     assert notice["title"] == "Plugin updates: 1 plugin(s) updated or need attention"
     assert "example.update (1.0.0 → 2.0.0)" in notice["body"]
-    assert "/settings?area=administration&section=plugins" in notice["body"]
+    # Without a configured public URL the body must not show a dead relative path.
+    assert "/settings?area=administration" not in notice["body"]
+    assert "public app URL" in notice["body"]
+    assert notice["content"].actions[0].target.path.startswith("/settings?area=administration")
     assert notice["dedupe_key"].startswith("plugin-update-batch:")
 
 
@@ -203,6 +206,48 @@ async def test_four_plugin_updates_are_one_consolidated_notification(monkeypatch
         assert f"{update['current_version']} → {update['available_version']}" in body
     assert notices[0]["dedupe_key"].startswith("plugin-update-batch:")
     assert "https://tracking.example/settings?area=administration&section=plugins" in body
+    content = notices[0]["content"]
+    markdown = content.blocks[0].markdown
+    assert "Manage plugins [here](https://tracking.example/settings?area=administration" in markdown
+    assert "[example.plugin0](https://tracking.example/settings?area=administration" in markdown
+    assert "plugin=example.plugin0" in markdown
+    assert [action.id for action in content.actions] == [
+        "manage_plugins",
+        "plugin_1",
+        "plugin_2",
+        "plugin_3",
+        "plugin_4",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_batch_links_the_changelog_reason(monkeypatch) -> None:
+    class Db:
+        async def scalars(self, statement):
+            del statement
+            return [uuid4()]
+
+    from unittest.mock import AsyncMock
+
+    emit = AsyncMock(return_value=[uuid4()])
+    monkeypatch.setattr(plugin_catalogues, "emit_legacy_rows", emit)
+    monkeypatch.setattr(plugin_catalogues.settings, "PUBLIC_APP_URL", "")
+    await plugin_catalogues.notify_plugin_updates(
+        Db(),
+        [
+            {
+                "plugin_id": "example.one",
+                "current_version": "1.0.0",
+                "available_version": "2.0.0",
+                "update_available": True,
+                "status": "available",
+                "changelog_url": "https://example.com/changes",
+            }
+        ],
+    )
+    markdown = emit.await_args.args[2][0]["content"].blocks[0].markdown
+    assert "([release notes](https://example.com/changes))" in markdown
+    assert "example.one" in markdown and "](/settings" not in markdown
 
 
 @pytest.mark.asyncio
