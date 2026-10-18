@@ -491,6 +491,7 @@ async def list_game_screenshots(
     unscoped_only: bool = _UNSCOPED_ONLY_DEFAULT,
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
+    *,
     group: Annotated[bool, _GROUP_QUERY] = False,
 ) -> dict[str, list[dict]]:
     await _get_game_or_404(game_id, db, current_user.id, for_storage=True)

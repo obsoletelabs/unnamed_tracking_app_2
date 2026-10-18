@@ -34,6 +34,7 @@ from src.features.game_identity.graph import (
     MergeGraph,
     lock_user_identities,
     merge_graph,
+    new_edge,
     now_seconds,
     require_games,
 )
@@ -691,17 +692,15 @@ async def _rebuild_star(
         if edge is not None:
             edge.ended_at = max(stamp, edge.created_at)
         db.add(
-            GameRelationship(
-                user_id=user_id,
-                kind=_SAME_GAME,
-                label="",
-                from_game_id=member,
-                to_game_id=main_id,
+            new_edge(
+                user_id,
+                _SAME_GAME,
+                member,
+                main_id,
                 display=display,
                 origin=origin,
                 decision_id=decision_id,
-                created_at=stamp,
-                updated_at=stamp,
+                now=stamp,
             )
         )
     if joined_with is not None:

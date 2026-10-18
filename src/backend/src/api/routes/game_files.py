@@ -210,6 +210,32 @@ async def upload_game_files(
 # pylint: enable=duplicate-code,too-many-locals,too-many-positional-arguments
 
 
+async def _owner_files(
+    db: AsyncSession, owner: Game, kind: GameFileKind, label: dict | None
+) -> list[dict]:
+    """One copy's live files of a kind, labelled with the copy on a grouped page."""
+    if not owner.folder_location:
+        return []
+    game_dir = _DATA_ROOT / str(owner.user_id) / "games" / owner.folder_location
+    await _sync_game_file_items(owner.id, game_dir, db)
+    result = await db.execute(
+        select(GameFileItem)
+        .where(
+            GameFileItem.game_id == owner.id,
+            GameFileItem.kind == kind,
+            GameFileItem.deleted_at.is_(None),
+        )
+        .order_by(GameFileItem.filename)
+    )
+    files = []
+    for item in result.scalars().all():
+        entry = _game_file_to_dict(item, owner.id, game_dir)
+        if label is not None:
+            entry["copy"] = label
+        files.append(entry)
+    return files
+
+
 @router.get("/{game_id}/files/{kind}")
 async def list_game_files(
     game_id: UUID,
@@ -232,27 +258,10 @@ async def list_game_files(
             )
         ):
             owners[row.id] = row
-    labels = {c.game_id: c for c in copies}
+    labels = {c.game_id: c.as_dict() for c in copies}
     files = []
     for owner in owners.values():
-        if not owner.folder_location:
-            continue
-        game_dir = _DATA_ROOT / str(owner.user_id) / "games" / owner.folder_location
-        await _sync_game_file_items(owner.id, game_dir, db)
-        result = await db.execute(
-            select(GameFileItem)
-            .where(
-                GameFileItem.game_id == owner.id,
-                GameFileItem.kind == kind,
-                GameFileItem.deleted_at.is_(None),
-            )
-            .order_by(GameFileItem.filename)
-        )
-        for item in result.scalars().all():
-            entry = _game_file_to_dict(item, owner.id, game_dir)
-            if group:
-                entry["copy"] = labels[owner.id].as_dict()
-            files.append(entry)
+        files.extend(await _owner_files(db, owner, kind, labels.get(owner.id)))
     if len(owners) > 1:
         files.sort(key=lambda entry: (not entry["copy"]["is_main"], entry.get("filename", "")))
     response = {"files": files}
