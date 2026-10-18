@@ -130,6 +130,46 @@ const defaultUploadLimits: UploadLimits = {
   max_world_save_size_mb: 2000,
 };
 
+/** Where one upload cap's value comes from, and whether the environment locks it (#253). */
+export interface UploadLimitSource {
+  value: number;
+  source: "environment" | "override" | "default";
+  locked: boolean;
+  environment_variable: string;
+  environment_value: number | null;
+  /** The variable is set but is not a whole number of megabytes, so it was ignored. */
+  environment_invalid: boolean;
+  stored_override: number | null;
+}
+export type UploadLimitSources = Record<keyof UploadLimits, UploadLimitSource>;
+
+export async function fetchUploadLimitSources(): Promise<UploadLimitSources> {
+  if (import.meta.env.VITE_USE_MOCK_DATA === "true") {
+    return Object.fromEntries(
+      (Object.keys(defaultUploadLimits) as (keyof UploadLimits)[]).map(
+        (key) => [
+          key,
+          {
+            value: defaultUploadLimits[key],
+            source: "default",
+            locked: false,
+            environment_variable: key.toUpperCase(),
+            environment_value: null,
+            environment_invalid: false,
+            stored_override: null,
+          },
+        ],
+      ),
+    ) as UploadLimitSources;
+  }
+  const response = await fetch("/api/settings/upload-limit-sources", {
+    credentials: "include",
+  });
+  if (!response.ok)
+    throw new Error(`Failed to fetch upload limits: ${response.status}`);
+  return response.json();
+}
+
 export async function fetchUploadLimits(): Promise<UploadLimits> {
   if (import.meta.env.VITE_USE_MOCK_DATA === "true")
     return { ...defaultUploadLimits };

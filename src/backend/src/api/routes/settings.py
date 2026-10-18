@@ -20,6 +20,7 @@ from src.api.schemas.scan_settings import ScanSettingsRead, ScanSettingsUpdate
 from src.core.app_integrations import (
     UPLOAD_LIMIT_FIELDS,
     get_or_create_app_integration_settings,
+    get_upload_limit_sources,
     get_upload_limits_mb,
 )
 from src.core.auth import get_current_admin, get_current_user
@@ -300,6 +301,12 @@ async def get_system_info(admin: User = Depends(get_current_admin)) -> dict:
     }
 
 
+@router.get("/upload-limit-sources")
+async def get_upload_limit_details(db: AsyncSession = Depends(get_db)) -> dict[str, dict]:
+    """Every cap with where its value comes from and whether the environment locks it."""
+    return await get_upload_limit_sources(db)
+
+
 @router.get("/upload-limits")
 async def get_upload_limits(db: AsyncSession = Depends(get_db)) -> dict[str, int]:
     """Effective upload caps; missing overrides fall back to their environment values."""
@@ -322,8 +329,28 @@ async def update_upload_limit(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(get_current_admin),
 ) -> dict[str, int]:
-    """Update only supplied caps. Null clears that override back to its environment value."""
+    """Update only supplied caps. Null clears that override back to its environment value.
+
+    A cap the deployment environment sets explicitly cannot be changed here: the request is
+    refused whole, so a rejected save never changes another cap or another source."""
     del admin
+    sources = await get_upload_limit_sources(db)
+    locked = [
+        name
+        for name in UPLOAD_LIMIT_FIELDS
+        if name in payload.model_fields_set
+        and getattr(payload, name) is not None
+        and sources[name]["locked"]
+    ]
+    if locked:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Set by the server environment and not editable here: "
+                + ", ".join(str(sources[name]["environment_variable"]) for name in locked)
+                + ". Change the environment variable and restart."
+            ),
+        )
     row = await get_or_create_app_integration_settings(db)
     for name in UPLOAD_LIMIT_FIELDS:
         if name in payload.model_fields_set:
