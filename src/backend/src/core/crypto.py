@@ -5,7 +5,7 @@ Symmetric encryption for secrets we must store at rest (e.g. a PSN npsso
 token) but never need to search/index â€” Fernet (AES-128-CBC + HMAC) via
 `settings.SECRET_KEY`.
 
-Generate a key for `.env`'s SECRET_KEY with:
+For a fresh installation only, generate a key for `.env`'s SECRET_KEY with:
     python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 """
 
@@ -14,18 +14,12 @@ from functools import lru_cache
 from cryptography.fernet import Fernet, InvalidToken
 
 from src.core.config import settings
+from src.core.fernet_key import validate_fernet_key
 
 
 @lru_cache(maxsize=1)
 def _fernet() -> Fernet:
-    try:
-        return Fernet(settings.SECRET_KEY.encode())
-    except (ValueError, TypeError) as exc:
-        raise RuntimeError(
-            "SECRET_KEY is not a valid Fernet key â€” generate one with "
-            '`python -c "from cryptography.fernet import Fernet; '
-            'print(Fernet.generate_key().decode())"`'
-        ) from exc
+    return Fernet(validate_fernet_key(settings.SECRET_KEY).encode())
 
 
 def encrypt_secret(value: str) -> str:
@@ -36,4 +30,7 @@ def decrypt_secret(ciphertext: str) -> str:
     try:
         return _fernet().decrypt(ciphertext.encode()).decode()
     except InvalidToken as exc:
-        raise RuntimeError("Could not decrypt stored secret: SECRET_KEY may have changed.") from exc
+        raise RuntimeError(
+            "Could not decrypt stored secret. Restore the original matching SECRET_KEY "
+            "from backup; generating a new key cannot recover existing encrypted secrets."
+        ) from exc

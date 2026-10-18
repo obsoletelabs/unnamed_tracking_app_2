@@ -207,4 +207,18 @@ Never commit real credentials to `example.env`, the wiki, or source control.
 
 For `SECRET_KEY`, omitting the variable is supported by the backend: a stable Fernet key is generated under `APP_DATA_DIR/config/fernet.key` with redundant copies and recovered on later starts. If you provide a deployment key, preserve it for the lifetime of the installation because existing encrypted values depend on it.
 
+An explicit key is validated before use or persistence. The effective deployment value
+comes from the process environment, then the `.env` selected by the configuration handler
+(`ENV_FILE` when specified). A malformed value stops startup without printing the key.
+For an existing installation, restore its original matching key from backup; generating
+a new key cannot recover already encrypted credentials. Only a fresh installation with
+no saved data should omit an invalid explicit value and let the backend generate a key.
+
+Missing or damaged redundant copies are repaired from a valid matching copy. If valid
+copies disagree, or an explicit key disagrees with a saved valid key, automatic recovery
+stops without overwriting them. Preserve the files and restore the original matching
+deployment key and copies from backup. If all saved copies are invalid, no replacement
+is generated automatically. Storage errors identify `APP_DATA_DIR/config`; check the
+persistent volume and its read/write permissions before restarting.
+
 The four `MAX_*_SIZE_MB` upload caps can also be overridden in **Settings → Administration → Limits**. These deployment-wide overrides take effect on new uploads immediately; resetting removes the overrides and returns to the environment values.
