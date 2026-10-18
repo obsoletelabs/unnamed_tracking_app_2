@@ -16,6 +16,7 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Query,
     UploadFile,
     status,
 )
@@ -32,6 +33,7 @@ from src.database.models.game_archive import GameArchive, GameArchiveVersion
 from src.database.models.user import User
 from src.database.session import get_db
 from src.features import game_notes
+from src.features.game_identity.copies import page_copies
 from src.features.trash import archive_trash
 from src.features.trash.sweep import RETENTION_SECONDS
 from src.helpers.media import UploadTooLargeError, save_upload_stream
@@ -135,6 +137,7 @@ def _archive_to_dict(
     )
     return {
         "id": str(archive.id),
+        "game_id": str(game_id),
         "name": archive.name,
         "note": archive.note,
         "tags": archive.tags,
@@ -164,23 +167,39 @@ class RenameArchiveRequest(BaseModel):
 async def list_archives(
     game_id: UUID,
     kind: ArchiveKind,
+    group: bool = Query(
+        default=False,
+        description="Include archives of every copy shown on this game's page, each with its copy.",
+    ),
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> list[dict]:
-    """List active archives of the requested kind for a game."""
+    """List active archives of the requested kind for a game.
+
+    Each archive stays attached to the copy it was uploaded to; `group=true` lists
+    the archives of the main copy and every copy merged into it (#274)."""
     await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
+    copies = (
+        {c.game_id: c for c in await page_copies(db, current_user.id, game_id)} if group else {}
+    )
     result = await db.execute(
         select(GameArchive)
         .options(selectinload(GameArchive.versions))
         .where(
-            GameArchive.game_id == game_id,
+            GameArchive.game_id.in_(copies or {game_id}),
             GameArchive.kind == kind,
             GameArchive.deleted_at.is_(None),
         )
         .order_by(GameArchive.updated_at.desc())
     )
     archives = result.scalars().all()
-    return [_archive_to_dict(game_id, a) for a in archives]
+    listed = []
+    for archive in archives:
+        entry = _archive_to_dict(archive.game_id, archive)
+        if group:
+            entry["copy"] = copies[archive.game_id].as_dict()
+        listed.append(entry)
+    return listed
 
 
 @router.get("/{game_id}/archives/{kind}/trash")

@@ -37,6 +37,7 @@ from src.database.models.game import Game
 from src.database.models.media_item import MediaItem
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features.game_identity.copies import page_copies
 from src.features.trash.media_trash import move_media_file_to_trash, restore_media_file_from_trash
 from src.features.trash.sweep import RETENTION_SECONDS
 from src.helpers.artwork_revisions import artwork_response, stored_file_revision
@@ -67,6 +68,9 @@ _VERSION_QUERY = Query(None, max_length=64, description="Revision of the stored 
 
 
 _UNSCOPED_ONLY_DEFAULT = Query(False, description="Only items with no profile_id set.")
+_GROUP_DEFAULT = Query(
+    False, description="Also list media of every copy on this game's page, with its copy."
+)
 
 
 _DB_DEPENDENCY = Depends(get_db)
@@ -483,17 +487,30 @@ async def list_game_screenshots(
     game_id: UUID,
     profile_id: UUID | None = _NONE_FORM,
     unscoped_only: bool = _UNSCOPED_ONLY_DEFAULT,
+    group: bool = _GROUP_DEFAULT,
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> dict[str, list[dict]]:
     await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
-    stmt = select(MediaItem).where(MediaItem.game_id == game_id, MediaItem.deleted_at.is_(None))
+    # `group=true` also lists the media of every copy merged into this one (#274).
+    copies = (
+        {c.game_id: c for c in await page_copies(db, current_user.id, game_id)} if group else {}
+    )
+    stmt = select(MediaItem).where(
+        MediaItem.game_id.in_(copies or {game_id}), MediaItem.deleted_at.is_(None)
+    )
     if profile_id is not None:
         stmt = stmt.where(MediaItem.profile_id == profile_id)
     elif unscoped_only:
         stmt = stmt.where(MediaItem.profile_id.is_(None))
     result = await db.execute(stmt.order_by(MediaItem.created_at.desc()))
-    return {"media": [_media_item_to_dict(item, game_id) for item in result.scalars().all()]}
+    media = []
+    for item in result.scalars().all():
+        entry = _media_item_to_dict(item, item.game_id)
+        if group:
+            entry["copy"] = copies[item.game_id].as_dict()
+        media.append(entry)
+    return {"media": media}
 
 
 # pylint: enable=duplicate-code

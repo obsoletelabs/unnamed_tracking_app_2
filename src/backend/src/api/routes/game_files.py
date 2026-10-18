@@ -11,6 +11,7 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Query,
     UploadFile,
     status,
 )
@@ -25,9 +26,11 @@ from src.api.routes.utils.games import (
 )
 from src.core.app_integrations import get_upload_limits_mb
 from src.core.auth import get_current_user
+from src.database.models.game import Game
 from src.database.models.game_file_item import GameFileItem
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features.game_identity.copies import page_copies
 from src.features.trash.media_trash import move_media_file_to_trash, restore_media_file_from_trash
 from src.features.trash.sweep import RETENTION_SECONDS
 from src.helpers.media import (
@@ -210,26 +213,48 @@ async def upload_game_files(
 async def list_game_files(
     game_id: UUID,
     kind: GameFileKind,
+    group: bool = Query(
+        default=False, description="Also list files of every copy on this game's page."
+    ),
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> dict[str, list[dict]]:
     game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
-    if not game.folder_location:
-        return {"files": []}
-    game_dir = _DATA_ROOT / str(game.user_id) / "games" / game.folder_location
-    await _sync_game_file_items(game_id, game_dir, db)
-    result = await db.execute(
-        select(GameFileItem)
-        .where(
-            GameFileItem.game_id == game_id,
-            GameFileItem.kind == kind,
-            GameFileItem.deleted_at.is_(None),
+    copies = await page_copies(db, current_user.id, game_id) if group else []
+    owners = {game.id: game}
+    if group:
+        # Each copy keeps its files in its own folder (#274).
+        for row in await db.scalars(
+            select(Game).where(
+                Game.id.in_([c.game_id for c in copies if c.game_id != game_id]),
+                Game.user_id == current_user.id,
+            )
+        ):
+            owners[row.id] = row
+    labels = {c.game_id: c for c in copies}
+    files = []
+    for owner in owners.values():
+        if not owner.folder_location:
+            continue
+        game_dir = _DATA_ROOT / str(owner.user_id) / "games" / owner.folder_location
+        await _sync_game_file_items(owner.id, game_dir, db)
+        result = await db.execute(
+            select(GameFileItem)
+            .where(
+                GameFileItem.game_id == owner.id,
+                GameFileItem.kind == kind,
+                GameFileItem.deleted_at.is_(None),
+            )
+            .order_by(GameFileItem.filename)
         )
-        .order_by(GameFileItem.filename)
-    )
-    response = {
-        "files": [_game_file_to_dict(item, game_id, game_dir) for item in result.scalars().all()]
-    }
+        for item in result.scalars().all():
+            entry = _game_file_to_dict(item, owner.id, game_dir)
+            if group:
+                entry["copy"] = labels[owner.id].as_dict()
+            files.append(entry)
+    if len(owners) > 1:
+        files.sort(key=lambda entry: (not entry["copy"]["is_main"], entry.get("filename", "")))
+    response = {"files": files}
     await db.commit()
     return response
 

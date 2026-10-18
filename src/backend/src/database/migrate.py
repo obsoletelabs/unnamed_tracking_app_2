@@ -81,7 +81,7 @@ def missing_from_database(engine: Engine) -> list[str]:
         with engine.connect() as conn:
             diff = compare_metadata(MigrationContext.configure(conn), Base.metadata)
     finally:
-        for logger, level in zip(quiet, levels):
+        for logger, level in zip(quiet, levels, strict=True):
             logger.setLevel(level)
     problems: list[str] = []
     for entry in diff:
