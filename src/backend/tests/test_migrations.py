@@ -465,3 +465,27 @@ def test_integration_adoption_preserves_ongoing_grants_sources_and_saved_details
                 transaction.rollback()
     finally:
         engine.dispose()
+
+
+def test_known_version_with_skipped_migrations_replays_the_history(monkeypatch):
+    """#272: a version stamped by a differently parented build skipped ancestors."""
+    calls = []
+    monkeypatch.setattr(migrate, "missing_from_database", lambda _engine: calls.append("check") or (
+        ["column job_settings.paused"] if calls.count("check") == 1 else []
+    ))
+    monkeypatch.setattr(migrate.command, "stamp", lambda _cfg, rev, purge: calls.append(f"stamp {rev}"))
+    monkeypatch.setattr(migrate.command, "upgrade", lambda _cfg, rev: calls.append(f"upgrade {rev}"))
+
+    migrate._repair_skipped_migrations(object(), "base-rev", object())
+
+    assert calls == ["check", "stamp base-rev", "upgrade head", "check"]
+
+
+def test_known_version_with_complete_schema_is_left_alone(monkeypatch):
+    calls = []
+    monkeypatch.setattr(migrate, "missing_from_database", lambda _engine: [])
+    monkeypatch.setattr(migrate.command, "stamp", lambda *_args, **_kw: calls.append("stamp"))
+
+    migrate._repair_skipped_migrations(object(), "base-rev", object())
+
+    assert not calls
