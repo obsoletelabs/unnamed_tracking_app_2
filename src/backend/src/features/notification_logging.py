@@ -3,7 +3,7 @@
 import logging
 import re
 
-_CALENDAR_FEED_PATH = re.compile(r"^(/api/calendar/feed/)[^/?]+(\.ics)$")
+_CALENDAR_FEED_PATH = re.compile(r"^(/api/calendar/feed/)[^/?]+((?:/[a-z]+)?\.ics)$")
 _LIVE_LINK_PREFIXES = ("/api/notifications/live/", "/api/notifications/stories/by-link/")
 _REDACTED_LIVE_LINK = "/api/notifications/live/<redacted>"
 _QUERY_SECRET_PATHS = (

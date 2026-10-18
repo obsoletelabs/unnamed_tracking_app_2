@@ -132,6 +132,36 @@
 .ui-chip:not(.on) .swatch {
   opacity: 0.4;
 }
+/* one colour per media kind: a stripe on grid thumbnails and the swatch on
+   the filters, so the kinds read apart without opening a day */
+.kind-movie {
+  --kind: #e8a33d;
+}
+.kind-tv {
+  --kind: #4aa3df;
+}
+.kind-anime {
+  --kind: #e0568f;
+}
+.kind-game {
+  --kind: #6cc070;
+}
+.kind-swatch {
+  background: var(--kind, transparent);
+  border-color: var(--kind, var(--ui-dim));
+}
+.chip[class*="kind-"]::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background: var(--kind);
+}
+.chip.kind-custom::after {
+  display: none;
+}
 .layer-episode {
   --layer: var(--ui-accent-text);
 }
@@ -435,6 +465,29 @@
 }
 .feed-error {
   margin-top: 10px;
+}
+.feed-layers {
+  list-style: none;
+  margin: 12px 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.feed-layers li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 8px;
+  align-items: center;
+}
+.feed-layer-name {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.feed-layer-name small {
+  color: var(--ui-dim);
 }
 
 /* history list */
@@ -826,4 +879,9 @@
   .agenda-tag {
     display: none;
   }
+}
+
+.feed-combined {
+  width: 100%;
+  box-sizing: border-box;
 }

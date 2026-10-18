@@ -107,7 +107,7 @@ route, `POST /api/delegation/v1/clients/register`, registers a requester *origin
 
 Credentials are carried in headers or request bodies, never in URLs, with two
 unavoidable exceptions that are redacted from the application access log: the
-calendar feed token (`/api/calendar/feed/{token}.ics`, a bearer URL by design for
+calendar feed token (`/api/calendar/feed/{token}.ics` and its per-kind variants, a bearer URL by design for
 calendar clients) and single-use notification links. OIDC `code`/`state` query values
 are redacted. Validation errors never echo submitted values.
 
@@ -427,6 +427,7 @@ are redacted. Validation errors never echo submitted values.
 | GET | `/api/calendar/feed-token` | user | Own feed token. |
 | POST | `/api/calendar/feed-token/regenerate` | user | Own feed token. |
 | GET | `/api/calendar/feed/{token}.ics` | public | Possession of the unguessable per-user feed token; token is redacted from access logs. |
+| GET | `/api/calendar/feed/{token}/{layer}.ics` | public | Same per-user feed token, narrowed to one media kind; token is redacted from access logs. |
 | GET | `/api/calendar/games` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
 | GET | `/api/export/backup-status` | user | Only the caller's library; imported rows are stamped with the caller's ID. |
 | GET | `/api/export/library` | user | Only the caller's library; imported rows are stamped with the caller's ID. |

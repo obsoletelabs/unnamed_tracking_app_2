@@ -87,6 +87,7 @@ async def test_ordinary_users_cannot_queue_installation_wide_permission_proposal
     ("target", "expected"),
     [
         ("/api/calendar/feed/abcDEF123_-.ics", "/api/calendar/feed/[redacted].ics"),
+        ("/api/calendar/feed/abcDEF123_-/anime.ics", "/api/calendar/feed/[redacted]/anime.ics"),
         ("/api/auth/oidc/callback?code=c0de&state=s", "/api/auth/oidc/callback"),
         ("/api/auth/oidc/callback/corp?code=c0de&state=s", "/api/auth/oidc/callback/corp"),
         ("/api/notifications/email-verify?token=t", "/api/notifications/email-verify"),

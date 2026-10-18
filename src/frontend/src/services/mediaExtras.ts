@@ -549,20 +549,32 @@ export async function fetchCalendar(
 // The secret .ics feed URL for this user — created on first ask, and
 // replaceable if it ever leaks. Calendar apps can't send a login cookie,
 // so the URL itself is the credential.
-export async function fetchCalendarFeedUrl(
+export interface CalendarFeedLinks {
+  combined: string;
+  // one link per media kind, keyed by the server's layer name
+  layers: Record<string, string>;
+}
+
+export async function fetchCalendarFeeds(
   regenerate = false,
-): Promise<string> {
+): Promise<CalendarFeedLinks> {
   const response = await fetch(
     regenerate
       ? "/api/calendar/feed-token/regenerate"
       : "/api/calendar/feed-token",
     { method: regenerate ? "POST" : "GET", credentials: "include" },
   );
-  const raw = await handle<{ path: string }>(
+  const raw = await handle<{ path: string; layers?: Record<string, string> }>(
     response,
     "load the calendar feed link",
   );
-  return `${window.location.origin}${raw.path}`;
+  const absolute = (path: string) => `${window.location.origin}${path}`;
+  return {
+    combined: absolute(raw.path),
+    layers: Object.fromEntries(
+      Object.entries(raw.layers ?? {}).map(([k, v]) => [k, absolute(v)]),
+    ),
+  };
 }
 
 // The past side of Games on the calendar: release dates (Settings > Game

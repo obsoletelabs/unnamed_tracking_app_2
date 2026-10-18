@@ -36,6 +36,10 @@ Episode timestamps are UTC instants. Release dates and manual all-day dates are 
 
 The subscription window is 90 days. The feed reuses `build_calendar_entries()` rather than maintaining a second calendar query, so selected airing statuses, title language, release filtering, game filtering, and projected-episode preferences remain aligned with the application calendar.
 
+## Per-kind feeds
+
+`/api/calendar/feed/{token}/{layer}.ics` serves one layer (`anime`, `tv`, `movies`, `games`, `events`) from the same `FEED_LAYERS` table. It runs the same pipeline as the combined feed (`build_calendar_entries()`, the estimate preference, game preferences) and then keeps only entries of that media type; `events` returns only the user's manual events, which are otherwise only in the combined feed. The token is the same `users.calendar_token`, so regeneration invalidates all URLs, and the access-log redaction covers the layer paths. UIDs do not depend on the layer, so a client subscribed to both sees consistent identifiers. `GET /api/calendar/feed-token` still returns `path` (combined) and now also `layers`.
+
 ## Why there is no ICS importer
 
 A separate design issue, #243, tracks this work so an importer can be reviewed as its own architecture and security boundary.

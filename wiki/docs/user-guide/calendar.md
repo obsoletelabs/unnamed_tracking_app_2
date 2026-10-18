@@ -24,6 +24,20 @@ Provider-backed media entries use the same **90-day forward window** as the appl
 
 Projected future episodes are estimates based on the stored airing cadence. They are included when **Show estimated** is enabled; disabling that preference removes only projected episodes from the feed. The provider-confirmed next episode remains included. This matches the application calendar's distinction between confirmed and dashed estimated entries.
 
+## Separate subscriptions by media kind
+
+**Subscribe** shows the combined link plus one link each for **Anime**, **TV**, **Movies**, **Games** and **My entries**. Each returns only that layer, so you can add them to your calendar app as separate calendars.
+
+- All links share one secret token. **New links** replaces the token, so every old link (combined and per-kind) stops working at once.
+- Every link follows your saved Calendar settings (airing statuses, Show estimated, Games layers). A layer you have switched off is simply empty.
+- Your own manual entries are in the combined feed and in **My entries** only, not in the media layers.
+- Event identifiers do not change between the combined and per-kind feeds, so a calendar app that has both will not treat them as different events.
+- The existing combined link keeps working unchanged.
+
+### Colours
+
+On the calendar itself each kind has a colour (movies amber, TV blue, anime pink, games green), shown as a swatch on the filters and a stripe on each thumbnail. The feeds do not promise any colour: calendar apps decide how, or whether, to colour a subscribed calendar and many ignore colour hints. To colour a kind in Google, Apple or Outlook, set it on the subscribed calendar there, which is easiest with one link per kind.
+
 ## Dates and time zones
 
 Provider-supplied episode times are exported as UTC iCalendar timestamps (`Z`). Calendar applications convert those instants to the viewer's local time zone.

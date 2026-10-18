@@ -85,6 +85,8 @@ const {
   feedUrl,
   feedError,
   feedCopied,
+  feedCopiedKey,
+  feedLayers,
   feedBusy,
   openFeed,
   copyFeed,
@@ -327,6 +329,10 @@ const {
               :class="{ on: filters.movie }"
               @click="filters.movie = !filters.movie"
             >
+              <span
+                class="swatch kind-swatch kind-movie"
+                aria-hidden="true"
+              ></span>
               Movies
             </button>
             <button
@@ -335,6 +341,10 @@ const {
               :class="{ on: filters.tv }"
               @click="filters.tv = !filters.tv"
             >
+              <span
+                class="swatch kind-swatch kind-tv"
+                aria-hidden="true"
+              ></span>
               TV
             </button>
             <button
@@ -343,6 +353,10 @@ const {
               :class="{ on: filters.anime }"
               @click="filters.anime = !filters.anime"
             >
+              <span
+                class="swatch kind-swatch kind-anime"
+                aria-hidden="true"
+              ></span>
               Anime
             </button>
             <button
@@ -352,6 +366,10 @@ const {
               :class="{ on: filters.game }"
               @click="filters.game = !filters.game"
             >
+              <span
+                class="swatch kind-swatch kind-game"
+                aria-hidden="true"
+              ></span>
               Games
             </button>
           </div>
@@ -453,7 +471,11 @@ const {
                   v-for="i in chipsFor(cell).shown"
                   :key="i.key"
                   class="chip"
-                  :class="[`layer-${i.layer}`, { projected: i.projected }]"
+                  :class="[
+                    `layer-${i.layer}`,
+                    `kind-${i.mediaType}`,
+                    { projected: i.projected },
+                  ]"
                   :title="itemTooltip(i)"
                 >
                   <img
@@ -806,14 +828,21 @@ const {
       @close="showFeed = false"
     >
       <p class="modal-hint">
-        Paste this link into Google Calendar (Other calendars, From URL), Apple
-        Calendar or Outlook and every airing episode and release shows up there,
-        kept up to date. Anyone with the link can see your schedule, so treat it
-        like a password. The app has to be reachable from the internet for
-        Google Calendar to fetch it.
+        Paste a link into Google Calendar (Other calendars, From URL), Apple
+        Calendar or Outlook and the airing episodes and releases show up there,
+        kept up to date. Anyone with a link can see your schedule, so treat them
+        like passwords. The app has to be reachable from the internet for Google
+        Calendar to fetch them.
+      </p>
+      <p class="modal-hint">
+        The combined link has everything, including your own entries. To keep
+        kinds in separate calendars (so each can have its own colour and be
+        switched off on its own), subscribe to the links below instead. All
+        links follow your Calendar settings and stop working together when you
+        make new ones.
       </p>
       <input
-        class="ui-field"
+        class="ui-field feed-combined"
         type="text"
         readonly
         aria-label="Calendar subscription link"
@@ -821,6 +850,41 @@ const {
         placeholder="Loading…"
         @focus="($event.target as HTMLInputElement).select()"
       />
+      <ul v-if="feedLayers.length" class="feed-layers">
+        <li v-for="l in feedLayers" :key="l.key">
+          <div class="feed-layer-name">
+            <span
+              class="swatch kind-swatch"
+              :class="`kind-${l.key === 'movies' ? 'movie' : l.key === 'games' ? 'game' : l.key}`"
+              aria-hidden="true"
+            ></span>
+            <strong>{{ l.label }}</strong>
+            <small>{{ l.hint }}</small>
+          </div>
+          <input
+            class="ui-field"
+            type="text"
+            readonly
+            :aria-label="`${l.label} calendar link`"
+            :value="l.url"
+            @focus="($event.target as HTMLInputElement).select()"
+          />
+          <button
+            type="button"
+            class="ui-btn ui-btn-sm ui-btn-secondary"
+            @click="copyFeed(l.key, l.url)"
+          >
+            {{ feedCopiedKey === l.key ? "Copied" : "Copy" }}
+          </button>
+        </li>
+      </ul>
+      <p class="modal-hint">
+        Colours: the app colours movies, TV, anime and games on the calendar
+        itself (the small swatches beside each filter). Calendar apps decide how
+        colours are shown for a subscription, and many ignore anything we send.
+        If you want a colour there, set it on the subscribed calendar in your
+        calendar app, which is easiest with one link per kind.
+      </p>
       <p v-if="feedError" class="ui-error-box feed-error">{{ feedError }}</p>
       <div class="ui-modal-actions">
         <button
@@ -829,15 +893,15 @@ const {
           :disabled="feedBusy"
           @click="regenerateFeed"
         >
-          New link
+          New links
         </button>
         <button
           type="button"
           class="ui-btn ui-btn-primary"
           :disabled="!feedUrl"
-          @click="copyFeed"
+          @click="copyFeed()"
         >
-          {{ feedCopied ? "Copied" : "Copy link" }}
+          {{ feedCopied ? "Copied" : "Copy combined link" }}
         </button>
       </div>
     </UiModal>

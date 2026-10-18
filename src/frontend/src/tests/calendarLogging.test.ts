@@ -19,7 +19,7 @@ const extras = vi.hoisted(() => ({
 vi.mock("../services/mediaExtras", () => ({
   fetchCalendar: vi.fn(async () => []),
   fetchActivity: vi.fn(async () => []),
-  fetchCalendarFeedUrl: vi.fn(async () => ""),
+  fetchCalendarFeeds: vi.fn(async () => ({ combined: "", layers: {} })),
   fetchCalendarGames: vi.fn(async () => []),
   fetchCalendarEvents: vi.fn(async () => []),
   createCalendarEvent: vi.fn(),

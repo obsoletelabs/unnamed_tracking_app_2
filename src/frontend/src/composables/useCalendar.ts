@@ -23,7 +23,7 @@ import { blurOnLeave } from "../utils/blurOnLeave";
 import {
   fetchCalendar,
   fetchActivity,
-  fetchCalendarFeedUrl,
+  fetchCalendarFeeds,
   fetchCalendarGames,
   fetchCalendarEvents,
   createCalendarEvent,
@@ -981,26 +981,46 @@ export function useCalendar() {
   // ---- subscribe (iCal feed) ----
   const showFeed = ref(false);
   const feedUrl = ref("");
+  // the combined link above, plus one per media kind (same secret token)
+  const FEED_LAYER_LABELS: { key: string; label: string; hint: string }[] = [
+    { key: "anime", label: "Anime", hint: "Airing episodes and releases" },
+    { key: "tv", label: "TV", hint: "Airing episodes and premieres" },
+    { key: "movies", label: "Movies", hint: "Release dates" },
+    { key: "games", label: "Games", hint: "Release dates (if shown here)" },
+    { key: "events", label: "My entries", hint: "Only the entries you add" },
+  ];
+  const feedLayerUrls = ref<Record<string, string>>({});
+  const feedLayers = computed(() =>
+    FEED_LAYER_LABELS.filter((l) => feedLayerUrls.value[l.key]).map((l) => ({
+      ...l,
+      url: feedLayerUrls.value[l.key],
+    })),
+  );
   const feedError = ref<string | null>(null);
-  const feedCopied = ref(false);
+  const feedCopiedKey = ref<string | null>(null);
+  const feedCopied = computed(() => feedCopiedKey.value === "combined");
   const feedBusy = ref(false);
   async function openFeed() {
     showFeed.value = true;
     feedError.value = null;
-    feedCopied.value = false;
+    feedCopiedKey.value = null;
     if (feedUrl.value) return;
     try {
-      feedUrl.value = await fetchCalendarFeedUrl();
+      const links = await fetchCalendarFeeds();
+      feedUrl.value = links.combined;
+      feedLayerUrls.value = links.layers;
     } catch (e) {
       feedError.value =
         e instanceof Error ? e.message : "Couldn't load the feed link.";
     }
   }
-  async function copyFeed() {
+  async function copyFeed(key = "combined", url = feedUrl.value) {
     try {
-      await navigator.clipboard.writeText(feedUrl.value);
-      feedCopied.value = true;
-      setTimeout(() => (feedCopied.value = false), 1800);
+      await navigator.clipboard.writeText(url);
+      feedCopiedKey.value = key;
+      setTimeout(() => {
+        if (feedCopiedKey.value === key) feedCopiedKey.value = null;
+      }, 1800);
     } catch {
       feedError.value = "Copy failed. Select the link and copy it by hand.";
     }
@@ -1009,14 +1029,16 @@ export function useCalendar() {
   async function regenerateFeed() {
     const ok = await confirm({
       message:
-        "Make a new link? Anything subscribed to the old one stops updating.",
+        "Make new links? Anything subscribed to an old link, combined or per kind, stops updating.",
       confirmLabel: "Make new link",
     });
     if (!ok) return;
     feedBusy.value = true;
     try {
-      feedUrl.value = await fetchCalendarFeedUrl(true);
-      feedCopied.value = false;
+      const links = await fetchCalendarFeeds(true);
+      feedUrl.value = links.combined;
+      feedLayerUrls.value = links.layers;
+      feedCopiedKey.value = null;
     } catch (e) {
       feedError.value =
         e instanceof Error ? e.message : "Couldn't make a new link.";
@@ -1389,6 +1411,8 @@ export function useCalendar() {
     feedUrl,
     feedError,
     feedCopied,
+    feedCopiedKey,
+    feedLayers,
     feedBusy,
     openFeed,
     copyFeed,
