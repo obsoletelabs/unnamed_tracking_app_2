@@ -7,6 +7,7 @@ import pytest
 from sqlalchemy import delete
 
 from src.database.models.game import Game, GameStatus
+from src.database.models.game_archive import GameArchive
 from src.database.models.user import User
 from src.database.session import SessionLocal
 from src.features.imports.library_games import get_or_create_game
@@ -208,3 +209,24 @@ async def test_foreign_trashed_same_id_and_malformed_requests_are_rejected(flow)
         async with SessionLocal() as db:
             await db.execute(delete(User).where(User.id == stranger_id))
             await db.commit()
+
+
+async def test_owned_copy_is_one_grouping_with_the_identity_model(flow):
+    """#274: a copy grouped from the game page shows its saves on the main page."""
+    copy_id = await add_copy(flow, source="Steam", playtime_seconds=7200)
+    async with SessionLocal() as db:
+        archive = GameArchive(game_id=copy_id, kind="save", name="Steam save", tags=[])
+        db.add(archive)
+        await db.commit()
+    assert (await group(flow, flow.game_id, copy_id)).status_code == 204
+    effective = (await flow.client.get(f"/api/game-identity/games/{copy_id}")).json()
+    assert effective["identity_id"] == str(flow.game_id)  # the chosen main stays main
+    saves = (await flow.client.get(f"/api/game/{flow.game_id}/archives/save?group=true")).json()
+    assert [(s["name"], s["copy"]["game_id"]) for s in saves] == [("Steam save", str(copy_id))]
+
+    assert (await separate(flow, flow.game_id, copy_id)).status_code == 204
+    effective = (await flow.client.get(f"/api/game-identity/games/{copy_id}")).json()
+    assert effective["identity_id"] == str(copy_id)
+    assert (
+        await flow.client.get(f"/api/game/{flow.game_id}/archives/save?group=true")
+    ).json() == []

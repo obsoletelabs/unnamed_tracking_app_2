@@ -7,6 +7,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.game import Game
+from src.features.game_identity import decisions, graph
 
 OWNED_COPY = "owned_copy"
 
@@ -68,6 +69,11 @@ async def group_copy(db: AsyncSession, user_id: UUID, main_id: UUID, copy_id: UU
         raise ValueError("Separate this copy from its current parent before regrouping it.")
     await validate_relationship(db, user_id, main, OWNED_COPY, copy_id)
     copy.parent_game_id, copy.relationship_type = main_id, OWNED_COPY
+    # One grouping model (#274): an owned copy is also a copy in the identity
+    # group, so the main page shows its saves and media and its playtime counts.
+    actor = decisions.Actor(reason="Grouped as an owned copy")
+    await decisions.merge_identities(db, user_id, copy_id, main_id, actor, replace_separate=True)
+    await decisions.make_main(db, user_id, main_id, actor)
     await db.commit()
 
 
@@ -86,4 +92,8 @@ async def separate_copy(db: AsyncSession, user_id: UUID, main_id: UUID, copy_id:
     if copy.parent_game_id != main_id or copy.relationship_type != OWNED_COPY:
         raise ValueError("This copy's group has changed. Reload before separating it.")
     copy.parent_game_id, copy.relationship_type = None, None
+    merged = await graph.merge_graph(db, user_id)
+    if merged.root(copy_id) == merged.root(main_id):
+        actor = decisions.Actor(reason="Separated owned copy")
+        await decisions.split_copy(db, user_id, copy_id, actor, keep_separate=True)
     await db.commit()
