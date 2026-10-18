@@ -1,7 +1,7 @@
 """What is in a game, counted, so a tab set to "show when it has content" knows
 whether to appear. Cheap on purpose: counts only, no file contents."""
 
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -26,9 +26,9 @@ router = APIRouter(prefix="/api/game", tags=["game page"])
 @router.get("/{game_id}/content-counts")
 async def content_counts(
     game_id: UUID,
-    group: bool = Query(default=False, description="Count every copy on this game's page."),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    group: Annotated[bool, Query(description="Count every copy on this game's page.")] = False,
 ) -> dict[str, int]:
     game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     # The main copy's page shows content from every copy merged into it (#274).

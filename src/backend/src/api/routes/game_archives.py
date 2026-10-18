@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
 from fastapi import (
@@ -168,12 +168,14 @@ class RenameArchiveRequest(BaseModel):
 async def list_archives(
     game_id: UUID,
     kind: ArchiveKind,
-    group: bool = Query(
-        default=False,
-        description="Include archives of every copy shown on this game's page, each with its copy.",
-    ),
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
+    group: Annotated[
+        bool,
+        Query(
+            description="Include archives of every copy shown on this game's page, each with its copy."
+        ),
+    ] = False,
 ) -> list[dict]:
     """List active archives of the requested kind for a game.
 
@@ -209,21 +211,37 @@ async def list_archive_trash(
     kind: ArchiveKind,
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
+    group: Annotated[
+        bool,
+        Query(
+            description="Also list trashed items of every copy on this game's page, with their copy."
+        ),
+    ] = False,
 ) -> list[dict]:
     """Soft-deleted archives of this kind, newest-deleted first — each still
     restorable until its purge_at passes (see features/trash/sweep.py)."""
     await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
+    copies = (
+        {c.game_id: c for c in await page_copies(db, current_user.id, game_id)} if group else {}
+    )
     result = await db.execute(
         select(GameArchive)
         .options(selectinload(GameArchive.versions))
         .where(
-            GameArchive.game_id == game_id,
+            GameArchive.game_id.in_(copies or {game_id}),
             GameArchive.kind == kind,
             GameArchive.deleted_at.is_not(None),
         )
         .order_by(GameArchive.deleted_at.desc())
     )
-    return [_trash_entry(game_id, a) for a in result.scalars().all()]
+    entries = []
+    for archive in result.scalars().all():
+        entry = _trash_entry(archive.game_id, archive)
+        entry["game_id"] = str(archive.game_id)
+        if group:
+            entry["copy"] = copies[archive.game_id].as_dict()
+        entries.append(entry)
+    return entries
 
 
 # Keep the established workflow and public parameters together.

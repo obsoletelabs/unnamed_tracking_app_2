@@ -4,7 +4,7 @@ import asyncio
 import io
 import time
 from pathlib import Path
-from typing import Literal, cast
+from typing import Annotated, Literal, cast
 from uuid import UUID
 
 from fastapi import (
@@ -68,8 +68,8 @@ _VERSION_QUERY = Query(None, max_length=64, description="Revision of the stored 
 
 
 _UNSCOPED_ONLY_DEFAULT = Query(False, description="Only items with no profile_id set.")
-_GROUP_DEFAULT = Query(
-    False, description="Also list media of every copy on this game's page, with its copy."
+_GROUP_QUERY = Query(
+    description="Also list media of every copy on this game's page, with its copy."
 )
 
 
@@ -489,9 +489,9 @@ async def list_game_screenshots(
     game_id: UUID,
     profile_id: UUID | None = _NONE_FORM,
     unscoped_only: bool = _UNSCOPED_ONLY_DEFAULT,
-    group: bool = _GROUP_DEFAULT,
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
+    group: Annotated[bool, _GROUP_QUERY] = False,
 ) -> dict[str, list[dict]]:
     await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     # `group=true` also lists the media of every copy merged into this one (#274).
@@ -675,23 +675,28 @@ async def list_game_screenshot_trash(
     game_id: UUID,
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
+    group: Annotated[bool, _GROUP_QUERY] = False,
 ) -> dict[str, list[dict]]:
     await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
+    copies = (
+        {c.game_id: c for c in await page_copies(db, current_user.id, game_id)} if group else {}
+    )
     result = await db.execute(
         select(MediaItem)
-        .where(MediaItem.game_id == game_id, MediaItem.deleted_at.is_not(None))
+        .where(MediaItem.game_id.in_(copies or {game_id}), MediaItem.deleted_at.is_not(None))
         .order_by(MediaItem.deleted_at.desc())
     )
     media = []
     for item in result.scalars().all():
         assert item.deleted_at is not None  # guaranteed by the deleted_at.is_not(None) filter above
-        media.append(
-            {
-                **_media_item_to_dict(item, game_id),
-                "deleted_at": item.deleted_at,
-                "purge_at": item.deleted_at + RETENTION_SECONDS,
-            }
-        )
+        entry = {
+            **_media_item_to_dict(item, item.game_id),
+            "deleted_at": item.deleted_at,
+            "purge_at": item.deleted_at + RETENTION_SECONDS,
+        }
+        if group:
+            entry["copy"] = copies[item.game_id].as_dict()
+        media.append(entry)
     return {"media": media}
 
 

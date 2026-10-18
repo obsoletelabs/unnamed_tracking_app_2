@@ -2,7 +2,7 @@
 
 import time
 from pathlib import Path
-from typing import Literal, cast
+from typing import Annotated, Literal, cast
 from uuid import UUID
 
 from fastapi import (
@@ -214,11 +214,11 @@ async def upload_game_files(
 async def list_game_files(
     game_id: UUID,
     kind: GameFileKind,
-    group: bool = Query(
-        default=False, description="Also list files of every copy on this game's page."
-    ),
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
+    group: Annotated[
+        bool, Query(description="Also list files of every copy on this game's page.")
+    ] = False,
 ) -> dict[str, list[dict]]:
     game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     copies = await page_copies(db, current_user.id, game_id) if group else []
@@ -314,12 +314,21 @@ async def list_game_file_trash(
     kind: GameFileKind,
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
+    group: Annotated[
+        bool,
+        Query(
+            description="Also list trashed items of every copy on this game's page, with their copy."
+        ),
+    ] = False,
 ) -> dict[str, list[dict]]:
     await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
+    copies = (
+        {c.game_id: c for c in await page_copies(db, current_user.id, game_id)} if group else {}
+    )
     result = await db.execute(
         select(GameFileItem)
         .where(
-            GameFileItem.game_id == game_id,
+            GameFileItem.game_id.in_(copies or {game_id}),
             GameFileItem.kind == kind,
             GameFileItem.deleted_at.is_not(None),
         )
@@ -328,15 +337,17 @@ async def list_game_file_trash(
     files = []
     for item in result.scalars().all():
         assert item.deleted_at is not None  # guaranteed by the deleted_at.is_not(None) filter above
-        files.append(
-            {
-                "id": str(item.id),
-                "filename": item.filename,
-                "original_filename": item.original_filename,
-                "deleted_at": item.deleted_at,
-                "purge_at": item.deleted_at + RETENTION_SECONDS,
-            }
-        )
+        entry = {
+            "id": str(item.id),
+            "game_id": str(item.game_id),
+            "filename": item.filename,
+            "original_filename": item.original_filename,
+            "deleted_at": item.deleted_at,
+            "purge_at": item.deleted_at + RETENTION_SECONDS,
+        }
+        if group:
+            entry["copy"] = copies[item.game_id].as_dict()
+        files.append(entry)
     return {"files": files}
 
 

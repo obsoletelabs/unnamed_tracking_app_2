@@ -224,11 +224,16 @@ export interface TrashedArchive extends GameArchiveData {
 export async function fetchArchiveTrash(
   gameId: string,
   kind: ArchiveKind,
+  group = false,
 ): Promise<TrashedArchive[]> {
   if (import.meta.env.VITE_USE_MOCK_DATA === "true") return [];
-  const response = await fetch(`/api/game/${gameId}/archives/${kind}/trash`, {
-    credentials: "include",
-  });
+  const query = group ? "?group=true" : "";
+  const response = await fetch(
+    `/api/game/${gameId}/archives/${kind}/trash${query}`,
+    {
+      credentials: "include",
+    },
+  );
   if (!response.ok)
     throw new Error(
       `Failed to fetch trash: ${response.status} ${response.statusText}`,

@@ -1127,7 +1127,7 @@ export function useGameDetail() {
   async function refreshMediaTrash() {
     if (!game.value) return;
     try {
-      mediaTrash.value = await fetchGameMediaTrash(game.value.id);
+      mediaTrash.value = await fetchGameMediaTrash(game.value.id, true);
     } catch {
       // trash listing failing silently isn't worth blocking the main view
     }
@@ -1136,7 +1136,7 @@ export function useGameDetail() {
   async function restoreMediaItem(item: TrashedMediaItem) {
     if (!game.value) return;
     try {
-      await restoreGameMedia(game.value.id, item.kind, item.filename);
+      await restoreGameMedia(ownerOf(item), item.kind, item.filename);
       mediaLoadedFor.value = null;
       await loadMedia();
       await refreshMediaTrash();
@@ -1451,6 +1451,7 @@ export function useGameDetail() {
       fileTrashRefFor(kind).value = await fetchGameFileTrash(
         game.value.id,
         kind,
+        true,
       );
     } catch {
       // trash listing failing silently isn't worth blocking the main view
@@ -1460,7 +1461,7 @@ export function useGameDetail() {
   async function restoreFileItem(kind: FlatFileKind, item: TrashedGameFile) {
     if (!game.value) return;
     try {
-      await restoreGameFile(game.value.id, kind, item.filename);
+      await restoreGameFile(ownerOf(item), kind, item.filename);
       filesLoaded.value[kind] = null;
       await loadGameFiles(kind);
       await refreshFileTrash(kind);
@@ -1660,7 +1661,7 @@ export function useGameDetail() {
   async function refreshSaveTrash() {
     if (!game.value) return;
     try {
-      saveTrash.value = await fetchArchiveTrash(game.value.id, "save");
+      saveTrash.value = await fetchArchiveTrash(game.value.id, "save", true);
     } catch {
       // trash listing failing silently isn't worth blocking the main view
     }
@@ -1678,7 +1679,7 @@ export function useGameDetail() {
   async function onRestoreArchive(archive: TrashedArchive, isWorld: boolean) {
     if (!game.value) return;
     try {
-      await restoreArchive(game.value.id, archive.id);
+      await restoreArchive(ownerOf(archive), archive.id);
       if (isWorld) {
         await refreshWorlds();
         await refreshWorldTrash();

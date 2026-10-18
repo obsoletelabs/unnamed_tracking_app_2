@@ -214,3 +214,26 @@ async def test_grouped_listing_never_crosses_users(users, api):  # noqa: F811
     async with await api(intruder) as client:
         response = await client.get(f"/api/game/{game}/archives/save?group=true")
         assert response.status_code == 404
+
+
+async def test_main_page_trash_lists_every_copys_trashed_items(users, api):  # noqa: F811
+    user = await users()
+    main = await copy(user, "Hades", hours=9)
+    steam = await copy(user, "Hades")
+    await run(decisions.merge_identities, user, steam, main)
+    archive = await add_save(steam, "Old Steam save")
+    async with SessionLocal() as db:
+        db.add(
+            MediaItem(game_id=steam, kind="screenshot", filename="gone.png", tags=[], deleted_at=1)
+        )
+        row = await db.get(GameArchive, archive)
+        row.deleted_at = 1
+        await db.commit()
+    async with await api(user) as client:
+        assert (await client.get(f"/api/game/{main}/archives/save/trash")).json() == []
+        saves = (await client.get(f"/api/game/{main}/archives/save/trash?group=true")).json()
+        assert [(s["game_id"], s["copy"]["is_main"]) for s in saves] == [(str(steam), False)]
+        media = (await client.get(f"/api/game/{main}/screenshots/trash?group=true")).json()
+        assert [m["copy"]["game_id"] for m in media["media"]] == [str(steam)]
+        files = (await client.get(f"/api/game/{main}/files/doc/trash?group=true")).json()
+        assert files == {"files": []}

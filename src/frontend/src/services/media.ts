@@ -219,11 +219,16 @@ export interface TrashedMediaItem extends MediaItem {
 
 export async function fetchGameMediaTrash(
   gameId: string,
+  group = false,
 ): Promise<TrashedMediaItem[]> {
   if (import.meta.env.VITE_USE_MOCK_DATA === "true") return [];
-  const response = await fetch(`/api/game/${gameId}/screenshots/trash`, {
-    credentials: "include",
-  });
+  const query = group ? "?group=true" : "";
+  const response = await fetch(
+    `/api/game/${gameId}/screenshots/trash${query}`,
+    {
+      credentials: "include",
+    },
+  );
   if (!response.ok)
     throw new Error(
       `Failed to fetch media trash: ${response.status} ${response.statusText}`,
@@ -587,6 +592,9 @@ export async function updateGameFile(
 
 export interface TrashedGameFile {
   id: string;
+  // the copy that owns the file (#274)
+  game_id?: string;
+  copy?: GameCopyLabel;
   filename: string;
   deleted_at: number;
   purge_at: number;
@@ -595,11 +603,16 @@ export interface TrashedGameFile {
 export async function fetchGameFileTrash(
   gameId: string,
   kind: GameFileKind,
+  group = false,
 ): Promise<TrashedGameFile[]> {
   if (import.meta.env.VITE_USE_MOCK_DATA === "true") return [];
-  const response = await fetch(`/api/game/${gameId}/files/${kind}/trash`, {
-    credentials: "include",
-  });
+  const query = group ? "?group=true" : "";
+  const response = await fetch(
+    `/api/game/${gameId}/files/${kind}/trash${query}`,
+    {
+      credentials: "include",
+    },
+  );
   if (!response.ok)
     throw new Error(
       `Failed to fetch file trash: ${response.status} ${response.statusText}`,
