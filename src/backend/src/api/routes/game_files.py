@@ -112,6 +112,7 @@ def _game_file_to_dict(item: GameFileItem, game_id: UUID, game_dir: Path) -> dic
     path = game_dir / _game_file_subdir(cast(GameFileKind, item.kind)) / item.filename
     return {
         "id": str(item.id),
+        "game_id": str(game_id),
         "filename": item.filename,
         "original_filename": item.original_filename,
         "kind": item.kind,

@@ -68,6 +68,18 @@ export interface GamePlayCompatibility {
   crossplay: boolean;
 }
 
+/**
+ * Which copy of a merged game an item (a save, screenshot or doc) belongs to.
+ * Items stay attached to their own copy; the main copy's page lists them all.
+ */
+export interface GameCopyLabel {
+  game_id: string;
+  title: string;
+  source: string | null;
+  platform: string | null;
+  is_main: boolean;
+}
+
 export interface Game {
   playCompatibility?: GamePlayCompatibility | null;
   lockedFields?: string[];

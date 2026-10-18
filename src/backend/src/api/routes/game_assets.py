@@ -262,6 +262,7 @@ async def download_game_asset(
 def _media_item_to_dict(item: MediaItem, game_id: UUID) -> dict:
     return {
         "id": str(item.id),
+        "game_id": str(game_id),
         "filename": item.filename,
         "original_filename": item.original_filename,
         "kind": item.kind,

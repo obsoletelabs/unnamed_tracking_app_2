@@ -1,4 +1,5 @@
 import { createSpeedTracker } from "../utils/uploadSpeed";
+import type { GameCopyLabel } from "../types/game";
 
 // Named, versioned save archives, "Main World", "Pre-Nether-Update
 // Backup", etc., replacing the old convention of a save being just one
@@ -23,6 +24,9 @@ export interface GameArchiveData {
   created_at: number;
   updated_at: number;
   versions: ArchiveVersion[];
+  // the copy that owns the archive (#274); actions on it use this game's URLs
+  game_id?: string;
+  copy?: GameCopyLabel;
 }
 
 // real byte-level progress via XHR, same reasoning as uploadFiles in
@@ -87,6 +91,7 @@ function mockVersion(file: File): ArchiveVersion {
 export async function fetchArchives(
   gameId: string,
   kind: ArchiveKind,
+  group = false,
 ): Promise<GameArchiveData[]> {
   if (import.meta.env.VITE_USE_MOCK_DATA === "true")
     // copies, like a real response, so a change shows up in the page
@@ -97,7 +102,8 @@ export async function fetchArchives(
         tags: [...(a.tags ?? [])],
         versions: [...a.versions],
       }));
-  const response = await fetch(`/api/game/${gameId}/archives/${kind}`, {
+  const query = group ? "?group=true" : "";
+  const response = await fetch(`/api/game/${gameId}/archives/${kind}${query}`, {
     credentials: "include",
   });
   if (!response.ok)

@@ -1552,6 +1552,7 @@ export async function searchNotes(query: string): Promise<NoteSearchHit[]> {
 // How much is in a game, which is what a tab set to Auto looks at.
 export async function fetchContentCounts(
   gameId: string,
+  group = false,
 ): Promise<ContentCounts> {
   if (import.meta.env.VITE_USE_MOCK_DATA === "true") {
     const game = mockGames.find((g) => g.id === gameId);
@@ -1566,7 +1567,8 @@ export async function fetchContentCounts(
       notes: getMockNoteMap(gameId).size,
     };
   }
-  const response = await fetch(`/api/game/${gameId}/content-counts`, {
+  const query = group ? "?group=true" : "";
+  const response = await fetch(`/api/game/${gameId}/content-counts${query}`, {
     credentials: "include",
   });
   return noteJson(response, "The game could not be read.");
