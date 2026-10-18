@@ -5,6 +5,8 @@ without a route module importing another route module."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -51,14 +53,6 @@ async def get_default_ui_style(db: AsyncSession) -> str:
     return "classic" if value == "classic" else "archive-pocket"
 
 
-async def get_max_upload_size_mb(db: AsyncSession) -> int:
-    """The effective image/media upload cap: whatever an admin set under
-    Settings > Administration > Limits, falling back to the
-    MAX_UPLOAD_SIZE_MB env default when nothing's been saved yet."""
-    row = await get_or_create_app_integration_settings(db)
-    return row.max_upload_size_mb or settings.MAX_UPLOAD_SIZE_MB
-
-
 UPLOAD_LIMIT_FIELDS = (
     "max_upload_size_mb",
     "max_doc_size_mb",
@@ -67,11 +61,68 @@ UPLOAD_LIMIT_FIELDS = (
     "max_world_save_size_mb",
 )
 
+_MAX_UPLOAD_LIMIT_MB = 2147483647
+
+
+@dataclass(frozen=True)
+class UploadLimit:
+    """One effective upload cap and where it came from.
+
+    ``source`` is ``environment`` (explicit deployment value, authoritative and locked),
+    ``override`` (saved by an administrator) or ``default``.
+    """
+
+    field: str
+    value: int
+    source: str
+    env_name: str
+    environment_invalid: bool = False
+
+    @property
+    def locked(self) -> bool:
+        return self.source == "environment"
+
+
+def _environment_limit(handler: EnvConfigHandler, env_name: str) -> int | None:
+    raw = handler.environ.get(env_name, "").strip()
+    if not raw:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    return value if 1 <= value <= _MAX_UPLOAD_LIMIT_MB else None
+
+
+async def get_upload_limit_details(db: AsyncSession) -> dict[str, UploadLimit]:
+    """Resolve each cap: explicit environment value, then stored override, then default.
+
+    An environment value that is set but not a whole number of megabytes is ignored (and
+    reported) rather than silently used, so the stored override or default still applies.
+    """
+    row = await get_or_create_app_integration_settings(db)
+    handler = EnvConfigHandler()
+    details: dict[str, UploadLimit] = {}
+    for name in UPLOAD_LIMIT_FIELDS:
+        env_name = name.upper()
+        from_env = _environment_limit(handler, env_name)
+        invalid = from_env is None and handler.has(env_name)
+        override = getattr(row, name)
+        if from_env is not None:
+            details[name] = UploadLimit(name, from_env, "environment", env_name)
+        elif override:
+            details[name] = UploadLimit(name, int(override), "override", env_name, invalid)
+        else:
+            default = int(getattr(settings, env_name))
+            details[name] = UploadLimit(name, default, "default", env_name, invalid)
+    return details
+
+
+async def get_max_upload_size_mb(db: AsyncSession) -> int:
+    """The effective image/media upload cap (see ``get_upload_limit_details``)."""
+    return (await get_upload_limit_details(db))["max_upload_size_mb"].value
+
 
 async def get_upload_limits_mb(db: AsyncSession) -> dict[str, int]:
-    """Resolve the four existing environment caps with deployment overrides."""
-    row = await get_or_create_app_integration_settings(db)
-    return {
-        name: int(getattr(row, name) or getattr(settings, name.upper()))
-        for name in UPLOAD_LIMIT_FIELDS
-    }
+    """Effective value of every upload cap."""
+    return {name: limit.value for name, limit in (await get_upload_limit_details(db)).items()}

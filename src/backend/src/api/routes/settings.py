@@ -20,6 +20,7 @@ from src.api.schemas.scan_settings import ScanSettingsRead, ScanSettingsUpdate
 from src.core.app_integrations import (
     UPLOAD_LIMIT_FIELDS,
     get_or_create_app_integration_settings,
+    get_upload_limit_details,
     get_upload_limits_mb,
 )
 from src.core.auth import get_current_admin, get_current_user
@@ -316,18 +317,48 @@ class UploadLimitRequest(BaseModel):
     max_world_save_size_mb: int | None = Field(default=None, ge=1, le=2147483647, strict=True)
 
 
+@router.get("/upload-limits/details")
+async def get_upload_limit_details_view(db: AsyncSession = Depends(get_db)) -> dict[str, dict]:
+    """Effective caps with their source, so the admin UI can explain locked fields."""
+    return {
+        name: {
+            "value": limit.value,
+            "source": limit.source,
+            "locked": limit.locked,
+            "env_name": limit.env_name,
+            "environment_invalid": limit.environment_invalid,
+        }
+        for name, limit in (await get_upload_limit_details(db)).items()
+    }
+
+
 @router.put("/upload-limit")
 async def update_upload_limit(
     payload: UploadLimitRequest,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(get_current_admin),
 ) -> dict[str, int]:
-    """Update only supplied caps. Null clears that override back to its environment value."""
+    """Update only supplied caps. Null clears that override back to its environment value.
+
+    Caps set explicitly in the deployment environment are authoritative: a request that
+    names one is rejected as a whole, so no other cap changes either.
+    """
     del admin
+    supplied = [name for name in UPLOAD_LIMIT_FIELDS if name in payload.model_fields_set]
+    locked = [
+        limit.env_name
+        for name, limit in (await get_upload_limit_details(db)).items()
+        if name in supplied and limit.locked
+    ]
+    if locked:
+        raise HTTPException(
+            409,
+            f"{', '.join(locked)} is managed by the deployment environment and cannot be "
+            "changed here.",
+        )
     row = await get_or_create_app_integration_settings(db)
-    for name in UPLOAD_LIMIT_FIELDS:
-        if name in payload.model_fields_set:
-            setattr(row, name, getattr(payload, name))
+    for name in supplied:
+        setattr(row, name, getattr(payload, name))
     await db.commit()
     return await get_upload_limits_mb(db)
 

@@ -638,6 +638,7 @@ are redacted. Validation errors never echo submitted values.
 | GET | `/api/settings/system-info` | admin | Instance configuration; administrator. |
 | PUT | `/api/settings/upload-limit` | admin | Instance configuration; administrator. |
 | GET | `/api/settings/upload-limits` | user | Lookup using provider data or the caller's configured credentials; no stored object is addressed. |
+| GET | `/api/settings/upload-limits/details` | user | Same deployment-wide caps as `/api/settings/upload-limits`, with where each came from (environment, saved override or default); no stored object is addressed. |
 | GET | `/api/settings/user-jobs` | user | Per-user job preferences; the job must be one the caller can see. |
 | PUT | `/api/settings/user-jobs/{job_id}` | user | Per-user job preferences; the job must be one the caller can see. |
 | POST | `/api/settings/user-jobs/{job_id}/run` | user | Per-user job preferences; the job must be one the caller can see. |

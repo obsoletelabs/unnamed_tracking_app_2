@@ -130,6 +130,40 @@ const defaultUploadLimits: UploadLimits = {
   max_world_save_size_mb: 2000,
 };
 
+export interface UploadLimitDetail {
+  value: number;
+  source: "environment" | "override" | "default";
+  locked: boolean;
+  env_name: string;
+  environment_invalid: boolean;
+}
+export type UploadLimitDetails = Record<keyof UploadLimits, UploadLimitDetail>;
+
+export async function fetchUploadLimitDetails(): Promise<UploadLimitDetails> {
+  if (import.meta.env.VITE_USE_MOCK_DATA === "true") {
+    return Object.fromEntries(
+      (Object.keys(defaultUploadLimits) as (keyof UploadLimits)[]).map(
+        (key) => [
+          key,
+          {
+            value: defaultUploadLimits[key],
+            source: "default",
+            locked: false,
+            env_name: key.toUpperCase(),
+            environment_invalid: false,
+          },
+        ],
+      ),
+    ) as UploadLimitDetails;
+  }
+  const response = await fetch("/api/settings/upload-limits/details", {
+    credentials: "include",
+  });
+  if (!response.ok)
+    throw new Error(`Failed to fetch upload limits: ${response.status}`);
+  return response.json();
+}
+
 export async function fetchUploadLimits(): Promise<UploadLimits> {
   if (import.meta.env.VITE_USE_MOCK_DATA === "true")
     return { ...defaultUploadLimits };

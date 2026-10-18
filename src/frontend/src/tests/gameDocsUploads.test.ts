@@ -5,11 +5,15 @@ import GameMediaPanel from "../components/GameMediaPanel.vue";
 import LimitsSection from "../components/settings/LimitsSection.vue";
 import { friendlyError } from "../services/apiError";
 import { uploadGameFiles } from "../services/media";
-import { fetchUploadLimits, updateUploadLimits } from "../services/settings";
+import {
+  fetchUploadLimitDetails,
+  updateUploadLimits,
+  type UploadLimitDetails,
+} from "../services/settings";
 
 vi.mock("../services/settings", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../services/settings")>()),
-  fetchUploadLimits: vi.fn(),
+  fetchUploadLimitDetails: vi.fn(),
   updateUploadLimits: vi.fn(),
 }));
 
@@ -100,7 +104,22 @@ it("edits the documents cap separately from the image cap", async () => {
     max_clip_size_mb: 500,
     max_world_save_size_mb: 2000,
   };
-  vi.mocked(fetchUploadLimits).mockResolvedValue(limits);
+  const details = (values: typeof limits) =>
+    Object.fromEntries(
+      Object.entries(values).map(([key, value]) => [
+        key,
+        {
+          value,
+          source: "default",
+          locked: false,
+          env_name: key.toUpperCase(),
+          environment_invalid: false,
+        },
+      ]),
+    ) as UploadLimitDetails;
+  vi.mocked(fetchUploadLimitDetails)
+    .mockResolvedValueOnce(details(limits))
+    .mockResolvedValue(details({ ...limits, max_doc_size_mb: 750 }));
   vi.mocked(updateUploadLimits).mockResolvedValue({
     ...limits,
     max_doc_size_mb: 750,

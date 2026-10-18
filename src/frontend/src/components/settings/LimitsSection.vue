@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted, useId } from "vue";
 import {
-  fetchUploadLimits,
+  fetchUploadLimitDetails,
   updateUploadLimits,
+  type UploadLimitDetails,
   type UploadLimits,
 } from "../../services/settings";
 const fieldId = useId();
@@ -37,15 +38,29 @@ const loading = ref(true),
   saving = ref(false);
 const error = ref("");
 const success = ref("");
-const effective = ref<UploadLimits | null>(null);
+const effective = ref<UploadLimitDetails | null>(null);
 const drafts = ref<Partial<Record<keyof UploadLimits, string | number>>>({});
-function apply(values: UploadLimits) {
-  effective.value = values;
-  for (const { key } of limits) drafts.value[key] = String(values[key]);
+function apply(details: UploadLimitDetails) {
+  effective.value = details;
+  for (const { key } of limits) drafts.value[key] = String(details[key].value);
+}
+async function refresh() {
+  apply(await fetchUploadLimitDetails());
+}
+function sourceLabel(key: keyof UploadLimits): string {
+  const detail = effective.value?.[key];
+  if (!detail) return "";
+  if (detail.locked)
+    return `Set by the ${detail.env_name} environment variable. Change it in the deployment configuration and restart the container.`;
+  if (detail.environment_invalid)
+    return `${detail.env_name} is set but is not a whole number of megabytes, so it is ignored.`;
+  return detail.source === "override"
+    ? "Saved here; overrides the environment default."
+    : "Environment default.";
 }
 onMounted(async () => {
   try {
-    apply(await fetchUploadLimits());
+    await refresh();
   } catch (e) {
     error.value = e instanceof Error ? e.message : "Unable to load limits.";
   } finally {
@@ -57,6 +72,7 @@ async function save(reset = false) {
   success.value = "";
   const values: Partial<Record<keyof UploadLimits, number | null>> = {};
   for (const { key, label } of limits) {
+    if (effective.value?.[key].locked) continue;
     const raw = String(drafts.value[key] ?? "").trim();
     const value = Number(raw);
     if (
@@ -70,7 +86,8 @@ async function save(reset = false) {
   }
   saving.value = true;
   try {
-    apply(await updateUploadLimits(values));
+    await updateUploadLimits(values);
+    await refresh();
     success.value = reset
       ? "All limits reset to the server environment defaults."
       : "Limits saved. New uploads use them immediately.";
@@ -85,8 +102,16 @@ async function save(reset = false) {
   <section class="settings-section">
     <h2>Upload limits</h2>
     <p class="hint">
-      Server-wide limits in megabytes. Each value overrides its environment
-      default; resetting uses the current server configuration.
+      Server-wide limits in megabytes. A limit set in the deployment environment
+      is authoritative and cannot be changed here; otherwise a value saved here
+      overrides the environment default, and resetting uses the current server
+      configuration.
+    </p>
+    <p class="hint">
+      These are the application's own feature caps. A reverse proxy in front of
+      the application (including an outer Nginx) enforces its own request-size
+      limit first, so raise that too or larger uploads will be refused before
+      they reach the application.
     </p>
     <p v-if="loading" class="hint">Loading…</p>
     <form v-else-if="effective" @submit.prevent="save()">
@@ -102,10 +127,11 @@ async function save(reset = false) {
           step="1"
           inputmode="numeric"
           required
-          :disabled="saving"
+          :disabled="saving || effective[limit.key].locked"
         />
         <span :id="`${fieldId}-${limit.key}-hint`" class="field-hint"
-          >{{ limit.hint }} <code>{{ limit.key.toUpperCase() }}</code></span
+          >{{ limit.hint }} {{ sourceLabel(limit.key) }}
+          <code>{{ limit.key.toUpperCase() }}</code></span
         >
       </div>
       <div class="row">

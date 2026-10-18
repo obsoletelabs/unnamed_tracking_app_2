@@ -12,6 +12,10 @@ Open **Administration → Limits** to change all five environment-backed caps: i
 
 The nullable migrations preserve existing provider credentials, branding and the earlier general-upload override. Unconfigured limits keep their environment values. Docs used to share the images/general cap; they now follow the documents cap only, so a deployment that lowered the general cap to restrict Docs should set the documents cap as well. This page edits application upload caps; plugin package verification and per-plugin runtime quotas retain their existing security boundaries.
 
+Each cap resolves in this order: a nonempty, valid environment value (`MAX_UPLOAD_SIZE_MB` and its siblings) always wins and shows as locked, with the variable name, in Administration → Limits; otherwise a value saved there is used; otherwise the built-in default applies. A set but invalid environment value (not a whole number of at least 1 MB) is ignored and flagged, so it never silently changes the effective limit. Saving a request that names a locked cap is rejected as a whole, so no other source changes. Clearing a saved override only affects caps that are not locked, and a saved override is kept (but inactive) while its environment value is set.
+
+These are the application's own feature caps. The bundled production Nginx lets authenticated uploads through to the application, which enforces them; any additional proxy or CDN in front of it has its own request-size limit (for example `client_max_body_size`, default 1 MB) that must allow the largest configured cap, including a little multipart overhead, or uploads fail before reaching the application. See [Production Docker](../deployment/production-docker.md).
+
 ## Operational checklist
 
 1. Configure HTTPS, secure cookies, a unique Fernet `SECRET_KEY`, database credentials, and a unique plugin-runtime token.

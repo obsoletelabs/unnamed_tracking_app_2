@@ -15,7 +15,10 @@ from src.database.session import get_db
 
 
 @pytest.fixture
-def boundary():
+def boundary(monkeypatch):
+    # Developer .env files commonly set these; each test chooses its own environment.
+    for name in UPLOAD_LIMIT_FIELDS:
+        monkeypatch.delenv(name.upper(), raising=False)
     row = SimpleNamespace(**dict.fromkeys(UPLOAD_LIMIT_FIELDS), tmdb_api_key="unchanged")
     db = SimpleNamespace(scalar=AsyncMock(return_value=row), commit=AsyncMock())
     user = SimpleNamespace(is_admin=True)
@@ -91,3 +94,64 @@ async def test_unknown_cap_is_not_silently_ignored(boundary):
         response = await client.put("/api/settings/upload-limit", json={"max_plugin_size_mb": 10})
         assert response.status_code == 422
     db.commit.assert_not_awaited()
+
+
+def _client(app):
+    return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+
+
+@pytest.mark.parametrize("name", UPLOAD_LIMIT_FIELDS)
+@pytest.mark.asyncio
+async def test_precedence_default_override_then_environment(boundary, monkeypatch, name):
+    app, row, _, _ = boundary
+    env_name = name.upper()
+    async with _client(app) as client:
+        details = (await client.get("/api/settings/upload-limits/details")).json()[name]
+        assert details["source"] == "default" and not details["locked"]
+        assert details["value"] == getattr(settings, env_name)
+
+        assert (await client.put("/api/settings/upload-limit", json={name: 9})).status_code == 200
+        details = (await client.get("/api/settings/upload-limits/details")).json()[name]
+        assert (details["value"], details["source"]) == (9, "override")
+
+        monkeypatch.setenv(env_name, "33")
+        details = (await client.get("/api/settings/upload-limits/details")).json()[name]
+        assert (details["value"], details["source"], details["locked"]) == (33, "environment", True)
+        assert (await client.get("/api/settings/upload-limits")).json()[name] == 33
+    assert getattr(row, name) == 9  # the stored override is kept for when the environment goes
+
+
+@pytest.mark.parametrize("raw", ["abc", "0", "-4", "1.5", "99999999999"])
+@pytest.mark.asyncio
+async def test_invalid_environment_value_is_ignored_and_reported(boundary, monkeypatch, raw):
+    app, _, _, _ = boundary
+    monkeypatch.setenv("MAX_CLIP_SIZE_MB", raw)
+    async with _client(app) as client:
+        details = (await client.get("/api/settings/upload-limits/details")).json()
+        clip = details["max_clip_size_mb"]
+        assert clip["source"] == "default" and not clip["locked"]
+        assert clip["environment_invalid"] is True
+        assert clip["value"] == settings.MAX_CLIP_SIZE_MB
+
+
+@pytest.mark.asyncio
+async def test_saving_an_environment_locked_cap_is_rejected_without_changing_others(
+    boundary, monkeypatch
+):
+    app, row, db, _ = boundary
+    monkeypatch.setenv("MAX_DOC_SIZE_MB", "77")
+    async with _client(app) as client:
+        response = await client.put(
+            "/api/settings/upload-limit", json={"max_doc_size_mb": 5, "max_clip_size_mb": 6}
+        )
+        assert response.status_code == 409
+        assert "MAX_DOC_SIZE_MB" in response.json()["detail"]
+        # Clearing a locked cap is a change too.
+        response = await client.put("/api/settings/upload-limit", json={"max_doc_size_mb": None})
+        assert response.status_code == 409
+        # Unlocked caps still save while another cap is locked.
+        response = await client.put("/api/settings/upload-limit", json={"max_clip_size_mb": 6})
+        assert response.status_code == 200
+        assert response.json()["max_doc_size_mb"] == 77 and response.json()["max_clip_size_mb"] == 6
+    assert row.max_doc_size_mb is None and row.max_clip_size_mb == 6
+    assert db.commit.await_count == 1
