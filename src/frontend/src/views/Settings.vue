@@ -101,9 +101,6 @@ const KeyboardShortcutsSection = defineAsyncComponent(
 const ConnectionsSection = defineAsyncComponent(
   () => import("../components/settings/ConnectionsSection.vue"),
 );
-const AniListImportSection = defineAsyncComponent(
-  () => import("../components/settings/AniListImportSection.vue"),
-);
 const ApiKeysSection = defineAsyncComponent(
   () => import("../components/settings/ApiKeysSection.vue"),
 );
@@ -480,10 +477,11 @@ async function openSearchResult(entry: SettingsSearchEntry) {
           <ThemesSection
             v-else-if="activeSection === 'themes' && currentUser?.is_admin"
           />
-          <template v-else-if="activeSection === 'export'">
-            <ExportImportSection />
-            <AniListImportSection />
-          </template>
+          <ExportImportSection
+            v-else-if="activeSection === 'export'"
+            :key="'export' + initialTab"
+            :initial-tab="initialTab"
+          />
           <MetadataSettings
             v-else-if="activeSection === 'metadata'"
             :key="'metadata' + initialTab"

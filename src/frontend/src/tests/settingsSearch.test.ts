@@ -283,6 +283,15 @@ describe("settings search registry", () => {
       path: "/settings",
       query: { section: "library", tab: "trash" },
     });
+    for (const [query, tab] of [
+      ["spreadsheet", "export"],
+      ["letterboxd", "import"],
+      ["restore from export", "restore"],
+      ["disaster recovery", "backup"],
+    ] as const)
+      expect(searchSettings(settingsSearchIndex.value, query)[0]).toMatchObject(
+        { section: "export", tab },
+      );
     const [scan] = searchSettings(settingsSearchIndex.value, "scan");
     expect(scan).toMatchObject({ section: "metadata", tab: "scan" });
     expect(settingsSearchLocation(labelEntry("Library")).query).toEqual({

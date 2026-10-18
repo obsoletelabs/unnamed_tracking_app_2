@@ -2,6 +2,21 @@
 
 Unnamed Tracking App stores library records in PostgreSQL and larger user files on the application's persistent data directory.
 
+## Export / Import settings
+
+**Settings → Export / Import** groups every library data action into four tabs. Each tab keeps its own progress, errors and results, so a preview or error in one workflow never appears under another.
+
+| Tab | Actions | Formats |
+| --- | --- | --- |
+| **Export** | Export library, Export CSV | JSON library export (`library-export-YYYY-MM-DD.json`); CSV of movies, TV shows and anime (`media-library-YYYY-MM-DD.csv`) |
+| **Import** | Import from another site, AniList import | MyAnimeList `.xml`/`.xml.gz`; Letterboxd `.zip`/`.csv`; IMDb `.csv`; Yamtrack `.csv`; AniList by username |
+| **Restore** | Restore movies, TV shows and anime; Restore games | JSON library export or backup file |
+| **Backups** | Automatic backup status | Server-side snapshots, not downloadable |
+
+Settings search finds each tab directly, for example "letterboxd", "spreadsheet", "restore from export" or "disaster recovery".
+
+The CSV export is for spreadsheets only and cannot be restored. Use the JSON export to move a library between servers.
+
 ## Automatic backups
 
 The application runs an in-process automatic backup loop. It runs once at startup and then every 24 hours.
@@ -14,29 +29,36 @@ Up to **7** automatic backups are retained for each user:
 /data/backups/<user-id>/
 ```
 
-These are a rolling safety net, not a complete deployment backup.
+These are a rolling safety net, not a complete deployment backup. The **Backups** tab shows whether they are enabled, how often they run, and when the last one was written.
 
 ## Library export
 
-The library export is a user-scoped JSON snapshot containing games, movies, TV shows and anime:
+The library export is a user-scoped JSON snapshot containing games, movies, TV shows and anime, including manual achievements and completion choices:
 
 ```http
 GET /api/export/library
 ```
 
-## Library import
+A library export is a portable copy of one user's library. It is not a disaster-recovery backup: it does not contain attached files and does not cover other users. See [Moving a deployment](#moving-a-deployment).
 
-The generic importer is currently more limited than export. It accepts game records and recreates them for the authenticated user.
+## Importing from other sites
 
-It does **not** generically restore:
+Imports from MyAnimeList, Letterboxd and IMDb show a preview first: how many titles are new, already present with differences, or identical. For titles that differ you choose, title by title, whether to keep the existing data or use the file's data. Nothing changes until you confirm. The result reports titles added, updated and kept, plus details that could not be filled in.
 
-- movies
-- TV shows
-- anime
+Yamtrack imports directly without a preview and skips items already in the library. Anime from Yamtrack is not imported. The result reports added and skipped counts and any rows that failed.
+
+## Restoring from a library export
+
+The **Restore** tab has two actions that read the same JSON library export.
+
+**Restore movies, TV shows and anime** recreates movies, TV shows and anime with their seasons and watched episodes. Titles already in the library (same title and year) are skipped, never overwritten. The result lists added and skipped counts per kind and any entries that failed.
+
+**Restore games** recreates game records with their identity, manual achievements and completion choices. It does **not** restore:
+
 - screenshots or other folder assets
 - save archives
 
-Game folder-name collisions are given a new available folder name rather than overwriting an existing game.
+Existing games are never overwritten. Game folder-name collisions are given a new available folder name rather than overwriting an existing game. The result lists imported and skipped counts, restored manual achievements and completion choices, and any entries that failed.
 
 ## Save files and game assets
 

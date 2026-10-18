@@ -79,6 +79,13 @@ export const LIBRARY_SETTINGS_TABS: SettingsTab[] = [
   { id: "trash", label: "Trash" },
 ];
 
+export const EXPORT_SETTINGS_TABS: SettingsTab[] = [
+  { id: "export", label: "Export" },
+  { id: "import", label: "Import" },
+  { id: "restore", label: "Restore" },
+  { id: "backup", label: "Backups" },
+];
+
 export const METADATA_SETTINGS_TABS: SettingsTab[] = [
   { id: "sources", label: "Sources & API keys" },
   { id: "scan", label: "Scan & providers" },
@@ -311,7 +318,7 @@ const SECTION_KEYWORDS: Record<string, string[]> = {
   shortcuts: ["keyboard", "hotkeys", "keys"],
   library: ["manage", "media"],
   metadata: ["providers", "sources", "lookup"],
-  export: ["backup", "import", "csv", "json"],
+  export: ["backup", "import", "restore", "csv", "json"],
   stats: ["storage", "disk", "usage"],
   users: ["accounts", "invites", "roles"],
   "admin-sessions": ["sessions", "devices", "sign out"],
@@ -354,6 +361,37 @@ const TAB_ENTRIES: {
     tab: "trash",
     label: "Media trash",
     keywords: ["trash", "deleted", "restore"],
+  },
+  {
+    section: "export",
+    tab: "export",
+    label: "Export JSON or CSV",
+    keywords: ["download", "json", "csv", "spreadsheet"],
+  },
+  {
+    section: "export",
+    tab: "import",
+    label: "Import from another site",
+    keywords: [
+      "myanimelist",
+      "mal",
+      "letterboxd",
+      "imdb",
+      "yamtrack",
+      "anilist",
+    ],
+  },
+  {
+    section: "export",
+    tab: "restore",
+    label: "Restore from export",
+    keywords: ["restore", "import games", "export file"],
+  },
+  {
+    section: "export",
+    tab: "backup",
+    label: "Automatic backups",
+    keywords: ["backup", "snapshot", "disaster recovery"],
   },
   {
     section: "metadata",
