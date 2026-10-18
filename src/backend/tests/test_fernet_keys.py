@@ -49,6 +49,16 @@ def test_invalid_handler_key_fails_before_any_persistence(installation):
     assert not snapshot(installation)
 
 
+def test_handler_without_a_key_does_not_read_an_unselected_dotenv(installation, monkeypatch):
+    Path(".env").write_text("SECRET_KEY=unselected-invalid-fixture\n", encoding="utf-8")
+    selected = installation.parent / "selected.env"
+    selected.write_text("", encoding="utf-8")
+    monkeypatch.setenv("ENV_FILE", str(selected))
+    key = EnvConfigHandler().resolved()["SECRET_KEY"]
+    assert Fernet(key.encode())
+    assert set(snapshot(installation).values()) == {(key + "\n").encode()}
+
+
 def test_invalid_environment_key_leaves_existing_copies_untouched(installation, monkeypatch):
     persistent_fernet_key()
     before = snapshot(installation)

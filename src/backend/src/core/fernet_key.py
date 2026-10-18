@@ -40,7 +40,7 @@ def validate_fernet_key(value: str) -> str:
     return value
 
 
-def persistent_fernet_key() -> str:
+def persistent_fernet_key(*, deployment_key: str | None = None) -> str:
     """Return a stable installation key, generating and persisting it when needed.
 
     Three copies are maintained so a single damaged/missing copy can be repaired.
@@ -49,8 +49,12 @@ def persistent_fernet_key() -> str:
     """
     paths = _paths()
     env_key = (
-        os.getenv("SECRET_KEY", "").strip()
-        or str(dotenv_values(".env").get("SECRET_KEY") or "").strip()
+        deployment_key.strip()
+        if deployment_key is not None
+        else (
+            os.getenv("SECRET_KEY", "").strip()
+            or str(dotenv_values(".env").get("SECRET_KEY") or "").strip()
+        )
     )
     if env_key:
         validate_fernet_key(env_key)

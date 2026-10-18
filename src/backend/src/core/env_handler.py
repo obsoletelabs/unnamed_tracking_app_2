@@ -127,7 +127,9 @@ class EnvConfigHandler:
     def resolved(self) -> dict[str, Any]:
         values = {spec.name: self.get(spec.name) for spec in CONFIG_REGISTRY}
         if not self.has("SECRET_KEY"):
-            values["SECRET_KEY"] = persistent_fernet_key()
+            # The selected environment has no explicit key. Do not let the
+            # persistence helper discover a different, unselected .env file.
+            values["SECRET_KEY"] = persistent_fernet_key(deployment_key="")
         return values
 
     def setup_schema(
