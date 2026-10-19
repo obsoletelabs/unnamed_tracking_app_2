@@ -36,10 +36,23 @@ Episode timestamps are UTC instants. Release dates and manual all-day dates are 
 
 The subscription window is 90 days. The feed reuses `build_calendar_entries()` rather than maintaining a second calendar query, so selected airing statuses, title language, release filtering, game filtering, and projected-episode preferences remain aligned with the application calendar.
 
-## Why there is no ICS importer
+## External subscriptions
 
-A separate design issue, #243, tracks this work so an importer can be reviewed as its own architecture and security boundary.
+Inbound synchronization is a separate layer: `calendar_sources` holds owner-scoped encrypted URLs and refresh
+state; `calendar_source_events` holds validated component snapshots keyed by source, UID and canonical recurrence
+identity; `calendar_source_overrides` holds local occurrence/series fields. `calendar_events` and the outbound
+serializer remain independent. Imported events are never included in any published feed; an explicit manual copy is.
 
-Importing an external feed would not fit cleanly into the existing `CalendarEvent` table: imported events need persistent source identity and ownership plus enough source metadata to reconcile changes without overwriting manual events. A practical design would likely introduce a per-user calendar-source table and source-scoped event rows keyed by `(source_id, UID, recurrence/component identity)`.
+`features/calendar_fetch.py` uses the existing `helpers/public_http.py` parsing, public-address checks and pinned
+connections. HTTPS/443 only, every redirect revalidated, no environment proxy, identity encoding, bounded body,
+deadlines and sanitized failure codes. `icalendar` parses components and `python-dateutil` expands the documented
+recurrence subset. Parsing and expansion run in bounded workers outside async request execution. PostgreSQL
+transaction advisory locks cap remote fetches at two across workers/nodes sharing the database; cancellation keeps
+the lock and local worker slot until work exits. DNS uses the operating system resolver: a stuck resolution can
+hold a slot beyond the caller's 25-second timeout, but cannot queue unlimited background fetches.
 
-Remote fetching also introduces SSRF risk. A future implementation would need URL parsing and redirect validation on every hop, blocking loopback/private/link-local/multicast ranges, cloud metadata addresses, internal Docker/service names, non-HTTP schemes, and unsafe DNS rebinding. It would also need bounded response size, connect/read timeouts, redirect limits, authentication policy, and a controlled HTTP client boundary. Those concerns are deliberately outside the outbound feed PR.
+Complete 200 responses reconcile atomically under the source lock. Failed/partial responses and 304 retain the
+snapshot. A source nonce/revision rejects stale results after an edit, disable or deletion. Scheduled passes use
+the existing maintenance framework with source-specific cadence/backoff, leases and a due-time recheck. Removed
+components and associated overrides are pruned after 30 days in bounded batches, including while outbound
+subscription fetching is disabled. See the [implemented phase and test matrix](design/ics-subscriptions.md).

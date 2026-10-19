@@ -82,11 +82,44 @@ Release/premiere dates are date-only events. They do not have a real time-of-day
 
 Manual all-day entries are exported as all-day `VALUE=DATE` events. Manual timed entries are stored as the user's local clock time and exported as a floating iCalendar time without a time-zone identifier.
 
-## Importing another ICS feed
+## Subscribing to an external calendar
 
-External `.ics` importing is **not implemented by this feature**. A separate design issue, **#243**, tracks the future importer architecture. The current calendar model is designed around application-owned events and per-user manual entries, while an external importer would require a separate source/synchronization model.
+Open **Settings → Calendar → External calendars**, or **Manage external calendars** on the calendar page. Enter a
+name, secret HTTPS ICS URL, colour and refresh interval (60–1,440 minutes, default six hours). **Subscribe** validates
+the entire feed before saving. Up to ten sources are allowed. The URL is encrypted and never displayed again;
+only its hostname appears. `webcal://` links are converted to HTTPS. Feeds requiring Basic/bearer headers,
+private-network hosts, ports other than 443, compressed responses and one-time bulk import are not supported.
 
-A safe server-side importer would need persistent source ownership, credentials, refresh scheduling, ETag/Last-Modified handling, UID/upsert rules, cancellation/deletion semantics, timezone conversion, malformed-feed behavior, request timeouts/size limits, and SSRF protection for user-supplied URLs. The application currently does not have a shared outbound-calendar-fetching security boundary for those requests, so remote ICS fetching is intentionally deferred rather than accepting arbitrary URLs.
+The source list shows last success, refresh status and notices. **Refresh** is limited to once every five minutes
+per source. Creating/replacing URLs is limited to ten validations per account per 15-minute window. Scheduled
+refresh uses the source's interval, with backoff on failure. A failed refresh keeps the last valid events visible;
+an unavailable layer has **Try again** instead of appearing empty. A recurrence notice can mean only a bounded
+subset of that source is shown. **Disable** stops refreshing and hides that source; enabling it restores cached
+events. An administrator can disable remote fetching deployment-wide with `CALENDAR_SUBSCRIPTIONS_ENABLED=false`.
+
+Source names, colours and the ↗ marker distinguish external events in month, week and agenda views. Click an event
+(in a month, open its day first) to edit title, notes, location, date/time or duration locally. Recurring events offer
+**This occurrence** and **Whole series**. Series time changes apply the same wall-clock shift to every occurrence;
+individual overrides win over series overrides. **Reset occurrence/series overrides** restores the current upstream
+fields for that scope, preserving the other scope. Refresh never overwrites local changes. Upstream cancellation,
+exclusion or removal still hides the event.
+
+**Copy to manual entry** preserves one occurrence independently, including its current local edits and location
+in the notes. The manual model stores a start date/time and notes, so copies do not retain recurrence, duration or
+timezone identity. The copy participates in your outbound feed like any other manual entry. External subscriptions
+themselves are excluded from every outbound feed, preventing accidental redistribution or feed loops.
+
+Deleting a source deletes its imported events and local overrides; manual copies remain. Replacing its URL first
+validates the new feed, then resets that source's snapshot and overrides. Back up the database and the matching
+`SECRET_KEY` together to recover encrypted URLs. Library snapshot import/export does not include subscriptions.
+
+UTC and known IANA zones convert to your browser's timezone; floating times remain as written. All-day events keep
+their dates and exclusive end dates, including multiple days. Unknown timezone IDs are treated as floating with a
+notice. Supported recurrence is daily, weekly, monthly and yearly with interval/count/until, weekday/month-day
+filters, extra/excluded dates and individual exceptions. Other rules show their base occurrence with a notice;
+`THISANDFUTURE` exceptions are rejected to preserve the last valid snapshot. Expansion is capped at 366 occurrences
+per component and 1,000 per source/window, with a shared iteration budget; notices identify limits. Feed limits are
+2 MiB, 10,000 components and 500 KiB per unfolded property.
 
 ## Unavailable calendar settings
 
