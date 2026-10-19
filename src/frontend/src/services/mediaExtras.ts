@@ -521,11 +521,7 @@ interface BackendCalendarEntry {
   is_projected: boolean;
 }
 
-export async function fetchCalendar(days = 14): Promise<CalendarEntry[]> {
-  const response = await fetch(`/api/calendar?days=${days}`, {
-    credentials: "include",
-  });
-  const raw = await handle<BackendCalendarEntry[]>(response, "load calendar");
+function mapCalendarEntries(raw: BackendCalendarEntry[]): CalendarEntry[] {
   return raw.map((c) => ({
     mediaType: c.media_type,
     mediaId: c.media_id,
@@ -538,23 +534,74 @@ export async function fetchCalendar(days = 14): Promise<CalendarEntry[]> {
   }));
 }
 
+export async function fetchCalendar(days = 14): Promise<CalendarEntry[]> {
+  const response = await fetch(`/api/calendar?days=${days}`, {
+    credentials: "include",
+  });
+  return mapCalendarEntries(
+    await handle<BackendCalendarEntry[]>(response, "load calendar"),
+  );
+}
+
+/** Exactly the entries between two `YYYY-MM-DD` days, for browsing further ahead. */
+export async function fetchCalendarRange(
+  from: string,
+  to: string,
+): Promise<CalendarEntry[]> {
+  const response = await fetch(
+    `/api/calendar?from_date=${encodeURIComponent(from)}&to_date=${encodeURIComponent(to)}`,
+    { credentials: "include" },
+  );
+  return mapCalendarEntries(
+    await handle<BackendCalendarEntry[]>(
+      response,
+      "load that part of the calendar",
+    ),
+  );
+}
+
 // The secret .ics feed URL for this user — created on first ask, and
 // replaceable if it ever leaks. Calendar apps can't send a login cookie,
 // so the URL itself is the credential.
 export async function fetchCalendarFeedUrl(
   regenerate = false,
 ): Promise<string> {
+  return (await fetchCalendarFeeds(regenerate)).combined;
+}
+
+/** One subscription per layer plus the combined one; all share one secret token. */
+export type CalendarFeedKey =
+  "combined" | "anime" | "tv" | "movie" | "game" | "manual";
+
+export async function fetchCalendarFeeds(
+  regenerate = false,
+): Promise<Record<CalendarFeedKey, string>> {
   const response = await fetch(
     regenerate
       ? "/api/calendar/feed-token/regenerate"
       : "/api/calendar/feed-token",
     { method: regenerate ? "POST" : "GET", credentials: "include" },
   );
-  const raw = await handle<{ path: string }>(
-    response,
-    "load the calendar feed link",
-  );
-  return `${window.location.origin}${raw.path}`;
+  const raw = await handle<{
+    path: string;
+    feeds?: Record<CalendarFeedKey, string>;
+  }>(response, "load the calendar feed link");
+  const keys: CalendarFeedKey[] = [
+    "combined",
+    "anime",
+    "tv",
+    "movie",
+    "game",
+    "manual",
+  ];
+  // an older server only offers the combined link
+  const paths = raw.feeds ?? ({ combined: raw.path } as Record<string, string>);
+  return Object.fromEntries(
+    keys.map((key) => [
+      key,
+      paths[key] ? `${window.location.origin}${paths[key]}` : "",
+    ]),
+  ) as Record<CalendarFeedKey, string>;
 }
 
 // The past side of Games on the calendar: release dates (Settings > Game

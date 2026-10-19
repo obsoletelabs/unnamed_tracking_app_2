@@ -86,6 +86,13 @@ export const NOTIFICATION_SETTINGS_TABS: SettingsTab[] = [
   { id: "history", label: "History" },
 ];
 
+export const EXPORT_SETTINGS_TABS: SettingsTab[] = [
+  { id: "export", label: "Export" },
+  { id: "import", label: "Import" },
+  { id: "restore", label: "Restore" },
+  { id: "backups", label: "Backups" },
+];
+
 export const METADATA_SETTINGS_TABS: SettingsTab[] = [
   { id: "sources", label: "Sources & API keys" },
   { id: "scan", label: "Scan & providers" },
@@ -369,6 +376,31 @@ const TAB_ENTRIES: {
     tab: "history",
     label: "Notification history",
     keywords: ["inbox", "deliveries", "retention", "retry"],
+  },
+  {
+    section: "export",
+    tab: "import",
+    label: "Import from another site",
+    keywords: [
+      "myanimelist",
+      "letterboxd",
+      "imdb",
+      "yamtrack",
+      "anilist",
+      "csv",
+    ],
+  },
+  {
+    section: "export",
+    tab: "restore",
+    label: "Restore from an export",
+    keywords: ["restore", "import games", "json"],
+  },
+  {
+    section: "export",
+    tab: "backups",
+    label: "Backups",
+    keywords: ["automatic backups", "disaster recovery"],
   },
   {
     section: "metadata",

@@ -1,3 +1,4 @@
+import { announceProviderChange } from "./providerEvents";
 import { failedRequest } from "./apiError";
 
 export interface CurrentUser {
@@ -136,6 +137,8 @@ export async function updateProfile(
     throw await failedRequest(response);
   }
 
+  // a changed SteamGridDB key changes which artwork sources can run
+  if (payload.steamgriddbApiKey !== undefined) announceProviderChange();
   return await response.json();
 }
 

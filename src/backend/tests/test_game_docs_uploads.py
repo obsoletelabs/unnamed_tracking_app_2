@@ -207,3 +207,34 @@ async def test_docs_follow_the_documents_cap_rather_than_the_image_cap(flow) -> 
         files={"file": ("pack.zip", illustrated, "application/zip")},
     )
     assert modpack.json()["results"][0]["reason"] == "Larger than 1 MB."
+
+
+@pytest.mark.usefixtures("saved_limits")
+async def test_a_file_exactly_at_the_cap_is_accepted_and_one_byte_over_is_not(flow) -> None:
+    """#253: the limit is inclusive and the refusal names the limit that was applied."""
+    exact, over = b"x" * (2 * MB), b"x" * (2 * MB + 1)
+    response = await flow.client.post(
+        f"{flow.game}/files/doc",
+        files=[
+            ("files", ("exact.txt", exact, "text/plain")),
+            ("files", ("over.txt", over, "text/plain")),
+        ],
+    )
+    results = response.json()["results"]
+    assert results[0]["status"] == "saved" and results[0]["size"] == 2 * MB
+    assert results[1] == {
+        "filename": "over.txt",
+        "status": "rejected",
+        "reason": "Larger than 2 MB.",
+    }
+
+
+@pytest.mark.usefixtures("saved_limits")
+async def test_an_explicit_environment_cap_beats_the_saved_override_for_real_uploads(
+    flow, monkeypatch
+) -> None:
+    monkeypatch.setenv("MAX_DOC_SIZE_MB", "1")  # the saved override says 2 MB
+    response = await flow.client.post(
+        f"{flow.game}/files/doc", files=[("files", ("big.txt", b"x" * (MB + 1), "text/plain"))]
+    )
+    assert response.json()["results"][0]["reason"] == "Larger than 1 MB."

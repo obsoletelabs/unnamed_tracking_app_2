@@ -12,7 +12,10 @@ const psn = vi.hoisted(() => ({
 }));
 vi.mock("../services/settings", () => settings);
 vi.mock("../services/psn", () => psn);
-const librarySync = vi.hoisted(() => ({ syncLibrary: vi.fn() }));
+const librarySync = vi.hoisted(() => ({
+  syncLibrary: vi.fn(),
+  enrichSteamGames: vi.fn(),
+}));
 vi.mock("../services/librarySync", () => librarySync);
 
 import { tasks } from "../state/taskProgress";
@@ -153,5 +156,68 @@ describe("library sync summary", () => {
     expect(tasks.at(-1)?.detail).toBe(
       "0 added, 4 updated, 2 wishlisted, 0 achievements",
     );
+  });
+});
+
+describe("retrying an unfinished Steam import (#256)", () => {
+  it("says how many games lack a cover and retries only those, without re-importing", async () => {
+    settings.fetchProviderCredentials.mockResolvedValue({});
+    librarySync.syncLibrary.mockResolvedValue({
+      games_added: 5,
+      games_updated: 0,
+      achievements_synced: 0,
+      games: [],
+      enrich_failed: 1,
+      enrich_failed_ids: ["a"],
+      artwork_missing: 2,
+      artwork_missing_ids: ["b", "c"],
+    });
+    const state = useConnections();
+    await state.handleSyncLibrary("steam");
+    expect(tasks.at(-1)?.detail).toBe(
+      "5 added, 0 updated, 0 achievements; store details not filled in for 1 games; no cover picture for 2 games",
+    );
+    expect(state.steamRetry.detailIds).toEqual(["a"]);
+    expect(state.steamRetry.artworkIds).toEqual(["b", "c"]);
+
+    // details first (full pass), then only the missing pictures; one game still fails
+    librarySync.enrichSteamGames
+      .mockResolvedValueOnce({ failedIds: ["a"], artworkMissingIds: [] })
+      .mockResolvedValueOnce({ failedIds: [], artworkMissingIds: ["c"] });
+    await state.handleRetrySteamImport();
+    expect(librarySync.enrichSteamGames.mock.calls).toEqual([
+      [["a"]],
+      [["b", "c"], true],
+    ]);
+    expect(librarySync.syncLibrary).toHaveBeenCalledTimes(1);
+    expect(state.steamRetry.detailIds).toEqual(["a"]);
+    expect(state.steamRetry.artworkIds).toEqual(["c"]);
+    expect(tasks.at(-1)?.detail).toBe("1 of 3 fixed; 2 still need another try");
+  });
+
+  it("does not start a second retry while one is running", async () => {
+    settings.fetchProviderCredentials.mockResolvedValue({});
+    librarySync.syncLibrary.mockResolvedValue({
+      games_added: 0,
+      games_updated: 0,
+      achievements_synced: 0,
+      games: [],
+      artwork_missing: 1,
+      artwork_missing_ids: ["b"],
+    });
+    const state = useConnections();
+    await state.handleSyncLibrary("steam");
+    let release: (value: unknown) => void = () => {};
+    const done = { failedIds: [], artworkMissingIds: [] };
+    librarySync.enrichSteamGames
+      .mockImplementationOnce(
+        () => new Promise((resolve) => (release = resolve)),
+      )
+      .mockResolvedValue(done);
+    const first = state.handleRetrySteamImport();
+    await state.handleRetrySteamImport();
+    expect(librarySync.enrichSteamGames).toHaveBeenCalledTimes(1);
+    release(done);
+    await first;
   });
 });

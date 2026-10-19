@@ -6,7 +6,7 @@ import base64
 import json
 import os
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 import httpx
 
@@ -16,7 +16,56 @@ _ACTION_REQUEST_TIMEOUT = 35.0  # Allow the isolated runner's 30-second wall lim
 
 
 class PluginRuntimeUnavailable(RuntimeError):
-    """Raised when the isolated runtime cannot be reached."""
+    """Raised when the isolated runtime cannot be reached or used.
+
+    `kind` says why, without exposing a token, a credential-bearing URL or a response body:
+    `configuration` (a setting must be fixed; retrying cannot help), `unreachable`,
+    `timeout` and `server_error` (the dependency may recover by itself).
+    """
+
+    def __init__(self, message: str, *, kind: str = "unreachable") -> None:
+        super().__init__(message)
+        self.kind = kind
+
+    @property
+    def retryable(self) -> bool:
+        return self.kind != "configuration"
+
+
+_NAME_LOOKUP_FAILURES = (
+    "name or service not known",
+    "temporary failure in name resolution",
+    "nodename nor servname",
+    "no address associated",
+    "getaddrinfo failed",
+)
+
+
+def _origin(url: str) -> str:
+    """Scheme, host and port only: never a password, token or path from the configured URL."""
+    parts = urlsplit(url)
+    host = parts.hostname or "the configured host"
+    return f"{parts.scheme or 'http'}://{host}" + (f":{parts.port}" if parts.port else "")
+
+
+def _unreachable(exc: httpx.HTTPError, base_url: str) -> PluginRuntimeUnavailable:
+    where = _origin(base_url)
+    if isinstance(exc, httpx.TimeoutException):
+        return PluginRuntimeUnavailable(
+            f"The plugin runtime at {where} did not answer in time. It may be busy or still "
+            "starting; try again in a moment.",
+            kind="timeout",
+        )
+    text = str(exc).lower()
+    if any(marker in text for marker in _NAME_LOOKUP_FAILURES):
+        return PluginRuntimeUnavailable(
+            f"The host of the plugin runtime ({where}) could not be found. Check PLUGIN_RUNTIME_URL "
+            "and that the plugin-runtime container is on the same network as the application.",
+        )
+    return PluginRuntimeUnavailable(
+        f"The application could not connect to the plugin runtime at {where}. Check that the "
+        "plugin-runtime container is running and that PLUGIN_RUNTIME_URL is correct.",
+    )
 
 
 class PluginRuntimeRequestError(RuntimeError):
@@ -44,7 +93,12 @@ class PluginRuntimeClient:
     def _headers(self) -> dict[str, str]:
         """Authenticate transport and mirror the host administrator's isolation decision."""
         if len(self.token) < 32:
-            raise PluginRuntimeUnavailable("plugin runtime credentials are not configured")
+            raise PluginRuntimeUnavailable(
+                "The plugin runtime token is missing or shorter than 32 characters. Set the same "
+                "PLUGIN_RUNTIME_TOKEN (at least 32 characters) for the application and the plugin "
+                "runtime, then restart both.",
+                kind="configuration",
+            )
         approved = manager_state().settings().get("reduced_isolation_acknowledged") is True
         headers = {
             "X-Plugin-Runtime-Token": self.token,
@@ -66,7 +120,7 @@ class PluginRuntimeClient:
                     **kwargs,
                 )
         except httpx.HTTPError as exc:
-            raise PluginRuntimeUnavailable("plugin runtime is unavailable") from exc
+            raise _unreachable(exc, self.base_url) from exc
         if response.status_code >= 500:
             try:
                 body = response.json()
@@ -76,7 +130,9 @@ class PluginRuntimeClient:
             raise PluginRuntimeUnavailable(
                 detail[:1024]
                 if isinstance(detail, str)
-                else f"plugin runtime returned {response.status_code}"
+                else f"The plugin runtime reported an internal error ({response.status_code}). "
+                "Check the plugin-runtime logs, then try again.",
+                kind="server_error",
             )
         if response.status_code >= 400:
             try:

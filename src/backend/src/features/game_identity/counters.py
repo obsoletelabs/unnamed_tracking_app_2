@@ -127,6 +127,20 @@ def _retire(row: GameMetricAdjustment | GameMetricCounterMember, stamp: int) -> 
         row.removed_at = max(stamp, row.added_at)
 
 
+async def _active_adjustments(
+    db: AsyncSession, counter_ids: list[UUID]
+) -> dict[UUID, GameMetricAdjustment]:
+    return {
+        a.counter_id: a
+        for a in await db.scalars(
+            select(GameMetricAdjustment).where(
+                GameMetricAdjustment.counter_id.in_(counter_ids),
+                GameMetricAdjustment.superseded_at.is_(None),
+            )
+        )
+    }
+
+
 async def _load(
     db: AsyncSession,
     user_id: UUID,
@@ -176,15 +190,7 @@ async def _load(
             )
         )
     }
-    adjustments = {
-        a.counter_id: a
-        for a in await db.scalars(
-            select(GameMetricAdjustment).where(
-                GameMetricAdjustment.counter_id.in_(ids),
-                GameMetricAdjustment.superseded_at.is_(None),
-            )
-        )
-    }
+    adjustments = await _active_adjustments(db, ids)
     result = []
     for counter in counters:
         mine = [m for m in members if m.counter_id == counter.id]

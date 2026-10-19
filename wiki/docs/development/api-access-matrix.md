@@ -427,6 +427,7 @@ are redacted. Validation errors never echo submitted values.
 | GET | `/api/calendar/feed-token` | user | Own feed token. |
 | POST | `/api/calendar/feed-token/regenerate` | user | Own feed token. |
 | GET | `/api/calendar/feed/{token}.ics` | public | Possession of the unguessable per-user feed token; token is redacted from access logs. |
+| GET | `/api/calendar/feed/{token}/{kind}.ics` | public | The same per-user feed token, narrowed to one layer (`anime`, `tv`, `movie`, `game`, `manual`); regenerating the token ends every layer's link. |
 | GET | `/api/calendar/games` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
 | GET | `/api/export/backup-status` | user | Only the caller's library; imported rows are stamped with the caller's ID. |
 | GET | `/api/export/library` | user | Only the caller's library; imported rows are stamped with the caller's ID. |
@@ -637,6 +638,7 @@ are redacted. Validation errors never echo submitted values.
 | POST | `/api/settings/steam/login/qr` | user | Own settings and provider credentials; secrets are never returned. |
 | GET | `/api/settings/system-info` | admin | Instance configuration; administrator. |
 | PUT | `/api/settings/upload-limit` | admin | Instance configuration; administrator. |
+| GET | `/api/settings/upload-limit-sources` | user | Where each upload cap comes from and whether the environment locks it; no stored object is addressed and no secret is returned. |
 | GET | `/api/settings/upload-limits` | user | Lookup using provider data or the caller's configured credentials; no stored object is addressed. |
 | GET | `/api/settings/user-jobs` | user | Per-user job preferences; the job must be one the caller can see. |
 | PUT | `/api/settings/user-jobs/{job_id}` | user | Per-user job preferences; the job must be one the caller can see. |

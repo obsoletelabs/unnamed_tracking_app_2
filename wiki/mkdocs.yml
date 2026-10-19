@@ -133,4 +133,14 @@ nav:
       - CI Scope and Results: development/ci-policy.md
       - Backend Quality Rework: development/backend-quality.md
       - Calendar / ICS: development/calendar-ics.md
+      - Media Query Profile: development/query-profile.md
+      - State Audit: development/state-audit.md
       - Production Runtime Smoke Development: development/production-runtime-smoke.md
+  - Design proposals:
+      - Overview: development/design/index.md
+      - Book Tracking: development/design/book-tracking.md
+      - Media Discovery Prompts: development/design/media-discovery-prompts.md
+      - Project Naming Brief: development/design/project-naming-brief.md
+      - External ICS Subscriptions: development/design/ics-subscriptions.md
+      - AFK-time Observations: development/design/afk-time-observations.md
+      - Tag Catalogue: development/design/tag-catalogue.md

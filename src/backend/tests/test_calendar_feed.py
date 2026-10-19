@@ -1,6 +1,7 @@
 """Regression coverage for the user-facing iCalendar subscription feed."""
 
 from datetime import date
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -322,3 +323,122 @@ async def test_feed_includes_only_the_owner_manual_events():
             await db.delete(owner)
             await db.delete(other)
             await db.commit()
+
+
+def _kind_entries():
+    base = {"next_episode_number": None, "air_at": 1_800_000_000, "kind": "release"}
+    return [
+        {**base, "media_type": kind, "media_id": uuid4(), "title": f"{kind.title()} item"}
+        for kind in ("anime", "tv", "movie", "game")
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["anime", "tv", "movie", "game"])
+async def test_each_kind_feed_returns_only_its_own_layer_and_the_combined_feed_all(
+    monkeypatch, kind
+):
+    """#257: separate subscriptions per layer; the combined URL keeps returning everything."""
+    import src.api.routes.calendar_feed as feed_module
+
+    user = User(id=uuid4(), username="kinds", email="kinds@example.test", password_hash="x")
+    me = SimpleNamespace(date=date.today())
+
+    async def preferences(_db, _user_id):
+        return {
+            "calendar_game_releases": True,
+            "calendar_hide_games": False,
+            "calendar_show_estimated": True,
+        }
+
+    async def entries(_db, _user_id, _days, game_releases=False):
+        return _kind_entries()
+
+    monkeypatch.setattr(feed_module, "load_preferences", preferences)
+    monkeypatch.setattr(feed_module, "build_calendar_entries", entries)
+    manual = [
+        CalendarEvent(id=uuid4(), user_id=user.id, title="Dentist", event_date=me.date, note=None)
+    ]
+    only = (
+        await feed_module.calendar_feed_for_kind("t", kind, _FakeDb(user, manual))
+    ).body.decode()
+    assert f"{kind.title()} item" in only
+    assert all(
+        f"{other.title()} item" not in only
+        for other in ("anime", "tv", "movie", "game")
+        if other != kind
+    )
+    assert "Dentist" not in only  # manual events have their own feed
+    assert "X-WR-CALNAME:Media Tracker - " in only and "COLOR:" in only
+    combined = (await feed_module.calendar_feed("t", _FakeDb(user, manual))).body.decode()
+    for name in ("Anime", "Tv", "Movie", "Game"):
+        assert f"{name} item" in combined
+    assert "Dentist" in combined and "COLOR:" not in combined
+
+
+@pytest.mark.asyncio
+async def test_manual_feed_has_only_the_users_own_events_and_unknown_kinds_are_404(monkeypatch):
+    import src.api.routes.calendar_feed as feed_module
+
+    user = User(id=uuid4(), username="manual", email="manual@example.test", password_hash="x")
+    built = []
+
+    async def preferences(_db, _user_id):
+        return {
+            "calendar_game_releases": False,
+            "calendar_hide_games": False,
+            "calendar_show_estimated": True,
+        }
+
+    async def entries(*_args, **_kwargs):
+        built.append(1)
+        return _kind_entries()
+
+    monkeypatch.setattr(feed_module, "load_preferences", preferences)
+    monkeypatch.setattr(feed_module, "build_calendar_entries", entries)
+    events = [CalendarEvent(id=uuid4(), user_id=user.id, title="Birthday", event_date=date.today())]
+    body = (
+        await feed_module.calendar_feed_for_kind("t", "manual", _FakeDb(user, events))
+    ).body.decode()
+    assert "Birthday" in body and " item" not in body and built == []
+    with pytest.raises(HTTPException) as unknown:
+        await feed_module.calendar_feed_for_kind("t", "podcasts", _FakeDb(user))
+    assert unknown.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_kind_feeds_share_the_token_so_regenerating_ends_every_old_url():
+    async with SessionLocal() as db:
+        user = User(
+            username=f"ics_{uuid4().hex[:10]}",
+            email=f"{uuid4().hex[:10]}@example.test",
+            password_hash="x",
+        )
+        db.add(user)
+        await db.commit()
+        try:
+            first = await get_feed_token(db, user)
+            feeds = first["feeds"]
+            assert first["path"] == feeds["combined"]
+            assert set(feeds) == {"combined", "anime", "tv", "movie", "game", "manual"}
+            token = user.calendar_token
+            assert all(f"/{token}" in path for path in feeds.values())
+            for path in feeds.values():
+                assert path.endswith(".ics")
+            second = await regenerate_feed_token(db, user)
+            assert user.calendar_token != token
+            assert all(token not in path for path in second["feeds"].values())
+            # the old URL of any kind is dead; the new one is live
+            with pytest.raises(HTTPException) as gone:
+                await feed_module_call(db, token, "anime")
+            assert gone.value.status_code == 404
+            assert (await feed_module_call(db, user.calendar_token, "anime")).status_code == 200
+        finally:
+            await db.delete(user)
+            await db.commit()
+
+
+async def feed_module_call(db, token, kind):
+    from src.api.routes.calendar_feed import calendar_feed_for_kind
+
+    return await calendar_feed_for_kind(token, kind, db)

@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref, onMounted, useId } from "vue";
 import {
-  fetchUploadLimits,
+  fetchUploadLimitSources,
   updateUploadLimits,
   type UploadLimits,
+  type UploadLimitSources,
 } from "../../services/settings";
 const fieldId = useId();
 const limits: { key: keyof UploadLimits; label: string; hint: string }[] = [
@@ -37,15 +38,31 @@ const loading = ref(true),
   saving = ref(false);
 const error = ref("");
 const success = ref("");
-const effective = ref<UploadLimits | null>(null);
+const effective = ref<UploadLimitSources | null>(null);
 const drafts = ref<Partial<Record<keyof UploadLimits, string | number>>>({});
-function apply(values: UploadLimits) {
+function apply(values: UploadLimitSources) {
   effective.value = values;
-  for (const { key } of limits) drafts.value[key] = String(values[key]);
+  for (const { key } of limits) drafts.value[key] = String(values[key].value);
+}
+const isLocked = (key: keyof UploadLimits) =>
+  effective.value?.[key].locked ?? false;
+function sourceNote(key: keyof UploadLimits): string {
+  const info = effective.value?.[key];
+  if (!info) return "";
+  if (info.locked)
+    return `Set by the server environment (${info.environment_variable}). Change it there and restart; it cannot be edited here.`;
+  if (info.environment_invalid)
+    return `${info.environment_variable} is set but is not a whole number of megabytes, so it is ignored.`;
+  return info.source === "override"
+    ? "Saved here, overriding the environment default."
+    : "Using the built-in default.";
+}
+async function reload() {
+  apply(await fetchUploadLimitSources());
 }
 onMounted(async () => {
   try {
-    apply(await fetchUploadLimits());
+    await reload();
   } catch (e) {
     error.value = e instanceof Error ? e.message : "Unable to load limits.";
   } finally {
@@ -57,6 +74,8 @@ async function save(reset = false) {
   success.value = "";
   const values: Partial<Record<keyof UploadLimits, number | null>> = {};
   for (const { key, label } of limits) {
+    // an environment-controlled cap is not part of this form
+    if (isLocked(key)) continue;
     const raw = String(drafts.value[key] ?? "").trim();
     const value = Number(raw);
     if (
@@ -70,9 +89,10 @@ async function save(reset = false) {
   }
   saving.value = true;
   try {
-    apply(await updateUploadLimits(values));
+    await updateUploadLimits(values);
+    await reload();
     success.value = reset
-      ? "All limits reset to the server environment defaults."
+      ? "Saved limits cleared. Environment-controlled limits are unchanged."
       : "Limits saved. New uploads use them immediately.";
   } catch (e) {
     error.value = e instanceof Error ? e.message : "Unable to save limits.";
@@ -85,8 +105,12 @@ async function save(reset = false) {
   <section class="settings-section">
     <h2>Upload limits</h2>
     <p class="hint">
-      Server-wide limits in megabytes. Each value overrides its environment
-      default; resetting uses the current server configuration.
+      The application's own limits in megabytes. A value set in the server's
+      environment wins and is shown locked; otherwise what you save here
+      applies, then the built-in default. A proxy in front of the application
+      (Nginx <code class="inline">client_max_body_size</code>, a CDN) has its
+      own request limit and can refuse a larger upload before the application
+      sees it; multipart overhead adds a little to the file's size.
     </p>
     <p v-if="loading" class="hint">Loading…</p>
     <form v-else-if="effective" @submit.prevent="save()">
@@ -102,10 +126,11 @@ async function save(reset = false) {
           step="1"
           inputmode="numeric"
           required
-          :disabled="saving"
+          :disabled="saving || isLocked(limit.key)"
         />
         <span :id="`${fieldId}-${limit.key}-hint`" class="field-hint"
-          >{{ limit.hint }} <code>{{ limit.key.toUpperCase() }}</code></span
+          >{{ limit.hint }} {{ sourceNote(limit.key) }}
+          <code>{{ limit.key.toUpperCase() }}</code></span
         >
       </div>
       <div class="row">
@@ -224,6 +249,10 @@ async function save(reset = false) {
 button,
 input {
   min-height: var(--ui-control-height);
+}
+code.inline {
+  display: inline;
+  margin: 0;
 }
 code {
   display: block;

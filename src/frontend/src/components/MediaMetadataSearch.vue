@@ -2,7 +2,14 @@
 // The progressive metadata search box at the top of the Movie, TV and Anime forms:
 // a query, the matches, and the messages around them. Picking a match tells
 // the form, which fills in its own fields.
-defineProps<{
+import { useId } from "vue";
+import ProviderAvailabilityNote from "./ProviderAvailabilityNote.vue";
+import { useProviderAvailability } from "../composables/useProviderAvailability";
+import type { MetadataMediaType } from "../services/metadata";
+
+const props = defineProps<{
+  // which kind of media is searched, so a missing setup is explained up front
+  mediaType?: MetadataMediaType;
   label: string;
   // "movie", "show" or "anime", for the placeholder
   noun: string;
@@ -14,6 +21,12 @@ defineProps<{
 }>();
 
 const query = defineModel<string>("query", { required: true });
+const noteId = useId();
+// the check only explains: the server re-checks when a search starts
+const availability = props.mediaType
+  ? useProviderAvailability(props.mediaType)
+  : null;
+const block = availability?.block;
 
 const emit = defineEmits<{
   search: [];
@@ -31,17 +44,20 @@ const emit = defineEmits<{
         class="text-input"
         :placeholder="`Search by ${noun} title`"
         :aria-label="`Search by ${noun} title`"
-        @keydown.enter.prevent="emit('search')"
+        :aria-describedby="block ? noteId : undefined"
+        @keydown.enter.prevent="!block && emit('search')"
       />
       <button
         type="button"
         class="secondary-button"
-        :disabled="searching"
+        :disabled="searching || !!block"
+        :aria-describedby="block ? noteId : undefined"
         @click="emit('search')"
       >
         {{ searching ? "Searching…" : "Search" }}
       </button>
     </div>
+    <ProviderAvailabilityNote :id="noteId" :block="block ?? null" />
     <div v-if="results.length" class="metadata-results">
       <button
         v-for="result in results"

@@ -36,6 +36,8 @@ import { PLATFORM_SUGGESTIONS } from "../utils/platforms";
 import { sizedAssetUrl } from "../utils/gameImages";
 
 import { useMetadataSearch } from "../composables/useMetadataSearch";
+import { useProviderAvailability } from "../composables/useProviderAvailability";
+import ProviderAvailabilityNote from "./ProviderAvailabilityNote.vue";
 import { useMetadataComparison } from "../composables/useMetadataComparison";
 import { useMetadataArtwork } from "../composables/useMetadataArtwork";
 import type { GameEditDraft } from "../utils/gameEditDraft";
@@ -341,6 +343,9 @@ const saving = ref(false);
 const error = ref<string | null>(null);
 const metadataQuery = ref("");
 const progressiveSearch = useMetadataSearch(metadataQuery, "game");
+// explained up front; the server re-checks when a search starts
+const gameSearchAvailability = useProviderAvailability("game");
+const gameSearchNoteId = useId();
 const selectingMetadata = ref(false);
 const selectedProviderIds = ref<Record<string, string> | undefined>();
 let selectionGeneration = 0;
@@ -804,17 +809,31 @@ async function submit() {
             type="search"
             placeholder="Search by game title"
             aria-label="Search game metadata by title"
-            @keydown.enter.prevent="searchMetadata"
+            :aria-describedby="
+              gameSearchAvailability.block.value ? gameSearchNoteId : undefined
+            "
+            @keydown.enter.prevent="
+              !gameSearchAvailability.block.value && searchMetadata()
+            "
           />
           <button
             type="button"
             class="secondary-button"
-            :disabled="searchingMetadata"
+            :disabled="
+              searchingMetadata || !!gameSearchAvailability.block.value
+            "
+            :aria-describedby="
+              gameSearchAvailability.block.value ? gameSearchNoteId : undefined
+            "
             @click="searchMetadata"
           >
             {{ searchingMetadata ? "Searching…" : "Search" }}
           </button>
         </div>
+        <ProviderAvailabilityNote
+          :id="gameSearchNoteId"
+          :block="gameSearchAvailability.block.value"
+        />
         <div v-if="metadataResults.length" class="metadata-results">
           <button
             v-for="result in metadataResults"

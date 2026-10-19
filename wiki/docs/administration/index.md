@@ -10,6 +10,10 @@ Administration separates **Users**, **Single sign-on**, **Server integrations**,
 
 Open **Administration → Limits** to change all five environment-backed caps: images/general files (`MAX_UPLOAD_SIZE_MB`), documents in a game's Docs tab (`MAX_DOC_SIZE_MB`), save archives (`MAX_SAVE_ARCHIVE_SIZE_MB`), video clips and soundtracks (`MAX_CLIP_SIZE_MB`), and world saves/modpacks (`MAX_WORLD_SAVE_SIZE_MB`). Values are whole megabytes, saved for the deployment and enforced on new uploads immediately. Existing files are retained. **Reset all to server defaults** clears the overrides and uses the current environment configuration.
 
+**Where a limit's value comes from.** For each cap the first of these that applies wins: (1) the variable set in the server's environment (`MAX_UPLOAD_SIZE_MB` and the others), which is shown **locked** here and cannot be edited in the browser; (2) the value an administrator saved on this page; (3) the built-in default. An environment value that is not a whole number of megabytes is ignored and flagged on this page rather than half-applied. A save that includes a locked cap is refused as a whole, so nothing else changes by accident. **Reset all** clears saved values only.
+
+These are the application's own limits. A proxy in front of it (an outer Nginx `client_max_body_size`, a CDN) enforces its own request limit and can refuse a larger upload before the application sees it; allow a little more than the largest file you intend to accept, because multipart encoding adds overhead. The limit is inclusive: a file exactly at the cap is accepted and one byte over is refused with a message naming the cap.
+
 The nullable migrations preserve existing provider credentials, branding and the earlier general-upload override. Unconfigured limits keep their environment values. Docs used to share the images/general cap; they now follow the documents cap only, so a deployment that lowered the general cap to restrict Docs should set the documents cap as well. This page edits application upload caps; plugin package verification and per-plugin runtime quotas retain their existing security boundaries.
 
 ## Operational checklist

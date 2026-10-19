@@ -8,7 +8,7 @@ import {
   deleteProviderCredentials,
 } from "../services/settings";
 import type { ProviderCredentialStatus } from "../services/settings";
-import { syncLibrary } from "../services/librarySync";
+import { enrichSteamGames, syncLibrary } from "../services/librarySync";
 import type { LibrarySyncProvider } from "../services/librarySync";
 import {
   startTask,
@@ -302,6 +302,43 @@ export function useConnections() {
     retroachievements: false,
   });
 
+  // What a Steam import left unfinished, so it can be retried without
+  // importing again (#256): details that could not be read, and covers missing.
+  const steamRetry = reactive({
+    detailIds: [] as string[],
+    artworkIds: [] as string[],
+  });
+  const steamRetrying = ref(false);
+
+  async function handleRetrySteamImport() {
+    if (steamRetrying.value) return;
+    steamRetrying.value = true;
+    const total = steamRetry.detailIds.length + steamRetry.artworkIds.length;
+    const taskId = startTask("Retrying Steam details and artwork", 1, {
+      indeterminate: true,
+    });
+    try {
+      const details = await enrichSteamGames(steamRetry.detailIds);
+      const covers = await enrichSteamGames(steamRetry.artworkIds, true);
+      steamRetry.detailIds = details.failedIds;
+      // a game whose details still failed cannot have its artwork judged yet
+      steamRetry.artworkIds = [
+        ...new Set([...details.artworkMissingIds, ...covers.artworkMissingIds]),
+      ].filter((id) => !details.failedIds.includes(id));
+      const left = steamRetry.detailIds.length + steamRetry.artworkIds.length;
+      completeTask(
+        taskId,
+        left
+          ? `${total - left} of ${total} fixed; ${left} still need another try`
+          : `All ${total} fixed`,
+      );
+    } catch (err) {
+      errorTask(taskId, err instanceof Error ? err.message : "Retry failed");
+    } finally {
+      steamRetrying.value = false;
+    }
+  }
+
   async function handleSyncLibrary(provider: LibrarySyncProvider) {
     librarySyncing[provider] = true;
     // indeterminate, the backend is one all-at-once request with no
@@ -324,7 +361,15 @@ export function useConnections() {
           `wishlist not imported${result.wishlist_error ? ` (${result.wishlist_error})` : ""}`,
         result.enrich_failed &&
           `store details not filled in for ${result.enrich_failed} games`,
+        result.artwork_missing &&
+          `no cover picture for ${result.artwork_missing} games`,
       ].filter((warning): warning is string => !!warning);
+      if (provider === "steam") {
+        steamRetry.detailIds = result.enrich_failed_ids ?? [];
+        steamRetry.artworkIds = (result.artwork_missing_ids ?? []).filter(
+          (id) => !steamRetry.detailIds.includes(id),
+        );
+      }
       const wishlisted = result.wishlist_added
         ? `, ${result.wishlist_added} wishlisted`
         : "";
@@ -389,6 +434,9 @@ export function useConnections() {
     handleDisconnectPsn,
     librarySyncing,
     handleSyncLibrary,
+    steamRetry,
+    steamRetrying,
+    handleRetrySteamImport,
     formatLastSynced,
   };
 }
