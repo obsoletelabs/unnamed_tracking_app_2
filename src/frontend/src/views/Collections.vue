@@ -98,14 +98,19 @@ function onCreate(payload: CollectionFormPayload) {
   router.push(`/games/collections/${encodeURIComponent(payload.name)}`);
 }
 
+let loadInFlight = false;
 async function loadGames() {
+  if (loadInFlight) return;
+  loadInFlight = true;
   loading.value = true;
+  error.value = null;
   try {
     games.value = await fetchGames();
   } catch (err) {
     error.value = err instanceof Error ? err.message : "Failed to load games";
   } finally {
     loading.value = false;
+    loadInFlight = false;
   }
 }
 
@@ -372,7 +377,10 @@ const tagOptions = computed(() => {
       <p v-if="createError" class="ui-error-box">{{ createError }}</p>
 
       <p v-if="loading" class="ui-state">Loading…</p>
-      <p v-else-if="error" class="ui-state error">{{ error }}</p>
+      <p v-else-if="error" class="ui-state error" role="alert">
+        {{ error }}
+        <button type="button" class="ui-btn" @click="loadGames">Retry</button>
+      </p>
 
       <template v-else>
         <div v-if="filteredCollections.length" class="grid">
