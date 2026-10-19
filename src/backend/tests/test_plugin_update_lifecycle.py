@@ -346,3 +346,86 @@ async def test_catalogue_failure_updates_persistent_status(monkeypatch, tmp_path
         )
     persisted = next(item for item in store.list() if item["id"] == catalogue["id"])
     assert persisted["last_error"] == "network failure"
+
+
+@pytest.mark.asyncio
+async def test_combined_update_notice_links_every_plugin_and_the_manager(monkeypatch) -> None:
+    """#247: the combined item is a rich notification whose links open the plugins behind it."""
+    from unittest.mock import AsyncMock
+
+    class Db:
+        async def scalars(self, statement):
+            del statement
+            return [uuid4()]
+
+    emit = AsyncMock(return_value=[uuid4()])
+    monkeypatch.setattr(plugin_catalogues, "emit_legacy_rows", emit)
+    monkeypatch.setattr(plugin_catalogues.settings, "PUBLIC_APP_URL", "https://tracking.example/")
+    updates = [
+        {
+            "plugin_id": f"example.plugin{i}",
+            "current_version": "1.0.0",
+            "available_version": "2.0.0",
+            "status": "available",
+        }
+        for i in range(6)
+    ]
+    await plugin_catalogues.notify_plugin_updates(Db(), updates)
+
+    notice = emit.await_args.args[2][0]
+    body = notice["body"]
+    assert (
+        "https://tracking.example/settings?area=administration&section=plugins\n"
+        not in body.split("\n\n")[0]
+    )
+    for i in range(6):  # every plugin line carries its own absolute link
+        assert (
+            f"https://tracking.example/settings?area=administration&section=plugins&plugin=example.plugin{i}"
+            in body
+        )
+    assert body.rstrip().endswith(
+        "Manage plugins: https://tracking.example/settings?area=administration&section=plugins"
+    )
+    content = notice["content"]
+    assert [action.id for action in content.actions] == [
+        "manage_plugins",
+        "open_plugin_0",
+        "open_plugin_1",
+        "open_plugin_2",
+        "open_plugin_3",
+    ]
+    assert content.actions[0].target.path == "/settings?area=administration&section=plugins"
+    assert content.actions[2].target.path.endswith("plugin=example.plugin1")
+    assert [fact.label for fact in content.facts] == [f"example.plugin{i}" for i in range(6)]
+
+
+@pytest.mark.asyncio
+async def test_update_notice_without_a_public_url_says_where_to_look(monkeypatch) -> None:
+    from unittest.mock import AsyncMock
+
+    class Db:
+        async def scalars(self, statement):
+            del statement
+            return [uuid4()]
+
+    emit = AsyncMock(return_value=[uuid4()])
+    monkeypatch.setattr(plugin_catalogues, "emit_legacy_rows", emit)
+    monkeypatch.setattr(plugin_catalogues.settings, "PUBLIC_APP_URL", "")
+    await plugin_catalogues.notify_plugin_updates(
+        Db(),
+        [
+            {
+                "plugin_id": "example.one",
+                "current_version": "1.0.0",
+                "available_version": "1.1.0",
+                "status": "failed",
+                "reason": "Digest mismatch.",
+            }
+        ],
+    )
+    notice = emit.await_args.args[2][0]
+    assert "Settings → Administration → Plugins" in notice["body"]
+    assert "Digest mismatch." in notice["body"]
+    assert [a.id for a in notice["content"].actions] == [
+        "manage_plugins"
+    ]  # one plugin: no duplicate deep link

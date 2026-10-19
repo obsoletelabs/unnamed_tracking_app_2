@@ -332,6 +332,12 @@ async def list_anime(
             progress_column=library_progress(Anime, AnimeSeason)
             if query.sort == "progress"
             else None,
+            search_columns=(
+                Anime.title,
+                Anime.title_english,
+                Anime.title_romaji,
+                Anime.title_native,
+            ),
         ),
     )
 

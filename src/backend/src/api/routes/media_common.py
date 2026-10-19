@@ -111,6 +111,9 @@ class LibraryFilters:
     year_to: int | None = None
     sort: LibrarySort = "title"
     progress_column: Any = None
+    # What the user typed and the title columns it was matched against, for "best match" ordering.
+    search_text: str | None = None
+    search_columns: tuple[Any, ...] = ()
 
     @classmethod
     def from_query(
@@ -121,6 +124,7 @@ class LibraryFilters:
         search_clause: ColumnElement[bool] | None,
         year_column: Any,
         progress_column: Any = None,
+        search_columns: tuple[Any, ...] = (),
     ) -> "LibraryFilters":
         return cls(
             status_filter=query.status,
@@ -138,6 +142,8 @@ class LibraryFilters:
             year_to=query.year_to,
             sort=query.sort,
             progress_column=progress_column,
+            search_text=(query.search or "").strip() or None,
+            search_columns=search_columns,
         )
 
 
@@ -208,9 +214,31 @@ def library_progress(model: Any, season_model: Any = None) -> Any:
     )
 
 
+def title_relevance(columns: tuple[Any, ...], search: str) -> Any:
+    """How closely a title matches the typed text: 0 exact, 1 starts with it, 2 a word starts with
+    it, 3 contains it, 4 matched some other spelling. The best-matching column decides."""
+    ranks = []
+    for column in columns:
+        lowered = func.lower(column)
+        needle = search.lower()
+        ranks.append(
+            case(
+                (lowered == needle, 0),
+                (lowered.startswith(needle, autoescape=True), 1),
+                (lowered.contains(f" {needle}", autoescape=True), 2),
+                (lowered.contains(needle, autoescape=True), 3),
+                else_=4,
+            )
+        )
+    return func.least(*ranks) if len(ranks) > 1 else ranks[0]
+
+
 def _library_order(model: Any, filters: LibraryFilters) -> tuple[Any, ...]:
     """Validated keys select expressions; nulls stay last and IDs resolve every tie."""
     title = model.sort_title.asc().nulls_last()
+    if filters.sort == "relevance" and filters.search_text:
+        columns = filters.search_columns or (model.title,)
+        return (title_relevance(columns, filters.search_text), title, model.id)
     if filters.sort == "title_desc":
         return (model.sort_title.desc().nulls_last(), model.id)
     if filters.sort in {"rank", "score"}:

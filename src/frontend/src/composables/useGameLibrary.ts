@@ -1,3 +1,4 @@
+import { titleMatchRank } from "../utils/searchRelevance";
 import type { SegmentOption } from "../components/SegmentedTabs.vue";
 import { matchesShortcut } from "../state/shortcuts";
 import { preferences } from "../state/preferences";
@@ -1192,7 +1193,11 @@ export function useGameLibrary() {
     }
   }
 
+  // A game with several copies shows the reconciled hours the game page shows,
+  // not just its main record's (#277); copies counting the same hours count once.
   function gameTotalMinutes(game: Game): number {
+    const reconciled = grouping.value.playtimeSeconds.get(game.id);
+    if (reconciled !== undefined) return Math.floor(reconciled / 60);
     return game.platforms.reduce((sum, p) => sum + p.playtimeMinutes, 0);
   }
 
@@ -1328,7 +1333,19 @@ export function useGameLibrary() {
       if (y === null) return -1;
       return compare(x, y);
     };
+    const searchText = searchQuery.value.trim();
+    const matchRank = (game: Game) =>
+      titleMatchRank(
+        copiesOf(game).map((copy) => copy.title),
+        searchText,
+      );
     result = [...result].sort((a, b) => {
+      // best match needs something to match; without a search it is just A-Z
+      if (sortBy.value === "relevance")
+        return (
+          (searchText ? matchRank(a) - matchRank(b) : 0) ||
+          a.title.localeCompare(b.title)
+        );
       if (sortBy.value === "name") return a.title.localeCompare(b.title);
       if (sortBy.value === "name_desc") return b.title.localeCompare(a.title);
       if (sortBy.value === "recent")

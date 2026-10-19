@@ -28,3 +28,13 @@ watch(url, () => (failed.value = false));
   />
   <slot v-else />
 </template>
+
+<style scoped>
+/* A picture need not be square. Without a fixed ratio the browser derives the
+   box from the file's own proportions, which squashed the circle into an oval. */
+img {
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 50%;
+}
+</style>

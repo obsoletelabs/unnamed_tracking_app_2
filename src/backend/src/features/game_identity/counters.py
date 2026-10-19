@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import null, select
+from sqlalchemy import Select, null, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.game_identity import (
@@ -39,7 +39,7 @@ from src.database.models.game_identity_tracking import (
     GameMetricCounter,
     GameMetricCounterMember,
 )
-from src.features.game_identity import manual, policy
+from src.features.game_identity import manual, playtime, policy
 from src.features.game_identity.graph import (
     IdentityConflict,
     IdentityInvalid,
@@ -127,19 +127,29 @@ def _retire(row: GameMetricAdjustment | GameMetricCounterMember, stamp: int) -> 
         row.removed_at = max(stamp, row.added_at)
 
 
-async def _load(
-    db: AsyncSession, user_id: UUID, games: set[UUID], *, counter_ids: set[UUID] | None = None
-) -> list[_CounterData]:
-    statement = select(GameMetricCounter).where(
-        GameMetricCounter.user_id == user_id, GameMetricCounter.archived_at.is_(None)
+def _counter_query(
+    user_id: UUID, games: set[UUID], counter_ids: set[UUID] | None, metric: str | None
+) -> Select[tuple[GameMetricCounter]]:
+    query = (
+        select(GameMetricCounter)
+        .where(GameMetricCounter.user_id == user_id, GameMetricCounter.archived_at.is_(None))
+        .where(GameMetricCounter.metric == metric if metric is not None else true())
+        .order_by(GameMetricCounter.created_at, GameMetricCounter.id)
     )
     if counter_ids is not None:
-        statement = statement.where(GameMetricCounter.id.in_(counter_ids))
-    else:
-        statement = statement.where(GameMetricCounter.game_id.in_(games))
-    counters = list(
-        await db.scalars(statement.order_by(GameMetricCounter.created_at, GameMetricCounter.id))
-    )
+        return query.where(GameMetricCounter.id.in_(counter_ids))
+    return query.where(GameMetricCounter.game_id.in_(games))
+
+
+async def _load(
+    db: AsyncSession,
+    user_id: UUID,
+    games: set[UUID],
+    *,
+    counter_ids: set[UUID] | None = None,
+    metric: str | None = None,
+) -> list[_CounterData]:
+    counters = list(await db.scalars(_counter_query(user_id, games, counter_ids, metric)))
     if not counters:
         return []
     ids = [c.id for c in counters]
@@ -828,17 +838,16 @@ def _adjustment_view(item: _CounterData) -> dict[str, Any] | None:
     }
 
 
+async def playtime_by_game(db: AsyncSession, user_id: UUID, games: set[UUID]) -> dict[UUID, int]:
+    """Reconciled playtime of games that already have playtime counters; read only, never creates."""
+    if not games:
+        return {}
+    return playtime.totals(await _load(db, user_id, games, metric=_PLAYTIME))
+
+
 def _counter_view(item: _CounterData) -> dict[str, Any]:
-    metric, winner = item.counter.metric, item.winner
-    raw = winner.value if winner else None
-    effective = raw
-    if metric == _PLAYTIME and item.adjustment is not None:
-        effective = policy.apply_playtime_adjustment(
-            raw if raw is None else int(raw),
-            item.adjustment.kind,
-            item.adjustment.offset_value,
-            item.adjustment.override_value,
-        )
+    metric = item.counter.metric
+    winner, raw, effective = playtime.effective(item)
     priorities = {m.observation_id: m.priority for m in item.members}
     return {
         "counter_id": item.counter.id,

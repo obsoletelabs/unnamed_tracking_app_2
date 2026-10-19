@@ -44,6 +44,7 @@ vi.mock("../services/gameIdentity", async (original) => ({
     groups: [
       {
         umbrellaId: "java",
+        playtimeSeconds: null,
         members: [
           { gameId: "bedrock", display: "grouped", relationshipId: "e" },
         ],
@@ -114,6 +115,7 @@ async function library(mode: "grouped" | "separate" = "grouped") {
     groups: [
       {
         umbrellaId: "java",
+        playtimeSeconds: null,
         members: [
           { gameId: "bedrock", display: "grouped", relationshipId: "e1" },
         ],

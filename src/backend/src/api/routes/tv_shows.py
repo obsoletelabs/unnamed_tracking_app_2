@@ -210,6 +210,7 @@ async def list_shows(
             query,
             TVShowStatus,
             search_clause=title_search([TVShow.title], query.search),
+            search_columns=(TVShow.title,),
             year_column=TVShow.first_air_date,
             progress_column=library_progress(TVShow, TVSeason)
             if query.sort == "progress"

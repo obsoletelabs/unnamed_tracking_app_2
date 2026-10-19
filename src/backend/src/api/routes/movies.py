@@ -149,6 +149,7 @@ async def list_movies(
             query,
             MovieStatus,
             search_clause=title_search([Movie.title], query.search),
+            search_columns=(Movie.title,),
             year_column=Movie.release_date,
             progress_column=library_progress(Movie) if query.sort == "progress" else None,
         ),

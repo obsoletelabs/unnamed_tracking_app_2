@@ -9,7 +9,7 @@ from sqlalchemy import select
 T = TypeVar("T")
 StatusT = TypeVar("StatusT", bound=Enum)
 LibrarySort = Literal[
-    "title", "title_desc", "rank", "score", "added", "year_new", "year_old", "progress"
+    "title", "title_desc", "rank", "score", "added", "year_new", "year_old", "progress", "relevance"
 ]
 
 

@@ -29,7 +29,16 @@ import {
   unavailableText,
 } from "../../services/preferenceDependencies";
 
-const props = defineProps<{ prefs: Preferences; loaded: boolean }>();
+// `part` splits the page into its own tabs: where notifications go (providers),
+// and which kinds you get (types). The default keeps showing both.
+const props = withDefaults(
+  defineProps<{
+    prefs: Preferences;
+    loaded: boolean;
+    part?: "all" | "providers" | "types";
+  }>(),
+  { part: "all" },
+);
 const route = useRoute();
 const focusedDestination = computed(() => {
   const value = route?.query.notification_destination;
@@ -254,7 +263,11 @@ async function testDestination(destination: NotificationRoutingDestination) {
     <p v-if="testStatus" class="hint" role="status">{{ testStatus }}</p>
     <p v-if="!routing && !error" class="hint">Loading providers…</p>
     <template v-if="routing">
-      <section id="user-notification-providers" class="provider-section">
+      <section
+        v-if="part !== 'types'"
+        id="user-notification-providers"
+        class="provider-section"
+      >
         <h3>Your providers</h3>
         <p class="hint">
           Enable external providers for your account here. Per-type choices
@@ -444,21 +457,24 @@ async function testDestination(destination: NotificationRoutingDestination) {
         </details>
       </section>
       <NotificationLinkSettings
+        v-if="part !== 'types'"
         :routing="routing"
         :prefs="prefs"
         :loaded="loaded"
         @change="emit('change', $event)"
         @changed="reload"
       />
-      <h3>Notification types</h3>
-      <p class="hint">
+      <h3 v-if="part !== 'providers'">Notification types</h3>
+      <p v-if="part !== 'providers'" class="hint">
         Switch a type on or off, then expand it to choose where it goes. Turning
         it off keeps your routing choices.
       </p>
       <article
-        v-for="type in routing.types.filter(
-          (t) => t.available !== false || showInactiveTypes,
-        )"
+        v-for="type in part === 'providers'
+          ? []
+          : routing.types.filter(
+              (t) => t.available !== false || showInactiveTypes,
+            )"
         :key="type.event_type"
         class="type-card"
       >
@@ -663,7 +679,10 @@ async function testDestination(destination: NotificationRoutingDestination) {
         </div>
       </article>
       <button
-        v-if="routing.types.some((t) => t.available === false)"
+        v-if="
+          part !== 'providers' &&
+          routing.types.some((t) => t.available === false)
+        "
         class="expand"
         :aria-expanded="showInactiveTypes"
         @click="showInactiveTypes = !showInactiveTypes"

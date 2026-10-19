@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { currentBrowserLabel } from "../../utils/browserName";
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import ToggleButton from "./ToggleButton.vue";
 import {
@@ -28,7 +29,8 @@ const emit = defineEmits<{
   change: [changes: Partial<Preferences>];
 }>();
 const configuration = ref<BrowserPushConfiguration | null>(null);
-const label = ref("This browser");
+// named after this browser and system so several devices can be told apart; editable
+const label = ref(currentBrowserLabel());
 const busy = ref(false);
 const error = ref("");
 const status = ref("");
