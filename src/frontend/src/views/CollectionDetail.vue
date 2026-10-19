@@ -219,14 +219,24 @@ const coverGameId = computed(
   () => coverPickedGameId.value ?? collectionGames.value[0]?.id ?? null,
 );
 
+// A failed load is not an empty collection: keep any games already loaded,
+// say so, and offer a retry that cannot be started twice.
+const loadFailed = ref(false);
+let loadStarted = false;
 async function loadGames() {
+  if (loadStarted) return;
+  loadStarted = true;
   loading.value = true;
+  loadFailed.value = false;
+  error.value = null;
   try {
     games.value = await fetchGames();
   } catch (err) {
+    loadFailed.value = true;
     error.value = err instanceof Error ? err.message : "Failed to load games";
   } finally {
     loading.value = false;
+    loadStarted = false;
   }
 }
 
@@ -378,7 +388,7 @@ async function deleteCollection() {
   <main class="ui-page">
     <GameTopBar active="collections" />
 
-    <div v-if="loading" class="ui-content">
+    <div v-if="loading && !games.length" class="ui-content">
       <p class="ui-state">Loading…</p>
     </div>
 
@@ -447,6 +457,10 @@ async function deleteCollection() {
           @dragend="onDragEnd"
         />
       </div>
+      <p v-else-if="loadFailed" class="ui-state error" role="alert">
+        Could not load this collection.
+        <button type="button" class="ui-btn" @click="loadGames">Retry</button>
+      </p>
       <p v-else-if="isSmart" class="ui-state">
         Nothing matches this collection's rule right now. Games appear here as
         your library changes.

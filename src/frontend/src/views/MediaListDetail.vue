@@ -47,15 +47,21 @@ const list = ref<MediaListDetail | null>(null);
 const loading = ref(true);
 const error = ref<string | null>(null);
 
+let loadSequence = 0;
 async function load() {
+  const mine = ++loadSequence;
+  // a different list must never show the previous list's contents
+  if (list.value && list.value.id !== listId.value) list.value = null;
   loading.value = true;
   error.value = null;
   try {
-    list.value = await fetchMediaListDetail(listId.value);
+    const detail = await fetchMediaListDetail(listId.value);
+    if (mine === loadSequence) list.value = detail;
   } catch (e) {
-    error.value = e instanceof Error ? e.message : "Failed to load list.";
+    if (mine === loadSequence)
+      error.value = e instanceof Error ? e.message : "Failed to load list.";
   } finally {
-    loading.value = false;
+    if (mine === loadSequence) loading.value = false;
   }
 }
 watch(listId, load, { immediate: true });
@@ -336,7 +342,10 @@ async function addTitle(m: PickItem) {
 
     <div v-if="loading || (error && !list)" class="ui-content">
       <p v-if="loading" class="ui-state">Loading…</p>
-      <p v-else class="ui-state error">{{ error }}</p>
+      <p v-else class="ui-state error" role="alert">
+        {{ error }}
+        <button type="button" class="ui-btn" @click="load">Retry</button>
+      </p>
     </div>
 
     <div v-else-if="list" class="ui-content">

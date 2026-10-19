@@ -89,14 +89,21 @@ function saveNote() {
 // to the game and ties it to this achievement in one step.
 // notes written about this achievement, from the game's Notes tab
 const tiedNotes = ref<GameNoteSummary[]>([]);
+let tiedNotesSequence = 0;
 async function loadTiedNotes() {
+  const mine = ++tiedNotesSequence;
+  const gameId = route.params.gameId as string;
+  const achievementId = route.params.achievementId as string;
+  // another achievement's notes must not linger while this one loads
+  tiedNotes.value = [];
   try {
-    const all = await listGameNoteSummaries(route.params.gameId as string);
+    const all = await listGameNoteSummaries(gameId);
+    if (mine !== tiedNotesSequence) return;
     tiedNotes.value = all.filter(
-      (n) => n.linked_achievement_id === route.params.achievementId,
+      (n) => n.linked_achievement_id === achievementId,
     );
   } catch {
-    tiedNotes.value = [];
+    // notes are supplementary here; the achievement itself stays usable
   }
 }
 watch(() => route.params.achievementId, loadTiedNotes, { immediate: true });
