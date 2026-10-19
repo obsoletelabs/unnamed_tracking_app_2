@@ -179,8 +179,9 @@ pytest -q -p no:cacheprovider tests/test_notification_*.py tests/test_plugin_not
 - [x] #58 and #63 reconciled; both issues are closed.
 - [x] Baseline cross-provider gate #231 merged; compatibility adapters explicitly kept.
 - [x] One Alembic head verified on the checked `main` after the merges.
-- [ ] Final #118 acceptance results, including current Docker/companion/frontend checks,
-  recorded and reviewed. See [Rollout and acceptance](notification-rollout.md).
+- [x] Final #118 acceptance results, including current Docker/companion/frontend checks,
+  recorded in [#287](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/287).
+  See [Rollout and acceptance](notification-rollout.md#19-october-2026-integrated-acceptance).
 
-Close the umbrella only when the final acceptance evidence is complete; the historical
-open-stack warnings above must not be used as a substitute for checking the integrated state.
+The implementation and acceptance evidence are complete on the proposed branch. Merge and
+deployment remain maintainer actions; preserve the host-before-plugin release order.

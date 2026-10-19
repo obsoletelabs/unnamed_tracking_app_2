@@ -151,3 +151,43 @@ downgrade invalidates links but erases no history.
 See the pull request for the commands and counts of the final run. Checks that depend on services this
 environment does not have (hosted CI, real Discord or mail accounts, a physical device) are listed there
 as not run.
+
+## 19 October 2026 integrated acceptance
+
+Tested host `5e0f6143` plus the gate changes in `179b1f00`, against companion
+`c0b3be0c`. The follow-up only changes tests and documentation; it does not replace any
+notification implementation or remove an adapter. Own disposable Docker services and
+PostgreSQL 18 were used; existing deployments were not modified.
+
+| Check | Result |
+| --- | --- |
+| Full backend, `python -m pytest -q tests` | 4,289 passed; 8 optional companion tests skipped when the checkout was not mounted |
+| Those same eight tests with `UTAPP_PLUGINS_REPO` and `PLUGIN_REPOSITORY_PATH` set to the actual companion checkout | 8 passed; original published archive bytes, signatures, reviewed historical trust pins and scheduler contracts verified |
+| Runtime `python -m pytest -q tests` | 196 passed |
+| Companion preview build and `tools/check_host_contract.py --host-root <host>` | 24 maintained packages passed host manifest/UI, digest, installation and disabled-lifecycle conformance |
+| Companion Discord rich delivery, story contract and official-producer suites | 180 passed, capturing Discord payloads at the `network.request` boundary |
+| Frontend lint, format, typecheck, test and build | Passed; 1,009 tests in 161 files |
+| `node --test src/backend/tests/notification_push_worker.test.mjs` | 26 passed |
+| Backend mypy / pylint | No issues in 438 files / 10.00 out of 10 |
+| Ruff and strict wiki build | Passed |
+| Hosted CI on the tested code | Backend, frontend, migration graph, runtime policy, all Docker images, combined production container and production runtime smoke passed |
+| Browser acceptance | Modern/Classic desktop and 390-pixel phone viewport; history expansion, rich story navigation, unread filtering, visible retention and no page-width overflow verified |
+
+The optional-test skips above were all due to an unmounted companion repository, and were
+explicitly rerun with that repository present. No skipped contract was counted as a pass.
+The Discord capture is a fake remote API at the public network boundary; it is not a claim
+of live Discord delivery. SMTP uses a real local socket server. Live mail accounts, actual
+Discord credentials, physical push devices and production load remain deployment checks.
+
+### UI evidence
+
+These captures use synthetic data in a separate `notification_ui` database. They show the
+current integrated interface, not a new visual design.
+
+![Modern desktop notification history](../assets/notification-rollout/notifications-modern-desktop.jpg)
+
+![Modern phone rich story](../assets/notification-rollout/story-modern-mobile.jpg)
+
+![Classic desktop notifications](../assets/notification-rollout/notifications-classic-desktop.jpg)
+
+![Classic phone notifications](../assets/notification-rollout/notifications-classic-mobile.jpg)
