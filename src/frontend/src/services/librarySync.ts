@@ -15,6 +15,11 @@ export interface LibrarySyncResult {
   wishlist_failed?: boolean;
   wishlist_error?: string;
   enrich_failed?: number;
+  // games whose store details could not be read, and games saved without their
+  // cover picture (#256); both can be retried without re-importing anything
+  enrich_failed_ids?: string[];
+  artwork_missing?: number;
+  artwork_missing_ids?: string[];
   achievements_failed?: number;
   achievements_unavailable?: string[];
 }
@@ -100,18 +105,48 @@ async function finishSteamImport(result: SteamImportResult): Promise<void> {
     result.wishlist_failed = true;
     result.wishlist_error = e instanceof Error ? e.message : undefined;
   }
-  let failed = 0;
+  const outcome = await enrichSteamGames(ids);
+  result.enrich_failed = outcome.failedIds.length;
+  result.enrich_failed_ids = outcome.failedIds;
+  result.artwork_missing = outcome.artworkMissingIds.length;
+  result.artwork_missing_ids = outcome.artworkMissingIds;
+}
+
+export interface SteamEnrichOutcome {
+  failedIds: string[];
+  artworkMissingIds: string[];
+}
+
+interface EnrichStepResult {
+  failed: number;
+  failed_game_ids?: string[];
+  artwork_missing_game_ids?: string[];
+}
+
+/**
+ * Read store details and pictures for games a few at a time. A batch that does
+ * not come back at all counts every game in it as failed; the rest carry on.
+ * `artworkOnly` retries just the pictures and never rewrites saved details.
+ */
+export async function enrichSteamGames(
+  ids: readonly string[],
+  artworkOnly = false,
+): Promise<SteamEnrichOutcome> {
+  const outcome: SteamEnrichOutcome = { failedIds: [], artworkMissingIds: [] };
   for (let i = 0; i < ids.length; i += ENRICH_BATCH) {
+    const batchIds = ids.slice(i, i + ENRICH_BATCH);
     try {
-      const batch = await postSteamStep<{ failed: number }>("enrich", {
-        game_ids: ids.slice(i, i + ENRICH_BATCH),
+      const batch = await postSteamStep<EnrichStepResult>("enrich", {
+        game_ids: batchIds,
+        ...(artworkOnly ? { artwork_only: true } : {}),
       });
-      failed += batch.failed;
+      outcome.failedIds.push(...(batch.failed_game_ids ?? []));
+      outcome.artworkMissingIds.push(...(batch.artwork_missing_game_ids ?? []));
     } catch {
-      failed += ids.slice(i, i + ENRICH_BATCH).length;
+      outcome.failedIds.push(...batchIds);
     }
   }
-  result.enrich_failed = failed;
+  return outcome;
 }
 
 export interface SteamTagsBatch {

@@ -2,6 +2,23 @@
 
 Unnamed Tracking App stores library records in PostgreSQL and larger user files on the application's persistent data directory.
 
+## Where things are in Settings
+
+**Settings → Export / Import** has four tabs, one per workflow, so a long page never mixes them. Each tab keeps its own
+preview, progress and error messages when you switch between them, so a half-reviewed import is not lost.
+
+| Tab | What it is for |
+| --- | --- |
+| **Export** | download your library as one JSON file, or movies, TV shows and anime as a CSV spreadsheet |
+| **Import** | bring in a list from another site (MyAnimeList, Letterboxd, IMDb, Yamtrack) with a preview and per-title choices, and the AniList username import |
+| **Restore** | add movies, TV shows and anime back from a library export or backup file, and import games from an exported file; existing items are skipped, never overwritten |
+| **Backups** | the status of the automatic backups, and an explanation of how they differ from a full backup |
+
+A **library export is not a disaster-recovery backup.** It holds titles, progress and metadata; it does not hold attached
+files (screenshots, saves, documents), accounts, settings or credentials. Only a copy of the database and the data volume
+taken by whoever runs the server restores everything. Every earlier action and file format is still available, and
+`/settings?section=export&tab=restore` (or `import`, `backups`) opens a tab directly.
+
 ## Automatic backups
 
 The application runs an in-process automatic backup loop. It runs once at startup and then every 24 hours.

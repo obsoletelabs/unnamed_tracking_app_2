@@ -24,6 +24,24 @@ authed_router = APIRouter(
 public_router = APIRouter(prefix="/api/calendar", tags=["calendar"])
 
 _FEED_DAYS = 90
+# Subscriptions beyond the combined feed: one per kind of media, plus the user's own events.
+# Every one uses the same secret token, so regenerating it ends all of them at once.
+FEED_KINDS = ("anime", "tv", "movie", "game", "manual")
+_FEED_LABELS = {
+    "anime": "Anime",
+    "tv": "TV shows",
+    "movie": "Movies",
+    "game": "Games",
+    "manual": "My events",
+}
+# A colour *hint*: Google, Apple and Outlook decide for themselves how, or whether, to use it.
+_FEED_COLORS = {
+    "anime": ("hotpink", "#FF69B4"),
+    "tv": ("royalblue", "#4169E1"),
+    "movie": ("orange", "#FFA500"),
+    "game": ("seagreen", "#2E8B57"),
+    "manual": ("gray", "#808080"),
+}
 
 
 def _ics_escape(text: str) -> str:
@@ -36,18 +54,31 @@ def _ics_escape(text: str) -> str:
     )
 
 
+def _feed_paths(token: str) -> dict[str, str]:
+    base = f"/api/calendar/feed/{token}"
+    return {"combined": f"{base}.ics", **{kind: f"{base}/{kind}.ics" for kind in FEED_KINDS}}
+
+
 def _stamp(unix: int) -> str:
     return datetime.fromtimestamp(unix, tz=timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
-def _build_ics(entries: list[dict], events: list[CalendarEvent] | None = None) -> str:
+# One serializer for the combined feed and every layer; its locals are the iCalendar properties.
+# pylint: disable-next=too-many-locals
+def _build_ics(
+    entries: list[dict], events: list[CalendarEvent] | None = None, kind: str | None = None
+) -> str:
+    name = "Media Tracker" if kind is None else f"Media Tracker - {_FEED_LABELS[kind]}"
     lines = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
         "PRODID:-//Media Tracker//Calendar//EN",
         "CALSCALE:GREGORIAN",
-        "X-WR-CALNAME:Media Tracker",
+        f"X-WR-CALNAME:{name}",
     ]
+    if kind is not None:
+        css, hexcode = _FEED_COLORS[kind]
+        lines += [f"COLOR:{css}", f"X-APPLE-CALENDAR-COLOR:{hexcode}"]
     now = _stamp(int(datetime.now(tz=timezone.utc).timestamp()))
     for e in entries:
         ep = f" - Episode {e['next_episode_number']}" if e["next_episode_number"] else ""
@@ -97,11 +128,17 @@ async def get_feed_token(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> dict:
-    """The secret path for this user's .ics feed, created on first ask."""
+    """The secret path for this user's .ics feed, created on first ask.
+
+    `path` is the combined feed that has always been offered; `feeds` also lists one feed per
+    kind of media and one for the user's own events."""
     if not current_user.calendar_token:
         current_user.calendar_token = secrets.token_urlsafe(32)
         await db.commit()
-    return {"path": f"/api/calendar/feed/{current_user.calendar_token}.ics"}
+    return {
+        "path": f"/api/calendar/feed/{current_user.calendar_token}.ics",
+        "feeds": _feed_paths(current_user.calendar_token),
+    }
 
 
 @authed_router.post("/feed-token/regenerate")
@@ -109,33 +146,59 @@ async def regenerate_feed_token(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> dict:
-    """Invalidates the old feed URL (e.g. after sharing it by accident)."""
+    """Invalidates every old feed URL (e.g. after sharing one by accident)."""
     current_user.calendar_token = secrets.token_urlsafe(32)
     await db.commit()
-    return {"path": f"/api/calendar/feed/{current_user.calendar_token}.ics"}
+    return {
+        "path": f"/api/calendar/feed/{current_user.calendar_token}.ics",
+        "feeds": _feed_paths(current_user.calendar_token),
+    }
 
 
-@public_router.get("/feed/{token}.ics")
-async def calendar_feed(token: str, db: AsyncSession = Depends(get_db)) -> Response:
+async def _feed_response(token: str, db: AsyncSession, kind: str | None) -> Response:
+    """The combined feed (kind None) or one kind's feed; both follow the saved calendar
+    preferences and both are only reachable through the owner's current secret token."""
     user = await db.scalar(
         select(User).where(User.calendar_token == token, User.is_active.is_(True))
     )
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown calendar feed")
     prefs = await load_preferences(db, user.id)
-    entries = await build_calendar_entries(
-        db,
-        user.id,
-        _FEED_DAYS,
-        game_releases=bool(prefs["calendar_game_releases"]) and not prefs["calendar_hide_games"],
-    )
-    if not prefs["calendar_show_estimated"]:
-        entries = [e for e in entries if not e.get("is_projected")]
-    events = (
-        (await db.execute(select(CalendarEvent).where(CalendarEvent.user_id == user.id)))
-        .scalars()
-        .all()
-    )
+    entries: list[dict] = []
+    if kind != "manual":
+        entries = await build_calendar_entries(
+            db,
+            user.id,
+            _FEED_DAYS,
+            game_releases=bool(prefs["calendar_game_releases"])
+            and not prefs["calendar_hide_games"],
+        )
+        if not prefs["calendar_show_estimated"]:
+            entries = [e for e in entries if not e.get("is_projected")]
+        if kind is not None:
+            entries = [e for e in entries if e["media_type"] == kind]
+    events: list[CalendarEvent] = []
+    if kind is None or kind == "manual":
+        events = list(
+            (await db.execute(select(CalendarEvent).where(CalendarEvent.user_id == user.id)))
+            .scalars()
+            .all()
+        )
     return Response(
-        content=_build_ics(entries, list(events)), media_type="text/calendar; charset=utf-8"
+        content=_build_ics(entries, events, kind), media_type="text/calendar; charset=utf-8"
     )
+
+
+@public_router.get("/feed/{token}.ics")
+async def calendar_feed(token: str, db: AsyncSession = Depends(get_db)) -> Response:
+    return await _feed_response(token, db, None)
+
+
+@public_router.get("/feed/{token}/{kind}.ics")
+async def calendar_feed_for_kind(
+    token: str, kind: str, db: AsyncSession = Depends(get_db)
+) -> Response:
+    """One layer of the calendar: `anime`, `tv`, `movie`, `game` or `manual` (your own events)."""
+    if kind not in FEED_KINDS:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown calendar feed")
+    return await _feed_response(token, db, kind)

@@ -48,11 +48,16 @@ async function loadJobs(retainDrafts = false) {
   loading = true;
   try {
     jobError.value = null;
+    const previous = jobs.value;
     jobs.value = await fetchJobs(props.personal);
     if (!retainDrafts) resetDrafts();
     else
       jobs.value.forEach((job) => {
-        drafts.value[job.id] ??= split(job.intervalMinutes);
+        const before = previous.find((p) => p.id === job.id);
+        // a draft you have not touched follows the saved value; one you are
+        // editing is never overwritten by a refresh
+        if (!drafts.value[job.id] || (before && !isDirty(before)))
+          drafts.value[job.id] = split(job.intervalMinutes);
       });
   } catch (err) {
     jobError.value = err instanceof Error ? err.message : "Failed to load jobs";
@@ -80,9 +85,33 @@ async function changeJob(
     saving.value[job.id] = false;
   }
 }
-function saveInterval(job: CleanupJob) {
+function draftMinutes(job: CleanupJob): number {
   const draft = drafts.value[job.id];
-  const minutes = Math.round(draft.amount * UNIT_MINUTES[draft.unit]);
+  return draft ? Math.round(draft.amount * UNIT_MINUTES[draft.unit]) : NaN;
+}
+// the draft differs from what is saved (an unfinished edit is not an error)
+function isDirty(job: CleanupJob): boolean {
+  return (
+    drafts.value[job.id] !== undefined &&
+    draftMinutes(job) !== job.intervalMinutes
+  );
+}
+// changing the unit keeps the same length of time, so "1 day" becomes
+// "1440 minutes" and can then be typed over, never jumping to a different interval
+function changeUnit(job: CleanupJob, unit: Unit) {
+  const draft = drafts.value[job.id];
+  const minutes = draft.amount * UNIT_MINUTES[draft.unit];
+  draft.unit = unit;
+  if (Number.isFinite(minutes))
+    draft.amount = Math.round((minutes / UNIT_MINUTES[unit]) * 100) / 100;
+  delete intervalErrors.value[job.id];
+}
+function resetInterval(job: CleanupJob) {
+  drafts.value[job.id] = split(job.intervalMinutes);
+  delete intervalErrors.value[job.id];
+}
+function saveInterval(job: CleanupJob) {
+  const minutes = draftMinutes(job);
   if (
     !Number.isFinite(minutes) ||
     minutes < job.minIntervalMinutes ||
@@ -231,22 +260,28 @@ function formatTime(epochSeconds: number | null): string {
             <input
               v-model.number="drafts[job.id].amount"
               type="number"
-              min="1"
+              min="0"
+              step="any"
               class="job-amount"
               :disabled="saving[job.id] || !job.available"
               :aria-invalid="Boolean(intervalErrors[job.id])"
               :aria-describedby="`interval-help-${job.id}`"
               :aria-label="`How often ${job.name} runs`"
-              @change="saveInterval(job)"
+              @keydown.enter.prevent="saveInterval(job)"
             />
             <select
-              v-model="drafts[job.id].unit"
+              :value="drafts[job.id].unit"
               class="job-interval"
               :disabled="saving[job.id] || !job.available"
               :aria-invalid="Boolean(intervalErrors[job.id])"
               :aria-describedby="`interval-help-${job.id}`"
               aria-label="Unit of time"
-              @change="saveInterval(job)"
+              @change="
+                changeUnit(
+                  job,
+                  ($event.target as HTMLSelectElement).value as Unit,
+                )
+              "
             >
               <option value="minutes">minutes</option>
               <option value="hours">hours</option>
@@ -254,6 +289,26 @@ function formatTime(epochSeconds: number | null): string {
               <option value="weeks">weeks</option>
             </select>
           </label>
+          <span class="interval-actions">
+            <button
+              type="button"
+              class="secondary-button"
+              :disabled="saving[job.id] || !isDirty(job)"
+              :aria-label="`Save the schedule for ${job.name}`"
+              @click="saveInterval(job)"
+            >
+              {{ saving[job.id] ? "Saving…" : "Save schedule" }}
+            </button>
+            <button
+              v-if="isDirty(job)"
+              type="button"
+              class="text-button"
+              :disabled="saving[job.id]"
+              @click="resetInterval(job)"
+            >
+              Cancel
+            </button>
+          </span>
           <p
             :id="`interval-help-${job.id}`"
             class="interval-help"
@@ -455,6 +510,29 @@ function formatTime(epochSeconds: number | null): string {
 }
 .interval-field {
   max-width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.interval-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.interval-field .interval-help {
+  flex-basis: 100%;
+}
+.text-button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--ui-accent-text);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.text-button:hover {
+  text-decoration: underline;
 }
 .interval-help {
   color: var(--ui-dim);

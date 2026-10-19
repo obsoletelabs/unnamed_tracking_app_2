@@ -170,6 +170,25 @@ The refresh uses the same generic metadata handler as search. Providers run conc
 
 Provider credentials are declared by each built-in or optional provider and configured in the host provider panel. Field-save toggles remain in metadata preferences. The game editor uses that same configuration.
 
+## When a search cannot run
+
+The metadata search in the game, movie, TV and anime editors checks, before you press **Search**, whether any source can
+answer for that kind of media. If none can, **Search** is disabled and a note beside it says which of these applies, so
+you do not discover it by clicking:
+
+| Situation | What the note says | Where it points |
+| --- | --- | --- |
+| A source is waiting for a key | the source and the setting it needs, for example "TMDB needs an API key" (never the key or its value) | Settings › Metadata › Sources & API keys |
+| Every source for that media is turned off for your account | "Every source for movies is turned off for your account" | Settings › Metadata › Scan & providers |
+| No source supports that media | says so | Settings › Administration › Plugins (administrators only; others are told to ask one) |
+| A plugin source is not running | says so | Settings › Administration › Plugins (administrators only) |
+
+The link opens in a new tab so a half-filled form is never lost, and you can always fill in the details by hand. The
+note clears by itself: it re-checks when you save a key, a connection or a provider switch anywhere in the app, and when
+you return to the tab. If the check itself cannot be made (offline, for example), nothing is blocked, because the server
+decides when a search starts: configuration and permissions can change after a page was drawn, and a search that fails then
+reports the failure as before. A source that is busy or rate limited still counts as available.
+
 ## Provider failures and stale previews
 
 A provider outage, rate limit, malformed result, or no-match result does not modify the game. If the game changes after the preview but before applying it, the backend rejects the stale apply with a conflict and the editor asks the user to refresh/retry. This prevents a metadata refresh from overwriting a newer edit made in another tab or session.

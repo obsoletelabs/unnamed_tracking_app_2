@@ -94,6 +94,29 @@ Do not inspect Docker's internal logging-driver files directly.
 - `FRONTEND_FAILED`
 - `BACKEND_CRASHED`
 
+## Failure matrix
+
+Each row is a message the application shows (the startup page, `/_startup/status.json`, or the plugin manager)
+and what to do. Messages name the failing part and never include passwords, tokens, connection strings or remote response
+bodies. **Retry** says whether waiting can fix it: *yes* means the dependency may recover by itself, *no* means a setting
+must change first.
+
+| Failure | Where you see it | The message tells you | Retry | Recovery |
+| --- | --- | --- | --- | --- |
+| Database unreachable | `DATABASE_FAILED` | the host and port it waited for (`PostgreSQL at db:5432 ... within 120 seconds`), or that the host in `DATABASE_URL` did not answer | yes | start or fix the database container, check `POSTGRES_HOST`/`POSTGRES_PORT`, restart |
+| Incomplete database settings | `CONFIGURATION_FAILED` | which of `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` is missing | no | set all three together |
+| Persistent storage not writable | `CONFIGURATION_FAILED` | the directory (`APP_DATA_DIR`, default `/data`) and the user id that cannot write to it; your database and settings are untouched | no | mount a writable volume at `APP_DATA_DIR` (default `/data`) or fix its ownership, restart |
+| Migration failure | `MIGRATION_FAILED` | the last line of the redacted migration output, and that no data was deleted | no, until the cause is fixed | fix the cause (the full redacted output is `/run/unnamed-tracking/migration.log`); restore your last backup if the database is damaged; restart |
+| Invalid encryption key | `MIGRATION_FAILED` / `CONFIGURATION_FAILED` | which key is invalid and how to recover without losing the saved copy | no | see the `SECRET_KEY` recovery steps under [environment variables](../setup/environment-variables.md): restore the original matching key from backup; never generate a new one for an installation with saved data |
+| Backend did not start | `BACKEND_FAILED`, `BACKEND_TIMEOUT` | that the process exited or did not answer within 120 seconds | maybe | read `/run/unnamed-tracking/backend.log` |
+| Provider network failure | metadata search, provider settings, job summaries | one of `timeout`, `unavailable`, `rate_limited` (with when to retry) or `invalid_configuration` (a key is wrong) | `timeout`, `unavailable`, `rate_limited`: yes; `invalid_configuration`: no | wait and retry, or correct the key in Settings › Metadata |
+| Plugin runtime token missing | plugin manager (503) | that `PLUGIN_RUNTIME_TOKEN` is missing or under 32 characters and must be identical on both sides | no | set the same token (32+ characters) for the application and the plugin runtime, restart both |
+| Plugin runtime unreachable | plugin manager (503) | the configured scheme, host and port, and whether the host name could not be found, the connection was refused, or it timed out | yes | start the `plugin-runtime` container, check `PLUGIN_RUNTIME_URL` and that both containers share a network |
+| Plugin runtime internal error | plugin manager (503) | the HTTP status and to read the runtime logs | yes | read the plugin-runtime logs, retry |
+
+Logging never blocks startup or requests: log forwarding runs beside the application and a failure to write a log line is
+ignored rather than propagated.
+
 ## Diagnostic endpoints
 
 Inspect:

@@ -52,11 +52,8 @@ async def get_default_ui_style(db: AsyncSession) -> str:
 
 
 async def get_max_upload_size_mb(db: AsyncSession) -> int:
-    """The effective image/media upload cap: whatever an admin set under
-    Settings > Administration > Limits, falling back to the
-    MAX_UPLOAD_SIZE_MB env default when nothing's been saved yet."""
-    row = await get_or_create_app_integration_settings(db)
-    return row.max_upload_size_mb or settings.MAX_UPLOAD_SIZE_MB
+    """The effective image/media upload cap (see `get_upload_limit_sources` for precedence)."""
+    return (await get_upload_limits_mb(db))["max_upload_size_mb"]
 
 
 UPLOAD_LIMIT_FIELDS = (
@@ -68,10 +65,52 @@ UPLOAD_LIMIT_FIELDS = (
 )
 
 
-async def get_upload_limits_mb(db: AsyncSession) -> dict[str, int]:
-    """Resolve the four existing environment caps with deployment overrides."""
+MAX_UPLOAD_LIMIT_MB = 2147483647
+
+
+def _environment_limit(handler: EnvConfigHandler, name: str) -> int | None:
+    """A whole-megabyte value the operator set explicitly, or None when absent or unusable."""
+    env_name = name.upper()
+    if not handler.has(env_name):
+        return None
+    value = handler.get(env_name)
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value if 1 <= value <= MAX_UPLOAD_LIMIT_MB else None
+
+
+async def get_upload_limit_sources(db: AsyncSession) -> dict[str, dict[str, object]]:
+    """Each upload cap with the source that decided it.
+
+    Precedence, highest first: an explicit, valid deployment environment value (locked: the
+    admin UI cannot change it); the value an administrator saved; the built-in default. An
+    environment value that is not a whole number of megabytes is ignored, never half-applied,
+    and reported so the operator can fix it."""
     row = await get_or_create_app_integration_settings(db)
-    return {
-        name: int(getattr(row, name) or getattr(settings, name.upper()))
-        for name in UPLOAD_LIMIT_FIELDS
-    }
+    handler = EnvConfigHandler()
+    result: dict[str, dict[str, object]] = {}
+    for name in UPLOAD_LIMIT_FIELDS:
+        from_env = _environment_limit(handler, name)
+        stored = getattr(row, name)
+        if from_env is not None:
+            value, source = from_env, "environment"
+        elif stored:
+            value, source = int(stored), "override"
+        else:
+            value, source = int(getattr(settings, name.upper())), "default"
+        result[name] = {
+            "value": value,
+            "source": source,
+            "locked": source == "environment",
+            "environment_variable": name.upper(),
+            "environment_value": from_env,
+            "environment_invalid": handler.has(name.upper()) and from_env is None,
+            "stored_override": int(stored) if stored else None,
+        }
+    return result
+
+
+async def get_upload_limits_mb(db: AsyncSession) -> dict[str, int]:
+    """The effective value of every upload cap."""
+    sources = await get_upload_limit_sources(db)
+    return {name: int(str(info["value"])) for name, info in sources.items()}

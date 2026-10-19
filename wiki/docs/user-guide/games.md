@@ -245,6 +245,26 @@ updates a purchased wishlist game's status. Turning the setting off leaves exist
 entries in the library. An optional wishlist failure does not prevent owned-game
 enrichment.
 
+### When a Steam import is only partly finished
+
+A Steam sync saves your owned games first and then reads each new game's store
+details, tags and cover pictures a few at a time, so a slow or failing provider
+never undoes games that were already saved. The summary tells the parts apart:
+
+- **added / updated** games are saved, whatever happens afterwards;
+- **store details not filled in for N games** means the provider could not be read for
+  those games; they keep their title and Steam ID;
+- **no cover picture for N games** means the details were saved but the cover was not
+  offered or could not be downloaded.
+
+When anything is left, the Steam connection dialog shows **Retry N games**. A retry
+reads only the unfinished parts: missing details are filled in, and for games that
+only lack a cover it fetches just the missing pictures and never rewrites titles,
+notes, tags or pictures you have changed. Retrying again is safe and does not
+create duplicates. The same results are available from the batch endpoint
+(`POST /api/library-sync/steam/enrich` returns `failed_game_ids` and
+`artwork_missing_game_ids`; send `artwork_only` to retry only covers).
+
 Library imports match existing games by provider ID. Different provider IDs with
 the same title stay separate, while a matching record without a provider ID can
 be adopted. Resyncs preserve locked titles. Import folder names are allocated

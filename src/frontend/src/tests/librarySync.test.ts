@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { syncLibrary } from "../services/librarySync";
+import { enrichSteamGames, syncLibrary } from "../services/librarySync";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -178,5 +178,62 @@ describe("Steam import steps", () => {
     expect(result.wishlist_error).toBe(
       "Steam rejected this session. Reconnect Steam in Connections.",
     );
+  });
+});
+
+describe("enrichment outcomes (#256)", () => {
+  it("names the games that failed and the games saved without a cover", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, options: RequestInit) => {
+        if (url.includes("/steam?"))
+          return {
+            ok: true,
+            json: async () => ({
+              games_added: 7,
+              games: [],
+              enrich_game_ids: ["1", "2", "3", "4", "5", "6", "7"],
+            }),
+          };
+        if (url.endsWith("/wishlist"))
+          return { ok: true, json: async () => ({ added: 0, game_ids: [] }) };
+        const ids: string[] = JSON.parse(String(options.body)).game_ids;
+        if (ids.includes("6")) return { ok: false, status: 504 };
+        return {
+          ok: true,
+          json: async () => ({
+            failed: 1,
+            failed_game_ids: ["2"],
+            artwork_missing_game_ids: ["3"],
+          }),
+        };
+      }),
+    );
+    const result = await syncLibrary("steam");
+    // the batch that timed out counts every game in it, the others only what they reported
+    expect(result.enrich_failed_ids).toEqual(["2", "6", "7"]);
+    expect(result.enrich_failed).toBe(3);
+    expect(result.artwork_missing_ids).toEqual(["3"]);
+    expect(result.games_added).toBe(7);
+  });
+
+  it("retries artwork only when asked and sends nothing for an empty list", async () => {
+    const fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ failed: 0 }),
+    }));
+    vi.stubGlobal("fetch", fetch);
+    expect(await enrichSteamGames([])).toEqual({
+      failedIds: [],
+      artworkMissingIds: [],
+    });
+    expect(fetch).not.toHaveBeenCalled();
+    await enrichSteamGames(["a", "b"], true);
+    const call = fetch.mock.calls[0] as unknown as [string, RequestInit];
+    expect(call[0]).toBe("/api/library-sync/steam/enrich");
+    expect(JSON.parse(String(call[1].body))).toEqual({
+      game_ids: ["a", "b"],
+      artwork_only: true,
+    });
   });
 });

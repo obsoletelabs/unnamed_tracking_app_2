@@ -91,3 +91,74 @@ async def test_unknown_cap_is_not_silently_ignored(boundary):
         response = await client.put("/api/settings/upload-limit", json={"max_plugin_size_mb": 10})
         assert response.status_code == 422
     db.commit.assert_not_awaited()
+
+
+@pytest.mark.parametrize("name", UPLOAD_LIMIT_FIELDS)
+@pytest.mark.asyncio
+async def test_precedence_environment_then_saved_override_then_default(boundary, monkeypatch, name):
+    """#253: an explicit environment value wins and is locked; otherwise the saved value; otherwise the default."""
+    from src.core.app_integrations import get_upload_limit_sources
+
+    app, row, db, _ = boundary
+    env_name = name.upper()
+    default = getattr(settings, env_name)
+    monkeypatch.delenv(env_name, raising=False)
+
+    assert (await get_upload_limit_sources(db))[name]["source"] == "default"
+    setattr(row, name, 7)
+    saved = (await get_upload_limit_sources(db))[name]
+    assert (saved["value"], saved["source"], saved["locked"]) == (7, "override", False)
+
+    monkeypatch.setenv(env_name, "42")
+    explicit = (await get_upload_limit_sources(db))[name]
+    assert (explicit["value"], explicit["source"], explicit["locked"]) == (42, "environment", True)
+    assert explicit["environment_variable"] == env_name and explicit["stored_override"] == 7
+
+    for bad in (
+        "abc",
+        "0",
+        "-3",
+        "1.5",
+        "99999999999",
+    ):  # unusable values are ignored, never half-applied
+        monkeypatch.setenv(env_name, bad)
+        found = (await get_upload_limit_sources(db))[name]
+        assert (found["value"], found["source"]) == (7, "override"), bad
+        assert found["environment_invalid"] is True and found["locked"] is False
+    monkeypatch.delenv(env_name)
+    setattr(row, name, None)
+    assert (await get_upload_limit_sources(db))[name]["value"] == default
+
+
+@pytest.mark.asyncio
+async def test_environment_locked_caps_refuse_edits_without_changing_anything(
+    boundary, monkeypatch
+):
+    app, row, db, _ = boundary
+    monkeypatch.setenv("MAX_DOC_SIZE_MB", "64")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        listing = (await client.get("/api/settings/upload-limits")).json()
+        assert listing["max_doc_size_mb"] == 64  # the environment decides what uploads are held to
+        details = (await client.get("/api/settings/upload-limit-sources")).json()
+        assert (
+            details["max_doc_size_mb"]["locked"] is True
+            and details["max_upload_size_mb"]["locked"] is False
+        )
+        refused = await client.put(
+            "/api/settings/upload-limit", json={"max_doc_size_mb": 128, "max_clip_size_mb": 9}
+        )
+        assert refused.status_code == 409
+        assert "MAX_DOC_SIZE_MB" in refused.json()["detail"]
+        assert (
+            row.max_doc_size_mb is None and row.max_clip_size_mb is None
+        )  # the other field was not saved
+        db.commit.assert_not_awaited()
+        # editable fields still save, and clearing a locked field's stored value is harmless
+        ok = await client.put(
+            "/api/settings/upload-limit", json={"max_clip_size_mb": 9, "max_doc_size_mb": None}
+        )
+        assert (
+            ok.status_code == 200
+            and ok.json()["max_clip_size_mb"] == 9
+            and ok.json()["max_doc_size_mb"] == 64
+        )

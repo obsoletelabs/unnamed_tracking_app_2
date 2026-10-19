@@ -15,6 +15,7 @@ that flow yet.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import re
 import time
 from datetime import UTC, date, datetime
@@ -36,6 +37,7 @@ from src.database.models.achievement import Achievement
 from src.database.models.game import Game, GameStatus
 from src.database.models.user import User
 from src.database.session import SessionLocal, get_db
+from src.features import game_folders
 from src.features.connection_jobs import sync_scope
 from src.features.game_identity import names
 from src.features.game_ingestion import legacy as ingestion
@@ -53,8 +55,9 @@ from src.features.metadata.games.retroachievements import (
 )
 from src.features.metadata.locked_fields import apply_metadata_updates
 from src.features.metadata.service import game_result, library_candidate, resolve_library_record
+from src.helpers import save_game_asset
 from src.helpers.remote_images import MAX_BYTES, RemoteImageError, download_image
-from src.helpers.save_game_asset import AssetKind, save_locked_game_asset
+from src.helpers.save_game_asset import ASSET_FILENAMES, AssetKind, save_locked_game_asset
 from src.helpers.steam_achievement_rows import (  # noqa: F401
     needs_community_descriptions as _needs_community_descriptions,
 )
@@ -90,10 +93,14 @@ async def _enrich_steam_game_by_appid(
     app_id: int,
     user: User,
     use_user_tags: bool = True,
-) -> None:
+    *,
+    artwork_only: bool = False,
+) -> "EnrichOutcome":
     """Owned-game IDs anchor enrichment without another title match."""
     game.provider_ids = {**(game.provider_ids or {}), "steam": str(app_id)}
-    await _enrich_new_game(game, user, {"steam_user_tags": use_user_tags})
+    return await _enrich_new_game(
+        game, user, {"steam_user_tags": use_user_tags}, artwork_only=artwork_only
+    )
 
 
 def _add_source_tag_and_collection(game: Game, source: str) -> None:
@@ -138,8 +145,46 @@ async def _download_asset(
         return False
 
 
-async def _enrich_new_game(game: Game, user: User, preferences: dict) -> None:
-    """Fill newly imported rows through the same scoped metadata and media operations."""
+@dataclasses.dataclass
+class EnrichOutcome:
+    """What one enrichment pass achieved, so an import can report it honestly (#256)."""
+
+    metadata_found: bool = False
+    # pictures the game still lacks after the pass: the cover when none was found, and any picture
+    # the provider offered but could not be downloaded (also listed in `artwork_download_failed`)
+    artwork_missing: list[str] = dataclasses.field(default_factory=list)
+    artwork_download_failed: list[str] = dataclasses.field(default_factory=list)
+
+
+_ASSET_KINDS: tuple[tuple[AssetKind, str], ...] = (
+    ("key_art", "key_art_url"),
+    ("banner", "banner_url"),
+    ("logo", "logo_url"),
+    ("icon", "icon_url"),
+)
+
+
+def _asset_present(game: Game, asset_kind: AssetKind) -> bool:
+    """Whether the game already has this picture on disk (artwork lives in the game folder)."""
+    if not game.folder_location:
+        return False
+    try:
+        folder = game_folders.owned_folder(
+            save_game_asset.DATA_ROOT, game.user_id, game.folder_location
+        )
+    except game_folders.FolderStorageError:
+        return False
+    return (folder / ASSET_FILENAMES[asset_kind]).is_file()
+
+
+async def _enrich_new_game(
+    game: Game, user: User, preferences: dict, *, artwork_only: bool = False
+) -> EnrichOutcome:
+    """Fill newly imported rows through the same scoped metadata and media operations.
+
+    `artwork_only` is the retry mode: it never rewrites details a person may since have edited
+    and only fetches pictures the game does not already have."""
+    outcome = EnrichOutcome()
     candidate = library_candidate(
         game.title,
         MediaType.GAME,
@@ -158,8 +203,13 @@ async def _enrich_new_game(game: Game, user: User, preferences: dict) -> None:
         if record and record.get("assets"):
             max_image_bytes = (await get_max_upload_size_mb(metadata_db)) * 1024 * 1024
     if not record:
-        return
+        if not _asset_present(game, "key_art"):
+            outcome.artwork_missing = ["key_art"]
+        return outcome
+    outcome.metadata_found = True
     match = game_result(record)
+    if artwork_only:
+        return await _fetch_missing_artwork(game, match, max_image_bytes, outcome)
     game.provider_ids = {**(game.provider_ids or {}), **record.get("provider_ids", {})}
     if match.get("title") and names.is_weak(
         names.classify_title(game.title, source=game.source, external_id=game.external_id)
@@ -192,16 +242,34 @@ async def _enrich_new_game(game: Game, user: User, preferences: dict) -> None:
             apply_metadata_updates(game, {"release_date": date.fromisoformat(release_date)})
         except ValueError:
             pass
-    asset_fields: list[tuple[AssetKind, str]] = [
-        ("key_art", "key_art_url"),
-        ("banner", "banner_url"),
-        ("logo", "logo_url"),
-        ("icon", "icon_url"),
-    ]
-    for asset_kind, field in asset_fields:
-        for url in match.get(field + "s", []):
+    return await _fetch_missing_artwork(game, match, max_image_bytes, outcome, overwrite=True)
+
+
+async def _fetch_missing_artwork(
+    game: Game,
+    match: dict,
+    max_image_bytes: int,
+    outcome: EnrichOutcome,
+    *,
+    overwrite: bool = False,
+) -> EnrichOutcome:
+    for asset_kind, field_name in _ASSET_KINDS:
+        if not overwrite and _asset_present(game, asset_kind):
+            continue
+        urls = match.get(field_name + "s", [])
+        saved = False
+        for url in urls:
             if await _download_asset(url, game, asset_kind, max_bytes=max_image_bytes):
+                saved = True
                 break
+        if saved or _asset_present(game, asset_kind):
+            continue
+        if urls:  # offered, but every download failed
+            outcome.artwork_missing.append(asset_kind)
+            outcome.artwork_download_failed.append(asset_kind)
+        elif asset_kind == "key_art":  # the cover is the picture a game card needs
+            outcome.artwork_missing.append(asset_kind)
+    return outcome
 
 
 async def _flag_stale_games(

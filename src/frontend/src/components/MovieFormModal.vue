@@ -338,6 +338,7 @@ async function remove() {
     <template #lookup>
       <MediaMetadataSearch
         v-model:query="search.query.value"
+        media-type="movie"
         label="Search metadata providers"
         noun="movie"
         :results="searchResults"

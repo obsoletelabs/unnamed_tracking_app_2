@@ -406,12 +406,14 @@ describe.each(kinds)("$name editor", (kind) => {
     };
     await flushPromises();
     expect(wrapper.text()).toContain("Offered");
-    expect(requests).toHaveLength(0);
+    // nothing is saved; reading which sources can run (a GET) is not a save
+    const saves = () => requests.filter((request) => request.method !== "GET");
+    expect(saves()).toHaveLength(0);
     // Save waits for the choice
     expect(
       wrapper.get("button.primary-button").attributes("disabled"),
     ).toBeDefined();
-    expect(requests).toHaveLength(0);
+    expect(saves()).toHaveLength(0);
   });
 });
 

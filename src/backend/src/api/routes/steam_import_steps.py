@@ -47,6 +47,9 @@ _PLACEHOLDER = "Steam app "
 
 class EnrichRequest(BaseModel):
     game_ids: list[UUID] = Field(max_length=25)
+    # Retry mode: fetch only the pictures a game still lacks and leave its details untouched, so
+    # running it again is safe after a person has edited or replaced anything (#256).
+    artwork_only: bool = False
 
 
 class AchievementsRequest(EnrichRequest):
@@ -217,9 +220,14 @@ async def enrich_games(
     body: EnrichRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> dict[str, int]:
+) -> dict[str, Any]:
     """Fill in the store details, tags, series and artwork of up to 25 of the
-    user's Steam games."""
+    user's Steam games.
+
+    Reports what really happened: games whose details could not be read (`failed_game_ids`,
+    retryable) are separate from games saved without their pictures (`artwork_missing_game_ids`,
+    retryable with `artwork_only`). Each game commits on its own, so a failure never undoes
+    the games already saved."""
     game_ids = (
         await db.scalars(
             select(Game.id).where(
@@ -232,6 +240,8 @@ async def enrich_games(
     ).all()
     use_tags = (await load_preferences(db, current_user.id))["steam_user_tags"]
     enriched = failed = 0
+    failed_ids: list[str] = []
+    artwork_missing_ids: list[str] = []
     for game_id in game_ids:
         try:
             async with db.begin_nested():
@@ -239,15 +249,22 @@ async def enrich_games(
                 if game is None:
                     continue
                 app_id = int(game.external_id or "")
-                await _enrich_steam_game_by_appid(
-                    game,
-                    app_id,
-                    current_user,
-                    use_tags,
+                outcome = await _enrich_steam_game_by_appid(
+                    game, app_id, current_user, use_tags, artwork_only=body.artwork_only
                 )
-                await names.reconcile_games(db, current_user.id, [game])
+                if not body.artwork_only:
+                    await names.reconcile_games(db, current_user.id, [game])
             enriched += 1
+            if outcome is not None and outcome.artwork_missing:
+                artwork_missing_ids.append(str(game_id))
         except Exception:  # pylint: disable=broad-exception-caught
             failed += 1
+            failed_ids.append(str(game_id))
         await db.commit()
-    return {"enriched": enriched, "failed": failed}
+    return {
+        "enriched": enriched,
+        "failed": failed,
+        "failed_game_ids": failed_ids,
+        "artwork_missing": len(artwork_missing_ids),
+        "artwork_missing_game_ids": artwork_missing_ids,
+    }

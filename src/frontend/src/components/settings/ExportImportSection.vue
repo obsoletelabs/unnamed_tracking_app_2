@@ -1,6 +1,19 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, defineAsyncComponent, onMounted } from "vue";
 import SegmentedControl from "./SegmentedControl.vue";
+import SettingsTabs from "./SettingsTabs.vue";
+import { EXPORT_SETTINGS_TABS as TABS } from "../../state/settingsRegistry";
+
+const AniListImportSection = defineAsyncComponent(
+  () => import("./AniListImportSection.vue"),
+);
+
+// Four workflows instead of one long page. Each keeps its own preview, busy and
+// error state while you switch between them, so nothing is lost mid-import.
+const props = defineProps<{ initialTab?: string }>();
+const tab = ref(
+  TABS.some((t) => t.id === props.initialTab) ? props.initialTab! : "export",
+);
 import {
   fetchLibraryExport,
   importLibrary,
@@ -286,13 +299,32 @@ async function onFileSelected(e: Event) {
   <section class="settings-section">
     <h2>Export / Import</h2>
     <p class="section-hint">
-      A portable JSON snapshot of your whole library (games, movies, TV shows
-      and anime) for backups, or moving to a new server. Covers title data and
-      metadata only, not attached files (screenshots, saves, docs). Games,
-      movies, TV shows and anime can each be brought back below.
+      Move your library in and out, bring titles back, and check your automatic
+      backups. A library export covers title data and metadata only; it is not a
+      full backup (see <strong>Backups</strong>).
     </p>
+    <SettingsTabs v-model="tab" :tabs="TABS" />
 
-    <div v-if="backupStatus" class="tile backup-status-tile">
+    <div v-if="tab === 'backups'" class="tile">
+      <h3>Library export or full backup?</h3>
+      <p class="tile-desc">
+        <strong>A library export</strong> is a portable JSON snapshot of your
+        games, movies, TV shows and anime: titles, progress and metadata. It
+        does not include attached files (screenshots, saves, documents), user
+        accounts, settings or credentials, so it is for moving between servers
+        and for a safety net, not for disaster recovery.
+        <strong>A full backup</strong> is a copy of the database and the data
+        volume taken by whoever runs the server; it is the only thing that
+        restores everything after losing the machine. Ask your administrator, or
+        follow the backup guide in the project wiki, if you do not know whether
+        one exists.
+      </p>
+    </div>
+
+    <div
+      v-if="tab === 'backups' && backupStatus"
+      class="tile backup-status-tile"
+    >
       <h3>Automatic backups</h3>
       <p v-if="!backupStatus.enabled" class="tile-desc">
         Automatic backups are switched off by the administrator (Settings →
@@ -317,10 +349,13 @@ async function onFileSelected(e: Event) {
       </p>
     </div>
 
-    <div class="tile">
+    <div v-if="tab === 'export'" class="tile">
       <h3>Export</h3>
       <p class="tile-desc">
-        Downloads your games, movies, TV shows, and anime as a single JSON file.
+        Downloads your games, movies, TV shows, and anime as a single JSON file
+        (titles, progress and metadata, with game identity, manual achievements
+        and completion choices). Attached files are not included. Bring it back
+        under <strong>Restore</strong>.
       </p>
       <div v-if="exportError" class="form-error">{{ exportError }}</div>
       <button
@@ -333,7 +368,7 @@ async function onFileSelected(e: Event) {
       </button>
     </div>
 
-    <div class="tile">
+    <div v-if="tab === 'export'" class="tile">
       <h3>Export as a spreadsheet</h3>
       <p class="tile-desc">
         Movies, TV shows and anime as one CSV: status, score, favorite,
@@ -350,7 +385,7 @@ async function onFileSelected(e: Event) {
       </button>
     </div>
 
-    <div class="tile">
+    <div v-if="tab === 'import'" class="tile">
       <h3>Import from another site</h3>
       <div class="mal-source">
         <SegmentedControl
@@ -526,7 +561,9 @@ async function onFileSelected(e: Event) {
       </label>
     </div>
 
-    <div class="tile">
+    <AniListImportSection v-if="tab === 'import'" />
+
+    <div v-if="tab === 'restore'" class="tile">
       <h3>Restore movies, TV shows and anime</h3>
       <p class="tile-desc">
         Add your movies, TV shows and anime back from a library export or a
@@ -555,7 +592,7 @@ async function onFileSelected(e: Event) {
       </label>
     </div>
 
-    <div class="tile">
+    <div v-if="tab === 'restore'" class="tile">
       <h3>Import games</h3>
       <p class="tile-desc">
         Add games from a previously exported file. Existing games are never

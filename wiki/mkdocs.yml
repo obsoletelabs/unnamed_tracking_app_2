@@ -133,4 +133,6 @@ nav:
       - CI Scope and Results: development/ci-policy.md
       - Backend Quality Rework: development/backend-quality.md
       - Calendar / ICS: development/calendar-ics.md
+      - Media Query Profile: development/query-profile.md
+      - State Audit: development/state-audit.md
       - Production Runtime Smoke Development: development/production-runtime-smoke.md
