@@ -53,18 +53,12 @@ def isolated_schema() -> Iterator[tuple[psycopg.Connection, object]]:
     with psycopg.connect(url, autocommit=True) as connection:
         connection.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
         try:
+            connection.execute(sql.SQL("SET search_path TO {}").format(sql.Identifier(schema)))
             yield connection, migrate
         finally:
             connection.execute(
                 sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(sql.Identifier(schema))
             )
-
-
-def use(connection):
-    """Point the data connection at the isolated schema created by the context manager."""
-    schema = connection.execute("SELECT schema_name FROM information_schema.schemata").fetchall()
-    name = next(row[0] for row in schema if row[0].startswith("rollout_gate_"))
-    connection.execute(sql.SQL("SET search_path TO {}").format(sql.Identifier(name)))
 
 
 def populate(connection):
@@ -173,7 +167,6 @@ def snapshot(connection):
 def test_populated_upgrade_preserves_every_record_family_and_is_repeatable():
     with isolated_schema() as (connection, migrate):
         migrate("upgrade", PRE_OVERHAUL_HEAD)
-        use(connection)
         _, _, notices, destination, delivery = populate(connection)
         before = snapshot(connection)
         migrate("upgrade", "head")
@@ -200,7 +193,6 @@ def test_populated_upgrade_preserves_every_record_family_and_is_repeatable():
 def test_downgrade_is_refused_while_new_history_exists_and_lossless_otherwise():
     with isolated_schema() as (connection, migrate):
         migrate("upgrade", PRE_OVERHAUL_HEAD)
-        use(connection)
         _, _, _, _, delivery = populate(connection)
         before = snapshot(connection)
         migrate("upgrade", "head")
@@ -232,7 +224,6 @@ def test_downgrade_is_refused_while_new_history_exists_and_lossless_otherwise():
 def test_clean_database_reaches_the_single_head_with_every_notification_table():
     with isolated_schema() as (connection, migrate):
         migrate("upgrade", "head")
-        use(connection)
         tables = {
             row[0]
             for row in connection.execute(
@@ -256,3 +247,14 @@ def test_clean_database_reaches_the_single_head_with_every_notification_table():
         } <= tables
         heads = migrate("heads").stdout.strip().splitlines()
         assert len(heads) == 1 and heads[0].endswith("(head)")
+
+
+def test_parallel_upgrade_schemas_never_select_each_others_data():
+    with isolated_schema() as (first, _):
+        first_schema = first.execute("SELECT current_schema()").fetchone()[0]
+        with isolated_schema() as (second, _):
+            second_schema = second.execute("SELECT current_schema()").fetchone()[0]
+            assert first_schema != second_schema
+            assert first_schema.startswith("rollout_gate_")
+            assert second_schema.startswith("rollout_gate_")
+            assert first.execute("SELECT current_schema()").fetchone()[0] == first_schema

@@ -65,8 +65,9 @@ capabilities (see [Plugin contract](notification-contract.md#plugin-contract-plu
 
 ### Database migrations
 
-All notification schema is one linear Alembic history; the overhaul adds five revisions after
-`e4a0157eef4b` (the last head before #106):
+The existing Alembic graph has one head, with historical merge revisions retained. The
+overhaul adds five notification revisions after the pre-overhaul milestone `e4a0157eef4b`;
+unrelated migrations and their existing merges also occur between these milestones:
 
 | Revision | Issue | Change | Downgrade guard |
 | --- | --- | --- | --- |
@@ -92,9 +93,10 @@ downgrade invalidates links but erases no history.
   `tests/test_notification_rollout_migration.py` proves this on a populated pre-overhaul database.
 - **Adapters stay.** Retiring an adapter needs a separately reviewed change that shows no supported
   Plugin API version or stored registration depends on it. This gate removes none.
-- **Retention is unchanged.** Stories, revisions, deliveries and receipts follow the inbox policy
+- **Retention is unchanged.** Stories, revisions and deliveries follow the inbox policy
   (server default, per-person inheritance, server maximum, visible expiry). Expired items stay
-  inspectable through their story link only while retention allows.
+  inspectable through their story link only while retention allows. Minimal dedupe receipts
+  remain separate and have no expiry; content expiry must not permit a replayed event to notify again.
 
 ## Release order
 
@@ -132,7 +134,7 @@ downgrade invalidates links but erases no history.
 | Destructive downgrades are guarded; lossless otherwise | `test_downgrade_is_refused_while_new_history_exists_and_lossless_otherwise`; per-revision tests in `test_notification_story_migration.py`, `test_notification_aggregation_migration.py`, `test_notification_timing_migration.py`, `test_notification_rich_migration.py`, `test_notification_dispatch_migration.py` |
 | Event, story, delivery and history over real SMTP; duplicate replay; partial provider failure; restart lease reclaim; revision; retention and expiry | `test_notification_rollout_gate.py::test_event_to_history_with_replay_partial_failure_and_retention` |
 | Revoked grant suppresses queued work, history kept | `test_revoked_grant_suppresses_queued_work_but_keeps_history`, `test_plugin_notification_contract.py` |
-| Digest boundaries and quiet hours | `test_digest_boundaries_hold_through_the_integrated_path`, `test_notification_aggregation.py::test_fake_clock_window_boundaries_are_exact`, `test_notification_timing.py::test_quiet_hours_hold_external_delivery_in_one_window_and_never_the_inbox` |
+| Digest boundaries and quiet hours | `test_digest_boundaries_hold_through_the_integrated_path` (real SMTP, before/at boundary, next window, no repeat send), `test_quiet_hours_release_real_mail_at_the_boundary_without_delaying_inbox`, and the focused aggregation/timing suites |
 | Disable and uninstall keep history | `test_notification_stories.py::test_plugin_uninstall_keeps_history_and_reinstall_starts_new_stories`, `test_plugin_notification_contract.py::test_disable_or_uninstall_suppresses_work_but_keeps_history` |
 | Provider edits and follow-ups | `test_notification_dispatch_capabilities.py` (`test_later_revision_edits_the_remote_message_once`, `test_refused_edit_falls_back_to_a_follow_up_and_marks_the_reference`), `test_notification_smtp_rich.py::test_followups_are_selective_and_mail_is_never_edited` |
 | Restart recovery and duplicates | `test_notification_aggregation.py::test_restart_reclaims_an_expired_lease_without_losing_or_doubling_the_batch`, `test_notification_dispatch_capabilities.py::test_crash_after_send_resends_with_the_same_idempotency_key`, `test_notification_stories.py::test_acceptance_survives_a_restart` |
@@ -149,3 +151,43 @@ downgrade invalidates links but erases no history.
 See the pull request for the commands and counts of the final run. Checks that depend on services this
 environment does not have (hosted CI, real Discord or mail accounts, a physical device) are listed there
 as not run.
+
+## 19 October 2026 integrated acceptance
+
+Tested host `5e0f6143` plus the gate changes in `179b1f00`, against companion
+`c0b3be0c`. The follow-up only changes tests and documentation; it does not replace any
+notification implementation or remove an adapter. Own disposable Docker services and
+PostgreSQL 18 were used; existing deployments were not modified.
+
+| Check | Result |
+| --- | --- |
+| Full backend, `python -m pytest -q tests` | 4,289 passed; 8 optional companion tests skipped when the checkout was not mounted |
+| Those same eight tests with `UTAPP_PLUGINS_REPO` and `PLUGIN_REPOSITORY_PATH` set to the actual companion checkout | 8 passed; original published archive bytes, signatures, reviewed historical trust pins and scheduler contracts verified |
+| Runtime `python -m pytest -q tests` | 196 passed |
+| Companion preview build and `tools/check_host_contract.py --host-root <host>` | 24 maintained packages passed host manifest/UI, digest, installation and disabled-lifecycle conformance |
+| Companion Discord rich delivery, story contract and official-producer suites | 180 passed, capturing Discord payloads at the `network.request` boundary |
+| Frontend lint, format, typecheck, test and build | Passed; 1,009 tests in 161 files |
+| `node --test src/backend/tests/notification_push_worker.test.mjs` | 26 passed |
+| Backend mypy / pylint | No issues in 438 files / 10.00 out of 10 |
+| Ruff and strict wiki build | Passed |
+| Hosted CI on the tested code | Backend, frontend, migration graph, runtime policy, all Docker images, combined production container and production runtime smoke passed |
+| Browser acceptance | Modern/Classic desktop and 390-pixel phone viewport; history expansion, rich story navigation, unread filtering, visible retention and no page-width overflow verified |
+
+The optional-test skips above were all due to an unmounted companion repository, and were
+explicitly rerun with that repository present. No skipped contract was counted as a pass.
+The Discord capture is a fake remote API at the public network boundary; it is not a claim
+of live Discord delivery. SMTP uses a real local socket server. Live mail accounts, actual
+Discord credentials, physical push devices and production load remain deployment checks.
+
+### UI evidence
+
+These captures use synthetic data in a separate `notification_ui` database. They show the
+current integrated interface, not a new visual design.
+
+![Modern desktop notification history](../assets/notification-rollout/notifications-modern-desktop.jpg)
+
+![Modern phone rich story](../assets/notification-rollout/story-modern-mobile.jpg)
+
+![Classic desktop notifications](../assets/notification-rollout/notifications-classic-desktop.jpg)
+
+![Classic phone notifications](../assets/notification-rollout/notifications-classic-mobile.jpg)
