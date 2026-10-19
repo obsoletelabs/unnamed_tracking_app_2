@@ -196,6 +196,7 @@ async def test_series_occurrence_reset_refresh_cancellation_and_manual_copy(flow
     changed = await events(flow, source)
     assert [e["title"] for e in changed] == ["One local", "Series local", "Series local"]
     assert all(e["event_time"] == "13:00" for e in changed)
+    assert [e["event_date"] for e in changed] == ["2026-10-19", "2026-10-20", "2026-10-21"]
     copy = await flow.client.post(f"{BASE}/{source['id']}/copy", json=target(first))
     assert copy.status_code == 201, copy.text
     transport["snapshot"] = snapshot("Updated upstream", 2)
@@ -261,6 +262,21 @@ async def test_missing_success_tombstones_but_failed_snapshot_does_not_remove(fl
                 select(CalendarSourceEvent).where(CalendarSourceEvent.source_id == source["id"])
             )
         ).all()
+
+
+async def test_floating_series_shift_preserves_each_date_and_refuses_a_domain_change(flow, transport):
+    components, warnings = parse_calendar(feed("UID:floating\r\nDTSTART:20261019T203000\r\nRRULE:FREQ=WEEKLY;COUNT=3"))
+    transport["snapshot"] = CalendarSnapshot("updated", components, warnings)
+    source = await add(flow)
+    first = (await events(flow, source))[0]
+    change = {**target(first), "scope": "series", "fields": {"start": {"kind": "floating", "value": "2026-10-19T21:00:00"}}}
+    response = await flow.client.put(f"{BASE}/{source['id']}/overrides", json=change)
+    assert response.status_code == 200, response.text
+    shifted = await events(flow, source)
+    assert [(e["event_date"], e["event_time"]) for e in shifted] == [("2026-10-19", "21:00"), ("2026-10-26", "21:00")]
+    change["fields"]["start"] = {"kind": "utc", "value": "2026-10-19T21:00:00+00:00"}
+    assert (await flow.client.put(f"{BASE}/{source['id']}/overrides", json=change)).status_code == 422
+    assert await events(flow, source) == shifted
 
 
 async def test_disabled_or_replaced_source_does_not_accept_an_inflight_result(
