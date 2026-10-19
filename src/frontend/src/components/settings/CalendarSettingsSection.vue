@@ -5,6 +5,7 @@
 import { computed, ref, onMounted } from "vue";
 import SegmentedControl from "./SegmentedControl.vue";
 import ToggleButton from "./ToggleButton.vue";
+import CalendarSourcesSection from "./CalendarSourcesSection.vue";
 import {
   DEFAULT_PREFERENCES,
   fetchPreferences,
@@ -202,6 +203,7 @@ const viewOptions = [
         </option>
       </select>
     </div>
+    <CalendarSourcesSection />
   </section>
 </template>
 

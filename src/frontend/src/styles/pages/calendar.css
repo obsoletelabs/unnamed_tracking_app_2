@@ -130,6 +130,9 @@
 .layer-event {
   --layer: var(--ui-purple);
 }
+.layer-external {
+  --layer: var(--ui-info);
+}
 .layer-estimated {
   --layer: var(--ui-accent-text);
 }

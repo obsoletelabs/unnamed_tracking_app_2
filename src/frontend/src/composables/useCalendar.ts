@@ -18,6 +18,8 @@ import {
   watch,
 } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { useCalendarSources } from "./useCalendarSources";
+import type { ExternalCalendarEvent } from "../services/calendarSources";
 import { blurOnLeave } from "../utils/blurOnLeave";
 
 import {
@@ -159,6 +161,7 @@ export function useCalendar() {
     release: true,
     watched: true,
     event: true,
+    external: true,
     estimated: true,
   });
   try {
@@ -266,6 +269,26 @@ export function useCalendar() {
   today.setHours(0, 0, 0, 0);
   const viewYear = ref(today.getFullYear());
   const viewMonth = ref(today.getMonth()); // 0-11
+  const externalRange = computed(() => {
+    if (calView.value === "week") {
+      const end = new Date(weekAnchor.value);
+      end.setDate(end.getDate() + 6);
+      return { start: dayKey(weekAnchor.value), end: dayKey(end) };
+    }
+    if (calView.value === "agenda") {
+      const end = new Date(today);
+      end.setDate(end.getDate() + CALENDAR_INITIAL_DAYS);
+      return { start: dayKey(today), end: dayKey(end) };
+    }
+    const range = monthGridRange(
+      viewYear.value,
+      viewMonth.value,
+      weekStart.value,
+    );
+    return { start: dayKey(range.first), end: dayKey(range.last) };
+  });
+  const external = useCalendarSources(externalRange);
+  const selectedExternal = ref<ExternalCalendarEvent | null>(null);
 
   const isCurrentMonth = computed(
     () =>
@@ -422,6 +445,7 @@ export function useCalendar() {
       historyError.value ? "what you watched" : "",
       gameHistoryFailed.value ? "games history" : "",
       eventsFailed.value ? "your own entries" : "",
+      external.error.value ? "external calendars" : "",
     ].filter(Boolean),
   );
   async function retryFailedLayers() {
@@ -429,6 +453,7 @@ export function useCalendar() {
       historyError.value ? loadHistory() : undefined,
       gameHistoryFailed.value ? loadGameHistory() : undefined,
       eventsFailed.value ? loadEvents() : undefined,
+      external.error.value ? external.load() : undefined,
     ]);
   }
   const refreshing = ref(false);
@@ -441,6 +466,7 @@ export function useCalendar() {
         loadHistory(),
         loadGameHistory(),
         loadEvents(),
+        external.load(),
       ]);
       void loadPostersWhenNeeded();
     } finally {
@@ -459,7 +485,7 @@ export function useCalendar() {
   useKeptAlive(refreshAll);
 
   // ---- unify everything the grid/agenda draws ----
-  type Layer = "episode" | "release" | "watched" | "event";
+  type Layer = "episode" | "release" | "watched" | "event" | "external";
   type CalMediaType = MediaType | "game" | "custom";
   interface CalItem {
     key: string;
@@ -474,6 +500,8 @@ export function useCalendar() {
     sortAt: number;
     dayKey: string;
     eventId?: string;
+    externalEvent?: ExternalCalendarEvent;
+    sourceColor?: string;
   }
 
   function keyOfDate(d: Date): string {
@@ -601,6 +629,44 @@ export function useCalendar() {
       ...entries.value.map(fromEntry),
       ...rangeEntries.value.map(fromEntry),
       ...eventEntries.value.map(fromEvent),
+      ...external.events.value.flatMap((event): CalItem[] => {
+        const result: CalItem[] = [];
+        const first = new Date(`${event.event_date}T00:00:00`);
+        const last = new Date(`${event.last_date}T00:00:00`);
+        for (let day = first; day <= last; day.setDate(day.getDate() + 1)) {
+          result.push({
+            key: JSON.stringify([
+              "external",
+              event.source.id,
+              event.uid,
+              event.recurrence_key,
+              dayKey(day),
+            ]),
+            layer: "external",
+            mediaType: "custom",
+            mediaId: "",
+            title: event.title,
+            posterUrl: null,
+            badge: "↗",
+            detail: [
+              event.source.name,
+              event.event_time ?? "All day",
+              event.location,
+            ]
+              .filter(Boolean)
+              .join(" · "),
+            projected: false,
+            sortAt:
+              new Date(
+                `${dayKey(day)}T${event.event_time ?? "00:00"}:00`,
+              ).getTime() / 1000,
+            dayKey: dayKey(day),
+            externalEvent: event,
+            sourceColor: event.source.color,
+          });
+        }
+        return result;
+      }),
     ]),
   );
   const watchedByDay = computed(() => {
@@ -784,7 +850,10 @@ export function useCalendar() {
     return `${i.title}${i.detail ? ` · ${i.detail}` : ""}`;
   }
   function activate(i: CalItem) {
-    if (i.eventId) openEventEditor(i.eventId);
+    if (i.externalEvent) {
+      drawerKey.value = null;
+      selectedExternal.value = i.externalEvent;
+    } else if (i.eventId) openEventEditor(i.eventId);
     else openItem(i);
   }
   function openItem(i: { mediaType: CalMediaType; mediaId: string }) {
@@ -841,6 +910,7 @@ export function useCalendar() {
     release: "Release",
     watched: "Watched",
     event: "Mine",
+    external: "External",
   };
 
   // ---- entries you add by hand ----
@@ -1432,6 +1502,9 @@ export function useCalendar() {
   }
 
   return {
+    externalLoading: external.loading,
+    externalNotices: external.notices,
+    selectedExternal,
     blurOnLeave,
     tab,
     calView,
