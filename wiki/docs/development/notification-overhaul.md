@@ -8,8 +8,9 @@ order, pull requests, invariants and verification. It does not restate the desig
 - the host objects, routing security, retention and operations are [Notification core](notification-core.md);
 - provider authoring is [Plugin notification providers](notification-providers.md).
 
-The state below was read from GitHub on 2026-10-17. Re-check it before acting; the table is
-a snapshot, not a live view.
+The state below was checked against GitHub and host `main` (`5e0f6143`) on 2026-10-19.
+The feature stack and the first rollout gate (#231) have merged. #118 remains the final
+acceptance audit; do not confuse a merged implementation with a completed release check.
 
 ## Versions
 
@@ -47,32 +48,32 @@ All pull requests target the base shown, so each diff contains only its own issu
 | Issue | Pull request | Base | State | Companion |
 | --- | --- | --- | --- | --- |
 | #105 contract | #173 | main | merged | none |
-| #106 stories | #184 | main | open | none |
-| #107 aggregation | #206 | #106 branch | open | none |
-| #108 timing | #211 | #107 branch | open | none |
-| #109 rich content | #215 | #108 branch | open | none |
-| #110 dispatcher | #217 | #109 branch | open | none |
-| #115 plugin contract | #218 | #110 branch | open | plugins #53 |
-| #111 SMTP | #219 | #115 branch | open | none |
-| #112 Discord | #221 | #115 branch | open | plugins #54 |
-| #113 full page | #220 | #115 branch | open | none |
-| #114 PWA | #225 | #115 branch | open | none |
-| #116 producers | #226 | #115 branch | open | plugins #55 |
-| #117 diagnostics | #227 | #115 branch | open | none |
-| #58 provider settings UI | #224 | #113 branch | open, draft | none |
-| #63 plugin update links | in progress | #116 branch | no pull request yet | to be determined |
-| #118 rollout | in progress | integration | no pull request yet | to be determined |
+| #106 stories | #184 | main | merged | none |
+| #107 aggregation | #206 | main | merged | none |
+| #108 timing | #211 | main | merged | none |
+| #109 rich content | #215 | main | merged | none |
+| #110 dispatcher | #217 | main | merged | none |
+| #115 plugin contract | #218 | main | merged | plugins #53 |
+| #111 SMTP | #219 | main | merged | none |
+| #112 Discord | #221 | #115 branch | merged | plugins #54 |
+| #113 full page | #220 | #115 branch | merged | none |
+| #114 PWA | #225 | #115 branch | merged | none |
+| #116 producers | #226 | #115 branch | merged | plugins #55 |
+| #117 diagnostics | #227 | #115 branch | merged | none |
+| #58 provider settings UI | #224 | #113 branch | merged; issue closed | none |
+| #63 plugin update links | included in the integrated producer work | main | issue closed | existing plugin lifecycle contract |
+| #118 rollout | #231 baseline; final acceptance follow-up | main | baseline merged; acceptance in progress | current companion main |
 
-Only #105 has merged. Every later pull request is stacked; none can land before its base.
+The base column records the final PR base, including historical stacked branches. The complete
+implementation is now on `main`; no unmerged child branch is needed to run the gate.
 
-## Merge order
+## Historical merge order
 
 1. #173 (done).
-2. #184, then #206, #211, #215, #217, #218 strictly in that order. Retarget each
-   pull request to `main` after its base merges.
-3. After #218, these are independent and may merge in any order: #219, #220, #221, #225,
-   #226, #227. Merge #224 after #220, and #63 after #226.
-4. #118 last, as the integration gate. It should be a rebase onto the merged result.
+2. The sequential prerequisites were #184, #206, #211, #215, #217 and #218.
+3. Provider/UI/producer changes followed: #219, #220, #221, #225, #226 and #227, with
+   #224 following the notification page and #63 reconciled with producer lifecycle work.
+4. The baseline gate #231 integrated the result. Run final #118 acceptance on current `main`.
 
 Release order: **host before plugins.** Plugin API 1.1.14 hosts accept the new
 documents, while old hosts reject them, so the companion plugin pull requests
@@ -94,11 +95,10 @@ e4a0157eef4b (admin user audit)
   -> ...           (no migration in #115 to #117 so far; later pull requests append here)
 ```
 
-**Main's head has moved.** On `origin/main` (7d90dc7b) the head is `a7d3c91e5b20` (user
-display name, #201), whose parent is also `e4a0157eef4b`. When #184 merges as it
-stands, `6f75008c02a6` and `a7d3c91e5b20` would be two heads. Before merging #184, rebase
-it so its `down_revision` is `a7d3c91e5b20`, then re-point nothing else: the rest of the
-chain follows. Re-verify the head each time main moves (see verification below).
+This is a milestone diagram, not the complete migration graph. Existing merge revisions
+reconciled the historical branches (including `9d4b2e6f1a35` before aggregation). On the checked
+`main`, `alembic heads` reports only `a4c7e19b52d8`. Preserve that history and append new revisions;
+do not rewrite old parents to match the simplified diagram. Re-check the head as main moves.
 
 ## Invariants every child must keep
 
@@ -106,7 +106,7 @@ chain follows. Re-verify the head each time main moves (see verification below).
 | --- | --- |
 | Retention and receipts | Inbox retention is the existing requested/effective days setting (0 to 3650, inherited, server default and maximum). No second retention system. Dedupe receipts stay separate from content retention and keep no expiry. Retained history survives plugin or provider disable and uninstall. |
 | Trust | PUBLIC, PRIVATE and SECURE are unchanged. Urgency never changes destination trust; plugins may request urgency, host policy and user limits decide. |
-| Old APIs | Existing endpoints, producers, preferences and provider capabilities keep working through the contract's compatibility adapters until #118 retires them. |
+| Old APIs | Existing endpoints, producers, preferences and provider capabilities keep working through the contract's compatibility adapters. #118 retains them; retirement requires a separate reviewed change. |
 | Destination proof | Destination revision, consent, ownership proof, verification and recovery restrictions and dispatch-time authorization are rechecked before every physical send, edit and follow-up. |
 | At-least-once | External delivery is at least once. Reconciliation (edits, follow-ups, remote references) reduces duplicates but never claims exactly-once remote delivery. |
 | Content safety | No executable JavaScript, sanitised Markdown and HTML, validated URLs and actions, no secrets in notifications or diagnostics. |
@@ -133,7 +133,7 @@ unless noted. Frontend commands run from `src/frontend`.
 | #116 | `test_notification_producer_stories.py`, `test_official_producer_stories.py`; plugins repo Jellyfin tests |
 | #117 | `test_notification_diagnostics.py`; frontend `notificationDiagnostics.test.ts` |
 
-Stack-wide gates, run on the topmost branch before the final merge:
+Stack-wide gates, run on the proposed integrated `main` state before release:
 
 ```bash
 alembic upgrade head && alembic heads        # exactly one head, and it is the expected one
@@ -158,10 +158,8 @@ pytest -q -p no:cacheprovider tests/test_notification_*.py tests/test_plugin_not
 
 ## Known risks and limitations
 
-- **Stack depth.** Seven sequential open pull requests; a late fix in #184 forces rebases
-  of everything above it. Never force-push a stacked branch another author has pushed
-  to; fetch first.
-- **Migration head moved** (see above): required rebase of #184 before merge.
+- **Historical stack depth and migration branches** have been resolved by the merged
+  integration. Validate the current single head rather than recreating the old stack.
 - **Plugin repository release order** (host before plugins) must be respected by the
   release process; #53, #54 and #55 are unsigned source changes and need the normal
   signing and catalog steps by the maintainers.
@@ -169,16 +167,20 @@ pytest -q -p no:cacheprovider tests/test_notification_*.py tests/test_plugin_not
   follow the `NOTIFICATION_FOLLOW_UPS` policy, so users may see an additional message.
 - **Delivery semantics.** At-least-once means a retry after an ambiguous failure can show a
   duplicate remotely.
-- **Email unsubscribe (#52)** is not part of this scope; reconcile it with #111 separately.
+- **Email unsubscribe (#52)** is closed; preserve its existing destination-specific behaviour
+  while verifying SMTP and do not create another unsubscribe policy.
 - **Diagnostics test sends** are limited to the caller's own destinations and the existing
   hourly quota; provider failures are simulated, not injected.
 
 ## Definition of done for #104
 
 - [x] Contract agreed and merged (#105).
-- [ ] Children #106 to #117 merged in the order above.
-- [ ] #58 and #63 reconciled and merged.
-- [ ] #118 cross-provider acceptance gate merged and adapters retired or explicitly kept.
-- [ ] One Alembic head verified on `main` after the merges.
+- [x] Children #106 to #117 merged.
+- [x] #58 and #63 reconciled; both issues are closed.
+- [x] Baseline cross-provider gate #231 merged; compatibility adapters explicitly kept.
+- [x] One Alembic head verified on the checked `main` after the merges.
+- [ ] Final #118 acceptance results, including current Docker/companion/frontend checks,
+  recorded and reviewed. See [Rollout and acceptance](notification-rollout.md).
 
-The umbrella is therefore not complete today; this page is the status artefact only.
+Close the umbrella only when the final acceptance evidence is complete; the historical
+open-stack warnings above must not be used as a substitute for checking the integrated state.

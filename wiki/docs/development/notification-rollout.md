@@ -65,8 +65,9 @@ capabilities (see [Plugin contract](notification-contract.md#plugin-contract-plu
 
 ### Database migrations
 
-All notification schema is one linear Alembic history; the overhaul adds five revisions after
-`e4a0157eef4b` (the last head before #106):
+The existing Alembic graph has one head, with historical merge revisions retained. The
+overhaul adds five notification revisions after the pre-overhaul milestone `e4a0157eef4b`;
+unrelated migrations and their existing merges also occur between these milestones:
 
 | Revision | Issue | Change | Downgrade guard |
 | --- | --- | --- | --- |
@@ -92,9 +93,10 @@ downgrade invalidates links but erases no history.
   `tests/test_notification_rollout_migration.py` proves this on a populated pre-overhaul database.
 - **Adapters stay.** Retiring an adapter needs a separately reviewed change that shows no supported
   Plugin API version or stored registration depends on it. This gate removes none.
-- **Retention is unchanged.** Stories, revisions, deliveries and receipts follow the inbox policy
+- **Retention is unchanged.** Stories, revisions and deliveries follow the inbox policy
   (server default, per-person inheritance, server maximum, visible expiry). Expired items stay
-  inspectable through their story link only while retention allows.
+  inspectable through their story link only while retention allows. Minimal dedupe receipts
+  remain separate and have no expiry; content expiry must not permit a replayed event to notify again.
 
 ## Release order
 
@@ -132,7 +134,7 @@ downgrade invalidates links but erases no history.
 | Destructive downgrades are guarded; lossless otherwise | `test_downgrade_is_refused_while_new_history_exists_and_lossless_otherwise`; per-revision tests in `test_notification_story_migration.py`, `test_notification_aggregation_migration.py`, `test_notification_timing_migration.py`, `test_notification_rich_migration.py`, `test_notification_dispatch_migration.py` |
 | Event, story, delivery and history over real SMTP; duplicate replay; partial provider failure; restart lease reclaim; revision; retention and expiry | `test_notification_rollout_gate.py::test_event_to_history_with_replay_partial_failure_and_retention` |
 | Revoked grant suppresses queued work, history kept | `test_revoked_grant_suppresses_queued_work_but_keeps_history`, `test_plugin_notification_contract.py` |
-| Digest boundaries and quiet hours | `test_digest_boundaries_hold_through_the_integrated_path`, `test_notification_aggregation.py::test_fake_clock_window_boundaries_are_exact`, `test_notification_timing.py::test_quiet_hours_hold_external_delivery_in_one_window_and_never_the_inbox` |
+| Digest boundaries and quiet hours | `test_digest_boundaries_hold_through_the_integrated_path` (real SMTP, before/at boundary, next window, no repeat send), `test_quiet_hours_release_real_mail_at_the_boundary_without_delaying_inbox`, and the focused aggregation/timing suites |
 | Disable and uninstall keep history | `test_notification_stories.py::test_plugin_uninstall_keeps_history_and_reinstall_starts_new_stories`, `test_plugin_notification_contract.py::test_disable_or_uninstall_suppresses_work_but_keeps_history` |
 | Provider edits and follow-ups | `test_notification_dispatch_capabilities.py` (`test_later_revision_edits_the_remote_message_once`, `test_refused_edit_falls_back_to_a_follow_up_and_marks_the_reference`), `test_notification_smtp_rich.py::test_followups_are_selective_and_mail_is_never_edited` |
 | Restart recovery and duplicates | `test_notification_aggregation.py::test_restart_reclaims_an_expired_lease_without_losing_or_doubling_the_batch`, `test_notification_dispatch_capabilities.py::test_crash_after_send_resends_with_the_same_idempotency_key`, `test_notification_stories.py::test_acceptance_survives_a_restart` |
