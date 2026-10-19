@@ -28,10 +28,15 @@ class Response:
     def read(self, size):
         return self.body.read(size)
 
+    def read1(self, size):
+        return self.read(size)
+
 
 @pytest.fixture(name="network")
 def network_fixture(monkeypatch):
-    state = SimpleNamespace(responses=[Response()], dns=[], connected=[], requests=[], addresses={})
+    state = SimpleNamespace(
+        responses=[Response()], dns=[], connected=[], requests=[], addresses={}, header_wait=None
+    )
 
     def resolve(host, port, **_kwargs):
         state.dns.append(host)
@@ -48,6 +53,9 @@ def network_fixture(monkeypatch):
         ]
 
     class Socket:
+        def shutdown(self, _how):
+            pass
+
         def settimeout(self, _value):
             pass
 
@@ -66,6 +74,8 @@ def network_fixture(monkeypatch):
             state.requests.append((self.host, method, target, dict(headers)))
 
         def getresponse(self):
+            if state.header_wait:
+                state.header_wait()
             return state.responses.pop(0)
 
         def close(self):
@@ -213,3 +223,43 @@ async def test_global_fetch_slots_are_enforced_across_independent_database_sessi
         await first.rollback()
         await calendar_fetch.refresh_snapshot("https://calendar.example/token", None, None)
         assert calls == [True]
+
+
+@pytest.mark.parametrize("stage", ["headers", "body"])
+def test_slow_buffered_reads_are_aborted_at_the_total_socket_deadline(network, monkeypatch, stage):
+    import threading
+    import time
+
+    stopped = threading.Event()
+    monkeypatch.setattr(calendar_fetch, "TRANSPORT_SECONDS", 0.1)
+    monkeypatch.setattr(public_http.ssl, "create_default_context", lambda: object())
+
+    class Socket:
+        def settimeout(self, _value):
+            pass
+
+        def connect(self, _address):
+            pass
+
+        def close(self):
+            pass
+
+        def shutdown(self, _how):
+            stopped.set()
+
+    class SlowResponse(Response):
+        def read1(self, _size):
+            blocked_read()
+
+    def blocked_read():
+        assert stopped.wait(2), "The deadline did not interrupt the blocked read"
+        raise TimeoutError
+
+    monkeypatch.setattr(public_http.socket, "socket", lambda *_args: Socket())
+    network.responses = [SlowResponse()]
+    if stage == "headers":
+        network.header_wait = blocked_read
+    before = time.monotonic()
+    with pytest.raises(CalendarFetchError, match="timeout"):
+        fetch_calendar("https://calendar.example/secret-token")
+    assert stopped.is_set() and time.monotonic() - before < 1

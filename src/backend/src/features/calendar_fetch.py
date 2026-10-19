@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import socket
 import time
 from collections.abc import Callable, Coroutine
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from functools import partial
 from http.client import HTTPException
+from threading import Timer
 from typing import Any, TypeVar
 from urllib.parse import urljoin
 
@@ -29,6 +31,16 @@ _SLOTS = asyncio.Semaphore(2)
 _T = TypeVar("_T")
 FETCH_LOCKS = (68438261019001, 68438261019002)
 _PENDING: set[asyncio.Task[Any]] = set()
+TRANSPORT_SECONDS = 20
+
+
+def _abort_socket(sock: socket.socket | None) -> None:
+    """A slow drip must not keep a buffered header/body read alive past the deadline."""
+    if sock is not None:
+        try:
+            sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
 
 
 class CalendarFetchError(ValueError):
@@ -72,7 +84,7 @@ def fetch_calendar(
     """Reject partial bodies and non-identity encoding before reconciling any snapshot."""
     # Each transport/redirect/body guard is kept at this boundary for a reviewable security sequence.
     # pylint: disable=too-many-locals,too-many-branches,too-many-statements
-    deadline = time.monotonic() + 20
+    deadline = time.monotonic() + TRANSPORT_SECONDS
     original = calendar_url(url)[0]
     headers = {
         "Accept": "text/calendar",
@@ -92,12 +104,24 @@ def fetch_calendar(
             connection = public_connection(
                 url, timeout=remaining, connect_timeout=min(5, remaining)
             )
+            cutoff = None
             try:
+                if time.monotonic() >= deadline:
+                    raise CalendarFetchError("timeout")
                 parts = parse_http_url(url)
                 target = parts.path or "/"
                 if parts.query:
                     target += "?" + parts.query
                 connection.request("GET", target, headers=headers)
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise CalendarFetchError("timeout")
+                # HTTPResponse uses buffered readline/read calls. A per-recv timeout alone
+                # permits an indefinite slow drip, so close the connected socket at the deadline.
+                sock = connection.sock
+                cutoff = Timer(remaining, _abort_socket, args=(sock,))
+                cutoff.daemon = True
+                cutoff.start()
                 response = connection.getresponse()
                 if response.status in {301, 302, 303, 307, 308}:
                     location = response.getheader("Location")
@@ -131,14 +155,16 @@ def fetch_calendar(
                     remaining = deadline - time.monotonic()
                     if remaining <= 0:
                         raise CalendarFetchError("timeout")
-                    if connection.sock:
-                        connection.sock.settimeout(remaining)
-                    chunk = response.read(min(64 * 1024, MAX_BYTES + 1 - len(body)))
+                    if sock:
+                        sock.settimeout(remaining)
+                    chunk = response.read1(min(64 * 1024, MAX_BYTES + 1 - len(body)))
                     if not chunk:
                         break
                     body.extend(chunk)
                     if len(body) > MAX_BYTES:
                         raise CalendarFetchError("too_large")
+                if time.monotonic() >= deadline:
+                    raise CalendarFetchError("timeout")
                 if length is not None and len(body) != int(length):
                     raise CalendarFetchError("truncated")
                 components, warnings = parse_calendar(bytes(body))
@@ -151,6 +177,8 @@ def fetch_calendar(
                     hashlib.sha256(body).hexdigest(),
                 )
             finally:
+                if cutoff is not None:
+                    cutoff.cancel()
                 connection.close()
     except (CalendarFetchError, CalendarParseError):
         raise
