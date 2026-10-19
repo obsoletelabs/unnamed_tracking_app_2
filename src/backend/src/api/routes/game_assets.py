@@ -377,6 +377,7 @@ async def get_clip_thumbnail(
 # Keep the established workflow and public parameters together.
 # pylint: disable=duplicate-code,too-many-locals,too-many-positional-arguments
 @router.post("/{game_id}/screenshots")
+@app_grant("content.write")
 async def upload_game_screenshots(
     game_id: UUID,
     files: list[UploadFile] | None = _FILES_DEFAULT,

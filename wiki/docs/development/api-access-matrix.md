@@ -21,7 +21,7 @@ runs, not from this text.
 | `admin` | A `user` whose account is an administrator | The same exclusions; ordinary users get 403 |
 | `browser-session` | Browser session only (consent, Connected apps) | API keys and every integration credential |
 | `delegated-grant` | `utd_` credential with the route's scope, live grant, enabled client and active account | Browser sessions, `utk_` keys |
-| `user-or-app` | A `user` credential, or a `utd_` app grant that carries the route's scope (`library.sync`, `saves.read`, `saves.write`) for a live grant, allowed client and active account | `utp_`, `utpm_`; a `utd_` grant without the scope (403) or that is unknown, revoked or switched off (401) |
+| `user-or-app` | A `user` credential, or a `utd_` app grant that carries the route's scope (`library.sync`, `saves.read`, `saves.write`, `content.write`) for a live grant, allowed client and active account | `utp_`, `utpm_`; a `utd_` grant without the scope (403) or that is unknown, revoked or switched off (401) |
 | `plugin-admin` / `plugin-reader` | Administrator session/key, or a scoped `utpm_` management credential | Ordinary users (403), `utd_`/`utp_` |
 | `plugin-runtime` | Short-lived runtime credential; calls pass the capability gateway | Browser and API keys |
 | `plugin-route` | The plugin's declared route authentication, enforced before dispatch | - |
@@ -345,7 +345,7 @@ are redacted. Validation errors never echo submitted values.
 | GET | `/api/game/{game_id}/content-counts` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | GET | `/api/game/{game_id}/field-changes` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | GET | `/api/game/{game_id}/files/{kind}` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
-| POST | `/api/game/{game_id}/files/{kind}` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
+| POST | `/api/game/{game_id}/files/{kind}` | user-or-app | Game queried with `user_id == caller`; any child ID must also belong to that game. App grants need `content.write` and may add `doc` only; `modpack` is refused (403). |
 | PATCH | `/api/game/{game_id}/files/{kind}/by-id/{item_id}` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | GET | `/api/game/{game_id}/files/{kind}/trash` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | DELETE | `/api/game/{game_id}/files/{kind}/{filename}` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
@@ -375,7 +375,7 @@ are redacted. Validation errors never echo submitted values.
 | POST | `/api/game/{game_id}/profiles/{profile_id}/sync-wiseoldman` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | POST | `/api/game/{game_id}/restore` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | GET | `/api/game/{game_id}/screenshots` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
-| POST | `/api/game/{game_id}/screenshots` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
+| POST | `/api/game/{game_id}/screenshots` | user-or-app | Game queried with `user_id == caller`; any child ID must also belong to that game. App grants need `content.write`. |
 | POST | `/api/game/{game_id}/screenshots/detect-dates` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | GET | `/api/game/{game_id}/screenshots/trash` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | DELETE | `/api/game/{game_id}/screenshots/{kind}/{filename}` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |

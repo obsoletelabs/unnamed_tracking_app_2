@@ -39,6 +39,7 @@ user sees the computer's name and approves the capabilities the extension asks f
 | `library.sync` | Game list, create, update, artwork and the `/api/playnite/*` evidence routes |
 | `saves.read` | Listing and downloading save archives |
 | `saves.write` | Creating save archives, adding versions and renaming |
+| `content.write` | Adding screenshots, clips, soundtracks and documents (`doc` files only, never modpacks) to games |
 
 They start selected and access defaults to **Until revoked**, because the credential replaces an
 API key; the user can untick any capability or choose a timed grant. The extension polls the

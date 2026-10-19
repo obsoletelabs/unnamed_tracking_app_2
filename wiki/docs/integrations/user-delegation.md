@@ -105,8 +105,9 @@ All paths below are under `/api/delegation/v1`. Responses are not cacheable.
 | `library.sync` | The ordinary `GET /api/game/list`, `POST /api/game/create`, `PATCH /api/game/update/{id}`, `POST /api/game/{id}/assets/{kind}` and `/api/playnite/*` routes, as the consenting user (own games only) |
 | `saves.read` | `GET /api/game/{id}/archives/{kind}` and archive version downloads |
 | `saves.write` | `POST /api/game/{id}/archives/{kind}`, `POST .../archives/{archive_id}/versions`, `PATCH .../archives/{archive_id}` |
+| `content.write` | `POST /api/game/{id}/screenshots` (images, videos, audio) and `POST /api/game/{id}/files/doc`; `files/modpack` is refused for app credentials |
 
-The last three reach ordinary application routes marked `user-or-app` in the
+The last four reach ordinary application routes marked `user-or-app` in the
 [API access matrix](../development/api-access-matrix.md); in code, `@app_grant(scope)` on the
 route lets `get_current_user` accept a `utd_` credential carrying that scope as the consenting
 user. Every unmarked route still refuses `utd_` credentials. Resource IDs never permit
