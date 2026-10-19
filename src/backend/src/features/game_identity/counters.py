@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import null, select
+from sqlalchemy import Select, null, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.game_identity import (
@@ -127,14 +127,18 @@ def _retire(row: GameMetricAdjustment | GameMetricCounterMember, stamp: int) -> 
         row.removed_at = max(stamp, row.added_at)
 
 
-async def _active_adjustments(
-    db: AsyncSession, ids: list[UUID]
-) -> dict[UUID, GameMetricAdjustment]:
-    live = GameMetricAdjustment.superseded_at.is_(None)
-    rows = await db.scalars(
-        select(GameMetricAdjustment).where(GameMetricAdjustment.counter_id.in_(ids), live)
+def _counter_query(
+    user_id: UUID, games: set[UUID], counter_ids: set[UUID] | None, metric: str | None
+) -> Select[tuple[GameMetricCounter]]:
+    query = (
+        select(GameMetricCounter)
+        .where(GameMetricCounter.user_id == user_id, GameMetricCounter.archived_at.is_(None))
+        .where(GameMetricCounter.metric == metric if metric is not None else true())
+        .order_by(GameMetricCounter.created_at, GameMetricCounter.id)
     )
-    return {a.counter_id: a for a in rows}
+    if counter_ids is not None:
+        return query.where(GameMetricCounter.id.in_(counter_ids))
+    return query.where(GameMetricCounter.game_id.in_(games))
 
 
 async def _load(
@@ -145,18 +149,7 @@ async def _load(
     counter_ids: set[UUID] | None = None,
     metric: str | None = None,
 ) -> list[_CounterData]:
-    statement = select(GameMetricCounter).where(
-        GameMetricCounter.user_id == user_id, GameMetricCounter.archived_at.is_(None)
-    )
-    if metric is not None:
-        statement = statement.where(GameMetricCounter.metric == metric)
-    if counter_ids is not None:
-        statement = statement.where(GameMetricCounter.id.in_(counter_ids))
-    else:
-        statement = statement.where(GameMetricCounter.game_id.in_(games))
-    counters = list(
-        await db.scalars(statement.order_by(GameMetricCounter.created_at, GameMetricCounter.id))
-    )
+    counters = list(await db.scalars(_counter_query(user_id, games, counter_ids, metric)))
     if not counters:
         return []
     ids = [c.id for c in counters]
@@ -186,7 +179,15 @@ async def _load(
             )
         )
     }
-    adjustments = await _active_adjustments(db, ids)
+    adjustments = {
+        a.counter_id: a
+        for a in await db.scalars(
+            select(GameMetricAdjustment).where(
+                GameMetricAdjustment.counter_id.in_(ids),
+                GameMetricAdjustment.superseded_at.is_(None),
+            )
+        )
+    }
     result = []
     for counter in counters:
         mine = [m for m in members if m.counter_id == counter.id]
