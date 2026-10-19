@@ -1,5 +1,6 @@
 """Desktop apps (Playnite) sign in through user-approved integration access, not API keys."""
 
+import base64
 import secrets
 from types import SimpleNamespace
 from uuid import uuid4
@@ -18,6 +19,10 @@ from src.features.delegation import integration_policy
 from src.main import app
 
 BASE = "/api/delegation/v1"
+_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH"
+    "/iZk9HQAAAABJRU5ErkJggg=="
+)
 SYNC = ["library.sync", "saves.read", "saves.write"]
 
 
@@ -290,3 +295,74 @@ async def test_signing_out_revokes_the_apps_own_grant(desktop):
     assert signed_out.status_code == 200 and signed_out.json()["revoked_at"]
     assert (await desktop.client.get("/api/game/list", headers=headers)).status_code == 401
     assert (await desktop.client.delete(f"{BASE}/credential", headers=headers)).status_code == 401
+
+
+async def test_content_write_lets_an_app_credential_add_screenshots_and_documents(
+    desktop, monkeypatch, tmp_path
+):
+    from src.api.routes import game_assets, game_files
+
+    monkeypatch.setattr(game_assets, "_DATA_ROOT", tmp_path)
+    monkeypatch.setattr(game_files, "_DATA_ROOT", tmp_path)
+    headers = await connect(desktop, ["library.sync", "content.write"], approve=["content.write"])
+    shot = await desktop.client.post(
+        f"/api/game/{desktop.game_id}/screenshots",
+        headers=headers,
+        files={"files": ("shot.png", _PNG, "image/png")},
+    )
+    assert shot.status_code == 200, shot.text
+    doc = await desktop.client.post(
+        f"/api/game/{desktop.game_id}/files/doc",
+        headers=headers,
+        files={"files": ("manual.pdf", b"%PDF-1.4 manual", "application/pdf")},
+    )
+    assert doc.status_code == 200, doc.text
+    modpack = await desktop.client.post(
+        f"/api/game/{desktop.game_id}/files/modpack",
+        headers=headers,
+        files={"files": ("pack.zip", b"zip", "application/zip")},
+    )
+    assert modpack.status_code == 403
+    other = await desktop.client.post(
+        f"/api/game/{desktop.other_game_id}/files/doc",
+        headers=headers,
+        files={"files": ("manual.pdf", b"%PDF-1.4 manual", "application/pdf")},
+    )
+    assert other.status_code == 404
+    # Only uploads are covered: reading, and any other scope's routes, stay closed.
+    listed = await desktop.client.get(f"/api/game/{desktop.game_id}/files/doc", headers=headers)
+    assert listed.status_code == 403
+    assert (await desktop.client.get("/api/game/list", headers=headers)).status_code == 403
+
+
+async def test_uploads_without_content_write_are_refused(desktop, monkeypatch, tmp_path):
+    from src.api.routes import game_assets, game_files
+
+    monkeypatch.setattr(game_assets, "_DATA_ROOT", tmp_path)
+    monkeypatch.setattr(game_files, "_DATA_ROOT", tmp_path)
+    headers = await connect(desktop)
+    for path, upload in (
+        ("screenshots", ("shot.png", _PNG, "image/png")),
+        ("files/doc", ("manual.pdf", b"%PDF-1.4", "application/pdf")),
+    ):
+        refused = await desktop.client.post(
+            f"/api/game/{desktop.game_id}/{path}", headers=headers, files={"files": upload}
+        )
+        assert refused.status_code == 403, path
+        assert refused.json()["detail"] == "This app has not been granted the required capability."
+
+
+async def test_content_write_is_listed_as_a_write_capability(desktop):
+    started = await desktop.client.post(
+        f"{BASE}/desktop/playnite/requests",
+        json={
+            "scopes": ["content.write"],
+            "code_challenge": hash_token("v" * 48),
+            "device_name": "Gaming PC",
+            "device_id": "playnite-1234abcd",
+        },
+    )
+    assert started.status_code == 201, started.text
+    summary = (await desktop.client.get(f"{BASE}/requests/{started.json()['request_id']}")).json()
+    capability = summary["capabilities"][0]
+    assert capability["scope"] == "content.write" and capability["write"] is True

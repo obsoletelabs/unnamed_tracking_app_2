@@ -12,6 +12,7 @@ from fastapi import (
     Form,
     HTTPException,
     Query,
+    Request,
     UploadFile,
     status,
 )
@@ -25,7 +26,7 @@ from src.api.routes.utils.games import (
     _get_game_or_404,
 )
 from src.core.app_integrations import get_upload_limits_mb
-from src.core.auth import get_current_user
+from src.core.auth import app_grant, get_current_user
 from src.database.models.game import Game
 from src.database.models.game_file_item import GameFileItem
 from src.database.models.user import User
@@ -130,7 +131,9 @@ def _game_file_to_dict(item: GameFileItem, game_id: UUID, game_dir: Path) -> dic
 # Keep the established workflow and public parameters together.
 # pylint: disable=duplicate-code,too-many-locals,too-many-positional-arguments
 @router.post("/{game_id}/files/{kind}")
+@app_grant("content.write")
 async def upload_game_files(
+    request: Request,
     game_id: UUID,
     kind: GameFileKind,
     files: list[UploadFile] | None = _FILES_DEFAULT,
@@ -144,7 +147,13 @@ async def upload_game_files(
     validation, only a size cap of their own: a manual or an illustrated Word
     file is often larger than a screenshot, and a modpack zip is routinely
     hundreds of MB to a few GB. They only ever download as inert attachments
-    (see get_game_file)."""
+    (see get_game_file). App credentials may add documents only: modpack
+    archives are too large for a delegated launcher integration."""
+    if kind != "doc" and getattr(request.state, "app_grant", None) is not None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This app may only add documents.",
+        )
     game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
     if not game.folder_location:
         raise HTTPException(
