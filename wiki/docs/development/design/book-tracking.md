@@ -1,9 +1,8 @@
 # Design proposal: book tracking
 
-Status: proposal for maintainer review. Nothing in this page is implemented. It
+Status: accepted design, confirmed on 19 October 2026; nothing in this page is implemented. It
 answers [#265](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/265)
-(part of #248; upstream Rosefall #57). Decisions that need the maintainer are marked
-**OPEN QUESTION**.
+(part of #248; upstream Rosefall #57). Confirmed scope and implementation phases appear below.
 
 ## 1. Problem and current state
 
@@ -58,7 +57,8 @@ Non-goals:
 - No shared "media item" base table, no merge of movies/TV/anime/games into a generic
   model, and no refactor of existing kinds. Other media types (comics, manga, podcasts,
   music) remain separately scoped.
-- No change to existing media contracts, existing migrations or existing export keys.
+- No rewrite of existing media contracts, migrations or export keys. Books add a new export version and a
+  later, additive plugin metadata contract change.
 - No reading-device sync, ebook file hosting, DRM handling or highlights/annotations.
 - No social features, recommendations or review import in the first deliverable.
 - No new hardcoded metadata provider in the first phase (see section 4.5).
@@ -116,8 +116,7 @@ common "title and author only" case).
 - Edition identity is a normalized ISBN-13 when present (ISBN-10 converted), otherwise
   none. Two editions of one work with the same ISBN-13 are rejected with a validation
   error, not merged silently.
-- Merging two works the user created separately is a user-initiated action (see open
-  questions); no automatic merge.
+- Merging two works is deferred; do not automatically merge separate works or present an unsupported merge action.
 
 ### 3.3 Examples
 
@@ -158,8 +157,9 @@ the new tables and enums. The generated migration is reviewed manually per AGENT
 
 ### 4.4 Import and export
 
-- `LibraryExport` gains `books: list[BookRead] = []`. Older exports still import because
-  the key defaults to empty. Whether `format_version` also bumps is OPEN QUESTION 4.
+- `LibraryExport` gains a dedicated book-export schema, distinct from a read-through record, and a `books` list
+  defaulting to empty. Bump `format_version` from 2 to 3. Older exports still import; an older build must reject an
+  unsupported version clearly rather than silently dropping books. Update version dispatch and validation together.
 - Editions and reads nest inside each exported book so one round trip is self-contained.
 - Importers for Goodreads CSV, StoryGraph CSV and ISBN lists follow the
   `features/imports/yamtrack.py` pattern (bounded size and rows, preview before
@@ -212,8 +212,9 @@ duplication evidence.
 1. Model, migration, CRUD routes, owner-scoped tests, manual-entry UI, export/import
    round trip. This is the first deliverable.
 2. Library filters, statistics and Home decisions.
-3. Additive plugin contract bump (`book` media type) and an optional Open Library plugin
-   in the plugins repository.
+3. Additive plugin contract bump (`book` media type); choose its version at implementation against the current
+   contract. Any book provider belongs in the plugins repository. Provider selection, including any future Atlas
+   mapping, is deferred until the underlying book feature is ready; no specific provider is promised here.
 4. CSV importers.
 5. Revisit shared abstractions only if duplication across five kinds proves costly.
 
@@ -231,28 +232,14 @@ duplication evidence.
 - Plugin (phase 3): schema snapshot tests, plus a conformance test in the plugins
   repository using the real installed package.
 
-## 9. OPEN QUESTIONS for the maintainer
+## 9. Confirmed decisions and implementation boundary
 
-1. Is a dedicated `books` feature (option A) acceptable as the first deliverable, with
-   shared abstractions deferred? Recommendation: yes.
-2. Should work/edition be modelled as proposed (editions optional), or should the first
-   version track only a flat book and add editions later? Recommendation: keep the
-   edition table, but allow works with none.
-3. Are audiobooks a **format** of a book (proposed) or a separately scoped media type?
-   Recommendation: format, with progress in percent.
-4. Should `LibraryExport.format_version` bump when `books` is added, or stay at 2 because
-   the new key defaults to empty? Recommendation: bump, to give importers a clear signal.
-5. Is adding `book` to the public `MediaType` enum and widening the registration bound
-   acceptable as an additive contract version bump, and which version number?
-   Recommendation: yes, deferred to phase 3.
-6. Should the first phase include any hardcoded provider? Recommendation: no, per the
-   core/optional rule in AGENTS.md.
-7. Which delegation scope name, if any, should expose books to integrations?
-   Recommendation: defer until a concrete integration needs it.
-8. Series support: plain fields now, or a series entity later? Recommendation: plain
-   fields now.
-9. Should users be able to merge two works they created separately? Recommendation:
-   defer.
+The maintainer's answers on [#265](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/265) approve the
+dedicated feature, optional editions, audiobook format with percent progress, an export-version bump, and an
+additive book metadata contract in phase 3. There is no new hardcoded provider. Delegation scopes and concrete
+provider integrations are deferred until needed. Series remain plain fields; work merging is deferred.
+These decisions complete the design, not book CRUD or provider support. Each phase needs its own implementation,
+regression coverage and migration/contract review.
 
 ## 10. Acceptance mapping
 

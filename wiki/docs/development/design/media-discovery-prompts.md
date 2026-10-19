@@ -1,9 +1,8 @@
 # Design proposal: opt-in prompts for untracked media discovery
 
-Status: proposal for maintainer review. Nothing here is implemented. It answers
+Status: accepted design, confirmed on 19 October 2026. Nothing here is implemented. It answers
 [#266](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/266) (part of
-#248; upstream Rosefall #214, which had no body beyond the title). Items needing a
-decision are marked **OPEN QUESTION**.
+#248; upstream Rosefall #214, which had no body beyond the title).
 
 ## 1. Problem and current state
 
@@ -32,7 +31,7 @@ What exists today:
   (`features/anime_franchise.py`, `features/metadata/anime/franchise.py`) and a
   `relations_cache` on anime.
 - **Notifications.** The notification stack (`features/notification_*`) owns consent,
-  routing, timing and retention and is under active work (see the
+  routing, timing and retention (see the
   [notification overhaul](../notification-overhaul.md), tracking #104). This proposal does
   not edit it.
 
@@ -62,7 +61,8 @@ Goals:
 Non-goals:
 
 - No recommendation engine, ML ranking or collaborative filtering.
-- No new scheduler or background worker; candidates are produced on demand.
+- No new scheduler or background worker; widget candidates are produced on demand and optional notification
+  production uses the existing jobs framework.
 - No automatic adding, tracking or wishlisting of any title.
 - No change to the random game picker, which keeps meaning "choose among what I own".
 - No edits to the notification stack; notifications are an optional later phase that
@@ -123,9 +123,10 @@ bounded like `metadata_providers_enabled`:
 
 Behavior:
 
-- **Dismiss:** stored per account as a bounded set of `(kind, provider, external_id)`
-  entries (cap and eviction of oldest) so a dismissed title is not shown again. The user
-  can list and clear it.
+- **Dismiss:** stored in `discovery_dismissals` with `id`, owner `user_id`, `kind`, `provider`, `external_id`
+  and `created_at`, unique on `(user_id, kind, provider, external_id)`, with a user/time index. This is a table,
+  not a JSON preference. Use existing provider-ID bounds and paginated list/delete operations; rate-limit writes.
+  Do not silently evict a dismissal and resuggest the title. The user can inspect and clear dismissals.
 - **Disable:** turning the preference off stops candidate generation immediately and
   removes the widget from Home. Clearing dismissals is a separate one-click action.
 - **Per-source disable:** disabling a provider through the existing account opt-out also
@@ -138,7 +139,7 @@ Behavior:
 ```text
 GET    /api/discovery/candidate?kind=anime   -> one candidate, or 204
 POST   /api/discovery/dismissals             -> {kind, provider, external_id}
-GET    /api/discovery/dismissals             -> bounded list
+GET    /api/discovery/dismissals             -> paginated owner-scoped list
 DELETE /api/discovery/dismissals             -> clear all
 ```
 
@@ -148,12 +149,17 @@ fields. There is no push and no polling loop.
 
 ### 4.5 Notifications (optional, later)
 
-If notifications are ever proposed, they would be a new notification **type** registered
-through the existing contract after #104 lands, reusing its consent, routing, timing and
-retention behavior: separate opt-in per destination, the user's timing preferences, the
-standard inbox retention setting, and no second preference system. A low-frequency digest
-style type is the most that is suggested. No new scheduler is assumed, so which existing
-job could emit such an event is an OPEN QUESTION.
+The maintainer approved optional notifications. Register a discovery notification **type** through the existing
+contract after #104 lands, reusing its destination consent, routing, timing, quiet hours and inbox retention.
+Widget consent alone never enables delivery. A disabled source or revoked library consent stops new production.
+
+Add a discovery producer job to the existing `features/jobs.py` framework, with bounded account batches and a
+durable per-account last-prompt receipt. Proposed default: at most one prompt per account per week, still subject
+to user delivery timing. Recheck tracked/dismissed state before emission; derive a stable event key from the
+account, candidate identity and prompt window so retries do not duplicate it. Receipt advancement must follow
+durable publication, and overlapping job runs must claim the window atomically. Use the existing notification
+publisher and outbox, with no separate scheduler, delivery adapter or second notification preference system.
+Cadence is an implementation default, not an already shipped setting.
 
 ## 5. Privacy and abuse considerations
 
@@ -167,7 +173,7 @@ job could emit such an event is an OPEN QUESTION.
   shows an empty state rather than switching sources silently.
 - The endpoint is authenticated, owner-scoped and rate limited through existing metadata
   pacing; it returns nothing when disabled.
-- Age ratings: candidates with unknown age rating are excluded (OPEN QUESTION 6).
+- Age ratings: candidates with unknown age rating are excluded.
 - Delegated integrations and API keys do not get this endpoint without a new scope.
 
 ## 6. Alternatives
@@ -187,39 +193,32 @@ job could emit such an event is an OPEN QUESTION.
 2. Movies and TV where a configured provider exposes similar titles.
 3. Additive public contract for a provider "discover" operation and an example plugin
    widget in the plugins repository.
-4. Optional notification type after #104 has landed.
+4. Optional notification type and producer using the existing jobs/publisher framework after #104 has landed.
+   Books are excluded from the initial discovery kinds even when book tracking becomes available.
 
 ## 8. Test strategy
 
 - Untracked computation per kind, including trashed items and provider-ID versus title
   matching.
 - Preference gating: 403 when disabled and no outbound calls when disabled.
-- Owner scoping of dismissals; cap and eviction; clear-all.
+- Owner scoping of dismissals; idempotent writes, pagination, rate limits and clear-all; no silent eviction.
 - No auto-add: a candidate request creates no row in any library table (asserted by
   counts).
 - A fake plugin producer cannot read library identifiers (permission test).
 - Frontend: widget empty, disabled and loading states; Vitest for dismiss and wishlist
   actions; lint, format and typecheck.
-- If a table is used for dismissals: migration upgrade, downgrade and single-head check.
+- Dismissal table migration upgrade on populated data, safe downgrade and single-head check.
+- Notifications: separate consent, disabled/revoked source and library settings, weekly window claims,
+  replay/retry idempotency, tracked/dismissed recheck, quiet hours, timing and standard retention.
 
-## 9. OPEN QUESTIONS for the maintainer
+## 9. Confirmed decisions and implementation boundary
 
-1. Is a core Home widget (default off) the right presentation, with plugins free to add
-   their own? Recommendation: yes.
-2. Which kinds ship first? Recommendation: anime, because related-title data is already
-   cached, then movies and TV.
-3. Is the separate "use my library for suggestions" switch desirable, or too much
-   friction? Recommendation: keep it separate.
-4. Store dismissals in a new table or in a bounded JSON preference? Recommendation: a
-   bounded JSON preference for phase 1 (no migration), revisit if it grows.
-5. Should a public "discover" operation be added to the metadata plugin contract, and in
-   which version? Recommendation: defer to phase 3.
-6. How should candidates with unknown age rating be treated? Recommendation: exclude them.
-7. Should notifications be offered at all? If yes, which existing job (if any) may emit
-   the event, given that no new scheduler is assumed? Recommendation: defer until #104
-   lands and treat it as a separate decision.
-8. If books are accepted (see [book tracking](book-tracking.md)), should they become a
-   discovery kind? Recommendation: not initially.
+The maintainer's answers on [#266](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/266) approve the
+default-off core Home widget; anime first, then movies/TV; separate library consent; a dismissal table; excluding
+unknown ratings; and optional notifications. A public discovery operation is deferred to phase 3 and books are
+excluded initially. The table avoids rewriting a growing JSON preference and supports indexed, owner-scoped
+queries; no unmeasured performance advantage is claimed. Implementation still needs its own API, migration, UI
+and notification regression coverage. No plugin permissions or notification types are registered by this page.
 
 ## 10. Acceptance mapping
 
