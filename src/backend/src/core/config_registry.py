@@ -286,6 +286,14 @@ CONFIG_REGISTRY: tuple[ConfigSpec, ...] = (
         description="Deployment minimum destination trust (0 PUBLIC, 1 PRIVATE, 2 SECURE).",
     ),
     ConfigSpec(
+        "CALENDAR_SUBSCRIPTIONS_ENABLED",
+        source=ConfigSource.ENV,
+        input_type="boolean",
+        default=True,
+        visible=False,
+        description="Allow user-created external HTTPS calendar subscriptions and refreshes.",
+    ),
+    ConfigSpec(
         "METADATA_HEALTH_INTERVAL_SECONDS",
         "general",
         ConfigSource.ENV,

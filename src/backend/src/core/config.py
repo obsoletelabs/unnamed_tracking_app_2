@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     AUTH_COOKIE_SECURE: bool = False
     DEBUG: bool = False
     METADATA_HEALTH_INTERVAL_SECONDS: int = 1800
+    CALENDAR_SUBSCRIPTIONS_ENABLED: bool = True
     SECRET_KEY: str = ""
     SMTP_HOST: str = ""
     SMTP_PORT: int = Field(default=587, ge=1, le=65535)
