@@ -68,6 +68,7 @@ export const capabilityLabels: Record<string, string> = {
   "library.sync": "Add and update games, artwork and launcher details",
   "saves.read": "List and download save backups",
   "saves.write": "Upload and rename save backups",
+  "content.write": "Add screenshots, clips, soundtracks and documents",
 };
 
 const base = "/api/delegation/v1";
