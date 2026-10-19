@@ -18,6 +18,7 @@ from src.database.models import (
     app_integration_settings,  # noqa: F401
     auth,  # noqa: F401
     calendar_event,  # noqa: F401
+    calendar_source,  # noqa: F401
     delegation,  # noqa: F401
     destination_scope,  # noqa: F401
     game,  # noqa: F401
