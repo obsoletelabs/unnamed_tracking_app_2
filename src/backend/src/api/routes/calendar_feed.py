@@ -63,6 +63,8 @@ def _stamp(unix: int) -> str:
     return datetime.fromtimestamp(unix, tz=timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
+# One serializer for the combined feed and every layer; its locals are the iCalendar properties.
+# pylint: disable-next=too-many-locals
 def _build_ics(
     entries: list[dict], events: list[CalendarEvent] | None = None, kind: str | None = None
 ) -> str:
