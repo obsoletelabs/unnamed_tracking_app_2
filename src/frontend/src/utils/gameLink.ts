@@ -31,3 +31,9 @@ export const gameLinkStates = {
 } as const;
 
 export type GameLinkFailure = keyof typeof gameLinkStates;
+
+export function gameFailureForStatus(status: number | null): GameLinkFailure {
+  if (status === 422) return "invalid";
+  if (status === 401) return "signed-out";
+  return "unavailable";
+}

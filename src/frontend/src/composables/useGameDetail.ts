@@ -6,7 +6,6 @@ import {
   deleteGame,
   fetchGame,
   fetchGameVariants,
-  fetchGameAchievements,
   fetchContentCounts,
   fetchGameFieldChanges,
   fetchGames,
@@ -83,7 +82,6 @@ import {
   setTaskRetry,
 } from "../state/taskProgress";
 import type { Achievement, Game, GameStatus } from "../types/game";
-import { isUnlocked } from "../utils/achievements";
 import { computeScore } from "../utils/scoring";
 import DOMPurify from "dompurify";
 import { useConfirm, usePrompt } from "../state/dialog";
@@ -94,6 +92,7 @@ import { useGameAchievements } from "./useGameAchievements";
 import { ApiRequestError } from "../services/apiError";
 import {
   GAME_REQUEST_TIMEOUT_MS,
+  gameFailureForStatus,
   gameLinkStates,
   isGameId,
   type GameLinkFailure,
@@ -349,35 +348,15 @@ export function useGameDetail() {
       () => controller.abort(),
       GAME_REQUEST_TIMEOUT_MS,
     );
-    // the hero picture is big, so it starts downloading now rather than once the
-    // game's details have come back
+    // Start the hero artwork while details are loading.
     preloadImage(sizedAssetUrl(gameAssetUrl(id, "banner"), HERO_WIDTH));
     preloadImage(sizedAssetUrl(gameAssetUrl(id, "key_art"), POSTER_WIDTH));
-    // true when this only refreshes the game already on screen (after an edit)
     const refresh = game.value?.id === id;
-    // everything the page fills in on its own is asked for at once, so none of
-    // it waits for the game or for each other
-    let achievements: Achievement[] | null = null;
-    const applyAchievements = () => {
-      if (revision !== loadRevision || !game.value || !achievements) return;
-      game.value.achievements = achievements;
-      game.value.achievementTotal = achievements.length;
-      game.value.achievementPercent = achievements.length
-        ? Math.round(
-            (achievements.filter(isUnlocked).length / achievements.length) *
-              100,
-          )
-        : 0;
-    };
-    void fetchGameAchievements(id)
-      .then((list) => {
-        achievements = list;
-        applyAchievements();
-      })
-      .catch(() => {
-        // achievements are a nice-to-have overlay, a failure here
-        // shouldn't block the rest of the game page from rendering
-      });
+    // Optional sections load alongside the main record.
+    const applyAchievements = prepareAchievements(
+      id,
+      () => revision === loadRevision,
+    );
     if (!refresh) relatedGames.value = [];
     void fetchGameVariants(id)
       .then((list) => {
@@ -387,8 +366,7 @@ export function useGameDetail() {
         // variants section just doesn't show, not worth failing the page
       });
 
-    // Resolve access before displaying cached details for a new link: a removed
-    // game or an account switch must not briefly reveal an old cached record.
+    // Validate access before showing cached details for a new link.
     if (!refresh) {
       game.value = null;
       parentGameTitle.value = null;
@@ -396,10 +374,7 @@ export function useGameDetail() {
     }
     try {
       const fetched = await fetchGame(id, controller.signal);
-      // the route can change again while this was in flight (fast
-      // click-through on the parent breadcrumb or a variant card), a
-      // slower response for the game we've already navigated away from
-      // must not overwrite the newer one that may have already loaded
+      // Ignore stale responses, including earlier retries of the same link.
       if (revision !== loadRevision) return;
       game.value = fetched;
       if (fetched && !libraryRequested) {
@@ -425,16 +400,10 @@ export function useGameDetail() {
     } catch (err) {
       if (revision !== loadRevision) return;
       const status = err instanceof ApiRequestError ? err.status : null;
-      // A transient edit refresh can keep the already visible game. A new link,
-      // invalid response or expired session must not retain another page's data.
+      // Only transient edit refreshes may retain the currently visible game.
       if (!refresh || status === 401 || status === 403 || status === 422) {
         game.value = null;
-        error.value =
-          status === 422
-            ? "invalid"
-            : status === 401
-              ? "signed-out"
-              : "unavailable";
+        error.value = gameFailureForStatus(status);
       }
     } finally {
       window.clearTimeout(timeout);
@@ -1792,6 +1761,7 @@ export function useGameDetail() {
   } = useGameWorlds(game, saveUploading, filesError, prompt);
 
   const {
+    prepareAchievements,
     descriptionOf,
     achFilter,
     achProvider,
