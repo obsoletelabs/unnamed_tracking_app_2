@@ -33,3 +33,28 @@ def isolated_game_asset_root(monkeypatch, tmp_path):
     from src.helpers import save_game_asset
 
     monkeypatch.setattr(save_game_asset, "DATA_ROOT", tmp_path / "users")
+
+
+@pytest.fixture(autouse=True)
+async def isolated_auth_quota_rows(monkeypatch):
+    """Keep real enforcement active while isolating its shared counters between tests."""
+    from src.database.models.plugin_auth_flow import AuthRequestLimit
+    from src.database.session import SessionLocal
+    from src.features import auth_rate_limits
+
+    keys: set[str] = set()
+    original = auth_rate_limits.limit_key
+
+    def tracked_key(purpose: str, limit: auth_rate_limits.AuthLimit, now: int) -> str:
+        key = original(purpose, limit, now)
+        keys.add(key)
+        return key
+
+    monkeypatch.setattr(auth_rate_limits, "limit_key", tracked_key)
+    yield
+    if keys:
+        # Core SQL avoids forcing unrelated partially imported ORM mappers to initialize.
+        table = AuthRequestLimit.__table__
+        async with SessionLocal() as db:
+            await db.execute(table.delete().where(table.c.key.in_(keys)))
+            await db.commit()
