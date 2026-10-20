@@ -30,9 +30,9 @@ from src.database.models.job_setting import JobSetting
 from src.database.models.user import User
 from src.database.session import SessionLocal
 from src.features import job_runs
-from src.features.calendar_sources import run_due_sources
 from src.features.anime_franchise import run_franchise_check
 from src.features.backup.scheduler import run_all_backups
+from src.features.calendar_sources import run_due_sources
 from src.features.metadata import refresh_job
 from src.features.metadata.refresh import check_airing_episodes
 from src.features.notification_audit import publish_lifecycle
@@ -281,7 +281,10 @@ JOBS: dict[str, JobSpec] = {
         "calendar_subscriptions",
         "Calendar subscriptions",
         "Refresh due external calendars and expire removed events; each source keeps its own cadence.",
-        1, 1440, 1, True,
+        1,
+        1440,
+        1,
+        True,
         lambda _mode: _start_maintenance("calendar_subscriptions", run_due_sources),
         lambda: _running["calendar_subscriptions"],
         lambda r: f"{r.get('checked', 0)} checked, {r.get('failed', 0)} unavailable",
