@@ -46,11 +46,32 @@ def changed_paths(event: dict, *, base: str | None = None, root: Path = ROOT) ->
         return git("ls-files", "-z", root=root)
     if "pull_request" in event:
         request = event["pull_request"]
-        merge_base = git("merge-base", request["base"]["sha"], request["head"]["sha"], root=root)[0]
-        return git("diff", "--name-only", "-z", merge_base, request["head"]["sha"], "--", root=root)
-    before, after = event.get("before"), event.get("after")
-    if before and after and set(before) != {"0"}:
-        return git("diff", "--name-only", "-z", before, after, "--", root=root)
+        current = request["head"]["sha"]
+        baseline = request["base"]["sha"]
+    else:
+        current, baseline = event.get("after"), event.get("before")
+    if current:
+        # An unavailable historical baseline is recoverable; a missing current
+        # commit is a checkout error and must still fail the check.
+        git("rev-parse", "--verify", "--end-of-options", f"{current}^{{commit}}", root=root)
+    if current and baseline and set(baseline) != {"0"}:
+        try:
+            git(
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                "--end-of-options",
+                f"{baseline}^{{commit}}",
+                root=root,
+            )
+            if "pull_request" in event:
+                baseline = git("merge-base", baseline, current, root=root)[0]
+        except subprocess.CalledProcessError:
+            # Force pushes can remove the old commit from every advertised ref.
+            # A full scan preserves coverage without relying on rewritten history.
+            print("::notice::Historical diff unavailable; running full quality checks.")
+            return git("ls-files", "-z", root=root)
+        return git("diff", "--name-only", "-z", baseline, current, "--", root=root)
     # A new branch or a manual local run has no trustworthy previous baseline.
     return git("ls-files", "-z", root=root)
 

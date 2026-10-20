@@ -106,6 +106,64 @@ class ChangedChecksTests(unittest.TestCase):
         with self.assertRaises(subprocess.CalledProcessError):
             ci_checks.changed_paths(self.draft_event("not-a-git-ref"), root=self.root)
 
+    def test_force_push_with_unreachable_previous_commit_checks_all_files(self):
+        self.write("src/frontend/src/Removed.ts", "export const removed = 1;\n")
+        previous = self.commit()
+        self.git("reset", "--hard", self.base)
+        self.write("src/backend/src/replacement.py", "value = 2\n")
+        head = self.commit()
+        # Reproduce a fresh Actions checkout after the old history was rewritten.
+        self.git("reflog", "expire", "--expire=now", "--all")
+        self.git("gc", "--prune=now")
+        event = {"ref": "refs/heads/feat/test", "before": previous, "after": head}
+        changes = ci_checks.changed_paths(event, root=self.root)
+        self.assertEqual(changes, self.git("ls-files").splitlines())
+        self.assertTrue(ci_checks.affected(changes, ci_checks.FRONTEND))
+        self.assertTrue(ci_checks.affected(changes, ci_checks.BACKEND))
+
+    def test_draft_pr_with_missing_base_checks_all_files(self):
+        event = self.draft_event(self.base)
+        event["pull_request"]["base"]["sha"] = "f" * 40
+        self.assertEqual(
+            ci_checks.changed_paths(event, root=self.root), self.git("ls-files").splitlines()
+        )
+
+    def test_draft_pr_without_shared_history_checks_all_files(self):
+        self.git("checkout", "--orphan", "rewritten")
+        self.write("README.md", "Replacement history\n")
+        head = self.commit()
+        self.assertEqual(
+            ci_checks.changed_paths(self.draft_event(head), root=self.root),
+            self.git("ls-files").splitlines(),
+        )
+
+    def test_force_push_with_available_history_keeps_complete_diff(self):
+        self.write("src/frontend/src/First.ts", "export const first = 1;\n")
+        previous = self.commit()
+        self.git("reset", "--hard", self.base)
+        self.write("src/backend/src/replacement.py", "value = 2\n")
+        head = self.commit()
+        event = {"ref": "refs/heads/feat/test", "before": previous, "after": head}
+        self.assertEqual(
+            ci_checks.changed_paths(event, root=self.root),
+            ["src/backend/src/replacement.py", "src/frontend/src/First.ts"],
+        )
+
+    def test_full_scan_does_not_suppress_quality_check_failures(self):
+        with patch.object(ci_checks.subprocess, "run") as run:
+            run.return_value.returncode = 1
+            self.assertEqual(
+                ci_checks.run_check("backend-typecheck", ["src/backend/src/untouched.py"]), 1
+            )
+
+    def test_push_with_missing_current_commit_still_fails(self):
+        with self.assertRaises(subprocess.CalledProcessError):
+            ci_checks.changed_paths({"before": "f" * 40, "after": "e" * 40}, root=self.root)
+
+    def test_explicit_invalid_local_base_still_fails(self):
+        with self.assertRaises(subprocess.CalledProcessError):
+            ci_checks.changed_paths({}, base="not-a-git-ref", root=self.root)
+
     def test_new_branch_without_baseline_checks_all_files(self):
         changes = ci_checks.changed_paths(
             {"before": "0" * 40, "after": self.base, "ref": "refs/heads/new"}, root=self.root
