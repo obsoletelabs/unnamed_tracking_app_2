@@ -15,6 +15,7 @@ from alembic.script import ScriptDirectory
 from cryptography.fernet import Fernet
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import inspect, text
+
 from src.database.backup_gate import (
     MAX_PROOF_BYTES,
     RecoveryClaims,
