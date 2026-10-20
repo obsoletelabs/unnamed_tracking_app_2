@@ -149,9 +149,8 @@ write_status "DATABASE_READY" "starting" "ready" "unknown" "unknown" "unknown" "
 log "Running database migrations"
 write_status "MIGRATING_DATABASE" "starting" "ready" "starting" "unknown" "unknown" "Applying database migrations."
 
-# src/database/migrate.py adopts a database made by an older (squashed)
-# migration history instead of failing on its unknown revision, and stops
-# with the reason on a real error rather than retrying it.
+# src/database/migrate.py upgrades recognized histories and stops unknown or
+# incomplete histories for operator review. Startup never opts into repair.
 mkfifo "$MIGRATION_FIFO"
 python /srv/startup/redact_logs.py <"$MIGRATION_FIFO" | tee "$MIGRATION_LOG" &
 MIGRATION_TAIL_PID="$!"

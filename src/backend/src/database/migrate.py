@@ -1,34 +1,21 @@
-"""Brings the database up to date on every start, so updating the app is
-just pulling the new version and starting it.
+"""Upgrade recognized database histories under the shared migration lock.
 
-What it does, in order:
-1. Waits for the database to accept connections (and gives up with a clear
-   message after a minute, instead of retrying a real error 30 times).
-2. Takes a lock so two starting containers never migrate at once.
-3. Looks at what the database says its version is:
-   - empty database: builds everything from the migrations
-   - a version this code has never heard of (the migration history was
-     rewritten or squashed since this database was created), or tables
-     with no version at all: it is attached to the starting migration and
-     brought up to date, keeping all data. Afterwards it is checked against
-     the models, and if something the code needs is STILL missing (nothing
-     in the history creates it) it stops and says exactly what, instead of
-     guessing, and forgets the attachment so the next start checks again.
-   - a version that is in the history: nothing special
-4. Runs every migration newer than the database.
-
-Rewriting the migration history is therefore safe for existing installs:
-any database from the old history is adopted automatically on its next
-start. New migrations should still be written to be safe to run twice
-(create-if-missing), see docs/migrations.md."""
+Unknown/unversioned populated databases and skipped ancestors require operator
+review. Startup never silently stamps or replays them. The explicit repair CLI
+is for an operator who has already verified recovery and tested a restored clone;
+it does not itself create or verify a backup. PostgreSQL repair DDL, revision
+stamping and the final schema check share one transaction.
+"""
 
 from __future__ import annotations
 
+import argparse
 import importlib
 import logging
 import pkgutil
 import sys
 import time
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 
 from alembic import command
@@ -37,13 +24,14 @@ from alembic.config import Config
 from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.database.base import Base
 
 _LOCK_ID = 7_310_442_901
 _WAIT_SECONDS = 60
+_LOCK_WAIT_SECONDS = 60
 
 
 @dataclass(frozen=True)
@@ -55,14 +43,14 @@ class Plan:
 def decide(current: set[str], known: set[str], has_tables: bool) -> Plan:
     """What to do with a database, from its recorded versions, the versions
     this code's history contains, and whether it has any tables at all."""
-    if not has_tables:
+    if not has_tables and not current:
         return Plan("fresh", "empty database")
     if not current:
         return Plan("adopt", "tables exist but no recorded version")
     unknown = sorted(current - known)
     if unknown:
         return Plan(
-            "adopt", f"recorded version {', '.join(unknown)} is not in this migration history"
+            "adopt", f"recorded version {', '.join(map(ascii, unknown))} is not in this history"
         )
     return Plan("upgrade", "recorded version is in the history")
 
@@ -74,7 +62,7 @@ def _register_models() -> None:
         importlib.import_module(module.name)
 
 
-def missing_from_database(engine: Engine) -> list[str]:
+def missing_from_database(engine: Engine | Connection) -> list[str]:
     """What the models need that the database does not have: whole tables
     and columns. Extra things in the database (an old index, a spare
     column) are harmless and ignored."""
@@ -88,7 +76,7 @@ def missing_from_database(engine: Engine) -> list[str]:
     for logger in quiet:
         logger.setLevel(logging.WARNING)
     try:
-        with engine.connect() as conn:
+        with nullcontext(engine) if isinstance(engine, Connection) else engine.connect() as conn:
             diff = compare_metadata(MigrationContext.configure(conn), Base.metadata)
     finally:
         for logger, level in zip(quiet, levels, strict=True):
@@ -121,7 +109,7 @@ def _wait_for_database(engine: Engine) -> None:
                 conn.execute(text("SELECT 1"))
             return
         except (SQLAlchemyError, OSError) as exc:
-            last = str(exc).splitlines()[0]
+            last = type(exc).__name__
             if time.time() > deadline:
                 raise SystemExit(
                     f"Database is not reachable after {_WAIT_SECONDS}s: {last}"
@@ -131,27 +119,32 @@ def _wait_for_database(engine: Engine) -> None:
 
 
 def _reattach(cfg: Config, base: str, engine: Engine) -> None:
-    """Attach the database to the starting migration and replay every newer one.
+    """Explicit repair only; roll back stamping and transactional DDL on failure."""
+    print(f"Operator-approved history replay from {base}; validating before commit.", flush=True)
+    previous = cfg.attributes.get("connection")
+    try:
+        with engine.begin() as connection:
+            cfg.attributes["connection"] = connection
+            command.stamp(cfg, base, purge=True)
+            command.upgrade(cfg, "head")
+            problems = missing_from_database(connection)
+            if problems:
+                raise SystemExit(
+                    "Repair failed schema validation: "
+                    + ", ".join(problems)
+                    + ". The repair transaction was rolled back. Keep the application stopped "
+                    "and review the restored clone; no automatic retry or restore will run."
+                )
+    finally:
+        if previous is None:
+            cfg.attributes.pop("connection", None)
+        else:
+            cfg.attributes["connection"] = previous
 
-    The migrations after the starting one are written to be safe on a database that
-    already has part of what they add, so attach first and check afterwards: checking
-    the models first would refuse every database that predates a migration this
-    version ships."""
-    print(f"Attaching the database to migration {base}. Its data is untouched.", flush=True)
-    command.stamp(cfg, base, purge=True)
-    command.upgrade(cfg, "head")
-    problems = missing_from_database(engine)
-    if problems:
-        command.stamp(cfg, "base", purge=True)  # not attached: check again next start
-        raise SystemExit(
-            "This database was made by an older version and is missing what this version needs, "
-            "and no migration creates it: "
-            + ", ".join(problems)
-            + ". Start the previous version once so it can finish its own updates, then update again."
-        )
 
-
-def _repair_skipped_migrations(cfg: Config, base: str, engine: Engine) -> None:
+def _repair_skipped_migrations(
+    cfg: Config, base: str, engine: Engine, *, allow_repair: bool = False
+) -> None:
     """Replay the history when a recorded version claims migrations that never ran.
 
     A database stamped by an image whose history placed a revision on a different
@@ -161,16 +154,64 @@ def _repair_skipped_migrations(cfg: Config, base: str, engine: Engine) -> None:
     problems = missing_from_database(engine)
     if not problems:
         return
+    if not allow_repair:
+        _refuse_repair("recognized revision has missing schema: " + ", ".join(problems))
     print(
         "The recorded database version is known, but "
         + ", ".join(problems)
-        + " is missing, so earlier migrations were skipped. Replaying the migration history.",
+        + " is missing; this may indicate skipped migrations. Operator-approved replay requested.",
         flush=True,
     )
     _reattach(cfg, base, engine)
 
 
-def main() -> None:
+def _refuse_repair(reason: str) -> None:
+    raise SystemExit(
+        "Migration history requires operator review: "
+        + reason
+        + ". Automatic stamping/replay is disabled. Keep the application stopped. "
+        "Retain a restore-tested backup and matching application image, inspect the history, "
+        "and test recovery on a separate restored clone. Only then run "
+        "python -m src.database.migrate --repair-after-verified-backup if replay is appropriate."
+    )
+
+
+@contextmanager
+def _migration_lock(engine: Engine):
+    """Bound contention while retaining the session-level lock through all work."""
+    with engine.connect() as connection:
+        deadline = time.monotonic() + _LOCK_WAIT_SECONDS
+        while not connection.scalar(text("SELECT pg_try_advisory_lock(:id)"), {"id": _LOCK_ID}):
+            connection.rollback()
+            if time.monotonic() >= deadline:
+                raise SystemExit(
+                    "Another instance holds the migration lock. No migration was attempted; "
+                    "wait for that instance to finish, then retry startup."
+                )
+            time.sleep(1)
+        connection.commit()
+        try:
+            yield connection
+        finally:
+            connection.rollback()
+            connection.execute(text("SELECT pg_advisory_unlock(:id)"), {"id": _LOCK_ID})
+            connection.commit()
+
+
+def _check_recorded_history(script: ScriptDirectory, current: set[str], known: set[str]) -> None:
+    if len(current) < 2 or not current <= known:
+        return
+    # Published histories include reviewed merge points. Independent parents may
+    # upgrade normally; recording an ancestor and its descendant is inconsistent.
+    for revision in current:
+        ancestors = {item.revision for item in script.iterate_revisions(revision, "base")} - {
+            revision
+        }
+        if ancestors & current:
+            _refuse_repair("inconsistent multiple recorded revisions")
+
+
+def main(*, allow_repair: bool = False, plan_only: bool = False) -> None:
     cfg = Config("alembic.ini")
     script = ScriptDirectory.from_config(cfg)
     known = {rev.revision for rev in script.walk_revisions()}
@@ -182,11 +223,9 @@ def main() -> None:
         )
 
     engine = _engine()
-    _wait_for_database(engine)
-
-    with engine.connect() as lock_conn:
-        lock_conn.execute(text("SELECT pg_advisory_lock(:id)"), {"id": _LOCK_ID})
-        try:
+    try:
+        _wait_for_database(engine)
+        with _migration_lock(engine) as lock_conn:
             inspector = inspect(lock_conn)
             tables = set(inspector.get_table_names())
             has_tables = bool(tables - {"alembic_version"})
@@ -198,25 +237,53 @@ def main() -> None:
                 }
             lock_conn.commit()
 
+            _check_recorded_history(script, current, known)
             plan = decide(current, known, has_tables)
             print(f"Database: {plan.action} ({plan.reason})", flush=True)
-
+            if plan_only:
+                print("Inspection only: no migration, stamp or replay was performed.", flush=True)
+                if plan.action == "adopt":
+                    _refuse_repair(plan.reason)
+                if current == set(script.get_heads()):
+                    _repair_skipped_migrations(cfg, bases[0], engine)
+                return
             if plan.action == "adopt":
+                if not allow_repair:
+                    _refuse_repair(plan.reason)
                 _reattach(cfg, bases[0], engine)
             else:
+                # At head, detect drift before even invoking Alembic. Older supported
+                # revisions may legitimately lack columns added by pending migrations.
+                if current == set(script.get_heads()):
+                    _repair_skipped_migrations(cfg, bases[0], engine, allow_repair=allow_repair)
                 command.upgrade(cfg, "head")
-                if plan.action == "upgrade":
-                    _repair_skipped_migrations(cfg, bases[0], engine)
-        finally:
-            lock_conn.execute(text("SELECT pg_advisory_unlock(:id)"), {"id": _LOCK_ID})
-            lock_conn.commit()
+                _repair_skipped_migrations(cfg, bases[0], engine, allow_repair=allow_repair)
+    finally:
+        engine.dispose()
     print("Database is up to date.", flush=True)
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    operation = parser.add_mutually_exclusive_group()
+    operation.add_argument(
+        "--plan", action="store_true", help="Inspect without changing the database."
+    )
+    operation.add_argument(
+        "--repair-after-verified-backup",
+        action="store_true",
+        help="Operator confirms a restore-tested backup and successful clone rehearsal before replay.",
+    )
+    arguments = parser.parse_args()
     try:
-        main()
+        main(allow_repair=arguments.repair_after_verified_backup, plan_only=arguments.plan)
     # The CLI reports unexpected failures before exiting with a nonzero status.
     except Exception as exc:  # pylint: disable=broad-exception-caught
-        print(f"Migration failed: {exc}", file=sys.stderr, flush=True)
+        # SQLAlchemy/driver exception text can contain parameters and connection secrets.
+        ERROR_DETAIL = (
+            f"Database operation failed ({type(exc).__name__})"
+            if isinstance(exc, SQLAlchemyError)
+            else str(exc)
+        )
+        print(f"Migration failed: {ERROR_DETAIL}", file=sys.stderr, flush=True)
         raise SystemExit(1) from exc

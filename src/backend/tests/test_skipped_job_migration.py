@@ -1,4 +1,4 @@
-"""Startup repairs a known-head database whose job-control ancestors never ran (#272)."""
+"""Skipped job-control ancestors require explicit repair and preserve schedules (#272/#299)."""
 
 import os
 import subprocess
@@ -36,9 +36,9 @@ def test_startup_repairs_skipped_job_columns_and_preserves_schedules():
         "updated_at": 1728000001,
     }
 
-    def startup():
+    def startup(*flags, expected=0):
         result = subprocess.run(
-            [sys.executable, "-m", "src.database.migrate"],
+            [sys.executable, "-m", "src.database.migrate", *flags],
             cwd=Path(__file__).parents[1],
             env=environment,
             capture_output=True,
@@ -46,8 +46,8 @@ def test_startup_repairs_skipped_job_columns_and_preserves_schedules():
             check=False,
             timeout=120,
         )
-        assert result.returncode == 0, result.stdout + result.stderr
-        return result.stdout
+        assert result.returncode == expected, result.stdout + result.stderr
+        return result.stdout + result.stderr
 
     url = base.set(drivername="postgresql").render_as_string(hide_password=False)
     with psycopg.connect(url, autocommit=True) as connection:
@@ -78,7 +78,9 @@ def test_startup_repairs_skipped_job_columns_and_preserves_schedules():
 
             before = snapshot()
             assert before == ([(script.get_current_head(),)], saved)
-            assert "earlier migrations were skipped" in startup()
+            assert "Automatic stamping/replay is disabled" in startup(expected=1)
+            assert snapshot() == before
+            assert "Operator-approved replay requested" in startup("--repair-after-verified-backup")
             assert snapshot() == before
             with engine.connect() as check:
                 restored = check.execute(

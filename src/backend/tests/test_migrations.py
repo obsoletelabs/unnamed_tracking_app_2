@@ -485,7 +485,9 @@ def test_known_version_with_skipped_migrations_replays_the_history(monkeypatch):
         migrate.command, "upgrade", lambda _cfg, rev: calls.append(f"upgrade {rev}")
     )
 
-    migrate._repair_skipped_migrations(object(), "base-rev", object())
+    migrate._repair_skipped_migrations(
+        Config("alembic.ini"), "base-rev", MagicMock(), allow_repair=True
+    )
 
     assert calls == ["check", "stamp base-rev", "upgrade head", "check"]
 
