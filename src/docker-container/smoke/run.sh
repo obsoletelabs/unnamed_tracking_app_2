@@ -268,9 +268,24 @@ python3 -c 'import json,sys; result = json.load(open(sys.argv[1]))["results"][0]
 echo "Checking that anonymous bodies over 1 MB are refused without being stored."
 anonymous_status="$(curl --silent --show-error -o "$ARTIFACT_DIR/anonymous-upload.json" -w '%{http_code}' \
   -H 'Content-Type: application/json' --data-binary "@$ARTIFACT_DIR/oversized.png" \
-  "$BASE_URL/api/auth/login")"
+  "$BASE_URL/api/game/create")"
 [[ "$anonymous_status" == 413 ]]
 grep -q 'Sign in to send a request body larger than 1 MB.' "$ARTIFACT_DIR/anonymous-upload.json"
+echo "Checking the smaller authentication body cap for anonymous and signed-in callers."
+head -c 32769 /dev/zero >"$ARTIFACT_DIR/oversized-auth.json"
+for caller in anonymous signed-in; do
+  auth_cookies=()
+  if [[ "$caller" == signed-in ]]; then
+    auth_cookies=(-b "$ARTIFACT_DIR/cookies.txt")
+  fi
+  auth_status="$(curl --silent --show-error -D "$ARTIFACT_DIR/auth-$caller.headers" \
+    -o "$ARTIFACT_DIR/auth-$caller.json" -w '%{http_code}' "${auth_cookies[@]}" \
+    -H 'Content-Type: application/json' --data-binary "@$ARTIFACT_DIR/oversized-auth.json" \
+    "$BASE_URL/api/auth/login")"
+  [[ "$auth_status" == 413 ]]
+  grep -q 'Authentication requests require a declared body of at most 32 KB.' "$ARTIFACT_DIR/auth-$caller.json"
+  grep -iq '^Cache-Control: no-store' "$ARTIFACT_DIR/auth-$caller.headers"
+done
 curl --fail --silent --show-error -b "$ARTIFACT_DIR/cookies.txt" -X PUT \
   -H 'Content-Type: application/json' -d "@$ARTIFACT_DIR/upload-limits-before.json" \
   "$BASE_URL/api/settings/upload-limit" >/dev/null

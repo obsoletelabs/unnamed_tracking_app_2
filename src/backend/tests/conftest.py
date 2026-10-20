@@ -3,6 +3,7 @@
 import os
 
 import pytest
+import pytest_asyncio
 
 # Compose's database components and either discovered .env must never override
 # the explicitly selected test URL. This runs before test collection imports src.
@@ -35,7 +36,7 @@ def isolated_game_asset_root(monkeypatch, tmp_path):
     monkeypatch.setattr(save_game_asset, "DATA_ROOT", tmp_path / "users")
 
 
-@pytest.fixture(autouse=True)
+@pytest_asyncio.fixture(autouse=True)
 async def isolated_auth_quota_rows(monkeypatch):
     """Keep real enforcement active while isolating its shared counters between tests."""
     from src.database.auth_limits import auth_limit_engine
