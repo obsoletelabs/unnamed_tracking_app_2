@@ -404,6 +404,9 @@ async def create_game(
     # A rollback expires ORM attributes; retain the owner ID for the create-race retry.
     user_id = current_user.id
     if payload.playnite_guid is not None:
+        # Keep GUID and folder preflight atomic with competing authenticated syncs.
+        # A folder check can otherwise reject a winner created after the GUID lookup.
+        await game_ownership.lock_changes(db, user_id)
         existing = await _find_playnite_game(payload, user_id, db)
         if existing is not None:
             await record_playnite_fields(
