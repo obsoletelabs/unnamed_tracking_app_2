@@ -28,6 +28,6 @@ RUN chmod +x entrypoint.sh
 # Expose port
 EXPOSE 8000
 
-# Start the application. Database migrations are intentionally not run here;
-# run them separately during deployment when desired.
+# The entrypoint verifies required recovery evidence before pending migrations,
+# then starts the application. Prepare upgrades on the operator host first.
 ENTRYPOINT ["./entrypoint.sh"]

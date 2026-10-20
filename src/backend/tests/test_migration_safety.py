@@ -1,5 +1,6 @@
 """Startup must never infer that an unfamiliar populated database is safe to replay."""
 
+import json
 import os
 import runpy
 import subprocess
@@ -20,7 +21,11 @@ from src.core.config import settings
 from src.database import migrate
 
 
-def test_cli_database_failure_does_not_print_connection_or_statement_secrets(monkeypatch, capsys):
+def test_cli_database_failure_does_not_print_connection_or_statement_secrets(
+    monkeypatch, capsys, tmp_path
+):
+    monkeypatch.setenv("APP_DATA_DIR", str(tmp_path / "data"))
+
     def fail(*_arguments, **_options):
         raise SQLAlchemyError("postgresql://user:private-password@db/app; private-row-value")
 
@@ -33,11 +38,20 @@ def test_cli_database_failure_does_not_print_connection_or_statement_secrets(mon
     assert "Database operation failed (SQLAlchemyError)" in output.err
     assert "private-password" not in output.out + output.err
     assert "private-row-value" not in output.out + output.err
+    attempt = next((tmp_path / "data/config/migration-recovery").glob("attempt-*.json"))
+    report = json.loads(attempt.read_bytes())
+    assert report["status"] == "failed" and report["error"] == "SQLAlchemyError"
+    assert "private-password" not in attempt.read_text()
 
 
 @pytest.fixture
-def sandbox(monkeypatch):
+def sandbox(monkeypatch, tmp_path):
     """Only create/drop this test's randomly named schema in the development database."""
+    # This suite isolates history policy; required recovery evidence is exercised
+    # against real isolated databases in test_migration_backup_runtime.py.
+    monkeypatch.setattr(settings, "MIGRATION_BACKUP_MODE", "development")
+    monkeypatch.setenv("MIGRATION_BACKUP_MODE", "development")
+    monkeypatch.setenv("APP_DATA_DIR", str(tmp_path / "data"))
     schema = "migration_safety_" + uuid4().hex
     base = make_url(settings.DATABASE_URL)
     admin = create_engine(base)

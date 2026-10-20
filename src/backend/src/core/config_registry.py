@@ -672,6 +672,21 @@ CONFIG_REGISTRY: tuple[ConfigSpec, ...] = (
         storage="oidc",
     ),
     ConfigSpec(
+        "MIGRATION_BACKUP_MODE",
+        source=ConfigSource.ENV,
+        visible=False,
+        default="required",
+        description="Require verified recovery before populated database changes; development is an explicit opt-out.",
+    ),
+    ConfigSpec(
+        "MIGRATION_BACKUP_MAX_AGE_SECONDS",
+        source=ConfigSource.ENV,
+        visible=False,
+        input_type="integer",
+        default=7200,
+        description="Maximum pre-upgrade recovery point capture age (60 to 604800 seconds).",
+    ),
+    ConfigSpec(
         "STARTUP_MODE",
         "general",
         ConfigSource.ENV,

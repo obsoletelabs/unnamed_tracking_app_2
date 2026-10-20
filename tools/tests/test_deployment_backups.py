@@ -493,5 +493,217 @@ class RealRepositoryTests(unittest.TestCase):
         self.assertNotIn("Secret-that", str(raised.exception))
 
 
+class DatabaseRestoreTests(unittest.TestCase):
+    def runner(self, *, fail=None, space=1024**4, revisions=None):
+        runner = Mock(timeout=15)
+
+        def run(_arguments, step, **_options):
+            if step == fail:
+                raise BackupError(step)
+            return {
+                "create-database-restore-probe": b"a" * 64,
+                "database-restore-space": f"Filesystem 1024-blocks Used Available Capacity Mounted\nprobe 100 0 {space // 1024} 0% /var/lib/postgresql\n".encode(),
+                "inspect-restored-history": b"t\n",
+                "inspect-database-restore-process": b"postgres\n",
+            }.get(step, b"")
+
+        runner.run.side_effect = run
+        runner.json.return_value = ["source"] if revisions is None else revisions
+        return runner
+
+    def restore(self, runner):
+        from deployment_backups.database import verify_database_restore
+
+        verify_database_restore(
+            runner,
+            Path("backup.dump"),
+            {
+                "user": "owner",
+                "database_bytes": 100,
+                "revisions": ["source"],
+                "encoding": "UTF8",
+                "lc_collate": "C",
+                "lc_ctype": "C",
+            },
+            "sha256:" + "b" * 64,
+        )
+
+    def test_real_restore_command_is_offline_and_cleans_only_created_id(self):
+        runner = self.runner()
+        self.restore(runner)
+        calls = runner.run.call_args_list
+        create = calls[0].args[0]
+        self.assertEqual(create[:4], ["docker", "create", "--network", "none"])
+        self.assertNotIn("--volumes-from", create)
+        self.assertNotIn("POSTGRES_PASSWORD", " ".join(create))
+        restore = next(call for call in calls if call.args[1] == "restore-database-archive")
+        self.assertIn("--single-transaction", restore.args[0])
+        self.assertEqual(restore.kwargs["input_file"], Path("backup.dump"))
+        self.assertEqual(calls[-1].args[0], ["docker", "rm", "--force", "--volumes", "a" * 64])
+        self.assertEqual(calls[-1].kwargs["timeout"], 10)
+
+    def test_create_failure_never_removes_any_container(self):
+        runner = self.runner(fail="create-database-restore-probe")
+        with self.assertRaises(BackupError):
+            self.restore(runner)
+        self.assertEqual(runner.run.call_count, 1)
+
+    def test_restore_failure_or_disk_full_never_looks_verified(self):
+        for runner in (
+            self.runner(fail="restore-database-archive"),
+            self.runner(space=0),
+            self.runner(revisions=["wrong"]),
+        ):
+            with self.subTest(runner=runner), self.assertRaises(BackupError):
+                self.restore(runner)
+            self.assertEqual(runner.run.call_args.args[1], "remove-database-restore-probe")
+
+    def test_bad_probe_id_is_never_used_for_cleanup(self):
+        runner = self.runner()
+        runner.run.side_effect = None
+        runner.run.return_value = b"live-app-name"
+        with self.assertRaisesRegex(BackupError, "invalid-database-restore-probe-id"):
+            self.restore(runner)
+        self.assertEqual(runner.run.call_count, 1)
+
+    def test_environment_override_and_short_deadline(self):
+        result = Runner(10).run(
+            [sys.executable, "-c", "import os; print(os.environ['UTA_PROBE'])"],
+            "environment",
+            environment={"UTA_PROBE": "value"},
+            timeout=1,
+        )
+        self.assertEqual(result.strip(), b"value")
+        with self.assertRaisesRegex(BackupError, "timeout"):
+            Runner(10).run(
+                [sys.executable, "-c", "import time; time.sleep(2)"], "short", timeout=0.1
+            )
+
+
+class UpgradePreparationTests(unittest.TestCase):
+    def test_failed_prepare_keeps_writers_stopped_and_never_issues_evidence(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for failure in ("stop", "capture", "repository", "restore", None):
+                deployment = Mock(files=[])
+                deployment.preflight.return_value = {
+                    "database": {"database_bytes": 1},
+                    "mounts": [],
+                    "writers": {"app": True},
+                }
+
+                def capture(directory, _metadata, _maximum, failure=failure):
+                    if failure == "capture":
+                        raise BackupError("dump-failed")
+                    make_bundle(directory.parent)
+                    (directory / "manifest.json").unlink()
+
+                deployment.capture.side_effect = capture
+                if failure == "stop":
+                    deployment.stop_writers.side_effect = BackupError("stop-failed")
+                repository = Mock()
+                repository.store.return_value = "a" * 64
+                if failure == "repository":
+                    repository.store.side_effect = BackupError("upload-failed")
+                preparation = Mock(image="sha256:" + "b" * 64)
+                if failure == "restore":
+                    preparation.verify_and_issue.side_effect = BackupError("restore-failed")
+                options = SimpleNamespace(
+                    state_dir=root,
+                    max_bytes=1024**2,
+                    deployment_id="drill",
+                    command="prepare-upgrade",
+                    upgrade_image=preparation.image,
+                )
+                report = {"run_id": uuid4().hex, "backup_complete": False}
+                with (
+                    patch("backup_deployment.UpgradePreparation", return_value=preparation),
+                    patch.dict(os.environ, {"RESTIC_PASSWORD_FILE": str(root / "key")}),
+                ):
+                    if failure:
+                        with self.assertRaises(BackupError):
+                            backup(deployment, repository, root, options, report)
+                    else:
+                        backup(deployment, repository, root, options, report)
+                deployment.resume_writers.assert_not_called()
+                if failure == "stop":
+                    preparation.invoke.assert_not_called()
+                else:
+                    preparation.invoke.assert_called_once_with()
+                if failure in ("stop", "capture", "repository"):
+                    preparation.verify_and_issue.assert_not_called()
+                self.assertEqual(report.get("upgrade_recovery_verified", False), failure is None)
+                self.assertFalse(report["writers_resumed"])
+                self.assertEqual(
+                    bundle.load_json(root / "drill-maintenance.json")["phase"],
+                    "ready-for-upgrade"
+                    if failure is None
+                    else (
+                        "stop-failed-check-writers" if failure == "stop" else "stopped-for-upgrade"
+                    ),
+                )
+
+    def test_captured_keys_match_persistent_volume_and_environment(self):
+        import hashlib
+
+        from deployment_backups.upgrade import captured_key_digest
+
+        key = "XJVqc8r7Uj801VzGUYhlQV8A2tZTBepjOYEiP2pTzFk="
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            archive(
+                directory / "data.tar", [("data/config/fernet.key", key.encode(), tarfile.REGTYPE)]
+            )
+            metadata = {
+                "services": {"app": {"environment": {}}},
+                "mounts": [{"role": "app", "destination": "/data", "archive": "data.tar"}],
+            }
+            self.assertEqual(
+                captured_key_digest(directory, metadata), hashlib.sha256(key.encode()).hexdigest()
+            )
+            metadata["services"]["app"]["environment"]["SECRET_KEY"] = (
+                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+            )
+            with self.assertRaisesRegex(BackupError, "conflicting"):
+                captured_key_digest(directory, metadata)
+            archive(
+                directory / "data.tar", [("data/config/fernet.key", b"damaged", tarfile.REGTYPE)]
+            )
+            metadata["services"]["app"]["environment"] = {}
+            with self.assertRaisesRegex(BackupError, "missing"):
+                captured_key_digest(directory, metadata)
+
+    def test_issuer_never_receives_repository_credentials_or_argv_secrets(self):
+        from deployment_backups.upgrade import UpgradePreparation
+
+        deployment = Mock()
+        network = {"default": {"NetworkID": "c" * 64}}
+        app = Instance(
+            "app",
+            "app",
+            "a" * 64,
+            {
+                "Config": {
+                    "Env": [
+                        "POSTGRES_PASSWORD=private-test",
+                        "AWS_SECRET_ACCESS_KEY=repository-only",
+                    ]
+                },
+                "NetworkSettings": {"Networks": network},
+            },
+        )
+        database = Instance("database", "db", "d" * 64, {"NetworkSettings": {"Networks": network}})
+        deployment.instances = {"app": app, "database": database}
+        deployment.runner.json.return_value = [{"Id": "sha256:" + "b" * 64}]
+        deployment.runner.run.return_value = b"e" * 64
+        preparation = UpgradePreparation(deployment, "sha256:" + "b" * 64)
+        preparation.invoke()
+        create = deployment.runner.run.call_args_list[0]
+        self.assertNotIn("private-test", " ".join(create.args[0]))
+        self.assertNotIn("AWS_SECRET_ACCESS_KEY", create.kwargs["environment"])
+        self.assertEqual(create.kwargs["environment"]["POSTGRES_PASSWORD"], "private-test")
+        self.assertNotIn("--volumes", deployment.runner.run.call_args.args[0])
+
+
 if __name__ == "__main__":
     unittest.main()

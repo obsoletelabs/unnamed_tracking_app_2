@@ -67,7 +67,7 @@ The source is bounded by `--max-bytes`; each subprocess has `--timeout` (default
 
 Uploads initially carry `uta-pending-v1`. A complete capture requires successful `pg_dump` and `pg_restore --list`, bundle validation, Restic exit status zero, repository integrity check, and **Restic restoration to another private directory with content verification plus manifest validation**. Only then is the snapshot promoted to `uta-complete-v1`. Partial-read exit status 3, failed producers or interrupted uploads never qualify. The final snapshot ID is re-read because changing Restic tags changes the ID. Pending snapshots remain available for operator diagnosis and are excluded from restores/retention by default.
 
-A verified bundle is not proof that a particular application upgrade will succeed. Rehearse restoration and upgrades in a separate isolated deployment. This command does not implement an automatic pre-upgrade deployment gate.
+A verified bundle is not proof that a particular application upgrade will succeed. Rehearse restoration and upgrades in a separate isolated deployment. Use [`prepare-upgrade`](migration-recovery.md#verified-pre-upgrade-recovery) for the required pre-migration gate: unlike ordinary `backup`, it holds writers stopped through verification, SQL-restores the recovered dump and issues evidence for the exact target image.
 
 ## Scheduling, retention and alerts
 
@@ -94,7 +94,7 @@ Every operation prints one safe JSON result and exits nonzero on failure. Privat
 
 Nightly successful backups imply an RPO of approximately 24 hours plus scheduling/capture delay; a failed run extends that interval. RTO depends on database/files size, network throughput, available images and operational practice. Measure it during a drill rather than assuming a fixed recovery duration.
 
-SIGINT/SIGTERM attempt writer restart. SIGKILL, power loss, Docker failure or a second interruption can prevent cleanup. Each run first persists a `running` status; before stopping writers it also saves their previous running states in `main-maintenance.json` (using your deployment ID). After an interrupted maintenance window, inspect these private records, check app/runtime state and explicitly start the services that were previously running. Preserve failed artifacts for diagnosis only in protected storage. After resolving a stale Restic lock, follow Restic's documented unlock procedure; the CLI never silently removes repository locks.
+For ordinary `backup`, SIGINT/SIGTERM attempt writer restart. `prepare-upgrade` deliberately leaves writers stopped, including after interruption; inspect its separate status and maintenance records before continuing. SIGKILL, power loss, Docker failure or a second interruption can prevent cleanup. Each run first persists a `running` status; before stopping writers it also saves their previous running states in `main-maintenance.json` (using your deployment ID). After an interrupted maintenance window, inspect these private records, check app/runtime state and explicitly start the services that were previously running. Preserve failed artifacts for diagnosis only in protected storage. After resolving a stale Restic lock, follow Restic's documented unlock procedure; the CLI never silently removes repository locks.
 
 ## Restore into a disposable deployment
 

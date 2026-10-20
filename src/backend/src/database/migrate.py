@@ -15,6 +15,7 @@ import logging
 import pkgutil
 import sys
 import time
+from collections.abc import Callable
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 
@@ -28,6 +29,7 @@ from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.database.base import Base
+from src.database.migration_safety import MigrationSafety
 
 _LOCK_ID = 7_310_442_901
 _WAIT_SECONDS = 60
@@ -97,7 +99,11 @@ def _engine() -> Engine:
     # Migration planning can run without loading deployment credentials.
     from src.core.config import settings  # pylint: disable=import-outside-toplevel
 
-    return create_engine(settings.DATABASE_URL.replace("+asyncpg", "+psycopg"), pool_pre_ping=True)
+    return create_engine(
+        settings.DATABASE_URL.replace("+asyncpg", "+psycopg"),
+        pool_pre_ping=True,
+        connect_args={"connect_timeout": 5},
+    )
 
 
 def _wait_for_database(engine: Engine) -> None:
@@ -143,7 +149,12 @@ def _reattach(cfg: Config, base: str, engine: Engine) -> None:
 
 
 def _repair_skipped_migrations(
-    cfg: Config, base: str, engine: Engine, *, allow_repair: bool = False
+    cfg: Config,
+    base: str,
+    engine: Engine,
+    *,
+    allow_repair: bool = False,
+    before_repair: Callable[[], None] | None = None,
 ) -> None:
     """Replay the history when a recorded version claims migrations that never ran.
 
@@ -162,6 +173,8 @@ def _repair_skipped_migrations(
         + " is missing; this may indicate skipped migrations. Operator-approved replay requested.",
         flush=True,
     )
+    if before_repair is not None:
+        before_repair()
     _reattach(cfg, base, engine)
 
 
@@ -211,6 +224,45 @@ def _check_recorded_history(script: ScriptDirectory, current: set[str], known: s
             _refuse_repair("inconsistent multiple recorded revisions")
 
 
+def _apply_plan(
+    cfg: Config,
+    script: ScriptDirectory,
+    engine: Engine,
+    connection: Connection,
+    current: set[str],
+    *,
+    plan: Plan,
+    allow_repair: bool,
+    safety: MigrationSafety,
+) -> None:
+    target = set(script.get_heads())
+
+    def approve() -> None:
+        assert safety is not None
+        safety.approve(connection, current, target)
+
+    assert safety is not None
+    safety.record("inspected", source_revisions=sorted(current), target_revisions=sorted(target))
+    if plan.action == "adopt":
+        if not allow_repair:
+            _refuse_repair(plan.reason)
+        approve()
+        _reattach(cfg, script.get_bases()[0], engine)
+    else:
+        # At head, detect drift before even invoking Alembic. Older supported
+        # revisions may legitimately lack columns added by pending migrations.
+        if current == set(script.get_heads()):
+            _repair_skipped_migrations(
+                cfg, script.get_bases()[0], engine, allow_repair=allow_repair, before_repair=approve
+            )
+        if plan.action != "fresh" and current != target:
+            approve()
+        command.upgrade(cfg, "head")
+        _repair_skipped_migrations(
+            cfg, script.get_bases()[0], engine, allow_repair=allow_repair, before_repair=approve
+        )
+
+
 def main(*, allow_repair: bool = False, plan_only: bool = False) -> None:
     cfg = Config("alembic.ini")
     script = ScriptDirectory.from_config(cfg)
@@ -222,13 +274,14 @@ def main(*, allow_repair: bool = False, plan_only: bool = False) -> None:
             "Fix it before starting."
         )
 
-    engine = _engine()
+    safety = None if plan_only else MigrationSafety()
+    engine = None
     try:
+        engine = _engine()
         _wait_for_database(engine)
         with _migration_lock(engine) as lock_conn:
             inspector = inspect(lock_conn)
             tables = set(inspector.get_table_names())
-            has_tables = bool(tables - {"alembic_version"})
             current: set[str] = set()
             if "alembic_version" in tables:
                 current = {
@@ -238,7 +291,7 @@ def main(*, allow_repair: bool = False, plan_only: bool = False) -> None:
             lock_conn.commit()
 
             _check_recorded_history(script, current, known)
-            plan = decide(current, known, has_tables)
+            plan = decide(current, known, bool(tables - {"alembic_version"}))
             print(f"Database: {plan.action} ({plan.reason})", flush=True)
             if plan_only:
                 print("Inspection only: no migration, stamp or replay was performed.", flush=True)
@@ -247,19 +300,31 @@ def main(*, allow_repair: bool = False, plan_only: bool = False) -> None:
                 if current == set(script.get_heads()):
                     _repair_skipped_migrations(cfg, bases[0], engine)
                 return
-            if plan.action == "adopt":
-                if not allow_repair:
-                    _refuse_repair(plan.reason)
-                _reattach(cfg, bases[0], engine)
-            else:
-                # At head, detect drift before even invoking Alembic. Older supported
-                # revisions may legitimately lack columns added by pending migrations.
-                if current == set(script.get_heads()):
-                    _repair_skipped_migrations(cfg, bases[0], engine, allow_repair=allow_repair)
-                command.upgrade(cfg, "head")
-                _repair_skipped_migrations(cfg, bases[0], engine, allow_repair=allow_repair)
+            assert safety is not None
+            _apply_plan(
+                cfg,
+                script,
+                engine,
+                lock_conn,
+                current,
+                plan=plan,
+                allow_repair=allow_repair,
+                safety=safety,
+            )
+            after = {
+                row[0] for row in lock_conn.execute(text("SELECT version_num FROM alembic_version"))
+            }
+            lock_conn.commit()
+            safety.record(
+                "succeeded", resulting_revisions=sorted(after), finished_at=int(time.time())
+            )
+    except BaseException as error:
+        if safety is not None:
+            safety.failed(error)
+        raise
     finally:
-        engine.dispose()
+        if engine is not None:
+            engine.dispose()
     print("Database is up to date.", flush=True)
 
 

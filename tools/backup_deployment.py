@@ -25,15 +25,21 @@ from deployment_backups.process import (
     write_json,
 )
 from deployment_backups.repository import Repository
+from deployment_backups.upgrade import UpgradePreparation
 
 
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description=__doc__)
-    result.add_argument("command", choices=("plan", "backup", "restore", "verify", "retention"))
+    result.add_argument(
+        "command", choices=("plan", "backup", "prepare-upgrade", "restore", "verify", "retention")
+    )
     result.add_argument(
         "--deployment-id", required=True, help="Stable identifier across host replacement"
     )
-    result.add_argument("--project", help="Exact Compose project for plan/backup")
+    result.add_argument("--project", help="Exact Compose project for plan/backup/prepare-upgrade")
+    result.add_argument(
+        "--upgrade-image", help="Immutable locally available sha256 image ID for prepare-upgrade"
+    )
     result.add_argument("--compose-file", type=Path, action="append", default=[])
     result.add_argument("--app-service", default="app")
     result.add_argument("--runtime-service", default="plugin-runtime")
@@ -91,7 +97,13 @@ def backup(
         raise BackupError("database-exceeds-backup-budget")
     if shutil.disk_usage(stage).free < options.max_bytes * 2:
         raise BackupError("insufficient-staging-space-for-capture-and-verification")
+    preparation = (
+        UpgradePreparation(deployment, options.upgrade_image or "")
+        if getattr(options, "command", "backup") == "prepare-upgrade"
+        else None
+    )
     report["writers_resumed"] = False
+    report["writers_stopped"] = False
     maintenance_file = options.state_dir / (options.deployment_id + "-maintenance.json")
     maintenance = {
         "run_id": report.get("run_id"),
@@ -105,24 +117,48 @@ def backup(
         try:
             # Attempt restart even when stop fails part way through.
             deployment.stop_writers()
+            report["writers_stopped"] = True
+            if preparation is not None:
+                preparation.invoke()  # Invalidate any older approval before starting a new attempt.
             deployment.capture(directory, metadata, options.max_bytes)
         finally:
             try:
-                deployment.resume_writers()
-                report["writers_resumed"] = True
+                if preparation is None:
+                    deployment.resume_writers()
+                    report["writers_resumed"] = True
             except BackupError as error:
                 resume_error = error
                 report["resume_error"] = str(error)
-            maintenance["phase"] = "resumed" if report["writers_resumed"] else "resume-failed"
+            maintenance["phase"] = (
+                (
+                    "stopped-for-upgrade"
+                    if report["writers_stopped"]
+                    else "stop-failed-check-writers"
+                )
+                if preparation is not None
+                else ("resumed" if report["writers_resumed"] else "resume-failed")
+            )
             maintenance["updated_at"] = datetime.now(UTC).isoformat()
             write_json(maintenance_file, maintenance)
-        # Slow hashing, repository I/O and restoration happen after the maintenance window.
+        # Ordinary backups resume before slow verification. Upgrade preparation holds
+        # the same maintenance window until approval, leaving writers stopped afterward.
         deployment.validate_dump(directory / "database.dump")
         bundle.seal(directory, options.deployment_id, report["run_id"], options.max_bytes)
         report["snapshot_id"] = repository.store(
             directory, report["run_id"], Path(temporary) / "verification", options.max_bytes
         )
         report["backup_complete"] = True
+        if preparation is not None:
+            restored = Path(temporary) / "verification" / str(directory.resolve()).lstrip("/")
+            preparation.verify_and_issue(
+                restored, report["snapshot_id"], Path(temporary) / "verified-capture.json"
+            )
+            report["upgrade_recovery_verified"] = True
+            report["upgrade_image_id"] = preparation.image
+            maintenance["phase"] = "ready-for-upgrade"
+            maintenance["snapshot_id"] = report["snapshot_id"]
+            maintenance["updated_at"] = datetime.now(UTC).isoformat()
+            write_json(maintenance_file, maintenance)
         if resume_error is not None:
             raise resume_error
 
@@ -137,7 +173,7 @@ def execute(options, report: dict) -> None:
         return
     repository = Repository(runner, options.deployment_id, rate_kib=options.rate_kib)
     repository.preflight()
-    if options.command in {"backup", "plan"}:
+    if options.command in {"backup", "plan", "prepare-upgrade"}:
         if not options.project or not options.compose_file:
             raise BackupError("backup-requires-explicit-project-and-compose-files")
         for service in (
@@ -228,7 +264,7 @@ def main(arguments: list[str] | None = None) -> int:
             try:
                 execute(options, report)
                 report["status"] = "success"
-                if options.command == "backup":
+                if options.command in {"backup", "prepare-upgrade"}:
                     report["last_success_at"] = datetime.now(UTC).isoformat()
             except BackupError as error:
                 report.update({"status": "failed", "error": str(error)})
