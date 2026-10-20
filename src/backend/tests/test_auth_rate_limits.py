@@ -16,6 +16,7 @@ from sqlalchemy import delete, select, text, update
 from sqlalchemy.exc import OperationalError
 
 from src.core import password_work
+from src.database.auth_limits import auth_limit_engine
 from src.database.models.plugin_auth_flow import AuthRequestLimit
 
 # The shared asset fixture registers Game; complete its User relationship before ORM queries.
@@ -210,6 +211,20 @@ async def test_quota_checks_do_not_need_a_free_business_connection():
             session = await stack.enter_async_context(SessionLocal())
             await session.execute(text("SELECT 1"))
         await reserve_auth_attempt(AuthOperation.LOGIN_ACCOUNT, (bucket(),))
+
+
+@pytest.mark.asyncio
+async def test_short_healthy_burst_waits_for_quota_capacity_within_total_deadline():
+    async with AsyncExitStack() as stack:
+        for _index in range(2):
+            await stack.enter_async_context(auth_limit_engine.connect())
+        pending = asyncio.create_task(
+            reserve_auth_attempt(AuthOperation.LOGIN_ACCOUNT, (bucket(),))
+        )
+        await asyncio.sleep(0.65)
+        # A healthy short burst must not fail at the former half-second checkout bound.
+        assert not pending.done()
+    assert await asyncio.wait_for(pending, 2)
 
 
 @pytest.mark.parametrize(

@@ -13,7 +13,7 @@ auth_limit_engine = create_async_engine(
     echo=settings.DEBUG,
     pool_size=2,
     max_overflow=0,
-    pool_timeout=0.5,
+    pool_timeout=2,
     pool_pre_ping=True,
 )
 AuthLimitSession = async_sessionmaker(
