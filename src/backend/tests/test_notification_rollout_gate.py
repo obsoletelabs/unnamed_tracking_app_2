@@ -8,11 +8,13 @@ compatibility adapters in the same database.
 
 import re
 import time
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import select, update
 
 from src.core.config import settings
+from src.core.preferences import save_preferences
 from src.database.models.notification import Notification
 from src.database.models.notification_delivery import NotificationDelivery
 from src.database.models.notification_receipt import NotificationReceipt
@@ -22,6 +24,7 @@ from src.database.session import SessionLocal
 from src.features.notification_inbox import retention_policy
 from src.features.notification_providers import smtp as smtp_module
 from src.features.notification_providers.base import DeliveryResult
+from src.features.notification_providers.delivery import process_pending_deliveries
 from tests import test_notification_email as email_tests
 from tests.test_notification_email import release_windows, verify  # noqa: F401
 from tests.test_notification_smtp_rich import (  # noqa: F401
@@ -69,6 +72,8 @@ async def test_event_to_history_with_replay_partial_failure_and_retention(
     # event -> story: one accepted event creates exactly one story and one inbox item.
     notice, story = await world.emit(rich(title="Build 1"), key="gate", dedupe="gate-1")
     # Replay of the same producer key is a receipt hit, not a second item or story.
+    replay, replay_story = await world.emit(rich(title="Build 1"), key="gate", dedupe="gate-1")
+    assert replay is None and replay_story == story
     async with SessionLocal() as db:
         receipts = (
             await db.scalars(
@@ -101,6 +106,19 @@ async def test_event_to_history_with_replay_partial_failure_and_retention(
     mailbox.clear()
     await deliver_all()
     assert [mail["To"] for mail in mailbox] == []  # still failing, never duplicated to good
+
+    # Once the failed destination recovers, only its outstanding work is retried.
+    monkeypatch.setattr(smtp_module.SmtpNotificationProvider, "deliver", real_deliver)
+    async with SessionLocal() as db:
+        await db.execute(
+            update(NotificationDelivery)
+            .where(NotificationDelivery.id == failed[0].id)
+            .values(next_attempt_at=0)
+        )
+        await db.commit()
+    assert await deliver_all() == 1
+    assert [mail["To"] for mail in mailbox] == ["bad@example.test"]
+    assert {row.status for row in await deliveries(world.owner, notice)} == {"sent"}
 
     # story -> history: a later revision updates the same story and keeps the earlier one.
     revised, same_story = await world.emit(
@@ -165,19 +183,85 @@ async def test_revoked_grant_suppresses_queued_work_but_keeps_history(world, mai
     assert ("suppressed", "source_revoked") in outcomes
 
 
-async def test_digest_boundaries_hold_through_the_integrated_path(world, mailbox):
-    """Items for one destination inside one window leave as one digest, never split by revision."""
+async def test_digest_boundaries_hold_through_the_integrated_path(world, mailbox, monkeypatch):
+    """Real SMTP stays silent until the boundary and sends each window exactly once."""
     await subscribe(world, mailbox)
-    for number in range(3):
+    now = int(datetime(2030, 1, 15, 7, 59, tzinfo=UTC).timestamp())
+    clock = [now]
+    monkeypatch.setattr(time, "time", lambda: clock[0])
+    async with SessionLocal() as db:
+        await save_preferences(
+            db,
+            world.owner,
+            {
+                "notification_timing": {
+                    "timezone": "UTC",
+                    "digest_times": ["08:00"],
+                    "rules": [{"category": "plugin", "mode": "digest"}],
+                }
+            },
+        )
+    for number in range(2):
         await world.emit(rich(title=f"Item {number}"), key=f"digest-{number}")
-    await deliver_all()
-    assert len(mailbox) >= 1
-    delivered = " ".join(" ".join(parts(mail)) for mail in mailbox)
-    for number in range(3):
-        assert f"Item {number}" in delivered
-    for row in await deliveries(world.owner):
-        assert row.status in {"sent", "suppressed"}
-    assert re.search(r"/notifications/stories/[0-9a-f-]{36}", delivered)
+    async with SessionLocal() as db:
+        assert await process_pending_deliveries(db) == 0
+    clock[0] = now + 59
+    async with SessionLocal() as db:
+        assert await process_pending_deliveries(db) == 0
+    assert mailbox == []
+
+    clock[0] = now + 60  # exactly 08:00; this new item belongs to tomorrow's window
+    await world.emit(rich(title="Item 2"), key="digest-2")
+    async with SessionLocal() as db:
+        assert await process_pending_deliveries(db) == 1
+    assert len(mailbox) == 1
+    first = " ".join(parts(mailbox[0]))
+    assert "Item 0" in first and "Item 1" in first and "Item 2" not in first
+    assert re.search(r"/notifications/stories/[0-9a-f-]{36}", first)
+
+    clock[0] += 86400 - 1
+    async with SessionLocal() as db:
+        assert await process_pending_deliveries(db) == 0
+    clock[0] += 1
+    async with SessionLocal() as db:
+        assert await process_pending_deliveries(db) == 1
+        assert await process_pending_deliveries(db) == 0
+    assert len(mailbox) == 2 and "Item 2" in " ".join(parts(mailbox[1]))
+    assert {row.status for row in await deliveries(world.owner)} == {"sent"}
+
+
+async def test_quiet_hours_release_real_mail_at_the_boundary_without_delaying_inbox(
+    world, mailbox, monkeypatch
+):
+    await subscribe(world, mailbox)
+    clock = [int(datetime(2030, 1, 15, 23, tzinfo=UTC).timestamp())]
+    monkeypatch.setattr(time, "time", lambda: clock[0])
+    async with SessionLocal() as db:
+        await save_preferences(
+            db,
+            world.owner,
+            {
+                "notification_timing": {
+                    "timezone": "UTC",
+                    "quiet_hours": {"enabled": True, "start": "22:00", "end": "07:00"},
+                    "rules": [{"category": "plugin", "mode": "immediate"}],
+                }
+            },
+        )
+    notice, story = await world.emit(rich(title="Quiet-hours item"), key="quiet")
+    listing = (await world.client.get("/api/notifications")).json()
+    assert str(notice) in {item["id"] for item in listing["items"]}
+    for stamp in (clock[0], clock[0] + 8 * 3600 - 1):
+        clock[0] = stamp
+        async with SessionLocal() as db:
+            assert await process_pending_deliveries(db) == 0
+        assert mailbox == []
+    clock[0] += 1
+    async with SessionLocal() as db:
+        assert await process_pending_deliveries(db) == 1
+        assert await process_pending_deliveries(db) == 0
+    assert len(mailbox) == 1 and "Quiet-hours item" in " ".join(parts(mailbox[0]))
+    assert (await world.client.get(f"/api/notifications/stories/{story}")).status_code == 200
 
 
 def test_server_retention_default_is_the_only_retention_mechanism():

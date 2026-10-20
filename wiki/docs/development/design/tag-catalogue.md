@@ -1,7 +1,7 @@
 # User-extensible tag catalogue without losing source tags
 
 Design proposal for [#267](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/267)
-(source: Rosefall #36). **Design only.** Items marked **OPEN QUESTION** need a maintainer decision. Paths start
+(source: Rosefall #36). **Accepted design; not implemented.** Decisions confirmed on 19 October 2026. Paths start
 `src/backend/src/`.
 
 ## 1. Problem and current state (reviewed first, as the issue asks)
@@ -33,19 +33,20 @@ recoverable and every existing filter, import and export keeps working.
 Non-goals: changing #140's filter rules; silent, LLM-generated or regex-wide merging; a shared global tag service
 or moderation queue; changing what plugins read and write (raw tags); rewriting provider data.
 
-## 3. Evidence required before any new table
+## 3. Product justification and performance baseline
 
-Retaining current storage is a valid outcome. A table is justified only by a measured or product need. Before
-implementation, record on the maintainer's library and on a synthetic 5 000-game / 800-distinct-tag library:
+The maintainer has requested editable catalogues, aliases and deployment defaults across all taggable features.
+This is the product reason for an additive catalogue; it is not evidence that arrays are slow. Before implementation,
+record on a representative library and on a synthetic 5 000-game / 800-distinct-tag library:
 
 1. Query time of the top-tags `unnest` and the tag picker data with the current arrays.
 2. Count of tags within one user that differ only by case, whitespace or punctuation.
 3. Whether users actually ask for rename or alias (product evidence from issues).
 
-**Recommendation:** do not replace the arrays. If evidence 2 or 3 supports it, add a small per-user
-**alias and label layer beside them**; the arrays stay the source of truth for what a record carries.
+**Decision:** do not replace the arrays. Add a small **alias and label layer beside them**; the arrays stay the
+source of truth for what a record carries. Benchmark results guide query/index choices, not permission to erase tags.
 
-## 4. Proposed data model (additive, only if approved)
+## 4. Proposed data model (additive)
 
 `user_tags` (per-user catalogue; `user_id` FK, cascade):
 
@@ -60,13 +61,17 @@ implementation, record on the maintainer's library and on a synthetic 5 000-game
 `user_tag_aliases(user_id, alias_key, tag_id)`, unique `(user_id, alias_key)`: an explicit, user-created mapping
 "treat raw tag X as catalogue tag Y". It is **applied at read time** (filters, statistics, picker) and never by
 rewriting `games.tags`. No association table in phase 1: the arrays still hold raw values, so there is nothing to
-backfill and rollback is dropping two tables. An association table is considered later only if section 3 shows the
-arrays are a bottleneck (**OPEN QUESTION 1**).
+backfill. Add equivalent deployment-owned default catalogue and alias tables, editable only by administrators.
+Keep deployment and private per-user rows separate, with owner-specific unique keys and no cross-user references.
+An association table is considered later only if section 3 shows the arrays are a bottleneck.
 
 ## 5. Semantics
 
-* **Visibility.** Per user only. Shared defaults are not in phase 1; a deployment-level default list would be a
-  separate read-only table users opt into (**OPEN QUESTION 2**).
+* **Visibility and precedence.** Cover every taggable feature: games, anime, TV, movies, archives, files, notes and
+  media items. Deployment defaults provide the baseline; an explicit private user label/alias overrides the
+  matching deployment choice. A user can explicitly suppress a default mapping to show the original raw spelling.
+  Clearing a user choice restores the current default; disabling defaults restores raw tags. Changes to defaults
+  never replace an explicit user choice and never expose private labels to another account.
 * **Collisions.** `key` folds case, Unicode normalisation (NFKC) and whitespace, so two labels with one key are
   one catalogue tag (creating the duplicate returns the existing one). Namespaced forms (`Genre: Action`) are not
   merged with `Action` automatically; that comparison belongs to #177's read-only rules. An alias is required.
@@ -77,21 +82,26 @@ arrays are a bottleneck (**OPEN QUESTION 1**).
   Steam, plugin or import refresh never fights the user: it may add raw tags, which resolve through the aliases.
 * **Suggestions.** The editor may propose alias candidates (same key, small edit distance) for the user to accept
   one at a time. Nothing applies silently, and no model-generated or regex-wide merge runs.
-* **Export and import.** Exports gain an optional `tag_catalogue` section. Importing an older file without it is
-  unchanged and older builds ignore the section. The Plugin API is unchanged.
+* **Export and import.** Exports gain an optional `tag_catalogue` section for private labels, aliases, suppressed
+  defaults and preference state. Deployment defaults belong in the deployment backup, not a personal export.
+  Importing an older file without the section is unchanged. Version and validate the added section; do not assume
+  older importers accept unknown fields. The Plugin API is unchanged.
 
 ## 6. API and UI sketch
 
 `GET/POST/PATCH/DELETE /api/tags` and `/api/tags/{id}/aliases`, all `get_current_user`-scoped. The picker and
 statistics endpoints add an alias-resolution step to their existing queries. UI: a "Tag catalogue" page in
-settings (list, rename, alias with a preview of affected game counts, delete). The existing compact picker shows
+settings (list, pure rename, confirmed alias suggestions, preview of affected item counts by feature, delete).
+Admin settings manage deployment defaults. Clearly mark inherited values and private overrides, with reset and
+"show original" controls. The existing compact picker shows
 a catalogue label with "includes N raw spellings", in the style #177 already uses.
 
 ## 7. Migration, backfill and rollback
 
-Upgrade creates two empty tables (additive, single linear head); no data moves. An optional user-triggered
+Upgrade creates empty user and deployment catalogue/alias tables (additive, single linear head); no data moves. An optional user-triggered
 "discover" action creates `kind=source` rows from distinct current tags. Rollback is a downgrade that drops the
-tables; tags, filters, imports and exports behave exactly as before because the arrays were never modified.
+new tables after explicitly preserving/exporting populated catalogue data; never silently discard user vocabulary.
+Raw tags, filters, imports and exports retain their original storage because the arrays were never modified.
 Populated-database test: every `tags` array is identical before upgrade, after upgrade, after downgrade and after re-upgrade.
 
 ## 8. Alternatives considered
@@ -100,31 +110,33 @@ Populated-database test: every `tags` array is identical before upgrade, after u
   second source of truth that plugin and import writers must keep in sync, and forces a global-versus-user
   decision without a measured benefit. Rejected for phase 1.
 * **Rewriting arrays on rename or merge:** destroys source provenance and fights the Steam refresh. Rejected.
-* **Keep arrays only:** valid if evidence 2 and 3 are weak; the decision should follow the evidence.
+* **Keep arrays only:** preserves storage but cannot supply the confirmed catalogue/default controls.
 * **Moving #177's rules server-side:** duplicates a fixed rule set for no gain.
 
 ## 9. Phasing
 
-1. Evidence gathering (section 3) and a maintainer decision; no code.
-2. Tables, alias resolution in picker and statistics queries, API, backend tests.
-3. Catalogue settings UI and the export/import section.
-4. Shared defaults or an association table, only on evidence.
+1. Record the section 3 baseline and inventory every tag reader/writer across all taggable features.
+2. User and deployment tables, precedence/suppression, alias resolution, owner/admin APIs and backend tests.
+3. Catalogue settings UI, confirmed suggestions, every feature's picker/filter/statistics integration and export/import.
+4. Consider an association table only if measurements justify it; it is not part of the approved first delivery.
 
 ## 10. Test strategy
 
 * Key folding: case, NFKC, combining marks, CJK, whitespace, emoji. Namespaces are not merged. Alias cycles and chains are rejected.
 * API: per-user isolation (foreign ids 404), duplicate create returns the existing tag, rename keeps aliases, delete archives.
+* Defaults: administrator-only writes; user-over-default precedence, explicit suppression, reset, changed defaults
+  preserving private choices; no cross-account leakage; coverage of every taggable feature.
 * Regression with #140/#177: raw arrays unchanged after every catalogue operation; Steam refresh with aliases keeps
   user tags; MAL and plugin imports resolve through aliases; export round trip with and without the catalogue section.
 * Migration: populated upgrade and downgrade, single head.
 
-## 11. OPEN QUESTIONS for the maintainer
+## 11. Confirmed decisions and implementation boundary
 
-1. Is the evidence in section 3 enough to proceed, or should the outcome be "keep the arrays, no catalogue"?
-2. Per user only (proposed), or also an optional deployment-level default catalogue?
-3. Should the catalogue cover tags on notes, files, archives and media items, or games and library media only?
-4. Are alias suggestions (edit-distance hints, confirmed one by one) acceptable, or too close to automatic merging?
-5. May a catalogue label differ from every raw spelling (pure rename), or only choose among them?
+The maintainer's answers on [#267](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/267) approve both
+deployment defaults and private user catalogues, every taggable feature, confirmed suggestions and pure renaming.
+Follow-up confirmation on 19 October establishes user-over-deployment precedence while keeping original provider
+tags recoverable. There are no remaining product questions for this design. Tables, APIs and UI remain future work;
+this document does not register endpoints or change tag handling today.
 
 ## 12. Acceptance-criteria mapping
 
