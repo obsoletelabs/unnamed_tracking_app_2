@@ -23,6 +23,26 @@ _EXACT = {
 }
 
 
+_PATTERNS = {
+    "GET": (
+        (r"/api/auth/oidc/login(?:/[^/]+)?", AuthOperation.OIDC_START),
+        (r"/api/auth/oidc/callback(?:/[^/]+)?", AuthOperation.OIDC_CALLBACK),
+        (r"/api/settings/steam/openid/callback", AuthOperation.STEAM_LOGIN),
+    ),
+    "POST": (
+        (r"/api/auth/(?:users|user-invitations)/.+", AuthOperation.ACCOUNT_ADMIN),
+        (r"/api/delegation/v1/requests/[^/]+/exchange", AuthOperation.DELEGATION_POLL),
+        (
+            r"/api/delegation/v1/(?:desktop/[^/]+/requests|requests/[^/]+/decision)",
+            AuthOperation.DELEGATION,
+        ),
+        (r"/api/public-apps/[^/]+/sessions", AuthOperation.PUBLIC_SESSION),
+        (r"/api/settings/steam/login/poll", AuthOperation.STEAM_POLL),
+        (r"/api/settings/steam/(?:login/[^/]+|openid/begin)", AuthOperation.STEAM_LOGIN),
+    ),
+}
+
+
 def authentication_operation(method: str, path: str, root_path: str = "") -> AuthOperation | None:
     root_path = root_path.rstrip("/")
     if root_path and path.startswith(root_path + "/"):
@@ -32,28 +52,14 @@ def authentication_operation(method: str, path: str, root_path: str = "") -> Aut
     path = path.rstrip("/")
     if operation := _EXACT.get((method, path)):
         return operation
-    if method == "GET":
-        if path == "/api/auth/oidc/login" or path.startswith("/api/auth/oidc/login/"):
-            return AuthOperation.OIDC_START
-        if path == "/api/auth/oidc/callback" or path.startswith("/api/auth/oidc/callback/"):
-            return AuthOperation.OIDC_CALLBACK
-        if path == "/api/settings/steam/openid/callback":
-            return AuthOperation.STEAM_LOGIN
-    if method != "POST":
-        return None
-    if path.startswith(("/api/auth/users/", "/api/auth/user-invitations/")):
-        return AuthOperation.ACCOUNT_ADMIN
-    if re.fullmatch(r"/api/delegation/v1/requests/[^/]+/exchange", path):
-        return AuthOperation.DELEGATION_POLL
-    if re.fullmatch(r"/api/delegation/v1/(desktop/[^/]+/requests|requests/[^/]+/decision)", path):
-        return AuthOperation.DELEGATION
-    if re.fullmatch(r"/api/public-apps/[^/]+/sessions", path):
-        return AuthOperation.PUBLIC_SESSION
-    if path == "/api/settings/steam/login/poll":
-        return AuthOperation.STEAM_POLL
-    if path.startswith("/api/settings/steam/login/") or path == "/api/settings/steam/openid/begin":
-        return AuthOperation.STEAM_LOGIN
-    return None
+    return next(
+        (
+            operation
+            for pattern, operation in _PATTERNS.get(method, ())
+            if re.fullmatch(pattern, path)
+        ),
+        None,
+    )
 
 
 _CALLER_LIMITS = {

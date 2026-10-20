@@ -652,13 +652,14 @@ async def _dispatch_gateway(
                 capability_version=payload.capability_version,
                 payload=payload.payload,
             )
-    except AuthRateLimited as exc:
-        response = failure(429, ErrorCode.RATE_LIMITED, str(exc))
-        response.headers["Retry-After"] = str(exc.retry_after)
-        return response
-    except (AuthStoreUnavailable, PasswordWorkBusy) as exc:
+    except (AuthRateLimited, AuthStoreUnavailable, PasswordWorkBusy) as exc:
         retry = auth_retry_response(exc)
-        response = failure(503, ErrorCode.UNAVAILABLE, "Authentication is busy. Try again shortly.")
+        limited = isinstance(exc, AuthRateLimited)
+        response = failure(
+            retry.status_code,
+            ErrorCode.RATE_LIMITED if limited else ErrorCode.UNAVAILABLE,
+            str(exc) if limited else "Authentication is busy. Try again shortly.",
+        )
         response.headers["Retry-After"] = retry.headers["Retry-After"]
         return response
     except PermissionError as exc:

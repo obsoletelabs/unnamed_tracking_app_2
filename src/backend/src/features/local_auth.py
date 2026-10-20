@@ -50,7 +50,8 @@ class LoginReservation:
 async def local_login_attempt(
     identifier: str, caller: str | None
 ) -> AsyncIterator[LoginReservation]:
-    if not _login_slots.acquire(blocking=False):
+    # A semaphore context manager would queue callers instead of refusing excess work.
+    if not _login_slots.acquire(blocking=False):  # pylint: disable=consider-using-with
         raise PasswordWorkBusy
     reservation = LoginReservation()
     try:

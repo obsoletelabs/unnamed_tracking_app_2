@@ -21,7 +21,8 @@ class PasswordWorkBusy(RuntimeError):
 
 async def run_password_job(job: Callable[_P, _R], *args: _P.args, **kwargs: _P.kwargs) -> _R:
     slots = _slots
-    if not slots.acquire(blocking=False):
+    # A semaphore context manager blocks; admission here must return a bounded retry.
+    if not slots.acquire(blocking=False):  # pylint: disable=consider-using-with
         raise PasswordWorkBusy
     try:
         future = _executor.submit(job, *args, **kwargs)
