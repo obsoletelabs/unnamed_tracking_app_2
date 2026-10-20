@@ -12,6 +12,7 @@ import GameRatingPicker from "../components/GameRatingPicker.vue";
 import GameCollectionsButton from "../components/GameCollectionsButton.vue";
 import BackButton from "../components/BackButton.vue";
 import GameTopBar from "../components/GameTopBar.vue";
+import GameUnavailable from "../components/game/GameUnavailable.vue";
 import HeartIcon from "../components/HeartIcon.vue";
 import SegmentedTabs from "../components/SegmentedTabs.vue";
 import {
@@ -64,6 +65,7 @@ const {
   game,
   loading,
   error,
+  retryGame,
   showEditModal,
   deleting,
   deleteError,
@@ -254,7 +256,7 @@ async function onCopiesChanged() {
 
   <main v-else-if="error" class="game-detail-page detail error-state">
     <GameTopBar active="games" />
-    <p>{{ error }}</p>
+    <GameUnavailable :kind="error" @retry="retryGame" />
   </main>
 
   <main v-else-if="game" class="game-detail-page detail">
@@ -1374,8 +1376,9 @@ async function onCopiesChanged() {
     </section>
   </main>
 
-  <main v-else class="not-found">
-    <p>Game not found.</p>
+  <main v-else class="game-detail-page detail">
+    <GameTopBar active="games" />
+    <GameUnavailable kind="not-found" />
   </main>
 </template>
 <style src="../styles/pages/game-detail-layout.css" />

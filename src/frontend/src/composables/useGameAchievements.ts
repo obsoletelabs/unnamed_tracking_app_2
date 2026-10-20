@@ -8,12 +8,35 @@ import {
 } from "../state/achievementLocal";
 import type { AchievementLocal } from "../state/achievementLocal";
 import type { Ref } from "vue";
+import { fetchGameAchievements } from "../services/games";
 export type AchFilter = "all" | "unlocked" | "locked" | "hidden" | "pinned";
 
-export function useGameAchievements(
-  game: Ref<Game | null>,
-  reload: () => Promise<void>,
-) {
+export function useGameAchievements(game: Ref<Game | null>) {
+  // Fetch alongside the main record, then apply once both have arrived. A stale
+  // route's optional achievements must never overwrite the current game.
+  function prepareAchievements(id: string, isCurrent: () => boolean) {
+    let achievements: Achievement[] | null = null;
+    const apply = () => {
+      if (!isCurrent() || !game.value || !achievements) return;
+      game.value.achievements = achievements;
+      game.value.achievementTotal = achievements.length;
+      game.value.achievementPercent = achievements.length
+        ? Math.round(
+            (achievements.filter(isUnlocked).length / achievements.length) *
+              100,
+          )
+        : 0;
+    };
+    void fetchGameAchievements(id)
+      .then((list) => {
+        achievements = list;
+        apply();
+      })
+      .catch(() => {
+        // Optional achievements do not block the game detail page.
+      });
+    return apply;
+  }
   // ---- achievements tab ----
   // A hidden achievement's description isn't something the services publish
   // until it's unlocked, so say that instead of leaving a blank.
@@ -277,10 +300,8 @@ export function useGameAchievements(
     return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
   }
 
-  // Last, so everything the first load touches has been set up by now.
-  void reload();
-
   return {
+    prepareAchievements,
     descriptionOf,
     achFilter,
     achProvider,

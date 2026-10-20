@@ -252,6 +252,23 @@ async def test_victim_controls_prove_the_sweep_is_not_vacuous(client, tenants):
     assert owner_ok >= 25
 
 
+async def test_game_detail_distinguishes_own_success_from_indistinguishable_unavailable_ids(
+    client, tenants
+):
+    game_id = tenants.victim.ids["game_id"]
+    owner = await client.get(f"/api/game/get/{game_id}", headers=tenants.victim.headers)
+    other_user = await client.get(f"/api/game/get/{game_id}", headers=tenants.attacker.headers)
+    missing = await client.get(f"/api/game/get/{uuid4()}", headers=tenants.attacker.headers)
+    malformed = await client.get(
+        "/api/game/get/639a9240-3c1c-4343-b75b-", headers=tenants.attacker.headers
+    )
+    assert owner.status_code == 200 and owner.json()["id"] == str(game_id)
+    assert other_user.status_code == missing.status_code == 404
+    assert other_user.json() == missing.json()
+    assert "Owner game" not in other_user.text and str(game_id) not in other_user.text
+    assert malformed.status_code == 422
+
+
 async def test_unknown_app_credentials_are_refused_on_app_routes(client):
     """An app route checks the grant itself; a made-up `utd_` value is never a user."""
     leaked = []
