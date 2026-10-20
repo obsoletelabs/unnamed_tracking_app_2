@@ -247,7 +247,7 @@ async def _get_game_or_404(
     if game is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Game {game_id} not found",
+            detail="Game not found.",
         )
     if for_storage:
         try:
