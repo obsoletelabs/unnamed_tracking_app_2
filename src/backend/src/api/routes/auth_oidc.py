@@ -25,6 +25,7 @@ from src.core.auth import (
 from src.core.config import settings
 from src.core.crypto import decrypt_secret
 from src.core.oidc import OidcConfig, begin_oidc, env_oidc_config, oauth, register_oidc_provider
+from src.core.password_work import run_password_job
 from src.core.session_manager import create_session
 from src.database.models.oidc_settings import OidcSettings
 from src.database.models.user import User
@@ -316,7 +317,7 @@ async def _create_oidc_user(
         username=username,
         display_name=_claim_display_name(claims),
         email=email,
-        password_hash=hash_password(secrets.token_urlsafe(48) + "A!a"),
+        password_hash=await run_password_job(hash_password, secrets.token_urlsafe(48) + "A!a"),
         is_active=True,
         is_admin=is_admin,
         oidc_subject=linked_subject,

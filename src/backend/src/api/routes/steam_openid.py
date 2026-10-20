@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.api.auth_limits import enforce_auth_actor_quota
 from src.core.app_integrations import get_public_app_url
 from src.core.auth import get_current_user
 from src.core.public_url import normalize_public_url
@@ -14,7 +15,11 @@ from src.database.models.user import User
 from src.database.session import get_db
 from src.features.imports import steam_connection, steam_openid
 
-router = APIRouter(prefix="/api/settings/steam/openid", tags=["steam-connections"])
+router = APIRouter(
+    prefix="/api/settings/steam/openid",
+    tags=["steam-connections"],
+    dependencies=[Depends(enforce_auth_actor_quota)],
+)
 _SETTINGS_PATH = "/settings"
 
 

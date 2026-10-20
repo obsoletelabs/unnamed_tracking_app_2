@@ -8,7 +8,6 @@ proved possession; an administrator can never force delivery to an unverified
 address and can never read a password or token.
 """
 
-import asyncio
 import secrets
 import time
 from typing import NamedTuple
@@ -20,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import hash_password, validate_password, verify_password
 from src.core.config import settings
+from src.core.password_work import run_password_job
 from src.database.models.admin_user_audit import AdminUserAudit
 from src.database.models.auth import UserSession
 from src.database.models.notification_destination import NotificationDestination
@@ -168,7 +168,7 @@ async def _authorize_sensitive(
         await _deny(db, admin, action, target, "Too many attempts; try again later.", 429)
     # Sessions alone are never enough proof for a credential-level change.
     current = await db.scalar(select(User.password_hash).where(User.id == admin.id))
-    if not current or not await asyncio.to_thread(verify_password, admin_password, current):
+    if not current or not await run_password_job(verify_password, admin_password, current):
         await _deny(
             db,
             admin,
@@ -279,7 +279,7 @@ async def set_password(
         validate_password(new_password)
     except ValueError as exc:
         raise AdminActionError(str(exc), 422) from exc
-    target.password_hash = await asyncio.to_thread(hash_password, new_password)
+    target.password_hash = await run_password_job(hash_password, new_password)
     revoked = await _end_credentials(db, target)
     record_audit(
         db,
@@ -349,7 +349,7 @@ async def send_reset_link(
     revoked = 0
     if force:
         # Replace the hash first: reset links are bound to the account fingerprint.
-        target.password_hash = await asyncio.to_thread(hash_password, secrets.token_urlsafe(48))
+        target.password_hash = await run_password_job(hash_password, secrets.token_urlsafe(48))
         revoked = await _end_credentials(db, target)
     if not await issue_reset_token(db, target, flow):
         await db.rollback()

@@ -1,5 +1,6 @@
 """Large request bodies only reach routes for callers with verified credentials."""
 
+import asyncio
 import secrets
 import time
 from uuid import uuid4
@@ -141,3 +142,39 @@ async def test_application_refuses_large_anonymous_login_bodies():
             "/api/auth/login", content=LARGE, headers={"content-type": "application/json"}
         )
     assert response.status_code == 413
+
+
+@pytest.mark.parametrize("slow", [True, False])
+async def test_rejected_auth_body_drain_is_bounded_and_closes_unread_connection(monkeypatch, slow):
+    monkeypatch.setattr(request_bodies, "AUTH_BODY_DRAIN_TIMEOUT", 0.02)
+    received, messages = 0, []
+
+    async def receive():
+        nonlocal received
+        if slow:
+            await asyncio.sleep(30)
+        received += 1
+        return {"type": "http.request", "body": b"x" * 65536, "more_body": True}
+
+    async def send(message):
+        messages.append(message)
+
+    async def unreachable(*_args):
+        raise AssertionError("Oversized authentication body reached the route")
+
+    await asyncio.wait_for(
+        request_bodies.AnonymousBodyLimitMiddleware(unreachable)(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/api/auth/login",
+                "headers": [(b"content-length", b"99999999")],
+            },
+            receive,
+            send,
+        ),
+        1,
+    )
+    assert received <= 16
+    assert messages[0]["status"] == 413
+    assert (b"connection", b"close") in messages[0]["headers"]

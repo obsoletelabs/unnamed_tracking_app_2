@@ -33,6 +33,7 @@ from src.database.models.user import User
 from src.database.models.user_appearance_settings import UserAppearanceSettings
 from src.database.models.user_scan_settings import UserScanSettings
 from src.database.session import get_db
+from src.features.auth_throttle import auth_throttle_statistics
 from src.features.imports import steam_connection
 from src.features.metadata import refresh_job
 from src.features.metadata.games import steam
@@ -298,6 +299,7 @@ async def get_system_info(admin: User = Depends(get_current_admin)) -> dict:
         "debug": settings.DEBUG,
         "python_version": sys.version.split()[0],
         "platform": platform.platform(),
+        "authentication_checks": auth_throttle_statistics(),
     }
 
 

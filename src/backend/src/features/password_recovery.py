@@ -1,6 +1,5 @@
 """Host-mediated reset credentials, core notification routing and atomic redemption."""
 
-import asyncio
 import hmac
 import secrets
 import time
@@ -11,26 +10,29 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import hash_password, hash_token, validate_password
 from src.core.crypto import encrypt_secret
+from src.core.password_work import run_password_job
 from src.database.models.auth import UserSession
 from src.database.models.notification import Notification
 from src.database.models.notification_delivery import NotificationDelivery
 from src.database.models.plugin_auth_flow import AuthRecoveryToken
 from src.database.models.user import User
-from src.features.auth_rate_limits import allow_recovery_request
+from src.features.auth_rate_limits import LimitDecision, auth_request_decision
 from src.features.notification_auth_secrets import account_fingerprint, recovery_token_matches
 from src.features.notification_controller import emit_recovery_request
 from src.features.plugin_auth_flows import active_reset_flow
 from src.plugin_api.auth_contracts import PasswordResetFlowDefinition
 
 
-async def request_password_reset(db: AsyncSession, identifier: str, caller: str) -> None:
+async def request_password_reset(db: AsyncSession, identifier: str, caller: str) -> LimitDecision:
     """Unknown, disabled, SSO and ineligible accounts all receive the same acknowledgement."""
     normalized = identifier.strip().lower()
-    permitted = await allow_recovery_request(db, normalized, caller)
-    flow = await active_reset_flow(db) if permitted else None
+    decision = await auth_request_decision(
+        db, "reset", (("caller", caller, 30), ("account", normalized, 5))
+    )
+    flow = await active_reset_flow(db) if decision.allowed else None
     if flow is None:
         await db.commit()
-        return
+        return decision
     users = list(
         await db.scalars(
             select(User)
@@ -45,9 +47,10 @@ async def request_password_reset(db: AsyncSession, identifier: str, caller: str)
     # Ambiguous cross-field matches must not select an arbitrary account.
     if len(users) != 1:
         await db.commit()
-        return
+        return decision
     await issue_reset_token(db, users[0], flow)
     await db.commit()
+    return decision
 
 
 async def issue_reset_token(db: AsyncSession, user: User, flow) -> bool:
@@ -114,7 +117,7 @@ async def complete_password_reset(
         record.token_hash, hash_token(token)
     ):
         return False
-    user.password_hash = await asyncio.to_thread(hash_password, password)
+    user.password_hash = await run_password_job(hash_password, password)
     now = int(time.time())
     await db.execute(
         update(AuthRecoveryToken)

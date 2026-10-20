@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.api.auth_limits import enforce_admin_auth_quota, enforce_auth_actor_quota
 from src.core.auth import (
     SESSION_TTL_SECONDS,
     AuthenticatedActor,
@@ -31,9 +32,11 @@ from src.core.auth import (
     validate_username,
     verify_password,
 )
+from src.core.client_address import request_ip
 from src.core.config import settings
 from src.core.crypto import encrypt_secret
 from src.core.env_handler import EnvConfigHandler
+from src.core.password_work import run_password_job
 from src.core.session_manager import create_session
 from src.database.models.app_integration_settings import AppIntegrationSettings
 from src.database.models.auth import UserApiKey
@@ -41,6 +44,7 @@ from src.database.models.user import User
 from src.database.session import get_db
 from src.features.admin_users import is_primary_user, record_audit
 from src.features.game_ingestion.legacy import PLAYSTATION, record_disconnect
+from src.features.local_auth import DUMMY_PASSWORD_HASH, local_login_attempt
 from src.features.metadata.games.psn import PSNClient, PSNError
 from src.features.notification_urls import remember_app_url
 from src.features.profile_pictures import profile_picture_version
@@ -78,8 +82,8 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 class LoginRequest(BaseModel):
-    username_or_email: str = Field(min_length=1)
-    password: str = Field(min_length=1)
+    username_or_email: str = Field(min_length=1, max_length=320)
+    password: str = Field(min_length=1, max_length=1024)
 
 
 class ApiKeyCreateRequest(BaseModel):
@@ -90,7 +94,7 @@ class ApiKeyCreateRequest(BaseModel):
 class UserCreateRequest(BaseModel):
     username: str
     email: str = Field(min_length=3, max_length=320)
-    password: str = Field(min_length=1)
+    password: str = Field(min_length=1, max_length=1024)
     is_admin: bool = False
     display_name: str | None = Field(default=None, max_length=200)
 
@@ -125,8 +129,8 @@ class UserProfileUpdateRequest(BaseModel):
     display_name: str | None = Field(default=None, max_length=200)
     # only required when actually setting a new password — everything else
     # here (username/email/steamgriddb key) doesn't need it
-    current_password: str | None = Field(default=None, min_length=1)
-    new_password: str | None = Field(default=None, min_length=1)
+    current_password: str | None = Field(default=None, min_length=1, max_length=1024)
+    new_password: str | None = Field(default=None, min_length=1, max_length=1024)
     steamgriddb_api_key: str | None = Field(default=None, max_length=64)
 
     @field_validator("display_name")
@@ -154,7 +158,7 @@ class PasswordPolicyUpdate(BaseModel):
     require_symbol: bool
 
 
-@router.put("/password-policy")
+@router.put("/password-policy", dependencies=[Depends(enforce_admin_auth_quota)])
 async def update_password_policy(
     payload: PasswordPolicyUpdate,
     admin: User = Depends(get_current_admin),
@@ -204,31 +208,37 @@ async def login(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, str]:
     identifier = payload.username_or_email.strip()
-    # Existing usernames may contain @; exact sign-in identity wins over email.
-    user = await db.scalar(select(User).where(User.username == identifier).with_for_update())
-    if user is None:
-        user = await db.scalar(
-            select(User).where(User.email == identifier.lower()).with_for_update()
+    async with local_login_attempt(identifier, request_ip(request)) as reservation:
+        # Existing usernames may contain @; exact sign-in identity wins over email.
+        user = await db.scalar(select(User).where(User.username == identifier).with_for_update())
+        if user is None:
+            user = await db.scalar(
+                select(User).where(User.email == identifier.lower()).with_for_update()
+            )
+        if user is not None:
+            await reservation.for_account(user.id)
+        stored_hash = (
+            user.password_hash if user is not None and user.is_active else DUMMY_PASSWORD_HASH
         )
-    if (
-        user is None
-        or not user.is_active
-        or not verify_password(payload.password, user.password_hash)
-    ):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials.")
+        matches = await run_password_job(verify_password, payload.password, stored_hash)
+        if user is None or not user.is_active or not matches:
+            reservation.failed = True
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials."
+            )
 
-    session_context = await create_session(db, user, request)
-    session_token = session_context.token
-    await db.commit()
-    response.set_cookie(
-        key=session_cookie_name(request.headers.get("host", "")),
-        value=session_token,
-        max_age=SESSION_TTL_SECONDS,
-        httponly=True,
-        samesite="lax",
-        secure=settings.AUTH_COOKIE_SECURE,
-    )
-    return {"status": "logged_in", "user_id": str(user.id)}
+        session_context = await create_session(db, user, request)
+        session_token = session_context.token
+        await db.commit()
+        response.set_cookie(
+            key=session_cookie_name(request.headers.get("host", "")),
+            value=session_token,
+            max_age=SESSION_TTL_SECONDS,
+            httponly=True,
+            samesite="lax",
+            secure=settings.AUTH_COOKIE_SECURE,
+        )
+        return {"status": "logged_in", "user_id": str(user.id)}
 
 
 # pylint: enable=duplicate-code
@@ -271,7 +281,7 @@ async def current_user(
 
 # Parallel routes/models intentionally share this shape.
 # pylint: disable=duplicate-code
-@router.patch("/me")
+@router.patch("/me", dependencies=[Depends(enforce_auth_actor_quota)])
 async def update_current_user(
     payload: UserProfileUpdateRequest,
     request: Request,
@@ -282,8 +292,8 @@ async def update_current_user(
     if payload.new_password is not None:
         # Serialize password verification with concurrent sign-ins and password changes.
         await db.refresh(user, with_for_update=True)
-        if not payload.current_password or not verify_password(
-            payload.current_password, user.password_hash
+        if not payload.current_password or not await run_password_job(
+            verify_password, payload.current_password, user.password_hash
         ):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -300,7 +310,7 @@ async def update_current_user(
     if payload.email is not None:
         user.email = payload.email.strip().lower()
     if payload.new_password is not None:
-        user.password_hash = hash_password(payload.new_password)
+        user.password_hash = await run_password_job(hash_password, payload.new_password)
     if payload.steamgriddb_api_key is not None:
         user.steamgriddb_api_key = payload.steamgriddb_api_key.strip() or None
 
@@ -419,7 +429,7 @@ async def list_users(
     ]
 
 
-@router.post("/api-keys")
+@router.post("/api-keys", dependencies=[Depends(enforce_auth_actor_quota)])
 async def create_user_api_key(
     payload: ApiKeyCreateRequest,
     user: User = Depends(get_current_user),
@@ -466,7 +476,9 @@ async def revoke_user_api_key(
     return {"status": "revoked", "key_id": str(key_id)}
 
 
-@router.post("/users", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/users", status_code=status.HTTP_201_CREATED, dependencies=[Depends(enforce_admin_auth_quota)]
+)
 async def create_user(
     payload: UserCreateRequest,
     admin: User = Depends(get_current_admin),
@@ -484,7 +496,7 @@ async def create_user(
         username=username,
         display_name=payload.display_name,
         email=email,
-        password_hash=hash_password(payload.password),
+        password_hash=await run_password_job(hash_password, payload.password),
         is_active=True,
         is_admin=payload.is_admin,
     )

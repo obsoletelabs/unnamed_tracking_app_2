@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.session_manager import request_ip
 from src.database.session import get_db
+from src.features.auth_throttle import AuthRateLimited, caller_network
 from src.features.password_recovery import complete_password_reset, request_password_reset
 from src.features.plugin_auth_flows import active_reset_flow
 
@@ -35,7 +36,11 @@ async def status(db: AsyncSession = Depends(get_db)) -> dict[str, bool]:
 async def request_reset(
     payload: ResetRequest, request: Request, db: AsyncSession = Depends(get_db)
 ) -> dict[str, str]:
-    await request_password_reset(db, payload.identifier, request_ip(request) or "")
+    decision = await request_password_reset(
+        db, payload.identifier, caller_network(request_ip(request))
+    )
+    if not decision.allowed:
+        raise AuthRateLimited(decision.retry_after)
     return {
         "message": "If the account has an eligible recovery destination, a reset link will arrive."
     }

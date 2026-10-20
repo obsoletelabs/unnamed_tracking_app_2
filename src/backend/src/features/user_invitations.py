@@ -1,6 +1,5 @@
 """Administrator-issued email invitations; accounts exist only after atomic acceptance."""
 
-import asyncio
 import hashlib
 import hmac
 import json
@@ -15,12 +14,14 @@ from src.core.app_integrations import get_public_app_url
 from src.core.auth import hash_password, hash_token, validate_password, validate_username
 from src.core.config import settings
 from src.core.crypto import decrypt_secret, encrypt_secret
+from src.core.password_work import run_password_job
 from src.core.public_url import normalize_public_url
 from src.database.models.notification_delivery import ACTIVE_DELIVERY_STATUSES, NotificationDelivery
 from src.database.models.notification_destination import NotificationDestination
 from src.database.models.user import User
 from src.database.models.user_invitation import NotificationPendingRecipient, UserInvitation
-from src.features.auth_rate_limits import allow_auth_request
+from src.features.auth_rate_limits import auth_request_decision
+from src.features.auth_throttle import AuthRateLimited
 from src.features.notification_audit import change_deliveries
 from src.features.notification_controller import emit_invitation
 from src.features.notification_pending import invitation_is_active, matches_invitation_token
@@ -75,7 +76,7 @@ async def _issuance_origin(db, admin, email):
     )
     if exists is not None:
         raise ValueError("An account already uses this email address")
-    allowed = await allow_auth_request(
+    decision = await auth_request_decision(
         db,
         "invite",
         (
@@ -84,9 +85,9 @@ async def _issuance_origin(db, admin, email):
         ),
         interval=86400,
     )
-    if not allowed:
+    if not decision.allowed:
         await db.commit()
-        raise ValueError("Invitation request limit reached; try again later")
+        raise AuthRateLimited(decision.retry_after)
     # SQLAlchemy builds this aggregate dynamically; it is not a Python callable.
     # pylint: disable-next=not-callable
     count = await db.scalar(select(func.count()).select_from(NotificationPendingRecipient))
@@ -281,7 +282,7 @@ async def accept_invitation(db, token_id, token, username, password):
     user = User(
         username=username,
         email=email,
-        password_hash=await asyncio.to_thread(hash_password, password),
+        password_hash=await run_password_job(hash_password, password),
         is_active=True,
         is_admin=False,
     )

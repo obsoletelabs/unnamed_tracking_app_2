@@ -5,13 +5,13 @@ from __future__ import annotations
 import secrets
 import time
 from dataclasses import dataclass
-from ipaddress import IPv6Address, ip_address
 
 from fastapi import Request
 from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import SESSION_TTL_SECONDS, hash_token
+from src.core.client_address import request_ip
 from src.core.geoip import geoip
 from src.database.models.auth import UserSession
 from src.database.models.user import User
@@ -25,20 +25,6 @@ class SessionContext:
 
     token: str
     session: UserSession
-
-
-def request_ip(request: Request) -> str | None:
-    """Use the ASGI server's trusted-proxy result, never independently trust headers."""
-    if request.client is None:
-        return None
-    try:
-        address = ip_address(request.client.host)
-    except ValueError:
-        return None
-    if isinstance(address, IPv6Address):
-        # Scope/interface names are local routing context, not another client identity.
-        return str(address.ipv4_mapped or IPv6Address(address.packed))
-    return str(address)
 
 
 def request_user_agent(request: Request) -> str | None:

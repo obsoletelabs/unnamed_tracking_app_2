@@ -29,6 +29,7 @@ STORE_TIMEOUT_SECONDS = 3
 
 
 class AuthOperation(str, Enum):
+    SETUP = "setup"
     LOGIN = "login"
     LOGIN_ACCOUNT = "login_account"
     OIDC_START = "oidc_start"
