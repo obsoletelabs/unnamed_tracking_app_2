@@ -68,8 +68,22 @@ export function friendlyError(status: number, body: string): string {
   return serverDetail(body) ?? `The request failed (${status}).`;
 }
 
-export async function failedRequest(response: Response): Promise<Error> {
-  return new Error(friendlyError(response.status, await response.text()));
+export class ApiRequestError extends Error {
+  readonly status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+    this.name = "ApiRequestError";
+  }
+}
+
+export async function failedRequest(
+  response: Response,
+): Promise<ApiRequestError> {
+  return new ApiRequestError(
+    response.status,
+    friendlyError(response.status, await response.text()),
+  );
 }
 
 // Provider sync routes answer 502 with the provider's reviewed reason (for

@@ -458,19 +458,24 @@ export async function refreshGameAchievements(
   return await response.json();
 }
 
-export async function fetchGame(id: string): Promise<Game | null> {
+export async function fetchGame(
+  id: string,
+  signal?: AbortSignal,
+): Promise<Game | null> {
   if (import.meta.env.VITE_USE_MOCK_DATA === "true") {
     return mockGames.find((g) => g.id === id) ?? null;
   }
   const started = mutationVersion;
   const response = await fetch(`/api/game/get/${id}`, {
     credentials: "include",
+    signal,
   });
-  if (response.status === 404) return null;
+  if (response.status === 404) {
+    gameCache.remove(id);
+    return null;
+  }
   if (!response.ok) {
-    throw new Error(
-      `Failed to fetch game ${id}: ${response.status} ${response.statusText}`,
-    );
+    throw await failedRequest(response);
   }
   const raw: BackendGame = await response.json();
   return rememberFetchedGame(mapBackendGame(raw), started);

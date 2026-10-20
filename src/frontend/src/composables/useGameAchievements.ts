@@ -10,10 +10,7 @@ import type { AchievementLocal } from "../state/achievementLocal";
 import type { Ref } from "vue";
 export type AchFilter = "all" | "unlocked" | "locked" | "hidden" | "pinned";
 
-export function useGameAchievements(
-  game: Ref<Game | null>,
-  reload: () => Promise<void>,
-) {
+export function useGameAchievements(game: Ref<Game | null>) {
   // ---- achievements tab ----
   // A hidden achievement's description isn't something the services publish
   // until it's unlocked, so say that instead of leaving a blank.
@@ -276,9 +273,6 @@ export function useGameAchievements(
     const mins = minutes % 60;
     return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
   }
-
-  // Last, so everything the first load touches has been set up by now.
-  void reload();
 
   return {
     descriptionOf,

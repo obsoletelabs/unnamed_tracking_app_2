@@ -8,7 +8,6 @@ import {
   fetchGameVariants,
   fetchGameAchievements,
   fetchContentCounts,
-  peekGame,
   fetchGameFieldChanges,
   fetchGames,
   setFavorite,
@@ -92,6 +91,13 @@ import { matchesShortcut } from "../state/shortcuts";
 import { useGameProfiles } from "./useGameProfiles";
 import { useGameWorlds } from "./useGameWorlds";
 import { useGameAchievements } from "./useGameAchievements";
+import { ApiRequestError } from "../services/apiError";
+import {
+  GAME_REQUEST_TIMEOUT_MS,
+  gameLinkStates,
+  isGameId,
+  type GameLinkFailure,
+} from "../utils/gameLink";
 export function useGameDetail() {
   const confirm = useConfirm();
   const prompt = usePrompt();
@@ -113,9 +119,17 @@ export function useGameDetail() {
   function ownerOf(item: { game_id?: string }): string {
     return item.game_id ?? game.value?.id ?? "";
   }
-  usePageTitle(() => game.value?.title);
   const loading = ref(true);
-  const error = ref<string | null>(null);
+  const error = ref<GameLinkFailure | null>(null);
+  usePageTitle(() =>
+    error.value
+      ? gameLinkStates[error.value].title
+      : (game.value?.title ??
+        (loading.value ? null : gameLinkStates["not-found"].title)),
+  );
+  let loadRevision = 0;
+  let activeRequest: AbortController | null = null;
+  let libraryRequested = false;
   const showEditModal = ref(false);
 
   const deleting = ref(false);
@@ -318,7 +332,23 @@ export function useGameDetail() {
   }
 
   async function loadGame(id: string) {
+    const revision = ++loadRevision;
+    activeRequest?.abort();
     error.value = null;
+    if (!isGameId(id)) {
+      game.value = null;
+      relatedGames.value = [];
+      parentGameTitle.value = null;
+      error.value = "invalid";
+      loading.value = false;
+      return;
+    }
+    const controller = new AbortController();
+    activeRequest = controller;
+    const timeout = window.setTimeout(
+      () => controller.abort(),
+      GAME_REQUEST_TIMEOUT_MS,
+    );
     // the hero picture is big, so it starts downloading now rather than once the
     // game's details have come back
     preloadImage(sizedAssetUrl(gameAssetUrl(id, "banner"), HERO_WIDTH));
@@ -329,7 +359,7 @@ export function useGameDetail() {
     // it waits for the game or for each other
     let achievements: Achievement[] | null = null;
     const applyAchievements = () => {
-      if (route.params.id !== id || !game.value || !achievements) return;
+      if (revision !== loadRevision || !game.value || !achievements) return;
       game.value.achievements = achievements;
       game.value.achievementTotal = achievements.length;
       game.value.achievementPercent = achievements.length
@@ -351,31 +381,32 @@ export function useGameDetail() {
     if (!refresh) relatedGames.value = [];
     void fetchGameVariants(id)
       .then((list) => {
-        if (route.params.id === id) relatedGames.value = list;
+        if (revision === loadRevision) relatedGames.value = list;
       })
       .catch(() => {
         // variants section just doesn't show, not worth failing the page
       });
 
-    // a game seen before is on screen straight away, and refreshed behind it
-    const seen = refresh ? undefined : peekGame(id);
-    if (seen) {
-      game.value = seen;
-      resetForGame();
+    // Resolve access before displaying cached details for a new link: a removed
+    // game or an account switch must not briefly reveal an old cached record.
+    if (!refresh) {
+      game.value = null;
       parentGameTitle.value = null;
-      loading.value = false;
-    } else if (!refresh) {
       loading.value = true;
     }
     try {
-      const fetched = await fetchGame(id);
+      const fetched = await fetchGame(id, controller.signal);
       // the route can change again while this was in flight (fast
       // click-through on the parent breadcrumb or a variant card), a
       // slower response for the game we've already navigated away from
       // must not overwrite the newer one that may have already loaded
-      if (route.params.id !== id) return;
+      if (revision !== loadRevision) return;
       game.value = fetched;
-      if (fetched && !seen && !refresh) {
+      if (fetched && !libraryRequested) {
+        libraryRequested = true;
+        void loadLibraryForSimilar();
+      }
+      if (fetched && !refresh) {
         resetForGame();
         parentGameTitle.value = null;
       }
@@ -384,7 +415,7 @@ export function useGameDetail() {
         const parentId = fetched.parentGameId;
         void fetchGame(parentId)
           .then((parent) => {
-            if (route.params.id === id)
+            if (revision === loadRevision)
               parentGameTitle.value = parent?.title ?? null;
           })
           .catch(() => {
@@ -392,13 +423,27 @@ export function useGameDetail() {
           });
       }
     } catch (err) {
-      // with the game already showing, a failed refresh is not worth an error page
-      if (!seen && !refresh)
+      if (revision !== loadRevision) return;
+      const status = err instanceof ApiRequestError ? err.status : null;
+      // A transient edit refresh can keep the already visible game. A new link,
+      // invalid response or expired session must not retain another page's data.
+      if (!refresh || status === 401 || status === 403 || status === 422) {
+        game.value = null;
         error.value =
-          err instanceof Error ? err.message : "Failed to load game";
+          status === 422
+            ? "invalid"
+            : status === 401
+              ? "signed-out"
+              : "unavailable";
+      }
     } finally {
-      loading.value = false;
+      window.clearTimeout(timeout);
+      if (revision === loadRevision) loading.value = false;
     }
+  }
+
+  function retryGame() {
+    return loadGame(typeof route.params.id === "string" ? route.params.id : "");
   }
 
   async function onGameSaved() {
@@ -483,7 +528,6 @@ export function useGameDetail() {
       // similar-games section just doesn't show, not worth failing the page
     }
   }
-  onMounted(() => void loadLibraryForSimilar());
 
   const similarGames = computed(() => {
     if (!game.value || !libraryGames.value.length) return [];
@@ -611,7 +655,15 @@ export function useGameDetail() {
 
   // re-fetches automatically if you ever navigate from one game's page
   // straight to another, not just on the first load
-  watch(() => route.params.id as string, loadGame);
+  onMounted(() => void retryGame());
+  watch(
+    () => route.params.id,
+    () => void retryGame(),
+  );
+  onUnmounted(() => {
+    loadRevision++;
+    activeRequest?.abort();
+  });
   const recentActivity = computed(() => game.value?.lastPlayedAt ?? null);
 
   const tally = computed(() => (game.value ? computeScore(game.value) : null));
@@ -1769,7 +1821,7 @@ export function useGameDetail() {
     shownAchievements,
     achStats,
     formatPlaytime,
-  } = useGameAchievements(game, () => loadGame(route.params.id as string));
+  } = useGameAchievements(game);
 
   return {
     confirm,
@@ -1779,6 +1831,7 @@ export function useGameDetail() {
     game,
     loading,
     error,
+    retryGame,
     showEditModal,
     deleting,
     deleteError,
