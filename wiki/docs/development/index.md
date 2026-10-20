@@ -152,9 +152,16 @@ Both the development backend container and the production image run `python -m s
 | --- | --- |
 | Empty | Builds everything from the migrations. |
 | Version is in this code's history | Runs the migrations newer than it. |
-| Version is not in the history (the history was squashed since), or tables exist with no version | Attaches the database to the first migration, keeping its data, and runs every migration after it. It then checks that every table and column the models need exists; if something is still missing it stops and names it. |
+| Version is not in the history, or tables exist with no version | Stops before stamping or replaying. An operator must review the history and rehearse recovery on a restored clone. |
+| A known revision claims tables/columns that are missing | Stops; no automatic replay. At head this check runs before invoking Alembic; older recognized revisions are checked after their normal pending upgrades. |
 
 A real failure stops startup with the reason instead of retrying the same error.
+
+See [Migration recovery](../deployment/migration-recovery.md) for read-only inspection,
+explicit repair and compatibility limits. Existing published merge points remain supported;
+do not rewrite them or introduce competing heads. Every new destructive transformation
+needs a PR explanation, populated before/after invariants and a restore rehearsal. Schema
+presence alone cannot establish data preservation.
 
 ### Writing a migration that is safe to re-run
 

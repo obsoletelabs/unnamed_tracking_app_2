@@ -62,6 +62,7 @@ nav:
       - Overview: deployment/index.md
       - Production Docker Image: deployment/production-docker.md
       - Startup & Troubleshooting: deployment/startup-and-troubleshooting.md
+      - Migration Recovery: deployment/migration-recovery.md
       - Production Runtime Smoke: deployment/production-runtime-smoke.md
   - Development:
       - Overview: development/index.md

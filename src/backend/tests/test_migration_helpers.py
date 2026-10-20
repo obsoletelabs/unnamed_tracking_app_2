@@ -146,7 +146,7 @@ def test_constraint_check_ignores_identical_names_on_other_relations():
         engine.dispose()
 
 
-def _run(schema: str, *arguments: str) -> str:
+def _run(schema: str, *arguments: str, expected: int = 0) -> str:
     url = _url(schema).render_as_string(hide_password=False)
     environment = {**os.environ, "DATABASE_URL": url}
     for key in ("POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB"):
@@ -160,8 +160,8 @@ def _run(schema: str, *arguments: str) -> str:
         text=True,
         timeout=180,
     )
-    assert result.returncode == 0, result.stdout + result.stderr
-    return result.stdout
+    assert result.returncode == expected, result.stdout + result.stderr
+    return result.stdout + result.stderr
 
 
 def _alembic(schema: str, *arguments: str) -> None:
@@ -222,7 +222,14 @@ def test_isolated_schema_upgrade_adoption_and_downgrade_use_their_own_constraint
                             )
                         )
                     seed.execute(text("DELETE FROM alembic_version"))
-                assert "Database: adopt" in _run(isolated, "src.database.migrate")
+                refused = _run(isolated, "src.database.migrate", expected=1)
+                assert "Automatic stamping/replay is disabled" in refused
+                with scoped.connect() as check:
+                    assert set(check.scalars(select(TVEpisode.id))) == {dropped_id, kept_id}
+                    assert check.scalar(text("SELECT count(*) FROM alembic_version")) == 0
+                assert "Database: adopt" in _run(
+                    isolated, "src.database.migrate", "--repair-after-verified-backup"
+                )
                 assert _constraints(conn, isolated) == complete
                 assert _owners(conn, names, schemas) == both
                 with scoped.connect() as check:

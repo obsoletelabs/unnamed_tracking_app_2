@@ -56,8 +56,9 @@ run `mkdocs serve -a 0.0.0.0:999` inside the wiki folder (requires sudo on linux
 docker compose exec backend alembic -c alembic.ini revision --autogenerate -m "your changes here eg add playtime to game table"
 ```
 
-The backend brings the database up to date every time it starts, including
-databases made by an older migration history. Write new migrations so they are
+The backend upgrades recognized database histories on startup. Unknown histories
+or missing schema stop startup for [operator review](wiki/docs/deployment/migration-recovery.md).
+Write new migrations so they are
 safe to run twice (use the helpers in
 `src/backend/src/database/migration_helpers.py`), and keep the history a single
 line. See the wiki's
