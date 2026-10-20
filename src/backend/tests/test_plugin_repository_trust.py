@@ -79,6 +79,7 @@ def test_current_published_packages_install_with_original_archive_bytes(
 
 
 def _write_modified_package(source: Path, destination: Path, *, unsigned: bool = False) -> None:
+    modified = False
     with zipfile.ZipFile(source) as archive, zipfile.ZipFile(destination, "w") as output:
         for info in archive.infolist():
             content = archive.read(info)
@@ -87,32 +88,37 @@ def _write_modified_package(source: Path, destination: Path, *, unsigned: bool =
                 manifest["integrity"]["signature"] = None
                 manifest["integrity"]["key_id"] = None
                 content = json.dumps(manifest).encode("utf-8")
-            elif info.filename.startswith("payload/") and not info.is_dir() and not unsigned:
+            # Keep structured PWA/UI assets valid so this exercises digest verification.
+            elif info.filename == "payload/README.md" and not unsigned:
                 content += b"tampered"
+                modified = True
             output.writestr(info, content)
+    assert unsigned or modified, "the published release must include its README payload"
 
 
 def test_signed_plugin_repo_artifact_is_trusted_and_modified_artifacts_are_blocked(
     tmp_path: Path,
 ) -> None:
     plugin_repository = _plugin_repository()
-    package = next((plugin_repository / "dist").glob("*.utp"))
+    catalogue = json.loads((plugin_repository / "list.json").read_text(encoding="utf-8"))
+    assert catalogue["plugins"], "the published catalogue must contain a release candidate"
     verifier = PluginPackageVerifier(
         publishers=load_trusted_publishers(plugin_repository / "publishers" / "registry.json")
     )
+    for index, entry in enumerate(catalogue["plugins"]):
+        package = plugin_repository / "dist" / entry["package"]["filename"]
+        verified = verifier.inspect(package)
+        assert verified.manifest.plugin_id == entry["plugin_id"]
 
-    verified = verifier.inspect(package)
-    assert verified.manifest.plugin_id.startswith("example.")
+        tampered = tmp_path / f"tampered-{index}.utp"
+        _write_modified_package(package, tampered)
+        with pytest.raises(PackageVerificationError, match="integrity"):
+            verifier.inspect(tampered)
 
-    tampered = tmp_path / "tampered.utp"
-    _write_modified_package(package, tampered)
-    with pytest.raises(PackageVerificationError, match="integrity"):
-        verifier.inspect(tampered)
-
-    unsigned = tmp_path / "unsigned.utp"
-    _write_modified_package(package, unsigned, unsigned=True)
-    with pytest.raises(PackageVerificationError, match="unsigned"):
-        verifier.inspect(unsigned)
+        unsigned = tmp_path / f"unsigned-{index}.utp"
+        _write_modified_package(package, unsigned, unsigned=True)
+        with pytest.raises(PackageVerificationError, match="unsigned"):
+            verifier.inspect(unsigned)
 
 
 def test_signed_plugin_repo_artifact_is_forwarded_only_after_verification(
@@ -126,7 +132,9 @@ def test_signed_plugin_repo_artifact_is_forwarded_only_after_verification(
     from src.database.models import achievement as _achievement  # noqa: F401
 
     plugin_repository = _plugin_repository()
-    package = next((plugin_repository / "dist").glob("*.utp"))
+    catalogue = json.loads((plugin_repository / "list.json").read_text(encoding="utf-8"))
+    entry = catalogue["plugins"][0]
+    package = plugin_repository / "dist" / entry["package"]["filename"]
     verifier = PluginPackageVerifier(
         publishers=load_trusted_publishers(plugin_repository / "publishers" / "registry.json")
     )
@@ -186,6 +194,7 @@ def test_signed_plugin_repo_artifact_is_forwarded_only_after_verification(
     result = asyncio.run(plugins.install_plugin(upload, admin=object(), db=FakeDb()))
     assert result["status"] == "running"
     assert runtime_client.package_bytes == source
+    assert runtime_client.started == entry["plugin_id"]
     forwarded = runtime_client.package_bytes
 
     tampered = tmp_path / "tampered.utp"
