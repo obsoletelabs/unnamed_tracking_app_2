@@ -10,6 +10,9 @@ The production deployment includes PostgreSQL 18, persistent application data at
 
 See [Production Docker Image](production-docker.md).
 
+Use the operator-run [Full Deployment Backups](backups.md) workflow for encrypted database,
+persistent files and plugin-state recovery. Per-user JSON snapshots do not replace it.
+
 ## Development
 
 Use the root compose.yaml for development. It keeps frontend and backend containers separate and exposes Vite on port 5173.

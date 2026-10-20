@@ -60,6 +60,7 @@ nav:
       - Installed Themes: administration/themes.md
   - Deployment:
       - Overview: deployment/index.md
+      - Full Deployment Backups: deployment/backups.md
       - Production Docker Image: deployment/production-docker.md
       - Startup & Troubleshooting: deployment/startup-and-troubleshooting.md
       - Migration Recovery: deployment/migration-recovery.md
