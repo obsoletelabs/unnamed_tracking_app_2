@@ -5,6 +5,7 @@ on:
       - tools/backup_deployment.py
       - tools/deployment_backups/**
       - tools/check_deployment_backups.py
+      - tools/check_migration_backups.py
       - tools/backup_acceptance/**
       - tools/tests/test_deployment_backups.py
       - src/backend/**
@@ -39,8 +40,8 @@ jobs:
           python -m pip install ruff
       - name: Check backup tooling
         run: |
-          ruff check --config src/backend/ruff.toml tools/backup_deployment.py tools/deployment_backups tools/check_deployment_backups.py tools/tests/test_deployment_backups.py
-          ruff format --check --config src/backend/ruff.toml tools/backup_deployment.py tools/deployment_backups tools/check_deployment_backups.py tools/tests/test_deployment_backups.py
+          ruff check --config src/backend/ruff.toml tools/backup_deployment.py tools/deployment_backups tools/check_deployment_backups.py tools/check_migration_backups.py tools/tests/test_deployment_backups.py
+          ruff format --check --config src/backend/ruff.toml tools/backup_deployment.py tools/deployment_backups tools/check_deployment_backups.py tools/check_migration_backups.py tools/tests/test_deployment_backups.py
           RUN_RESTIC_TESTS=1 python -m unittest discover -s tools/tests -p test_deployment_backups.py -v
       - name: Build disposable deployment images
         run: |
@@ -49,3 +50,6 @@ jobs:
           docker build -t backup-drill-sftp -f tools/backup_acceptance/Dockerfile.sftp tools/backup_acceptance
       - name: Prove populated off-host recovery after removing original volumes
         run: python tools/check_deployment_backups.py --app-image backup-drill-app --runtime-image backup-drill-runtime --sftp-image backup-drill-sftp
+
+      - name: Prove verified recovery before a pending upgrade
+        run: python tools/check_migration_backups.py --app-image backup-drill-app --runtime-image backup-drill-runtime --sftp-image backup-drill-sftp

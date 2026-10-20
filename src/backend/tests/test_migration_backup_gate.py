@@ -194,3 +194,77 @@ def test_version_cannot_be_omitted_or_coerced(claims, version):
         document["claims"]["version"] = version
     with pytest.raises(RecoveryPointError, match="document-invalid"):
         decode_recovery_point(json.dumps(document).encode(), KEY)
+
+
+def test_issuer_never_generates_a_missing_deployment_key(tmp_path, monkeypatch):
+    from src.database.prepare_upgrade import existing_key_digest
+
+    monkeypatch.setenv("APP_DATA_DIR", str(tmp_path / "empty"))
+    monkeypatch.delenv("SECRET_KEY", raising=False)
+    with pytest.raises(RecoveryPointError, match="existing-deployment-key-required"):
+        existing_key_digest()
+    assert not (tmp_path / "empty").exists()
+
+
+def test_issuer_requires_consistent_existing_key_copies(tmp_path, monkeypatch):
+    import hashlib
+
+    from src.database.prepare_upgrade import existing_key_digest
+
+    monkeypatch.setenv("APP_DATA_DIR", str(tmp_path))
+    monkeypatch.delenv("SECRET_KEY", raising=False)
+    config = tmp_path / "config"
+    config.mkdir()
+    (config / "fernet.key").write_text(KEY)
+    (config / "fernet.key.1").write_text("damaged")
+    assert existing_key_digest() == hashlib.sha256(KEY.encode()).hexdigest()
+    (config / "fernet.key.2").write_text(OTHER_KEY)
+    with pytest.raises(RecoveryPointError, match="must-match"):
+        existing_key_digest()
+    assert (config / "fernet.key.2").read_text() == OTHER_KEY
+
+
+def test_issuer_rejects_wrong_restored_key_before_database_access(tmp_path, monkeypatch):
+    from src.database import migrate
+    from src.database.prepare_upgrade import VerifiedCapture, issue
+
+    monkeypatch.setenv("APP_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("SECRET_KEY", KEY)
+    monkeypatch.setattr(migrate, "_engine", lambda: pytest.fail("wrong key reached database"))
+    capture = VerifiedCapture(
+        snapshot_id="a" * 64,
+        manifest_sha256="b" * 64,
+        key_sha256="0" * 64,
+        source_image_id="sha256:" + "c" * 64,
+        source_revisions=[],
+        database="archive",
+        user="app",
+        captured_at=1000,
+        verified_at=1100,
+    )
+    with pytest.raises(RecoveryPointError, match="restored-deployment-key-mismatch"):
+        issue(capture)
+    assert not (tmp_path / "config").exists()
+
+
+def test_invalidation_refuses_symlink_directory_and_preserves_target(tmp_path, monkeypatch):
+    import sys
+
+    from src.database import prepare_upgrade
+
+    monkeypatch.setenv("APP_DATA_DIR", str(tmp_path / "data"))
+    target = tmp_path / "original"
+    target.mkdir(mode=0o700)
+    (target / "point.json").write_text("keep")
+    config = tmp_path / "data" / "config"
+    config.mkdir(parents=True)
+    (config / "migration-recovery").symlink_to(target, target_is_directory=True)
+    monkeypatch.setattr(sys, "argv", ["issuer", "--invalidate"])
+    assert prepare_upgrade.main() == 1
+    assert (target / "point.json").read_text() == "keep"
+
+
+def test_database_fingerprint_includes_schema_selection():
+    assert database_fingerprint(URL, KEY) != database_fingerprint(
+        URL.update_query_dict({"options": "-csearch_path=other"}), KEY
+    )
