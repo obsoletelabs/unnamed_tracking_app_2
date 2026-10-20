@@ -5,6 +5,7 @@ from __future__ import annotations
 import secrets
 import time
 from dataclasses import dataclass
+from ipaddress import IPv6Address, ip_address
 
 from fastapi import Request
 from sqlalchemy import delete, or_, select
@@ -27,9 +28,17 @@ class SessionContext:
 
 
 def request_ip(request: Request) -> str | None:
-    """Read the reverse-proxy client address, falling back to the direct peer."""
-    value = request.headers.get("x-real-ip") or (request.client.host if request.client else None)
-    return value.strip() if value and value.strip() else None
+    """Use the ASGI server's trusted-proxy result, never independently trust headers."""
+    if request.client is None:
+        return None
+    try:
+        address = ip_address(request.client.host)
+    except ValueError:
+        return None
+    if isinstance(address, IPv6Address):
+        # Scope/interface names are local routing context, not another client identity.
+        return str(address.ipv4_mapped or IPv6Address(address.packed))
+    return str(address)
 
 
 def request_user_agent(request: Request) -> str | None:

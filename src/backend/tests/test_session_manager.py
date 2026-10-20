@@ -132,10 +132,10 @@ def test_create_session_persists_network_metadata(monkeypatch) -> None:
         {
             "type": "http",
             "headers": [
-                (b"x-real-ip", b"8.8.8.8"),
+                (b"x-real-ip", b"203.0.113.99"),
                 (b"user-agent", b"test-agent"),
             ],
-            "client": ("127.0.0.1", 1234),
+            "client": ("8.8.8.8", 1234),
         }
     )
     monkeypatch.setattr(
@@ -150,5 +150,6 @@ def test_create_session_persists_network_metadata(monkeypatch) -> None:
 
     asyncio.run(create_session(db, user, request))
     assert db.session is not None
+    assert db.session.ip_address == "8.8.8.8"
     assert db.session.geo_network_number == 13335
     assert db.session.geo_network_organization == "Cloudflare"
