@@ -93,7 +93,7 @@ def database_fingerprint(url: URL, secret: str) -> str:
         "connection_options": {
             name: value
             for name, value in url.query.items()
-            if name in {"host", "hostaddr", "port", "dbname", "user", "service"}
+            if name in {"host", "hostaddr", "port", "dbname", "user", "service", "options"}
         },
     }
     return hmac.new(_key(secret, b"database"), _canonical(identity), hashlib.sha256).hexdigest()
@@ -168,6 +168,11 @@ def read_recovery_point(path: Path, secret: str) -> RecoveryClaims:
 
 def write_recovery_point(path: Path, claims: RecoveryClaims, secret: str) -> None:
     """Atomically replace only the operator-selected private attestation file."""
+    write_private_document(path, encode_recovery_point(claims, secret))
+
+
+def write_private_document(path: Path, data: bytes) -> None:
+    """Durably replace a private local recovery document, refusing unsafe directories."""
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     info = path.parent.stat()
     if path.parent.is_symlink() or info.st_uid != os.getuid() or info.st_mode & 0o077:
@@ -176,7 +181,7 @@ def write_recovery_point(path: Path, claims: RecoveryClaims, secret: str) -> Non
     try:
         descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
         with os.fdopen(descriptor, "wb") as stream:
-            stream.write(encode_recovery_point(claims, secret))
+            stream.write(data)
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, path)

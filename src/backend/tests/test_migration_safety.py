@@ -36,8 +36,13 @@ def test_cli_database_failure_does_not_print_connection_or_statement_secrets(mon
 
 
 @pytest.fixture
-def sandbox(monkeypatch):
+def sandbox(monkeypatch, tmp_path):
     """Only create/drop this test's randomly named schema in the development database."""
+    # This suite isolates history policy; required recovery evidence is exercised
+    # against real isolated databases in test_migration_backup_runtime.py.
+    monkeypatch.setattr(settings, "MIGRATION_BACKUP_MODE", "development")
+    monkeypatch.setenv("MIGRATION_BACKUP_MODE", "development")
+    monkeypatch.setenv("APP_DATA_DIR", str(tmp_path / "data"))
     schema = "migration_safety_" + uuid4().hex
     base = make_url(settings.DATABASE_URL)
     admin = create_engine(base)
