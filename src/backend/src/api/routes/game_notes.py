@@ -401,7 +401,7 @@ async def create_game_note(
     normalized_name = _normalize_note_name(note_name)
     note_path = _game_note_path(game, normalized_name)
     try:
-        with note_path.open("x", encoding="utf-8") as note_file:
+        with note_path.open("x", encoding="utf-8", newline="") as note_file:
             note_file.write(payload.content)
     except FileExistsError as exc:
         raise HTTPException(
@@ -460,7 +460,7 @@ async def update_game_note(
     )
     if previous != payload.content:
         await game_notes.record_version(db, row, previous)
-    note_path.write_text(payload.content, encoding="utf-8")
+    note_path.write_text(payload.content, encoding="utf-8", newline="")
     await db.commit()
     return {
         "game_id": str(game_id),
