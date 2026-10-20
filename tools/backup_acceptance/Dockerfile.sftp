@@ -1,0 +1,7 @@
+# Disposable acceptance transport only; never a production SSH configuration.
+FROM alpine:3.22
+RUN apk add --no-cache openssh-server openssh-sftp-server \
+    && echo 'root:disposable-password-login-disabled' | chpasswd \
+    && mkdir -p /run/sshd /root/.ssh /repository \
+    && chmod 0700 /root/.ssh
+CMD ["sleep", "infinity"]
