@@ -41,7 +41,7 @@ ownership are evaluated.
    authentication (`setup-or-admin`, `local-or-admin`) are listed explicitly.
 3. For all object-addressed `user` routes, the victim's identifiers (game, movie,
    show, season, episode, list, list item, profile, archive, version, file, note,
-   screenshot, notification, destination, calendar event, rewatch, activity, session,
+   screenshot, notification, destination, calendar event/subscription, rewatch, activity, session,
    API key, device credential, user) are substituted into the URL and called with a
    different ordinary user's credential, with schema-valid bodies. Everything must be
    403/404 (or a documented idempotent no-op that leaves the victim's rows intact).
@@ -429,6 +429,15 @@ are redacted. Validation errors never echo submitted values.
 | GET | `/api/calendar/feed/{token}.ics` | public | Possession of the unguessable per-user feed token; token is redacted from access logs. |
 | GET | `/api/calendar/feed/{token}/{kind}.ics` | public | The same per-user feed token, narrowed to one layer (`anime`, `tv`, `movie`, `game`, `manual`); regenerating the token ends every layer's link. |
 | GET | `/api/calendar/games` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
+| GET | `/api/calendar/sources` | user | Lists only subscriptions owned by the caller; secret URLs are never returned. |
+| POST | `/api/calendar/sources` | user | Creates a subscription for the caller, subject to deployment policy and per-account limits. |
+| PATCH | `/api/calendar/sources/{source_id}` | user | Source resolved by caller ownership before updates or replacement URL work. |
+| DELETE | `/api/calendar/sources/{source_id}` | user | Deletes only a source owned by the caller and its imported/override rows. |
+| POST | `/api/calendar/sources/{source_id}/refresh` | user | Source resolved by caller ownership before network work. |
+| GET | `/api/calendar/sources/{source_id}/events` | user | Reads cached events and overlays only for a source owned by the caller. |
+| PUT | `/api/calendar/sources/{source_id}/overrides` | user | Owned source and current upstream occurrence required; edits stay local. |
+| DELETE | `/api/calendar/sources/{source_id}/overrides` | user | Owned source and current upstream occurrence required; clears only the selected scope. |
+| POST | `/api/calendar/sources/{source_id}/copy` | user | Copies a current occurrence from an owned source into the caller's manual events. |
 | GET | `/api/export/backup-status` | user | Only the caller's library; imported rows are stamped with the caller's ID. |
 | GET | `/api/export/library` | user | Only the caller's library; imported rows are stamped with the caller's ID. |
 | GET | `/api/export/media.csv` | user | Only the caller's library; imported rows are stamped with the caller's ID. |

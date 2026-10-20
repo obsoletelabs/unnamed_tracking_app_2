@@ -4,7 +4,11 @@ import UiModal from "../components/UiModal.vue";
 import AppTopBar from "../components/AppTopBar.vue";
 import SegmentedTabs from "../components/SegmentedTabs.vue";
 import { useCalendar } from "../composables/useCalendar";
+import CalendarSourceEventEditor from "../components/CalendarSourceEventEditor.vue";
 const {
+  externalLoading,
+  externalNotices,
+  selectedExternal,
   blurOnLeave,
   tab,
   calView,
@@ -182,6 +186,20 @@ const {
         <h1>Calendar</h1>
       </div>
       <template v-if="tab === 'calendar'">
+        <p v-if="externalLoading" role="status" class="section-hint">
+          Loading external calendars…
+        </p>
+        <p
+          v-for="notice in externalNotices"
+          :key="notice"
+          role="status"
+          class="section-hint"
+        >
+          External calendars: {{ notice }}
+        </p>
+        <RouterLink class="section-hint" to="/settings?section=calendar"
+          >Manage external calendars</RouterLink
+        >
         <div class="month-bar">
           <div v-if="calView === 'month'" class="month-nav">
             <button
@@ -378,6 +396,15 @@ const {
               <span class="swatch"></span>My entries
             </button>
             <button
+              type="button"
+              class="ui-chip layer-external"
+              :class="{ on: filters.external }"
+              title="Events from subscribed calendars"
+              @click="filters.external = !filters.external"
+            >
+              <span class="swatch"></span>External calendars
+            </button>
+            <button
               v-if="prefs.calendar_show_estimated"
               type="button"
               class="ui-chip layer-estimated"
@@ -468,6 +495,9 @@ const {
                   v-for="i in chipsFor(cell).shown"
                   :key="i.key"
                   class="chip"
+                  :style="
+                    i.sourceColor ? { '--layer': i.sourceColor } : undefined
+                  "
                   :class="[`layer-${i.layer}`, { projected: i.projected }]"
                   :title="itemTooltip(i)"
                 >
@@ -515,6 +545,9 @@ const {
                 :key="i.key"
                 type="button"
                 class="agenda-row"
+                :style="
+                  i.sourceColor ? { '--layer': i.sourceColor } : undefined
+                "
                 :class="[`layer-${i.layer}`, { projected: i.projected }]"
                 :title="i.title"
                 @click="activate(i)"
@@ -549,6 +582,9 @@ const {
                 :key="i.key"
                 type="button"
                 class="agenda-row"
+                :style="
+                  i.sourceColor ? { '--layer': i.sourceColor } : undefined
+                "
                 :class="[`layer-${i.layer}`, { projected: i.projected }]"
                 :title="i.title"
                 @click="activate(i)"
@@ -749,6 +785,13 @@ const {
       </template>
     </div>
 
+    <CalendarSourceEventEditor
+      v-if="selectedExternal"
+      :key="`${selectedExternal.source.id}-${selectedExternal.uid}-${selectedExternal.recurrence_key}`"
+      :event="selectedExternal"
+      @close="selectedExternal = null"
+      @changed="refreshAll"
+    />
     <Teleport to="body">
       <div v-if="drawerKey" class="drawer-backdrop" @click.self="closeDrawer">
         <aside class="drawer" role="dialog" aria-label="Day details">
@@ -772,6 +815,7 @@ const {
               :key="i.key"
               type="button"
               class="agenda-row"
+              :style="i.sourceColor ? { '--layer': i.sourceColor } : undefined"
               :class="[`layer-${i.layer}`, { projected: i.projected }]"
               @click="activate(i)"
             >

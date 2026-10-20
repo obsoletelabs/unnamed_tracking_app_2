@@ -23,6 +23,13 @@ const extras = vi.hoisted(() => ({
   deleteActivityEntry: vi.fn(),
 }));
 vi.mock("../services/mediaExtras", () => extras);
+vi.mock("../services/calendarSources", () => ({
+  fetchCalendarSources: vi.fn(async () => ({
+    remote_enabled: true,
+    sources: [],
+  })),
+  fetchSourceEvents: vi.fn(),
+}));
 const prefs = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 vi.mock("../services/preferences", async (original) => ({
   ...(await original<typeof import("../services/preferences")>()),
@@ -54,6 +61,10 @@ vi.mock("../services/anime", () => ({
 import { useCalendar } from "../composables/useCalendar";
 import { DEFAULT_PREFERENCES } from "../services/preferences";
 import { dayKey } from "../utils/calendarWeeks";
+import {
+  fetchCalendarSources,
+  fetchSourceEvents,
+} from "../services/calendarSources";
 
 type Calendar = ReturnType<typeof useCalendar>;
 async function setup(): Promise<{ cal: Calendar; unmount: () => void }> {
@@ -83,6 +94,10 @@ const entry = (title: string, airAt: number, n: number | null = null) => ({
 
 const mounted: (() => void)[] = [];
 beforeEach(() => {
+  vi.mocked(fetchCalendarSources).mockResolvedValue({
+    remote_enabled: true,
+    sources: [],
+  });
   vi.setSystemTime(new Date(2026, 9, 18, 12));
   prefs.value = { ...DEFAULT_PREFERENCES };
   library.movies = [
@@ -372,4 +387,66 @@ it("names a layer that failed to load instead of looking empty, and keeps what i
   await cal.retryFailedLayers();
   await flushPromises();
   expect(cal.failedLayers.value).toEqual([]);
+});
+
+it("keeps subscribed events separate from the manual-entry filter and opens their own editor", async () => {
+  const source = {
+    id: "s1",
+    name: "Film club",
+    hostname: "calendar.example",
+    color: "#123456",
+    enabled: true,
+    refresh_minutes: 360,
+    last_attempt_at: 1,
+    last_success_at: 1,
+    next_refresh_at: 2,
+    last_status: "updated",
+    consecutive_failures: 0,
+    warnings: [],
+  };
+  vi.mocked(fetchCalendarSources).mockResolvedValueOnce({
+    remote_enabled: true,
+    sources: [source],
+  });
+  vi.mocked(fetchSourceEvents).mockResolvedValueOnce({
+    events: [
+      {
+        event_id: "e1",
+        uid: "u1",
+        recurrence_key: "",
+        title: "External party",
+        note: "",
+        location: "Cinema",
+        url: "",
+        start: { kind: "date", value: "2026-10-19" },
+        original_start: { kind: "date", value: "2026-10-19" },
+        duration_seconds: 86400,
+        event_date: "2026-10-19",
+        event_time: null,
+        end_date: "2026-10-20",
+        end_time: null,
+        last_date: "2026-10-19",
+        recurring: false,
+        series_override: false,
+        occurrence_override: false,
+      },
+    ],
+    warnings: [],
+  });
+  const cal = await open();
+  cal.filters.event = false;
+  await nextTick();
+  const item = cal.gridCells.value
+    .flatMap((day) => day.items)
+    .find((entry) => entry.title === "External party");
+  expect(item?.layer).toBe("external");
+  cal.activate(item!);
+  expect(cal.selectedExternal.value?.event_id).toBe("e1");
+  cal.filters.external = false;
+  await nextTick();
+  expect(
+    cal.gridCells.value.some((day) =>
+      day.items.some((entry) => entry.title === "External party"),
+    ),
+  ).toBe(false);
 });

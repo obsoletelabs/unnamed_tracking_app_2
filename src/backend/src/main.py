@@ -21,6 +21,7 @@ from src.api.routes import (
     branding,
     calendar_events,
     calendar_feed,
+    calendar_sources,
     default_game_assets,
     delegation,
     export_import,
@@ -196,6 +197,7 @@ app.include_router(session_manager.router)
 app.include_router(media_stats.router)
 app.include_router(preferences.router)
 app.include_router(calendar_events.router)
+app.include_router(calendar_sources.router)
 app.include_router(calendar_feed.authed_router)
 app.include_router(calendar_feed.public_router)
 app.include_router(misc_router)

@@ -1,8 +1,9 @@
 # External ICS subscriptions and synchronization
 
 Design proposal for [#258](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/258)
-(source: Rosefall #243). **Design only: no remote fetching and no schema change ships with this page.**
-Items marked **OPEN QUESTION** need a maintainer decision before implementation. Paths start `src/backend/src/`.
+(source: Rosefall #243). **Historical proposal, superseded by the implemented first subscription phase.**
+Use [Calendar subscriptions](../calendar-subscriptions.md) for current schema, API, limits and verification.
+The original alternatives below are retained as design history, not as the live API contract. Paths start `src/backend/src/`.
 
 ## 1. Problem and current state
 
@@ -165,17 +166,15 @@ transport, so no test touches the network.
 | Ownership | foreign source id 404; user delete cascades; manual events untouched by a refresh; outbound feed excludes external events |
 | Migration | upgrade on a populated database, downgrade, single head |
 
-## 12. OPEN QUESTIONS for the maintainer
+## 12. Decisions confirmed on 19 October 2026
 
-1. Are a per-user source cap (proposed 10) and a 2 MiB / 10 000-component limit acceptable, and should an admin be
-   able to disable external subscriptions deployment-wide?
-2. Should phase 1 support only secret-in-URL feeds, or also HTTP Basic / bearer headers (needs an encrypted auth
-   column and a stricter log-redaction review)?
-3. Should external events ever appear in the user's own outbound feed (proposed default: never)?
-4. Should `import_once` exist in phase 1, or only `subscribe`?
-5. May a maintained iCalendar parsing dependency be added (for example `icalendar` plus `recurring-ical-events`),
-   or must parsing stay in-tree?
-6. Is a 30-day tombstone for events removed upstream the right retention?
+The maintainer approved the [first subscription phase](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/258#issuecomment-6265809566):
+ten sources, 2 MiB/10,000-component feeds, an admin deployment switch, HTTPS secret URLs encrypted at rest,
+scheduled/manual refresh, exclusion from outbound feeds, 30-day tombstones and maintained parser dependencies.
+Basic/bearer headers and `import_once` are deferred. The follow-up decision requires local title, notes, location
+and date/time overrides for **both one occurrence and a whole series**, with reset to current upstream values.
+Upstream cancellation/removal still hides an overridden event; a manual copy is independent. No product questions
+remain for this phase. The linked implementation page records deliberate differences from the original schema sketch.
 
 ## 13. Acceptance-criteria mapping
 

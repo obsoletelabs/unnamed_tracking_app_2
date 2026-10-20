@@ -18,6 +18,7 @@ from src.database.models.achievement import Achievement
 from src.database.models.anime import Anime, AnimeEpisode, AnimeSeason
 from src.database.models.auth import UserApiKey, UserSession
 from src.database.models.calendar_event import CalendarEvent
+from src.database.models.calendar_source import CalendarSource
 from src.database.models.game import Game, GameStatus
 from src.database.models.game_archive import GameArchive, GameArchiveVersion
 from src.database.models.game_checklist_item import GameChecklistItem
@@ -141,6 +142,14 @@ async def seed_owner(db, tenant: Tenant) -> None:
         event_date=date(2024, 1, 1),
     )
     event = CalendarEvent(user_id=uid, title="Owner event", event_date=date(2024, 1, 1))
+    source = CalendarSource(
+        user_id=uid,
+        name="Owner subscription",
+        url_encrypted="unused-audit-secret",
+        hostname="calendar.example.test",
+        next_refresh_at=2**33,
+    )
+    db.add(source)
     inbox = InboxItem(user_id=uid, kind="screenshot", filename="owner.png")
     notice = Notification(
         user_id=uid,
@@ -197,6 +206,7 @@ async def seed_owner(db, tenant: Tenant) -> None:
         rewatch_id=rewatch.id,
         activity_id=activity.id,
         event_id=event.id,
+        source_id=source.id,
         notification_id=notice.id,
         session_id=session.id,
         client_id=device.id,
@@ -330,6 +340,7 @@ def resolve_path(template: str, ids: dict[str, str]) -> str | None:
         "notification_id": ids["notification_id"],
         "destination_id": ids[f"{destination_kind}_destination_id"],
         "event_id": ids["event_id"],
+        "source_id": ids["source_id"],
         "entry_id": ids["activity_id"],
         "rewatch_id": ids["rewatch_id"],
         "achievement_id": ids["achievement_id"],
