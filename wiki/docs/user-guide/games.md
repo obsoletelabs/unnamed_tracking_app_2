@@ -4,6 +4,18 @@ The game library supports manual records and provider-backed metadata. Use searc
 
 Fresh navigation to Games starts at the top. Returning from a game detail preserves the library position once; visiting another section clears it. Media pages keep their loaded data while the router controls fresh navigation and browser history scrolling.
 
+## Unavailable game links
+
+**Game not found** means the game may have been removed or may not be available to your account. Choose **Back to games** to return to your library. The same screen is shown for a missing game and a game belonging to another account.
+
+**Invalid game link** means the address is incomplete or malformed. Open the game from your library instead. Connection or server failures show **We couldn’t load this game**, with **Try again** so you can retry without losing your place. A stalled request also ends with this recovery option. If your session has ended, the page asks you to sign in again.
+
+These screens keep the app navigation available, work with light and dark palettes, and move keyboard focus to their heading. Technical errors and game identifiers are not displayed.
+
+![Unavailable game in light mode](../assets/game-link-states/not-found-light.png)
+
+![Invalid link at a 390-pixel responsive width](../assets/game-link-states/invalid-link-mobile-dark.png)
+
 ## Adding and editing
 
 Use **Sync / import** on Games to sync a connected Steam, PlayStation or
