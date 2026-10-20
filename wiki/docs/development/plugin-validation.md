@@ -28,7 +28,7 @@ Normal development builds are unsigned and intentionally exercise the untrusted-
 
 For a release candidate:
 
-1. Build the four current `.utp` packages from the plugin repository.
+1. Use the actual signed `.utp` archive bytes named by the plugin repository's current `list.json`. Keep unsigned development builds separate from signed release acceptance.
 2. Preview/install them through the application's real Plugin Manager.
 3. Confirm denied permissions fail, approved permissions work, and revocation takes effect immediately.
 4. Confirm sidebar pages disappear on disable/uninstall.
@@ -37,6 +37,26 @@ For a release candidate:
 7. Run both repositories' complete CI workflows and `mkdocs build --strict`.
 
 See [Reference plugins](reference-plugins.md) and the [documentation review checklist](documentation-review.md).
+
+## Signed catalogue contract
+
+Set `PLUGIN_REPOSITORY_PATH` to a separate companion checkout containing its
+publisher registry, current `list.json` and original `dist/*.utp` archives:
+
+```bash
+cd src/backend
+PLUGIN_REPOSITORY_PATH=/path/to/unnamed_tracking_app_plugins \
+  python -m pytest tests/test_plugin_repository_trust.py -q
+```
+
+The contract verifies every current catalogue package against its advertised
+plugin identity, then rejects payload-modified and unsigned copies of each.
+Installation/forwarding tests preserve original archive bytes, and reviewed
+historical archives remain checked against the host's existing exact digest pins.
+Both `example.*` and `official.*` published identities are valid when the existing
+publisher policy allows them; an ID prefix is not a substitute for verification.
+Package selection follows the current catalogue, never filesystem glob order.
+No companion implementation or signing key is copied into the host.
 
 ## Repeatable repository lifecycle acceptance
 
