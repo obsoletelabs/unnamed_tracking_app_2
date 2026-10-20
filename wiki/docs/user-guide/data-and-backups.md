@@ -33,6 +33,10 @@ Up to **7** automatic backups are retained for each user:
 
 These are a rolling safety net, not a complete deployment backup.
 
+Server operators can use [Full Deployment Backups](../deployment/backups.md) to schedule encrypted
+PostgreSQL, application-file and plugin-state backups with a maintenance window and an isolated
+restore drill. This operator workflow does not change the Settings import/export tabs.
+
 ## Library export
 
 The library export is a user-scoped JSON snapshot containing games, movies, TV shows and anime:

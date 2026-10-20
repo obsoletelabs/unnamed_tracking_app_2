@@ -1,0 +1,21 @@
+[Unit]
+Description=Encrypted Unnamed Tracking deployment backup
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=root
+UMask=0077
+EnvironmentFile=/etc/unnamed-tracking/backup.env
+ExecStart=/usr/bin/python3 /opt/unnamed-tracking/tools/backup_deployment.py backup --deployment-id main --project unnamed-tracking --compose-file /srv/unnamed-tracking/example-docker-compose.yaml --state-dir /var/lib/uta-backups --max-bytes 107374182400
+ExecStartPost=/usr/bin/python3 /opt/unnamed-tracking/tools/backup_deployment.py retention --deployment-id main --state-dir /var/lib/uta-backups --apply
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+TimeoutStartSec=4h
+TimeoutStopSec=5min
+# Send TERM only to the Python parent so it can restart writers before its child
+# process group is forcibly killed. Unexpected power loss still needs operator recovery.
+KillMode=mixed

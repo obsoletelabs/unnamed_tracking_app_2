@@ -5,11 +5,13 @@ Still a WIP, but new features are decently uptodate
 
 # Running the API
 
-docker compose down -v 
+docker compose down
 docker compose up --build
 docker compose -f example-docker-compose.yaml up --build
 
-Use -v on the down to remove database and reconfigure app, use the bottom compose for production container, and standard for dev containers.
+Use the bottom Compose file for the production container and the standard file for development.
+`docker compose down -v` destroys named database/plugin volumes. Take and rehearse a
+[full deployment backup](wiki/docs/deployment/backups.md) before deliberately removing them.
 
 docker compose run --rm backend
 
