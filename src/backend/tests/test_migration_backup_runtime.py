@@ -249,3 +249,26 @@ def test_full_audit_disk_stops_before_connecting(tmp_path, monkeypatch):
     )
     with pytest.raises(OSError, match="No space"):
         migrate.main()
+
+
+def test_verified_production_replay_preserves_unversioned_records(installation):
+    command.stamp(Config("alembic.ini"), "base", purge=True)
+    point(installation, source_revisions=[])
+    migrate.main(allow_repair=True)
+    preserved(installation, installation[2])
+    report = reports()[-1]
+    assert report["status"] == "succeeded" and report["mode"] == "required"
+    assert report["source_revisions"] == [] and report["backup_id"] == "a" * 64
+
+
+def test_verified_production_head_repair_preserves_existing_records(installation):
+    command.stamp(Config("alembic.ini"), installation[2])
+    with installation[0].begin() as connection:
+        connection.execute(text("ALTER TABLE job_settings DROP COLUMN paused"))
+    point(installation, source_revisions=[installation[2]])
+    migrate.main(allow_repair=True)
+    preserved(installation, installation[2])
+    assert migrate.missing_from_database(installation[0]) == []
+    report = reports()[-1]
+    assert report["status"] == "succeeded" and report["mode"] == "required"
+    assert report["backup_id"] == "a" * 64

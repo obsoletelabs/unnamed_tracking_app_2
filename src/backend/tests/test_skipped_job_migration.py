@@ -17,7 +17,11 @@ from src.core.config import settings
 from src.database.models.job_setting import JobSetting
 
 
-def test_startup_repairs_skipped_job_columns_and_preserves_schedules():
+def test_startup_repairs_skipped_job_columns_and_preserves_schedules(monkeypatch, tmp_path):
+    # Exercise historical schedule preservation with the explicit disposable-data
+    # policy. Required-mode replay with valid evidence has separate coverage.
+    monkeypatch.setenv("MIGRATION_BACKUP_MODE", "development")
+    monkeypatch.setenv("APP_DATA_DIR", str(tmp_path / "data"))
     schema = "skipped_jobs_" + uuid4().hex
     base = make_url(settings.DATABASE_URL)
     scoped = base.update_query_dict({"options": f"-csearch_path={schema}"})

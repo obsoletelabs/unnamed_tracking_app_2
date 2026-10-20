@@ -168,7 +168,13 @@ def _alembic(schema: str, *arguments: str) -> None:
     _run(schema, "alembic", "-c", "alembic.ini", *arguments)
 
 
-def test_isolated_schema_upgrade_adoption_and_downgrade_use_their_own_constraints():
+def test_isolated_schema_upgrade_adoption_and_downgrade_use_their_own_constraints(
+    monkeypatch, tmp_path
+):
+    # Constraint replay is isolated from backup policy, whose required-mode repair
+    # paths are covered in test_migration_backup_runtime.py.
+    monkeypatch.setenv("MIGRATION_BACKUP_MODE", "development")
+    monkeypatch.setenv("APP_DATA_DIR", str(tmp_path / "data"))
     applied, isolated = (f"migration_constraints_{kind}_{uuid4().hex}" for kind in ("a", "b"))
     schemas = [applied, isolated]
     names = list(_GUARDED_CONSTRAINTS)

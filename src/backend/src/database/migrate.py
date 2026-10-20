@@ -275,8 +275,9 @@ def main(*, allow_repair: bool = False, plan_only: bool = False) -> None:
         )
 
     safety = None if plan_only else MigrationSafety()
-    engine = _engine()
+    engine = None
     try:
+        engine = _engine()
         _wait_for_database(engine)
         with _migration_lock(engine) as lock_conn:
             inspector = inspect(lock_conn)
@@ -322,7 +323,8 @@ def main(*, allow_repair: bool = False, plan_only: bool = False) -> None:
             safety.failed(error)
         raise
     finally:
-        engine.dispose()
+        if engine is not None:
+            engine.dispose()
     print("Database is up to date.", flush=True)
 
 
