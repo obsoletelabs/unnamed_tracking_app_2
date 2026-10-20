@@ -158,6 +158,18 @@ def _sweep_requests(ids: dict[str, str]):
 
             schema = TypeAdapter(route.body_field.field_info.annotation).json_schema()
             body = example_value(schema, schema.get("$defs", {}), ids)
+        if path is not None and template.startswith("/api/calendar/sources/"):
+            if template.endswith("/events"):
+                path += "?start=2024-01-01&end=2024-01-31"
+            elif template.endswith(("/overrides", "/copy")):
+                body = {
+                    "event_id": str(uuid4()),
+                    "recurrence_key": "",
+                    "occurrence_date": "2024-01-01",
+                    "timezone": "UTC",
+                }
+                if template.endswith("/overrides"):
+                    body.update(scope="occurrence", fields={"title": "Unauthorized change"})
         yield method, template, path, body
 
 

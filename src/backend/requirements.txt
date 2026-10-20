@@ -20,7 +20,7 @@ python-multipart
 maxminddb==2.6.3
 
 # IANA timezone database for viewer-local activity days (zoneinfo)
-tzdata==2025.2
+tzdata==2025.3
 
 # External iCalendar subscriptions (parsing and bounded recurrence projection)
 icalendar==7.3.0
