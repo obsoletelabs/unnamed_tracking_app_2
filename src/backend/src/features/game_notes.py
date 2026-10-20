@@ -4,6 +4,7 @@ a preview). The notes themselves stay files; nothing here writes them."""
 
 from __future__ import annotations
 
+import hashlib
 import re
 import time
 from pathlib import Path
@@ -19,6 +20,13 @@ MAX_VERSIONS = 30
 MAX_TAGS = 20
 
 _TASK = re.compile(r"^\s*[-*+]\s+\[( |x|X)\]\s", re.MULTILINE)
+
+
+def content_digest(content: str | bytes) -> str:
+    """Revision of the exact UTF-8 note body, including its original line endings."""
+    return hashlib.sha256(
+        content.encode("utf-8") if isinstance(content, str) else content
+    ).hexdigest()
 
 
 def task_counts(text: str) -> tuple[int, int]:

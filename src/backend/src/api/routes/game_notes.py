@@ -28,7 +28,7 @@ from src.api.routes.utils.games import (
     _normalize_note_name,
     _note_summary,
 )
-from src.core.auth import get_current_user
+from src.core.auth import app_grant, get_current_user
 from src.database.models.achievement import Achievement
 from src.database.models.game import Game
 from src.database.models.game_note_detail import GameNoteDetail, GameNoteVersion
@@ -374,6 +374,7 @@ class NoteWrite(BaseModel):
 
     __module__ = "src.api.routes.games"
     content: str
+    expected_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
 
 class NoteRename(BaseModel):
@@ -387,6 +388,7 @@ class NoteRename(BaseModel):
     "/{game_id}/notes/{note_name}",
     status_code=status.HTTP_201_CREATED,
 )
+@app_grant("notes.write")
 async def create_game_note(
     game_id: UUID,
     note_name: str,
@@ -416,12 +418,14 @@ async def create_game_note(
         "note_name": normalized_name,
         "path": str(note_path),
         "status": "saved",
+        "content_sha256": game_notes.content_digest(payload.content),
     }
 
 
 @crud_router.put(
     "/{game_id}/notes/{note_name}",
 )
+@app_grant("notes.write")
 async def update_game_note(
     game_id: UUID,
     note_name: str,
@@ -430,14 +434,27 @@ async def update_game_note(
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> dict[str, str | None]:
     """Update an existing markdown note."""
-    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
+    # Serialize read/compare/write with other note and folder operations. Two
+    # integrations observing one revision cannot both replace it successfully.
+    game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True, for_update=True)
     normalized_name = _normalize_note_name(note_name)
     note_path = _game_note_path(game, normalized_name)
     if not note_path.is_file():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f'Note "{normalized_name}" was not found.'
         )
-    previous = note_path.read_text(encoding="utf-8", errors="replace")
+    previous_bytes = note_path.read_bytes()
+    if payload.expected_sha256 is not None and payload.expected_sha256 != game_notes.content_digest(
+        previous_bytes
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error": "note_changed",
+                "message": "This note changed since it was read. Keep both edits before retrying.",
+            },
+        )
+    previous = previous_bytes.decode("utf-8", errors="replace")
     row = await game_notes.ensure_row(
         db, game_id, normalized_name, created_at=int(note_path.stat().st_mtime)
     )
@@ -450,6 +467,7 @@ async def update_game_note(
         "note_name": normalized_name,
         "path": str(note_path),
         "status": "saved",
+        "content_sha256": game_notes.content_digest(payload.content),
     }
 
 
@@ -523,6 +541,7 @@ async def rename_game_note(
         status.HTTP_404_NOT_FOUND: {"description": "Game not found"},
     },
 )
+@app_grant("notes.read")
 async def list_game_notes(
     game_id: UUID,
     db: AsyncSession = _DB_DEPENDENCY,
@@ -548,6 +567,7 @@ async def list_game_notes(
 
 
 @crud_router.get("/{game_id}/notes-summary")
+@app_grant("notes.read")
 async def list_game_note_summaries(
     game_id: UUID,
     db: AsyncSession = _DB_DEPENDENCY,
@@ -578,6 +598,7 @@ async def list_game_note_summaries(
         status.HTTP_404_NOT_FOUND: {"description": "Game or note not found"},
     },
 )
+@app_grant("notes.read")
 async def get_game_note(
     game_id: UUID,
     note_name: str,
@@ -594,8 +615,14 @@ async def get_game_note(
             detail=f"Note '{_normalize_note_name(note_name)}' not found for game {game_id}",
         )
 
+    content = note_path.read_bytes()
     return Response(
-        content=note_path.read_text(encoding="utf-8"), media_type="text/markdown; charset=utf-8"
+        content=content,
+        media_type="text/markdown; charset=utf-8",
+        headers={
+            "ETag": '"' + game_notes.content_digest(content) + '"',
+            "Cache-Control": "no-store",
+        },
     )
 
 

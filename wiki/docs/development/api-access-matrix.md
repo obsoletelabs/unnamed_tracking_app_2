@@ -352,12 +352,12 @@ are redacted. Validation errors never echo submitted values.
 | GET | `/api/game/{game_id}/files/{kind}/{filename}` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | POST | `/api/game/{game_id}/files/{kind}/{filename}/restore` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | POST | `/api/game/{game_id}/metadata/refresh` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
-| GET | `/api/game/{game_id}/notes` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
-| GET | `/api/game/{game_id}/notes-summary` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
+| GET | `/api/game/{game_id}/notes` | user-or-app | Own game notes only; app grants need `notes.read`. |
+| GET | `/api/game/{game_id}/notes-summary` | user-or-app | Own game notes only; app grants need `notes.read`. |
 | DELETE | `/api/game/{game_id}/notes/{note_name}` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
-| GET | `/api/game/{game_id}/notes/{note_name}` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
-| POST | `/api/game/{game_id}/notes/{note_name}` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
-| PUT | `/api/game/{game_id}/notes/{note_name}` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
+| GET | `/api/game/{game_id}/notes/{note_name}` | user-or-app | Own game note only; app grants need `notes.read`. |
+| POST | `/api/game/{game_id}/notes/{note_name}` | user-or-app | Own game note only; app grants need `notes.write`. Existing names are never replaced. |
+| PUT | `/api/game/{game_id}/notes/{note_name}` | user-or-app | Own game note only; app grants need `notes.write`. A stale `expected_sha256` returns 409 without replacing the body. |
 | PATCH | `/api/game/{game_id}/notes/{note_name}/details` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | POST | `/api/game/{game_id}/notes/{note_name}/duplicate` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | POST | `/api/game/{game_id}/notes/{note_name}/move` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
