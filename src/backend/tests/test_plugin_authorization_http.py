@@ -551,7 +551,8 @@ async def test_password_login_uses_shared_metadata_and_anomaly_notification(boun
     queue = AsyncMock()
     monkeypatch.setattr("src.core.session_manager._queue_anomaly_notification", queue)
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=boundary.app), base_url="http://test"
+        transport=httpx.ASGITransport(app=boundary.app, client=("8.8.8.8", 1234)),
+        base_url="http://test",
     ) as client:
         response = await client.post(
             "/api/auth/login",
@@ -559,7 +560,7 @@ async def test_password_login_uses_shared_metadata_and_anomaly_notification(boun
                 "username_or_email": "alice",
                 "password": "test-password",
             },
-            headers={"x-real-ip": "8.8.8.8", "user-agent": "Example browser"},
+            headers={"x-real-ip": "203.0.113.99", "user-agent": "Example browser"},
         )
     assert response.status_code == 200
     row = boundary.session.scalar(

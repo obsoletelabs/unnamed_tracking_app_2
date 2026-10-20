@@ -2,6 +2,7 @@
 
 import asyncio
 import http.client
+import json
 import os
 import ssl
 import subprocess
@@ -40,11 +41,32 @@ def request_status(secure=False):
     return request("/_startup/status.json", secure)[0]
 
 
+def check_proxy_client(expected, secure=False, forwarded_proto=None):
+    headers = {"X-Forwarded-For": "198.51.100.20", "X-Real-IP": "203.0.113.99"}
+    if forwarded_proto is not None:
+        headers["X-Forwarded-Proto"] = forwarded_proto
+    code, _location, body = request(
+        "/api/client",
+        secure=secure,
+        headers=headers,
+    )
+    assert code == 200
+    assert json.loads(body) == {"real": expected, "forwarded": expected}, body
+
+
 class ForwardedProtoEcho(BaseHTTPRequestHandler):
     """Stands in for the backend and reports the scheme Nginx forwarded."""
 
     def _echo(self):
-        body = (self.headers.get("X-Forwarded-Proto") or "").encode()
+        if self.path == "/api/client":
+            body = json.dumps(
+                {
+                    "real": self.headers.get("X-Real-IP"),
+                    "forwarded": self.headers.get("X-Forwarded-For"),
+                }
+            ).encode()
+        else:
+            body = (self.headers.get("X-Forwarded-Proto") or "").encode()
         self.send_response(200)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -79,6 +101,8 @@ async def main():
         )
         async with apply_nginx_change(configuration):
             assert request_status(secure=True) == 200
+            check_proxy_client("198.51.100.20")
+            check_proxy_client("198.51.100.20", secure=True)
         assert ACTIVE.read_bytes() != original
         working = ACTIVE.read_bytes()
         invalid = configuration.model_copy(update={"certificate": str(TLS / "invalid.pem")})
@@ -95,6 +119,8 @@ async def main():
             assert request_status() == 301
             assert request_status(secure=True) == 200
             assert request("/api/echo", secure=True)[2] == "https"
+            check_proxy_client("198.51.100.20", secure=True)
+            check_proxy_client("198.51.100.20", forwarded_proto="https")
             assert request("/library")[:2] == (301, "https://127.0.0.1/library")
             # A trusted HTTPS proxy's requests are not redirected again.
             status, _location, scheme = request(
@@ -136,6 +162,7 @@ async def main():
             assert "set_real_ip_from" not in ACTIVE.read_text(encoding="utf-8")
             # Without trusted proxies a client cannot claim HTTPS.
             assert request("/api/echo", headers={"X-Forwarded-Proto": "https"})[2] == "http"
+            check_proxy_client("127.0.0.1")
         assert not list(ACTIVE.parent.glob(".nginx-candidate-*"))
         print("Live Nginx HTTP/HTTPS/redirect, validation, rollback and reload tests passed")
     finally:

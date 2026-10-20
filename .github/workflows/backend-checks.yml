@@ -1,6 +1,6 @@
 name: Backend checks
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 on:
@@ -97,7 +97,7 @@ jobs:
 
   # Preserve the required status name while each check runs independently.
   backend-checks:
-    if: ${{ always() && (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
     needs:
       - backend-tests
       - migration-graph
