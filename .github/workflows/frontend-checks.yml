@@ -1,6 +1,6 @@
 name: Frontend Checks
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 on:
@@ -128,7 +128,7 @@ jobs:
   # Preserve the existing required status while checks report independently.
   frontend-checks:
     name: Frontend
-    if: ${{ always() && (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
     needs: [frontend-quality, frontend-tests, notification-worker-tests]
     runs-on: ubuntu-latest
     steps:

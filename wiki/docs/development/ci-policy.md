@@ -31,9 +31,19 @@ frontend tests continue to run. Migration graph validation runs when the backend
 is affected and always during the full PR/main checks.
 
 The selector reads the full push range or PR merge-base diff rather than just
-the final commit. Checkout fetches the complete history. Missing expected Git
-revisions fail selection rather than silently producing an empty file list.
+the final commit. Checkout fetches the complete reachable history. Missing
+historical revisions (for example, a force push's previous head or a rewritten
+stacked PR base) trigger a full scan of the checked-out tree, with an Actions
+notice explaining the fallback. An unavailable current commit or an invalid
+explicit local `--base` still fails selection. The fallback never returns an
+empty selection to bypass checks.
 Filenames use NUL-separated Git output and separate subprocess arguments.
+
+Each workflow cancels superseded runs for the same event and PR number or Git
+ref, including branch pushes after a force push. Push and PR runs have separate
+groups so scoped push checks cannot cancel the full PR checks. Cancelled runs
+do not start aggregate result jobs; completed runs still require every expected
+check to succeed. Cancellation does not turn a failed or cancelled check green.
 
 Same-repository ready PRs retain formatting fixes. The frontend and Ruff writers
 share a concurrency group, reject stale PR heads and never force-push. Draft and
