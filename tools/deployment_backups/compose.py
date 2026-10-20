@@ -101,7 +101,10 @@ class Deployment:
         metadata = self.sql(
             "SELECT json_build_object('database', current_database(), 'user', current_user, "
             "'server_version_num', current_setting('server_version_num'), "
-            "'database_bytes', pg_database_size(current_database()))"
+            "'database_bytes', pg_database_size(current_database()), "
+            "'captured_at', floor(extract(epoch FROM clock_timestamp()))::bigint, "
+            "'encoding', pg_encoding_to_char(encoding), 'lc_collate', datcollate, "
+            "'lc_ctype', datctype) FROM pg_database WHERE datname = current_database()"
         )
         has_revision = self.sql("SELECT to_regclass('alembic_version') IS NOT NULL", as_json=False)
         metadata["revisions"] = (
@@ -112,7 +115,10 @@ class Deployment:
         mounts = self.mounts()
         for role, root in (
             ("app", "/data"),
-            ("app", environment(self.instances["app"].info).get("APP_DATA_DIR", "/data")),
+            (
+                "app",
+                environment(self.instances["app"].info).get("APP_DATA_DIR", "/data"),
+            ),
             (
                 "runtime",
                 environment(self.instances["runtime"].info).get(
@@ -305,7 +311,14 @@ class Deployment:
         remaining = max_bytes
         dump = directory / "database.dump"
         self.runner.run(
-            ["docker", "exec", self.instances["database"].identifier, "sh", "-c", _DUMP],
+            [
+                "docker",
+                "exec",
+                self.instances["database"].identifier,
+                "sh",
+                "-c",
+                _DUMP,
+            ],
             "database-dump",
             output_file=dump,
             max_bytes=remaining,
@@ -352,7 +365,14 @@ class Deployment:
 
     def validate_dump(self, dump: Path) -> None:
         self.runner.run(
-            ["docker", "exec", "-i", self.instances["database"].identifier, "pg_restore", "--list"],
+            [
+                "docker",
+                "exec",
+                "-i",
+                self.instances["database"].identifier,
+                "pg_restore",
+                "--list",
+            ],
             "database-dump-validation",
             input_file=dump,
             max_bytes=64 * 1024 * 1024,

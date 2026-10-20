@@ -493,5 +493,92 @@ class RealRepositoryTests(unittest.TestCase):
         self.assertNotIn("Secret-that", str(raised.exception))
 
 
+class DatabaseRestoreTests(unittest.TestCase):
+    def runner(self, *, fail=None, space=1024**4, revisions=None):
+        runner = Mock(timeout=15)
+
+        def run(_arguments, step, **_options):
+            if step == fail:
+                raise BackupError(step)
+            return {
+                "create-database-restore-probe": b"a" * 64,
+                "database-restore-space": f"Filesystem 1024-blocks Used Available Capacity Mounted\nprobe 100 0 {space // 1024} 0% /var/lib/postgresql\n".encode(),
+                "inspect-restored-history": b"t\n",
+                "inspect-database-restore-process": b"postgres\n",
+            }.get(step, b"")
+
+        runner.run.side_effect = run
+        runner.json.return_value = ["source"] if revisions is None else revisions
+        return runner
+
+    def restore(self, runner):
+        from deployment_backups.database import verify_database_restore
+
+        verify_database_restore(
+            runner,
+            Path("backup.dump"),
+            {
+                "user": "owner",
+                "database_bytes": 100,
+                "revisions": ["source"],
+                "encoding": "UTF8",
+                "lc_collate": "C",
+                "lc_ctype": "C",
+            },
+            "sha256:" + "b" * 64,
+        )
+
+    def test_real_restore_command_is_offline_and_cleans_only_created_id(self):
+        runner = self.runner()
+        self.restore(runner)
+        calls = runner.run.call_args_list
+        create = calls[0].args[0]
+        self.assertEqual(create[:4], ["docker", "create", "--network", "none"])
+        self.assertNotIn("--volumes-from", create)
+        self.assertNotIn("POSTGRES_PASSWORD", " ".join(create))
+        restore = next(call for call in calls if call.args[1] == "restore-database-archive")
+        self.assertIn("--single-transaction", restore.args[0])
+        self.assertEqual(restore.kwargs["input_file"], Path("backup.dump"))
+        self.assertEqual(calls[-1].args[0], ["docker", "rm", "--force", "--volumes", "a" * 64])
+        self.assertEqual(calls[-1].kwargs["timeout"], 10)
+
+    def test_create_failure_never_removes_any_container(self):
+        runner = self.runner(fail="create-database-restore-probe")
+        with self.assertRaises(BackupError):
+            self.restore(runner)
+        self.assertEqual(runner.run.call_count, 1)
+
+    def test_restore_failure_or_disk_full_never_looks_verified(self):
+        for runner in (
+            self.runner(fail="restore-database-archive"),
+            self.runner(space=0),
+            self.runner(revisions=["wrong"]),
+        ):
+            with self.subTest(runner=runner), self.assertRaises(BackupError):
+                self.restore(runner)
+            self.assertEqual(runner.run.call_args.args[1], "remove-database-restore-probe")
+
+    def test_bad_probe_id_is_never_used_for_cleanup(self):
+        runner = self.runner()
+        runner.run.side_effect = None
+        runner.run.return_value = b"live-app-name"
+        with self.assertRaisesRegex(BackupError, "invalid-database-restore-probe-id"):
+            self.restore(runner)
+        self.assertEqual(runner.run.call_count, 1)
+
+    def test_environment_override_and_short_deadline(self):
+        result = Runner(10).run(
+            [sys.executable, "-c", "import os; print(os.environ['UTA_PROBE'])"],
+            "environment",
+            environment={"UTA_PROBE": "value"},
+            timeout=1,
+        )
+        self.assertEqual(result.strip(), b"value")
+        with self.assertRaisesRegex(BackupError, "timeout"):
+            Runner(10).run(
+                [sys.executable, "-c", "import time; time.sleep(2)"], "short", timeout=0.1
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -9,6 +9,7 @@ import signal
 import stat
 import subprocess
 import time
+from collections.abc import Mapping
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -35,8 +36,12 @@ class Runner:
         input_file: Path | None = None,
         output_file: Path | None = None,
         max_bytes: int = 4 * 1024 * 1024,
+        timeout: float | None = None,
+        environment: Mapping[str, str] | None = None,
     ) -> bytes:
-        deadline = time.monotonic() + self.timeout
+        deadline = time.monotonic() + (
+            self.timeout if timeout is None else min(self.timeout, timeout)
+        )
         result = bytearray()
         source = None
         destination = None
@@ -53,6 +58,7 @@ class Runner:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
+                env=None if environment is None else {**os.environ, **environment},
             )
             assert process.stdout is not None
             total = 0
