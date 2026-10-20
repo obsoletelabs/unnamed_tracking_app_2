@@ -26,6 +26,7 @@ from src.database.models.plugin_permissions import PluginPermissionGrant
 from src.database.models.user import User
 from src.database.models.user_invitation import NotificationPendingRecipient, UserInvitation
 from src.database.session import SessionLocal
+from src.features.auth_throttle import AuthRateLimited
 from src.features.notification_policy import effective_trust, select_projection
 from src.features.notification_providers import smtp
 from src.features.notification_providers.delivery import process_pending_deliveries
@@ -350,8 +351,9 @@ async def test_replacement_revocation_and_limits(invitation):
         await revoke_invitation(db, p.plugin, p.installation, p.admin, {"id": str(second)})
     for _ in range(3):
         await issue(p)
-    with pytest.raises(ValueError, match="limit"):
+    with pytest.raises(AuthRateLimited) as limited:
         await issue(p)
+    assert limited.value.retry_after > 0
     async with SessionLocal() as db:
         assert all(
             len(key) == 64 and "@" not in key

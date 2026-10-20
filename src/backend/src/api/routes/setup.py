@@ -36,6 +36,7 @@ from src.core.nginx_configuration import (
     validate_nginx_value,
 )
 from src.core.oidc import get_or_create_oidc_settings
+from src.core.password_work import run_password_job
 from src.core.provider_credentials import apply_deployment_provider_credentials
 from src.core.public_url import validate_deployment_url
 from src.core.session_manager import create_session
@@ -62,7 +63,7 @@ router = APIRouter(prefix="/api/setup", tags=["setup"])
 class SetupRequest(BaseModel):
     username: str = ""
     email: str = ""
-    password: str = ""
+    password: str = Field(default="", max_length=1024)
     sections: list[str] = Field(default_factory=list)
     configuration: dict[str, Any] = Field(default_factory=dict)
 
@@ -499,7 +500,7 @@ async def setup_admin(
     user = User(
         username=username,
         email=email,
-        password_hash=hash_password(password),
+        password_hash=await run_password_job(hash_password, password),
         is_active=True,
         is_admin=True,
     )

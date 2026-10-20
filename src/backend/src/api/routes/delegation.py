@@ -9,6 +9,7 @@ from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.api.auth_limits import enforce_actor_quota
 from src.api.routes.game_assets import AssetKind, get_game_asset
 from src.api.routes.games import list_field_changes, update_game
 from src.api.routes.media_lists import get_media_list, list_media_lists
@@ -184,8 +185,13 @@ async def request_summary(
 
 @router.post("/requests/{request_id}/decision")
 async def decide_request(
-    request_id: UUID, payload: AccessDecision, user: User = _BROWSER_USER, db: AsyncSession = _DB
+    request_id: UUID,
+    payload: AccessDecision,
+    request: Request,
+    user: User = _BROWSER_USER,
+    db: AsyncSession = _DB,
 ) -> dict:
+    await enforce_actor_quota(request, user)
     return await delegation.decide_request(db, request_id, user, payload)
 
 
@@ -261,6 +267,7 @@ async def revoke_grant(grant_id: UUID, user: User = _BROWSER_USER, db: AsyncSess
 async def rotate_credential(
     request: Request, actor: DelegatedActor = _ACTOR, db: AsyncSession = _DB
 ) -> dict:
+    await enforce_actor_quota(request, actor.user)
     row = await delegation.owned_grant(db, actor.user.id, actor.grant.id)
     old_digest = hash_token(request.headers["authorization"][7:].strip())
     if row.token_hash is None or not secrets.compare_digest(row.token_hash, old_digest):

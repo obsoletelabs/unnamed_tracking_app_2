@@ -24,6 +24,8 @@ The application accepts either the individual PostgreSQL variables or the legacy
 
 ## Application
 
+Environment-only authentication quota controls (`AUTH_RATE_LIMIT_PERCENT`, `AUTH_LOGIN_ACCOUNT_PER_MINUTE`, `AUTH_LOGIN_ACCOUNT_PER_15_MINUTES`, `AUTH_LOGIN_IP_PER_MINUTE`, `AUTH_LOGIN_IP_FAILURES_PER_15_MINUTES` and `AUTH_PASSWORD_WORKERS`) are documented with defaults, accepted ranges and replica/proxy requirements in [Authentication Protection](../deployment/authentication-protection.md).
+
 | Variable | Source | Default | Purpose |
 |---|---|---|---|
 | `SECRET_KEY` | ENV | Generated/persisted when omitted | Stable Fernet encryption and session-signing key. It is hidden from the setup UI. |

@@ -13,6 +13,7 @@ from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.auth_checks import check_credential
 from src.core.config import settings
 from src.database.models.auth import UserApiKey, UserSession
 from src.database.models.user import User
@@ -284,7 +285,7 @@ async def _app_grant_user(request: Request, db: AsyncSession, token: str, scope:
     return user
 
 
-async def get_current_user(
+async def _resolve_user_credentials(
     request: Request,
     db: AsyncSession = _DB_DEPENDENCY,
 ) -> User:
@@ -368,6 +369,26 @@ async def get_current_user(
         user.id, "api_key" if authorization else "session"
     )
     return user
+
+
+async def get_current_user(
+    request: Request,
+    db: AsyncSession = _DB_DEPENDENCY,
+) -> User:
+    authorization = request.headers.get("authorization", "")
+    session_token = request.cookies.get(session_cookie_name(request.headers.get("host", "")))
+    needs_lookup = (
+        (
+            authorization.startswith("Bearer " + API_KEY_PREFIX)
+            or (authorization.startswith("Bearer utd_") and app_grant_scope(request) is not None)
+        )
+        if authorization
+        else bool(session_token)
+    )
+    if not needs_lookup:
+        # Unsupported namespaces/missing credentials already fail without database work.
+        return await _resolve_user_credentials(request, db)
+    return await check_credential(request, lambda: _resolve_user_credentials(request, db))
 
 
 async def ensure_primary_user(db: AsyncSession) -> User:

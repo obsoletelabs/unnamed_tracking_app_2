@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.auth_checks import check_credential
 from src.database.models.delegation import DelegatedGrant
 from src.database.models.user import User
 from src.database.session import get_db
@@ -29,5 +30,7 @@ async def delegated_actor(request: Request, db: AsyncSession = _DB) -> Delegated
     authorization = request.headers.get("authorization", "")
     if not authorization.startswith("Bearer "):
         raise HTTPException(401, "An integration credential is required.")
-    grant, user = await authenticate_grant(db, authorization[7:].strip())
+    grant, user = await check_credential(
+        request, lambda: authenticate_grant(db, authorization[7:].strip())
+    )
     return DelegatedActor(grant=grant, user=user)

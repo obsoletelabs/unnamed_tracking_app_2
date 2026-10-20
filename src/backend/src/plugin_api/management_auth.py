@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import get_current_user, hash_token
+from src.core.auth_checks import check_credential
 from src.database.models.auth import UserApiKey
 from src.database.models.user import User
 from src.database.session import get_db
@@ -84,7 +85,7 @@ async def management_key(db: AsyncSession, authorization: str) -> UserApiKey:
 
 async def _management_user(request: Request, db: AsyncSession, authorization: str) -> User:
     required = management_scope(request.method, request.url.path)
-    row = await management_key(db, authorization)
+    row = await check_credential(request, lambda: management_key(db, authorization))
     if required is None or required not in row.scopes:
         raise HTTPException(403, "Plugin management scope is not granted.")
     if required in {"plugins.install", "plugins.update"}:

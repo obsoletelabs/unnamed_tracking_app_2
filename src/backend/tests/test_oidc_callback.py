@@ -11,6 +11,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from starlette.middleware.sessions import SessionMiddleware
 
+from src.api.auth_limits import AuthThrottleMiddleware
 from src.api.routes import auth_oidc
 from src.core.auth import hash_token, session_cookie_name
 from src.core.oidc import OidcConfig
@@ -67,6 +68,7 @@ async def callback(monkeypatch):
         monkeypatch.setattr(auth_oidc.oauth, "create_client", Mock(return_value=client))
         app = FastAPI()
         app.add_middleware(SessionMiddleware, secret_key="callback-state-test")
+        app.add_middleware(AuthThrottleMiddleware)
         app.include_router(auth_oidc.router)
         app.dependency_overrides[get_db] = lambda: CallbackDb(session)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http:

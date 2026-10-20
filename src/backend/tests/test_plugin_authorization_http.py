@@ -28,6 +28,7 @@ from src.api.routes.plugin_manager import contributions as plugin_contributions
 from src.api.routes.plugin_manager import runtime as plugin_runtime
 from src.core.auth import hash_token, session_cookie_name
 from src.core.geoip import GeoLocation, geoip
+from src.core.password_work import PasswordWorkBusy
 from src.database.models.achievement import Achievement  # noqa: F401
 from src.database.models.app_integration_settings import AppIntegrationSettings
 from src.database.models.auth import UserSession
@@ -49,6 +50,7 @@ from src.database.models.public_app import PublicAppActor, PublicAppSession
 from src.database.models.user import User
 from src.database.models.user_preferences import UserPreferences
 from src.database.session import get_db
+from src.features.auth_throttle import AuthRateLimited, AuthStoreUnavailable
 from src.features.notification_providers.base import NotificationMessage
 from src.features.notification_providers.plugin import PluginNotificationProvider
 from src.plugin_api.grants import has_capability_grant
@@ -685,6 +687,27 @@ async def test_gateway_internal_errors_are_safe_and_dispatch_is_bounded(boundary
     assert timed_out.status_code == 504
     assert timed_out.json()["error"]["code"] == "unavailable"
     assert cancelled.is_set()
+
+
+@pytest.mark.parametrize(
+    ("error", "status", "code", "retry"),
+    [
+        (AuthRateLimited(17), 429, "rate_limited", "17"),
+        (AuthStoreUnavailable(), 503, "unavailable", "5"),
+        (PasswordWorkBusy(), 503, "unavailable", "1"),
+    ],
+)
+async def test_gateway_authentication_retries_preserve_the_public_error_contract(
+    boundary, monkeypatch, error, status, code, retry
+):
+    monkeypatch.setattr(
+        plugin_contributions, "dispatch_gateway_request", AsyncMock(side_effect=error)
+    )
+    response = await request(boundary)
+    assert response.status_code == status
+    assert response.headers["Retry-After"] == retry
+    assert response.headers["Cache-Control"] == "private, no-store"
+    assert response.json()["error"]["code"] == code
 
 
 @pytest.mark.asyncio

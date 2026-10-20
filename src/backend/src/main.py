@@ -10,6 +10,8 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 
+from src.api.auth_limits import AuthThrottleMiddleware, auth_retry_response
+from src.api.auth_policy import authentication_operation
 from src.api.request_bodies import AnonymousBodyLimitMiddleware
 from src.api.routes import (
     achievement_icons,
@@ -83,9 +85,12 @@ from src.api.routes.themes import router as themes_router
 from src.api.routes.utils.misc import router as misc_router
 from src.core.auth import ensure_primary_user, set_password_policy_override
 from src.core.config import settings as app_settings
+from src.core.password_work import PasswordWorkBusy
 from src.core.provider_credentials import apply_deployment_provider_credentials
 from src.core.session_manager import purge_old_sessions
+from src.database.auth_limits import auth_limit_engine
 from src.database.session import SessionLocal
+from src.features.auth_throttle import AuthRateLimited, AuthStoreUnavailable
 from src.features.jobs import run_jobs_loop
 from src.features.metadata.core import CORE_PROVIDERS, core_registration
 from src.features.metadata.health import monitor as provider_health_monitor
@@ -110,6 +115,7 @@ app.add_middleware(
 
 # The anime list alone is several MB of JSON; it compresses roughly tenfold.
 app.add_middleware(GZipMiddleware, minimum_size=1024)
+app.add_middleware(AuthThrottleMiddleware)
 # Outermost, so an anonymous oversized body is refused before anything reads it.
 app.add_middleware(AnonymousBodyLimitMiddleware)
 
@@ -118,6 +124,25 @@ app.add_middleware(AnonymousBodyLimitMiddleware)
 # into the browser, error UI and any proxy log. Keep only where the problem
 # is and what it is.
 _VALIDATION_ERROR_KEYS = ("type", "loc", "msg")
+
+
+@app.exception_handler(AuthRateLimited)
+@app.exception_handler(AuthStoreUnavailable)
+@app.exception_handler(PasswordWorkBusy)
+async def authentication_retry(request: Request, exc: Exception) -> JSONResponse:
+    if not isinstance(exc, (AuthRateLimited, AuthStoreUnavailable, PasswordWorkBusy)):
+        raise exc
+    return auth_retry_response(
+        exc,
+        authentication_operation(
+            request.method, request.url.path, request.scope.get("root_path", "")
+        ),
+    )
+
+
+@app.on_event("shutdown")
+async def close_auth_limit_connections() -> None:
+    await auth_limit_engine.dispose()
 
 
 @app.exception_handler(RequestValidationError)

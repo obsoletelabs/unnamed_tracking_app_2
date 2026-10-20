@@ -10,6 +10,7 @@ from fastapi.routing import APIRoute
 from pydantic import BaseModel, ConfigDict, SecretStr
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.api.auth_limits import enforce_auth_actor_quota
 from src.core.auth import get_current_user
 from src.database.models.user import User
 from src.database.session import get_db
@@ -40,7 +41,12 @@ class SteamRoute(APIRoute):
         return safe_handler
 
 
-router = APIRouter(prefix="/api/settings/steam", tags=["steam-connections"], route_class=SteamRoute)
+router = APIRouter(
+    prefix="/api/settings/steam",
+    tags=["steam-connections"],
+    route_class=SteamRoute,
+    dependencies=[Depends(enforce_auth_actor_quota)],
+)
 
 
 class PendingRead(BaseModel):

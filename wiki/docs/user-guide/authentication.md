@@ -6,6 +6,8 @@ Unnamed Tracking App has two user-facing authentication methods: local username/
 
 Local accounts use the application's username/password login. A successful login creates a server-side session and the browser receives the application's session cookie.
 
+Repeated failed attempts are temporarily limited by account and network. If a request returns 429, wait for the response's `Retry-After` interval before trying again. A busy or unavailable authentication check returns 503 and a short retry interval. These limits do not permanently lock accounts. See [authentication protection](../deployment/authentication-protection.md) for deployment defaults, proxy configuration and overrides.
+
 Passwords are not stored in plaintext. API requests made by the web application normally use the session cookie automatically.
 
 New or renamed usernames use 1–100 ASCII letters, digits, underscores, hyphens or dots, with no spaces. The first-run administrator, invitations and account administration use the same rule. Existing usernames continue to sign in and can be kept unchanged when editing other profile fields. Exact username matching takes priority over the email fallback; email matching is case insensitive.

@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.api.auth_limits import enforce_admin_auth_quota
 from src.core.auth import get_current_admin
 from src.database.models.user import User
 from src.database.session import get_db
@@ -16,7 +17,9 @@ from src.features.user_invitations import (
     withdraw_invitation,
 )
 
-router = APIRouter(prefix="/api/auth", tags=["auth"])
+router = APIRouter(
+    prefix="/api/auth", tags=["auth"], dependencies=[Depends(enforce_admin_auth_quota)]
+)
 
 
 class _Body(BaseModel):

@@ -89,6 +89,13 @@ class Settings(BaseSettings):
     PASSWORD_REQUIRE_DIGIT: bool = False
     PASSWORD_REQUIRE_SYMBOL: bool = True
 
+    AUTH_RATE_LIMIT_PERCENT: int = Field(default=100, ge=10, le=10000)
+    AUTH_LOGIN_ACCOUNT_PER_MINUTE: int = Field(default=8, ge=1, le=100000)
+    AUTH_LOGIN_ACCOUNT_PER_15_MINUTES: int = Field(default=20, ge=1, le=100000)
+    AUTH_LOGIN_IP_PER_MINUTE: int = Field(default=120, ge=1, le=100000)
+    AUTH_LOGIN_IP_FAILURES_PER_15_MINUTES: int = Field(default=50, ge=1, le=1000000)
+    AUTH_PASSWORD_WORKERS: int = Field(default=2, ge=1, le=16)
+
     IGDB_CLIENT_ID: str | None = None
     IGDB_CLIENT_SECRET: str | None = None
     TMDB_API_KEY: str | None = None
