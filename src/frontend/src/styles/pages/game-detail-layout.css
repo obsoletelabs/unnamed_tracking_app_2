@@ -231,6 +231,7 @@
 
 .game-detail-page .action-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
 }
@@ -249,6 +250,18 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  white-space: nowrap;
+}
+
+/* With a launch button the page has one primary action: Edit steps back to an outline */
+.game-detail-page .action-row:has(.launch-group) .edit-btn {
+  background: transparent;
+  color: var(--ui-text);
+  border: 1px solid color-mix(in srgb, var(--ui-text) 22%, transparent);
+}
+
+.game-detail-page .action-row:has(.launch-group) .edit-btn:hover {
+  border-color: color-mix(in srgb, var(--ui-accent) 55%, transparent);
 }
 
 .game-detail-page .icon-btn {
@@ -565,6 +578,7 @@
 
 .game-detail-page .description-block {
   margin-top: 22px;
+  margin-bottom: 24px;
 }
 
 .game-detail-page .description {

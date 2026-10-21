@@ -518,14 +518,17 @@ features on all of them at once. Only the fields you tick are changed.
 Clicking a game opens its page. The header holds the cover, title, status,
 score, favorite heart and collections button, and below it are the tabs:
 
-- **Overview**: the description, ratings, platforms, links and where you left
-  off.
+- **Overview**: what the game is first (genres and description), then the
+  copies and their numbers, your completion and where you left off.
 - **Achievements**, **Screenshots**, **Clips**, **Soundtrack**, **Saves**,
   **Docs** and **Notes**. See [Game Media and Files](game-media.md) and
   [Game Notes](game-notes.md).
 - **Stats**: playtime and dates, with a history timeline underneath.
 
-Which tabs and header parts show is up to you. See
+The date a game was added sits with the other facts on **Overview** rather than
+in the header, and playtime, achievements and platform are shown once, not
+repeated. Library cards show a score only once you have rated the game. Which
+tabs and header parts show is up to you. See
 [Game Page Settings](game-page-settings.md).
 
 A game you have already seen in the library opens straight away and refreshes
@@ -572,14 +575,13 @@ supported yet.
 
 ### Multiplayer settings
 
-On **Overview**, choose **Edit multiplayer settings**. Tick **Playable with
+Choose **Edit** on the game page and open the **Play** tab. Tick **Playable with
 others** and save to mark multiplayer without supplying extra details. Exact
 player limits remain unknown. Enable **Set known player limits** to enter both
 minimum and maximum, or choose a common range. Session duration and confirmed
-crossplay are optional. These details are self-reported and also available in
-the game's ordinary Edit form.
+crossplay are optional. These details are self-reported. They live in the Edit
+form only; the Overview no longer carries a multiplayer panel.
 
-![Multiplayer settings on a game page](../images/game-multiplayer-editor.jpg)
 
 For several games, select them in the library and open **Bulk Edit**. Tick
 **Apply multiplayer settings** and review the replacement before saving. It
@@ -621,7 +623,9 @@ is still a separate entry. Choose "Every version of this game" to share one with
 all versions grouped under the same game.
 
 The **Overview** tab has a **Completion** section listing every tracked version
-with its own status. Pick a status per version; the summary says, for example,
+with its own status. The per-copy statuses stay folded away (**Per copy**) while
+every copy has the same status and open by themselves when they differ. Pick a
+status per version; the summary says, for example,
 "Completed on 1 of 2 tracked versions" rather than claiming every copy is done.
 A status you set is marked "Set by you" and imports will not change it; choose
 **Let imports update** to hand it back. Changing a game's status in its edit form

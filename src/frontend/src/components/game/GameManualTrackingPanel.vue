@@ -37,6 +37,14 @@ const label = (status: string) =>
   status.charAt(0) + status.slice(1).toLowerCase().replace(/_/g, " ");
 
 const completion = ref<CompletionTotals | null>(null);
+// The per-copy statuses are the advanced part of Completion: shown when the copies
+// disagree (something to look at), otherwise one click away.
+const completionOpen = ref<boolean | null>(null);
+const completionExpanded = computed(
+  () =>
+    completionOpen.value ??
+    new Set(completion.value?.versions.map((v) => v.status)).size > 1,
+);
 const totals = ref<AchievementTotals | null>(null);
 const error = ref<string | null>(null);
 const busy = ref(false);
@@ -173,8 +181,17 @@ const several = computed(() => (totals.value?.versions.length ?? 0) > 1);
         role="status"
         >{{ completion.summary }}</span
       >
+      <button
+        class="ui-btn ui-btn-secondary"
+        type="button"
+        aria-controls="completion-versions"
+        :aria-expanded="completionExpanded"
+        @click="completionOpen = !completionExpanded"
+      >
+        {{ completionExpanded ? "Hide" : "Per copy" }}
+      </button>
     </header>
-    <ul>
+    <ul v-show="completionExpanded" id="completion-versions">
       <li v-for="v in completion.versions" :key="v.gameId">
         <div class="name">
           <RouterLink v-if="v.gameId !== gameId" :to="`/games/${v.gameId}`">{{
@@ -210,7 +227,7 @@ const several = computed(() => (totals.value?.versions.length ?? 0) > 1);
         </button>
       </li>
     </ul>
-    <p class="hint">
+    <p v-show="completionExpanded" class="hint">
       A status you set stays as you chose it; Steam, Playnite and other imports
       do not change it.
     </p>
@@ -371,7 +388,7 @@ h2 {
   font-size: 1.15rem;
 }
 .summary {
-  flex: 1;
+  flex: 1 1 14rem;
   color: var(--ui-dim);
 }
 .summary.partial {
