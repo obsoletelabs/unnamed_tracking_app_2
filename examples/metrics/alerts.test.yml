@@ -1,0 +1,42 @@
+rule_files:
+  - alerts.yml
+evaluation_interval: 1m
+tests:
+  - name: failures from different application jobs do not combine
+    interval: 1h
+    input_series:
+      - series: 'uta_job_runs_total{job="unnamed-tracking",instance="app-a:9464",exported_job="cleanup",outcome="failed"}'
+        values: '0 0 0 0 0 1 2'
+      - series: 'uta_job_runs_total{job="unnamed-tracking",instance="app-a:9464",exported_job="backup",outcome="failed"}'
+        values: '0 0 0 0 0 1 2'
+    alert_rule_test:
+      - eval_time: 6h
+        alertname: UnnamedTrackingJobFailures
+        exp_alerts: []
+  - name: failures from different instances do not combine
+    interval: 1h
+    input_series:
+      - series: 'uta_job_runs_total{job="unnamed-tracking",instance="app-a:9464",exported_job="cleanup",outcome="failed"}'
+        values: '0 0 0 0 0 1 2'
+      - series: 'uta_job_runs_total{job="unnamed-tracking",instance="app-b:9464",exported_job="cleanup",outcome="failed"}'
+        values: '0 0 0 0 0 1 2'
+    alert_rule_test:
+      - eval_time: 6h
+        alertname: UnnamedTrackingJobFailures
+        exp_alerts: []
+  - name: repeated failures identify the application job and instance
+    interval: 1h
+    input_series:
+      - series: 'uta_job_runs_total{job="unnamed-tracking",instance="app-a:9464",exported_job="backup",outcome="failed"}'
+        values: '0 1 2 3 4 5 6'
+    alert_rule_test:
+      - eval_time: 6h
+        alertname: UnnamedTrackingJobFailures
+        exp_alerts:
+          - exp_labels:
+              job: unnamed-tracking
+              instance: app-a:9464
+              exported_job: backup
+              severity: warning
+            exp_annotations:
+              summary: Scheduled job backup failed repeatedly on app-a:9464

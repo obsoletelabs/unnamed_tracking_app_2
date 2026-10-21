@@ -36,11 +36,11 @@ groups:
         expr: time() - uta_job_last_success_timestamp_seconds > 3 * 86400
         for: 1h
         labels: { severity: warning }
-        annotations: { summary: "A scheduled job has not succeeded for three days" }
+        annotations: { summary: "Scheduled job {{ $labels.exported_job }} has not succeeded for three days on {{ $labels.instance }}" }
       - alert: UnnamedTrackingJobFailures
-        expr: sum by (job) (increase(uta_job_runs_total{outcome="failed"}[6h])) >= 3
+        expr: sum by (job, instance, exported_job) (increase(uta_job_runs_total{outcome="failed"}[6h])) >= 3
         labels: { severity: warning }
-        annotations: { summary: "A scheduled job failed repeatedly" }
+        annotations: { summary: "Scheduled job {{ $labels.exported_job }} failed repeatedly on {{ $labels.instance }}" }
       - alert: UnnamedTrackingMetadataProviderErrors
         expr: sum by (provider) (rate(uta_metadata_provider_calls_total{outcome!="ok"}[15m])) / sum by (provider) (rate(uta_metadata_provider_calls_total[15m])) > 0.5
         for: 30m
