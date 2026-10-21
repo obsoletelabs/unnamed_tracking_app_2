@@ -34,10 +34,23 @@ const loading = ref(true);
 const error = ref<string | null>(null);
 const passwordPolicy = ref<PasswordPolicy | null>(null);
 
+const invitationsError = ref<string | null>(null);
+// A failed invitation list must not read as "no invitations": keep what was
+// shown before and say so.
+async function reloadInvitations() {
+  try {
+    invitations.value = await listInvitations();
+    invitationsError.value = null;
+  } catch (err) {
+    invitationsError.value =
+      err instanceof Error ? err.message : "Failed to load invitations";
+  }
+}
+
 async function refreshAfterEdit() {
   try {
     users.value = await listUsers();
-    invitations.value = await listInvitations().catch(() => []);
+    await reloadInvitations();
     const open = editingUser.value;
     if (open)
       editingUser.value = users.value.find((u) => u.id === open.id) ?? null;
@@ -54,16 +67,20 @@ async function refreshAfterEdit() {
   }
 }
 
+let loadInFlight = false;
 async function loadUsers() {
+  if (loadInFlight) return;
+  loadInFlight = true;
   loading.value = true;
   error.value = null;
   try {
     users.value = await listUsers();
-    invitations.value = await listInvitations().catch(() => []);
+    await reloadInvitations();
   } catch (err) {
     error.value = err instanceof Error ? err.message : "Failed to load users";
   } finally {
     loading.value = false;
+    loadInFlight = false;
   }
 }
 onMounted(async () => {
@@ -204,8 +221,20 @@ function openCreateForm() {
       Manage the accounts on this server, including administrator access.
     </p>
     <p v-if="loading">Loading…</p>
-    <p v-else-if="error" class="form-error">{{ error }}</p>
+    <p v-else-if="error && !users.length" class="form-error" role="alert">
+      {{ error }}
+      <button type="button" class="small-button" @click="loadUsers">
+        Retry
+      </button>
+    </p>
     <template v-else>
+      <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+      <p v-if="invitationsError" class="form-error" role="alert">
+        Invitations could not be loaded: {{ invitationsError }}
+        <button type="button" class="small-button" @click="reloadInvitations">
+          Retry
+        </button>
+      </p>
       <table class="user-table">
         <thead>
           <tr>

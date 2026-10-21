@@ -9,7 +9,6 @@ import {
   fetchContentCounts,
   fetchGameFieldChanges,
   fetchGames,
-  setFavorite,
   setRatings,
   setStatus,
   setResumeNote,
@@ -88,6 +87,7 @@ import { useConfirm, usePrompt } from "../state/dialog";
 import { matchesShortcut } from "../state/shortcuts";
 import { useGameProfiles } from "./useGameProfiles";
 import { useGameWorlds } from "./useGameWorlds";
+import { useFavoriteToggle } from "./useFavoriteToggle";
 import { useGameAchievements } from "./useGameAchievements";
 import { ApiRequestError } from "../services/apiError";
 import {
@@ -549,16 +549,7 @@ export function useGameDetail() {
   window.addEventListener("keydown", onDetailKeydown);
   onUnmounted(() => window.removeEventListener("keydown", onDetailKeydown));
 
-  async function toggleFavorite() {
-    if (!game.value) return;
-    const next = !game.value.favorite;
-    game.value.favorite = next;
-    try {
-      await setFavorite(game.value.id, next);
-    } catch {
-      game.value.favorite = !next;
-    }
-  }
+  const { favoriteError, toggleFavorite } = useFavoriteToggle(() => game.value);
 
   const STATUS_OPTIONS: GameStatus[] = [
     "playing",
@@ -1794,6 +1785,7 @@ export function useGameDetail() {
   } = useGameAchievements(game);
 
   return {
+    favoriteError,
     confirm,
     route,
     router,
