@@ -32,10 +32,48 @@ from tests.test_public_apps import public_flow, sign_in  # noqa: F401
         ("GET", "/api/plugins/runtime/gateway", 200, True),
         ("POST", "/api/plugins/runtime/gateway/other", 200, True),
         ("POST", "/api/auth/oidc/login/authentik", 200, True),
+        ("GET", "/pwa/status", 200, False),
+        ("GET", "/pwa/status?check=ordinary", 200, False),
+        ("GET", "/pwa/status", 304, False),
+        ("GET", "/manifest.webmanifest", 200, False),
+        ("GET", "/manifest.webmanifest", 304, False),
+        ("GET", "/service-worker.js", 200, False),
+        (
+            "GET",
+            "/pwa/icons/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/192.png",
+            200,
+            False,
+        ),
+        (
+            "GET",
+            "/pwa/icons/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/512.png",
+            304,
+            False,
+        ),
+        ("GET", "/pwa/status", 201, True),
+        ("GET", "/pwa/status", 401, True),
+        ("GET", "/pwa/status", 403, True),
+        ("GET", "/pwa/status", 429, True),
+        ("GET", "/pwa/status", 500, True),
+        ("GET", "/pwa/status", 503, True),
+        ("GET", "/manifest.webmanifest", 404, True),
+        ("GET", "/service-worker.js", 503, True),
+        (
+            "GET",
+            "/pwa/icons/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/192.png",
+            404,
+            True,
+        ),
+        ("POST", "/pwa/status", 200, True),
+        ("HEAD", "/pwa/status", 200, True),
+        ("GET", "/pwa/status-debug", 200, True),
+        ("GET", "/pwa/offline.html", 200, True),
+        ("GET", "/pwa/icons/invalid/192.png", 200, True),
+        ("GET", "/api/pwa/status", 200, True),
     ],
 )
-@pytest.mark.parametrize("level", [logging.INFO, logging.WARNING])
-def test_runtime_gateway_quiets_only_successful_post_access_logs(
+@pytest.mark.parametrize("level", [logging.INFO, logging.WARNING, logging.ERROR])
+def test_access_log_quiets_only_routine_gateway_and_pwa_successes(
     method, target, status, visible, level
 ):
     stream = StringIO()
