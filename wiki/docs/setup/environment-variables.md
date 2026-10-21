@@ -26,6 +26,16 @@ The application accepts either the individual PostgreSQL variables or the legacy
 
 Environment-only authentication quota controls (`AUTH_RATE_LIMIT_PERCENT`, `AUTH_LOGIN_ACCOUNT_PER_MINUTE`, `AUTH_LOGIN_ACCOUNT_PER_15_MINUTES`, `AUTH_LOGIN_IP_PER_MINUTE`, `AUTH_LOGIN_IP_FAILURES_PER_15_MINUTES` and `AUTH_PASSWORD_WORKERS`) are documented with defaults, accepted ranges and replica/proxy requirements in [Authentication Protection](../deployment/authentication-protection.md).
 
+Prometheus metrics are configured with these environment-only variables, described in [Prometheus metrics](../deployment/metrics.md):
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `METRICS_ENABLED` | `true` in the production image, `false` in the development backend | Serves `/metrics` from the backend. `false` also removes the scrape port. |
+| `METRICS_LISTEN_PORT` | `9464` | Production image: port of the always-present scrape listener (no token). Closed unless you publish it. Not 80 or 443. |
+| `METRICS_NGINX_ROUTE_ENABLED` | `false` | Production image: opt in to token-protected `/metrics` on the public web ports. |
+| `METRICS_TOKEN` | generated and saved | Bearer token for `/metrics` (32+ characters). |
+| `PROMETHEUS_MULTIPROC_DIR` | unset | Only with several backend worker processes. |
+
 | Variable | Source | Default | Purpose |
 |---|---|---|---|
 | `SECRET_KEY` | ENV | Generated/persisted when omitted | Stable Fernet encryption and session-signing key. It is hidden from the setup UI. |

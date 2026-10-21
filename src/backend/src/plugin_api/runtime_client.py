@@ -5,11 +5,17 @@ from __future__ import annotations
 import base64
 import json
 import os
+import time
 from typing import Any
 from urllib.parse import quote, urlsplit
 
 import httpx
 
+from src.core.metrics import (
+    PLUGIN_RUNTIME_DURATION,
+    PLUGIN_RUNTIME_REQUESTS,
+    plugin_runtime_operation,
+)
 from src.plugin_api.manager_state import manager_state
 
 _ACTION_REQUEST_TIMEOUT = 35.0  # Allow the isolated runner's 30-second wall limit to report.
@@ -111,6 +117,25 @@ class PluginRuntimeClient:
 
     async def _request(self, method: str, path: str, **kwargs: Any) -> Any:
         """Send a runtime operation with current credentials and policy acknowledgement."""
+        operation = plugin_runtime_operation(method, path)
+        started = time.monotonic()
+        outcome = "error"
+        try:
+            result = await self._send(method, path, **kwargs)
+            outcome = "ok"
+            return result
+        except PluginRuntimeRequestError:
+            outcome = "rejected"
+            raise
+        except PluginRuntimeUnavailable as exc:
+            outcome = exc.kind
+            raise
+        finally:
+            PLUGIN_RUNTIME_REQUESTS.labels(operation, outcome).inc()
+            PLUGIN_RUNTIME_DURATION.labels(operation).observe(time.monotonic() - started)
+
+    async def _send(self, method: str, path: str, **kwargs: Any) -> Any:
+        """Send one request and translate transport and status failures."""
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.request(

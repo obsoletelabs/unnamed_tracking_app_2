@@ -27,6 +27,9 @@ tzdata==2025.3
 icalendar==7.3.0
 python-dateutil==2.9.0.post0
 
+# Prometheus metrics
+prometheus-client==0.22.1
+
 # Environment variables
 python-dotenv==1.2.2
 

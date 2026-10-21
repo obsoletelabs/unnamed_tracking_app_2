@@ -186,6 +186,9 @@ write_status "STARTING_BACKEND" "starting" "ready" "ready" "starting" "unknown" 
 mkfifo "$BACKEND_FIFO"
 python /srv/startup/redact_logs.py <"$BACKEND_FIFO" | tee "$BACKEND_LOG" &
 BACKEND_TAIL_PID="$!"
+# The scrape port (METRICS_LISTEN_PORT) needs the backend endpoint and its saved token, so the
+# production image enables them by default; METRICS_ENABLED=false turns both off.
+export METRICS_ENABLED="${METRICS_ENABLED:-true}"
 uvicorn src.main:app --host 127.0.0.1 --port 8000 --proxy-headers --forwarded-allow-ips=127.0.0.1 >"$BACKEND_FIFO" 2>&1 &
 BACKEND_PID="$!"
 log "Backend PID is $BACKEND_PID"

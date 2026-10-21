@@ -65,6 +65,7 @@ nav:
       - Startup & Troubleshooting: deployment/startup-and-troubleshooting.md
       - Migration Recovery: deployment/migration-recovery.md
       - Authentication Protection: deployment/authentication-protection.md
+      - Prometheus Metrics: deployment/metrics.md
       - Production Runtime Smoke: deployment/production-runtime-smoke.md
   - Development:
       - Overview: development/index.md
