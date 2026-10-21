@@ -15,6 +15,7 @@ if [ "${NGINX_REALIP_TRUSTED_PROXIES+x}" = x ]; then
 else
   trusted_proxies="$default_trusted_proxies"
 fi
+metrics_port="${METRICS_LISTEN_PORT:-}"
 generated_dir="/run/unnamed-tracking/tls"
 tmp_output="${output}.tmp.$$"
 realip_tmp="${output}.realip.$$"
@@ -46,6 +47,16 @@ fi
 if [ "$redirect" = true ] && [ "$enabled" != true ]; then
   printf '%s\n' "HTTP redirection requires TLS to be enabled." >&2
   exit 1
+fi
+if [ -n "$metrics_port" ]; then
+  metrics_port="$(printf '%s' "$metrics_port" | sed 's/^0*//')"
+  case "$metrics_port" in
+    ''|*[!0-9]*|??????*) printf '%s\n' "Invalid METRICS_LISTEN_PORT value; use a port number." >&2; exit 1 ;;
+  esac
+  if [ "$metrics_port" -gt 65535 ] || [ "$metrics_port" = 80 ] || [ "$metrics_port" = 443 ]; then
+    printf '%s\n' "METRICS_LISTEN_PORT must be a port other than 80 and 443." >&2
+    exit 1
+  fi
 fi
 for tls_path in "$cert" "$key"; do
   case "$tls_path" in
@@ -158,5 +169,36 @@ else
 fi
 
 rm -f "${tmp_output}.base" "$realip_tmp"
+
+# Optional scrape-only listener. It forwards nothing but /metrics, and the application still
+# requires METRICS_TOKEN; publish this port only on a network the scraper can reach.
+if [ -n "$metrics_port" ]; then
+  {
+    sed '$d' "$tmp_output"
+    cat <<EOF
+
+    server {
+        listen $metrics_port;
+        server_name _;
+        client_max_body_size 1k;
+
+        location = /metrics {
+            proxy_pass http://127.0.0.1:8000/metrics;
+            proxy_http_version 1.1;
+            proxy_set_header Host \$http_host;
+            proxy_set_header Authorization \$http_authorization;
+            proxy_read_timeout 10s;
+        }
+
+        location / {
+            default_type application/json;
+            return 404 '{"detail":"Not Found"}';
+        }
+    }
+}
+EOF
+  } > "${tmp_output}.metrics"
+  mv "${tmp_output}.metrics" "$tmp_output"
+fi
 mv "$tmp_output" "$output"
 trap - EXIT INT TERM

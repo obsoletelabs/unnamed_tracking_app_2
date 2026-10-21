@@ -56,6 +56,22 @@ if NGINX_REALIP_TRUSTED_PROXIES='10.0.0.0/8;include /tmp/evil;' "$render" /etc/n
   exit 1
 fi
 
+rendered="$work/metrics.conf"
+METRICS_LISTEN_PORT=9464 "$render" /etc/nginx/ready.conf "$rendered"
+grep -q 'listen 9464;' "$rendered"
+grep -q 'proxy_pass http://127.0.0.1:8000/metrics;' "$rendered"
+nginx -t -c "$rendered"
+! grep -q 'listen 9464;' "$work/http.conf"
+for public in /etc/nginx/ready.conf /etc/nginx/readytls.conf /etc/nginx/readytlsredirect.conf; do
+  grep -q 'location = /metrics {' "$public"
+done
+for invalid in 'x;include /tmp/evil' 80 443 70000; do
+  if METRICS_LISTEN_PORT="$invalid" "$render" /etc/nginx/ready.conf "$work/invalid-metrics.conf"; then
+    echo "invalid METRICS_LISTEN_PORT unexpectedly succeeded: $invalid" >&2
+    exit 1
+  fi
+done
+
 rendered="$work/https.conf"
 NGINX_TLS_ENABLED=true NGINX_TLS_CERTIFICATE="$work/tls/cert.pem" NGINX_TLS_PRIVATE_KEY="$work/tls/key.pem" "$render" /etc/nginx/readytls.conf "$rendered"
 grep -q 'listen 443 ssl;' "$rendered"

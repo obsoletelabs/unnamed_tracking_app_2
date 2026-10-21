@@ -12,6 +12,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from src.api.auth_limits import AuthThrottleMiddleware, auth_retry_response
 from src.api.auth_policy import authentication_operation
+from src.api.metrics import MetricsMiddleware
 from src.api.request_bodies import AnonymousBodyLimitMiddleware
 from src.api.routes import (
     achievement_icons,
@@ -118,6 +119,8 @@ app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.add_middleware(AuthThrottleMiddleware)
 # Outermost, so an anonymous oversized body is refused before anything reads it.
 app.add_middleware(AnonymousBodyLimitMiddleware)
+# Outermost of all: it times every request and answers the guarded /metrics endpoint.
+app.add_middleware(MetricsMiddleware)
 
 # Pydantic's default 422 body echoes what was submitted (`input`, plus the
 # raw values in `ctx`), which puts plaintext passwords, tokens and API keys

@@ -288,6 +288,21 @@ CONFIG_REGISTRY: tuple[ConfigSpec, ...] = (
         description="Maximum concurrent password computations in each backend worker process.",
     ),
     ConfigSpec(
+        "METRICS_ENABLED",
+        source=ConfigSource.ENV,
+        visible=False,
+        input_type="boolean",
+        default=False,
+        description="Serve Prometheus metrics at /metrics on the backend's internal listener.",
+    ),
+    ConfigSpec(
+        "METRICS_TOKEN",
+        source=ConfigSource.ENV,
+        visible=False,
+        input_type="password",
+        description="Bearer token (at least 32 characters) a scraper must present to /metrics.",
+    ),
+    ConfigSpec(
         "NOTIFICATION_AUDIT_RETENTION_DAYS",
         source=ConfigSource.ENV,
         visible=False,

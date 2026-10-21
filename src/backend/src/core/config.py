@@ -98,6 +98,9 @@ class Settings(BaseSettings):
     AUTH_LOGIN_IP_FAILURES_PER_15_MINUTES: int = Field(default=50, ge=1, le=1000000)
     AUTH_PASSWORD_WORKERS: int = Field(default=2, ge=1, le=16)
 
+    METRICS_ENABLED: bool = False
+    METRICS_TOKEN: str = ""
+
     IGDB_CLIENT_ID: str | None = None
     IGDB_CLIENT_SECRET: str | None = None
     TMDB_API_KEY: str | None = None
@@ -127,6 +130,16 @@ class Settings(BaseSettings):
     @classmethod
     def validate_public_url(cls, value: str) -> str:
         return validate_deployment_url(value)
+
+    @model_validator(mode="after")
+    def require_metrics_token(self) -> "Settings":
+        """/metrics is only served with a strong scrape credential; fail closed at start-up."""
+        if self.METRICS_ENABLED and len(self.METRICS_TOKEN) < 32:
+            raise ValueError(
+                "METRICS_ENABLED requires METRICS_TOKEN with at least 32 characters "
+                "(for example the output of `openssl rand -hex 32`)."
+            )
+        return self
 
     @model_validator(mode="after")
     def resolve_database(self) -> "Settings":
