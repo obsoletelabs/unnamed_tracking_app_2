@@ -11,6 +11,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from src.core.config_registry import CONFIG_REGISTRY
 from src.core.env_handler import EnvConfigHandler
+from src.core.oidc_http import private_issuer_origins
 from src.core.public_url import validate_deployment_url
 
 
@@ -119,9 +120,16 @@ class Settings(BaseSettings):
     OIDC_ADMIN_GROUP: str | None = None
     OIDC_USER_MATCH_FIELD: str = "email"
     OIDC_REQUIRE_VERIFIED_EMAIL: bool = False
+    OIDC_PRIVATE_ISSUER_ORIGINS: str = ""
 
     # Blank values in .env (as shipped in example.env) fall back to defaults.
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", env_ignore_empty=True)
+
+    @field_validator("OIDC_PRIVATE_ISSUER_ORIGINS")
+    @classmethod
+    def validate_oidc_private_origins(cls, value: str) -> str:
+        private_issuer_origins(value)
+        return value.strip()
 
     @field_validator("PUBLIC_APP_URL")
     @classmethod

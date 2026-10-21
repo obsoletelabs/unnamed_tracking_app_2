@@ -7,12 +7,13 @@ from typing import Any
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
 from authlib.integrations.starlette_client import OAuth
-from fastapi import HTTPException, Request
+from fastapi import Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import RedirectResponse
 
 from src.core.config import settings
+from src.core.oidc_http import OidcOAuth2App, OidcTransport
 from src.database.models.oidc_settings import OidcSettings
 
 oauth = OAuth()
@@ -92,10 +93,21 @@ def register_oidc_provider(config: OidcConfig, client_name: str = "oidc") -> Non
         oauth._clients.pop(client_name, None)  # pylint: disable=protected-access
     oauth.register(
         name=client_name,
+        client_cls=OidcOAuth2App,
         client_id=config.client_id,
         client_secret=config.client_secret,
         server_metadata_url=config.server_metadata_url,
-        client_kwargs={"scope": config.scopes, "code_challenge_method": "S256"},
+        client_kwargs={
+            "scope": config.scopes,
+            "code_challenge_method": "S256",
+            "transport": OidcTransport(
+                config.expected_issuer,
+                settings.OIDC_PRIVATE_ISSUER_ORIGINS,
+                development=settings.DEBUG or settings.STARTUP_MODE in {"dev", "development"},
+            ),
+            "trust_env": False,
+            "follow_redirects": False,
+        },
         overwrite=True,
     )
     _registered_configs[client_name] = config
@@ -126,6 +138,11 @@ async def validate_oidc_metadata(client: Any, config: OidcConfig) -> None:
     metadata = await client.load_server_metadata()
     if metadata.get("issuer") != config.expected_issuer:
         raise ValueError("OIDC discovery issuer mismatch")
+    transport = getattr(client, "client_kwargs", {}).get("transport")
+    if isinstance(transport, OidcTransport):
+        for key in ("authorization_endpoint", "token_endpoint", "jwks_uri", "userinfo_endpoint"):
+            if key in metadata:
+                transport.validate_destination(metadata[key])
     permitted = {
         "RS256",
         "RS384",
@@ -153,9 +170,13 @@ async def validate_oidc_metadata(client: Any, config: OidcConfig) -> None:
 
 async def begin_oidc(request: Request, config: OidcConfig) -> RedirectResponse:
     client_name = f"oidc_{config.slug}" if config.slug != "default" else "oidc"
-    register_oidc_provider(config, client_name)
-    client = oauth.create_client(client_name)
-    if client is None:
-        raise HTTPException(status_code=503, detail="OIDC provider is unavailable.")
-    await validate_oidc_metadata(client, config)
-    return await client.authorize_redirect(request, callback_url(request, config))
+    try:
+        register_oidc_provider(config, client_name)
+        client = oauth.create_client(client_name)
+        if client is None:
+            return RedirectResponse("/login?oidc_error=provider_unavailable", 303)
+        await validate_oidc_metadata(client, config)
+        return await client.authorize_redirect(request, callback_url(request, config))
+    # External-provider failures return a constant error without leaking URLs or secrets.
+    except Exception:  # pylint: disable=broad-exception-caught
+        return RedirectResponse("/login?oidc_error=authentication_failed", 303)

@@ -399,11 +399,11 @@ async def _resolve_oidc_identity(
 async def _complete_callback(
     request: Request, db: AsyncSession, config: OidcConfig, client_name: str
 ) -> RedirectResponse:
-    register_oidc_provider(config, client_name)
-    client = oauth.create_client(client_name)
-    if client is None:
-        return RedirectResponse("/login?oidc_error=provider_unavailable", 303)
     try:
+        register_oidc_provider(config, client_name)
+        client = oauth.create_client(client_name)
+        if client is None:
+            return RedirectResponse("/login?oidc_error=provider_unavailable", 303)
         token = await _fetch_oidc_token(request, client, config)
         claims = dict(token["userinfo"])
     # Provider token/userinfo failures must return to sign-in without opening a session.

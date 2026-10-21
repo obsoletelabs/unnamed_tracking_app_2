@@ -62,6 +62,12 @@ Register exactly that URI with the identity provider.
 
 ## ID-token validation
 
+### Provider network policy
+
+Provider discovery, token, JWKS and UserInfo requests require HTTPS, refuse redirects, use bounded responses and disable environment proxies. Public destinations resolve exclusively to public addresses and connections pin those addresses while retaining TLS hostname verification. Discovery cannot override transport, TLS, proxy, headers or PKCE options.
+
+For a private HTTPS issuer, set `OIDC_PRIVATE_ISSUER_ORIGINS=https://sso.internal:8443` (comma-separated for multiple issuers). Only a configured issuer with that exact scheme, hostname and port receives the exception, including its endpoints on that origin. An exception for one issuer does not grant private access to another issuer or to cross-origin endpoints. Use a trusted CA and a certificate valid for the issuer hostname; TLS verification stays enabled. Plain HTTP is allowed only for loopback destinations when `DEBUG=true` or `STARTUP_MODE=development`.
+
 Authorization-code sign-in uses PKCE S256. Discovery must name the configured issuer exactly; only supported asymmetric ID-token signature algorithms are accepted. The signed nonce must match even if a provider reports `nonce_supported=false`. UserInfo can fill missing profile information only after ID-token validation and only when its subject matches. Unsigned token-response fields cannot supply identity, verification or administrator-group claims.
 
 Sign-in requires an ID token and the nonce saved when the browser started the

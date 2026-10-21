@@ -599,6 +599,14 @@ CONFIG_REGISTRY: tuple[ConfigSpec, ...] = (
         required=True,
         storage="oidc",
     ),
+    ConfigSpec(
+        "OIDC_PRIVATE_ISSUER_ORIGINS",
+        "oidc",
+        source=ConfigSource.ENV,
+        visible=False,
+        default="",
+        description="Comma-separated HTTPS issuer origins explicitly permitted on private networks.",
+    ),
     ConfigSpec("OIDC_CLIENT_ID", "oidc", label="Client ID", required=True, storage="oidc"),
     ConfigSpec(
         "OIDC_CLIENT_SECRET",
