@@ -1096,6 +1096,20 @@ async function onCopiesChanged() {
                   </button>
                 </template>
               </div>
+              <div
+                v-if="(a.sources?.length ?? 0) > 1 && !isHiddenLocked(a)"
+                class="ach-sources"
+              >
+                <span
+                  v-for="s in a.sources"
+                  :key="s.gameId + s.provider"
+                  class="ach-tag"
+                  :class="{ 'ach-source-on': s.unlocked }"
+                  :title="`${s.copy}: ${s.unlocked ? 'unlocked' : 'locked'}`"
+                  >{{ s.store || s.provider }}
+                  {{ s.unlocked ? "· unlocked" : "· locked" }}</span
+                >
+              </div>
             </div>
 
             <div class="ach-col">

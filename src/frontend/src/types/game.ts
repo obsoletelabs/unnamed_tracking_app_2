@@ -30,6 +30,15 @@ export type GameRelationshipType =
 // synced via retroachievements.org, common for emulated/retro platforms
 export type AchievementsProvider = "native" | "retroachievements" | null;
 
+export interface AchievementSource {
+  gameId: string;
+  copy: string;
+  store: string | null;
+  provider: string;
+  unlocked: boolean;
+  unlockedAt: string | null;
+}
+
 export interface Achievement {
   id: string;
   name: string;
@@ -46,6 +55,9 @@ export interface Achievement {
   kind?: AchievementKind | null;
   // points the provider rates it at
   points?: number | null;
+  // what each copy of a merged game reports for it (more than one entry only
+  // when several copies have it)
+  sources?: AchievementSource[];
   hidden?: boolean;
   // the share of all players who have it (0-100)
   rarityPercent?: number | null;

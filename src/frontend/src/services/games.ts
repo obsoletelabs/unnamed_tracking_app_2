@@ -3,7 +3,7 @@ import type { MetadataSearchResult } from "./metadata";
 export type { MetadataSearchResult } from "./metadata";
 import { mockGames } from "../data/mockGames";
 import { failedRequest } from "./apiError";
-import { normalizeKind } from "../utils/achievements";
+import { mapAchievements } from "./achievementMapping";
 import { createEntityCache } from "../utils/entityCache";
 import {
   POSTER_WIDTH,
@@ -301,24 +301,6 @@ export async function fetchGames(): Promise<Game[]> {
   return games;
 }
 
-interface BackendAchievement {
-  id: string;
-  provider: string;
-  name: string;
-  description: string | null;
-  icon_url: string | null;
-  unlocked: boolean;
-  unlocked_at: number | null;
-  locked_icon_url?: string | null;
-  medal?: string | null;
-  points?: number | null;
-  tier?: string | null;
-  hidden?: boolean | null;
-  global_percent?: number | null;
-  progress_current?: number | null;
-  progress_target?: number | null;
-}
-
 export interface FieldChange {
   id: string;
   fieldName: string;
@@ -388,7 +370,8 @@ export async function fetchGameAchievements(
   if (import.meta.env.VITE_USE_MOCK_DATA === "true") {
     return mockGames.find((g) => g.id === id)?.achievements ?? [];
   }
-  const response = await fetch(`/api/game/${id}/achievements`, {
+  // the main copy of a merged game lists every copy's achievements, once each
+  const response = await fetch(`/api/game/${id}/achievements?group=true`, {
     credentials: "include",
   });
   if (!response.ok) {
@@ -396,27 +379,7 @@ export async function fetchGameAchievements(
       `Failed to fetch achievements: ${response.status} ${response.statusText}`,
     );
   }
-  const raw: BackendAchievement[] = await response.json();
-  return raw.map((a) => ({
-    id: a.id,
-    name: a.name,
-    description: a.description,
-    unlocked: a.unlocked,
-    unlockedAt: a.unlocked ? unixSecondsToIso(a.unlocked_at) : null,
-    provider: a.provider,
-    iconUrl: a.icon_url,
-    lockedIconUrl: a.locked_icon_url ?? null,
-    points: a.points ?? null,
-    tierOverride:
-      a.medal === "bronze" || a.medal === "silver" || a.medal === "gold"
-        ? a.medal
-        : null,
-    kind: normalizeKind(a.tier),
-    hidden: a.hidden ?? false,
-    rarityPercent: a.global_percent ?? null,
-    progressCurrent: a.progress_current ?? null,
-    progressTarget: a.progress_target ?? null,
-  }));
+  return mapAchievements(await response.json());
 }
 
 export interface AchievementsSummaryEntry {
