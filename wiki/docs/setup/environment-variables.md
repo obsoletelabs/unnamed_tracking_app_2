@@ -73,6 +73,16 @@ These values are used for environment-based bootstrap of the initial administrat
 
 The normal setup flow can collect these values instead of providing them through the environment.
 
+## Password hashing
+
+Environment-only settings for the Argon2id parameters used for new and upgraded local password hashes. They are not shown in the setup UI. Details, sizing guidance and how existing scrypt accounts are upgraded are in [Password hashing](../deployment/authentication-protection.md#password-hashing).
+
+| Variable | Default | Range | Purpose |
+|---|---|---|---|
+| `ARGON2_MEMORY_KIB` | `19456` | 8192–262144 | Memory per password hash, in KiB. Total use scales with `AUTH_PASSWORD_WORKERS`. |
+| `ARGON2_TIME_COST` | `2` | 1–10 | Argon2id iterations. |
+| `ARGON2_PARALLELISM` | `1` | 1–8 | Argon2id lanes. |
+
 ## Application URL
 
 | Variable | Default | Purpose |

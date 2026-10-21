@@ -188,9 +188,9 @@ async def test_real_smtp_handoff_fragment_link_and_atomic_session_only_revocatio
         )
         assert response.status_code == 200 and not response.cookies
     async with SessionLocal() as db:
-        assert verify_password(
-            "Replacement-Password-789!", (await db.get(User, p.user)).password_hash
-        )
+        stored = (await db.get(User, p.user)).password_hash
+        assert verify_password("Replacement-Password-789!", stored)
+        assert stored.startswith("argon2id$")
         assert (await db.get(UserSession, session)).revoked_at is not None
         assert (await db.get(UserApiKey, key)).revoked_at is None
         assert (await db.get(AuthRecoveryToken, identity)).encrypted_token is None

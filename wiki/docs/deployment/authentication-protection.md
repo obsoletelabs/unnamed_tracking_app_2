@@ -54,9 +54,32 @@ For example, a large NAT deployment can raise `AUTH_LOGIN_IP_PER_MINUTE` and `AU
 
 Each backend process has a separate quota pool of **two PostgreSQL connections**, no overflow, and a two-second checkout timeout, in addition to the normal application pool. Budget PostgreSQL connection capacity for every worker/replica. Each quota transaction has a three-second overall deadline, a two-second statement timeout and a 0.5-second row-lock timeout. Keeping counters separate prevents a request holding a business connection from starving its own quota check/refund.
 
-Password work uses the existing scrypt algorithm in a bounded thread pool. Excess work receives a retry response instead of joining an unbounded queue. Cancellation keeps a slot occupied until its actual hashing thread finishes. Local login handlers holding user rows are separately limited to `min(4, AUTH_PASSWORD_WORKERS)` per process. Increasing workers also increases concurrent hashing memory/CPU demand; size this for the deployment.
+Password work uses Argon2id (see [Password hashing](#password-hashing)) in a bounded thread pool. Excess work receives a retry response instead of joining an unbounded queue. Cancellation keeps a slot occupied until its actual hashing thread finishes. Local login handlers holding user rows are separately limited to `min(4, AUTH_PASSWORD_WORKERS)` per process. Increasing workers also increases concurrent hashing memory/CPU demand; size this for the deployment.
 
 Known authentication submissions require a declared body of at most **32 KiB**, including authenticated callers. Chunked/unsized authentication submissions and invalid Content-Length values return 413. Rejected bodies drain at most 1 MiB/five seconds before the connection is closed. Local sign-in and explicit new/current password fields accept at most 1,024 characters. General authenticated media/document uploads keep their existing separate limits.
+
+## Password hashing
+
+New passwords (setup, admin-created accounts, invitations, password changes and recovery, and the
+unusable placeholder passwords of single sign-on accounts) are hashed with Argon2id. Each stored
+hash is tagged `argon2id$memory$iterations$lanes$salt$digest`, so its parameters travel with it.
+Accounts created before this policy keep their `scrypt$...` hashes and sign in as before. After a
+successful sign-in, a hash that is legacy or weaker than the current policy is replaced under the
+same row lock that already serializes sign-ins and password changes, so a concurrent change is never
+overwritten. If the hashing pool is busy the sign-in still succeeds and the upgrade waits for the next
+one. Dormant accounts stay on scrypt until they sign in; nobody is forced to reset a password.
+
+| Variable | Default | Range | Meaning |
+| --- | --- | --- | --- |
+| `ARGON2_MEMORY_KIB` | `19456` | 8192–262144 | Memory per hash (19 MiB is the OWASP minimum for `t=2`, `p=1`) |
+| `ARGON2_TIME_COST` | `2` | 1–10 | Iterations |
+| `ARGON2_PARALLELISM` | `1` | 1–8 | Lanes |
+
+The defaults take about 40 ms on a development machine. Memory use scales with
+`AUTH_PASSWORD_WORKERS` (each concurrent hash holds `ARGON2_MEMORY_KIB`), so raise memory with that in
+mind. Raising a setting upgrades accounts on their next sign-in. Stored parameters are bounded when
+verifying (256 MiB, 10 iterations, 8 lanes), so a corrupt or hostile record is rejected rather than
+allowed to exhaust the server; unknown or malformed records never verify.
 
 ## Responses and diagnostics
 

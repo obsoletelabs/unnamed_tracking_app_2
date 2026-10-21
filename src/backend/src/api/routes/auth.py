@@ -22,6 +22,7 @@ from src.core.auth import (
     get_current_admin,
     get_current_user,
     hash_password,
+    password_needs_rehash,
     password_policy,
     revoke_other_sessions,
     revoke_session,
@@ -36,7 +37,7 @@ from src.core.client_address import request_ip
 from src.core.config import settings
 from src.core.crypto import encrypt_secret
 from src.core.env_handler import EnvConfigHandler
-from src.core.password_work import run_password_job
+from src.core.password_work import PasswordWorkBusy, run_password_job
 from src.core.session_manager import create_session
 from src.database.models.app_integration_settings import AppIntegrationSettings
 from src.database.models.auth import UserApiKey
@@ -226,6 +227,14 @@ async def login(
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials."
             )
+
+        if password_needs_rehash(stored_hash):
+            # The row is locked above, so a concurrent password change or reset cannot be
+            # overwritten. A busy hashing pool only postpones the upgrade to the next sign-in.
+            try:
+                user.password_hash = await run_password_job(hash_password, payload.password)
+            except PasswordWorkBusy:
+                pass
 
         session_context = await create_session(db, user, request)
         session_token = session_context.token

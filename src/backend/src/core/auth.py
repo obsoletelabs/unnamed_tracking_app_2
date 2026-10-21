@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Final, Literal, TypeVar
 from uuid import UUID
 
+from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,9 +22,11 @@ from src.database.session import get_db
 
 _SALT_BYTES: Final = 16
 _HASH_BYTES: Final = 32
-_SCRYPT_N: Final = 2**14
-_SCRYPT_R: Final = 8
-_SCRYPT_P: Final = 1
+_SCRYPT_MAX_N: Final = 2**17
+_SCRYPT_MAX_MEMORY: Final = 256 * 1024 * 1024
+_ARGON2_MAX_MEMORY_KIB: Final = 262_144
+_ARGON2_MAX_TIME_COST: Final = 10
+_ARGON2_MAX_LANES: Final = 8
 _DB_DEPENDENCY = Depends(get_db)
 SESSION_COOKIE_PREFIX: Final = "session_"
 SESSION_TTL_SECONDS: Final = 30 * 24 * 60 * 60
@@ -161,35 +164,95 @@ def effective_display_name(user: User) -> str:
     return user.display_name or user.username
 
 
+def _argon2id(password: str, salt: bytes, memory_kib: int, time_cost: int, lanes: int) -> bytes:
+    return Argon2id(
+        salt=salt,
+        length=_HASH_BYTES,
+        iterations=time_cost,
+        lanes=lanes,
+        memory_cost=memory_kib,
+    ).derive(password.encode("utf-8"))
+
+
 def hash_password(password: str) -> str:
+    """Hash with the configured Argon2id policy; the parameters travel with the hash."""
     salt = secrets.token_bytes(_SALT_BYTES)
-    password_hash = hashlib.scrypt(
+    memory, time_cost, lanes = (
+        settings.ARGON2_MEMORY_KIB,
+        settings.ARGON2_TIME_COST,
+        settings.ARGON2_PARALLELISM,
+    )
+    digest = _argon2id(password, salt, memory, time_cost, lanes)
+    return f"argon2id${memory}${time_cost}${lanes}${salt.hex()}${digest.hex()}"
+
+
+def _argon2_parameters(parts: list[str]) -> tuple[int, int, int, bytes, bytes]:
+    memory, time_cost, lanes = (int(value) for value in parts[1:4])
+    # Stored parameters are attacker-influenced if the database is; bound the work they request.
+    if not (
+        8 <= memory <= _ARGON2_MAX_MEMORY_KIB
+        and 1 <= time_cost <= _ARGON2_MAX_TIME_COST
+        and 1 <= lanes <= _ARGON2_MAX_LANES
+    ):
+        raise ValueError("unsupported Argon2id parameters")
+    salt, digest = bytes.fromhex(parts[4]), bytes.fromhex(parts[5])
+    if len(salt) < 8 or len(digest) != _HASH_BYTES:
+        raise ValueError("malformed Argon2id hash")
+    return memory, time_cost, lanes, salt, digest
+
+
+def _scrypt_digest(password: str, parts: list[str]) -> tuple[bytes, bytes]:
+    n, r, p = (int(value) for value in parts[1:4])
+    salt, expected = bytes.fromhex(parts[4]), bytes.fromhex(parts[5])
+    if (
+        not (2 <= n <= _SCRYPT_MAX_N and n & (n - 1) == 0 and 1 <= r <= 32 and 1 <= p <= 16)
+        or not 16 <= len(expected) <= 64
+    ):
+        raise ValueError("unsupported scrypt parameters")
+    candidate = hashlib.scrypt(
         password.encode("utf-8"),
         salt=salt,
-        n=_SCRYPT_N,
-        r=_SCRYPT_R,
-        p=_SCRYPT_P,
-        dklen=_HASH_BYTES,
+        n=n,
+        r=r,
+        p=p,
+        dklen=len(expected),
+        maxmem=_SCRYPT_MAX_MEMORY,
     )
-    return f"scrypt${_SCRYPT_N}${_SCRYPT_R}${_SCRYPT_P}${salt.hex()}${password_hash.hex()}"
+    return candidate, expected
 
 
 def verify_password(password: str, stored_hash: str) -> bool:
+    """Verify an `argon2id$...` or legacy `scrypt$...` record; anything else is rejected."""
     try:
-        algorithm, n, r, p, salt_hex, hash_hex = stored_hash.split("$")
-        if algorithm != "scrypt":
+        parts = stored_hash.split("$")
+        if len(parts) != 6:
             return False
-        candidate = hashlib.scrypt(
-            password.encode("utf-8"),
-            salt=bytes.fromhex(salt_hex),
-            n=int(n),
-            r=int(r),
-            p=int(p),
-            dklen=len(bytes.fromhex(hash_hex)),
-        )
-        return secrets.compare_digest(candidate, bytes.fromhex(hash_hex))
-    except (ValueError, TypeError):
-        return False
+        if parts[0] == "argon2id":
+            memory, time_cost, lanes, salt, expected = _argon2_parameters(parts)
+            candidate = _argon2id(password, salt, memory, time_cost, lanes)
+            return secrets.compare_digest(candidate, expected)
+        if parts[0] == "scrypt":
+            candidate, expected = _scrypt_digest(password, parts)
+            return secrets.compare_digest(candidate, expected)
+    except (ValueError, TypeError, OverflowError):
+        pass
+    return False
+
+
+def password_needs_rehash(stored_hash: str) -> bool:
+    """True for legacy hashes and Argon2id hashes weaker than the configured policy."""
+    parts = stored_hash.split("$")
+    if len(parts) != 6 or parts[0] != "argon2id":
+        return True
+    try:
+        memory, time_cost, lanes = (int(value) for value in parts[1:4])
+    except ValueError:
+        return True
+    return (memory, time_cost, lanes) != (
+        settings.ARGON2_MEMORY_KIB,
+        settings.ARGON2_TIME_COST,
+        settings.ARGON2_PARALLELISM,
+    )
 
 
 def hash_token(token: str) -> str:
