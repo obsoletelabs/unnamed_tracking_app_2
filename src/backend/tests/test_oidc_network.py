@@ -18,28 +18,38 @@ from src.helpers import public_http
 
 
 @pytest.mark.parametrize(
-    ("stage", "reason"),
+    ("stage", "reason", "dns_errno"),
     [
-        ("registration", "provider_failure"),
-        ("callback_url", "insecure_callback"),
-        ("discovery", "private_address"),
-        ("discovery", "certificate_error"),
-        ("discovery", "dns_error"),
-        ("discovery", "timeout"),
-        ("authorization_redirect", "provider_failure"),
+        ("registration", "provider_failure", None),
+        ("callback_url", "insecure_callback", None),
+        ("discovery", "private_address", None),
+        ("discovery", "certificate_error", None),
+        ("discovery", "dns_name_not_found", socket.EAI_NONAME),
+        ("discovery", "dns_name_not_found", getattr(socket, "EAI_NODATA", socket.EAI_NONAME)),
+        ("discovery", "dns_temporary_failure", socket.EAI_AGAIN),
+        ("discovery", "dns_lookup_failed", socket.EAI_FAIL),
+        ("discovery", "dns_lookup_failed", 987654),
+        ("discovery", "provider_http_401", None),
+        ("discovery", "provider_http_403", None),
+        ("discovery", "provider_http_404", None),
+        ("discovery", "provider_http_429", None),
+        ("discovery", "provider_http_503", None),
+        ("discovery", "timeout", None),
+        ("authorization_redirect", "provider_failure", None),
     ],
 )
 async def test_login_failure_logs_safe_stage_without_provider_secrets(
-    monkeypatch, caplog, stage, reason
+    monkeypatch, caplog, stage, reason, dns_errno
 ):
     secret = "never-log-client-secret-token-authorization-code-nonce"
     error = RuntimeError(f"https://provider.example.test/?secret={secret}")
     metadata_error = httpx.TransportError(f"provider response: {secret}")
     metadata_error.__cause__ = {
         "certificate_error": ssl.SSLCertVerificationError(secret),
-        "dns_error": socket.gaierror(-2, secret),
         "timeout": TimeoutError(secret),
     }.get(reason, ValueError("Host must resolve exclusively to public addresses."))
+    if dns_errno is not None:
+        metadata_error.__cause__ = socket.gaierror(dns_errno, secret)
     client = SimpleNamespace(
         load_server_metadata=AsyncMock(return_value={"issuer": "https://issuer.example.test"}),
         authorize_redirect=AsyncMock(return_value=RedirectResponse("https://issuer.example.test")),
@@ -56,6 +66,12 @@ async def test_login_failure_logs_safe_stage_without_provider_secrets(
         oidc.callback_url.side_effect = ValueError("OIDC callback requires HTTPS")
     elif stage == "discovery":
         client.load_server_metadata.side_effect = metadata_error
+        if reason.startswith("provider_http_"):
+            client.load_server_metadata.side_effect = httpx.HTTPStatusError(
+                secret,
+                request=httpx.Request("GET", f"https://provider.example.test/?secret={secret}"),
+                response=httpx.Response(int(reason.rsplit("_", 1)[1])),
+            )
     else:
         client.authorize_redirect.side_effect = error
     config = oidc.OidcConfig("https://issuer.example.test", "test-client", secret, slug="authentik")
@@ -71,7 +87,13 @@ async def test_login_failure_logs_safe_stage_without_provider_secrets(
         ) as http:
             response = await http.get("/start")
     assert response.status_code == 303
-    assert response.headers["location"] == "/login?oidc_error=authentication_failed"
+    public_reason = "authentication_failed"
+    if reason.startswith("dns_") or reason == "provider_http_404":
+        public_reason = reason
+    elif reason.startswith("provider_http_"):
+        public_reason = "provider_unavailable"
+    assert response.headers["location"] == f"/login?oidc_error={public_reason}"
+    assert secret not in response.headers["location"]
     assert "provider='authentik'" in caplog.text
     assert f"stage={stage}" in caplog.text
     assert f"reason={reason}" in caplog.text
@@ -218,6 +240,33 @@ async def test_http_work_runs_off_the_event_loop(monkeypatch):
     ) as client:
         await client.get("https://issuer.example.test/keys")
     assert observed and observed[0] != event_loop_thread
+
+
+@pytest.mark.parametrize(
+    "issuer_input",
+    [
+        "https://issuer.example.test",
+        "https://issuer.example.test/.well-known/openid-configuration",
+    ],
+)
+async def test_issuer_and_discovery_inputs_fetch_the_same_document(monkeypatch, issuer_input):
+    monkeypatch.setattr(oidc, "oauth", oidc.OAuth())
+    monkeypatch.setattr(oidc, "_registered_configs", {})
+    monkeypatch.setattr(settings, "OIDC_PRIVATE_ISSUER_ORIGINS", "")
+    payload = (
+        b'{"issuer":"https://issuer.example.test",'
+        b'"authorization_endpoint":"https://issuer.example.test/authorize",'
+        b'"token_endpoint":"https://issuer.example.test/token",'
+        b'"jwks_uri":"https://issuer.example.test/keys"}'
+    )
+    upstream = connection(ProviderResponse(payload))
+    monkeypatch.setattr(oidc_http, "HTTPSConnection", Mock(return_value=upstream))
+    config = oidc.OidcConfig(issuer_input, "client", "secret")
+    oidc.register_oidc_provider(config)
+    application = oidc.oauth.create_client("oidc")
+
+    assert await oidc.validate_oidc_metadata(application, config) == "https://issuer.example.test"
+    assert upstream.request.call_args.args == ("GET", "/.well-known/openid-configuration")
 
 
 async def test_discovery_cannot_inject_http_client_or_pkce_options(monkeypatch):
