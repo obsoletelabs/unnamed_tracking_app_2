@@ -120,6 +120,7 @@ class Settings(BaseSettings):
     OIDC_ADMIN_GROUP: str | None = None
     OIDC_USER_MATCH_FIELD: str = "email"
     OIDC_REQUIRE_VERIFIED_EMAIL: bool = False
+    # Legacy compatibility: the configured HTTPS issuer origin is already trusted.
     OIDC_PRIVATE_ISSUER_ORIGINS: str = ""
 
     # Blank values in .env (as shipped in example.env) fall back to defaults.

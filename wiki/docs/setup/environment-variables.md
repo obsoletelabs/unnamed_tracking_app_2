@@ -141,7 +141,7 @@ Secret fields are not returned as plaintext by the setup configuration API.
 | `OIDC_CLIENT_ID` | — | OIDC client ID. |
 | `OIDC_CLIENT_SECRET` | — | OIDC client secret. |
 | `OIDC_REDIRECT_URI` | Current sign-in address | Optional fixed HTTPS callback for the matching environment-managed issuer/client, including named callback aliases. When unset, callbacks follow the current request URL, including its scheme, host, port and proxy mount path. |
-| `OIDC_PRIVATE_ISSUER_ORIGINS` | Empty; ENV only | Comma-separated exact HTTPS issuer origins explicitly allowed on private networks. Only the selected issuer origin receives the exception; other endpoints require public HTTPS. |
+| `OIDC_PRIVATE_ISSUER_ORIGINS` | Empty; legacy ENV only | No longer required: configuring a trusted HTTPS issuer permits its exact origin to route publicly or privately. Existing values remain accepted for compatibility and do not grant private access to other origins. |
 | `OIDC_SCOPES` | `openid profile email` | Space-separated OIDC scopes. |
 | `OIDC_GROUPS_CLAIM` | `groups` | Claim containing group membership. |
 | `OIDC_ADMIN_GROUP` | — | Optional group whose members receive administrator access. |

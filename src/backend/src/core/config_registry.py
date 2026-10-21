@@ -605,7 +605,7 @@ CONFIG_REGISTRY: tuple[ConfigSpec, ...] = (
         source=ConfigSource.ENV,
         visible=False,
         default="",
-        description="Comma-separated HTTPS issuer origins explicitly permitted on private networks.",
+        description="Legacy optional setting; configured HTTPS issuer origins already permit private routing.",
     ),
     ConfigSpec("OIDC_CLIENT_ID", "oidc", label="Client ID", required=True, storage="oidc"),
     ConfigSpec(

@@ -26,7 +26,7 @@ def origin(parts: SplitResult) -> tuple[str, str, int]:
 
 
 def private_issuer_origins(value: str) -> set[tuple[str, str, int]]:
-    """Only explicit HTTPS origins can grant private-network access."""
+    """Validate the legacy optional origin setting without broadening issuer trust."""
     result = set()
     for entry in value.split(","):
         if not entry.strip():
@@ -55,9 +55,10 @@ class OidcTransport(httpx.AsyncBaseTransport):
         if parts.query:
             raise ValueError("OIDC issuer must not have a query")
         self.issuer_origin = origin(parts)
-        self.private_origin = (
-            self.issuer_origin if self.issuer_origin in private_issuer_origins(exceptions) else None
-        )
+        # Preserve validation of legacy configuration, but the administrator-selected
+        # HTTPS issuer already defines the exact origin trusted for private routing.
+        private_issuer_origins(exceptions)
+        self.private_origin = self.issuer_origin if parts.scheme == "https" else None
         self.development = development
         self.validate_destination(issuer)
 
@@ -70,6 +71,8 @@ class OidcTransport(httpx.AsyncBaseTransport):
     def _connection(self, url: str) -> HTTPConnection:
         parts = self.validate_destination(url)
         if origin(parts) == self.private_origin:
+            # DNS may route a trusted issuer internally. TLS still verifies its
+            # hostname and CA; discovery cannot grant this trust to another origin.
             return HTTPSConnection(
                 str(parts.hostname),
                 parts.port or 443,

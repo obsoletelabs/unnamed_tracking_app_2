@@ -130,15 +130,14 @@ def test_private_network_exception_requires_an_exact_https_origin(value):
         oidc_http.private_issuer_origins(value)
 
 
-async def test_explicit_private_access_is_limited_to_selected_issuer_origin(monkeypatch):
+@pytest.mark.parametrize("exceptions", ["", "https://sso.internal:8443,https://other.internal"])
+async def test_configured_issuer_trust_is_limited_to_its_exact_origin(monkeypatch, exceptions):
     private, public = connection(), connection()
     private_factory = Mock(return_value=private)
     public_factory = Mock(return_value=public)
     monkeypatch.setattr(oidc_http, "HTTPSConnection", private_factory)
     monkeypatch.setattr(oidc_http, "public_connection", public_factory)
-    transport = oidc_http.OidcTransport(
-        "https://sso.internal:8443/realm", "https://sso.internal:8443,https://other.internal"
-    )
+    transport = oidc_http.OidcTransport("https://sso.internal:8443/realm", exceptions)
     async with httpx.AsyncClient(transport=transport) as client:
         await client.get("https://sso.internal:8443/keys")
         await client.get("https://other.internal/keys")
@@ -154,7 +153,7 @@ async def test_explicit_private_access_is_limited_to_selected_issuer_origin(monk
 
 
 @pytest.mark.parametrize("address", ["127.0.0.1", "10.0.0.2", "169.254.169.254", "::1"])
-async def test_public_provider_cannot_resolve_to_private_or_metadata_addresses(
+async def test_cross_origin_provider_endpoints_cannot_resolve_to_private_or_metadata_addresses(
     monkeypatch, address
 ):
     family = public_http.socket.AF_INET6 if ":" in address else public_http.socket.AF_INET
@@ -164,7 +163,7 @@ async def test_public_provider_cannot_resolve_to_private_or_metadata_addresses(
         transport=oidc_http.OidcTransport("https://public.example.test")
     ) as client:
         with pytest.raises(httpx.TransportError, match="OIDC provider connection failed"):
-            await client.get("https://public.example.test/keys?secret=never-log-this")
+            await client.get("https://other.example.test/keys?secret=never-log-this")
 
 
 async def test_localhost_http_is_development_only_and_uses_a_literal_loopback(monkeypatch):
@@ -190,7 +189,7 @@ async def test_provider_responses_are_bounded_closed_and_never_redirected(monkey
         response.encoding = "gzip"
     upstream = connection(response)
     factory = Mock(return_value=upstream)
-    monkeypatch.setattr(oidc_http, "public_connection", factory)
+    monkeypatch.setattr(oidc_http, "HTTPSConnection", factory)
     async with httpx.AsyncClient(
         transport=oidc_http.OidcTransport("https://issuer.example.test"),
         follow_redirects=True,
@@ -209,11 +208,11 @@ async def test_http_work_runs_off_the_event_loop(monkeypatch):
     observed = []
     upstream = connection()
 
-    def connect(_url, **_kwargs):
+    def connect(_host, _port, **_kwargs):
         observed.append(threading.get_ident())
         return upstream
 
-    monkeypatch.setattr(oidc_http, "public_connection", connect)
+    monkeypatch.setattr(oidc_http, "HTTPSConnection", connect)
     async with httpx.AsyncClient(
         transport=oidc_http.OidcTransport("https://issuer.example.test")
     ) as client:
@@ -362,23 +361,32 @@ def tls_provider(tmp_path):
     thread.join(timeout=2)
 
 
-async def test_real_private_https_requires_a_trusted_hostname_certificate(
-    monkeypatch, tls_provider
+@pytest.mark.parametrize("legacy_exception", [False, True])
+async def test_configured_private_https_requires_a_trusted_hostname_certificate(
+    monkeypatch, tls_provider, legacy_exception
 ):
     url, cert_path = tls_provider
-    transport = oidc_http.OidcTransport(url, url)
-    # An explicit network grant never trusts a self-signed certificate by itself.
+    exceptions = url if legacy_exception else ""
+    transport = oidc_http.OidcTransport(url, exceptions)
+    # Choosing an issuer trusts its network origin, never an untrusted certificate.
     async with httpx.AsyncClient(transport=transport) as client:
-        with pytest.raises(httpx.TransportError):
+        with pytest.raises(httpx.TransportError) as rejected:
             await client.get(url + "/jwks")
+        assert isinstance(rejected.value.__cause__, ssl.SSLCertVerificationError)
     create_context = oidc_http.ssl.create_default_context
     monkeypatch.setattr(
         oidc_http.ssl, "create_default_context", lambda: create_context(cafile=cert_path)
     )
-    async with httpx.AsyncClient(transport=oidc_http.OidcTransport(url, url)) as client:
+    async with httpx.AsyncClient(transport=oidc_http.OidcTransport(url, exceptions)) as client:
         response = await client.get(url + "/jwks")
         assert response.status_code == 200 and response.json() == {"keys": []}
-    # The same trusted certificate still gives no network permission without the origin grant.
-    async with httpx.AsyncClient(transport=oidc_http.OidcTransport(url)) as client:
-        with pytest.raises(httpx.TransportError):
-            await client.get(url + "/jwks")
+        # A different hostname remains outside the configured origin's private trust.
+        with pytest.raises(httpx.TransportError) as rejected:
+            await client.get(url.replace("localhost", "127.0.0.1") + "/jwks")
+        assert isinstance(rejected.value.__cause__, ValueError)
+    # Even a trusted certificate cannot authenticate a different issuer hostname.
+    wrong_hostname = url.replace("localhost", "127.0.0.1")
+    async with httpx.AsyncClient(transport=oidc_http.OidcTransport(wrong_hostname)) as client:
+        with pytest.raises(httpx.TransportError) as rejected:
+            await client.get(wrong_hostname + "/jwks")
+        assert isinstance(rejected.value.__cause__, ssl.SSLCertVerificationError)
