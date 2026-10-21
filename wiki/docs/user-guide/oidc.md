@@ -62,6 +62,8 @@ Register exactly that URI with the identity provider.
 
 ## ID-token validation
 
+Authorization-code sign-in uses PKCE S256. Discovery must name the configured issuer exactly; only supported asymmetric ID-token signature algorithms are accepted. The signed nonce must match even if a provider reports `nonce_supported=false`. UserInfo can fill missing profile information only after ID-token validation and only when its subject matches. Unsigned token-response fields cannot supply identity, verification or administrator-group claims.
+
 Sign-in requires an ID token and the nonce saved when the browser started the
 authorization-code flow. Authlib must validate that token successfully before
 the application resolves an account or creates a session. Missing tokens/nonces,

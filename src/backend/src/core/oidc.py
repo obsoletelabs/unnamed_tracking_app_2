@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
 from authlib.integrations.starlette_client import OAuth
@@ -35,6 +36,11 @@ class OidcConfig:  # pylint: disable=too-many-instance-attributes
     slug: str = "default"
     button_text: str = "Continue with SSO"
     button_image_url: str | None = None
+
+    @property
+    def expected_issuer(self) -> str:
+        # Legacy settings may contain the discovery URL instead of the issuer.
+        return self.issuer_url.strip().removesuffix("/.well-known/openid-configuration")
 
     @property
     def server_metadata_url(self) -> str:
@@ -89,7 +95,7 @@ def register_oidc_provider(config: OidcConfig, client_name: str = "oidc") -> Non
         client_id=config.client_id,
         client_secret=config.client_secret,
         server_metadata_url=config.server_metadata_url,
-        client_kwargs={"scope": config.scopes},
+        client_kwargs={"scope": config.scopes, "code_challenge_method": "S256"},
         overwrite=True,
     )
     _registered_configs[client_name] = config
@@ -115,10 +121,41 @@ def callback_url(request: Request, config: OidcConfig) -> str:
     )
 
 
+async def validate_oidc_metadata(client: Any, config: OidcConfig) -> None:
+    """Pin discovery to the configured issuer and permit only asymmetric signing."""
+    metadata = await client.load_server_metadata()
+    if metadata.get("issuer") != config.expected_issuer:
+        raise ValueError("OIDC discovery issuer mismatch")
+    permitted = {
+        "RS256",
+        "RS384",
+        "RS512",
+        "PS256",
+        "PS384",
+        "PS512",
+        "ES256",
+        "ES384",
+        "ES512",
+        "EdDSA",
+    }
+    advertised = metadata.get("id_token_signing_alg_values_supported", ["RS256"])
+    if not isinstance(advertised, list):
+        raise ValueError("Invalid OIDC signing algorithms")
+    selected = [
+        algorithm
+        for algorithm in advertised
+        if isinstance(algorithm, str) and algorithm in permitted
+    ]
+    if not selected:
+        raise ValueError("No supported OIDC signing algorithm")
+    metadata["id_token_signing_alg_values_supported"] = selected
+
+
 async def begin_oidc(request: Request, config: OidcConfig) -> RedirectResponse:
     client_name = f"oidc_{config.slug}" if config.slug != "default" else "oidc"
     register_oidc_provider(config, client_name)
     client = oauth.create_client(client_name)
     if client is None:
         raise HTTPException(status_code=503, detail="OIDC provider is unavailable.")
+    await validate_oidc_metadata(client, config)
     return await client.authorize_redirect(request, callback_url(request, config))

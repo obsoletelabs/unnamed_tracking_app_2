@@ -48,9 +48,15 @@ async def callback(monkeypatch):
     User.__table__.create(engine)
     UserSession.__table__.create(engine)
     with Session(engine, expire_on_commit=False) as session:
-        claims = {"sub": "subject", "email": "reader@example.test", "preferred_username": "reader"}
+        claims = {
+            "sub": "subject",
+            "email": "reader@example.test",
+            "preferred_username": "reader",
+            "nonce": "nonce",
+        }
         config = OidcConfig("https://issuer.invalid", "client", "secret", slug="provider")
         client = SimpleNamespace(
+            load_server_metadata=AsyncMock(return_value={"issuer": config.issuer_url}),
             framework=SimpleNamespace(
                 get_state_data=AsyncMock(
                     return_value={"nonce": "nonce", "code_verifier": "verifier"}

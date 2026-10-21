@@ -24,7 +24,14 @@ from src.core.auth import (
 )
 from src.core.config import settings
 from src.core.crypto import decrypt_secret
-from src.core.oidc import OidcConfig, begin_oidc, env_oidc_config, oauth, register_oidc_provider
+from src.core.oidc import (
+    OidcConfig,
+    begin_oidc,
+    env_oidc_config,
+    oauth,
+    register_oidc_provider,
+    validate_oidc_metadata,
+)
 from src.core.password_work import run_password_job
 from src.core.session_manager import create_session
 from src.database.models.oidc_settings import OidcSettings
@@ -230,7 +237,7 @@ async def oidc_provider_login(
     return await begin_oidc(request, config)
 
 
-async def _fetch_oidc_token(request: Request, client: Any) -> dict[str, Any]:
+async def _fetch_oidc_token(request: Request, client: Any, config: OidcConfig) -> dict[str, Any]:
     params = {
         "code": request.query_params.get("code"),
         "state": request.query_params.get("state"),
@@ -245,11 +252,32 @@ async def _fetch_oidc_token(request: Request, client: Any) -> dict[str, Any]:
     # Authlib exposes state/PKCE restoration only through this private adapter;
     # preserve the same saved parameters as its standard authorization-code flow.
     params = client._format_state_params(state_data, params)  # pylint: disable=protected-access
+    await validate_oidc_metadata(client, config)
     token = await client.fetch_access_token(**params)
     id_token, nonce = token.get("id_token"), state_data.get("nonce")
     if not isinstance(id_token, str) or not id_token or not isinstance(nonce, str) or not nonce:
         raise ValueError("Missing OIDC ID token or nonce")
-    token["userinfo"] = await client.parse_id_token(token, nonce=nonce, claims_options=None)
+    claims = dict(
+        await client.parse_id_token(
+            token,
+            nonce=nonce,
+            claims_options={"iss": {"essential": True, "value": config.expected_issuer}},
+        )
+    )
+    # Authlib allows nonce_supported=false to skip the nonce check. This host always
+    # sends a nonce and requires the signed response to bind to that exact login.
+    if claims.get("nonce") != nonce:
+        raise ValueError("OIDC nonce mismatch")
+    if not claims.get("email"):
+        profile = dict(await client.userinfo(token=token))
+        if not isinstance(profile.get("sub"), str) or profile["sub"] != claims.get("sub"):
+            raise ValueError("OIDC UserInfo subject mismatch")
+        for key in ("email", "preferred_username", "name", config.groups_claim):
+            if key not in claims and key in profile:
+                claims[key] = profile[key]
+        # Verification belongs to the email returned by the same endpoint.
+        claims["email_verified"] = profile.get("email_verified") is True
+    token["userinfo"] = claims
     return token
 
 
@@ -376,9 +404,8 @@ async def _complete_callback(
     if client is None:
         return RedirectResponse("/login?oidc_error=provider_unavailable", 303)
     try:
-        token = await _fetch_oidc_token(request, client)
-        claims = dict(token.get("userinfo") or await client.userinfo(token=token))
-        claims.update({key: value for key, value in token.items() if key not in claims})
+        token = await _fetch_oidc_token(request, client, config)
+        claims = dict(token["userinfo"])
     # Provider token/userinfo failures must return to sign-in without opening a session.
     except Exception as exc:  # pylint: disable=broad-exception-caught
         logger.warning("OIDC callback validation failed: %s", type(exc).__name__)
