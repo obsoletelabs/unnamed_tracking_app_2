@@ -44,29 +44,48 @@ function run(target: LaunchTarget) {
   window.location.assign(target.uri);
 }
 
-function closeOnOutside(event: Event) {
-  if (root.value && !root.value.contains(event.target as Node)) {
-    menuOpen.value = false;
-  }
+const menu = ref<HTMLElement | null>(null);
+const menuStyle = ref<Record<string, string>>({});
+
+// The menu is rendered in the page body so the hero section cannot clip it; this places it under
+// the button.
+function placeMenu() {
+  const box = root.value?.getBoundingClientRect();
+  if (!box) return;
+  menuStyle.value = {
+    top: `${box.bottom + 6}px`,
+    left: `${box.left}px`,
+    minWidth: `${box.width}px`,
+  };
 }
 
-function closeOnEscape(event: KeyboardEvent) {
-  if (event.key === "Escape") menuOpen.value = false;
+function closeOnOutside(event: Event) {
+  const inside = (node: HTMLElement | null) =>
+    node?.contains(event.target as Node) ?? false;
+  if (!inside(root.value) && !inside(menu.value)) menuOpen.value = false;
+}
+
+function closeOnEscape(event: Event) {
+  if ((event as KeyboardEvent).key === "Escape") menuOpen.value = false;
+}
+
+function close() {
+  menuOpen.value = false;
+}
+
+function listen(add: boolean) {
+  const method = add ? "addEventListener" : "removeEventListener";
+  document[method]("click", closeOnOutside);
+  document[method]("keydown", closeOnEscape);
+  window[method]("resize", close);
+  window[method]("scroll", close, true);
 }
 
 watch(menuOpen, (open) => {
-  if (open) {
-    document.addEventListener("click", closeOnOutside);
-    document.addEventListener("keydown", closeOnEscape);
-  } else {
-    document.removeEventListener("click", closeOnOutside);
-    document.removeEventListener("keydown", closeOnEscape);
-  }
+  if (open) placeMenu();
+  listen(open);
 });
-onBeforeUnmount(() => {
-  document.removeEventListener("click", closeOnOutside);
-  document.removeEventListener("keydown", closeOnEscape);
-});
+onBeforeUnmount(() => listen(false));
 </script>
 
 <template>
@@ -95,13 +114,21 @@ onBeforeUnmount(() => {
     >
       ▾
     </button>
-    <ul v-if="menuOpen" class="launch-menu" role="menu">
-      <li v-for="target in targets" :key="target.id" role="none">
-        <button type="button" role="menuitem" @click="run(target)">
-          {{ targetLabel(target) }}
-        </button>
-      </li>
-    </ul>
+    <Teleport to="body">
+      <ul
+        v-if="menuOpen"
+        ref="menu"
+        class="launch-menu"
+        role="menu"
+        :style="menuStyle"
+      >
+        <li v-for="target in targets" :key="target.id" role="none">
+          <button type="button" role="menuitem" @click="run(target)">
+            {{ targetLabel(target) }}
+          </button>
+        </li>
+      </ul>
+    </Teleport>
   </div>
 </template>
 
@@ -138,11 +165,8 @@ onBeforeUnmount(() => {
   outline-offset: 2px;
 }
 .launch-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  z-index: 20;
-  min-width: 100%;
+  position: fixed;
+  z-index: 1000;
   margin: 0;
   padding: 6px;
   list-style: none;

@@ -558,6 +558,10 @@ library), then Steam, then GOG. A store page is the default only when nothing ca
 
 A wishlisted game is not owned yet, so it only offers its store page, which opens in a new tab.
 
+![The launch button with its menu of options](../assets/launch-buttons/launch-menu-modern-light-800.jpg)
+
+![A wishlisted game offers its store page](../assets/launch-buttons/wishlist-store-page-modern-light-800.jpg)
+
 Launching asks your browser to open the matching client (`playnite://`, `steam://` or `goggalaxy://`) on
 the device you are using, so the client must be installed there and the browser may ask for permission
 the first time. Nothing is sent to the server, and only identifiers of the expected shape produce a link.
