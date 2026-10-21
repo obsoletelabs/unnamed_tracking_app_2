@@ -157,3 +157,90 @@ def lend(row: Achievement, entry: Achievement | None) -> dict[str, Any]:
     if not details["description"] and not entry.hidden:
         details["description"] = entry.description
     return details
+
+
+def _name_key(row: Achievement) -> str | None:
+    name = " ".join(row.name.casefold().split())
+    return None if not name or name == HIDDEN_NAME.casefold() else name
+
+
+def merge_copies(
+    copies: Sequence[tuple[Any, str]], rows: Iterable[Achievement]
+) -> list[dict[str, Any]]:
+    """One achievement list for a game page that shows several copies (#339).
+
+    ``copies`` are ``(label, app_id)`` pairs, main copy first, where the label has ``game_id``,
+    ``title``, ``source`` and ``platform`` and ``app_id`` is the copy's store id. The same
+    achievement is listed once when it has the same platform id in the same store app, or the
+    same name on another copy (a Steam and a GOG copy of one game). Each entry keeps the state
+    every copy reports in ``sources``; it counts as unlocked when any source is, with the
+    earliest unlock time. Entries from the main copy lead, so a note or screenshot linked to an
+    achievement keeps pointing at the row the page shows."""
+    by_game: dict[UUID, list[Achievement]] = {}
+    for row in rows:
+        by_game.setdefault(row.game_id, []).append(row)
+    merged: list[dict[str, Any]] = []
+    by_id: dict[tuple[str, str, str], dict[str, Any]] = {}
+    by_name: dict[str, dict[str, Any]] = {}
+    for label, app_id in copies:
+        for row, entry in fold_catalog(by_game.get(label.game_id, [])):
+            item = _list_entry(row, entry)
+            id_key = (row.provider.casefold(), app_id, row.external_id)
+            name_key = _name_key(row)
+            target = by_id.get(id_key) or (by_name.get(name_key) if name_key else None)
+            source = _source_of(row, label)
+            if target is None:
+                item["sources"] = [source]
+                merged.append(item)
+                target = item
+            else:
+                _absorb(target, item, source)
+            by_id.setdefault(id_key, target)
+            if name_key:
+                by_name.setdefault(name_key, target)
+    return merged
+
+
+def _list_entry(row: Achievement, entry: Achievement | None) -> dict[str, Any]:
+    return {
+        "id": str(row.id),
+        "provider": row.provider,
+        "name": row.name,
+        "unlocked": bool(row.unlocked),
+        "unlocked_at": row.unlocked_at,
+        **lend(row, entry),
+    }
+
+
+def _source_of(row: Achievement, label: Any) -> dict[str, Any]:
+    return {
+        "game_id": str(label.game_id),
+        "copy": label.title,
+        "store": label.source,
+        "platform": label.platform,
+        "provider": row.provider,
+        "unlocked": bool(row.unlocked),
+        "unlocked_at": row.unlocked_at,
+    }
+
+
+def _absorb(target: dict[str, Any], item: dict[str, Any], source: dict[str, Any]) -> None:
+    target["sources"].append(source)
+    if item["unlocked"]:
+        times = [t for t in (target["unlocked_at"], item["unlocked_at"]) if t is not None]
+        target["unlocked"] = True
+        target["unlocked_at"] = min(times) if times else None
+    for field in (
+        "icon_url",
+        "locked_icon_url",
+        "global_percent",
+        "tier",
+        "medal",
+        "points",
+        "source_ids",
+        "description",
+    ):
+        if target[field] in (None, ""):
+            target[field] = item[field]
+    # a secret only stays secret while no copy shows it openly or has it unlocked
+    target["hidden"] = bool(target["hidden"] and item["hidden"]) and not target["unlocked"]

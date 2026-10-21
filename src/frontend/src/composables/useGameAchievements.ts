@@ -216,7 +216,10 @@ export function useGameAchievements(game: Ref<Game | null>) {
   const achProviders = computed(() => [
     ...new Set(
       (game.value?.achievements ?? [])
-        .map((a) => a.provider)
+        .flatMap((a) => [
+          a.provider,
+          ...(a.sources ?? []).map((s) => s.provider),
+        ])
         .filter((x): x is string => !!x),
     ),
   ]);
@@ -225,7 +228,11 @@ export function useGameAchievements(game: Ref<Game | null>) {
     const q = achSearch.value.trim().toLowerCase();
     const list = (game.value?.achievements ?? []).filter((a) => {
       const unlocked = isUnlocked(a);
-      if (achProvider.value !== "all" && a.provider !== achProvider.value)
+      if (
+        achProvider.value !== "all" &&
+        a.provider !== achProvider.value &&
+        !a.sources?.some((s) => s.provider === achProvider.value)
+      )
         return false;
       if (achFilter.value === "unlocked" && !unlocked) return false;
       if (achFilter.value === "locked" && unlocked) return false;

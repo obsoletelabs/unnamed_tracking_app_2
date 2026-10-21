@@ -141,8 +141,9 @@ from src.database.models.game_field_change import GameFieldChange
 from src.database.models.user import User
 from src.database.session import get_db
 from src.features import game_folders, game_ownership
-from src.features.achievement_catalog import CATALOG, fold_catalog, lend
+from src.features.achievement_catalog import CATALOG, merge_copies
 from src.features.game_identity import manual
+from src.features.game_identity.copies import CopyLabel, page_copies
 from src.features.game_ingestion import playnite
 from src.features.game_ingestion.legacy import (
     has_manual_observation,
@@ -243,31 +244,35 @@ async def list_game_achievements(
     game_id: UUID,
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
+    group: bool = False,
 ) -> list[dict]:
     """Achievements/trophies pulled in by a library sync (Settings ->
-    Metadata/API -> Steam/PlayStation/RetroAchievements). Empty until that
-    game has been synced at least once — this never calls out to a
-    provider itself, it only reads what's already stored."""
-    await _get_game_or_404(game_id, db, current_user.id)
+    Metadata/API -> Steam/PlayStation/RetroAchievements) and a metadata
+    provider's catalogue. Empty until that game has been synced at least once
+    — this never calls out to a provider itself, it only reads what's already
+    stored. With ``group=true`` the main copy of a merged game lists the
+    achievements of every copy it shows, each achievement once with the state
+    each copy reports in ``sources``."""
+    game = await _get_game_or_404(game_id, db, current_user.id)
+    if group:
+        labels = await page_copies(db, current_user.id, game_id)
+    else:
+        labels = []
+    if not labels:
+        labels = [CopyLabel(game.id, game.title, game.source, game.platform, True)]
+    ids = [c.game_id for c in labels]
+    app_ids = {
+        row.id: row.external_id
+        for row in await db.execute(select(Game.id, Game.external_id).where(Game.id.in_(ids)))
+    }
     result = await db.execute(
         select(Achievement)
-        .where(Achievement.game_id == game_id)
+        .where(Achievement.game_id.in_(ids))
         .order_by(Achievement.unlocked.desc(), Achievement.name)
     )
-    out = []
-    for row, entry in fold_catalog(result.scalars().all()):
-        details = lend(row, entry)
-        out.append(
-            {
-                "id": str(row.id),
-                "provider": row.provider,
-                "name": row.name,
-                "unlocked": row.unlocked,
-                "unlocked_at": row.unlocked_at,
-                **details,
-            }
-        )
-    return out
+    return merge_copies(
+        [(label, app_ids.get(label.game_id) or "") for label in labels], result.scalars().all()
+    )
 
 
 router.include_router(game_assets.router)

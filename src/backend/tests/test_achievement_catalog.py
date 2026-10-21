@@ -14,7 +14,7 @@ from src.database.models.achievement import Achievement
 from src.database.models.user import User
 from src.database.session import SessionLocal
 from src.features import delegated_library
-from src.features.achievement_catalog import CATALOG, HIDDEN_NAME, store_catalog
+from src.features.achievement_catalog import CATALOG, HIDDEN_NAME, merge_copies, store_catalog
 from src.features.metadata.handler import MetadataHandler
 from src.plugin_api.metadata_contracts import MetadataPatch
 
@@ -226,3 +226,79 @@ async def test_shared_surface_hides_locked_hidden_achievements_and_the_catalogue
     assert set(shown) == {"S1", "S2"}
     assert shown["S1"]["name"] == HIDDEN_NAME and shown["S1"]["description"] is None
     assert shown["S2"]["name"] == "Secret earned"
+
+
+def _row(game_id, provider, external_id, name, unlocked=False, at=None, **extra):
+    return Achievement(
+        id=uuid.uuid4(),
+        game_id=game_id,
+        provider=provider,
+        external_id=external_id,
+        name=name,
+        unlocked=unlocked,
+        unlocked_at=at,
+        hidden=extra.pop("hidden", False),
+        **extra,
+    )
+
+
+def _copy(title, store):
+    return SimpleNamespace(game_id=uuid.uuid4(), title=title, source=store, platform="PC")
+
+
+def test_the_same_achievement_on_two_stores_is_listed_once_with_both_states():
+    steam, gog = _copy("Game", "Steam"), _copy("Game", "GOG")
+    rows = [
+        _row(steam.game_id, "Steam", "ACH_1", "First Blood", unlocked=True, at=200),
+        _row(gog.game_id, "GOG", "77", "first  blood", unlocked=True, at=100),
+        _row(gog.game_id, "GOG", "78", "Only on GOG"),
+    ]
+    merged = merge_copies([(steam, "10"), (gog, "gog-1")], rows)
+    assert [item["name"] for item in merged] == ["First Blood", "Only on GOG"]
+    first = merged[0]
+    assert first["unlocked"] is True and first["unlocked_at"] == 100  # the earliest unlock
+    assert {s["store"] for s in first["sources"]} == {"Steam", "GOG"}
+    assert [len(item["sources"]) for item in merged] == [2, 1]
+
+
+def test_one_unlocked_copy_unlocks_the_merged_entry_and_reveals_a_hidden_one():
+    steam, gog = _copy("Game", "Steam"), _copy("Game", "GOG")
+    rows = [
+        _row(steam.game_id, "Steam", "S", "Secret", hidden=True),
+        _row(gog.game_id, "GOG", "G", "Secret", hidden=True, unlocked=True, at=5),
+    ]
+    (item,) = merge_copies([(steam, "1"), (gog, "2")], rows)
+    assert item["unlocked"] is True and item["hidden"] is False
+    states = {s["store"]: s["unlocked"] for s in item["sources"]}
+    assert states == {"Steam": False, "GOG": True}
+
+
+def test_a_hidden_placeholder_name_never_merges_different_secrets():
+    one, two = _copy("Game", "Steam"), _copy("Game", "GOG")
+    rows = [
+        _row(one.game_id, "catalog", "a", HIDDEN_NAME, hidden=True),
+        _row(two.game_id, "catalog", "b", HIDDEN_NAME, hidden=True),
+    ]
+    assert len(merge_copies([(one, ""), (two, "")], rows)) == 2
+
+
+def test_same_ids_in_different_store_apps_stay_separate():
+    one, two = _copy("A", "Steam"), _copy("B", "Steam")
+    rows = [
+        _row(one.game_id, "Steam", "ACH_1", "Alpha"),
+        _row(two.game_id, "Steam", "ACH_1", "Beta"),
+    ]
+    assert len(merge_copies([(one, "10"), (two, "20")], rows)) == 2
+
+
+async def test_a_grouped_request_for_an_unmerged_game_lists_its_own_achievements(scratch_user):
+    async with SessionLocal() as db:
+        game_id = await _game(scratch_user, db)
+        await library_sync._replace_achievements(  # pylint: disable=protected-access
+            db, game_id, "Steam", [_synced("A", "Mine", unlocked=True)]
+        )
+        await db.commit()
+        plain = await games.list_game_achievements(game_id, db, scratch_user)
+        grouped = await games.list_game_achievements(game_id, db, scratch_user, group=True)
+    assert [i["name"] for i in grouped] == [i["name"] for i in plain] == ["Mine"]
+    assert grouped[0]["sources"][0]["unlocked"] is True
