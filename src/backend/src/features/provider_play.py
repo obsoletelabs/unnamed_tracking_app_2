@@ -9,6 +9,17 @@ def _is_count(value: object) -> TypeGuard[int]:
     return isinstance(value, int) and not isinstance(value, bool)
 
 
+def provider_custom_values(
+    match: dict[str, Any], current: dict[str, Any] | None
+) -> dict[str, Any] | None:
+    """Provider-reported custom fields merged over the stored ones, or None when nothing changes."""
+    fresh = match.get("custom")
+    if not isinstance(fresh, dict) or not fresh:
+        return None
+    merged = {**(current or {}), **fresh}
+    return merged if merged != current else None
+
+
 def provider_play_compatibility(
     match: dict[str, Any], current: dict[str, Any] | None
 ) -> dict[str, Any] | None:

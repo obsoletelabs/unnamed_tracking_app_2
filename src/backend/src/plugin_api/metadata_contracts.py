@@ -7,10 +7,28 @@ from enum import StrEnum
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AnyHttpUrl,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictBool,
+    StrictFloat,
+    StrictInt,
+    model_validator,
+)
 
 Identifier = Annotated[str, Field(min_length=1, max_length=512)]
 ActionId = Annotated[str, Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")]
+
+
+CustomValue = (
+    StrictBool
+    | StrictInt
+    | Annotated[StrictFloat, Field(allow_inf_nan=False)]
+    | Annotated[str, Field(max_length=500)]
+    | Annotated[tuple[Annotated[str, Field(max_length=200)], ...], Field(max_length=50)]
+)
 
 
 class MetadataModel(BaseModel):
@@ -180,6 +198,8 @@ class MetadataPatch(MetadataModel):
     players_min: int | None = Field(default=None, ge=1, le=32)
     players_max: int | None = Field(default=None, ge=1, le=32)
     crossplay: Literal["yes", "no", "partial"] | None = None
+    # Provider-defined fields the host has no column for, kept as read-only provider details.
+    custom: dict[ActionId, CustomValue] = Field(default_factory=dict, max_length=32)
 
     @model_validator(mode="after")
     def ordered_players(self) -> "MetadataPatch":

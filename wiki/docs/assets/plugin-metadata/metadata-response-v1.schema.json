@@ -871,6 +871,42 @@
           ],
           "default": null,
           "title": "Crossplay"
+        },
+        "custom": {
+          "maxProperties": 32,
+          "patternProperties": {
+            "^[a-z0-9][a-z0-9._-]*$": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "maxLength": 500,
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "maxItems": 50,
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          "propertyNames": {
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "title": "Custom",
+          "type": "object"
         }
       },
       "title": "MetadataPatch",
@@ -1180,5 +1216,5 @@
   "title": "ProviderResponse",
   "type": "object",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "x-api-contract-version": "1.1.14"
+  "x-api-contract-version": "1.1.15"
 }

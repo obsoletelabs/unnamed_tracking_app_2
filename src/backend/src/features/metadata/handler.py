@@ -410,7 +410,7 @@ class MetadataHandler:
                     if provider_id == "core.igdb":
                         fallback_times.setdefault(name, value)
                         continue
-                if name in {"provider_ids", "scores", "titles"}:
+                if name in {"provider_ids", "scores", "titles", "custom"}:
                     for namespace, external_id in value.items():
                         metadata.setdefault(name, {}).setdefault(namespace, external_id)
                 elif name == "episodes":

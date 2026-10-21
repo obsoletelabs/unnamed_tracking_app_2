@@ -14,7 +14,7 @@ export type PluginStatus =
   | "disabled"
   | "incompatible"
   | "unknown";
-export const PLUGIN_API_CONTRACT_VERSION = "1.1.14";
+export const PLUGIN_API_CONTRACT_VERSION = "1.1.15";
 export function pluginContributionsActive(plugin: PluginSummary): boolean {
   return (
     ([

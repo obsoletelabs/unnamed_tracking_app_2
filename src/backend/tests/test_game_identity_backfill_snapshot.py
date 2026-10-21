@@ -261,9 +261,12 @@ async def test_backfill_a_realistic_snapshot_twice_after_a_real_upgrade(
                 " hidden, created_at) VALUES (%s, %s, 'Steam', %s, %s, %s, false, 1)",
                 (uuid4(), game_id, f"a{n}", f"A{n}", n < 2),
             )
-    dump = "SELECT * FROM games ORDER BY id"
-    before = connection.execute(dump).fetchall()
+    cursor = connection.execute("SELECT * FROM games ORDER BY id")
+    columns = [column.name for column in cursor.description]
+    before = cursor.fetchall()
     migrate("upgrade", "head")
+    # Compare the baseline columns only: later migrations may add nullable columns to games.
+    dump = f"SELECT {', '.join(columns)} FROM games ORDER BY id"
     assert connection.execute(dump).fetchall() == before  # the schema upgrade touched no game
 
     engine = create_async_engine(scoped.render_as_string(hide_password=False))

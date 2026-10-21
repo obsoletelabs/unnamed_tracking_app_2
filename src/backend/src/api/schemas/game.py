@@ -310,6 +310,10 @@ class GameRead(GameBase):
     user_id: UUID
     sort_title: str
     locked_fields: list[str] = Field(default_factory=list)
+    provider_custom: dict[str, Any] | None = Field(
+        default=None,
+        description="Read-only extra fields reported by metadata providers; replaced by refreshes.",
+    )
     created_at: int = Field(description="Unix timestamp in seconds when the game was created.")
     updated_at: int = Field(description="Unix timestamp in seconds when the game was last updated.")
     last_played_at: int | None = Field(

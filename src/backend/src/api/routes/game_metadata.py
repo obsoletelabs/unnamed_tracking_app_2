@@ -37,7 +37,7 @@ from src.features.metadata.service import (
     resolve_library_record,
     search_games,
 )
-from src.features.provider_play import provider_play_compatibility
+from src.features.provider_play import provider_custom_values, provider_play_compatibility
 from src.helpers.remote_images import MAX_BYTES, download_image
 from src.helpers.save_game_asset import (
     ASSET_FILENAMES,
@@ -283,6 +283,13 @@ async def refresh_game_metadata(
             skipped_locked.append("play_compatibility")
         else:
             updates["play_compatibility"] = provider_play
+
+    provider_custom = provider_custom_values(match, game.provider_custom)
+    if provider_custom is not None:
+        if "provider_custom" in game.locked_fields:
+            skipped_locked.append("provider_custom")
+        else:
+            updates["provider_custom"] = provider_custom
 
     changed_fields = sorted(updates)
     key_art_url = match.get("key_art_url")

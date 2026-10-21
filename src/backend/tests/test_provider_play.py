@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from src.features.metadata.handler import MetadataHandler
-from src.features.provider_play import provider_play_compatibility
+from src.features.provider_play import provider_custom_values, provider_play_compatibility
 from src.plugin_api.metadata_contracts import MetadataPatch, ProviderResponse
 
 
@@ -100,3 +100,45 @@ def test_earlier_provider_values_are_refreshed_and_keep_the_duration():
     assert (
         provider_play_compatibility({"players_min": 1, "players_max": 2}, old) is None
     )  # unchanged
+
+
+def test_patch_accepts_bounded_custom_fields():
+    patch = MetadataPatch(
+        custom={"label": "Co-op", "players": 4, "ratio": 1.5, "online": True, "modes": ["a", "b"]}
+    )
+    assert patch.custom["modes"] == ("a", "b") and patch.custom["online"] is True
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"Bad Key": 1},
+        {"x": {"nested": 1}},
+        {"x": None},
+        {"x": "y" * 501},
+        {"x": ["y" * 201]},
+        {"x": float("nan")},
+        {f"k{i}": 1 for i in range(33)},
+    ],
+)
+def test_patch_rejects_unbounded_or_unsafe_custom_fields(bad):
+    with pytest.raises(ValidationError):
+        MetadataPatch(custom=bad)
+
+
+def test_custom_fields_merge_per_key_with_the_better_provider_first():
+    session = SimpleNamespace(providers=[])
+    members = [
+        SimpleNamespace(priority=2, metadata={"b": MetadataPatch(custom={"a": 2, "b": "from b"})}),
+        SimpleNamespace(priority=1, metadata={"a": MetadataPatch(custom={"a": 1})}),
+    ]
+    merged = MetadataHandler._metadata(session, members)  # pylint: disable=protected-access
+    assert merged["custom"] == {"a": 1, "b": "from b"}
+
+
+def test_refresh_merges_custom_values_and_reports_no_change_when_equal():
+    assert provider_custom_values({"custom": {"a": 1}}, None) == {"a": 1}
+    assert provider_custom_values({"custom": {"b": 2}}, {"a": 1}) == {"a": 1, "b": 2}
+    assert provider_custom_values({"custom": {"a": 1}}, {"a": 1}) is None
+    assert provider_custom_values({}, {"a": 1}) is None
+    assert provider_custom_values({"custom": "nope"}, None) is None
