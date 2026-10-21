@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     PUBLIC_APP_URL: str = ""
     DEFAULT_UI_STYLE: Literal["modern", "classic"] = "modern"
     STARTUP_MODE: str = ""
+    ARGON2_MEMORY_KIB: int = Field(default=19456, ge=8192, le=262144)
+    ARGON2_TIME_COST: int = Field(default=2, ge=1, le=10)
+    ARGON2_PARALLELISM: int = Field(default=1, ge=1, le=8)
     MIGRATION_BACKUP_MODE: Literal["required", "development"] = "required"
     MIGRATION_BACKUP_MAX_AGE_SECONDS: int = Field(default=7200, ge=60, le=7 * 86400)
     NOTIFICATION_BLOCKED_PROVIDERS: str = ""
