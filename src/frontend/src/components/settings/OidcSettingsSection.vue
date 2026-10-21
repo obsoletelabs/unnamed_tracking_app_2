@@ -34,6 +34,9 @@ const rowKeys = new WeakMap<OidcProviderSetting, string>();
 let rowCount = 0;
 const expandedRows = reactive(new Set<string>());
 const orderStatus = ref("");
+const copyResult = ref<{ key: string; uri: string; message: string } | null>(
+  null,
+);
 const anyExpanded = computed(() => providers.value.some(isExpanded));
 function responseLocked(name: string) {
   return lockedFields.value[name] === true;
@@ -147,6 +150,32 @@ function ensureSlugs() {
 function redirectUri(provider: OidcProviderSetting) {
   const slug = provider.slug || slugify(provider.name) || "provider-slug";
   return `${browserOrigin}/api/auth/oidc/callback/${slug}`;
+}
+
+function copyMessage(provider: OidcProviderSetting) {
+  const result = copyResult.value;
+  return result?.key === rowKey(provider) &&
+    result.uri === redirectUri(provider)
+    ? result.message
+    : "";
+}
+
+async function copyRedirectUri(provider: OidcProviderSetting) {
+  const key = rowKey(provider);
+  const uri = redirectUri(provider);
+  copyResult.value = null;
+  try {
+    if (!navigator.clipboard?.writeText)
+      throw new Error("Clipboard access is unavailable.");
+    await navigator.clipboard.writeText(uri);
+    copyResult.value = { key, uri, message: "Redirect URI copied." };
+  } catch {
+    copyResult.value = {
+      key,
+      uri,
+      message: "Could not copy. Select the redirect URI and copy it manually.",
+    };
+  }
 }
 
 async function moveProvider(index: number, direction: -1 | 1) {
@@ -518,26 +547,43 @@ async function save() {
                 v-model="provider.button_image_url"
                 placeholder="Optional"
             /></label>
-            <label class="full">
-              <span
-                >Redirect URI
-                <small class="generated-label"
-                  >Automatically generated</small
-                ></span
+            <div class="full redirect-field">
+              <label :for="`${rowKey(provider)}-redirect`">
+                <span
+                  >Redirect URI
+                  <small class="generated-label">Automatically generated</small>
+                </span>
+              </label>
+              <div class="redirect-control">
+                <input
+                  :id="`${rowKey(provider)}-redirect`"
+                  :value="redirectUri(provider)"
+                  :aria-describedby="`${rowKey(provider)}-redirect-hint`"
+                  class="generated-input"
+                  type="text"
+                  readonly
+                  aria-readonly="true"
+                />
+                <button
+                  type="button"
+                  :aria-label="`Copy redirect URI for ${providerLabel(provider, index)}`"
+                  @click="copyRedirectUri(provider)"
+                >
+                  Copy URI
+                </button>
+              </div>
+              <small
+                :id="`${rowKey(provider)}-redirect-hint`"
+                class="field-hint"
               >
-              <input
-                :value="redirectUri(provider)"
-                class="generated-input"
-                type="text"
-                readonly
-                aria-readonly="true"
-              />
-              <small class="field-hint"
-                >This is generated from the address currently used to access
+                This is generated from the address currently used to access
                 Archive and automatically overrides any previously saved
-                redirect URI when you save.</small
-              >
-            </label>
+                redirect URI when you save.
+              </small>
+              <small class="field-hint" aria-live="polite">{{
+                copyMessage(provider)
+              }}</small>
+            </div>
           </div>
 
           <div class="provider-options">
@@ -866,8 +912,29 @@ button {
   font-size: 13px;
 }
 
-.grid label.full {
+.grid .full {
   grid-column: 1/-1;
+}
+
+.redirect-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.redirect-control {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.redirect-control input {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+.redirect-control button {
+  flex-shrink: 0;
 }
 
 .color-control {
@@ -989,7 +1056,7 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
-  .grid label.full {
+  .grid .full {
     grid-column: auto;
   }
 

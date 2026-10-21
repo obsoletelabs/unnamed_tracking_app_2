@@ -50,7 +50,7 @@ Expanding, collapsing and reordering only change the page. Unsaved edits are kep
 
 ## Redirect URI
 
-The settings UI generates the redirect URI from the address currently used to access the application and displays it as read-only. Sign-in generates it again from the current request, preserving the scheme, host, port and proxy mount path. A previously saved generated preview does not pin users to the administrator's old address, and the shared **App URL** setting does not replace the sign-in address.
+The settings UI generates the redirect URI from the address currently used to access the application and displays it as read-only. Use **Copy URI** beside the field to copy the current value, including unsaved slug edits. A confirmation appears after copying; if the browser blocks clipboard access, select the field and copy it manually. Sign-in generates it again from the current request, preserving the scheme, host, port and proxy mount path. A previously saved generated preview does not pin users to the administrator's old address, and the shared **App URL** setting does not replace the sign-in address.
 
 No explicit callback setting is required. Register the exact callback for every application address you use with the identity provider. An optional `OIDC_REDIRECT_URI` can pin the matching environment-managed issuer/client to a fixed callback, including its named callback aliases. Behind a reverse proxy, configure the existing trusted proxy forwarding correctly; the OIDC code does not interpret arbitrary forwarded-host headers itself. Callbacks require HTTPS, except loopback development with `DEBUG=true` or `STARTUP_MODE=development`.
 
