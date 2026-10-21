@@ -85,6 +85,10 @@ def _config_from_provider(provider: dict[str, Any]) -> OidcConfig:
     )
 
 
+def _provider_key(issuer: str, client_id: str) -> tuple[str, str]:
+    return issuer.strip().removesuffix("/.well-known/openid-configuration").rstrip("/"), client_id
+
+
 def _with_verification_policy(
     config: OidcConfig | None, row: OidcSettings | None
 ) -> OidcConfig | None:
@@ -92,30 +96,26 @@ def _with_verification_policy(
     if config is None:
         return None
 
-    def identity(issuer: str, client_id: str) -> tuple[str, str]:
-        return (
-            issuer.strip().rstrip("/").removesuffix("/.well-known/openid-configuration"),
-            client_id,
-        )
-
-    selected = identity(config.issuer_url, config.client_id)
+    selected = _provider_key(config.issuer_url, config.client_id)
     required = config.require_verified_email
     if row is not None:
         required = required or (
             row.require_verified_email
-            and selected == identity(row.issuer_url or "", row.client_id or "")
+            and selected == _provider_key(row.issuer_url or "", row.client_id or "")
         )
         required = required or any(
             provider.get("require_verified_email", False) is True
             and selected
-            == identity(str(provider.get("issuer_url", "")), str(provider.get("client_id", "")))
+            == _provider_key(
+                str(provider.get("issuer_url", "")), str(provider.get("client_id", ""))
+            )
             for provider in _named_rows(row, include_disabled=True)
         )
     environment = env_oidc_config()
     required = required or bool(
         environment
         and environment.require_verified_email
-        and selected == identity(environment.issuer_url, environment.client_id)
+        and selected == _provider_key(environment.issuer_url, environment.client_id)
     )
     return replace(config, require_verified_email=required)
 
@@ -127,7 +127,15 @@ def _named_provider_config(
         if provider.get("slug") == slug and provider.get("client_secret"):
             if require_autostart and provider.get("autostart_enabled", True) is False:
                 return None
-            return _config_from_provider(provider)
+            config = _config_from_provider(provider)
+            if (
+                not config.redirect_uri
+                and getattr(row, "redirect_uri", None)
+                and _provider_key(config.issuer_url, config.client_id)
+                == _provider_key(row.issuer_url or "", row.client_id or "")
+            ):
+                return replace(config, redirect_uri=row.redirect_uri)
+            return config
     return None
 
 
@@ -166,7 +174,17 @@ async def _get_config(
     db: AsyncSession, request: Request, slug: str = "default", require_autostart: bool = False
 ) -> OidcConfig | None:
     config = await _load_config(db, slug, require_autostart)
-    if config is None or config.redirect_uri:
+    if config is None:
+        return None
+    environment = env_oidc_config()
+    if (
+        environment
+        and environment.redirect_uri
+        and _provider_key(environment.issuer_url, environment.client_id)
+        == _provider_key(config.issuer_url, config.client_id)
+    ):
+        return replace(config, redirect_uri=environment.redirect_uri)
+    if config.redirect_uri:
         return config
     # Use the existing deployment URL resolver, including the saved admin setting.
     origin = await get_public_app_url(db)

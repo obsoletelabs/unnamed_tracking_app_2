@@ -223,6 +223,7 @@ async def test_oidc_rejects_invalid_keys_and_nonce(callback, message):
 
 
 async def test_oidc_provider_errors_do_not_log_response_secrets(callback, caplog):
+    assert not auth_oidc.logger.disabled
     callback.client.fetch_access_token.side_effect = RuntimeError(
         "access_token=private-token client_secret=private-secret"
     )
