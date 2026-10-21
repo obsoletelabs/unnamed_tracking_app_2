@@ -25,6 +25,8 @@ SCOPE_DESCRIPTIONS = {
     "saves.read": "List and download your game save backups",
     "saves.write": "Upload new save backups and rename existing ones",
     "content.write": "Add screenshots, clips, soundtracks and documents to your games",
+    "notes.read": "Read named notes from your games",
+    "notes.write": "Add and update named notes in your games",
 }
 
 

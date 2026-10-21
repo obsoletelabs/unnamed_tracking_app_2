@@ -1,5 +1,7 @@
 """Real HTTP and PostgreSQL coverage for the user integration boundary."""
 
+import asyncio
+import hashlib
 import secrets
 import time
 from types import SimpleNamespace
@@ -531,3 +533,86 @@ async def test_library_marks_copies_of_one_game_for_integrations(delegation_flow
         "main_title": "Private game 0",
     }
     assert identity[str(flow.game_id)]["is_main"] is True
+
+
+async def test_named_note_sync_requires_explicit_scopes_and_preserves_concurrent_edits(
+    delegation_flow, monkeypatch, tmp_path
+):
+    from src.api.routes import game_notes as note_routes
+    from src.api.routes.utils import games as game_helpers
+
+    monkeypatch.setattr(note_routes, "_DATA_ROOT", tmp_path)
+    monkeypatch.setattr(game_helpers, "_DATA_ROOT", tmp_path)
+    flow = delegation_flow
+    endpoint = f"/api/game/{flow.game_id}/notes/Playnite"
+    old_headers, _ = await grant_access(flow, ["library.sync"])
+    denied = await flow.client.post(endpoint, headers=old_headers, json={"content": "old grant"})
+    assert denied.status_code == 403
+
+    headers, _ = await grant_access(flow, ["notes.read", "notes.write"])
+    original = "A shared note\r\n日本語 🎮"
+    created = await flow.client.post(endpoint, headers=headers, json={"content": original})
+    assert created.status_code == 201, created.text
+    digest = hashlib.sha256(original.encode()).hexdigest()
+    assert created.json()["content_sha256"] == digest
+    fetched = await flow.client.get(endpoint, headers=headers)
+    assert fetched.status_code == 200 and fetched.text == original
+    assert fetched.headers["etag"] == '"' + digest + '"'
+
+    # Both writers observed one revision. Only one may replace it; the other
+    # retains its local text for a conflict copy instead of losing the first edit.
+    results = await asyncio.gather(
+        *(
+            flow.client.put(
+                endpoint, headers=headers, json={"content": value, "expected_sha256": digest}
+            )
+            for value in ("Edited in app", "Edited in launcher")
+        )
+    )
+    assert sorted(result.status_code for result in results) == [200, 409]
+    current = await flow.client.get(endpoint, headers=headers)
+    assert current.text in {"Edited in app", "Edited in launcher"}
+    assert current.headers["etag"] == '"' + hashlib.sha256(current.content).hexdigest() + '"'
+    refused = next(result for result in results if result.status_code == 409)
+    assert refused.json()["detail"]["error"] == "note_changed"
+
+    for method, suffix in (("GET", ""), ("POST", "")):
+        foreign = f"/api/game/{flow.other_game_id}/notes/Playnite{suffix}"
+        response = await flow.client.request(
+            method,
+            foreign,
+            headers=headers,
+            json={"content": "foreign"} if method == "POST" else None,
+        )
+        assert response.status_code == 404
+    # The new scopes do not expand old credentials, delete notes or expose history.
+    assert (
+        await flow.client.post(endpoint, headers=old_headers, json={"content": "still denied"})
+    ).status_code == 403
+    assert (await flow.client.delete(endpoint, headers=headers)).status_code == 403
+    assert (await flow.client.get(endpoint + "/versions", headers=headers)).status_code == 403
+
+
+async def test_note_read_and_write_capabilities_are_independent(
+    delegation_flow, monkeypatch, tmp_path
+):
+    from src.api.routes import game_notes as note_routes
+    from src.api.routes.utils import games as game_helpers
+
+    monkeypatch.setattr(note_routes, "_DATA_ROOT", tmp_path)
+    monkeypatch.setattr(game_helpers, "_DATA_ROOT", tmp_path)
+    flow = delegation_flow
+    endpoint = f"/api/game/{flow.game_id}/notes/Playnite"
+    write, _ = await grant_access(flow, ["notes.write"])
+    assert (
+        await flow.client.post(endpoint, headers=write, json={"content": "keep"})
+    ).status_code == 201
+    assert (await flow.client.get(endpoint, headers=write)).status_code == 403
+    read, _ = await grant_access(flow, ["notes.read"])
+    assert (await flow.client.get(endpoint, headers=read)).text == "keep"
+    assert (await flow.client.get(f"/api/game/{flow.game_id}/notes", headers=read)).json() == {
+        "notes": ["Playnite"]
+    }
+    assert (
+        await flow.client.put(endpoint, headers=read, json={"content": "denied"})
+    ).status_code == 403

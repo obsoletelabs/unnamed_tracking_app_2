@@ -106,8 +106,10 @@ All paths below are under `/api/delegation/v1`. Responses are not cacheable.
 | `saves.read` | `GET /api/game/{id}/archives/{kind}` and archive version downloads |
 | `saves.write` | `POST /api/game/{id}/archives/{kind}`, `POST .../archives/{archive_id}/versions`, `PATCH .../archives/{archive_id}` |
 | `content.write` | `POST /api/game/{id}/screenshots` (images, videos, audio) and `POST /api/game/{id}/files/doc`; `files/modpack` is refused for app credentials |
+| `notes.read` | `GET /api/game/{id}/notes`, `/notes-summary` and `/notes/{name}`: own named Markdown notes |
+| `notes.write` | `POST` and `PUT /api/game/{id}/notes/{name}`: add/update own named notes; does not permit deletion, moving, renaming or reading earlier versions |
 
-The last four reach ordinary application routes marked `user-or-app` in the
+These application-route capabilities reach routes marked `user-or-app` in the
 [API access matrix](../development/api-access-matrix.md); in code, `@app_grant(scope)` on the
 route lets `get_current_user` accept a `utd_` credential carrying that scope as the consenting
 user. Every unmarked route still refuses `utd_` credentials. Resource IDs never permit
@@ -118,6 +120,23 @@ rejected on ordinary app, API-key management, authentication, plugin-management
 and administration routes. Existing `utk_` API keys retain their legacy behavior;
 they are not accepted as delegated credentials. Browser sessions are required
 to manage consent and grants.
+
+### Conditional note updates
+
+`GET /api/game/{id}/notes/{name}` returns the exact UTF-8 body with a strong `ETag`
+containing its quoted SHA-256 digest and `Cache-Control: no-store`. Note creation and
+updates also return `content_sha256`. A syncing app can send
+`{"content":"the new text","expected_sha256":"the previously read digest"}` to the existing
+`PUT` route. If the current body differs, the server returns HTTP 409 with
+`detail.error: note_changed`, preserving the other edit. Concurrent conditional writers
+are serialized under the existing game storage lock. Keep the unsent local text and
+preserve it as a separate note before resolving a conflict.
+
+The condition is optional for existing clients. `POST` continues to refuse an existing
+name with `note_already_exists`; it never replaces another note. Read and write capabilities
+are independent, and adding them to the server does not expand an already issued grant.
+An extension needs fresh browser consent before it can use capabilities missing from its
+current connection. Legacy `utk_` keys retain their existing account access.
 
 The delegated library's additive `identity` block (`group_id`, `is_main`, `main_title`)
 describes how this user groups copies in their library. It is presentation metadata.

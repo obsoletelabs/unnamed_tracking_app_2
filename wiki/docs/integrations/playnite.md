@@ -40,6 +40,8 @@ user sees the computer's name and approves the capabilities the extension asks f
 | `saves.read` | Listing and downloading save archives |
 | `saves.write` | Creating save archives, adding versions and renaming |
 | `content.write` | Adding screenshots, clips, soundtracks and documents (`doc` files only, never modpacks) to games |
+| `notes.read` | Reading named Markdown notes from owned games |
+| `notes.write` | Creating and updating named Markdown notes on owned games |
 
 They start selected and access defaults to **Until revoked**, because the credential replaces an
 API key; the user can untick any capability or choose a timed grant. The extension polls the
@@ -95,6 +97,30 @@ It can create new games and update existing games. The synchronized Playnite dat
 - completion status.
 
 Cover and banner artwork can also be uploaded.
+
+### Two-way Playnite notes
+
+The updated companion synchronizes Playnite's single Notes field with a dedicated
+Markdown note named **Playnite**. Other app notes stay independent. This requires
+the companion's named-note sync support and approval of both `notes.read` and
+`notes.write`; existing connected-app grants do not gain new capabilities automatically.
+Use **Review app permissions** in the updated extension settings to renew consent.
+Screenshots and documents separately require `content.write`.
+
+The companion records the last synchronized revision locally. A change on one side
+updates the other. If both changed, or the first sync finds different nonempty text,
+the local text is retained as a **Playnite conflict …** note before the shared note
+is pulled into Playnite. Conditional updates prevent a concurrent web edit from being
+overwritten. Local edits made while a pull is running are kept for the next retry.
+Deleting the shared note in the app clears its Playnite counterpart; a simultaneous
+local edit is saved as a conflict copy. Clearing Playnite's Notes field updates the
+shared note to empty. Neither operation deletes unrelated notes or conflict copies.
+
+An older host or missing permission leaves ordinary library sync available and
+reports a note-sync warning. Legacy game payloads still carry `notes` for compatibility;
+that field alone does not create a note in the app's Notes tab. The named-note API,
+including revision checks, is documented under
+[user-approved integration access](user-delegation.md).
 
 The application has a `playnite_guid` field on games. It is an optional UUID association and is indexed, but it is deliberately not globally unique because the same account can receive imports from multiple Playnite libraries.
 
