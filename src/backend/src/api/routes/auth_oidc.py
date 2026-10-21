@@ -242,21 +242,14 @@ async def _fetch_oidc_token(request: Request, client: Any) -> dict[str, Any]:
     if not state_data:
         raise ValueError("Invalid OIDC state parameter")
     await client.framework.clear_state_data(request.session, state)
-    # Authlib exposes this state restoration only through its private adapter; the custom
-    # invalid-JWKS fallback must preserve the same state/PKCE checks as its standard flow.
+    # Authlib exposes state/PKCE restoration only through this private adapter;
+    # preserve the same saved parameters as its standard authorization-code flow.
     params = client._format_state_params(state_data, params)  # pylint: disable=protected-access
     token = await client.fetch_access_token(**params)
-    if "id_token" not in token or "nonce" not in state_data:
-        return token
-    try:
-        token["userinfo"] = await client.parse_id_token(
-            token, nonce=state_data["nonce"], claims_options=None
-        )
-    except ValueError as exc:
-        if str(exc) != "Invalid key set format":
-            raise
-        logger.warning("OIDC provider returned an invalid JWKS document; using UserInfo endpoint")
-        token["userinfo"] = await client.userinfo(token=token)
+    id_token, nonce = token.get("id_token"), state_data.get("nonce")
+    if not isinstance(id_token, str) or not id_token or not isinstance(nonce, str) or not nonce:
+        raise ValueError("Missing OIDC ID token or nonce")
+    token["userinfo"] = await client.parse_id_token(token, nonce=nonce, claims_options=None)
     return token
 
 
@@ -387,8 +380,8 @@ async def _complete_callback(
         claims = dict(token.get("userinfo") or await client.userinfo(token=token))
         claims.update({key: value for key, value in token.items() if key not in claims})
     # Provider token/userinfo failures must return to sign-in without opening a session.
-    except Exception:  # pylint: disable=broad-exception-caught
-        logger.exception("OIDC callback token/userinfo exchange failed")
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        logger.warning("OIDC callback validation failed: %s", type(exc).__name__)
         return RedirectResponse("/login?oidc_error=authentication_failed", 303)
 
     # Provider verification is checked before resolving or mutating any local account.

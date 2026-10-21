@@ -60,6 +60,19 @@ https://archive.example.com/api/auth/oidc/callback/authentik
 
 Register exactly that URI with the identity provider.
 
+## ID-token validation
+
+Sign-in requires an ID token and the nonce saved when the browser started the
+authorization-code flow. Authlib must validate that token successfully before
+the application resolves an account or creates a session. Missing tokens/nonces,
+invalid signatures and malformed or unavailable signing keys fail sign-in;
+a UserInfo response never replaces failed ID-token validation.
+
+The provider must publish valid signing keys at its discovered JWKS endpoint.
+Fix the provider's discovery/key configuration when validation fails rather than
+disabling verified-email checks. Provider errors return a generic sign-in failure;
+application logs record the exception type without copying provider response text.
+
 ## Account matching
 
 After the authorization-code exchange, the application requires an OIDC `sub` and an email identity claim.
@@ -71,7 +84,7 @@ Providers sharing the same issuer and client ID use the strictest saved or envir
 Existing users are matched according to **User matching**:
 
 - **Email** matches the local account email.
-- **Username** uses the OIDC `preferred_username` or `name` value.
+- **Username** uses the OIDC `preferred_username` claim. A free-form display name cannot select an account.
 
 The OIDC subject is linked to the matched account. A subject already linked to another account is rejected as an identity conflict. A linked or username-matched account cannot adopt an email owned by another account. That sign-in fails safely without changing the existing account or opening a session; accounts are never merged by this process.
 
