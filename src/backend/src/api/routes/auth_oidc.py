@@ -21,6 +21,7 @@ from src.core.auth import (
     SESSION_TTL_SECONDS,
     hash_password,
     session_cookie_name,
+    username_in_use,
     validate_display_name,
     validate_username,
 )
@@ -356,7 +357,7 @@ async def _create_oidc_user(
     )
     base = username
     suffix = 1
-    while await db.scalar(select(User.id).where(User.username == username)) is not None:
+    while await username_in_use(db, username):
         suffix += 1
         username = f"{base[: 100 - len(str(suffix)) - 1]}-{suffix}"
     user = User(

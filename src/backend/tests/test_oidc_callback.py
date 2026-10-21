@@ -381,6 +381,24 @@ async def test_oidc_name_claim_cannot_select_an_account_by_username(callback):
     assert callback.session.scalar(select(UserSession.id)) is None
 
 
+async def test_oidc_provisioning_respects_case_insensitive_username_collisions(callback):
+    existing = [
+        User(username="Reader", email="first@example.test", password_hash="unused", is_admin=True),
+        User(username="READER-2", email="second@example.test", password_hash="unused"),
+    ]
+    callback.session.add_all(existing)
+    callback.session.commit()
+
+    response = await complete(callback)
+
+    assert response.headers["location"] == "/login?oidc=success"
+    created = callback.session.scalar(select(User).where(User.email == "reader@example.test"))
+    assert created.username == "reader-3"
+    assert not created.is_admin
+    assert all(user.oidc_subject is None for user in existing)
+    assert callback.session.scalar(select(UserSession.user_id)) == created.id
+
+
 async def test_oidc_new_account_with_taken_username_gets_distinct_account(callback):
     existing = User(username="reader", email="other@example.test", password_hash="unused")
     callback.session.add(existing)

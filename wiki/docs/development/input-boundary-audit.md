@@ -10,7 +10,7 @@ This records the audit of username handling and untrusted input behind issue #29
 | Environment bootstrap (`PRIMARY_USER_*`) | `validate_username` for a new account; an existing account is matched exactly | Exact |
 | Invitation acceptance | `validate_username` | **Now case-insensitive** (was exact) |
 | Profile rename | `validate_username` | **Now case-insensitive** (was exact); a collision follows the existing disclosure rule: members get the combined 409 message, so the reply cannot be used to probe names, and administrators are told the username is taken |
-| OIDC provisioning | Characters reduced to ASCII letters, digits, `.`, `_`, `-`, then `validate_username` | Exact, numeric suffix on collision (see "Left as is") |
+| OIDC provisioning | Characters reduced to ASCII letters, digits, `.`, `_`, `-`, then `validate_username` | Case-insensitive through `username_in_use`, numeric suffix on collision |
 | Legacy accounts | Not re-validated and never renamed; sign-in still matches the stored name exactly, so existing pairs such as `Admin` and `admin` keep working | |
 
 The accepted alphabet stays `[A-Za-z0-9_.-]`, at most 100 characters. That rules out whitespace, control and bidirectional characters, `@`, path separators, quotes, markup and non-ASCII look-alikes for new and renamed accounts. Words such as `NULL` and `DROP` are ordinary strings and remain valid.
@@ -35,6 +35,5 @@ Reserved names (`admin`, `root`, ...) are not blocked. The administrator account
 ## Left as is (decisions or follow-ups)
 
 * **Plugin package download (`plugin_manager/acquisition.py`)** validates the resolved addresses and every redirect, but then lets `httpx` resolve the name again, so a DNS rebinding answer between the two lookups is theoretically possible. It is administrator-only and the downloaded package is still signature-verified before installation. Moving it onto the pinned `public_http` connection is a reasonable follow-up.
-* **OIDC provisioning** (`auth_oidc.py`) still compares candidate usernames exactly. It was not changed here because that module is being reworked for account linking; the same `username_in_use` helper should be used there once that work lands.
 * **Steam OpenID origin.** Without a configured `PUBLIC_APP_URL` the return address is derived from the `Origin` header of the authenticated request. The value is normalised, and the callback recomputes and verifies the same address, but setting `PUBLIC_APP_URL` is recommended.
 * **External images in sanitised HTML.** DOMPurify keeps `https` images from provider descriptions, which lets a provider observe viewers' addresses. Proxying them would change how descriptions render and is a product decision.
