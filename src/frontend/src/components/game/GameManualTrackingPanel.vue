@@ -388,7 +388,7 @@ h2 {
   font-size: 1.15rem;
 }
 .summary {
-  flex: 1;
+  flex: 1 1 14rem;
   color: var(--ui-dim);
 }
 .summary.partial {
