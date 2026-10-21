@@ -49,10 +49,27 @@ Rotating a generated token means deleting `config/metrics.token` and restarting.
 
 ### Grafana
 
-* **Provisioned (recommended):** mount `examples/metrics/grafana/provisioning` at `/etc/grafana/provisioning` and the dashboard file at `/var/lib/grafana/dashboards/unnamed-tracking.json` (`examples/metrics/compose.yaml` does this). The datasource uid is `prometheus`, which the dashboard expects.
-* **Manual import:** create a Prometheus data source with uid `prometheus`, then Dashboards, New, Import and upload `examples/metrics/grafana-dashboard.json`.
+* **Provisioned (recommended):** mount `examples/metrics/grafana/provisioning` at `/etc/grafana/provisioning` and the dashboard file at `/var/lib/grafana/dashboards/unnamed-tracking.json` (`examples/metrics/compose.yaml` does this). The provisioned Prometheus data source has uid `prometheus` and a 30-second scrape interval, matching the example scraper.
+* **Manual import:** create a Prometheus data source, set its scrape interval to match your scraper, then Dashboards, New, Import and upload `examples/metrics/grafana-dashboard.json`. Select it in the dashboard's **Data source** picker; the uid does not have to be `prometheus`.
 
-The dashboard has 16 panels: request rate and latency (p50/p95/p99), slowest routes, 5xx and 429 by route, authentication throttling, sessions, database pool, database and plugin runtime health, plugins by state, plugin runtime latency and errors, job runs and staleness, metadata provider calls and latency, and process CPU and memory.
+The dashboard groups 26 visualizations into an overview and sections for HTTP traffic, authentication, database, plugin runtime, scheduled jobs, metadata providers and process resources. It adds explicit scrape/readiness/dependency status, in-flight requests, unhandled exceptions, database probe duration, job duration, and separate CPU, memory and uptime graphs. The errors graph includes both 5xx responses and the dedicated 429 counter.
+
+Choose a **Deployment** (the Prometheus scrape `job`) and one or more **Instances**. These filters apply throughout, so multiple replicas and unrelated process exporters are not mixed accidentally. **HTTP route** narrows the route-labelled HTTP graphs; the unlabelled in-flight gauge remains instance-wide. Shared database/runtime snapshot gauges are shown per instance instead of summed across replicas. The overview reports the worst measured state among selected instances; missing data is **Unknown**, never healthy.
+
+Rate/latency panels use Grafana's `$__rate_interval`; set the data source scrape interval correctly so this window includes enough samples. Job-run totals use the selected time range. Counter increases are estimates and can be fractional. Wait for several scrapes after a new installation. Missing error series, infrequent jobs, idle provider histograms and process collectors omitted in multiprocess mode can legitimately show **No data** or gaps. The dashboard does not replace these unknown measurements with zero.
+
+Prometheus reserves `job` for the scrape job and, with its default `honor_labels: false`, renames the application's scheduled-job label to `exported_job`. The dashboard and starter job alerts use that preserved label. Keep the default label-conflict behavior when using these examples; custom relabelling or `honor_labels: true` requires adapting those queries. Job-failure alerts keep the scrape job, instance and application job separate, so unrelated failures do not add up to a false alert.
+
+Validate the starter rules with the same Prometheus version as your deployment:
+
+```bash
+cd examples/metrics
+python3 check_dashboard.py
+docker run --rm -v "$PWD:/work:ro" -w /work --entrypoint promtool prom/prometheus:v2.55.1 check rules alerts.yml
+docker run --rm -v "$PWD:/work:ro" -w /work --entrypoint promtool prom/prometheus:v2.55.1 test rules alerts.test.yml
+```
+
+The dashboard check reads the actual shipped queries and exercises 429s, distinct application jobs, deployment/instance/route filtering and unknown health on a partially missing replica. It uses Docker by default, or an installed binary with `python3 check_dashboard.py --promtool /path/to/promtool`. The rule fixtures cover distinct scheduled jobs, separate replicas and a real repeated-failure alert with useful job/instance annotations.
 
 ## Metrics
 
