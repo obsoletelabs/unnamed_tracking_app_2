@@ -22,13 +22,24 @@ flows named below, not of every screen.
 | Home (`HomeHub`) | one data source fails | separate loading/error per source already existed | already covered |
 | Startup and backend unavailable | backend down | themed unavailable screen with retry already existed | already covered |
 | Notification settings | preferences or routing request fails | error shown; stored values kept | already covered; layout changed only ([#273](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/273)) |
+| Media picker search, plugin manager popup | out-of-order search; slow or partial plugin popup requests | sequence guards and per-section tolerance already exist | already covered |
+| Collection detail (`/games/collections/:name`) | games request fails | showed "Nothing in this collection yet" with no retry | **fixed**: alert with **Retry**, guarded against double starts, no full-page spinner when reloading with data present (`uiStateAudit.test.ts`) |
+| Collections index (`/games/collections`) | games request fails | error without retry | **fixed**: **Retry** with in-flight guard and error reset |
+| Media lists index (`/media/lists`) | lists request fails | error without retry | **fixed**: **Retry** with in-flight guard |
+| Media list detail (`/media/lists/:id`) | id changes while loading; request fails | an older response could overwrite the newer list and the previous list stayed under the new id | **fixed**: sequence guarded, cleared on id change, error has **Retry** |
+| Achievement detail notes | navigate to another achievement | a late response filled the wrong achievement's notes | **fixed**: sequence guarded and cleared on change |
+| Settings > Users: invitations | invitations request fails | failure was swallowed into an empty list | **fixed**: message with **Retry**, previous invitations kept |
+| Settings > Users: user table | users request fails, or a later action errors | any error replaced the whole table and had no retry | **fixed**: table stays when users are loaded, a load failure shows **Retry**, concurrent reloads are ignored |
+| Statistics burn-down card | games request fails | the optional card is silently omitted; the main statistics keep their own error state | left |
+| Plugin popup UI and logs | request fails | intentionally tolerated; the popup shows the remaining sections | left |
 
 ## Not audited yet
 
-Game library and detail loading (very large), the plugin manager, the authentication and setup pages beyond startup, the
-statistics pages, the lists and collections pages, and import dialogs other than Steam. Each needs the same four questions
-asked against its real requests; they are listed here so a later change can take them one at a time rather than editing many
-components at once.
+Notification pages (they follow the notification overhaul contract), game library list and game detail internals, anime,
+movie and TV detail views, the setup page, login and recovery, the upload sections and the Steam and connection dialogs were
+only scanned for swallowed-error patterns; no defect was confirmed. Each needs the same four questions asked against its real
+requests, so a later change can take them one at a time rather than editing many components at once. Modern, Classic and
+narrow-screen checks reuse the existing `ui-state` and `small-button` styles.
 
 ## How to check a flow
 
@@ -36,3 +47,12 @@ components at once.
 2. Confirm the screen says which part failed, keeps what it had and the user's draft, and offers retry.
 3. Confirm retry cannot submit twice.
 4. Add a test that fails if the failure shows as an empty state.
+
+## Screenshots
+
+Captured against the development stack with the games request forced to answer 500 (Modern theme, 800 px pane).
+
+| Page | Before | After |
+| --- | --- | --- |
+| Collection detail | ![A failed request shown as an empty collection](../assets/ui-state-audit/collection-detail-before.jpg) | ![The failure named, with a Retry button](../assets/ui-state-audit/collection-detail-after.jpg) |
+| Collections index | ![Error without a way to retry](../assets/ui-state-audit/collections-index-before.jpg) | ![Error with a Retry button](../assets/ui-state-audit/collections-index-after.jpg) |

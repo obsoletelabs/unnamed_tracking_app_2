@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-// Regression coverage for the loading/error/retry audit (wiki: ui-state-audit).
+// Regression coverage for the loading/error/retry audit (wiki: development/state-audit).
 import { flushPromises, shallowMount } from "@vue/test-utils";
 import { reactive } from "vue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
