@@ -376,7 +376,7 @@ async def _create_oidc_user(
 async def _legacy_oidc_identity(db: AsyncSession, slug: str, subject: str) -> User | str | None:
     """Migrate existing bindings even when optional account matching is disabled."""
     candidates = [
-        value for value in {subject, f"{slug}:{subject}"} if not value.startswith("oidc-v2:")
+        value for value in (subject, f"{slug}:{subject}") if not value.startswith("oidc-v2:")
     ]
     matches = User.oidc_subject.in_(candidates)
     total = int(await db.scalar(select(count()).select_from(User).where(matches)) or 0)
@@ -389,17 +389,17 @@ async def _resolve_oidc_identity(
     db: AsyncSession, config: OidcConfig, claims: dict[str, Any]
 ) -> User | str:
     """Resolve, provision, or reject an identity before any session is created."""
-    subject, raw_email = claims.get("sub"), claims.get("email")
+    subject, email = claims.get("sub"), claims.get("email")
     issuer = claims.get("iss")
     if (
         not config.accepts_issuer(issuer)
         or not isinstance(subject, str)
         or not 0 < len(subject) <= 255
-        or not isinstance(raw_email, str)
-        or not raw_email.strip()
+        or not isinstance(email, str)
+        or not email.strip()
     ):
         return "identity_missing"
-    email = raw_email.strip().lower()
+    email = email.strip().lower()
     # OIDC identities are the exact (issuer, opaque subject) pair. Slugs are
     # presentation/configuration names and can be renamed or point at a new issuer.
     identity = json.dumps([issuer, subject], separators=(",", ":"))
@@ -431,7 +431,7 @@ async def _resolve_oidc_identity(
     if user is None:
         if not config.allow_new_users:
             return "user_creation_disabled"
-        return await _create_oidc_user(
+        result: User | str = await _create_oidc_user(
             db,
             claims,
             email,
@@ -440,7 +440,9 @@ async def _resolve_oidc_identity(
                 config.admin_group and config.admin_group in _groups(claims, config.groups_claim)
             ),
         )
-    return _update_oidc_user(user, config, claims, linked_subject, email)
+    else:
+        result = _update_oidc_user(user, config, claims, linked_subject, email)
+    return result
 
 
 def _update_oidc_user(
