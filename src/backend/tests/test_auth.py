@@ -40,7 +40,7 @@ def test_password_hash_round_trip_and_wrong_password() -> None:
     password = "Correct!9"
     stored_hash = hash_password(password)
 
-    assert stored_hash.startswith("scrypt$")
+    assert stored_hash.startswith("argon2id$")
     assert verify_password(password, stored_hash)
     assert not verify_password("Wrong!9", stored_hash)
 

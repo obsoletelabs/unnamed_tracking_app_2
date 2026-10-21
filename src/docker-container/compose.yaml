@@ -6,6 +6,10 @@ services:
       - "${UNNAMED_TRACKING_APP_PORT:-8080}:80"
       # Used once embedded TLS is enabled (disabled by default).
       - "${UNNAMED_TRACKING_APP_HTTPS_PORT:-8443}:443"
+      # Prometheus scrape port, closed unless you publish it. Anything that can reach it can
+      # read route names, job state and plugin state without a token, so map it only to a
+      # trusted network (for example "127.0.0.1:9464:9464" or a private interface).
+      # - "${METRICS_LISTEN_PORT:-9464}:${METRICS_LISTEN_PORT:-9464}"
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-unnamed_tracking}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-unnamed_tracking}
       SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}

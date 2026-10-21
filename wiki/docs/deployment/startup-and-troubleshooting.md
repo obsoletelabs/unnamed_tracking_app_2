@@ -9,7 +9,9 @@ The production container keeps startup diagnostics available without turning the
 3. Validate database configuration.
 4. Wait for PostgreSQL.
 5. Run Alembic migrations (`src/database/migrate.py`) under the database advisory lock.
-   Recognized pending upgrades run normally. Unknown/unversioned populated histories,
+   Recognized pending upgrades first create and verify an automatic local recovery point
+   (see [Automatic startup recovery](migration-recovery.md#automatic-startup-recovery-default));
+   a failed backup stops startup before any schema change, then they run normally. Unknown/unversioned populated histories,
    inconsistent revision records and missing required tables/columns stop startup for
    [operator review](migration-recovery.md), with no automatic stamping or replay.
 6. Start Uvicorn on `127.0.0.1:8000`.

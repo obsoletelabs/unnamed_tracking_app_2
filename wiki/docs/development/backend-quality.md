@@ -35,6 +35,10 @@ The migration repair preserves the existing session-network revision identity an
 
 ## Verification
 
+### Runtime security dependencies
+
+The backend pins Pillow 13.0.0 and certifi 2026.10.19, including the image-decoder and CA-bundle security fixes in those releases. Both backend image builds install pip 26.2.2 before application dependencies, so an older cached Python base cannot retain the vulnerable installer. Rebuild the backend image when upgrading an existing deployment so its installed packages match `requirements.txt`. The upload regressions decode real PNG, JPEG, GIF, WebP, AVIF, BMP, TIFF, HEIF and ICO files; profile-picture checks also exercise HEIC with the existing `pillow-heif` integration.
+
 From `src/backend`, run:
 
 ```bash
@@ -53,3 +57,21 @@ docker compose exec -e PYTHONPATH=/app backend python -m pytest tests -q
 Focused checks cover session persistence and OIDC state/account linking, deployment environment locks and encrypted secrets, media lifecycle and exact statistics, imports/exports, provider fallbacks, plugin authorization, package integrity, and runtime cleanup. Before/after comparisons validate the complete OpenAPI document and selected policy/calculation outputs. PostgreSQL migration replay and production container smoke checks remain part of CI; supplementary SQLite checks do not replace them.
 
 Breaking changes: no public API changes. Individual backend checks have separate result names, and the required `backend-checks` summary covers every backend job, including Pylint.
+
+## Upgrade matrix
+
+`src/backend/tests/test_migration_upgrade_matrix.py` upgrades populated databases from historical schema revisions to the current head on PostgreSQL. Each case runs in its own throwaway schema (`migration_matrix_<random>`, created and dropped by the test), so it cannot touch the shared tables of the test database or a real deployment, and nothing in it runs `docker compose down -v`.
+
+For every starting revision the test migrates an empty schema to that revision, inserts a synthetic row into every table it can fill (three users, plus one row for every other table with real foreign keys back to them), snapshots all rows, upgrades to head and compares:
+
+* every row that existed is still present under the same primary key (and therefore with the same owner and parent references);
+* every column that survived keeps its value, except the transformations listed in `TRANSFORMED_COLUMNS`;
+* tables that disappear must be listed in `DROPPED_TABLES`;
+* no foreign key references a missing row, and `alembic current` reports the head;
+* files in a data directory are byte-identical (checksums).
+
+Starting points: the initial schema, an early release, the tip of a divergent branch that a later reconciliation merge joined, the reconciliation of three divergent lines, the pre-identity baseline, the merge after the game identity model and the revision before the head. A further case upgrades in two stages and then repeats the upgrade to cover interruption and double execution. A failure names the table and column only, never row contents. Self-tests prove that a lost row, a changed owner, a dropped table and a changed file are all detected.
+
+Intentional transformation recorded today: `notification_deliveries.status` is normalised by `22ff87d4d01c`.
+
+Not covered: databases older than the initial revision, restoring from a deployment backup before an upgrade (see [Migration Recovery](../deployment/migration-recovery.md) for the manual procedure), and several containers racing to migrate (guarded by an advisory lock in `src/database/migrate.py`). When a new migration intentionally rewrites data, add the column to `TRANSFORMED_COLUMNS` with the reason in the same pull request.

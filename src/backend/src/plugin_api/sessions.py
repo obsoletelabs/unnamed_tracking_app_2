@@ -6,7 +6,7 @@ import time
 from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -87,7 +87,9 @@ def _apply_text_filters(statement, payload: dict[str, Any]):
         if value is not None and (not isinstance(value, str) or len(value) > maximum):
             raise ValueError(f"{key} must be a string of at most {maximum} characters")
     if payload.get("country"):
-        statement = statement.where(UserSession.geo_country.ilike(payload["country"].strip()))
+        statement = statement.where(
+            func.lower(UserSession.geo_country) == payload["country"].strip().lower()
+        )
     if (payload.get("q") or "").strip():
         needle = payload["q"].strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         statement = statement.where(

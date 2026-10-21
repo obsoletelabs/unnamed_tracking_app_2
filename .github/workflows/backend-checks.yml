@@ -23,7 +23,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16
+        image: postgres:18
         env:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
@@ -62,6 +62,14 @@ jobs:
       - name: Install backend dependencies
         run: python -m pip install -r requirements.txt
 
+      # The automatic startup backup tests run the real Restic and PostgreSQL client tools.
+      - name: Install backup tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends restic postgresql-client
+          restic version
+          pg_dump --version
+
       - name: Prepare test database
         run: alembic upgrade head 2>&1 | tee migrations-output.txt
 
@@ -77,7 +85,8 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: |
           set -o pipefail
-          python -m pytest tools/tests/test_plugin_acceptance_acquisition.py 2>&1 \
+          python -m pytest tools/tests/test_plugin_acceptance_acquisition.py \
+            tools/tests/test_environment_reference.py 2>&1 \
             | tee src/backend/repository-pytest-output.txt
 
       - name: Upload test diagnostics
