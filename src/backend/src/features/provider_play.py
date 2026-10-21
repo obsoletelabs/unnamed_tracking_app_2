@@ -1,8 +1,12 @@
 """Group-play details reported by metadata providers, kept apart from user-confirmed ones."""
 
-from typing import Any
+from typing import Any, TypeGuard
 
 PROVIDER_SOURCE = "provider"
+
+
+def _is_count(value: object) -> TypeGuard[int]:
+    return isinstance(value, int) and not isinstance(value, bool)
 
 
 def provider_play_compatibility(
@@ -15,9 +19,7 @@ def provider_play_compatibility(
     "yes": "no", "partial" and silence all stay false because the stored flag cannot express them.
     """
     low, high = match.get("players_min"), match.get("players_max")
-    if not all(isinstance(v, int) and not isinstance(v, bool) for v in (low, high)):
-        return None
-    if not 1 <= low <= high <= 32:
+    if not (_is_count(low) and _is_count(high)) or not 1 <= low <= high <= 32:
         return None
     if current and current.get("source") != PROVIDER_SOURCE:
         return None

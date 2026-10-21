@@ -2,10 +2,17 @@
 
 from datetime import date
 from decimal import Decimal
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
 from src.api.schemas.title_protection import TitleProtectionUpdate
 from src.core.page_settings import validate_page_settings
@@ -47,6 +54,14 @@ class GamePlayCompatibility(BaseModel):
     duration_minutes: int | None = Field(default=None, ge=1, le=1440, strict=True)
     crossplay: bool = Field(default=False, strict=True)
     source: Literal["provider"] | None = None
+
+    @model_serializer(mode="wrap")
+    def _omit_unset_source(self, handler: Any) -> dict[str, Any]:
+        """User-confirmed details keep their established shape: no ``source`` key."""
+        data = handler(self)
+        if data.get("source") is None:
+            data.pop("source", None)
+        return data
 
     @model_validator(mode="after")
     def ordered_players(self) -> "GamePlayCompatibility":
