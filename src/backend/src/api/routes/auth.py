@@ -45,7 +45,7 @@ from src.database.models.user import User
 from src.database.session import get_db
 from src.features.admin_users import is_primary_user, record_audit
 from src.features.game_ingestion.legacy import PLAYSTATION, record_disconnect
-from src.features.local_auth import DUMMY_PASSWORD_HASH, local_login_attempt
+from src.features.local_auth import local_login_attempt, verify_login_password
 from src.features.metadata.games.psn import PSNClient, PSNError
 from src.features.notification_urls import remember_app_url
 from src.features.profile_pictures import profile_picture_version
@@ -218,17 +218,15 @@ async def login(
             )
         if user is not None:
             await reservation.for_account(user.id)
-        stored_hash = (
-            user.password_hash if user is not None and user.is_active else DUMMY_PASSWORD_HASH
-        )
-        matches = await run_password_job(verify_password, payload.password, stored_hash)
+        stored_hash = user.password_hash if user is not None and user.is_active else None
+        matches = await verify_login_password(db, payload.password, stored_hash)
         if user is None or not user.is_active or not matches:
             reservation.failed = True
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials."
             )
 
-        if password_needs_rehash(stored_hash):
+        if stored_hash is not None and password_needs_rehash(stored_hash):
             # The row is locked above, so a concurrent password change or reset cannot be
             # overwritten. A busy hashing pool only postpones the upgrade to the next sign-in.
             try:

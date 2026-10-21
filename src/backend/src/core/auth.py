@@ -255,6 +255,19 @@ def password_needs_rehash(stored_hash: str) -> bool:
     )
 
 
+def is_legacy_hash(stored_hash: str) -> bool:
+    return stored_hash.startswith("scrypt$")
+
+
+def legacy_timing_hash(password: str) -> str:
+    """A scrypt record used only to spend the legacy algorithm's time during sign-in."""
+    salt = secrets.token_bytes(_SALT_BYTES)
+    digest = hashlib.scrypt(
+        password.encode("utf-8"), salt=salt, n=2**14, r=8, p=1, dklen=_HASH_BYTES
+    )
+    return f"scrypt$16384$8$1${salt.hex()}${digest.hex()}"
+
+
 def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
