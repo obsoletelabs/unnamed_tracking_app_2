@@ -6,6 +6,7 @@ The production reverse proxy forwards only `/api/` and static assets to the back
 endpoint is not part of the public listener; see wiki/docs/deployment/metrics.md.
 """
 
+import logging
 import time
 
 from starlette.responses import JSONResponse, Response
@@ -14,6 +15,22 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from src.core import metrics
 
 METRICS_PATH = "/metrics"
+
+
+class ScrapeAccessLogFilter(logging.Filter):  # pylint: disable=too-few-public-methods
+    """Keep constant scraping out of the server's access log (and so out of the console).
+
+    uvicorn passes (client, method, path-with-query, http_version, status) as the record's
+    arguments; a scrape every few seconds would otherwise bury every other log line."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        if isinstance(args, tuple) and len(args) >= 3 and isinstance(args[2], str):
+            return args[2].split("?", 1)[0] != METRICS_PATH
+        return True
+
+
+logging.getLogger("uvicorn.access").addFilter(ScrapeAccessLogFilter())
 
 
 def _bearer(scope: Scope) -> str | None:

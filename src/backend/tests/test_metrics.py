@@ -224,3 +224,27 @@ async def test_admin_settings_show_only_a_generated_token(client, enabled, monke
     finally:
         app.dependency_overrides.pop(get_current_admin, None)
     assert (await client.get("/api/settings/metrics")).status_code in {401, 403}
+
+
+def test_scrapes_are_kept_out_of_the_access_log():
+    import logging
+
+    from src.api.metrics import ScrapeAccessLogFilter
+
+    def record(path: str) -> logging.LogRecord:
+        return logging.LogRecord(
+            "uvicorn.access",
+            logging.INFO,
+            __file__,
+            1,
+            '%s - "%s %s HTTP/%s" %d',
+            ("127.0.0.1:1", "GET", path, "1.1", 200),
+            None,
+        )
+
+    log_filter = ScrapeAccessLogFilter()
+    assert not log_filter.filter(record("/metrics"))
+    assert not log_filter.filter(record("/metrics?x=1"))
+    assert log_filter.filter(record("/api/games/list"))
+    assert log_filter.filter(record("/api/metrics"))
+    assert logging.getLogger("uvicorn.access").filters  # installed when the app is imported

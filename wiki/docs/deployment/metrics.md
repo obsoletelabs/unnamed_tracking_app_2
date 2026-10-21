@@ -90,3 +90,7 @@ At the default 30 second interval the series count is a few hundred. Keep 15 day
 ## Not yet covered
 
 Import/export outcomes, upload throughput, cache hit ratios for metadata and artwork, storage totals and migration failures (which happen before the application starts and are reported in the container log) are not exported.
+
+## Logging
+
+Requests to `/metrics` are excluded from the server's access log, so a scrape every few seconds does not flood the console. The Nginx metrics listener also has its access log disabled.
