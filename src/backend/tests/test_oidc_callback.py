@@ -1,5 +1,7 @@
 """OIDC callback security, account linking, and real browser-session persistence."""
 
+import hashlib
+import json
 from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -49,6 +51,8 @@ async def callback(monkeypatch):
     UserSession.__table__.create(engine)
     with Session(engine, expire_on_commit=False) as session:
         claims = {
+            "email_verified": True,
+            "iss": "https://issuer.invalid",
             "sub": "subject",
             "email": "reader@example.test",
             "preferred_username": "reader",
@@ -89,6 +93,11 @@ async def callback(monkeypatch):
     engine.dispose()
 
 
+def auth_oidc_identity(config, subject="subject"):
+    identity = json.dumps([config.expected_issuer, subject], separators=(",", ":"))
+    return "oidc-v2:" + hashlib.sha256(identity.encode()).hexdigest()
+
+
 async def complete(callback, query="?code=code&state=state"):
     return await callback.http.get("/api/auth/oidc/callback" + query)
 
@@ -101,7 +110,7 @@ async def test_oidc_provisions_and_persists_a_cookie_bound_session(callback):
     assert (user.username, user.email, user.oidc_subject) == (
         "reader",
         "reader@example.test",
-        "provider:subject",
+        auth_oidc_identity(callback.config),
     )
     assert user.is_active and not user.is_admin
     cookie = response.cookies.get(session_cookie_name("test"))
@@ -200,7 +209,7 @@ async def test_oidc_links_legacy_subject_and_applies_explicit_admin_group(callba
     callback.selected_config.return_value = replace(callback.config, admin_group="administrators")
     response = await complete(callback)
     assert response.headers["location"] == "/login?oidc=success"
-    assert user.oidc_subject == "provider:subject"
+    assert user.oidc_subject == auth_oidc_identity(callback.config)
     assert user.is_admin is admin
 
 
@@ -242,6 +251,8 @@ async def test_required_verified_email_rejects_before_any_account_mutation(
         callback.session.commit()
     if verified != "missing":
         callback.claims["email_verified"] = verified
+    else:
+        callback.claims.pop("email_verified", None)
     callback.claims["groups"] = ["administrators"]
     callback.selected_config.return_value = replace(
         callback.config, require_verified_email=True, admin_group="administrators"
@@ -267,6 +278,8 @@ async def test_optional_verified_email_preserves_existing_provider_compatibility
 ):
     if verified != "missing":
         callback.claims["email_verified"] = verified
+    else:
+        callback.claims.pop("email_verified", None)
     response = await complete(callback)
     assert response.headers["location"] == "/login?oidc=success"
     assert callback.session.scalar(select(UserSession.id)) is not None
@@ -375,3 +388,139 @@ async def test_oidc_new_account_with_taken_username_gets_distinct_account(callba
     users = {u.username: u for u in callback.session.scalars(select(User))}
     assert set(users) == {"reader", "reader-2"}
     assert users["reader"].oidc_subject is None
+
+
+@pytest.mark.parametrize("old_subject", [None, "subject", "provider:subject"])
+@pytest.mark.parametrize("match_field", ["email", "username"])
+async def test_unverified_email_never_links_existing_account(callback, old_subject, match_field):
+    user = User(
+        username="reader",
+        email="reader@example.test",
+        password_hash="unused",
+        oidc_subject=old_subject,
+    )
+    callback.session.add(user)
+    callback.session.commit()
+    callback.claims["email_verified"] = False
+    callback.selected_config.return_value = replace(callback.config, user_match_field=match_field)
+    response = await complete(callback)
+    assert response.headers["location"] == "/login?oidc_error=verified_email_required"
+    assert user.oidc_subject == old_subject
+    assert callback.session.scalar(select(UserSession.id)) is None
+
+
+async def test_username_match_also_requires_same_verified_email(callback):
+    user = User(
+        username="reader", email="victim@example.test", password_hash="unused", is_admin=True
+    )
+    callback.session.add(user)
+    callback.session.commit()
+    callback.selected_config.return_value = replace(callback.config, user_match_field="username")
+    response = await complete(callback)
+    assert response.headers["location"] == "/login?oidc_error=identity_conflict"
+    assert user.email == "victim@example.test" and user.oidc_subject is None and user.is_admin
+    assert callback.session.scalar(select(UserSession.id)) is None
+
+
+@pytest.mark.parametrize("subject", [" subject", "subject ", "SUBJECT"])
+async def test_opaque_subject_is_not_trimmed_or_case_folded(callback, subject):
+    user = User(
+        username="reader",
+        email="reader@example.test",
+        password_hash="unused",
+        oidc_subject=auth_oidc_identity(callback.config),
+    )
+    callback.session.add(user)
+    callback.session.commit()
+    callback.claims["sub"] = subject
+    response = await complete(callback)
+    assert response.headers["location"] == "/login?oidc_error=identity_conflict"
+    assert user.oidc_subject == auth_oidc_identity(callback.config)
+    assert callback.session.scalar(select(UserSession.id)) is None
+
+
+async def test_reusing_provider_slug_cannot_rebind_a_different_issuer(callback):
+    user = User(
+        username="reader",
+        email="reader@example.test",
+        password_hash="unused",
+        oidc_subject=auth_oidc_identity(callback.config),
+    )
+    callback.session.add(user)
+    callback.session.commit()
+    callback.selected_config.return_value = replace(
+        callback.config, issuer_url="https://other.example.test"
+    )
+    callback.client.load_server_metadata.return_value = {"issuer": "https://other.example.test"}
+    callback.claims["iss"] = "https://other.example.test"
+    response = await complete(callback)
+    assert response.headers["location"] == "/login?oidc_error=identity_conflict"
+    assert user.oidc_subject == auth_oidc_identity(callback.config)
+    assert callback.session.scalar(select(UserSession.id)) is None
+
+
+async def test_renaming_provider_slug_preserves_issuer_subject_identity(callback):
+    user = User(
+        username="reader",
+        email="reader@example.test",
+        password_hash="unused",
+        oidc_subject=auth_oidc_identity(callback.config),
+    )
+    callback.session.add(user)
+    callback.session.commit()
+    callback.selected_config.return_value = replace(
+        callback.config, slug="renamed", user_match_field="username"
+    )
+    callback.claims.pop("preferred_username")
+    response = await complete(callback)
+    assert response.headers["location"] == "/login?oidc=success"
+    assert callback.session.scalar(select(UserSession.user_id)) == user.id
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("sub", 1),
+        ("sub", True),
+        ("sub", ["subject"]),
+        ("sub", {"sub": "subject"}),
+        ("sub", "x" * 256),
+        ("email", 1),
+        ("email", {"email": "reader@example.test"}),
+    ],
+)
+async def test_identity_claims_require_strings(callback, field, value):
+    callback.claims[field] = value
+    response = await complete(callback)
+    reason = "authentication_failed" if field == "email" else "identity_missing"
+    assert response.headers["location"] == f"/login?oidc_error={reason}"
+    assert callback.session.scalar(select(User.id)) is None
+    assert callback.session.scalar(select(UserSession.id)) is None
+
+
+async def test_verified_email_linking_uses_case_insensitive_ownership(callback):
+    user = User(username="reader", email="Reader@Example.Test", password_hash="unused")
+    callback.session.add(user)
+    callback.session.commit()
+    assert (await complete(callback)).headers["location"] == "/login?oidc=success"
+    assert user.oidc_subject == auth_oidc_identity(callback.config)
+    assert callback.session.scalar(select(UserSession.user_id)) == user.id
+
+
+async def test_ambiguous_legacy_email_case_never_selects_an_account(callback):
+    users = [
+        User(username="reader", email="Reader@Example.Test", password_hash="unused"),
+        User(username="other", email="reader@example.test", password_hash="unused"),
+    ]
+    callback.session.add_all(users)
+    callback.session.commit()
+    assert (await complete(callback)).headers["location"] == "/login?oidc_error=email_conflict"
+    assert all(user.oidc_subject is None for user in users)
+    assert callback.session.scalar(select(UserSession.id)) is None
+
+
+async def test_group_claim_values_are_not_coerced_into_admin_group_names(callback):
+    callback.claims["groups"] = [1, {"group": "administrators"}]
+    callback.selected_config.return_value = replace(callback.config, admin_group="1")
+    assert (await complete(callback)).headers["location"] == "/login?oidc=success"
+    assert not callback.session.scalar(select(User)).is_admin

@@ -65,6 +65,9 @@ def boundary(monkeypatch):
         monkeypatch.setattr(settings, name, None)
     monkeypatch.setattr(settings, "OIDC_REQUIRE_VERIFIED_EMAIL", False)
     monkeypatch.setattr(auth_oidc, "decrypt_secret", lambda value: "test-secret")
+    monkeypatch.setattr(
+        auth_oidc, "get_public_app_url", AsyncMock(return_value="https://tracking.example.test")
+    )
     launch = AsyncMock(return_value=RedirectResponse("https://issuer.invalid/authorize", 302))
     monkeypatch.setattr(auth_oidc, "begin_oidc", launch)
     app = FastAPI()
@@ -157,3 +160,37 @@ async def test_unconfigured_entries_return_to_the_themed_login(boundary):
             assert response.status_code == 303
             assert response.headers["location"] == "/login?oidc_error=not_configured"
     launch.assert_not_awaited()
+
+
+@pytest.mark.parametrize("header_name", ["host", "x-forwarded-host", "forwarded"])
+async def test_request_headers_cannot_replace_canonical_callback(boundary, header_name):
+    app, _, launch = boundary
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="https://attacker.example.test"
+    ) as client:
+        response = await client.get(
+            "/api/auth/oidc/login/branded?autostart=false",
+            headers={header_name: "attacker.example.test"},
+        )
+    assert response.status_code == 302
+    assert launch.await_args.args[1].redirect_uri == (
+        "https://tracking.example.test/api/auth/oidc/callback/branded"
+    )
+
+
+async def test_explicit_environment_redirect_is_preserved(boundary, monkeypatch):
+    app, _, launch = boundary
+    for name, value in {
+        "OIDC_ISSUER_URL": "https://issuer.invalid",
+        "OIDC_CLIENT_ID": "client",
+        "OIDC_CLIENT_SECRET": "secret",
+        "OIDC_REDIRECT_URI": "https://canonical.example.test/api/auth/oidc/callback",
+    }.items():
+        monkeypatch.setattr(settings, name, value)
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="https://attacker.example.test"
+    ) as client:
+        assert (await client.get("/api/auth/oidc/login")).status_code == 302
+    assert launch.await_args.args[1].redirect_uri == (
+        "https://canonical.example.test/api/auth/oidc/callback"
+    )

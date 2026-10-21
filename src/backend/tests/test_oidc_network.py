@@ -175,3 +175,138 @@ async def test_discovery_cannot_inject_http_client_or_pkce_options(monkeypatch):
         assert client.code_challenge_method == "S256"
         assert not client.follow_redirects and not client.trust_env
         assert "authorization" not in client.headers
+
+
+@pytest.mark.parametrize("development", [False, True])
+def test_request_host_requires_canonical_configuration_except_local_development(
+    monkeypatch, development
+):
+    from fastapi import FastAPI, Request
+
+    from src.api.routes import auth_oidc
+
+    monkeypatch.setattr(settings, "DEBUG", development)
+    monkeypatch.setattr(settings, "STARTUP_MODE", "")
+    app = FastAPI()
+    app.include_router(auth_oidc.router)
+
+    def request(host):
+        return Request(
+            {
+                "type": "http",
+                "scheme": "http",
+                "server": (host, 80),
+                "path": "/",
+                "root_path": "",
+                "headers": [(b"host", host.encode())],
+                "router": app.router,
+            }
+        )
+
+    config = oidc.OidcConfig("https://issuer.example.test", "client", "secret")
+    with pytest.raises(ValueError, match="Configure the public app URL"):
+        oidc.callback_url(request("attacker.example.test"), config)
+    if development:
+        assert oidc.callback_url(request("localhost"), config) == (
+            "http://localhost/api/auth/oidc/callback"
+        )
+    else:
+        with pytest.raises(ValueError):
+            oidc.callback_url(request("localhost"), config)
+
+
+@pytest.mark.parametrize(
+    "uri",
+    [
+        "http://tracking.example.test/api/auth/oidc/callback",
+        "https://user:secret@tracking.example.test/api/auth/oidc/callback",
+        "https://tracking.example.test/api/auth/oidc/callback#fragment",
+    ],
+)
+def test_explicit_callback_rejects_insecure_or_ambiguous_urls(monkeypatch, uri):
+    monkeypatch.setattr(settings, "DEBUG", False)
+    monkeypatch.setattr(settings, "STARTUP_MODE", "")
+    config = oidc.OidcConfig("https://issuer.example.test", "client", "secret", redirect_uri=uri)
+    with pytest.raises(ValueError):
+        oidc.callback_url(None, config)
+
+
+@pytest.fixture
+def tls_provider(tmp_path):
+    import datetime
+    import ssl
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.x509.oid import NameOID
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "localhost")])
+    now = datetime.datetime.now(datetime.UTC)
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(name)
+        .issuer_name(name)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - datetime.timedelta(minutes=1))
+        .not_valid_after(now + datetime.timedelta(days=1))
+        .add_extension(x509.SubjectAlternativeName([x509.DNSName("localhost")]), critical=False)
+        .sign(key, hashes.SHA256())
+    )
+    cert_path, key_path = tmp_path / "issuer.pem", tmp_path / "issuer-key.pem"
+    cert_path.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+    key_path.write_bytes(
+        key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        )
+    )
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            payload = b'{"keys":[]}'
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, *_args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain(str(cert_path), str(key_path))
+    server.socket = context.wrap_socket(server.socket, server_side=True)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    yield f"https://localhost:{server.server_port}", str(cert_path)
+    server.shutdown()
+    server.server_close()
+    thread.join(timeout=2)
+
+
+async def test_real_private_https_requires_a_trusted_hostname_certificate(
+    monkeypatch, tls_provider
+):
+    url, cert_path = tls_provider
+    transport = oidc_http.OidcTransport(url, url)
+    # An explicit network grant never trusts a self-signed certificate by itself.
+    async with httpx.AsyncClient(transport=transport) as client:
+        with pytest.raises(httpx.TransportError):
+            await client.get(url + "/jwks")
+    create_context = oidc_http.ssl.create_default_context
+    monkeypatch.setattr(
+        oidc_http.ssl, "create_default_context", lambda: create_context(cafile=cert_path)
+    )
+    async with httpx.AsyncClient(transport=oidc_http.OidcTransport(url, url)) as client:
+        response = await client.get(url + "/jwks")
+        assert response.status_code == 200 and response.json() == {"keys": []}
+    # The same trusted certificate still gives no network permission without the origin grant.
+    async with httpx.AsyncClient(transport=oidc_http.OidcTransport(url)) as client:
+        with pytest.raises(httpx.TransportError):
+            await client.get(url + "/jwks")

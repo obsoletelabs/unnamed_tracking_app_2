@@ -38,7 +38,12 @@ def signing_keys():
 
 @pytest.fixture
 async def provider(monkeypatch, signing_keys):
-    config = oidc.OidcConfig(ISSUER, "test-client", "test-secret")
+    config = oidc.OidcConfig(
+        ISSUER,
+        "test-client",
+        "test-secret",
+        redirect_uri="https://tracking.example.test/api/auth/oidc/callback",
+    )
     oauth = OAuth()
     monkeypatch.setattr(oidc, "oauth", oauth)
     monkeypatch.setattr(auth_oidc, "oauth", oauth)
@@ -53,6 +58,7 @@ async def provider(monkeypatch, signing_keys):
         code_used=False,
         claims={},
         key_index=0,
+        kid=None,
         jwks_index=0,
         jwks_calls=0,
         token_extra={},
@@ -96,7 +102,7 @@ async def provider(monkeypatch, signing_keys):
                 .decode()
             )
             assert challenge == state.challenge
-            assert form["redirect_uri"] == ["http://test/api/auth/oidc/callback"]
+            assert form["redirect_uri"] == ["https://tracking.example.test/api/auth/oidc/callback"]
             now = int(time.time())
             claims = {
                 "iss": ISSUER,
@@ -110,7 +116,7 @@ async def provider(monkeypatch, signing_keys):
             }
             claims.update(state.claims)
             claims = {key: value for key, value in claims.items() if value is not None}
-            header = {"alg": state.algorithm, "kid": f"key-{state.key_index}"}
+            header = {"alg": state.algorithm, "kid": state.kid or f"key-{state.key_index}"}
             key = signing_keys[state.key_index] if state.algorithm != "HS256" else "test-secret"
             encoded = jwt.encode(header, claims, key).decode()
             return Response(
@@ -203,6 +209,7 @@ async def test_real_signed_invalid_claims_cannot_create_account(provider, claims
 async def test_signature_from_a_different_key_is_rejected(provider):
     await start(provider)
     provider.key_index = 1
+    provider.kid = "key-0"
     assert_denied(provider, await finish(provider))
 
 
@@ -258,3 +265,36 @@ async def test_unsigned_token_response_fields_are_not_identity_claims(provider, 
     response = await finish(provider)
     assert response.headers["location"] == "/login?oidc_error=verified_email_required"
     assert provider.session.scalar(select(User.id)) is None
+
+
+@pytest.mark.parametrize("trailing_slash", [False, True])
+async def test_legacy_discovery_input_preserves_provider_issuer_convention(
+    provider, monkeypatch, trailing_slash
+):
+    issuer = ISSUER + ("/" if trailing_slash else "")
+    config = replace(provider.config, issuer_url=ISSUER + "/.well-known/openid-configuration")
+    provider.metadata_issuer = issuer
+    provider.claims["iss"] = issuer
+    monkeypatch.setattr(auth_oidc, "_get_config", AsyncMock(return_value=config))
+    oidc.register_oidc_provider(config)
+    oidc.oauth.create_client("oidc").client_kwargs["transport"] = provider.client.client_kwargs[
+        "transport"
+    ]
+    await start(provider)
+    assert (await finish(provider)).headers["location"] == "/login?oidc=success"
+
+
+async def test_another_provider_callback_cannot_use_saved_state(provider):
+    await start(provider)
+    response = await provider.http.get(
+        "/api/auth/oidc/callback/other-provider?"
+        + urlencode(
+            {
+                "code": "one-use-code",
+                "state": provider.state,
+            }
+        )
+    )
+    assert_denied(provider, response)
+    assert not provider.code_used
+    assert (await finish(provider)).headers["location"] == "/login?oidc=success"

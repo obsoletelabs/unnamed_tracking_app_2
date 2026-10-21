@@ -13,8 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import RedirectResponse
 
 from src.core.config import settings
-from src.core.oidc_http import OidcOAuth2App, OidcTransport
+from src.core.oidc_http import OidcOAuth2App, OidcTransport, is_loopback
 from src.database.models.oidc_settings import OidcSettings
+from src.helpers.public_http import parse_http_url
 
 oauth = OAuth()
 
@@ -42,6 +43,17 @@ class OidcConfig:  # pylint: disable=too-many-instance-attributes
     def expected_issuer(self) -> str:
         # Legacy settings may contain the discovery URL instead of the issuer.
         return self.issuer_url.strip().removesuffix("/.well-known/openid-configuration")
+
+    def accepts_issuer(self, issuer: object) -> bool:
+        configured = self.issuer_url.strip()
+        if configured.endswith("/.well-known/openid-configuration"):
+            # Legacy discovery inputs identify this exact issuer path, with the
+            # issuer's own trailing-slash convention (e.g. Authentik vs Keycloak).
+            return isinstance(issuer, str) and issuer in {
+                self.expected_issuer,
+                self.expected_issuer + "/",
+            }
+        return isinstance(issuer, str) and issuer == configured
 
     @property
     def server_metadata_url(self) -> str:
@@ -116,6 +128,12 @@ def register_oidc_provider(config: OidcConfig, client_name: str = "oidc") -> Non
 def callback_url(request: Request, config: OidcConfig) -> str:
     if config.redirect_uri:
         configured = config.redirect_uri.strip()
+        parts = parse_http_url(configured)
+        if parts.scheme != "https" and not (
+            (settings.DEBUG or settings.STARTUP_MODE in {"dev", "development"})
+            and is_loopback(str(parts.hostname))
+        ):
+            raise ValueError("OIDC callback requires HTTPS")
         # A provider migrated from the old single-provider configuration may
         # still contain the legacy callback path. Named providers have their
         # own callback route, so transparently upgrade that old path while
@@ -126,6 +144,11 @@ def callback_url(request: Request, config: OidcConfig) -> str:
                 parts = parts._replace(path=f"/api/auth/oidc/callback/{config.slug}")
                 return urlunsplit(parts)
         return configured
+    if not (
+        (settings.DEBUG or settings.STARTUP_MODE in {"dev", "development"})
+        and is_loopback(request.url.hostname or "")
+    ):
+        raise ValueError("Configure the public app URL or an explicit OIDC redirect URI")
     return (
         str(request.url_for("oidc_callback_provider", provider_slug=config.slug))
         if config.slug != "default"
@@ -133,10 +156,11 @@ def callback_url(request: Request, config: OidcConfig) -> str:
     )
 
 
-async def validate_oidc_metadata(client: Any, config: OidcConfig) -> None:
+async def validate_oidc_metadata(client: Any, config: OidcConfig) -> str:
     """Pin discovery to the configured issuer and permit only asymmetric signing."""
     metadata = await client.load_server_metadata()
-    if metadata.get("issuer") != config.expected_issuer:
+    issuer = metadata.get("issuer")
+    if not config.accepts_issuer(issuer):
         raise ValueError("OIDC discovery issuer mismatch")
     transport = getattr(client, "client_kwargs", {}).get("transport")
     if isinstance(transport, OidcTransport):
@@ -166,6 +190,7 @@ async def validate_oidc_metadata(client: Any, config: OidcConfig) -> None:
     if not selected:
         raise ValueError("No supported OIDC signing algorithm")
     metadata["id_token_signing_alg_values_supported"] = selected
+    return str(issuer)
 
 
 async def begin_oidc(request: Request, config: OidcConfig) -> RedirectResponse:
@@ -175,8 +200,9 @@ async def begin_oidc(request: Request, config: OidcConfig) -> RedirectResponse:
         client = oauth.create_client(client_name)
         if client is None:
             return RedirectResponse("/login?oidc_error=provider_unavailable", 303)
+        redirect_uri = callback_url(request, config)
         await validate_oidc_metadata(client, config)
-        return await client.authorize_redirect(request, callback_url(request, config))
+        return await client.authorize_redirect(request, redirect_uri)
     # External-provider failures return a constant error without leaking URLs or secrets.
     except Exception:  # pylint: disable=broad-exception-caught
         return RedirectResponse("/login?oidc_error=authentication_failed", 303)

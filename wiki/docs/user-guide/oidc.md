@@ -50,7 +50,9 @@ Expanding, collapsing and reordering only change the page. Unsaved edits are kep
 
 ## Redirect URI
 
-The settings UI generates the redirect URI from the address currently used to access the application and displays it as read-only.
+The settings UI generates the redirect URI from the address currently used to access the application and displays it as read-only. Save provider settings from the canonical HTTPS application address. Sign-in uses the saved provider URI or an explicit `OIDC_REDIRECT_URI`; when no URI is saved, it uses the shared **App URL** setting (`PUBLIC_APP_URL` when environment-managed). Request Host and forwarded headers cannot replace those configured addresses. After changing the application origin, save the provider from its new canonical address and update the identity provider registration.
+
+Production providers need a saved HTTPS redirect URI or shared App URL. A request-derived URI is available only for loopback development with `DEBUG=true` or `STARTUP_MODE=development`.
 
 For example:
 
@@ -68,7 +70,7 @@ Provider discovery, token, JWKS and UserInfo requests require HTTPS, refuse redi
 
 For a private HTTPS issuer, set `OIDC_PRIVATE_ISSUER_ORIGINS=https://sso.internal:8443` (comma-separated for multiple issuers). Only a configured issuer with that exact scheme, hostname and port receives the exception, including its endpoints on that origin. An exception for one issuer does not grant private access to another issuer or to cross-origin endpoints. Use a trusted CA and a certificate valid for the issuer hostname; TLS verification stays enabled. Plain HTTP is allowed only for loopback destinations when `DEBUG=true` or `STARTUP_MODE=development`.
 
-Authorization-code sign-in uses PKCE S256. Discovery must name the configured issuer exactly; only supported asymmetric ID-token signature algorithms are accepted. The signed nonce must match even if a provider reports `nonce_supported=false`. UserInfo can fill missing profile information only after ID-token validation and only when its subject matches. Unsigned token-response fields cannot supply identity, verification or administrator-group claims.
+Authorization-code sign-in uses PKCE S256. Discovery must name the configured issuer exactly (legacy discovery-URL inputs allow that same issuer path with either trailing-slash convention); only supported asymmetric ID-token signature algorithms are accepted. The signed nonce must match even if a provider reports `nonce_supported=false`. UserInfo can fill missing profile information only after ID-token validation and only when its subject matches. Unsigned token-response fields cannot supply identity, verification or administrator-group claims.
 
 Sign-in requires an ID token and the nonce saved when the browser started the
 authorization-code flow. Authlib must validate that token successfully before
@@ -85,14 +87,16 @@ application logs record the exception type without copying provider response tex
 
 After the authorization-code exchange, the application requires an OIDC `sub` and an email identity claim.
 
-**Require verified email** is off by default. When off, false or absent `email_verified` claims retain existing provider compatibility. When enabled, the provider must supply the boolean `email_verified=true`; false, missing, string or numeric claims are rejected before account linking, provisioning, profile changes or session creation.
+**Require verified email** is off by default. When off, false or absent `email_verified` claims permit new accounts and unchanged, already bound identities. Linking an existing local account or migrating an old subject binding always requires the boolean `email_verified=true` and the same local email. Changing the email on an already bound identity also requires a verified new email. When enabled, the provider must supply the boolean `email_verified=true`; false, missing, string or numeric claims are rejected before account linking, provisioning, profile changes or session creation.
 
 Providers sharing the same issuer and client ID use the strictest saved or environment requirement across their named and legacy callback aliases. Different clients/providers keep independent policies. `OIDC_REQUIRE_VERIFIED_EMAIL=true` applies to the matching environment-managed provider; omitting it preserves the false default.
 
 Existing users are matched according to **User matching**:
 
 - **Email** matches the local account email.
-- **Username** uses the OIDC `preferred_username` claim. A free-form display name cannot select an account.
+- **Username** uses the string OIDC `preferred_username` claim and additionally requires the same verified email before linking. A free-form display name cannot select an account.
+
+Accounts bind to the exact configured issuer and opaque, case-sensitive subject, using a versioned digest stored in the existing subject field. Renaming a provider slug preserves this binding; repointing a slug at a different issuer does not. Existing raw or slug-prefixed subjects migrate on the next successful login only with a verified matching email. Subject whitespace is never trimmed and numeric/object identity claims are rejected. Email ownership comparisons ignore case, and ambiguous legacy addresses fail safely.
 
 The OIDC subject is linked to the matched account. A subject already linked to another account is rejected as an identity conflict. A linked or username-matched account cannot adopt an email owned by another account. That sign-in fails safely without changing the existing account or opening a session; accounts are never merged by this process.
 
@@ -101,6 +105,32 @@ When **Allow new users** is enabled, an unmatched identity creates a local accou
 ## Administrator groups
 
 If **Admin group** is configured, the application checks the configured groups claim. Membership in that group controls the user's administrator flag when the OIDC account is created or updated.
+
+## Authentik example
+
+Create an OAuth2/OIDC provider and application using authorization code, an asymmetric signing key and an exact redirect URI. Use `openid profile email` scopes and the per-provider issuer mode. Copy the complete issuer, including its trailing slash, from discovery; for example `https://sso.example.com/application/o/archive/`. Its discovery URL is `https://sso.example.com/application/o/archive/.well-known/openid-configuration`.
+
+Enable **Require verified email** when the provider verifies address ownership. Existing local accounts and legacy subject bindings always need that verified matching address before linking. Keep the administrator group empty until its mapping and membership are confirmed. For a private issuer, explicitly allow only its HTTPS origin and install its CA in the backend trust store.
+
+See the [Authentik provider documentation](https://docs.goauthentik.io/add-secure-apps/providers/oauth2/) for provider, signing, issuer and redirect configuration. This implementation is tested with a mock OIDC provider and an ephemeral real HTTPS issuer; those checks do not substitute for acceptance testing a particular live Authentik deployment.
+
+## Security verification
+
+| Boundary | Enforced behavior | Regression coverage |
+| --- | --- | --- |
+| Browser authorization | PKCE S256, saved nonce, provider-specific state, configured callbacks | Real authorization-code exchange; state replay and wrong-provider callback denial; Host/forwarded-header tests |
+| Tokens and keys | Configured issuer, asymmetric signatures, audience/expiry/nonce validation, no UserInfo downgrade | Actual signed invalid-token matrix, signature failure and JWKS rotation |
+| Account ownership | Exact issuer/subject binding; verified email for initial/legacy linking; username alone insufficient | Existing-account and issuer-change denials, opaque subjects, email case conflicts and unchanged account/session assertions |
+| Provider network | DNS-pinned public HTTPS or an explicit issuer-origin exception; no redirects; 1 MiB responses | Private/metadata address denial, exact-origin/port isolation, hostile discovery options, response bounds and actual certificate validation |
+| Errors and secrets | Generic sign-in errors and exception-type-only logs | Provider errors containing token/client-secret text never appear in captured logs |
+
+Run the focused tests from `src/backend` against a dedicated migrated test database:
+
+```bash
+python -m pytest tests/test_oidc_callback.py tests/test_oidc_signed_tokens.py tests/test_oidc_network.py tests/test_oidc_login_ui.py -q
+```
+
+Deployment administrators choose which issuers and administrator groups they trust. A verified address claim is useful only when that issuer actually verifies ownership. Existing browser sessions retain the application's normal revocation and expiry policy.
 
 ## Environment-managed settings
 

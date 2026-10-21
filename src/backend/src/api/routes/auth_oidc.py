@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import secrets
@@ -10,11 +11,13 @@ from typing import Annotated, Any
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Request
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.functions import count
 from starlette.responses import RedirectResponse
 
+from src.core.app_integrations import get_public_app_url
 from src.core.auth import (
     SESSION_TTL_SECONDS,
     hash_password,
@@ -37,17 +40,14 @@ from src.core.session_manager import create_session
 from src.database.models.oidc_settings import OidcSettings
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features.smtp_configuration import normalize_email
 
 router = APIRouter(prefix="/api/auth/oidc", tags=["auth"])
 logger = logging.getLogger(__name__)
 
 
-def _env_config(request: Request) -> OidcConfig | None:
-    config = env_oidc_config()
-    if config is None:
-        return None
-    # Preserve the route's callback URL, including when a deployment sets a redirect elsewhere.
-    return replace(config, redirect_uri=str(request.url_for("oidc_callback")))
+def _env_config() -> OidcConfig | None:
+    return env_oidc_config()
 
 
 def _named_rows(row: OidcSettings, *, include_disabled: bool = False) -> list[dict[str, Any]]:
@@ -64,14 +64,14 @@ def _named_rows(row: OidcSettings, *, include_disabled: bool = False) -> list[di
     ]
 
 
-def _config_from_provider(provider: dict[str, Any], redirect_uri: str) -> OidcConfig:
+def _config_from_provider(provider: dict[str, Any]) -> OidcConfig:
     issuer = str(provider["issuer_url"]).strip()
     return OidcConfig(
         issuer_url=issuer,
         client_id=str(provider["client_id"]),
         client_secret=decrypt_secret(str(provider["client_secret"])),
         scopes=provider.get("scopes") or "openid profile email",
-        redirect_uri=redirect_uri,
+        redirect_uri=provider.get("redirect_uri") or None,
         groups_claim=provider.get("groups_claim") or "groups",
         admin_group=provider.get("admin_group") or None,
         user_match_field=provider.get("user_match_field") or "email",
@@ -121,30 +121,26 @@ def _with_verification_policy(
 
 
 def _named_provider_config(
-    row: OidcSettings, request: Request, slug: str, require_autostart: bool
+    row: OidcSettings, slug: str, require_autostart: bool
 ) -> OidcConfig | None:
     for provider in _named_rows(row):
         if provider.get("slug") == slug and provider.get("client_secret"):
             if require_autostart and provider.get("autostart_enabled", True) is False:
                 return None
-            return _config_from_provider(
-                provider, str(request.url_for("oidc_callback_provider", provider_slug=slug))
-            )
+            return _config_from_provider(provider)
     return None
 
 
-async def _get_config(
-    db: AsyncSession, request: Request, slug: str = "default", require_autostart: bool = False
+async def _load_config(
+    db: AsyncSession, slug: str = "default", require_autostart: bool = False
 ) -> OidcConfig | None:
     row = await db.scalar(select(OidcSettings).limit(1))
     if row and not row.enabled:
         return None
     if row and slug != "default":
-        return _with_verification_policy(
-            _named_provider_config(row, request, slug, require_autostart), row
-        )
+        return _with_verification_policy(_named_provider_config(row, slug, require_autostart), row)
 
-    environment_config = _env_config(request)
+    environment_config = _env_config()
     if environment_config is not None:
         return _with_verification_policy(environment_config, row)
 
@@ -155,7 +151,7 @@ async def _get_config(
             client_id=row.client_id,
             client_secret=decrypt_secret(row.client_secret),
             scopes=row.scopes or "openid profile email",
-            redirect_uri=str(request.url_for("oidc_callback")),
+            redirect_uri=getattr(row, "redirect_uri", None),
             groups_claim=row.groups_claim or "groups",
             admin_group=row.admin_group,
             user_match_field=row.user_match_field or "email",
@@ -164,6 +160,24 @@ async def _get_config(
         )
         return _with_verification_policy(config, row)
     return None
+
+
+async def _get_config(
+    db: AsyncSession, request: Request, slug: str = "default", require_autostart: bool = False
+) -> OidcConfig | None:
+    config = await _load_config(db, slug, require_autostart)
+    if config is None or config.redirect_uri:
+        return config
+    # Use the existing deployment URL resolver, including the saved admin setting.
+    origin = await get_public_app_url(db)
+    if origin:
+        route = (
+            request.url_for("oidc_callback_provider", provider_slug=slug)
+            if slug != "default"
+            else request.url_for("oidc_callback")
+        )
+        return replace(config, redirect_uri=origin + route.path)
+    return config
 
 
 @router.get("/status")
@@ -252,7 +266,7 @@ async def _fetch_oidc_token(request: Request, client: Any, config: OidcConfig) -
     # Authlib exposes state/PKCE restoration only through this private adapter;
     # preserve the same saved parameters as its standard authorization-code flow.
     params = client._format_state_params(state_data, params)  # pylint: disable=protected-access
-    await validate_oidc_metadata(client, config)
+    issuer = await validate_oidc_metadata(client, config)
     token = await client.fetch_access_token(**params)
     id_token, nonce = token.get("id_token"), state_data.get("nonce")
     if not isinstance(id_token, str) or not id_token or not isinstance(nonce, str) or not nonce:
@@ -261,7 +275,7 @@ async def _fetch_oidc_token(request: Request, client: Any, config: OidcConfig) -
         await client.parse_id_token(
             token,
             nonce=nonce,
-            claims_options={"iss": {"essential": True, "value": config.expected_issuer}},
+            claims_options={"iss": {"essential": True, "value": issuer}},
         )
     )
     # Authlib allows nonce_supported=false to skip the nonce check. This host always
@@ -277,6 +291,10 @@ async def _fetch_oidc_token(request: Request, client: Any, config: OidcConfig) -
                 claims[key] = profile[key]
         # Verification belongs to the email returned by the same endpoint.
         claims["email_verified"] = profile.get("email_verified") is True
+    email = claims.get("email")
+    if not isinstance(email, str):
+        raise ValueError("Invalid OIDC email claim")
+    claims["email"] = normalize_email(email).lower()
     token["userinfo"] = claims
     return token
 
@@ -286,7 +304,7 @@ def _groups(claims: dict[str, Any], name: str) -> set[str]:
     if isinstance(value, str):
         return {value}
     if isinstance(value, (list, tuple, set)):
-        return {str(item) for item in value if str(item).strip()}
+        return {item for item in value if isinstance(item, str) and item.strip()}
     return set()
 
 
@@ -294,7 +312,8 @@ def _match_value(claims: dict[str, Any], field: str, email: str) -> str:
     if field == "username":
         # Only the sign-in style claim may link an existing account. "name" is a free-form,
         # non-unique display value and must never select (merge into) an account.
-        return str(claims.get("preferred_username") or "").strip()
+        username = claims.get("preferred_username")
+        return username.strip() if isinstance(username, str) else ""
     return email
 
 
@@ -352,44 +371,85 @@ async def _resolve_oidc_identity(
     db: AsyncSession, config: OidcConfig, claims: dict[str, Any]
 ) -> User | str:
     """Resolve, provision, or reject an identity before any session is created."""
-    subject = str(claims.get("sub", "")).strip()
-    email = str(claims.get("email", "")).strip().lower()
-    if not subject or not email:
+    subject, raw_email = claims.get("sub"), claims.get("email")
+    issuer = claims.get("iss")
+    if (
+        not config.accepts_issuer(issuer)
+        or not isinstance(subject, str)
+        or not 0 < len(subject) <= 255
+        or not isinstance(raw_email, str)
+        or not raw_email.strip()
+    ):
         return "identity_missing"
-
-    field = config.user_match_field if config.user_match_field in {"email", "username"} else "email"
-    match = _match_value(claims, field, email)
-    if not match:
-        return "identity_missing"
-
-    linked_subject = f"{config.slug}:{subject}"
+    email = raw_email.strip().lower()
+    # OIDC identities are the exact (issuer, opaque subject) pair. Slugs are
+    # presentation/configuration names and can be renamed or point at a new issuer.
+    identity = json.dumps([issuer, subject], separators=(",", ":"))
+    linked_subject = "oidc-v2:" + hashlib.sha256(identity.encode()).hexdigest()
     user = await db.scalar(select(User).where(User.oidc_subject == linked_subject))
     if user is None:
+        field = (
+            config.user_match_field if config.user_match_field in {"email", "username"} else "email"
+        )
+        match = _match_value(claims, field, email)
+        if not match:
+            return "identity_missing"
         if field == "username":
             user = await db.scalar(select(User).where(User.username == match))
         else:
-            user = await db.scalar(select(User).where(User.email == email))
+            user = await db.scalar(select(User).where(func.lower(User.email) == email))
 
-    is_admin = bool(
-        config.admin_group and config.admin_group in _groups(claims, config.groups_claim)
-    )
-    email_owner = await db.scalar(select(User.id).where(User.email == email))
-    if email_owner is not None and (user is None or email_owner != user.id):
+    email_matches = User.email.is_not(None) & (func.lower(User.email) == email)
+    email_owner = await db.scalar(select(User.id).where(email_matches))
+    if int(await db.scalar(select(count()).select_from(User).where(email_matches)) or 0) > 1 or (
+        email_owner is not None and (user is None or email_owner != user.id)
+    ):
         return "email_conflict"
     if user is None:
         if not config.allow_new_users:
             return "user_creation_disabled"
-        user = await _create_oidc_user(db, claims, email, linked_subject, is_admin=is_admin)
-    else:
-        identity_conflict = user.oidc_subject and user.oidc_subject not in {linked_subject, subject}
-        if not user.is_active or identity_conflict:
-            return "identity_conflict" if user.is_active else "account_disabled"
-        # Linking only ever sets the subject/email. The sign-in username and the
-        # user-chosen display name are never rewritten from provider claims.
-        user.oidc_subject = linked_subject
-        user.email = email
-        if config.admin_group:
-            user.is_admin = is_admin
+        return await _create_oidc_user(
+            db,
+            claims,
+            email,
+            linked_subject,
+            is_admin=bool(
+                config.admin_group and config.admin_group in _groups(claims, config.groups_claim)
+            ),
+        )
+    return _update_oidc_user(user, config, claims, linked_subject, email)
+
+
+def _update_oidc_user(
+    user: User, config: OidcConfig, claims: dict[str, Any], linked_subject: str, email: str
+) -> User | str:
+    """Prove ownership before mutating any existing account."""
+    subject = claims["sub"]
+    verified = claims.get("email_verified") is True
+    if not user.is_active:
+        return "account_disabled"
+    if user.oidc_subject != linked_subject:
+        legacy = (
+            user.oidc_subject is not None
+            and not user.oidc_subject.startswith("oidc-v2:")
+            and user.oidc_subject in {f"{config.slug}:{subject}", subject}
+        )
+        if user.oidc_subject and not legacy:
+            return "identity_conflict"
+        # Neither a username nor an unverified email proves ownership of an
+        # existing account. Legacy bindings migrate only with the same proof.
+        if not verified:
+            return "verified_email_required"
+        if user.email.strip().lower() != email:
+            return "identity_conflict"
+    elif user.email.strip().lower() != email and not verified:
+        return "verified_email_required"
+    # Linking only ever sets the subject/email. The sign-in username and the
+    # user-chosen display name are never rewritten from provider claims.
+    user.oidc_subject = linked_subject
+    user.email = email
+    if config.admin_group:
+        user.is_admin = config.admin_group in _groups(claims, config.groups_claim)
 
     return user
 
