@@ -1,4 +1,4 @@
-"""Keep bearer proof, opt-out, live-link, calendar-feed and OIDC exchange values out of the access log."""
+"""Redact bearer values and suppress routine successful plugin gateway access logs."""
 
 import logging
 import re
@@ -31,6 +31,13 @@ class NotificationLinkFilter(logging.Filter):  # pylint: disable=too-few-public-
         if isinstance(record.args, tuple) and len(record.args) == 5:
             path = record.args[2]
             if isinstance(path, str):
+                if (
+                    record.levelno == logging.INFO
+                    and record.args[1] == "POST"
+                    and path.partition("?")[0] == "/api/plugins/runtime/gateway"
+                    and record.args[4] == 200
+                ):
+                    return False
                 record.args = (*record.args[:2], redact_request_target(path), *record.args[3:])
         return True
 

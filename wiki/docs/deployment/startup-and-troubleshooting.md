@@ -180,4 +180,6 @@ The production smoke test validates database startup, migrations, compiled front
 
 ## Secrets
 
-Backend and migration logs pass through credential redaction before private retention and Docker forwarding. Public startup endpoints contain concise lifecycle status and operator log paths, without publishing raw log files.
+Backend and migration logs pass through credential redaction before private retention and Docker forwarding. Each redacted line is flushed immediately so short diagnostic messages do not wait for a full output buffer or process shutdown. Public startup endpoints contain concise lifecycle status and operator log paths, without publishing raw log files.
+
+Routine successful `POST /api/plugins/runtime/gateway` access entries at INFO level with HTTP 200 are omitted. Gateway failures, warnings and other access entries remain visible; plugin audit and application logs are unaffected.

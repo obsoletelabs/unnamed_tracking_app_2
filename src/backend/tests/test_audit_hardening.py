@@ -2,6 +2,7 @@
 
 import logging
 import re
+from io import StringIO
 
 import httpx
 import pytest
@@ -14,6 +15,43 @@ from src.features.notification_logging import NotificationLinkFilter, redact_req
 from src.main import app
 from tests.route_audit_support import create_tenants, live_matrix
 from tests.test_public_apps import public_flow, sign_in  # noqa: F401
+
+
+@pytest.mark.parametrize(
+    ("method", "target", "status", "visible"),
+    [
+        ("POST", "/api/plugins/runtime/gateway", 200, False),
+        ("POST", "/api/plugins/runtime/gateway?request=ordinary", 200, False),
+        ("POST", "/api/plugins/runtime/gateway", 201, True),
+        ("POST", "/api/plugins/runtime/gateway", 400, True),
+        ("POST", "/api/plugins/runtime/gateway", 401, True),
+        ("POST", "/api/plugins/runtime/gateway", 403, True),
+        ("POST", "/api/plugins/runtime/gateway", 404, True),
+        ("POST", "/api/plugins/runtime/gateway", 429, True),
+        ("POST", "/api/plugins/runtime/gateway", 500, True),
+        ("GET", "/api/plugins/runtime/gateway", 200, True),
+        ("POST", "/api/plugins/runtime/gateway/other", 200, True),
+        ("POST", "/api/auth/oidc/login/authentik", 200, True),
+    ],
+)
+@pytest.mark.parametrize("level", [logging.INFO, logging.WARNING])
+def test_runtime_gateway_quiets_only_successful_post_access_logs(
+    method, target, status, visible, level
+):
+    stream = StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.addFilter(NotificationLinkFilter())
+    record = logging.LogRecord(
+        "uvicorn.access",
+        level,
+        __file__,
+        1,
+        '%s - "%s %s HTTP/%s" %d',
+        ("127.0.0.1:5000", method, target, "1.1", status),
+        None,
+    )
+    handler.handle(record)
+    assert bool(stream.getvalue()) is (visible or level != logging.INFO)
 
 
 @pytest.fixture
