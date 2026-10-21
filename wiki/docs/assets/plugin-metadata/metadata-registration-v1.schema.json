@@ -170,11 +170,12 @@
           "episodes",
           "airing",
           "relations",
-          "recommendations"
+          "recommendations",
+          "achievements"
         ],
         "type": "string"
       },
-      "maxItems": 5,
+      "maxItems": 6,
       "minItems": 1,
       "title": "Metadata Resources",
       "type": "array"

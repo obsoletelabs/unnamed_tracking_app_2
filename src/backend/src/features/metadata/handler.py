@@ -653,7 +653,7 @@ class MetadataHandler:
                 # Episode lists need a resolved provider identity. ID mapping capabilities
                 # without their own namespace can still contribute authoritative cross-IDs.
                 if (
-                    session.request.resource == "episodes"
+                    session.request.resource in ("episodes", "achievements")
                     and not known_identity
                     and provider.declaration.identifier_namespace
                 ):

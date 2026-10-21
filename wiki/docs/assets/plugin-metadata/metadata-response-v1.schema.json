@@ -77,6 +77,76 @@
       "title": "MediaType",
       "type": "string"
     },
+    "MetadataAchievement": {
+      "additionalProperties": false,
+      "description": "An achievement definition from a provider's catalogue. Progress is never provider-owned.",
+      "properties": {
+        "name": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "external_id": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "External Id",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "hidden": {
+          "default": false,
+          "title": "Hidden",
+          "type": "boolean"
+        },
+        "global_percent": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Global Percent"
+        },
+        "icon_url": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Icon Url"
+        }
+      },
+      "required": [
+        "name",
+        "external_id"
+      ],
+      "title": "MetadataAchievement",
+      "type": "object"
+    },
     "MetadataAiring": {
       "additionalProperties": false,
       "properties": {
@@ -871,6 +941,15 @@
           ],
           "default": null,
           "title": "Crossplay"
+        },
+        "achievements": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/MetadataAchievement"
+          },
+          "maxItems": 2000,
+          "title": "Achievements",
+          "type": "array"
         },
         "custom": {
           "maxProperties": 32,

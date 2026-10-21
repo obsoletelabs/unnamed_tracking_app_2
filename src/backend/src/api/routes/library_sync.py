@@ -38,6 +38,7 @@ from src.database.models.game import Game, GameStatus
 from src.database.models.user import User
 from src.database.session import SessionLocal, get_db
 from src.features import game_folders
+from src.features.achievement_catalogue import fetch_catalogue, store_catalogue
 from src.features.connection_jobs import sync_scope
 from src.features.game_identity import names
 from src.features.game_ingestion import legacy as ingestion
@@ -433,11 +434,24 @@ async def refresh_game_achievements(
         provider = "PlayStation"
         rows = await _fetch_psn_rows(current_user, external_id, game.platform)
     else:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only games that came from Steam, PlayStation or RetroAchievements have "
-            "achievements to refresh.",
-        )
+        # Any other game: a metadata provider (such as Atlas) may offer the achievement list
+        # (definitions only, so there is no progress to advance and no ownership to recheck).
+        provider, rows, _errors = await fetch_catalogue(db, current_user.id, game)
+        if not rows:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No achievements were found for this game. Steam, PlayStation and "
+                "RetroAchievements games refresh from their own provider; other games need "
+                "a metadata provider that offers achievement lists.",
+            )
+        await store_catalogue(db, game.id, provider, rows)
+        await db.commit()
+        return {
+            "provider": provider,
+            "achievements": len(rows),
+            "unlocked": 0,
+            "hidden": sum(1 for r in rows if r.get("hidden")),
+        }
     if rows:
         # Every provider must recheck ownership and identity after network work.
         current = await lock_imported_game(db, current_user.id, game_id, provider)

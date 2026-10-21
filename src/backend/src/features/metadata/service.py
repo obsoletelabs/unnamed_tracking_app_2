@@ -88,7 +88,9 @@ async def collect_record(
     candidate: MetadataCandidate,
     *,
     policy: Literal["interactive", "background"] = "background",
-    resource: Literal["entity", "episodes", "airing", "relations", "recommendations"] = "entity",
+    resource: Literal[
+        "entity", "episodes", "airing", "relations", "recommendations", "achievements"
+    ] = "entity",
     season_number: int | None = None,
     include_media: bool = False,
     preferences: dict | None = None,
@@ -140,7 +142,9 @@ async def collect_owned_record(
     user_id: UUID,
     candidate: MetadataCandidate,
     *,
-    resource: Literal["entity", "episodes", "airing", "relations", "recommendations"] = "entity",
+    resource: Literal[
+        "entity", "episodes", "airing", "relations", "recommendations", "achievements"
+    ] = "entity",
     season_number: int | None = None,
     episode_phase: Literal["primary", "fallback"] | None = None,
 ) -> tuple[dict[str, Any], list[str]]:

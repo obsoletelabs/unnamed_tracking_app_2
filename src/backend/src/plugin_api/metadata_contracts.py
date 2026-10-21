@@ -69,7 +69,9 @@ class MetadataProviderRequest(MetadataModel):
     policy: Literal["interactive", "background"] = "interactive"
     limit: int = Field(default=20, ge=1, le=50)
     cursor: Identifier | None = None
-    resource: Literal["entity", "episodes", "airing", "relations", "recommendations"] = "entity"
+    resource: Literal[
+        "entity", "episodes", "airing", "relations", "recommendations", "achievements"
+    ] = "entity"
     season_number: int | None = Field(default=None, ge=0, le=10_000)
     options: dict[ActionId, Annotated[str, Field(max_length=512)] | bool | int] = Field(
         default_factory=dict, max_length=32
@@ -109,6 +111,17 @@ class MetadataEpisode(MetadataModel):
     air_at: int | None = Field(default=None, ge=0)
     runtime_minutes: int | None = Field(default=None, ge=0, le=100_000)
     still_url: AnyHttpUrl | None = None
+
+
+class MetadataAchievement(MetadataModel):
+    """An achievement definition from a provider's catalogue. Progress is never provider-owned."""
+
+    name: str = Field(min_length=1, max_length=200)
+    external_id: Identifier
+    description: str | None = Field(default=None, max_length=2000)
+    hidden: bool = False
+    global_percent: float | None = Field(default=None, ge=0, le=100, allow_inf_nan=False)
+    icon_url: AnyHttpUrl | None = None
 
 
 class MetadataSeason(MetadataModel):
@@ -198,6 +211,8 @@ class MetadataPatch(MetadataModel):
     players_min: int | None = Field(default=None, ge=1, le=32)
     players_max: int | None = Field(default=None, ge=1, le=32)
     crossplay: Literal["yes", "no", "partial"] | None = None
+    # Achievement definitions, only requested through the "achievements" resource.
+    achievements: tuple[MetadataAchievement, ...] = Field(default=(), max_length=2000)
     # Provider-defined fields the host has no column for, kept as read-only provider details.
     custom: dict[ActionId, CustomValue] = Field(default_factory=dict, max_length=32)
 
@@ -275,8 +290,9 @@ class MetadataProviderRegistration(MetadataModel):
     media_types: tuple[MediaType, ...] = Field(min_length=1, max_length=4)
     identifier_namespace: ActionId | None = None
     metadata_resources: tuple[
-        Literal["entity", "episodes", "airing", "relations", "recommendations"], ...
-    ] = Field(default=("entity",), min_length=1, max_length=5)
+        Literal["entity", "episodes", "airing", "relations", "recommendations", "achievements"],
+        ...,
+    ] = Field(default=("entity",), min_length=1, max_length=6)
     episode_source: Literal["primary", "fallback"] = "fallback"
     operations: ProviderOperations
     configuration: tuple[ProviderConfigurationField, ...] = Field(default=(), max_length=32)

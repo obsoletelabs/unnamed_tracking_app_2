@@ -70,6 +70,12 @@ scores and oversized collections are rejected. Canonical provider scores use
 
 These fields need **Plugin API 1.1.15**: a provider that emits them must target 1.1.15 so older hosts reject it before execution. Regenerate the schema snapshots with `tools/export_metadata_contract.py` and copy them to the companion repository as described above.
 
+### Achievement catalogues (API 1.1.15)
+
+A provider can offer a game's achievement **definitions** by declaring `achievements` in `metadata_resources` and answering the `metadata` operation when the request's `resource` is `achievements`, with `achievements` in the patch: up to 2,000 items of `name` (200), `external_id` (unique per game), optional `description` (2,000), `hidden`, `global_percent` (0-100) and an HTTPS `icon_url`. Definitions never carry progress: the host stores them as locked achievements under the provider's name next to Steam, PlayStation and RetroAchievements ones, which keep their own rows and their unlock state.
+
+The host asks for a catalogue in two places: **Refresh achievements** (`POST /api/library-sync/games/{id}/achievements`) for a game that did not come from Steam, PlayStation or RetroAchievements, and a metadata refresh of a game that has no achievements yet (failures there only add a note to the refresh result). Definitions are updated by `external_id` (so media linked to an achievement keeps its link, and a missing description never erases a known one); definitions the provider stops listing are removed.
+
 ### Completion-time categories (API 1.1.13)
 
 `MetadataPatch` accepts three additional optional hour values:

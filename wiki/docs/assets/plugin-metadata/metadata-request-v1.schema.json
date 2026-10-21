@@ -72,7 +72,8 @@
         "episodes",
         "airing",
         "relations",
-        "recommendations"
+        "recommendations",
+        "achievements"
       ],
       "title": "Resource",
       "type": "string"
