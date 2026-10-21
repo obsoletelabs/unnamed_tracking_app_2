@@ -113,17 +113,6 @@ class MetadataEpisode(MetadataModel):
     still_url: AnyHttpUrl | None = None
 
 
-class MetadataAchievement(MetadataModel):
-    """An achievement definition from a provider's catalogue. Progress is never provider-owned."""
-
-    name: str = Field(min_length=1, max_length=200)
-    external_id: Identifier
-    description: str | None = Field(default=None, max_length=2000)
-    hidden: bool = False
-    global_percent: float | None = Field(default=None, ge=0, le=100, allow_inf_nan=False)
-    icon_url: AnyHttpUrl | None = None
-
-
 class MetadataSeason(MetadataModel):
     season_number: int = Field(ge=0, le=10_000)
     external_id: Identifier | None = None
@@ -153,6 +142,25 @@ class MetadataAiring(MetadataModel):
     total_episodes: int | None = Field(default=None, ge=0, le=100_000)
     next_episode_number: int | None = Field(default=None, ge=0, le=100_000)
     next_episode_at: int | None = Field(default=None, ge=0)
+
+
+class MetadataAchievement(MetadataModel):
+    """An achievement definition from a provider's catalogue. Progress is never provider-owned."""
+
+    external_id: Identifier
+    name: str = Field(min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=2_000)
+    # A hidden entry whose real text the provider did not reveal arrives as a placeholder.
+    hidden: bool = False
+    kind: Literal["progression", "missable", "win_condition"] | None = None
+    tier: Literal["bronze", "silver", "gold"] | None = None
+    points: int | None = Field(default=None, ge=0, le=100_000)
+    global_percent: float | None = Field(default=None, ge=0, le=100, allow_inf_nan=False)
+    icon_url: AnyHttpUrl | None = None
+    locked_icon_url: AnyHttpUrl | None = None
+    # Ids the same achievement has elsewhere (e.g. {"steam": "ACH_X"}), used to match a user's
+    # synced progress to this entry.
+    source_ids: dict[ActionId, Identifier] = Field(default_factory=dict, max_length=8)
 
 
 class MetadataPatch(MetadataModel):

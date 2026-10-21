@@ -298,6 +298,7 @@ are redacted. Validation errors never echo submitted values.
 | Method | Path | Authority | Ownership and effect |
 | --- | --- | --- | --- |
 | GET | `/api/achievement-icon/{achievement_id}` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
+| GET | `/api/achievement-icon/{achievement_id}/locked` | user | Same ownership join as the unlocked icon; serves the provider's greyed-out icon. |
 | GET | `/api/game-duplicates` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | POST | `/api/game-duplicates/keep-both` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | GET | `/api/game-identity/decisions` | user | Every game, observation, counter and relationship is looked up with `user_id == caller`; another user's ID is not found. |

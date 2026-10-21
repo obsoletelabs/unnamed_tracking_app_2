@@ -81,16 +81,16 @@
       "additionalProperties": false,
       "description": "An achievement definition from a provider's catalogue. Progress is never provider-owned.",
       "properties": {
-        "name": {
-          "maxLength": 200,
-          "minLength": 1,
-          "title": "Name",
-          "type": "string"
-        },
         "external_id": {
           "maxLength": 512,
           "minLength": 1,
           "title": "External Id",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Name",
           "type": "string"
         },
         "description": {
@@ -110,6 +110,54 @@
           "default": false,
           "title": "Hidden",
           "type": "boolean"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "progression",
+                "missable",
+                "win_condition"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Kind"
+        },
+        "tier": {
+          "anyOf": [
+            {
+              "enum": [
+                "bronze",
+                "silver",
+                "gold"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tier"
+        },
+        "points": {
+          "anyOf": [
+            {
+              "maximum": 100000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Points"
         },
         "global_percent": {
           "anyOf": [
@@ -138,11 +186,41 @@
           ],
           "default": null,
           "title": "Icon Url"
+        },
+        "locked_icon_url": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Locked Icon Url"
+        },
+        "source_ids": {
+          "maxProperties": 8,
+          "patternProperties": {
+            "^[a-z0-9][a-z0-9._-]*$": {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "propertyNames": {
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "title": "Source Ids",
+          "type": "object"
         }
       },
       "required": [
-        "name",
-        "external_id"
+        "external_id",
+        "name"
       ],
       "title": "MetadataAchievement",
       "type": "object"

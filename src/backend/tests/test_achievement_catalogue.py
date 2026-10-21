@@ -155,7 +155,8 @@ async def test_route_fetches_a_catalogue_for_games_without_a_synced_provider(
         user = await db.get(User, scratch_game.user_id)
         result = await library_sync.refresh_game_achievements(scratch_game.game_id, db, user)
     assert result == {"provider": "Atlas", "achievements": 1, "unlocked": 0, "hidden": 0}
-    assert [r.provider for r in await _rows(scratch_game.game_id)] == ["Atlas"]
+    stored = await _rows(scratch_game.game_id)
+    assert [(r.provider, r.source_provider) for r in stored] == [("catalog", "Atlas")]
 
 
 async def test_route_explains_when_no_provider_offers_achievements(scratch_game, monkeypatch):

@@ -8,6 +8,12 @@ export function isUnlocked(a: Achievement): boolean {
   return a.unlocked ?? a.unlockedAt !== null;
 }
 
+// the icon to show: a provider's greyed-out one while it is still locked
+export function iconOf(a: Achievement): string | null {
+  if (!isUnlocked(a) && a.lockedIconUrl) return a.lockedIconUrl;
+  return a.iconUrl ?? null;
+}
+
 export const KIND_LABEL: Record<AchievementKind, string> = {
   progression: "Progression",
   missable: "Missable",

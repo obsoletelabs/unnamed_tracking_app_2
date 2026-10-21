@@ -14,10 +14,11 @@ from fastapi import (
     Response,
     status,
 )
-from sqlalchemy import Integer, func, select
+from sqlalchemy import Integer, exists, func, or_, select
 from sqlalchemy import cast as sql_cast
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 from sqlalchemy.sql.functions import count as sql_count
 
 from src.api.routes import (
@@ -141,6 +142,7 @@ from src.database.models.game_field_change import GameFieldChange
 from src.database.models.user import User
 from src.database.session import get_db
 from src.features import game_folders, game_ownership
+from src.features.achievement_folding import CATALOG, fold_catalog, is_catalog, lend
 from src.features.game_identity import manual
 from src.features.game_ingestion import playnite
 from src.features.game_ingestion.legacy import (
@@ -212,6 +214,7 @@ async def get_achievements_summary(
     """Per-game {total, unlocked} counts for every one of the caller's games
     that has any achievements at all, in one grouped query — powers the
     completion badge on library/card views without an N+1 request per game."""
+    synced = aliased(Achievement)
     rows = await db.execute(
         select(
             Achievement.game_id,
@@ -219,7 +222,15 @@ async def get_achievements_summary(
             func.sum(sql_cast(Achievement.unlocked, Integer)),
         )
         .join(Game, Game.id == Achievement.game_id)
-        .where(Game.user_id == current_user.id, Game.deleted_at.is_(None))
+        .where(
+            Game.user_id == current_user.id,
+            Game.deleted_at.is_(None),
+            # a provider's catalogue only counts for a game no platform has reported on
+            or_(
+                Achievement.provider != CATALOG,
+                ~exists().where(synced.game_id == Game.id, synced.provider != CATALOG),
+            ),
+        )
         .group_by(Achievement.game_id)
     )
     return {
@@ -244,25 +255,23 @@ async def list_game_achievements(
         .where(Achievement.game_id == game_id)
         .order_by(Achievement.unlocked.desc(), Achievement.name)
     )
-    return [
-        {
-            "id": str(a.id),
-            "provider": a.provider,
-            "name": a.name,
-            "description": a.description,
-            "icon_url": f"/api/achievement-icon/{a.id}"
-            if a.icon_url and a.icon_url.startswith(("http://", "https://"))
-            else a.icon_url,
-            "unlocked": a.unlocked,
-            "unlocked_at": a.unlocked_at,
-            "hidden": a.hidden,
-            "global_percent": a.global_percent,
-            # how the provider classifies it (RetroAchievements only): one of
-            # progression, missable or win_condition
-            "tier": a.tier,
-        }
-        for a in result.scalars().all()
-    ]
+    out = []
+    for row, entry in fold_catalog(result.scalars().all()):
+        details = lend(row, entry)
+        out.append(
+            {
+                "id": str(row.id),
+                # a catalogue row is labelled with the metadata provider that supplied it
+                "provider": (row.source_provider or row.provider)
+                if is_catalog(row)
+                else row.provider,
+                "name": row.name,
+                "unlocked": row.unlocked,
+                "unlocked_at": row.unlocked_at,
+                **details,
+            }
+        )
+    return out
 
 
 router.include_router(game_assets.router)

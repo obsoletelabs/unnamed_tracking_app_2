@@ -3,7 +3,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from sqlalchemy import BigInteger, Boolean, Float, ForeignKey, String, Text, text
+from sqlalchemy import BigInteger, Boolean, Float, ForeignKey, Integer, String, Text, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -47,6 +48,16 @@ class Achievement(Base):
     # "progression" | "missable" | "win_condition" | None — RetroAchievements
     # is the only provider that classifies achievements this way today
     tier: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Catalogue rows (provider "catalog") come from a metadata provider such as Atlas: they say
+    # what exists, never what the user earned. ``source_provider`` names that metadata provider,
+    # ``source_ids`` the ids the same achievement has on the platforms (``{"steam": "ACH_X"}``),
+    # which is how a catalogue row is matched to the progress a platform sync stored.
+    # bronze/silver/gold as the provider rates it (``tier`` above is the kind, not this)
+    medal: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    points: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    locked_icon_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_ids: Mapped[dict[str, str] | None] = mapped_column(JSONB, nullable=True)
+    source_provider: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[int] = mapped_column(BigInteger, nullable=False, default=unix_timestamp)
 
     game: Mapped["Game"] = relationship()

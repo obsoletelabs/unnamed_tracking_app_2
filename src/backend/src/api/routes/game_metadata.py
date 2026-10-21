@@ -31,7 +31,7 @@ from src.database.models.user import User
 from src.database.session import get_db
 from src.features.achievement_catalogue import (
     fetch_catalogue,
-    has_achievements,
+    has_catalogue,
     store_catalogue,
 )
 from src.features.game_identity import names
@@ -360,7 +360,7 @@ async def refresh_game_metadata(
             else:
                 would_add_banner = True
 
-    if payload.update_text and not await has_achievements(db, game.id):
+    if payload.update_text and not await has_catalogue(db, game.id):
         # A game with no achievements yet may get its definitions from a provider (such as Atlas).
         try:
             label, catalogue, _errors = await fetch_catalogue(db, current_user.id, game)

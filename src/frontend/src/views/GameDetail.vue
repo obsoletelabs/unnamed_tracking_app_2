@@ -20,6 +20,7 @@ import {
   formatPercent,
   unlockedOn,
   KIND_LABEL,
+  iconOf,
 } from "../utils/achievements";
 import type { AchFilter } from "../composables/useGameAchievements";
 import GameLaunchButton from "../components/game/GameLaunchButton.vue";
@@ -1042,8 +1043,8 @@ async function onCopiesChanged() {
             <div
               class="ach-icon"
               :style="
-                a.iconUrl && !isHiddenLocked(a)
-                  ? { backgroundImage: `url(${a.iconUrl})` }
+                iconOf(a) && !isHiddenLocked(a)
+                  ? { backgroundImage: `url(${iconOf(a)})` }
                   : {}
               "
             ></div>
@@ -1067,6 +1068,9 @@ async function onCopiesChanged() {
                   class="ach-tag"
                   :class="a.kind"
                   >{{ KIND_LABEL[a.kind] }}</span
+                >
+                <span v-if="a.points && !isHiddenLocked(a)" class="ach-tag"
+                  >{{ a.points }} pts</span
                 >
               </div>
               <div class="ach-desc">

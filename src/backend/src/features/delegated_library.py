@@ -12,6 +12,7 @@ from src.api.schemas.delegation import AchievementReportWrite
 from src.database.models.achievement import Achievement
 from src.database.models.achievement_override import AchievementOverride
 from src.database.models.game import Game, GameStatus
+from src.features.achievement_folding import CATALOG, HIDDEN_NAME
 from src.features.game_identity import graph
 from src.plugin_api.game_library import game_details, owned_game
 
@@ -106,6 +107,10 @@ def achievement_report(row: AchievementOverride) -> dict:
     }
 
 
+def _shared_text(row: Achievement, text: str | None, placeholder: str | None) -> str | None:
+    return placeholder if row.hidden and not row.unlocked else text
+
+
 async def achievement_page(
     db: AsyncSession, user_id: UUID, game_id: UUID, offset: int, limit: int
 ) -> dict:
@@ -113,7 +118,7 @@ async def achievement_page(
     provider_rows = list(
         await db.scalars(
             select(Achievement)
-            .where(Achievement.game_id == game_id)
+            .where(Achievement.game_id == game_id, Achievement.provider != CATALOG)
             .order_by(Achievement.provider, Achievement.external_id, Achievement.id)
             .offset(offset)
             .limit(limit + 1)
@@ -149,8 +154,9 @@ async def achievement_page(
                 "id": str(row.id),
                 "provider": row.provider,
                 "external_id": row.external_id,
-                "name": row.name,
-                "description": row.description,
+                # a hidden achievement stays a spoiler for anyone else until it is earned
+                "name": _shared_text(row, row.name, HIDDEN_NAME),
+                "description": _shared_text(row, row.description, None),
                 "unlocked": row.unlocked,
                 "unlocked_at": row.unlocked_at,
                 "provenance": "provider_synced",
