@@ -23,6 +23,7 @@ import {
 } from "../utils/achievements";
 import type { AchFilter } from "../composables/useGameAchievements";
 import GamePlayPanel from "../components/game/GamePlayPanel.vue";
+import GameLaunchButton from "../components/game/GameLaunchButton.vue";
 import GameVersionsPanel from "../components/game/GameVersionsPanel.vue";
 import GameManualTrackingPanel from "../components/game/GameManualTrackingPanel.vue";
 import { provide, defineAsyncComponent, ref } from "vue";
@@ -448,6 +449,7 @@ async function onCopiesChanged() {
             </span>
           </div>
           <div class="action-row">
+            <GameLaunchButton :game="game" />
             <button
               class="edit-btn"
               type="button"

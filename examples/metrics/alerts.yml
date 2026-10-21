@@ -1,0 +1,48 @@
+# Starting alert ideas. Tune thresholds to your own traffic and retention.
+groups:
+  - name: unnamed-tracking
+    rules:
+      - alert: UnnamedTrackingDown
+        expr: up{job="unnamed-tracking"} == 0
+        for: 5m
+        labels: { severity: critical }
+        annotations: { summary: "Unnamed Tracking is not scrapeable" }
+      - alert: UnnamedTrackingDatabaseUnreachable
+        expr: uta_database_up == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations: { summary: "The application cannot reach PostgreSQL" }
+      - alert: UnnamedTrackingServerErrors
+        expr: sum(rate(uta_http_requests_total{status_class="5xx"}[10m])) / sum(rate(uta_http_requests_total[10m])) > 0.05
+        for: 10m
+        labels: { severity: warning }
+        annotations: { summary: "More than 5% of requests fail with 5xx" }
+      - alert: UnnamedTrackingSlowRequests
+        expr: histogram_quantile(0.95, sum by (le) (rate(uta_http_request_duration_seconds_bucket[10m]))) > 2
+        for: 15m
+        labels: { severity: warning }
+        annotations: { summary: "95th percentile request time is above two seconds" }
+      - alert: UnnamedTrackingSignInThrottling
+        expr: sum(rate(uta_auth_rate_limit_decisions_total{outcome="limited"}[10m])) > 1
+        for: 10m
+        labels: { severity: warning }
+        annotations: { summary: "Sustained authentication rate limiting (possible credential stuffing)" }
+      - alert: UnnamedTrackingPluginRuntimeDown
+        expr: uta_plugin_runtime_up == 0
+        for: 10m
+        labels: { severity: warning }
+        annotations: { summary: "The plugin runtime is unreachable from the application" }
+      - alert: UnnamedTrackingJobStale
+        expr: time() - uta_job_last_success_timestamp_seconds > 3 * 86400
+        for: 1h
+        labels: { severity: warning }
+        annotations: { summary: "A scheduled job has not succeeded for three days" }
+      - alert: UnnamedTrackingJobFailures
+        expr: sum by (job) (increase(uta_job_runs_total{outcome="failed"}[6h])) >= 3
+        labels: { severity: warning }
+        annotations: { summary: "A scheduled job failed repeatedly" }
+      - alert: UnnamedTrackingMetadataProviderErrors
+        expr: sum by (provider) (rate(uta_metadata_provider_calls_total{outcome!="ok"}[15m])) / sum by (provider) (rate(uta_metadata_provider_calls_total[15m])) > 0.5
+        for: 30m
+        labels: { severity: warning }
+        annotations: { summary: "A metadata provider is failing most calls" }

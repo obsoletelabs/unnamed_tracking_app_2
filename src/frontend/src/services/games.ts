@@ -34,6 +34,7 @@ export interface BackendGame {
     crossplay: boolean;
   } | null;
   provider_ids?: Record<string, string>;
+  playnite_guid?: string | null;
   locked_fields?: string[];
   id: string;
   title: string;
@@ -179,6 +180,7 @@ export function mapBackendGame(raw: BackendGame): Game {
     releaseDate: raw.release_date,
     source: raw.source,
     providerIds: raw.provider_ids ?? {},
+    playniteGuid: raw.playnite_guid ?? null,
     platform: raw.platform,
     playCompatibility: raw.play_compatibility
       ? {

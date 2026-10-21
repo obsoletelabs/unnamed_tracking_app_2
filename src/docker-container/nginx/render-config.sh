@@ -15,6 +15,9 @@ if [ "${NGINX_REALIP_TRUSTED_PROXIES+x}" = x ]; then
 else
   trusted_proxies="$default_trusted_proxies"
 fi
+metrics_port="${METRICS_LISTEN_PORT:-9464}"
+metrics_enabled="${METRICS_ENABLED:-true}"
+metrics_route="${METRICS_NGINX_ROUTE_ENABLED:-false}"
 generated_dir="/run/unnamed-tracking/tls"
 tmp_output="${output}.tmp.$$"
 realip_tmp="${output}.realip.$$"
@@ -46,6 +49,25 @@ fi
 if [ "$redirect" = true ] && [ "$enabled" != true ]; then
   printf '%s\n' "HTTP redirection requires TLS to be enabled." >&2
   exit 1
+fi
+case "$metrics_route" in
+  true|TRUE|1|yes|YES) metrics_route=true ;;
+  false|FALSE|0|no|NO|"") metrics_route=false ;;
+  *) printf '%s\n' "Invalid METRICS_NGINX_ROUTE_ENABLED value." >&2; exit 1 ;;
+esac
+case "$metrics_enabled" in
+  true|TRUE|1|yes|YES) metrics_enabled=true ;;
+  *) metrics_enabled=false ;;
+esac
+if [ -n "$metrics_port" ]; then
+  metrics_port="$(printf '%s' "$metrics_port" | sed 's/^0*//')"
+  case "$metrics_port" in
+    ''|*[!0-9]*|??????*) printf '%s\n' "Invalid METRICS_LISTEN_PORT value; use a port number." >&2; exit 1 ;;
+  esac
+  if [ "$metrics_port" -gt 65535 ] || [ "$metrics_port" = 80 ] || [ "$metrics_port" = 443 ]; then
+    printf '%s\n' "METRICS_LISTEN_PORT must be a port other than 80 and 443." >&2
+    exit 1
+  fi
 fi
 for tls_path in "$cert" "$key"; do
   case "$tls_path" in
@@ -158,5 +180,73 @@ else
 fi
 
 rm -f "${tmp_output}.base" "$realip_tmp"
+
+# Opt-in: let the public listeners pass /metrics to the application, which still requires its
+# bearer token. Without METRICS_NGINX_ROUTE_ENABLED the public listeners answer 404 for it.
+if [ "$metrics_route" = true ]; then
+  awk '
+    skipping { if ($0 ~ /^[[:space:]]*}[[:space:]]*$/) skipping = 0; next }
+    $0 ~ /location = \/metrics \{/ {
+      indent = $0; sub(/location.*/, "", indent)
+      print indent "location = /metrics {"
+      print indent "    proxy_pass http://127.0.0.1:8000/metrics;"
+      print indent "    proxy_http_version 1.1;"
+      print indent "    proxy_set_header Host $http_host;"
+      print indent "    proxy_set_header Authorization $http_authorization;"
+      print indent "    proxy_read_timeout 10s;"
+      print indent "    access_log off;"
+      print indent "}"
+      skipping = 1; next
+    }
+    { print }
+  ' "$tmp_output" > "${tmp_output}.route"
+  mv "${tmp_output}.route" "$tmp_output"
+fi
+
+# The scrape port is always present. It forwards nothing but /metrics and presents the
+# application's scrape token itself, so a scraper needs none: anything that can reach this port
+# can read route names, job state and plugin state. It is reachable from outside the container
+# only when the operator publishes the port. If no token can be found the listener is left out.
+if [ "$metrics_enabled" = true ] && [ -n "$metrics_port" ]; then
+  metrics_token="${METRICS_TOKEN:-}"
+  if [ -z "$metrics_token" ]; then
+    metrics_token="$(cat "${APP_DATA_DIR:-/data}/config/metrics.token" 2>/dev/null || true)"
+  fi
+  case "$metrics_token" in
+    ''|*[!A-Za-z0-9._~+/=-]*)
+      printf '%s\n' "No usable metrics token found; the metrics scrape port is not opened." >&2
+      ;;
+    *)
+      {
+        sed '$d' "$tmp_output"
+        cat <<EOF
+
+    server {
+        listen $metrics_port;
+        server_name _;
+        client_max_body_size 1k;
+        access_log off;
+
+        location = /metrics {
+            proxy_pass http://127.0.0.1:8000/metrics;
+            proxy_http_version 1.1;
+            proxy_set_header Host \$http_host;
+            proxy_set_header Authorization "Bearer $metrics_token";
+            proxy_read_timeout 10s;
+        }
+
+        location / {
+            default_type application/json;
+            return 404 '{"detail":"Not Found"}';
+        }
+    }
+}
+EOF
+      } > "${tmp_output}.metrics"
+      chmod 0600 "${tmp_output}.metrics"
+      mv "${tmp_output}.metrics" "$tmp_output"
+      ;;
+  esac
+fi
 mv "$tmp_output" "$output"
 trap - EXIT INT TERM

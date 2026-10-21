@@ -16,6 +16,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.metrics import AUTH_DECISIONS
 from src.database.auth_limits import AuthLimitSession
 from src.features.auth_rate_limits import (
     AuthLimit,
@@ -74,6 +75,7 @@ def record_auth_event(operation: AuthOperation, outcome: str) -> None:
         raise ValueError("Unknown authentication diagnostic outcome")
     key = (operation, outcome)
     _events[key] += 1
+    AUTH_DECISIONS.labels(operation.value, outcome).inc()
     now = time.monotonic()
     if outcome in {"limited", "unavailable", "busy"} and now - _last_log.get(key, -60) >= 60:
         logger.warning(

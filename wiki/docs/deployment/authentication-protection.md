@@ -81,6 +81,16 @@ mind. Raising a setting upgrades accounts on their next sign-in. Stored paramete
 verifying (256 MiB, 10 iterations, 8 lanes), so a corrupt or hostile record is rejected rather than
 allowed to exhaust the server; unknown or malformed records never verify.
 
+### Sign-in timing
+
+Argon2id and scrypt take different amounts of time, so while any account still has a scrypt hash a
+sign-in could otherwise reveal whether an account exists. During that period every local sign-in,
+whether the account exists, is inactive or is on either algorithm, performs one Argon2id and one scrypt
+verification (its own record plus a throwaway record of the other algorithm) and only the first result
+counts. The check for remaining scrypt accounts is cached for five minutes per process; a scrypt account
+seen sooner switches it on immediately. Once every account is on Argon2id the second step stops and each
+attempt costs a single verification.
+
 ## Responses and diagnostics
 
 A quota denial returns **429**, integer-seconds `Retry-After`, `Cache-Control: no-store`, and the constant detail `Too many authentication requests. Try again later.` Wait at least that duration before retrying. The retry is the longest blocked window involved in that decision. No sign-in session/cookie is issued for a denied request. Recovery acknowledgements remain identical for unknown, disabled, SSO and ineligible accounts until their shared submitted-identifier quota is exhausted; exhaustion returns the same 429 for each.
@@ -90,6 +100,15 @@ Unavailable, saturated or locked quota storage fails closed with **503**, `Retry
 The Plugin API gateway retains its versioned error envelope: quota denials use `rate_limited`/429 and capacity/storage failures use `unavailable`/503, with `Retry-After`. Clients must handle these responses rather than retrying immediately.
 
 Counter keys use HMAC-SHA256 with the deployment secret; submitted usernames, emails, tokens and raw IPs are not stored in the quota table. Aggregate warning messages contain only fixed operation/outcome labels and counts, at most once per minute for each pair. Administrator-only `GET /api/settings/system-info` exposes `authentication_checks`, containing allowed, limited, unavailable, refunded and busy counts for this process since restart. These diagnostic counters are not cross-worker totals or the enforcement store; concurrent in-flight reservations can also make allowed minus refunded temporarily positive. They contain no account/IP labels. Existing account audit and credential policies remain separate.
+
+### Passwords in responses and logs
+
+Validation errors never echo what was submitted (only the error type, location and message), and local
+authentication code does not log request bodies. `tests/test_auth_timing_and_redaction.py` submits a
+canary password through wrong-password, unknown-account, oversized, malformed, policy-violating and
+server-error paths and asserts it appears in no response body, log record, stdout or stderr. It covers
+the sign-in and profile-password routes; other routes that accept passwords share the same validation
+handler but are not each exercised there.
 
 ## Verification
 

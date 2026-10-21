@@ -12,6 +12,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from src.api.auth_limits import AuthThrottleMiddleware, auth_retry_response
 from src.api.auth_policy import authentication_operation
+from src.api.metrics import MetricsMiddleware
 from src.api.request_bodies import AnonymousBodyLimitMiddleware
 from src.api.routes import (
     achievement_icons,
@@ -75,6 +76,7 @@ from src.api.routes import (
 )
 from src.api.routes.auth_oidc import router as auth_oidc_router
 from src.api.routes.deployment_settings import router as deployment_settings_router
+from src.api.routes.metrics_settings import router as metrics_settings_router
 from src.api.routes.plugin_permissions import router as plugin_permissions_router
 from src.api.routes.plugins import host_router as plugin_host_routes
 from src.api.routes.plugins import router as plugins_router
@@ -118,6 +120,8 @@ app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.add_middleware(AuthThrottleMiddleware)
 # Outermost, so an anonymous oversized body is refused before anything reads it.
 app.add_middleware(AnonymousBodyLimitMiddleware)
+# Outermost of all: it times every request and answers the guarded /metrics endpoint.
+app.add_middleware(MetricsMiddleware)
 
 # Pydantic's default 422 body echoes what was submitted (`input`, plus the
 # raw values in `ctx`), which puts plaintext passwords, tokens and API keys
@@ -188,6 +192,7 @@ app.include_router(settings.router)
 app.include_router(branding.router)
 app.include_router(themes_router)
 app.include_router(deployment_settings_router)
+app.include_router(metrics_settings_router)
 app.include_router(plugin_permissions_router)
 app.include_router(plugins_router)
 app.include_router(pwa_router)

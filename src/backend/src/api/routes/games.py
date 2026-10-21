@@ -108,6 +108,7 @@ from src.api.routes.game_profiles import (
     sync_profile_wiseoldman,
     update_game_profile,
 )
+from src.api.routes.media_common import title_search
 from src.api.routes.utils.games import (
     _DATA_ROOT,
     _NON_NULLABLE_UPDATE_FIELDS,
@@ -494,8 +495,9 @@ async def list_games(
         stmt = stmt.where(Game.status == status_filter)
     if favorite is not None:
         stmt = stmt.where(Game.favorite == favorite)
-    if search:
-        stmt = stmt.where(Game.title.ilike(f"%{search}%"))
+    title_match = title_search([Game.title], search)
+    if title_match is not None:
+        stmt = stmt.where(title_match)
 
     total = await db.scalar(select(sql_count()).select_from(stmt.subquery()))
     response.headers["X-Total-Count"] = str(total or 0)

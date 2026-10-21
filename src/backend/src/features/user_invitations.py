@@ -270,7 +270,7 @@ async def accept_invitation(db, token_id, token, username, password):
             or_(
                 func.lower(User.email) == email,
                 func.lower(User.username) == email,
-                User.username == username,
+                func.lower(User.username) == username.lower(),
                 func.lower(User.email) == username.lower(),
             )
         )
