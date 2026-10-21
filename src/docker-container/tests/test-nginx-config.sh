@@ -57,20 +57,30 @@ if NGINX_REALIP_TRUSTED_PROXIES='10.0.0.0/8;include /tmp/evil;' "$render" /etc/n
 fi
 
 rendered="$work/metrics.conf"
-METRICS_LISTEN_PORT=9464 "$render" /etc/nginx/ready.conf "$rendered"
+METRICS_TOKEN=0123456789abcdef0123456789abcdef0123456789abcdef "$render" /etc/nginx/ready.conf "$rendered"
 grep -q 'listen 9464;' "$rendered"
-grep -q 'proxy_pass http://127.0.0.1:8000/metrics;' "$rendered"
+grep -q 'proxy_set_header Authorization "Bearer 0123456789abcdef' "$rendered"
 nginx -t -c "$rendered"
-! grep -q 'listen 9464;' "$work/http.conf"
-for public in /etc/nginx/ready.conf /etc/nginx/readytls.conf /etc/nginx/readytlsredirect.conf; do
-  grep -q 'location = /metrics {' "$public"
-done
+# The public listeners answer 404 for /metrics unless the route is opted in.
+grep -q 'return 404' "$rendered"
+! grep -q 'proxy_set_header Authorization $http_authorization;' "$rendered"
+METRICS_LISTEN_PORT=9999 METRICS_TOKEN=0123456789abcdef0123456789abcdef0123456789abcdef "$render" /etc/nginx/ready.conf "$work/metrics-port.conf"
+grep -q 'listen 9999;' "$work/metrics-port.conf"
+! grep -q 'listen 9464;' "$work/metrics-port.conf"
+METRICS_ENABLED=false METRICS_TOKEN=0123456789abcdef0123456789abcdef0123456789abcdef "$render" /etc/nginx/ready.conf "$work/metrics-off.conf"
+! grep -q 'listen 9464;' "$work/metrics-off.conf"
+METRICS_NGINX_ROUTE_ENABLED=true METRICS_TOKEN=0123456789abcdef0123456789abcdef0123456789abcdef "$render" /etc/nginx/readytls.conf "$work/metrics-route.conf"
+grep -q 'proxy_set_header Authorization $http_authorization;' "$work/metrics-route.conf"
 for invalid in 'x;include /tmp/evil' 80 443 70000; do
   if METRICS_LISTEN_PORT="$invalid" "$render" /etc/nginx/ready.conf "$work/invalid-metrics.conf"; then
     echo "invalid METRICS_LISTEN_PORT unexpectedly succeeded: $invalid" >&2
     exit 1
   fi
 done
+if METRICS_NGINX_ROUTE_ENABLED=maybe "$render" /etc/nginx/ready.conf "$work/invalid-route.conf"; then
+  echo "invalid METRICS_NGINX_ROUTE_ENABLED unexpectedly succeeded" >&2
+  exit 1
+fi
 
 rendered="$work/https.conf"
 NGINX_TLS_ENABLED=true NGINX_TLS_CERTIFICATE="$work/tls/cert.pem" NGINX_TLS_PRIVATE_KEY="$work/tls/key.pem" "$render" /etc/nginx/readytls.conf "$rendered"
