@@ -616,3 +616,14 @@ async def test_group_claim_values_are_not_coerced_into_admin_group_names(callbac
     callback.selected_config.return_value = replace(callback.config, admin_group="1")
     assert (await complete(callback)).headers["location"] == "/login?oidc=success"
     assert not callback.session.scalar(select(User)).is_admin
+
+
+async def test_oidc_new_account_never_takes_a_name_differing_only_by_case(callback):
+    callback.session.add(
+        User(username="Reader", email="first@example.test", password_hash="unused")
+    )
+    callback.session.commit()
+    callback.claims["preferred_username"] = "reader"
+    assert (await complete(callback)).headers["location"] == "/login?oidc=success"
+    names = sorted(user.username for user in callback.session.scalars(select(User)))
+    assert names == ["Reader", "reader-2"]
