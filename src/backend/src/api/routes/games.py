@@ -109,6 +109,7 @@ from src.api.routes.game_profiles import (
     sync_profile_wiseoldman,
     update_game_profile,
 )
+from src.api.routes.media_common import title_search
 from src.api.routes.utils.games import (
     _DATA_ROOT,
     _NON_NULLABLE_UPDATE_FIELDS,
@@ -141,7 +142,7 @@ from src.database.models.game_field_change import GameFieldChange
 from src.database.models.user import User
 from src.database.session import get_db
 from src.features import game_folders, game_ownership
-from src.features.achievement_catalog import CATALOG, merge_copies
+from src.features.achievement_folding import CATALOG, merge_copies
 from src.features.game_identity import manual
 from src.features.game_identity.copies import CopyLabel, page_copies
 from src.features.game_ingestion import playnite
@@ -505,8 +506,9 @@ async def list_games(
         stmt = stmt.where(Game.status == status_filter)
     if favorite is not None:
         stmt = stmt.where(Game.favorite == favorite)
-    if search:
-        stmt = stmt.where(Game.title.ilike(f"%{search}%"))
+    title_match = title_search([Game.title], search)
+    if title_match is not None:
+        stmt = stmt.where(title_match)
 
     total = await db.scalar(select(sql_count()).select_from(stmt.subquery()))
     response.headers["X-Total-Count"] = str(total or 0)

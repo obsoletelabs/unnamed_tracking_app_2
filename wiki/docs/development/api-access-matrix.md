@@ -298,6 +298,7 @@ are redacted. Validation errors never echo submitted values.
 | Method | Path | Authority | Ownership and effect |
 | --- | --- | --- | --- |
 | GET | `/api/achievement-icon/{achievement_id}` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
+| GET | `/api/achievement-icon/{achievement_id}/locked` | user | Same ownership join as the unlocked icon; serves the provider's greyed-out icon. |
 | GET | `/api/game-duplicates` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | POST | `/api/game-duplicates/keep-both` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | GET | `/api/game-identity/decisions` | user | Every game, observation, counter and relationship is looked up with `user_id == caller`; another user's ID is not found. |
@@ -548,6 +549,7 @@ are redacted. Validation errors never echo submitted values.
 | GET | `/api/settings/notification-diagnostics/deliveries` | user | Only deliveries of the caller's own notifications; redacted diagnostics. |
 | POST | `/api/settings/notification-diagnostics/deliveries/{delivery_id}/retry` | user | Delivery must belong to one of the caller's notifications (404 otherwise); sensitive purposes are never re-sent. |
 | POST | `/api/settings/notification-diagnostics/digest` | admin | Administrator; dry-run digest preview with fixtures. |
+| GET | `/api/settings/metrics` | admin | Administrator; scrape status and, only for an application-generated token, its value. |
 | GET | `/api/settings/notification-diagnostics/overview` | admin | Administrator; instance delivery health, redacted. |
 | POST | `/api/settings/notification-diagnostics/preview` | admin | Administrator; dry-run render with fixtures. |
 | POST | `/api/settings/notification-diagnostics/simulate` | admin | Administrator; dry-run routing simulation, nothing is queued. |

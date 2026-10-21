@@ -65,10 +65,12 @@ nav:
       - Startup & Troubleshooting: deployment/startup-and-troubleshooting.md
       - Migration Recovery: deployment/migration-recovery.md
       - Authentication Protection: deployment/authentication-protection.md
+      - Prometheus Metrics: deployment/metrics.md
       - Production Runtime Smoke: deployment/production-runtime-smoke.md
   - Development:
       - Overview: development/index.md
       - Wiki Container: development/wikicontainer.md
+      - Input Boundary Audit: development/input-boundary-audit.md
       - Architecture: development/architecture.md
       - UI Redevelopment Checkpoint: development/ui-redevelopment.md
       - Rosefall 469 Review Choices: development/rosefall-469-reconciliation.md

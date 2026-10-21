@@ -38,6 +38,7 @@ from src.database.models.game import Game, GameStatus
 from src.database.models.user import User
 from src.database.session import SessionLocal, get_db
 from src.features import game_folders
+from src.features.achievement_catalogue import fetch_catalogue, store_catalogue
 from src.features.connection_jobs import sync_scope
 from src.features.game_identity import names
 from src.features.game_ingestion import legacy as ingestion
@@ -54,7 +55,7 @@ from src.features.metadata.games.retroachievements import (
     RetroAchievementsError,
 )
 from src.features.metadata.locked_fields import apply_metadata_updates
-from src.features.metadata.service import game_result, library_candidate, resolve_library_record
+from src.features.metadata.service import game_candidate, game_result, resolve_library_record
 from src.helpers import save_game_asset
 from src.helpers.remote_images import MAX_BYTES, RemoteImageError, download_image
 from src.helpers.save_game_asset import ASSET_FILENAMES, AssetKind, save_locked_game_asset
@@ -64,7 +65,6 @@ from src.helpers.steam_achievement_rows import (  # noqa: F401
 from src.helpers.steam_achievement_rows import (
     steam_achievement_rows as _steam_achievement_rows,
 )
-from src.plugin_api.metadata_contracts import MediaType
 
 router = APIRouter(
     prefix="/api/library-sync", tags=["library-sync"], dependencies=[Depends(get_current_user)]
@@ -185,12 +185,7 @@ async def _enrich_new_game(
     `artwork_only` is the retry mode: it never rewrites details a person may since have edited
     and only fetches pictures the game does not already have."""
     outcome = EnrichOutcome()
-    candidate = library_candidate(
-        game.title,
-        MediaType.GAME,
-        game.provider_ids or {},
-        game.release_date.year if game.release_date else None,
-    )
+    candidate = game_candidate(game)
     async with SessionLocal() as metadata_db:
         record, _ = await resolve_library_record(
             metadata_db,
@@ -433,11 +428,24 @@ async def refresh_game_achievements(
         provider = "PlayStation"
         rows = await _fetch_psn_rows(current_user, external_id, game.platform)
     else:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only games that came from Steam, PlayStation or RetroAchievements have "
-            "achievements to refresh.",
-        )
+        # Any other game: a metadata provider (such as Atlas) may offer the achievement list
+        # (definitions only, so there is no progress to advance and no ownership to recheck).
+        provider, rows, _errors = await fetch_catalogue(db, current_user.id, game)
+        if not rows:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No achievements were found for this game. Steam, PlayStation and "
+                "RetroAchievements games refresh from their own provider; other games need "
+                "a metadata provider that offers achievement lists.",
+            )
+        await store_catalogue(db, game.id, provider, rows)
+        await db.commit()
+        return {
+            "provider": provider,
+            "achievements": len(rows),
+            "unlocked": 0,
+            "hidden": sum(1 for r in rows if r.get("hidden")),
+        }
     if rows:
         # Every provider must recheck ownership and identity after network work.
         current = await lock_imported_game(db, current_user.id, game_id, provider)

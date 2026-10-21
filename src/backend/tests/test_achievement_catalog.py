@@ -14,9 +14,16 @@ from src.database.models.achievement import Achievement
 from src.database.models.user import User
 from src.database.session import SessionLocal
 from src.features import delegated_library
-from src.features.achievement_catalog import CATALOG, HIDDEN_NAME, merge_copies, store_catalog
-from src.features.metadata.handler import MetadataHandler
+from src.features.achievement_catalogue import catalogue_rows, store_catalogue
+from src.features.achievement_folding import HIDDEN_NAME, merge_copies
 from src.plugin_api.metadata_contracts import MetadataPatch
+
+
+async def store_catalog(db, game_id, items, provider="official.metadata-atlas"):
+    """Store contract-shaped items the way a refresh does."""
+    await store_catalogue(
+        db, game_id, provider, catalogue_rows({"metadata": {"achievements": items}})
+    )
 
 
 def _item(external_id="a1", **extra):
@@ -65,17 +72,7 @@ def test_patch_rejects_unsafe_or_oversized_achievements(bad):
 
 def test_patch_caps_the_list_length():
     with pytest.raises(ValidationError):
-        MetadataPatch(achievements=[_item(str(n)) for n in range(501)])
-
-
-def test_the_best_provider_list_wins_and_keeps_its_provenance():
-    session = SimpleNamespace(providers=[])
-    members = [
-        SimpleNamespace(priority=2, metadata={"b": MetadataPatch(achievements=[_item("b1")])}),
-        SimpleNamespace(priority=1, metadata={"a": MetadataPatch(achievements=[_item("a1")])}),
-    ]
-    merged = MetadataHandler._metadata(session, members)  # pylint: disable=protected-access
-    assert [(x["external_id"], x["provider"]) for x in merged["achievements"]] == [("a1", "a")]
+        MetadataPatch(achievements=[_item(str(n)) for n in range(2001)])
 
 
 @pytest.fixture(autouse=True)
@@ -143,9 +140,8 @@ async def test_catalogue_lends_details_to_the_matching_synced_row_without_duplic
                     "global_percent": 12.5,
                     "kind": "progression",
                     "source_ids": {"steam": "ACH_X"},
-                    "provider": "official.metadata-atlas",
                 },
-                {**_item("atlas-2", name="Unplayed one"), "provider": "official.metadata-atlas"},
+                _item("atlas-2", name="Unplayed one"),
             ],
         )
         await db.commit()
@@ -159,7 +155,7 @@ async def test_catalogue_lends_details_to_the_matching_synced_row_without_duplic
     assert won["icon_url"].startswith("/api/achievement-icon/")
     assert won["locked_icon_url"].endswith("/locked")
     assert by_name["Unplayed one"]["unlocked"] is False
-    assert by_name["Unplayed one"]["provider"] == CATALOG
+    assert by_name["Unplayed one"]["provider"] == "official.metadata-atlas"
 
 
 async def test_a_refresh_replaces_the_list_but_an_empty_answer_changes_nothing(scratch_user):
@@ -167,8 +163,13 @@ async def test_a_refresh_replaces_the_list_but_an_empty_answer_changes_nothing(s
         game_id = await _game(scratch_user, db)
         await store_catalog(db, game_id, [_item("a"), _item("b")])
         await db.commit()
-        assert await store_catalog(db, game_id, []) == 0
-        assert await store_catalog(db, game_id, [_item("a"), _item("c")]) == 2  # b gone, c new
+        await store_catalog(db, game_id, [])  # an empty answer changes nothing
+        await db.commit()
+        assert (
+            len(list(await db.scalars(select(Achievement).where(Achievement.game_id == game_id))))
+            == 2
+        )
+        await store_catalog(db, game_id, [_item("a"), _item("c")])  # b gone, c new
         await db.commit()
         names = set(
             await db.scalars(select(Achievement.external_id).where(Achievement.game_id == game_id))

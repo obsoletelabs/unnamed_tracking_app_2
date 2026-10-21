@@ -15,7 +15,10 @@ vi.mock("../services/deploymentSettings", () => ({
   updateDeploymentSettings: vi.fn(),
 }));
 
-afterEach(() => vi.clearAllMocks());
+afterEach(() => {
+  vi.clearAllMocks();
+  vi.unstubAllGlobals();
+});
 
 function deployment(required = false): DeploymentSettings {
   const provider: OidcProviderSetting = {
@@ -384,3 +387,61 @@ it("opens newly added providers for editing while saved ones stay collapsed", as
   expect(button(wrapper, "Collapse all")).toBeDefined();
   wrapper.unmount();
 });
+
+it("copies the current generated URI after an unsaved slug edit without saving settings", async () => {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  vi.stubGlobal("navigator", { clipboard: { writeText } });
+  const wrapper = await settings(
+    withProviders({
+      name: "Example",
+      slug: "example",
+      redirect_uri: "https://old.example.test/api/auth/oidc/callback/old",
+    }),
+  );
+  await toggle(wrapper, "Example").trigger("click");
+  const slug = body(wrapper, "Example")
+    .findAll("label")
+    .find((label) => label.text() === "Slug")!
+    .get("input");
+  await slug.setValue("renamed");
+  await button(wrapper, "Copy redirect URI for Example").trigger("click");
+  await flushPromises();
+  expect(writeText).toHaveBeenCalledWith(
+    `${window.location.origin}/api/auth/oidc/callback/renamed`,
+  );
+  expect(wrapper.get("[aria-live=polite].field-hint").text()).toBe(
+    "Redirect URI copied.",
+  );
+  expect(updateDeploymentSettings).not.toHaveBeenCalled();
+  await slug.setValue("changed-again");
+  expect(wrapper.get("[aria-live=polite].field-hint").text()).toBe("");
+  wrapper.unmount();
+});
+
+it.each(["blocked", "unavailable"])(
+  "offers manual copying when clipboard access is %s",
+  async (mode) => {
+    vi.stubGlobal(
+      "navigator",
+      mode === "blocked"
+        ? {
+            clipboard: {
+              writeText: vi.fn().mockRejectedValue(new Error("Denied")),
+            },
+          }
+        : {},
+    );
+    const wrapper = await settings(deployment());
+    await toggle(wrapper, "Example").trigger("click");
+    await button(wrapper, "Copy redirect URI for Example").trigger("click");
+    await flushPromises();
+    expect(wrapper.get("[aria-live=polite].field-hint").text()).toBe(
+      "Could not copy. Select the redirect URI and copy it manually.",
+    );
+    expect(wrapper.get("input[readonly]").attributes("aria-readonly")).toBe(
+      "true",
+    );
+    expect(updateDeploymentSettings).not.toHaveBeenCalled();
+    wrapper.unmount();
+  },
+);

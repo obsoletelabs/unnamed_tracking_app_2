@@ -26,6 +26,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.metrics import JOB_DURATION, JOB_RUNS
 from src.database.models.job_setting import JobSetting
 from src.database.models.user import User
 from src.database.session import SessionLocal
@@ -163,12 +164,14 @@ def _summarize_plugin_updates(r: dict[str, Any]) -> str:
 
 async def _record_outcome(job_id: str, work: Awaitable[dict[str, Any]], failure: str) -> None:
     """Record a failed run like a completed one, so cadence and reporting survive errors."""
+    started = time.monotonic()
     try:
         result = await work
     # An unexpected worker failure must not terminate the remaining scheduled work.
     except Exception:  # pylint: disable=broad-exception-caught
         logger.exception("The scheduled job %s failed", job_id)
         result = {"completed": False, "error": failure}
+    JOB_DURATION.labels(job_id if job_id in JOBS else "other").observe(time.monotonic() - started)
     try:
         await record_run(job_id, result)
     # Losing one result must not leave the job marked as running.
@@ -425,6 +428,11 @@ async def record_run(job_id: str, result: dict[str, Any], *, spec: JobSpec | Non
         now = int(time.time())
         row.last_run_at = now
         public = job_runs.apply_outcome(row, result, now, backoff=spec.retry_backoff)
+        # Only the host's own job ids are label values; plugin and personal jobs share buckets.
+        JOB_RUNS.labels(
+            spec.id if spec.id in JOBS else ("plugin" if spec.plugin_id else "personal"),
+            "success" if row.status == "completed" else row.status,
+        ).inc()
         row.last_result = {
             k: v for k, v in public.items() if isinstance(v, (int, float, str, bool)) or v is None
         }

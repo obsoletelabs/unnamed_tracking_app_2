@@ -6,7 +6,7 @@ import time
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import get_current_admin, get_current_user, hash_token, session_cookie_name
@@ -155,7 +155,7 @@ async def list_all_sessions(
     if user_id is not None:
         statement = statement.where(UserSession.user_id == user_id)
     if country:
-        statement = statement.where(UserSession.geo_country.ilike(country.strip()))
+        statement = statement.where(func.lower(UserSession.geo_country) == country.strip().lower())
     if anomaly is True:
         statement = statement.where(UserSession.anomaly_reason.is_not(None))
     needle = q.strip().lower() if q else None

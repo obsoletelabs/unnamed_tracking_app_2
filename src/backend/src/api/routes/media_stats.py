@@ -33,7 +33,7 @@ from src.database.models.movies import Movie
 from src.database.models.tv_show import TVEpisode, TVSeason, TVShow
 from src.database.models.user import User
 from src.database.session import get_db
-from src.features.achievement_catalog import CATALOG
+from src.features.achievement_folding import CATALOG
 from src.features.activity_stats import (
     DAY_PAGE_LIMIT,
     EARLIEST_DAY,

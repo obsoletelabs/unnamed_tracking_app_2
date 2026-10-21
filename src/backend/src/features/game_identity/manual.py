@@ -35,7 +35,7 @@ from src.database.models.game_identity_tracking import (
     LockOrigin,
     ManualFactOrigin,
 )
-from src.features.achievement_catalog import CATALOG
+from src.features.achievement_folding import CATALOG
 from src.features.game_identity import graph, policy
 from src.helpers.public_http import parse_http_url
 
