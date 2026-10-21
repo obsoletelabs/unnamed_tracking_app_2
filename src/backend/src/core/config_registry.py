@@ -642,7 +642,7 @@ CONFIG_REGISTRY: tuple[ConfigSpec, ...] = (
         "oidc",
         label="Match users by",
         input_type="choice",
-        choices=(("email", "Email"), ("username", "Username")),
+        choices=(("email", "Email"), ("username", "Username"), ("none", "Disabled")),
         default="email",
         storage="oidc",
     ),

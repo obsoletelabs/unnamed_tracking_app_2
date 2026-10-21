@@ -24,7 +24,7 @@ Each provider can configure:
 - Scopes, defaulting to `openid profile email`
 - Groups claim, defaulting to `groups`
 - Optional administrator group
-- User matching by email or username
+- User matching by email or username, or disabled
 - Whether new users may be created
 - Whether the provider must explicitly confirm a verified email
 - Login button text, image and colour
@@ -50,9 +50,9 @@ Expanding, collapsing and reordering only change the page. Unsaved edits are kep
 
 ## Redirect URI
 
-The settings UI generates the redirect URI from the address currently used to access the application and displays it as read-only. Save provider settings from the canonical HTTPS application address. Sign-in uses the saved provider URI or an explicit `OIDC_REDIRECT_URI`; when no URI is saved, it uses the shared **App URL** setting (`PUBLIC_APP_URL` when environment-managed). Request Host and forwarded headers cannot replace those configured addresses. After changing the application origin, save the provider from its new canonical address and update the identity provider registration.
+The settings UI generates the redirect URI from the address currently used to access the application and displays it as read-only. Sign-in generates it again from the current request, preserving the scheme, host, port and proxy mount path. A previously saved generated preview does not pin users to the administrator's old address, and the shared **App URL** setting does not replace the sign-in address.
 
-Production providers need a saved HTTPS redirect URI or shared App URL. A request-derived URI is available only for loopback development with `DEBUG=true` or `STARTUP_MODE=development`.
+No explicit callback setting is required. Register the exact callback for every application address you use with the identity provider. An optional `OIDC_REDIRECT_URI` can pin the matching environment-managed issuer/client to a fixed callback, including its named callback aliases. Behind a reverse proxy, configure the existing trusted proxy forwarding correctly; the OIDC code does not interpret arbitrary forwarded-host headers itself. Callbacks require HTTPS, except loopback development with `DEBUG=true` or `STARTUP_MODE=development`.
 
 For example:
 
@@ -87,16 +87,17 @@ application logs record the exception type without copying provider response tex
 
 After the authorization-code exchange, the application requires an OIDC `sub` and an email identity claim.
 
-**Require verified email** is off by default. When off, false or absent `email_verified` claims permit new accounts and unchanged, already bound identities. Linking an existing local account or migrating an old subject binding always requires the boolean `email_verified=true` and the same local email. Changing the email on an already bound identity also requires a verified new email. When enabled, the provider must supply the boolean `email_verified=true`; false, missing, string or numeric claims are rejected before account linking, provisioning, profile changes or session creation.
+**Require verified email** is off by default. When off, the provider's email may be used without a true verification claim, including for account matching, legacy binding migration and email updates. When enabled, the provider must supply the boolean `email_verified=true`; false, missing, string or numeric claims are rejected before account linking, provisioning, profile changes or session creation. This setting controls verification consistently; account matching does not add a hidden verification requirement.
 
 Providers sharing the same issuer and client ID use the strictest saved or environment requirement across their named and legacy callback aliases. Different clients/providers keep independent policies. `OIDC_REQUIRE_VERIFIED_EMAIL=true` applies to the matching environment-managed provider; omitting it preserves the false default.
 
 Existing users are matched according to **User matching**:
 
 - **Email** matches the local account email.
-- **Username** uses the string OIDC `preferred_username` claim and additionally requires the same verified email before linking. A free-form display name cannot select an account.
+- **Username** uses the string OIDC `preferred_username` claim without also requiring email matching. A free-form display name cannot select an account.
+- **Disabled** performs no email or username lookup. Already linked identities can still sign in, and **Allow new users** independently controls whether a distinct new account may be created. A local account's existing email cannot be claimed by creating a duplicate account.
 
-Accounts bind to the exact configured issuer and opaque, case-sensitive subject, using a versioned digest stored in the existing subject field. Renaming a provider slug preserves this binding; repointing a slug at a different issuer does not. Existing raw or slug-prefixed subjects migrate on the next successful login only with a verified matching email. Subject whitespace is never trimmed and numeric/object identity claims are rejected. Email ownership comparisons ignore case, and ambiguous legacy addresses fail safely.
+Accounts bind to the exact configured issuer and opaque, case-sensitive subject, using a versioned digest stored in the existing subject field. Renaming a provider slug preserves this binding; repointing a slug at a different issuer does not. Existing raw or slug-prefixed subjects migrate on a successful sign-in under the configured verification policy, including when optional account matching is disabled. Subject whitespace is never trimmed and numeric/object identity claims are rejected. Email ownership comparisons ignore case, and ambiguous legacy addresses fail safely.
 
 The OIDC subject is linked to the matched account. A subject already linked to another account is rejected as an identity conflict. A linked or username-matched account cannot adopt an email owned by another account. That sign-in fails safely without changing the existing account or opening a session; accounts are never merged by this process.
 
@@ -110,7 +111,7 @@ If **Admin group** is configured, the application checks the configured groups c
 
 Create an OAuth2/OIDC provider and application using authorization code, an asymmetric signing key and an exact redirect URI. Use `openid profile email` scopes and the per-provider issuer mode. Copy the complete issuer, including its trailing slash, from discovery; for example `https://sso.example.com/application/o/archive/`. Its discovery URL is `https://sso.example.com/application/o/archive/.well-known/openid-configuration`.
 
-Enable **Require verified email** when the provider verifies address ownership. Existing local accounts and legacy subject bindings always need that verified matching address before linking. Keep the administrator group empty until its mapping and membership are confirmed. For a private issuer, explicitly allow only its HTTPS origin and install its CA in the backend trust store.
+Choose the matching and verified-email settings according to the identity provider you trust. Enabling **Require verified email** requires the provider to confirm address ownership; leaving it off permits unverified email for matching and sign-in. Keep the administrator group empty until its mapping and membership are confirmed. For a private issuer, explicitly allow only its HTTPS origin and install its CA in the backend trust store.
 
 See the [Authentik provider documentation](https://docs.goauthentik.io/add-secure-apps/providers/oauth2/) for provider, signing, issuer and redirect configuration. This implementation is tested with a mock OIDC provider and an ephemeral real HTTPS issuer; those checks do not substitute for acceptance testing a particular live Authentik deployment.
 
@@ -118,9 +119,9 @@ See the [Authentik provider documentation](https://docs.goauthentik.io/add-secur
 
 | Boundary | Enforced behavior | Regression coverage |
 | --- | --- | --- |
-| Browser authorization | PKCE S256, saved nonce, provider-specific state, configured callbacks | Real authorization-code exchange; state replay and wrong-provider callback denial; Host/forwarded-header tests |
+| Browser authorization | PKCE S256, saved nonce, provider-specific state, request-generated callback or optional explicit override | Real authorization-code exchange; state replay and wrong-provider callback denial; origin/alias/port/mount-path callback tests |
 | Tokens and keys | Configured issuer, asymmetric signatures, audience/expiry/nonce validation, no UserInfo downgrade | Actual signed invalid-token matrix, signature failure and JWKS rotation |
-| Account ownership | Exact issuer/subject binding; verified email for initial/legacy linking; username alone insufficient | Existing-account and issuer-change denials, opaque subjects, email case conflicts and unchanged account/session assertions |
+| Account ownership | Exact issuer/subject binding, administrator-selected matching and optional email verification | Matching enabled/disabled, optional/required verification, legacy bindings, issuer-change denials, opaque subjects and email ownership conflicts |
 | Provider network | DNS-pinned public HTTPS or an explicit issuer-origin exception; no redirects; 1 MiB responses | Private/metadata address denial, exact-origin/port isolation, hostile discovery options, response bounds and actual certificate validation |
 | Errors and secrets | Generic sign-in errors and exception-type-only logs | Provider errors containing token/client-secret text never appear in captured logs |
 

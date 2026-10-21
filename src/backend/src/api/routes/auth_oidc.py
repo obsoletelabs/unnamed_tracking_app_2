@@ -17,7 +17,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.functions import count
 from starlette.responses import RedirectResponse
 
-from src.core.app_integrations import get_public_app_url
 from src.core.auth import (
     SESSION_TTL_SECONDS,
     hash_password,
@@ -127,15 +126,7 @@ def _named_provider_config(
         if provider.get("slug") == slug and provider.get("client_secret"):
             if require_autostart and provider.get("autostart_enabled", True) is False:
                 return None
-            config = _config_from_provider(provider)
-            if (
-                not config.redirect_uri
-                and getattr(row, "redirect_uri", None)
-                and _provider_key(config.issuer_url, config.client_id)
-                == _provider_key(row.issuer_url or "", row.client_id or "")
-            ):
-                return replace(config, redirect_uri=row.redirect_uri)
-            return config
+            return _config_from_provider(provider)
     return None
 
 
@@ -184,18 +175,15 @@ async def _get_config(
         == _provider_key(config.issuer_url, config.client_id)
     ):
         return replace(config, redirect_uri=environment.redirect_uri)
-    if config.redirect_uri:
-        return config
-    # Use the existing deployment URL resolver, including the saved admin setting.
-    origin = await get_public_app_url(db)
-    if origin:
-        route = (
-            request.url_for("oidc_callback_provider", provider_slug=slug)
-            if slug != "default"
-            else request.url_for("oidc_callback")
-        )
-        return replace(config, redirect_uri=origin + route.path)
-    return config
+    # Saved UI values are generated previews, not a pin to the administrator's
+    # browser address. Resolve the route from this sign-in request, including its
+    # scheme, host, port and proxy mount path. An explicit ENV override above is optional.
+    callback = (
+        request.url_for("oidc_callback_provider", provider_slug=slug)
+        if slug != "default"
+        else request.url_for("oidc_callback")
+    )
+    return replace(config, redirect_uri=str(callback))
 
 
 @router.get("/status")
@@ -385,6 +373,18 @@ async def _create_oidc_user(
     return user
 
 
+async def _legacy_oidc_identity(db: AsyncSession, slug: str, subject: str) -> User | str | None:
+    """Migrate existing bindings even when optional account matching is disabled."""
+    candidates = [
+        value for value in {subject, f"{slug}:{subject}"} if not value.startswith("oidc-v2:")
+    ]
+    matches = User.oidc_subject.in_(candidates)
+    total = int(await db.scalar(select(count()).select_from(User).where(matches)) or 0)
+    if total > 1:
+        return "identity_conflict"
+    return await db.scalar(select(User).where(matches)) if total else None
+
+
 async def _resolve_oidc_identity(
     db: AsyncSession, config: OidcConfig, claims: dict[str, Any]
 ) -> User | str:
@@ -406,6 +406,11 @@ async def _resolve_oidc_identity(
     linked_subject = "oidc-v2:" + hashlib.sha256(identity.encode()).hexdigest()
     user = await db.scalar(select(User).where(User.oidc_subject == linked_subject))
     if user is None:
+        legacy = await _legacy_oidc_identity(db, config.slug, subject)
+        if isinstance(legacy, str):
+            return legacy
+        user = legacy
+    if user is None and config.user_match_field != "none":
         field = (
             config.user_match_field if config.user_match_field in {"email", "username"} else "email"
         )
@@ -441,9 +446,8 @@ async def _resolve_oidc_identity(
 def _update_oidc_user(
     user: User, config: OidcConfig, claims: dict[str, Any], linked_subject: str, email: str
 ) -> User | str:
-    """Prove ownership before mutating any existing account."""
+    """Update the selected identity without overriding the verification setting."""
     subject = claims["sub"]
-    verified = claims.get("email_verified") is True
     if not user.is_active:
         return "account_disabled"
     if user.oidc_subject != linked_subject:
@@ -454,14 +458,6 @@ def _update_oidc_user(
         )
         if user.oidc_subject and not legacy:
             return "identity_conflict"
-        # Neither a username nor an unverified email proves ownership of an
-        # existing account. Legacy bindings migrate only with the same proof.
-        if not verified:
-            return "verified_email_required"
-        if user.email.strip().lower() != email:
-            return "identity_conflict"
-    elif user.email.strip().lower() != email and not verified:
-        return "verified_email_required"
     # Linking only ever sets the subject/email. The sign-in username and the
     # user-chosen display name are never rewritten from provider claims.
     user.oidc_subject = linked_subject

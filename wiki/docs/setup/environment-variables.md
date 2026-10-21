@@ -66,7 +66,7 @@ The normal setup flow can collect these values instead of providing them through
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `PUBLIC_APP_URL` | Automatic per-user origin | Optional HTTPS public FQDN used after notification URL preferences and before each user's last-used app URL. ENV takes precedence over the setup/Application setting. Also supplies the canonical OIDC callback base when no provider URI is saved. Credentials, paths, queries and fragments are rejected. |
+| `PUBLIC_APP_URL` | Automatic per-user origin | Optional HTTPS public FQDN used after notification URL preferences and before each user's last-used app URL. ENV takes precedence over the setup/Application setting. OIDC callbacks are generated separately from the current sign-in address. Credentials, paths, queries and fragments are rejected. |
 
 Each signed-in user has an independently remembered app origin. Users can override notification links globally or per external destination, including separate email and webhook domains. Public DNS for the configured FQDN is managed outside the app.
 
@@ -140,12 +140,12 @@ Secret fields are not returned as plaintext by the setup configuration API.
 | `OIDC_ISSUER_URL` | — | OIDC issuer or discovery URL. |
 | `OIDC_CLIENT_ID` | — | OIDC client ID. |
 | `OIDC_CLIENT_SECRET` | — | OIDC client secret. |
-| `OIDC_REDIRECT_URI` | Saved provider URI or App URL | Optional fixed HTTPS callback for the matching environment-managed issuer/client, including named callback aliases. Request Host headers cannot override it. |
+| `OIDC_REDIRECT_URI` | Current sign-in address | Optional fixed HTTPS callback for the matching environment-managed issuer/client, including named callback aliases. When unset, callbacks follow the current request URL, including its scheme, host, port and proxy mount path. |
 | `OIDC_PRIVATE_ISSUER_ORIGINS` | Empty; ENV only | Comma-separated exact HTTPS issuer origins explicitly allowed on private networks. Only the selected issuer origin receives the exception; other endpoints require public HTTPS. |
 | `OIDC_SCOPES` | `openid profile email` | Space-separated OIDC scopes. |
 | `OIDC_GROUPS_CLAIM` | `groups` | Claim containing group membership. |
 | `OIDC_ADMIN_GROUP` | — | Optional group whose members receive administrator access. |
-| `OIDC_USER_MATCH_FIELD` | `email` | Match an OIDC identity by `email` or `username`. |
+| `OIDC_USER_MATCH_FIELD` | `email` | Match an OIDC identity by `email` or `username`; `none` disables account matching while retaining existing linked sign-ins. |
 | `OIDC_ALLOW_NEW_USERS` | `true` | Allow unmatched OIDC identities to create local accounts. |
 | `OIDC_REQUIRE_VERIFIED_EMAIL` | `false` | Require an explicit boolean `email_verified=true` for the matching bootstrap/environment provider and its callback aliases. False, missing or malformed claims are rejected when enabled. Named providers can enable this independently. |
 | `OIDC_DEFAULT_LOGIN_METHOD` | `local` | Default login choice: `local` or `sso`. |

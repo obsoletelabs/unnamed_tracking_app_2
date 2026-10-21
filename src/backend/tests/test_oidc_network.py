@@ -178,7 +178,7 @@ async def test_discovery_cannot_inject_http_client_or_pkce_options(monkeypatch):
 
 
 @pytest.mark.parametrize("development", [False, True])
-def test_request_host_requires_canonical_configuration_except_local_development(
+def test_current_request_generates_a_callback_without_required_canonical_configuration(
     monkeypatch, development
 ):
     from fastapi import FastAPI, Request
@@ -190,12 +190,12 @@ def test_request_host_requires_canonical_configuration_except_local_development(
     app = FastAPI()
     app.include_router(auth_oidc.router)
 
-    def request(host):
+    def request(host, scheme="http"):
         return Request(
             {
                 "type": "http",
-                "scheme": "http",
-                "server": (host, 80),
+                "scheme": scheme,
+                "server": (host, 443 if scheme == "https" else 80),
                 "path": "/",
                 "root_path": "",
                 "headers": [(b"host", host.encode())],
@@ -204,8 +204,11 @@ def test_request_host_requires_canonical_configuration_except_local_development(
         )
 
     config = oidc.OidcConfig("https://issuer.example.test", "client", "secret")
-    with pytest.raises(ValueError, match="Configure the public app URL"):
-        oidc.callback_url(request("attacker.example.test"), config)
+    assert oidc.callback_url(request("archive.example.test", "https"), config) == (
+        "https://archive.example.test/api/auth/oidc/callback"
+    )
+    with pytest.raises(ValueError, match="HTTPS"):
+        oidc.callback_url(request("archive.example.test"), config)
     if development:
         assert oidc.callback_url(request("localhost"), config) == (
             "http://localhost/api/auth/oidc/callback"

@@ -1,6 +1,7 @@
 """Public sign-in presentation preserves provider branding and launch controls."""
 
 import json
+from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -65,9 +66,6 @@ def boundary(monkeypatch):
         monkeypatch.setattr(settings, name, None)
     monkeypatch.setattr(settings, "OIDC_REQUIRE_VERIFIED_EMAIL", False)
     monkeypatch.setattr(auth_oidc, "decrypt_secret", lambda value: "test-secret")
-    monkeypatch.setattr(
-        auth_oidc, "get_public_app_url", AsyncMock(return_value="https://tracking.example.test")
-    )
     launch = AsyncMock(return_value=RedirectResponse("https://issuer.invalid/authorize", 302))
     monkeypatch.setattr(auth_oidc, "begin_oidc", launch)
     app = FastAPI()
@@ -162,19 +160,59 @@ async def test_unconfigured_entries_return_to_the_themed_login(boundary):
     launch.assert_not_awaited()
 
 
-@pytest.mark.parametrize("header_name", ["host", "x-forwarded-host", "forwarded"])
-async def test_request_headers_cannot_replace_canonical_callback(boundary, header_name):
-    app, _, launch = boundary
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="https://attacker.example.test"
-    ) as client:
+@pytest.mark.parametrize(
+    ("origin", "headers", "expected_origin"),
+    [
+        ("https://archive.example.test", {}, "https://archive.example.test"),
+        ("https://archive.example.test:9443", {}, "https://archive.example.test:9443"),
+        (
+            "https://archive.example.test",
+            {"host": "alias.example.test:9443"},
+            "https://alias.example.test:9443",
+        ),
+        (
+            "https://archive.example.test",
+            {"x-forwarded-host": "untrusted.example.test"},
+            "https://archive.example.test",
+        ),
+        (
+            "https://archive.example.test",
+            {"forwarded": "host=untrusted.example.test"},
+            "https://archive.example.test",
+        ),
+    ],
+)
+async def test_callback_is_generated_from_the_current_request(
+    boundary, monkeypatch, origin, headers, expected_origin
+):
+    app, row, launch = boundary
+    monkeypatch.setattr(settings, "DEBUG", False)
+    monkeypatch.setattr(settings, "STARTUP_MODE", "production")
+    providers = json.loads(row.providers_json)
+    providers[0]["redirect_uri"] = "https://old-address.example.test/api/auth/oidc/callback/branded"
+    row.providers_json = json.dumps(providers)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url=origin) as client:
         response = await client.get(
             "/api/auth/oidc/login/branded?autostart=false",
-            headers={header_name: "attacker.example.test"},
+            headers=headers,
         )
     assert response.status_code == 302
+    request, config = launch.await_args.args
+    expected = expected_origin + "/api/auth/oidc/callback/branded"
+    assert config.redirect_uri == expected
+    assert oidc.callback_url(request, config) == expected
+    assert oidc.callback_url(request, replace(config, redirect_uri=None)) == expected
+
+
+async def test_generated_callback_preserves_the_proxy_mount_path(boundary):
+    app, _, launch = boundary
+    app.root_path = "/tracking"
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="https://archive.example.test"
+    ) as client:
+        assert (await client.get("/api/auth/oidc/login/branded?autostart=false")).status_code == 302
     assert launch.await_args.args[1].redirect_uri == (
-        "https://tracking.example.test/api/auth/oidc/callback/branded"
+        "https://archive.example.test/tracking/api/auth/oidc/callback/branded"
     )
 
 
@@ -196,19 +234,16 @@ async def test_explicit_environment_redirect_is_preserved(boundary, monkeypatch)
     )
 
 
-async def test_named_setup_provider_keeps_matching_saved_callback(boundary, monkeypatch):
+async def test_named_setup_provider_uses_current_address_after_an_origin_change(boundary):
     app, row, launch = boundary
     row.issuer_url, row.client_id = "https://issuer.invalid", "test-client"
-    row.redirect_uri = "https://saved.example.test/api/auth/oidc/callback"
-    monkeypatch.setattr(auth_oidc, "get_public_app_url", AsyncMock(return_value=""))
+    row.redirect_uri = "https://old-address.example.test/api/auth/oidc/callback"
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="https://attacker.example.test"
+        transport=ASGITransport(app=app), base_url="https://current.example.test"
     ) as client:
         assert (await client.get("/api/auth/oidc/login/branded?autostart=false")).status_code == 302
-    config = launch.await_args.args[1]
-    assert (
-        oidc.callback_url(None, config)
-        == "https://saved.example.test/api/auth/oidc/callback/branded"
+    assert oidc.callback_url(None, launch.await_args.args[1]) == (
+        "https://current.example.test/api/auth/oidc/callback/branded"
     )
 
 
@@ -221,7 +256,6 @@ async def test_environment_callback_applies_to_matching_named_alias(boundary, mo
         "OIDC_REDIRECT_URI": "https://canonical.example.test/api/auth/oidc/callback",
     }.items():
         monkeypatch.setattr(settings, name, value)
-    monkeypatch.setattr(auth_oidc, "get_public_app_url", AsyncMock(return_value=""))
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="https://attacker.example.test"
     ) as client:

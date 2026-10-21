@@ -284,6 +284,25 @@ async def test_environment_owned_fields_reject_api_updates(configuration, field,
     assert "managed by the deployment environment" in response.json()["detail"]
 
 
+@pytest.mark.parametrize("mode", ["email", "username", "none"])
+async def test_account_matching_controls_persist_in_legacy_and_named_settings(configuration, mode):
+    response = await configuration.http.put(
+        "/api/settings/deployment",
+        json={
+            "oidc_user_match_field": mode,
+            "oidc_providers_json": json.dumps(
+                [
+                    {"name": "Example", "slug": "example", "user_match_field": mode},
+                ]
+            ),
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert configuration.oidc.user_match_field == mode
+    assert response.json()["oidc"]["named_providers"][0]["user_match_field"] == mode
+    assert json.loads(configuration.oidc.providers_json)[0]["user_match_field"] == mode
+
+
 async def test_named_provider_normalization_retains_encrypted_secrets(configuration):
     secret = encrypt_secret("old-secret")
     configuration.oidc.providers_json = json.dumps(

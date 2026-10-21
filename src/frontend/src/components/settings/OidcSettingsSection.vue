@@ -471,6 +471,7 @@ async function save() {
               ><select v-model="provider.user_match_field">
                 <option value="email">Email</option>
                 <option value="username">Username</option>
+                <option value="none">Disabled</option>
               </select></label
             >
             <label

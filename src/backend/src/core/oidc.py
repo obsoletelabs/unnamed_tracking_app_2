@@ -127,33 +127,25 @@ def register_oidc_provider(config: OidcConfig, client_name: str = "oidc") -> Non
 
 def callback_url(request: Request, config: OidcConfig) -> str:
     if config.redirect_uri:
-        configured = config.redirect_uri.strip()
-        parts = parse_http_url(configured)
-        if parts.scheme != "https" and not (
-            (settings.DEBUG or settings.STARTUP_MODE in {"dev", "development"})
-            and is_loopback(str(parts.hostname))
-        ):
-            raise ValueError("OIDC callback requires HTTPS")
-        # A provider migrated from the old single-provider configuration may
-        # still contain the legacy callback path. Named providers have their
-        # own callback route, so transparently upgrade that old path while
-        # preserving the configured scheme/host/port.
+        callback = config.redirect_uri.strip()
+        # Preserve the named route when migrating a legacy explicit override.
         if config.slug != "default":
-            parts = urlsplit(configured)
+            parts = urlsplit(callback)
             if parts.path.rstrip("/") == "/api/auth/oidc/callback":
-                parts = parts._replace(path=f"/api/auth/oidc/callback/{config.slug}")
-                return urlunsplit(parts)
-        return configured
-    if not (
+                callback = urlunsplit(parts._replace(path=f"/api/auth/oidc/callback/{config.slug}"))
+    else:
+        callback = (
+            str(request.url_for("oidc_callback_provider", provider_slug=config.slug))
+            if config.slug != "default"
+            else str(request.url_for("oidc_callback"))
+        )
+    parts = parse_http_url(callback)
+    if parts.scheme != "https" and not (
         (settings.DEBUG or settings.STARTUP_MODE in {"dev", "development"})
-        and is_loopback(request.url.hostname or "")
+        and is_loopback(str(parts.hostname))
     ):
-        raise ValueError("Configure the public app URL or an explicit OIDC redirect URI")
-    return (
-        str(request.url_for("oidc_callback_provider", provider_slug=config.slug))
-        if config.slug != "default"
-        else str(request.url_for("oidc_callback"))
-    )
+        raise ValueError("OIDC callback requires HTTPS")
+    return callback
 
 
 async def validate_oidc_metadata(client: Any, config: OidcConfig) -> str:

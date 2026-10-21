@@ -393,7 +393,10 @@ async def test_oidc_new_account_with_taken_username_gets_distinct_account(callba
 
 @pytest.mark.parametrize("old_subject", [None, "subject", "provider:subject"])
 @pytest.mark.parametrize("match_field", ["email", "username"])
-async def test_unverified_email_never_links_existing_account(callback, old_subject, match_field):
+@pytest.mark.parametrize("required", [False, True])
+async def test_existing_account_matching_honors_optional_email_verification(
+    callback, old_subject, match_field, required
+):
     user = User(
         username="reader",
         email="reader@example.test",
@@ -403,24 +406,94 @@ async def test_unverified_email_never_links_existing_account(callback, old_subje
     callback.session.add(user)
     callback.session.commit()
     callback.claims["email_verified"] = False
-    callback.selected_config.return_value = replace(callback.config, user_match_field=match_field)
+    callback.selected_config.return_value = replace(
+        callback.config, user_match_field=match_field, require_verified_email=required
+    )
     response = await complete(callback)
-    assert response.headers["location"] == "/login?oidc_error=verified_email_required"
-    assert user.oidc_subject == old_subject
-    assert callback.session.scalar(select(UserSession.id)) is None
+    if required:
+        assert response.headers["location"] == "/login?oidc_error=verified_email_required"
+        assert user.oidc_subject == old_subject
+        assert callback.session.scalar(select(UserSession.id)) is None
+    else:
+        assert response.headers["location"] == "/login?oidc=success"
+        assert user.oidc_subject == auth_oidc_identity(callback.config)
+        assert callback.session.scalar(select(UserSession.user_id)) == user.id
 
 
-async def test_username_match_also_requires_same_verified_email(callback):
+@pytest.mark.parametrize("verified", [False, True])
+async def test_username_matching_uses_username_instead_of_requiring_email_matching(
+    callback, verified
+):
     user = User(
         username="reader", email="victim@example.test", password_hash="unused", is_admin=True
     )
+    callback.claims["email_verified"] = verified
     callback.session.add(user)
     callback.session.commit()
     callback.selected_config.return_value = replace(callback.config, user_match_field="username")
     response = await complete(callback)
-    assert response.headers["location"] == "/login?oidc_error=identity_conflict"
-    assert user.email == "victim@example.test" and user.oidc_subject is None and user.is_admin
+    assert response.headers["location"] == "/login?oidc=success"
+    assert user.email == "reader@example.test" and user.is_admin
+    assert user.oidc_subject == auth_oidc_identity(callback.config)
+    assert callback.session.scalar(select(UserSession.user_id)) == user.id
+
+
+async def test_disabled_matching_never_links_an_existing_account_by_email(callback):
+    user = User(username="reader", email="reader@example.test", password_hash="unused")
+    callback.session.add(user)
+    callback.session.commit()
+    callback.selected_config.return_value = replace(callback.config, user_match_field="none")
+    response = await complete(callback)
+    assert response.headers["location"] == "/login?oidc_error=email_conflict"
+    assert user.oidc_subject is None
     assert callback.session.scalar(select(UserSession.id)) is None
+
+
+@pytest.mark.parametrize("old_subject", ["subject", "provider:subject"])
+async def test_disabled_matching_preserves_existing_legacy_sign_ins(callback, old_subject):
+    user = User(
+        username="reader",
+        email="reader@example.test",
+        password_hash="unused",
+        oidc_subject=old_subject,
+    )
+    callback.session.add(user)
+    callback.session.commit()
+    callback.claims["email_verified"] = False
+    callback.selected_config.return_value = replace(callback.config, user_match_field="none")
+    assert (await complete(callback)).headers["location"] == "/login?oidc=success"
+    assert user.oidc_subject == auth_oidc_identity(callback.config)
+    assert callback.session.scalar(select(UserSession.user_id)) == user.id
+
+
+async def test_optional_verification_allows_email_updates_on_bound_identities(callback):
+    user = User(
+        username="reader",
+        email="old@example.test",
+        password_hash="unused",
+        oidc_subject=auth_oidc_identity(callback.config),
+    )
+    callback.session.add(user)
+    callback.session.commit()
+    callback.claims["email_verified"] = False
+    assert (await complete(callback)).headers["location"] == "/login?oidc=success"
+    assert user.email == "reader@example.test"
+    assert callback.session.scalar(select(UserSession.user_id)) == user.id
+
+
+async def test_disabled_matching_still_allows_an_already_bound_identity(callback):
+    user = User(
+        username="reader",
+        email="reader@example.test",
+        password_hash="unused",
+        oidc_subject=auth_oidc_identity(callback.config),
+    )
+    callback.session.add(user)
+    callback.session.commit()
+    callback.claims["email_verified"] = False
+    callback.selected_config.return_value = replace(callback.config, user_match_field="none")
+    assert (await complete(callback)).headers["location"] == "/login?oidc=success"
+    assert callback.session.scalar(select(UserSession.user_id)) == user.id
 
 
 @pytest.mark.parametrize("subject", [" subject", "subject ", "SUBJECT"])
