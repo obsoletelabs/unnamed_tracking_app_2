@@ -11,8 +11,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from src.core.config_registry import CONFIG_REGISTRY
 from src.core.env_handler import EnvConfigHandler
-from src.core.oidc_http import private_issuer_origins
 from src.core.metrics_token import persistent_metrics_token
+from src.core.oidc_http import private_issuer_origins
 from src.core.public_url import validate_deployment_url
 
 
