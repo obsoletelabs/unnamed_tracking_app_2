@@ -545,6 +545,15 @@ only Steam's broad official genres, so Elden Ring shows Souls-like, Open World,
 Dark Fantasy, RPG, Difficult and Action RPG rather than just Action and RPG. See
 [Steam tags as genres](../integrations/metadata.md#steam-tags-as-genres).
 
+### Launching a game
+
+A game's page shows **Launch** buttons when the game has a Playnite entry, a Steam app ID or a GOG
+product ID: Playnite and Steam start the game, and GOG Galaxy opens the game's page. The button
+asks your browser to open the matching client (`playnite://`, `steam://` or `goggalaxy://`) on the
+device you are using, so the client must be installed there; the browser may ask for permission the
+first time. Nothing is sent to the server, and only identifiers of the expected shape produce a
+button. Launching a game on a different computer than the browser is not supported yet.
+
 ### Multiplayer settings
 
 On **Overview**, choose **Edit multiplayer settings**. Tick **Playable with
