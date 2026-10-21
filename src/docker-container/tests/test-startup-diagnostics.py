@@ -2,7 +2,9 @@
 
 import json
 import os
+import select
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -38,7 +40,31 @@ def status_json(message: str) -> dict:
     return json.loads('{"message":"%s"}' % message)
 
 
+def verify_live_redacted_logs():
+    """A long-running backend must not wait for a full stdout buffer or EOF."""
+    redactor = Path(os.environ.get("REDACTOR_PATH", "/srv/startup/redact_logs.py"))
+    child_env = os.environ.copy()
+    child_env.pop("PYTHONUNBUFFERED", None)
+    with subprocess.Popen(
+        [sys.executable, str(redactor)], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE, text=True, env=child_env,
+    ) as child:
+        try:
+            child.stdin.write("OIDC login failed stage=discovery secret=must-not-appear\n")
+            child.stdin.flush()
+            ready, _, _ = select.select([child.stdout], [], [], 3)
+            assert ready, "redacted diagnostics must be visible while the input pipe remains open"
+            line = child.stdout.readline()
+            assert "OIDC login failed stage=discovery" in line
+            assert "secret=REDACTED" in line and "must-not-appear" not in line
+        finally:
+            child.stdin.close()
+            child.wait(timeout=5)
+        assert child.returncode == 0
+
+
 def main():
+    verify_live_redacted_logs()
     safe_text, storage, migration, database = blocks()
 
     # --- unwritable persistent storage is named before anything else fails -------------------------------------

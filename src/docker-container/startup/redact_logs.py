@@ -41,6 +41,7 @@ def redact(line: str) -> str:
 def main() -> int:
     for line in sys.stdin:
         sys.stdout.write(redact(line))
+        sys.stdout.flush()
     return 0
 
 

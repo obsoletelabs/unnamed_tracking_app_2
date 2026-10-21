@@ -330,8 +330,8 @@ def _normalize_oidc_provider(
         raise HTTPException(
             400, "Each OIDC provider needs a unique name, slug, issuer and client ID."
         )
-    if item.get("user_match_field", "email") not in {"email", "username"}:
-        raise HTTPException(400, "OIDC user matching must be email or username.")
+    if item.get("user_match_field", "email") not in {"email", "username", "none"}:
+        raise HTTPException(400, "OIDC user matching must be email, username or none.")
     required = item.get(
         "require_verified_email", existing.get(slug, {}).get("require_verified_email", False)
     )
@@ -395,8 +395,8 @@ def _update_oidc_field(oidc: OidcSettings, field: str, value: Any) -> None:
         if value:
             oidc.client_secret = encrypt_secret(value)
     elif field == "oidc_user_match_field":
-        if value not in {"email", "username"}:
-            raise HTTPException(400, "OIDC user matching must be email or username.")
+        if value not in {"email", "username", "none"}:
+            raise HTTPException(400, "OIDC user matching must be email, username or none.")
         oidc.user_match_field = value
     elif field == "oidc_default_login_method":
         if value not in {"local", "sso"}:

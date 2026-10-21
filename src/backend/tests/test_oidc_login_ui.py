@@ -1,12 +1,15 @@
 """Public sign-in presentation preserves provider branding and launch controls."""
 
 import json
+from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from fastapi import FastAPI
-from httpx import ASGITransport, AsyncClient
+from httpx import ASGITransport, AsyncClient, MockTransport, Response
+from starlette.middleware.sessions import SessionMiddleware
 from starlette.responses import RedirectResponse
 
 from src.api.routes import auth_oidc
@@ -71,6 +74,74 @@ def boundary(monkeypatch):
     app.include_router(auth_oidc.router)
     app.dependency_overrides[get_db] = lambda: db
     return app, row, launch
+
+
+async def test_multiple_saved_providers_launch_with_authentik_discovery_and_updated_settings(
+    boundary, monkeypatch
+):
+    app, row, _ = boundary
+    app.add_middleware(SessionMiddleware, secret_key="isolated-multi-provider-test-only")
+    monkeypatch.setattr(auth_oidc, "begin_oidc", oidc.begin_oidc)
+    monkeypatch.setattr(oidc, "oauth", oidc.OAuth())
+    monkeypatch.setattr(oidc, "_registered_configs", {})
+    original_register = oidc.register_oidc_provider
+
+    def register(config, client_name):
+        original_register(config, client_name)
+        issuer = config.issuer_url.removesuffix("/.well-known/openid-configuration") + "/"
+
+        def metadata(request):
+            assert request.url.path.endswith("/.well-known/openid-configuration")
+            return Response(
+                200,
+                json={
+                    "issuer": issuer,
+                    "authorization_endpoint": issuer + "authorize/",
+                    "token_endpoint": issuer + "token/",
+                    "jwks_uri": issuer + "jwks/",
+                    "userinfo_endpoint": issuer + "userinfo/",
+                    "id_token_signing_alg_values_supported": ["RS256"],
+                    "token_endpoint_auth_methods_supported": [
+                        "client_secret_post",
+                        "client_secret_basic",
+                    ],
+                    "code_challenge_methods_supported": ["plain", "S256"],
+                    "response_types_supported": ["code"],
+                },
+            )
+
+        oidc.oauth.create_client(client_name).client_kwargs["transport"] = MockTransport(metadata)
+
+    monkeypatch.setattr(oidc, "register_oidc_provider", register)
+    providers = [
+        {
+            "name": slug,
+            "slug": slug,
+            "issuer_url": f"https://issuer.invalid/application/o/{slug}/.well-known/openid-configuration",
+            "client_id": f"{slug}-client",
+            "client_secret": "encrypted",
+        }
+        for slug in ("atlas", "authentik")
+    ]
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="https://tracking.example.test"
+    ) as client:
+        for changed in (False, True):
+            if changed:
+                providers[1]["client_id"] = "authentik-updated-client"
+            row.providers_json = json.dumps(providers)
+            for provider in providers:
+                slug = provider["slug"]
+                response = await client.get(f"/api/auth/oidc/login/{slug}?autostart=false")
+                assert response.status_code == 302
+                parameters = parse_qs(urlsplit(response.headers["location"]).query)
+                assert parameters["client_id"] == [provider["client_id"]]
+                assert parameters["redirect_uri"] == [
+                    f"https://tracking.example.test/api/auth/oidc/callback/{slug}"
+                ]
+                assert parameters["code_challenge_method"] == ["S256"]
+                assert parameters["nonce"]
+                assert parameters["state"]
 
 
 @pytest.mark.asyncio
@@ -157,3 +228,108 @@ async def test_unconfigured_entries_return_to_the_themed_login(boundary):
             assert response.status_code == 303
             assert response.headers["location"] == "/login?oidc_error=not_configured"
     launch.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("origin", "headers", "expected_origin"),
+    [
+        ("https://archive.example.test", {}, "https://archive.example.test"),
+        ("https://archive.example.test:9443", {}, "https://archive.example.test:9443"),
+        (
+            "https://archive.example.test",
+            {"host": "alias.example.test:9443"},
+            "https://alias.example.test:9443",
+        ),
+        (
+            "https://archive.example.test",
+            {"x-forwarded-host": "untrusted.example.test"},
+            "https://archive.example.test",
+        ),
+        (
+            "https://archive.example.test",
+            {"forwarded": "host=untrusted.example.test"},
+            "https://archive.example.test",
+        ),
+    ],
+)
+async def test_callback_is_generated_from_the_current_request(
+    boundary, monkeypatch, origin, headers, expected_origin
+):
+    app, row, launch = boundary
+    monkeypatch.setattr(settings, "DEBUG", False)
+    monkeypatch.setattr(settings, "STARTUP_MODE", "production")
+    providers = json.loads(row.providers_json)
+    providers[0]["redirect_uri"] = "https://old-address.example.test/api/auth/oidc/callback/branded"
+    row.providers_json = json.dumps(providers)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url=origin) as client:
+        response = await client.get(
+            "/api/auth/oidc/login/branded?autostart=false",
+            headers=headers,
+        )
+    assert response.status_code == 302
+    request, config = launch.await_args.args
+    expected = expected_origin + "/api/auth/oidc/callback/branded"
+    assert config.redirect_uri == expected
+    assert oidc.callback_url(request, config) == expected
+    assert oidc.callback_url(request, replace(config, redirect_uri=None)) == expected
+
+
+async def test_generated_callback_preserves_the_proxy_mount_path(boundary):
+    app, _, launch = boundary
+    app.root_path = "/tracking"
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="https://archive.example.test"
+    ) as client:
+        assert (await client.get("/api/auth/oidc/login/branded?autostart=false")).status_code == 302
+    assert launch.await_args.args[1].redirect_uri == (
+        "https://archive.example.test/tracking/api/auth/oidc/callback/branded"
+    )
+
+
+async def test_explicit_environment_redirect_is_preserved(boundary, monkeypatch):
+    app, _, launch = boundary
+    for name, value in {
+        "OIDC_ISSUER_URL": "https://issuer.invalid",
+        "OIDC_CLIENT_ID": "client",
+        "OIDC_CLIENT_SECRET": "secret",
+        "OIDC_REDIRECT_URI": "https://canonical.example.test/api/auth/oidc/callback",
+    }.items():
+        monkeypatch.setattr(settings, name, value)
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="https://attacker.example.test"
+    ) as client:
+        assert (await client.get("/api/auth/oidc/login")).status_code == 302
+    assert launch.await_args.args[1].redirect_uri == (
+        "https://canonical.example.test/api/auth/oidc/callback"
+    )
+
+
+async def test_named_setup_provider_uses_current_address_after_an_origin_change(boundary):
+    app, row, launch = boundary
+    row.issuer_url, row.client_id = "https://issuer.invalid", "test-client"
+    row.redirect_uri = "https://old-address.example.test/api/auth/oidc/callback"
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="https://current.example.test"
+    ) as client:
+        assert (await client.get("/api/auth/oidc/login/branded?autostart=false")).status_code == 302
+    assert oidc.callback_url(None, launch.await_args.args[1]) == (
+        "https://current.example.test/api/auth/oidc/callback/branded"
+    )
+
+
+async def test_environment_callback_applies_to_matching_named_alias(boundary, monkeypatch):
+    app, _, launch = boundary
+    for name, value in {
+        "OIDC_ISSUER_URL": "https://issuer.invalid",
+        "OIDC_CLIENT_ID": "test-client",
+        "OIDC_CLIENT_SECRET": "secret",
+        "OIDC_REDIRECT_URI": "https://canonical.example.test/api/auth/oidc/callback",
+    }.items():
+        monkeypatch.setattr(settings, name, value)
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="https://attacker.example.test"
+    ) as client:
+        assert (await client.get("/api/auth/oidc/login/branded?autostart=false")).status_code == 302
+    assert oidc.callback_url(None, launch.await_args.args[1]) == (
+        "https://canonical.example.test/api/auth/oidc/callback/branded"
+    )

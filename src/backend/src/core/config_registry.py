@@ -630,6 +630,14 @@ CONFIG_REGISTRY: tuple[ConfigSpec, ...] = (
         required=True,
         storage="oidc",
     ),
+    ConfigSpec(
+        "OIDC_PRIVATE_ISSUER_ORIGINS",
+        "oidc",
+        source=ConfigSource.ENV,
+        visible=False,
+        default="",
+        description="Legacy optional setting; configured HTTPS issuer origins already permit private routing.",
+    ),
     ConfigSpec("OIDC_CLIENT_ID", "oidc", label="Client ID", required=True, storage="oidc"),
     ConfigSpec(
         "OIDC_CLIENT_SECRET",
@@ -665,7 +673,7 @@ CONFIG_REGISTRY: tuple[ConfigSpec, ...] = (
         "oidc",
         label="Match users by",
         input_type="choice",
-        choices=(("email", "Email"), ("username", "Username")),
+        choices=(("email", "Email"), ("username", "Username"), ("none", "Disabled")),
         default="email",
         storage="oidc",
     ),
