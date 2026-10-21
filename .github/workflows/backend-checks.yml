@@ -62,6 +62,14 @@ jobs:
       - name: Install backend dependencies
         run: python -m pip install -r requirements.txt
 
+      # The automatic startup backup tests run the real Restic and PostgreSQL client tools.
+      - name: Install backup tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends restic postgresql-client
+          restic version
+          pg_dump --version
+
       - name: Prepare test database
         run: alembic upgrade head 2>&1 | tee migrations-output.txt
 

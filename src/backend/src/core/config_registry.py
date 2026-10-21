@@ -676,7 +676,10 @@ CONFIG_REGISTRY: tuple[ConfigSpec, ...] = (
         source=ConfigSource.ENV,
         visible=False,
         default="automatic",
-        description="Automatically capture local recovery before upgrades; required uses operator-issued full recovery evidence, and development explicitly opts out.",
+        description=(
+            "Automatically capture local recovery before upgrades; required uses operator-issued "
+            "full recovery evidence, and development explicitly opts out."
+        ),
     ),
     ConfigSpec(
         "MIGRATION_BACKUP_MAX_AGE_SECONDS",
