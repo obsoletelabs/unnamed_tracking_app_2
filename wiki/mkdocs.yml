@@ -46,6 +46,7 @@ nav:
       - TV Shows: user-guide/tv-shows.md
       - Movies: user-guide/movies.md
       - Calendar & ICS: user-guide/calendar.md
+      - Statistics: user-guide/statistics.md
   - Integrations:
       - Overview: integrations/index.md
       - Playnite: integrations/playnite.md
@@ -85,6 +86,8 @@ nav:
       - Remaining UI Merge Checks: development/ui-merge-checklist.md
       - API: development/api.md
       - API Examples: development/api-examples.md
+      - API Access Matrix: development/api-access-matrix.md
+      - Password Policy: development/password-policy.md
       - Plugin API v1: development/plugin-api-v1.md
       - Public Apps and Integration Delegation: development/plugin-public-apps.md
       - Progressive Metadata Providers: development/metadata-providers.md
@@ -101,6 +104,7 @@ nav:
       - Plugin Lifecycle: development/plugin-lifecycle.md
       - Remote Plugin Management API: development/plugin-management-api.md
       - Plugin Updates & Rollback: development/plugin-updates.md
+      - Plugin Update Notification Batching: development/plugin-update-notification-batching.md
       - Plugin Runtime Isolation: development/plugin-runtime.md
       - Plugin Storage: development/plugin-storage.md
       - Plugin UI Protocol: development/plugin-ui.md

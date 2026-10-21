@@ -575,6 +575,12 @@ supported yet.
 
 ### Multiplayer settings
 
+A metadata provider (for example Atlas) can supply player limits and crossplay for a
+game. A provider's values are used only when both the minimum and maximum are
+known and you have not confirmed details yourself, they are marked as coming from
+the provider, and a later refresh may update them. Anything you confirm is never
+replaced, and a game with its multiplayer field locked is skipped.
+
 Choose **Edit** on the game page and open the **Play** tab. Tick **Playable with
 others** and save to mark multiplayer without supplying extra details. Exact
 player limits remain unknown. Enable **Set known player limits** to enter both
@@ -610,6 +616,22 @@ game.
   percentage, PlayStation's earned rate, or RetroAchievements' count).
 - Screenshots, clips and notes can be tied to an achievement, and the
   achievement's page lists what is tied to it.
+- **Achievements from metadata providers.** A metadata provider that publishes a
+  game's achievement list (for example an Atlas provider plugin) can fill in
+  games that no platform syncs, and add missing details to ones that do. Its
+  entries show an icon (and a locked icon), the kind (progression, missable or
+  win condition), a medal and points where the provider supplies them, and are
+  labelled with the provider. They are locked entries of their own unless they
+  match a Steam, PlayStation or RetroAchievements achievement, in which case the
+  synced entry keeps your unlock state and only gains the missing details. Your
+  own and synced achievements are never changed by a provider, and provider
+  entries never carry progress.
+- **Several copies of one game.** When copies of a game are merged (for example
+  Steam and GOG), the Achievements tab lists each achievement once. An entry is
+  unlocked when any source has it unlocked, with the earliest time, and under its
+  description shows which source has it. It stays hidden only while every source
+  hides it and none has it unlocked. See [One game from several
+  sources](../development/multi-source-games.md) for the matching rules.
 
 ### Your own achievements and completion
 
