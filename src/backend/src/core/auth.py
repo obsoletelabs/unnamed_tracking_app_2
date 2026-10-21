@@ -11,7 +11,7 @@ from uuid import UUID
 
 from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
 from fastapi import Depends, HTTPException, Request, status
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth_checks import check_credential
@@ -123,6 +123,22 @@ def username_rule_error(value: str) -> str | None:
         shown = ", ".join(offenders[:5]) + (", \u2026" if len(offenders) > 5 else "")
         return f"Username cannot contain {shown}. {_USERNAME_RULE}"
     return None
+
+
+async def username_in_use(
+    db: AsyncSession, username: str, *, exclude_user_id: UUID | None = None
+) -> bool:
+    """Whether another account already has this name, ignoring ASCII letter case.
+
+    New and renamed usernames may not differ from an existing one only by case ("Admin" next to
+    "admin"), which would let one person impersonate another. Existing accounts are never
+    renamed or locked out: sign-in still matches the stored name exactly, so legacy pairs keep
+    working and only the creation paths use this check.
+    """
+    statement = select(User.id).where(func.lower(User.username) == username.strip().lower())
+    if exclude_user_id is not None:
+        statement = statement.where(User.id != exclude_user_id)
+    return await db.scalar(statement.limit(1)) is not None
 
 
 def validate_username(value: str) -> str:

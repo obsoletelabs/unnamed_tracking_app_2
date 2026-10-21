@@ -28,6 +28,7 @@ from src.core.auth import (
     revoke_session,
     session_cookie_name,
     set_password_policy_override,
+    username_in_use,
     validate_display_name,
     validate_password,
     validate_username,
@@ -311,9 +312,20 @@ async def update_current_user(
 
     if payload.username is not None and payload.username.strip() != user.username:
         try:
-            user.username = validate_username(payload.username)
+            new_username = validate_username(payload.username)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if await username_in_use(db, new_username, exclude_user_id=user.id):
+            # Same disclosure rule as any other collision: only administrators learn the field.
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "That username is already taken. Choose a different username."
+                    if user.is_admin
+                    else ACCOUNT_CONFLICT_DETAIL
+                ),
+            )
+        user.username = new_username
     if "display_name" in payload.model_fields_set:
         user.display_name = payload.display_name
     if payload.email is not None:
