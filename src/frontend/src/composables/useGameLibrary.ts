@@ -186,6 +186,8 @@ export function useGameLibrary() {
   const deletingGame = ref<Game | null>(null);
   const deleting = ref(false);
   const deleteError = ref<string | null>(null);
+  const favoriteError = ref<string | null>(null);
+  const favoritesInFlight = new Set<string>();
 
   const storedView = localStorage.getItem("gameLibraryViewMode");
   // "shelves" used to be the by-source layout, since removed; "cards" is the
@@ -1149,12 +1151,20 @@ export function useGameLibrary() {
   }
 
   async function toggleFavorite(game: Game) {
+    // A second click while the first is saving would race it and could
+    // leave the star showing the wrong state.
+    if (favoritesInFlight.has(game.id)) return;
+    favoritesInFlight.add(game.id);
+    favoriteError.value = null;
     const next = !game.favorite;
     game.favorite = next;
     try {
       onGameUpdated(await setFavorite(game.id, next));
     } catch {
       game.favorite = !next;
+      favoriteError.value = `Could not update the favourite for "${game.title}". Try again.`;
+    } finally {
+      favoritesInFlight.delete(game.id);
     }
   }
 
@@ -1672,6 +1682,7 @@ export function useGameLibrary() {
   }
 
   return {
+    favoriteError,
     loadGames,
     viewportWidth,
     activePriority,
