@@ -142,6 +142,25 @@ class MetadataAiring(MetadataModel):
     next_episode_at: int | None = Field(default=None, ge=0)
 
 
+class MetadataAchievement(MetadataModel):
+    """One catalogue entry of a game's achievements; never carries a player's progress."""
+
+    external_id: Identifier
+    name: str = Field(min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=2_000)
+    # A hidden entry whose real text the provider did not reveal arrives as a placeholder.
+    hidden: bool = False
+    kind: Literal["progression", "missable", "win_condition"] | None = None
+    tier: Literal["bronze", "silver", "gold"] | None = None
+    points: int | None = Field(default=None, ge=0, le=100_000)
+    global_percent: float | None = Field(default=None, ge=0, le=100, allow_inf_nan=False)
+    icon_url: AnyHttpUrl | None = None
+    locked_icon_url: AnyHttpUrl | None = None
+    # Ids the same achievement has elsewhere (e.g. {"steam": "ACH_X"}), used to match a user's
+    # synced progress to this entry.
+    source_ids: dict[ActionId, Identifier] = Field(default_factory=dict, max_length=8)
+
+
 class MetadataPatch(MetadataModel):
     """Partial canonical fields; missing values never erase existing information."""
 
@@ -200,6 +219,7 @@ class MetadataPatch(MetadataModel):
     crossplay: Literal["yes", "no", "partial"] | None = None
     # Provider-defined fields the host has no column for, kept as read-only provider details.
     custom: dict[ActionId, CustomValue] = Field(default_factory=dict, max_length=32)
+    achievements: tuple[MetadataAchievement, ...] = Field(default=(), max_length=500)
 
     @model_validator(mode="after")
     def ordered_players(self) -> "MetadataPatch":

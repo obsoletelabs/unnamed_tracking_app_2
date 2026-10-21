@@ -105,8 +105,9 @@ def _media_saved(kind: str) -> Callable[[Any, Any, Any], None]:
 
 
 def _icon_saved(_mapper: Any, _connection: Any, row: Achievement) -> None:
-    if row.icon_url and row.icon_url.startswith(("http://", "https://")):
-        schedule(row.icon_url, icon_cache_path(ICON_ROOT, row.icon_url), WIDTHS["icon"])
+    for url in (row.icon_url, row.locked_icon_url):
+        if url and url.startswith(("http://", "https://")):
+            schedule(url, icon_cache_path(ICON_ROOT, url), WIDTHS["icon"])
 
 
 for _model, _kind in ((Movie, "movie"), (TVShow, "tv"), (Anime, "anime")):

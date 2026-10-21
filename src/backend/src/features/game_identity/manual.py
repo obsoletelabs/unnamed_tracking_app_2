@@ -35,6 +35,7 @@ from src.database.models.game_identity_tracking import (
     LockOrigin,
     ManualFactOrigin,
 )
+from src.features.achievement_catalog import CATALOG
 from src.features.game_identity import graph, policy
 from src.helpers.public_http import parse_http_url
 
@@ -412,7 +413,9 @@ async def achievements_view(db: AsyncSession, user_id: UUID, game_id: UUID) -> d
     )
     provider = (
         await db.scalars(
-            select(Achievement).where(Achievement.game_id.in_(ids)).order_by(Achievement.name)
+            select(Achievement)
+            .where(Achievement.game_id.in_(ids), Achievement.provider != CATALOG)
+            .order_by(Achievement.name)
         )
     ).all()
     scope: ColumnElement[bool] = GameManualAchievement.game_id.in_(ids)

@@ -77,6 +77,154 @@
       "title": "MediaType",
       "type": "string"
     },
+    "MetadataAchievement": {
+      "additionalProperties": false,
+      "description": "One catalogue entry of a game's achievements; never carries a player's progress.",
+      "properties": {
+        "external_id": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "External Id",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "hidden": {
+          "default": false,
+          "title": "Hidden",
+          "type": "boolean"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "progression",
+                "missable",
+                "win_condition"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Kind"
+        },
+        "tier": {
+          "anyOf": [
+            {
+              "enum": [
+                "bronze",
+                "silver",
+                "gold"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tier"
+        },
+        "points": {
+          "anyOf": [
+            {
+              "maximum": 100000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Points"
+        },
+        "global_percent": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Global Percent"
+        },
+        "icon_url": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Icon Url"
+        },
+        "locked_icon_url": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Locked Icon Url"
+        },
+        "source_ids": {
+          "maxProperties": 8,
+          "patternProperties": {
+            "^[a-z0-9][a-z0-9._-]*$": {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "propertyNames": {
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "title": "Source Ids",
+          "type": "object"
+        }
+      },
+      "required": [
+        "external_id",
+        "name"
+      ],
+      "title": "MetadataAchievement",
+      "type": "object"
+    },
     "MetadataAiring": {
       "additionalProperties": false,
       "properties": {
@@ -907,6 +1055,15 @@
           },
           "title": "Custom",
           "type": "object"
+        },
+        "achievements": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/MetadataAchievement"
+          },
+          "maxItems": 500,
+          "title": "Achievements",
+          "type": "array"
         }
       },
       "title": "MetadataPatch",
@@ -1216,5 +1373,5 @@
   "title": "ProviderResponse",
   "type": "object",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "x-api-contract-version": "1.1.15"
+  "x-api-contract-version": "1.1.16"
 }

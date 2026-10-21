@@ -29,6 +29,7 @@ from src.core.preferences import load_preferences
 from src.core.titles import normalize_metadata_title as _normalize_metadata_title
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features.achievement_catalog import store_catalog
 from src.features.game_identity import names
 from src.features.metadata.locked_fields import apply_metadata_updates
 from src.features.metadata.service import (
@@ -330,6 +331,9 @@ async def refresh_game_metadata(
         if "title" in updates:
             names.note_title_change(game, trusted_metadata=True)
             await names.reconcile_games(db, game.user_id, [game])
+        provider_achievements = match.get("achievements")
+        if isinstance(provider_achievements, list):
+            await store_catalog(db, game.id, provider_achievements)
 
     if payload.fill_missing_art:
 

@@ -41,7 +41,11 @@ export interface Achievement {
   unlocked?: boolean;
   provider?: string;
   iconUrl?: string | null;
+  // the greyed-out icon a metadata provider supplies for a not yet earned one
+  lockedIconUrl?: string | null;
   kind?: AchievementKind | null;
+  // points the provider rates it at
+  points?: number | null;
   hidden?: boolean;
   // the share of all players who have it (0-100)
   rarityPercent?: number | null;

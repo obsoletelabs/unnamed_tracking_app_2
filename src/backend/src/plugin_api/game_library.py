@@ -14,6 +14,7 @@ from sqlalchemy.sql.functions import count
 from src.database.models.achievement import Achievement
 from src.database.models.game import Game
 from src.database.models.media_item import MediaItem
+from src.features.achievement_catalog import CATALOG
 
 _PUBLIC_FIELDS = (
     "id",
@@ -101,7 +102,7 @@ async def dispatch_game_library(
                             count(),
                             count().filter(Achievement.unlocked.is_(True)),
                         )
-                        .where(Achievement.game_id.in_(ids))
+                        .where(Achievement.game_id.in_(ids), Achievement.provider != CATALOG)
                         .group_by(Achievement.game_id)
                     )
                 ).all()
@@ -127,7 +128,7 @@ async def dispatch_game_library(
             (
                 await db.execute(
                     select(Achievement)
-                    .where(Achievement.game_id == game.id)
+                    .where(Achievement.game_id == game.id, Achievement.provider != CATALOG)
                     .order_by(Achievement.id)
                     .offset(offset)
                     .limit(limit + 1)

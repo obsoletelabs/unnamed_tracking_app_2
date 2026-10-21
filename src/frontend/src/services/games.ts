@@ -307,7 +307,9 @@ interface BackendAchievement {
   icon_url: string | null;
   unlocked: boolean;
   unlocked_at: number | null;
-  // not sent yet; read when the backend starts storing them
+  locked_icon_url?: string | null;
+  medal?: string | null;
+  points?: number | null;
   tier?: string | null;
   hidden?: boolean | null;
   global_percent?: number | null;
@@ -401,6 +403,12 @@ export async function fetchGameAchievements(
     unlockedAt: a.unlocked ? unixSecondsToIso(a.unlocked_at) : null,
     provider: a.provider,
     iconUrl: a.icon_url,
+    lockedIconUrl: a.locked_icon_url ?? null,
+    points: a.points ?? null,
+    tierOverride:
+      a.medal === "bronze" || a.medal === "silver" || a.medal === "gold"
+        ? a.medal
+        : null,
     kind: normalizeKind(a.tier),
     hidden: a.hidden ?? false,
     rarityPercent: a.global_percent ?? null,

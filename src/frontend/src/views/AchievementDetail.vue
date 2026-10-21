@@ -7,7 +7,7 @@ import {
   listGameNoteSummaries,
 } from "../services/games";
 import type { GameNoteSummary } from "../services/games";
-import { isUnlocked } from "../utils/achievements";
+import { iconOf, isUnlocked } from "../utils/achievements";
 import {
   listGameScreenshots,
   uploadGameScreenshots,
@@ -198,8 +198,8 @@ function goBack() {
       <div
         class="achievement-icon-large"
         :style="
-          achievement.iconUrl
-            ? { backgroundImage: `url(${achievement.iconUrl})` }
+          iconOf(achievement)
+            ? { backgroundImage: `url(${iconOf(achievement)})` }
             : {}
         "
       ></div>
