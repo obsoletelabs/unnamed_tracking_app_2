@@ -1307,3 +1307,8 @@
 .game-detail-page select {
   min-height: var(--ui-control-height);
 }
+
+.game-detail-page .favorite-error {
+  margin: 0.5rem 0;
+  color: var(--ui-error);
+}

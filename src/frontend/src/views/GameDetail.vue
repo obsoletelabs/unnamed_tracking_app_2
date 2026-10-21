@@ -92,6 +92,7 @@ const {
   logPlaytime,
   similarGames,
   toggleFavorite,
+  favoriteError,
   STATUS_OPTIONS,
   changeStatus,
   onCollectionsChanged,
@@ -476,6 +477,9 @@ async function onCopiesChanged() {
               @changed="onCollectionsChanged"
             />
           </div>
+          <p v-if="favoriteError" class="favorite-error" role="alert">
+            {{ favoriteError }}
+          </p>
         </div>
       </div>
     </section>

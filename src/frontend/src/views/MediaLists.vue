@@ -44,7 +44,10 @@ const kindFilter = ref<KindFilter>("all");
 const editingList = ref<MediaListSummary | null>(null);
 const typeFilter = ref<"all" | "movie" | "tv" | "anime">("all");
 
+let loadInFlight = false;
 async function load() {
+  if (loadInFlight) return;
+  loadInFlight = true;
   loading.value = true;
   error.value = null;
   try {
@@ -53,6 +56,7 @@ async function load() {
     error.value = e instanceof Error ? e.message : "Failed to load lists.";
   } finally {
     loading.value = false;
+    loadInFlight = false;
   }
 }
 onMounted(load);
@@ -264,7 +268,10 @@ async function deleteList(id: string) {
       <p v-if="createError" class="ui-error-box">{{ createError }}</p>
 
       <p v-if="loading" class="ui-state">Loading…</p>
-      <p v-else-if="error" class="ui-state error">{{ error }}</p>
+      <p v-else-if="error" class="ui-state error" role="alert">
+        {{ error }}
+        <button type="button" class="ui-btn" @click="load">Retry</button>
+      </p>
 
       <template v-else>
         <div v-if="filteredLists.length" class="grid">

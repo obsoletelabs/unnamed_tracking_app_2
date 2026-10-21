@@ -113,6 +113,17 @@ class MetadataEpisode(MetadataModel):
     still_url: AnyHttpUrl | None = None
 
 
+class MetadataAchievement(MetadataModel):
+    """An achievement definition from a provider's catalogue. Progress is never provider-owned."""
+
+    name: str = Field(min_length=1, max_length=200)
+    external_id: Identifier
+    description: str | None = Field(default=None, max_length=2000)
+    hidden: bool = False
+    global_percent: float | None = Field(default=None, ge=0, le=100, allow_inf_nan=False)
+    icon_url: AnyHttpUrl | None = None
+
+
 class MetadataSeason(MetadataModel):
     season_number: int = Field(ge=0, le=10_000)
     external_id: Identifier | None = None

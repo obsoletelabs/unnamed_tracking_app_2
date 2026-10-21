@@ -22,13 +22,36 @@ flows named below, not of every screen.
 | Home (`HomeHub`) | one data source fails | separate loading/error per source already existed | already covered |
 | Startup and backend unavailable | backend down | themed unavailable screen with retry already existed | already covered |
 | Notification settings | preferences or routing request fails | error shown; stored values kept | already covered; layout changed only ([#273](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/273)) |
+| Media picker search, plugin manager popup | out-of-order search; slow or partial plugin popup requests | sequence guards and per-section tolerance already exist | already covered |
+| Collection detail (`/games/collections/:name`) | games request fails | showed "Nothing in this collection yet" with no retry | **fixed**: alert with **Retry**, guarded against double starts, no full-page spinner when reloading with data present (`uiStateAudit.test.ts`) |
+| Collections index (`/games/collections`) | games request fails | error without retry | **fixed**: **Retry** with in-flight guard and error reset |
+| Media lists index (`/media/lists`) | lists request fails | error without retry | **fixed**: **Retry** with in-flight guard |
+| Media list detail (`/media/lists/:id`) | id changes while loading; request fails | an older response could overwrite the newer list and the previous list stayed under the new id | **fixed**: sequence guarded, cleared on id change, error has **Retry** |
+| Achievement detail notes | navigate to another achievement | a late response filled the wrong achievement's notes | **fixed**: sequence guarded and cleared on change |
+| Settings > Users: invitations | invitations request fails | failure was swallowed into an empty list | **fixed**: message with **Retry**, previous invitations kept |
+| Settings > Users: user table | users request fails, or a later action errors | any error replaced the whole table and had no retry | **fixed**: table stays when users are loaded, a load failure shows **Retry**, concurrent reloads are ignored |
+| Statistics burn-down card | games request fails | the optional card is silently omitted; the main statistics keep their own error state | left |
+| Plugin popup UI and logs | request fails | intentionally tolerated; the popup shows the remaining sections | left |
+
+## Exercised with injected failures
+
+Run against the development stack with the browser's `fetch` forced to answer 500 for one endpoint at a time, then cleared to check that Retry recovers.
+
+| Flow | Injected failure | Result |
+| --- | --- | --- |
+| Game library, returning to `/games` with a library already seen | `/api/game/list` answers 500 | **fixed**: the cached games disappeared and the error had no Retry. The list now stays, with an alert "The list below may be out of date" and **Retry** (`GameLibrary.vue`) |
+| Game page favourite heart | `PATCH /api/game/update/:id` answers 500 | **fixed**: the heart reverted with no message and a second click could race the first. It now shows "Could not update the favourite" beside the heart and ignores clicks while saving (`useFavoriteToggle`) |
+| Library favourite star | same | **fixed**: same silent revert; now names the game and ignores a second click while saving |
+| Game page | game requests answer 500 | already covered: "We couldn't load this game" with **Try again** and a way back |
+| Media lists index | `/api/lists` answers 500 | covered by the earlier fix; Retry restores the lists |
+| Settings > Users | `/api/auth/users` answers 500 | covered by the earlier fix; message with Retry |
+| Collections index and detail | games request answers 500 | covered by the earlier fix (screenshots above) |
+
+Login, accepting an invitation, first-run setup and the upload section were read, not exercised: each guards its submit with a busy or saving flag, clears it in `finally` and shows the error.
 
 ## Not audited yet
 
-Game library and detail loading (very large), the plugin manager, the authentication and setup pages beyond startup, the
-statistics pages, the lists and collections pages, and import dialogs other than Steam. Each needs the same four questions
-asked against its real requests; they are listed here so a later change can take them one at a time rather than editing many
-components at once.
+Notification pages (they follow the notification overhaul contract), the rest of the game page (`useGameDetail` has 37 error handlers; only load and favourite were exercised), anime, movie and TV detail views, the Steam and connection dialogs and the plugin manager's remaining handlers. The anime, movie, TV and plugin flows need provider data or a running plugin runtime, which the test stack did not have. Each needs the same four questions asked against its real requests.
 
 ## How to check a flow
 
@@ -36,3 +59,31 @@ components at once.
 2. Confirm the screen says which part failed, keeps what it had and the user's draft, and offers retry.
 3. Confirm retry cannot submit twice.
 4. Add a test that fails if the failure shows as an empty state.
+
+## Screenshots
+
+Captured against the development stack with the games request forced to answer 500 (Modern theme, 800 px pane).
+
+| Page | Before | After |
+| --- | --- | --- |
+| Collection detail | ![A failed request shown as an empty collection](../assets/ui-state-audit/collection-detail-before.jpg) | ![The failure named, with a Retry button](../assets/ui-state-audit/collection-detail-after.jpg) |
+| Collections index | ![Error without a way to retry](../assets/ui-state-audit/collections-index-before.jpg) | ![Error with a Retry button](../assets/ui-state-audit/collections-index-after.jpg) |
+
+### Phone width and Classic
+
+The collection pages were also checked at 375 px in Modern and Classic with the same forced failure. Both keep the layout (header, actions, error and **Retry** on their own lines, no horizontal scroll).
+
+| Collection detail | Modern, phone | Classic, phone |
+| --- | --- | --- |
+| After | ![Modern theme at phone width, failure with Retry](../assets/ui-state-audit/collection-detail-modern-phone.jpg) | ![Classic theme at phone width, failure with Retry](../assets/ui-state-audit/collection-detail-classic-phone.jpg) |
+
+Achievement notes are covered by tests only (the test stack has no achievements). The collection detail page also shows two messages for one failure (the raw "Failed to fetch games: 500" and the friendlier "Could not load this collection"), which is redundant but harmless.
+
+### More screenshots
+
+| Flow | Screenshot |
+| --- | --- |
+| Settings > Users, request failed | ![Users failure with Retry](../assets/ui-state-audit/settings-users-failure.jpg) |
+| Media lists, request failed | ![Media lists failure with Retry](../assets/ui-state-audit/media-lists-failure.jpg) |
+| Library refresh failed, games kept | ![Library with the old list and a Retry alert](../assets/ui-state-audit/library-refresh-failure-after.jpg) |
+| Favourite change failed on the game page | ![Message beside the heart](../assets/ui-state-audit/favourite-toggle-failure.jpg) |
