@@ -1,0 +1,7 @@
+apiVersion: 1
+providers:
+  - name: unnamed-tracking
+    folder: Unnamed Tracking
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards

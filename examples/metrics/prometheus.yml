@@ -1,5 +1,5 @@
 # Example Prometheus scrape configuration for Unnamed Tracking.
-# See wiki/docs/deployment/metrics.md. The token is the application's METRICS_TOKEN.
+# See wiki/docs/deployment/metrics.md for how the token is generated and where to find it.
 global:
   scrape_interval: 30s
 
@@ -7,12 +7,23 @@ rule_files:
   - alerts.yml
 
 scrape_configs:
+  # Production image (single container): set METRICS_LISTEN_PORT=9464 on the application
+  # container and put Prometheus on a Docker network shared with it. The target is the
+  # container's service name and that port, not a published port on the public internet.
   - job_name: unnamed-tracking
     metrics_path: /metrics
-    # Development stack: scrape the backend container on the internal network.
-    # Production image: set METRICS_LISTEN_PORT (for example 9464) and scrape that port.
     static_configs:
-      - targets: ["backend:8000"]
+      - targets: ["unnamed-tracking:9464"]
     authorization:
       type: Bearer
       credentials_file: /etc/prometheus/unnamed-tracking-metrics-token
+
+  # Development stack (compose.yaml): the backend container serves /metrics itself on 8000.
+  # Use this job instead of the one above when running the split frontend/backend images.
+  # - job_name: unnamed-tracking-dev
+  #   metrics_path: /metrics
+  #   static_configs:
+  #     - targets: ["backend:8000"]
+  #   authorization:
+  #     type: Bearer
+  #     credentials_file: /etc/prometheus/unnamed-tracking-metrics-token

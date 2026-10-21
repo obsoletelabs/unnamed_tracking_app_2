@@ -76,6 +76,7 @@ from src.api.routes import (
 )
 from src.api.routes.auth_oidc import router as auth_oidc_router
 from src.api.routes.deployment_settings import router as deployment_settings_router
+from src.api.routes.metrics_settings import router as metrics_settings_router
 from src.api.routes.plugin_permissions import router as plugin_permissions_router
 from src.api.routes.plugins import host_router as plugin_host_routes
 from src.api.routes.plugins import router as plugins_router
@@ -191,6 +192,7 @@ app.include_router(settings.router)
 app.include_router(branding.router)
 app.include_router(themes_router)
 app.include_router(deployment_settings_router)
+app.include_router(metrics_settings_router)
 app.include_router(plugin_permissions_router)
 app.include_router(plugins_router)
 app.include_router(pwa_router)

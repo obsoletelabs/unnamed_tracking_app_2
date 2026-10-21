@@ -300,7 +300,7 @@ CONFIG_REGISTRY: tuple[ConfigSpec, ...] = (
         source=ConfigSource.ENV,
         visible=False,
         input_type="password",
-        description="Bearer token (at least 32 characters) a scraper must present to /metrics.",
+        description="Bearer token (at least 32 characters) for /metrics; generated and saved if empty.",
     ),
     ConfigSpec(
         "NOTIFICATION_AUDIT_RETENTION_DAYS",

@@ -1,0 +1,31 @@
+# Optional Prometheus and Grafana for the production image. Copy next to your own compose file,
+# join `monitoring` from the application service and set on that service:
+#   METRICS_ENABLED: "true"
+#   METRICS_LISTEN_PORT: "9464"
+# Read the generated token as an administrator (Settings API: GET /api/settings/metrics) or set
+# METRICS_TOKEN yourself, then save it as ./prometheus-token (readable only by you).
+services:
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./alerts.yml:/etc/prometheus/alerts.yml:ro
+      - ./prometheus-token:/etc/prometheus/unnamed-tracking-metrics-token:ro
+      - prometheus-data:/prometheus
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=15d"]
+    networks: [monitoring]
+  grafana:
+    image: grafana/grafana:11.3.0
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana-dashboard.json:/var/lib/grafana/dashboards/unnamed-tracking.json:ro
+      - grafana-data:/var/lib/grafana
+    networks: [monitoring]
+volumes:
+  prometheus-data:
+  grafana-data:
+networks:
+  monitoring:
+    name: monitoring
