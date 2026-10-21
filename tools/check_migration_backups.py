@@ -28,6 +28,8 @@ class UpgradeDrill(Drill):
         app = deployment.instances["app"]
         env = environment(app.info)
         env["ENV_FILE"] = "/dev/null"
+        # This harness proves the retained strict mode; the application default is automatic.
+        env["MIGRATION_BACKUP_MODE"] = "required"
         network = next(iter(app.info["NetworkSettings"]["Networks"].values()))["NetworkID"]
         arguments = [
             "docker",
