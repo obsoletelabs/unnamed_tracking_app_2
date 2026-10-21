@@ -288,6 +288,37 @@ CONFIG_REGISTRY: tuple[ConfigSpec, ...] = (
         description="Maximum concurrent password computations in each backend worker process.",
     ),
     ConfigSpec(
+        "METRICS_ENABLED",
+        source=ConfigSource.ENV,
+        visible=False,
+        input_type="boolean",
+        default=False,
+        description="Serve Prometheus metrics at /metrics (on by default in the production image).",
+    ),
+    ConfigSpec(
+        "METRICS_LISTEN_PORT",
+        source=ConfigSource.ENV,
+        visible=False,
+        input_type="integer",
+        default=9464,
+        description="Production image: port of the token-free metrics scrape listener (closed unless published).",
+    ),
+    ConfigSpec(
+        "METRICS_NGINX_ROUTE_ENABLED",
+        source=ConfigSource.ENV,
+        visible=False,
+        input_type="boolean",
+        default=False,
+        description="Production image: pass token-protected /metrics through the public web ports.",
+    ),
+    ConfigSpec(
+        "METRICS_TOKEN",
+        source=ConfigSource.ENV,
+        visible=False,
+        input_type="password",
+        description="Bearer token (at least 32 characters) for /metrics; generated and saved if empty.",
+    ),
+    ConfigSpec(
         "NOTIFICATION_AUDIT_RETENTION_DAYS",
         source=ConfigSource.ENV,
         visible=False,
@@ -680,6 +711,30 @@ CONFIG_REGISTRY: tuple[ConfigSpec, ...] = (
             "Automatically capture local recovery before upgrades; required uses operator-issued "
             "full recovery evidence, and development explicitly opts out."
         ),
+    ),
+    ConfigSpec(
+        "ARGON2_MEMORY_KIB",
+        source=ConfigSource.ENV,
+        visible=False,
+        input_type="integer",
+        default=19456,
+        description="Argon2id memory cost for new password hashes in KiB (8192 to 262144).",
+    ),
+    ConfigSpec(
+        "ARGON2_TIME_COST",
+        source=ConfigSource.ENV,
+        visible=False,
+        input_type="integer",
+        default=2,
+        description="Argon2id iterations for new password hashes (1 to 10).",
+    ),
+    ConfigSpec(
+        "ARGON2_PARALLELISM",
+        source=ConfigSource.ENV,
+        visible=False,
+        input_type="integer",
+        default=1,
+        description="Argon2id lanes for new password hashes (1 to 8).",
     ),
     ConfigSpec(
         "MIGRATION_BACKUP_MAX_AGE_SECONDS",

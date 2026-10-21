@@ -185,6 +185,7 @@ async def test_acceptance_creates_normal_account_once_without_auto_login(invitat
         user = await db.scalar(select(User).where(User.email == p.email))
         assert user.is_active and not user.is_admin and user.oidc_subject is None
         assert verify_password(payload["password"], user.password_hash)
+        assert user.password_hash.startswith("argon2id$")
         assert not list(
             await db.scalars(
                 select(NotificationDestination).where(NotificationDestination.user_id == user.id)

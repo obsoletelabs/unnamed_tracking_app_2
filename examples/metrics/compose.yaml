@@ -1,0 +1,27 @@
+# Optional Prometheus and Grafana for the production image. Attach the application service to
+# the `monitoring` network below; the scrape port (METRICS_LISTEN_PORT, default 9464) then needs
+# no published mapping and no token. Do not also publish it to an untrusted network.
+services:
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=15d"]
+    networks: [monitoring]
+  grafana:
+    image: grafana/grafana:11.3.0
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana-dashboard.json:/var/lib/grafana/dashboards/unnamed-tracking.json:ro
+      - grafana-data:/var/lib/grafana
+    networks: [monitoring]
+volumes:
+  prometheus-data:
+  grafana-data:
+networks:
+  monitoring:
+    name: monitoring

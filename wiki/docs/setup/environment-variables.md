@@ -26,6 +26,16 @@ The application accepts either the individual PostgreSQL variables or the legacy
 
 Environment-only authentication quota controls (`AUTH_RATE_LIMIT_PERCENT`, `AUTH_LOGIN_ACCOUNT_PER_MINUTE`, `AUTH_LOGIN_ACCOUNT_PER_15_MINUTES`, `AUTH_LOGIN_IP_PER_MINUTE`, `AUTH_LOGIN_IP_FAILURES_PER_15_MINUTES` and `AUTH_PASSWORD_WORKERS`) are documented with defaults, accepted ranges and replica/proxy requirements in [Authentication Protection](../deployment/authentication-protection.md).
 
+Prometheus metrics are configured with these environment-only variables, described in [Prometheus metrics](../deployment/metrics.md):
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `METRICS_ENABLED` | `true` in the production image, `false` in the development backend | Serves `/metrics` from the backend. `false` also removes the scrape port. |
+| `METRICS_LISTEN_PORT` | `9464` | Production image: port of the always-present scrape listener (no token). Closed unless you publish it. Not 80 or 443. |
+| `METRICS_NGINX_ROUTE_ENABLED` | `false` | Production image: opt in to token-protected `/metrics` on the public web ports. |
+| `METRICS_TOKEN` | generated and saved | Bearer token for `/metrics` (32+ characters). |
+| `PROMETHEUS_MULTIPROC_DIR` | unset | Only with several backend worker processes. |
+
 | Variable | Source | Default | Purpose |
 |---|---|---|---|
 | `SECRET_KEY` | ENV | Generated/persisted when omitted | Stable Fernet encryption and session-signing key. It is hidden from the setup UI. |
@@ -72,6 +82,16 @@ These values are used for environment-based bootstrap of the initial administrat
 | `PRIMARY_USER_PASSWORD` | SETUP/BOTH | Initial administrator password. |
 
 The normal setup flow can collect these values instead of providing them through the environment.
+
+## Password hashing
+
+Environment-only settings for the Argon2id parameters used for new and upgraded local password hashes. They are not shown in the setup UI. Details, sizing guidance and how existing scrypt accounts are upgraded are in [Password hashing](../deployment/authentication-protection.md#password-hashing).
+
+| Variable | Default | Range | Purpose |
+|---|---|---|---|
+| `ARGON2_MEMORY_KIB` | `19456` | 8192–262144 | Memory per password hash, in KiB. Total use scales with `AUTH_PASSWORD_WORKERS`. |
+| `ARGON2_TIME_COST` | `2` | 1–10 | Argon2id iterations. |
+| `ARGON2_PARALLELISM` | `1` | 1–8 | Argon2id lanes. |
 
 ## Application URL
 

@@ -199,7 +199,8 @@ async def test_set_password_revokes_sessions_and_never_echoes_secrets(accounts):
     assert ok.status_code == 200 and NEW_PASSWORD not in ok.text
     assert ok.json() == {"status": "password_changed", "sessions_revoked": 1}
     async with SessionLocal() as db:
-        assert verify_password(NEW_PASSWORD, (await db.get(User, a.target)).password_hash)
+        stored = (await db.get(User, a.target)).password_hash
+        assert verify_password(NEW_PASSWORD, stored) and stored.startswith("argon2id$")
         assert (await db.get(UserSession, session)).revoked_at is not None
     rows = await audit_rows(a.admin)
     assert NEW_PASSWORD not in " ".join(row.detail for row in rows)

@@ -23,6 +23,7 @@ async def profile_client(monkeypatch, tmp_path):
     user = User(id=uuid.uuid4(), username="profile", email="profile@example.test", is_admin=False)
     db = AsyncMock()
     db.get.return_value = user
+    db.scalar.return_value = None  # no other account already has the new username
     app = FastAPI()
     app.include_router(users.router)
     app.include_router(auth.router)
