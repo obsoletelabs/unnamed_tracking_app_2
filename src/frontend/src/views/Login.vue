@@ -37,6 +37,14 @@ const oidcMessages: Record<string, string> = {
   not_configured: "SSO is not configured yet.",
   provider_unavailable: "The SSO provider is currently unavailable.",
   authentication_failed: "SSO authentication failed. Please try again.",
+  provider_http_404:
+    "The sign-in provider discovery endpoint was not found (HTTP 404). Ask an administrator to check the provider URL and whether OIDC is enabled.",
+  dns_name_not_found:
+    "The sign-in provider hostname could not be found. Ask an administrator to check the provider URL.",
+  dns_temporary_failure:
+    "The server temporarily could not look up the sign-in provider. Please try again shortly.",
+  dns_lookup_failed:
+    "The server could not look up the sign-in provider. Ask an administrator to check server DNS.",
   verified_email_required:
     "Your SSO account must provide a verified email address.",
   account_disabled: "This account is disabled.",

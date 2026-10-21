@@ -197,13 +197,18 @@ def _login_failure_reason(error: Exception) -> str:
         if cause.__cause__ is None:
             break
         cause = cause.__cause__
+    if isinstance(cause, socket.gaierror):
+        missing_names = {socket.EAI_NONAME, getattr(socket, "EAI_NODATA", socket.EAI_NONAME)}
+        if cause.errno in missing_names:
+            return "dns_name_not_found"
+        return "dns_temporary_failure" if cause.errno == socket.EAI_AGAIN else "dns_lookup_failed"
+    if isinstance(cause, httpx.HTTPStatusError):
+        return f"provider_http_{cause.response.status_code}"
     for error_type, reason in (
         (ssl.SSLCertVerificationError, "certificate_error"),
         (ssl.SSLError, "tls_error"),
-        (socket.gaierror, "dns_error"),
         (TimeoutError, "timeout"),
         (httpx.TimeoutException, "timeout"),
-        (httpx.HTTPStatusError, "provider_http_error"),
         (OSError, "connection_error"),
     ):
         if isinstance(cause, error_type):
@@ -237,13 +242,24 @@ async def begin_oidc(request: Request, config: OidcConfig) -> RedirectResponse:
         await validate_oidc_metadata(client, config)
         stage = "authorization_redirect"
         return await client.authorize_redirect(request, redirect_uri)
-    # External-provider failures return a constant error without leaking URLs or secrets.
+    # Only fixed, application-owned error codes reach the public sign-in page.
     except Exception as exc:  # pylint: disable=broad-exception-caught
+        reason = _login_failure_reason(exc)
         logger.warning(
             "OIDC login failed provider=%r stage=%s reason=%s error_type=%s",
             config.slug,
             stage,
-            _login_failure_reason(exc),
+            reason,
             type(exc).__name__,
         )
-        return RedirectResponse("/login?oidc_error=authentication_failed", 303)
+        public_reason = "authentication_failed"
+        if reason in {
+            "dns_name_not_found",
+            "dns_temporary_failure",
+            "dns_lookup_failed",
+            "provider_http_404",
+        }:
+            public_reason = reason
+        elif reason.startswith("provider_http_"):
+            public_reason = "provider_unavailable"
+        return RedirectResponse(f"/login?oidc_error={public_reason}", 303)
