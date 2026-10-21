@@ -17,7 +17,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY src/backend/requirements.txt /app/
-RUN pip install --no-cache-dir -r requirements.txt
+RUN python -m pip install --no-cache-dir --upgrade "pip==26.2.2" \
+    && python -m pip install --no-cache-dir -r requirements.txt
 
 COPY src/backend/src /app/src
 COPY src/backend/tests /app/tests

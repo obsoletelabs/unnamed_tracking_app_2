@@ -35,6 +35,10 @@ The migration repair preserves the existing session-network revision identity an
 
 ## Verification
 
+### Runtime security dependencies
+
+The backend pins Pillow 13.0.0 and certifi 2026.10.19, including the image-decoder and CA-bundle security fixes in those releases. The production image installs pip 26.2.2 before application dependencies, so an older cached Python base cannot retain the vulnerable installer. Rebuild the backend image when upgrading an existing deployment so its installed packages match `requirements.txt`. The upload regressions decode real PNG, JPEG, GIF, WebP, AVIF, BMP, TIFF, HEIF and ICO files; profile-picture checks also exercise HEIC with the existing `pillow-heif` integration.
+
 From `src/backend`, run:
 
 ```bash

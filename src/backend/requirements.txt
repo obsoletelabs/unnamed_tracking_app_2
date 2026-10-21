@@ -11,10 +11,11 @@ alembic==1.13.2
 # HTTP client
 requests==2.33.0
 httpx==0.27.2
+certifi==2026.10.19
 pywebpush==2.5.0
 
 # Image processing
-Pillow==12.3.0
+Pillow==13.0.0
 pillow-heif==1.8.0
 python-multipart
 maxminddb==2.6.3
