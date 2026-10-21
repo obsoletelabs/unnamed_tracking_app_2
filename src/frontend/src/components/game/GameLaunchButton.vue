@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import type { Game } from "../../types/game";
+import { fetchIdentitySources } from "../../services/gameIdentity";
 import {
   defaultTarget,
   launchTargets,
   targetLabel,
+  type LaunchObservation,
   type LaunchTarget,
 } from "../../utils/gameLaunch";
 
@@ -20,10 +22,31 @@ function readRemembered(): string | null {
 }
 
 const remembered = ref<string | null>(readRemembered());
-const targets = computed(() => launchTargets(props.game));
+const observations = ref<LaunchObservation[]>([]);
+const targets = computed(() => launchTargets(props.game, observations.value));
 const primary = computed(() =>
   defaultTarget(targets.value, props.game, remembered.value),
 );
+// Library imports keep their store IDs on the game's sources; a failed lookup just means fewer options.
+watch(
+  () => props.game.id,
+  async (id, _previous, onCleanup) => {
+    const request = new AbortController();
+    onCleanup(() => request.abort());
+    try {
+      const data = await fetchIdentitySources(id, request.signal);
+      observations.value = data.observations.map((item) => ({
+        source: item.source,
+        externalId: item.external_id,
+        available: item.availability === "available",
+      }));
+    } catch {
+      observations.value = [];
+    }
+  },
+  { immediate: true },
+);
+
 const menuOpen = ref(false);
 const root = ref<HTMLElement | null>(null);
 

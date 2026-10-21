@@ -81,4 +81,34 @@ describe("game launch links", () => {
       "Open Steam store page",
     ]);
   });
+
+  it("finds the store IDs a library import recorded on the game's sources", () => {
+    const observations = [
+      { source: "playnite", externalId: GUID, available: true },
+      { source: "Steam", externalId: "620", available: true },
+    ];
+    expect(
+      launchTargets({ status: "backlog", source: "Steam" }, observations).map(
+        (t) => t.id,
+      ),
+    ).toEqual(["playnite", "steam", "steam-store"]);
+  });
+
+  it("ignores unavailable or malformed source records", () => {
+    const observations = [
+      { source: "steam", externalId: "620", available: false },
+      { source: "steam", externalId: "not-a-number", available: true },
+      { source: "playnite", externalId: "nope", available: true },
+      { source: "epic", externalId: "123", available: true },
+    ];
+    expect(launchTargets({ status: "backlog" }, observations)).toEqual([]);
+  });
+
+  it("prefers the game's own identifiers over a source's", () => {
+    const targets = launchTargets(
+      { status: "backlog", providerIds: { steam: "70" } },
+      [{ source: "steam", externalId: "620", available: true }],
+    );
+    expect(targets.map((t) => t.uri)).toContain("steam://rungameid/70");
+  });
 });

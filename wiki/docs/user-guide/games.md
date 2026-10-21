@@ -548,7 +548,8 @@ Dark Fantasy, RPG, Difficult and Action RPG rather than just Action and RPG. See
 ### Launching a game
 
 A game's page has a launch button when the game has a Playnite entry, a Steam app ID or a GOG product
-ID. The arrow next to it lists every option for that game: **Launch in Playnite**, **Launch in Steam**,
+ID, whether those are on the game itself or recorded by a library import on any copy of the game (for
+example a Steam import on one copy and Playnite on another, once they are merged into one game). The arrow next to it lists every option for that game: **Launch in Playnite**, **Launch in Steam**,
 **Open in GOG Galaxy** (opens the game's page in Galaxy; it does not start it) and **Open Steam store
 page**.
 
@@ -565,8 +566,9 @@ A wishlisted game is not owned yet, so it only offers its store page, which open
 Launching asks your browser to open the matching client (`playnite://`, `steam://` or `goggalaxy://`) on
 the device you are using, so the client must be installed there and the browser may ask for permission
 the first time. Nothing is sent to the server, and only identifiers of the expected shape produce a link.
-Launching on a different computer than the browser, Steam Remote Play and other stores are not supported
-yet.
+Games from other stores, such as Epic, can only be launched through Playnite, and only Steam has a store
+page link. Launching on a different computer than the browser, Steam Remote Play and other stores are not
+supported yet.
 
 ### Multiplayer settings
 

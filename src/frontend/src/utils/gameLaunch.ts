@@ -14,6 +14,13 @@ export interface LaunchTarget {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const NUMERIC_ID = /^[0-9]{1,18}$/;
 
+/** What a library source has recorded for this game (the game's identity "sources"). */
+export interface LaunchObservation {
+  source: string;
+  externalId: string;
+  available: boolean;
+}
+
 export interface LaunchableGame {
   providerIds?: Record<string, string>;
   playniteGuid?: string | null;
@@ -25,10 +32,23 @@ export interface LaunchableGame {
  * Everything that can be done with this game outside the browser, most useful first.
  * A wishlisted game is not owned yet, so it only offers its store page.
  */
-export function launchTargets(game: LaunchableGame): LaunchTarget[] {
-  const guid = game.playniteGuid?.trim() ?? "";
-  const steam = game.providerIds?.steam?.trim() ?? "";
-  const gog = game.providerIds?.gog?.trim() ?? "";
+export function launchTargets(
+  game: LaunchableGame,
+  observations: LaunchObservation[] = [],
+): LaunchTarget[] {
+  // A Steam or GOG library import records the store's ID on its source rather than on the game,
+  // and a Playnite copy may sit on another copy of the same game, so look there too.
+  const fromSource = (source: string, valid: RegExp): string =>
+    observations
+      .filter((item) => item.available && item.source.toLowerCase() === source)
+      .map((item) => item.externalId.trim())
+      .find((id) => valid.test(id)) ?? "";
+  const guid = (
+    game.playniteGuid?.trim() || fromSource("playnite", UUID)
+  ).trim();
+  const steam =
+    game.providerIds?.steam?.trim() || fromSource("steam", NUMERIC_ID);
+  const gog = game.providerIds?.gog?.trim() || fromSource("gog", NUMERIC_ID);
   const steamStore: LaunchTarget[] = NUMERIC_ID.test(steam)
     ? [
         {
