@@ -709,40 +709,24 @@ export function useGameDetail() {
     }[] = [];
     // your verdict first (score and where it ranks), then how you played it;
     // the individual ratings get their own row under these
-    if (!pageSettings.value.hide_rating) {
-      facts.push(
-        tally.value
-          ? {
-              label: "Your score",
-              value: tally.value.sum.toFixed(1),
-              accent: true,
-            }
-          : { label: "Your score", value: "–", muted: true },
-      );
-      facts.push(
-        libraryRank.value !== null
-          ? { label: "Rank", value: `#${libraryRank.value}` }
-          : { label: "Rank", value: "–", muted: true },
-      );
+    // no empty "Your score" and "Rank" cells for an unrated game: the hero has the Rate control
+    if (!pageSettings.value.hide_rating && tally.value) {
+      facts.push({
+        label: "Your score",
+        value: tally.value.sum.toFixed(1),
+        accent: true,
+      });
+      if (libraryRank.value !== null)
+        facts.push({ label: "Rank", value: `#${libraryRank.value}` });
     }
-    // the reconciled playtime the Copies & versions panel shows, so both agree
-    const recorded = g.platforms.reduce((sum, p) => sum + p.playtimeMinutes, 0);
-    const minutes =
-      pagePlaytimeSeconds.value !== null
-        ? Math.round(pagePlaytimeSeconds.value / 60)
-        : recorded;
-    facts.push(
-      minutes > 0
-        ? { label: "Playtime", value: formatPlaytime(minutes) }
-        : { label: "Playtime", value: "–", muted: true },
-    );
+    // playtime, achievements and platform are not repeated here: the hero shows the
+    // achievements and platform, Copies & versions the reconciled playtime
     if (g.timeToBeatHours != null && g.timeToBeatHours > 0)
       facts.push({ label: "Main story", value: `~${g.timeToBeatHours}h` });
-    if (g.achievementTotal > 0 && achievementsOn.value)
+    if (g.dateAdded && !pageSettings.value.hide_date_badge)
       facts.push({
-        label: "Achievements",
-        value: `${g.achievementPercent}%`,
-        tab: "Achievements",
+        label: "Added",
+        value: new Date(g.dateAdded).toLocaleDateString(),
       });
     // the furthest you are through it on any platform
     const completions = g.platforms
@@ -752,11 +736,6 @@ export function useGameDetail() {
       facts.push({
         label: "Completion",
         value: `${Math.max(...completions)}%`,
-      });
-    if (g.platforms.length)
-      facts.push({
-        label: g.platforms.length === 1 ? "Platform" : "Platforms",
-        value: g.platforms.map((p) => p.platform).join(", "),
       });
     return facts.slice(0, 5);
   });

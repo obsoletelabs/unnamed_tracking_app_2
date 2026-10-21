@@ -489,9 +489,7 @@ function copyFolderPath() {
     <div class="card-info">
       <div class="title-row">
         <h3 class="title">{{ game.title }}</h3>
-        <span class="score-tag" :class="{ empty: !score }">{{
-          score ? `★ ${score.sum.toFixed(1)}` : "–"
-        }}</span>
+        <span v-if="score" class="score-tag">★ {{ score.sum.toFixed(1) }}</span>
       </div>
       <div class="meta-row">
         <span class="status">{{ localStatus }}</span>

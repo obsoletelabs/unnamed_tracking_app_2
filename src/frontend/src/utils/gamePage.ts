@@ -93,7 +93,7 @@ export const FLAG_LABELS: Record<HideFlag, { label: string; hint: string }> = {
   },
   hide_date_badge: {
     label: "Hide the date badge",
-    hint: "The date added, under the title.",
+    hint: "The date the game was added.",
   },
   hide_platform_badge: {
     label: "Hide the platform badge",

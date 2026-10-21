@@ -402,12 +402,6 @@ async function onCopiesChanged() {
               }"
               @change="onRatingsChange"
             />
-            <span
-              v-if="game.dateAdded && !pageSettings.hide_date_badge"
-              class="badge"
-            >
-              {{ new Date(game.dateAdded).toLocaleDateString() }}
-            </span>
             <router-link
               v-if="game.platforms.length && !pageSettings.hide_platform_badge"
               class="badge filter-badge"
@@ -514,6 +508,34 @@ async function onCopiesChanged() {
     </div>
 
     <section v-if="activeTab === 'Overview'" class="overview">
+      <!-- what the game is comes first; the numbers and copies follow -->
+      <div v-if="mainTags.length" class="chip-row">
+        <router-link
+          v-for="tag in mainTags"
+          :key="tag"
+          class="chip primary chip-link"
+          :to="libraryLink('tag', tag)"
+          :title="`All ${tag} games`"
+          >{{ tag }}</router-link
+        >
+      </div>
+
+      <div v-if="descriptionHtml" class="description-block">
+        <div
+          class="description description-html"
+          :class="{ clamped: descriptionOverflows && !descriptionExpanded }"
+          v-html="descriptionHtml"
+        ></div>
+        <button
+          v-if="descriptionOverflows"
+          type="button"
+          class="read-more-btn"
+          @click="descriptionExpanded = !descriptionExpanded"
+        >
+          {{ descriptionExpanded ? "Show less" : "Read more" }}
+        </button>
+      </div>
+
       <GameVersionsPanel
         :key="`versions-${game.id}`"
         :game-id="game.id"
@@ -556,33 +578,6 @@ async function onCopiesChanged() {
       </div>
 
       <GamePlayPanel :game="game" @saved="onGameSaved" />
-
-      <div v-if="mainTags.length" class="chip-row">
-        <router-link
-          v-for="tag in mainTags"
-          :key="tag"
-          class="chip primary chip-link"
-          :to="libraryLink('tag', tag)"
-          :title="`All ${tag} games`"
-          >{{ tag }}</router-link
-        >
-      </div>
-
-      <div v-if="descriptionHtml" class="description-block">
-        <div
-          class="description description-html"
-          :class="{ clamped: descriptionOverflows && !descriptionExpanded }"
-          v-html="descriptionHtml"
-        ></div>
-        <button
-          v-if="descriptionOverflows"
-          type="button"
-          class="read-more-btn"
-          @click="descriptionExpanded = !descriptionExpanded"
-        >
-          {{ descriptionExpanded ? "Show less" : "Read more" }}
-        </button>
-      </div>
 
       <section
         v-if="

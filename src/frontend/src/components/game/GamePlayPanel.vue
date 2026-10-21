@@ -87,7 +87,7 @@ async function save() {
         </button>
       </div>
     </form>
-    <p class="play-footnote">
+    <p v-if="editing" class="play-footnote">
       Activities use these details after refreshing your library. Select several
       games in the library to edit them together.
     </p>
