@@ -50,6 +50,17 @@ An empty or unrecognized value uses normal defaults and shows the setup UI.
 
 Explicit environment values still take precedence over these mode defaults.
 
+## Upgrade recovery
+
+These variables are environment-only (they are not shown in the setup UI, but they are real settings).
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `MIGRATION_BACKUP_MODE` | `automatic` | `automatic` creates and verifies an encrypted local recovery point before a pending migration touches an existing database, so a normal Portainer update or stack redeploy needs no extra step. `required` refuses to migrate without a full deployment recovery point issued by the operator backup workflow. `development` skips the check and is only for disposable data. |
+| `MIGRATION_BACKUP_MAX_AGE_SECONDS` | `7200` | Maximum age (60 to 604800 seconds) of an operator-issued recovery point when `required` (or an operator receipt in `automatic`) is used. |
+
+What automatic mode captures, where it stores it, retention, storage needs, how to protect the repository password and how to recover are in [Migration inspection and recovery](../deployment/migration-recovery.md#automatic-startup-recovery-default). The full-deployment workflow is in [Backups](../deployment/backups.md).
+
 ## First administrator
 
 These values are used for environment-based bootstrap of the initial administrator:
@@ -184,6 +195,32 @@ The frontend has one documented environment switch outside the backend registry:
 | `VITE_USE_MOCK_DATA` | When `true`, frontend services use their development/mock behavior instead of normal API-backed behavior. It is consumed by Vite and is not exposed through the backend setup schema. |
 
 Do not add a `VITE_API_BASE_URL` setting unless the frontend code actually introduces one; the current frontend does not define it.
+
+## Other environment variables in the registry
+
+Remaining registry variables, for completeness. "Both" means the value can also be set in the UI and an environment value locks it.
+
+| Variable | Source | Default | Purpose and details |
+|---|---|---|---|
+| `PASSWORD_MIN_LENGTH` | Both | `9` | Minimum length for new local passwords. See [Password policy](../development/password-policy.md). |
+| `PASSWORD_REQUIRE_UPPERCASE` | Both | `true` | Require an uppercase letter. See [Password policy](../development/password-policy.md). |
+| `PASSWORD_REQUIRE_LOWERCASE` | Both | `true` | Require a lowercase letter. See [Password policy](../development/password-policy.md). |
+| `PASSWORD_REQUIRE_DIGIT` | Both | `false` | Require a number. See [Password policy](../development/password-policy.md). |
+| `PASSWORD_REQUIRE_SYMBOL` | Both | `true` | Require a symbol. See [Password policy](../development/password-policy.md). |
+| `NGINX_REALIP_HEADER` | Both | `X-Forwarded-For` | Header Nginx trusts for the client address when a request comes from a trusted proxy. See [Production Docker](../deployment/production-docker.md). |
+| `NGINX_REALIP_TRUSTED_PROXIES` | Both | `127.0.0.1/32 ::1/128` | Space-separated addresses or CIDRs of proxies allowed to set that header. See [Production Docker](../deployment/production-docker.md). |
+| `WEB_PUSH_VAPID_SUBJECT` | Both | Unset | Contact (`mailto:` or HTTPS URL) sent with browser push. See [Notification providers](../user-guide/notification-providers.md). |
+| `WEB_PUSH_VAPID_PRIVATE_KEY` | Both | Unset | Private VAPID signing key for browser push; secret, never returned by the API. See [Notification providers](../user-guide/notification-providers.md). |
+| `NOTIFICATION_RETENTION_DEFAULT_DAYS` | ENV | `30` | Default inbox history in days; `0` keeps it indefinitely. See [Notification centre](../user-guide/notification-centre.md). |
+| `NOTIFICATION_RETENTION_MAXIMUM_DAYS` | ENV | `0` | Upper bound on inbox history in days; `0` means no maximum. See [Notification centre](../user-guide/notification-centre.md). |
+| `NOTIFICATION_AUDIT_RETENTION_DAYS` | ENV | `90` | Days of metadata-only notification lifecycle history. See [Notification core](../development/notification-core.md). |
+| `NOTIFICATION_BLOCKED_PROVIDERS` | ENV | Empty | Comma-separated provider IDs the deployment disallows. See [Notification core](../development/notification-core.md). |
+| `NOTIFICATION_BLOCKED_TYPES` | ENV | Empty | Comma-separated event types the deployment disallows. See [Notification core](../development/notification-core.md). |
+| `NOTIFICATION_MINIMUM_TRUST` | ENV | `0` | Minimum destination trust: `0` public, `1` private, `2` secure. See [Notification core](../development/notification-core.md). |
+| `METADATA_HEALTH_INTERVAL_SECONDS` | ENV | `1800` | Seconds between non-blocking provider health checks (minimum 60). See [Metadata providers](../development/metadata-providers.md). |
+| `GEOIP_DATABASE_PATH` | ENV | `/data/GeoIP.mmdb` | Location of the optional GeoIP database file. |
+| `GEOIP_COUNTRY_DATABASE_PATH` | ENV | `/data/GeoIP-Country.mmdb` | Location of the optional GeoIP country database file. |
+| `GEOIP_ASN_DATABASE_PATH` | ENV | `/data/GeoIP-ASN.mmdb` | Location of the optional GeoIP ASN database file. |
 
 ## Runtime variables outside the registry
 

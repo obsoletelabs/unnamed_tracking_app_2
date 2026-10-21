@@ -97,6 +97,32 @@ class BackupBoundaryTests(unittest.TestCase):
             private_directory(path)
         self.assertEqual(path.stat().st_mode & 0o777, 0o755)
 
+    def test_clean_environment_does_not_inherit_commands_proxies_or_app_secrets(self):
+        inherited = {
+            "RESTIC_PASSWORD_COMMAND": "must-not-run",
+            "HTTP_PROXY": "http://proxy.example.test",
+            "SECRET_KEY": "synthetic-key-must-not-reach-child",
+        }
+        with patch.dict(os.environ, inherited):
+            for environment_values in (None, {"UTA_PROBE": "allowed"}):
+                with self.subTest(environment=environment_values):
+                    output = Runner().json(
+                        [
+                            sys.executable,
+                            "-c",
+                            "import json, os; print(json.dumps(dict(os.environ)))",
+                        ],
+                        "clean-environment",
+                        environment=environment_values,
+                        inherit_environment=False,
+                    )
+                    for name in inherited:
+                        self.assertNotIn(name, output)
+                    self.assertEqual(
+                        output.get("UTA_PROBE"),
+                        "allowed" if environment_values else None,
+                    )
+
     def test_concurrent_operator_is_refused(self):
         with (
             deployment_lock(self.root, "drill"),

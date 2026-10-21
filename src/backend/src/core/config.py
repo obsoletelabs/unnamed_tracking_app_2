@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     ARGON2_MEMORY_KIB: int = Field(default=19456, ge=8192, le=262144)
     ARGON2_TIME_COST: int = Field(default=2, ge=1, le=10)
     ARGON2_PARALLELISM: int = Field(default=1, ge=1, le=8)
-    MIGRATION_BACKUP_MODE: Literal["required", "development"] = "required"
+    MIGRATION_BACKUP_MODE: Literal["automatic", "required", "development"] = "automatic"
     MIGRATION_BACKUP_MAX_AGE_SECONDS: int = Field(default=7200, ge=60, le=7 * 86400)
     NOTIFICATION_BLOCKED_PROVIDERS: str = ""
     NOTIFICATION_BLOCKED_TYPES: str = ""

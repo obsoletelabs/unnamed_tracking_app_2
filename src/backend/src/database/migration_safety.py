@@ -11,6 +11,7 @@ from uuid import uuid4
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
+from src.core.backup_process import BackupError
 from src.database.backup_gate import (
     RecoveryPointError,
     database_fingerprint,
@@ -19,6 +20,7 @@ from src.database.backup_gate import (
     validate_recovery_point,
     write_private_document,
 )
+from src.database.startup_backup import StartupBackup
 
 
 def recovery_directory() -> Path:
@@ -56,28 +58,72 @@ class MigrationSafety:
         if self.mode == "development":
             print("Development opt-out: migration backup verification is disabled.", flush=True)
             self.record("development-opt-out")
+        elif self.mode == "automatic":
+            self._approve_automatically(connection, current, target)
         else:
-            claims = read_recovery_point(recovery_directory() / "point.json", self.secret)
-            now = int(connection.scalar(text("SELECT extract(epoch FROM clock_timestamp())")))
-            connection.commit()
-            validate_recovery_point(
-                claims,
-                fingerprint=database_fingerprint(connection.engine.url, self.secret),
-                current=current,
-                target=target,
-                code_digest=migration_code_digest(Path(__file__).parent),
-                now=now,
-                maximum_age=self.maximum_age,
-            )
-            self.record(
-                "recovery-verified",
-                backup_id=claims.snapshot_id,
-                captured_at=claims.captured_at,
-                verified_at=claims.verified_at,
-                source_image_id=claims.source_image_id,
-            )
+            self._approve_with_operator_receipt(connection, current, target)
         self.approved = True
         self.record("migrating")
+
+    def _approve_with_operator_receipt(
+        self, connection: Connection, current: set[str], target: set[str]
+    ) -> None:
+        claims = read_recovery_point(recovery_directory() / "point.json", self.secret)
+        now = int(connection.scalar(text("SELECT extract(epoch FROM clock_timestamp())")))
+        connection.commit()
+        validate_recovery_point(
+            claims,
+            fingerprint=database_fingerprint(connection.engine.url, self.secret),
+            current=current,
+            target=target,
+            code_digest=migration_code_digest(Path(__file__).parent),
+            now=now,
+            maximum_age=self.maximum_age,
+        )
+        self.record(
+            "recovery-verified",
+            backup_id=claims.snapshot_id,
+            captured_at=claims.captured_at,
+            verified_at=claims.verified_at,
+            source_image_id=claims.source_image_id,
+        )
+
+    def _approve_automatically(
+        self, connection: Connection, current: set[str], target: set[str]
+    ) -> None:
+        """Prefer a valid operator full-deployment point; otherwise capture local recovery."""
+        try:
+            self._approve_with_operator_receipt(connection, current, target)
+            return
+        except RecoveryPointError:
+            pass
+        print("Creating and verifying automatic local recovery before the upgrade.", flush=True)
+        self.record("creating-local-recovery")
+        try:
+            snapshot = StartupBackup(recovery_directory().parents[1], recovery_directory()).capture(
+                connection.engine.url,
+                secret=self.secret,
+                claims={
+                    "database_fingerprint": database_fingerprint(
+                        connection.engine.url, self.secret
+                    ),
+                    "source_revisions": sorted(current),
+                    "target_revisions": sorted(target),
+                    "target_code_sha256": migration_code_digest(Path(__file__).parent),
+                },
+            )
+        except (BackupError, OSError) as error:
+            code = str(error) if isinstance(error, BackupError) else "local-storage-error"
+            raise RecoveryPointError("automatic-startup-backup-failed:" + code) from None
+        self.record(
+            "local-recovery-verified",
+            backup_id=snapshot.snapshot_id,
+            captured_at=snapshot.captured_at,
+            verified_at=snapshot.verified_at,
+            verification="restic-readback-and-postgresql-archive-v1",
+            retention_warning=snapshot.retention_warning,
+        )
+        print("Automatic local recovery verified; starting database migrations.", flush=True)
 
     def failed(self, error: BaseException) -> None:
         # Driver/config/migration exception text can contain secrets and SQL parameters.
