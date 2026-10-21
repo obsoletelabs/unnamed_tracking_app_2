@@ -6,6 +6,7 @@ from uuid import uuid4
 import httpx
 import pytest
 
+from src.api.routes import auth
 from src.core.auth import hash_password, session_cookie_name
 from src.features import local_auth
 from src.main import app
@@ -147,7 +148,7 @@ async def test_an_unexpected_failure_while_verifying_does_not_echo_the_password(
     def explode(*_args, **_kwargs):
         raise RuntimeError("verification backend unavailable")
 
-    monkeypatch.setattr(local_auth, "verify_password", explode)
+    monkeypatch.setattr(auth, "verify_password", explode)
     caplog.set_level(logging.DEBUG)
     response = await real_app.post(
         "/api/auth/login",

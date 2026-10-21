@@ -2,7 +2,7 @@
 
 import secrets
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from threading import BoundedSemaphore
@@ -94,17 +94,23 @@ async def _legacy_hashes_remain(db: AsyncSession, *, known_legacy: bool) -> bool
     return bool(_legacy_check["remain"])
 
 
-async def verify_login_password(db: AsyncSession, password: str, stored_hash: str | None) -> bool:
+async def verify_login_password(
+    db: AsyncSession,
+    password: str,
+    stored_hash: str | None,
+    verify: Callable[[str, str], bool] | None = None,
+) -> bool:
     """Check a sign-in password so existing and nonexistent accounts take the same time.
 
     While any scrypt account remains, every attempt spends one Argon2id and one scrypt
     verification: the real or placeholder record's own algorithm plus a throwaway record of the
     other. Once every account is on Argon2id there is no second step. Only the first result counts.
     """
+    check = verify or verify_password
     stored = stored_hash if stored_hash is not None else DUMMY_PASSWORD_HASH
     legacy = is_legacy_hash(stored)
-    matches = await run_password_job(verify_password, password, stored)
+    matches = await run_password_job(check, password, stored)
     if await _legacy_hashes_remain(db, known_legacy=legacy):
         balance = DUMMY_PASSWORD_HASH if legacy else _DUMMY_LEGACY_HASH
-        await run_password_job(verify_password, password, balance)
+        await run_password_job(check, password, balance)
     return matches

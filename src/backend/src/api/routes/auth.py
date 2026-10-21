@@ -219,7 +219,7 @@ async def login(
         if user is not None:
             await reservation.for_account(user.id)
         stored_hash = user.password_hash if user is not None and user.is_active else None
-        matches = await verify_login_password(db, payload.password, stored_hash)
+        matches = await verify_login_password(db, payload.password, stored_hash, verify_password)
         if user is None or not user.is_active or not matches:
             reservation.failed = True
             raise HTTPException(
