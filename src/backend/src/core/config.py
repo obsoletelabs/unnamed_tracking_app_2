@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     PUBLIC_APP_URL: str = ""
     DEFAULT_UI_STYLE: Literal["modern", "classic"] = "modern"
     STARTUP_MODE: str = ""
-    MIGRATION_BACKUP_MODE: Literal["required", "development"] = "required"
+    MIGRATION_BACKUP_MODE: Literal["automatic", "required", "development"] = "automatic"
     MIGRATION_BACKUP_MAX_AGE_SECONDS: int = Field(default=7200, ge=60, le=7 * 86400)
     NOTIFICATION_BLOCKED_PROVIDERS: str = ""
     NOTIFICATION_BLOCKED_TYPES: str = ""

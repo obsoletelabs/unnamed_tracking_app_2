@@ -7,10 +7,77 @@ The API remains unavailable. This replaces automatic adoption and automatic hist
 in both development and production. Existing reviewed merge points in the published history
 remain supported; independent recorded parents can reach their recognized merge normally.
 
+## Automatic startup recovery (default)
+
+`MIGRATION_BACKUP_MODE=automatic` is the default, including when `STARTUP_MODE` selects
+development or testing defaults. Updating through Portainer or redeploying a stack needs no
+extra step: when startup finds a populated database that needs a pending migration, and
+before any DDL or revision change, the backend creates an app-local recovery point, verifies
+it and only then migrates. A fresh database and an unchanged start create nothing.
+
+If the operator has issued a valid [full deployment point](#verified-pre-upgrade-recovery)
+for this exact upgrade, it is used instead and no local snapshot is made.
+
+What the local point contains, in an encrypted Restic repository at
+`APP_DATA_DIR/backups/startup-recovery`:
+
+* a custom-format `pg_dump` taken with the PostgreSQL 18 client bundled in the image;
+* `APP_DATA_DIR` (uploads, plugin data and configuration), excluding the repository itself,
+  `cache/` and `config/migration-recovery/`;
+* an encrypted manifest (source/target revisions, database fingerprint, hashes) and the
+  effective `SECRET_KEY`, so a restore keeps encrypted values readable even when the key
+  was supplied through the environment.
+
+The snapshot is tagged pending, read back from the repository, compared with the manifest
+and hashes, and the dump is checked with `pg_restore --list` before it is promoted to
+complete. Any failure stops startup before the pending migration; the application stays
+unavailable and the attempt report (`attempt-*.json`) names the failed step. The seven most
+recent complete snapshots are kept; pruning failure only sets `retention_warning` in the report.
+
+The Docker socket is not needed. Child processes (`restic`, `pg_dump`) run with a clean
+environment, so inherited `RESTIC_*`, proxy and application secrets do not apply.
+
+**Storage.** Budget roughly seven times the compressed database plus app data, on the same
+volume as `APP_DATA_DIR`, and free scratch space of about three times the dump in the
+container's temporary directory. The dump is bounded by 100 GiB or a third of free scratch
+space, whichever is smaller; an upgrade is refused rather than risking a full disk.
+
+**Repository password.** Restic generates a random password at
+`APP_DATA_DIR/config/migration-recovery/local-restic-password` (mode 0600). It is not stored in
+the repository or snapshots. Copy it, with the repository, to protected storage that is
+**not** on the same volume: the repository is useless without it and it is not recoverable
+from the snapshots. Losing the data volume loses both.
+
+**Limits.** This is a pre-migration safety net, not disaster recovery. It lives on the same
+volume as the data, so it does not survive host or volume loss, and it does not capture
+container images, PostgreSQL server configuration, or volumes outside `APP_DATA_DIR`. It
+assumes the app and runtime/plugin processes that write to the database or `APP_DATA_DIR` are
+not running during the upgrade (the migration runs before the application starts); with
+several app replicas or separate plugin writers started alongside, files may change while
+the snapshot is taken. Use the operator [full deployment backup](backups.md) with a
+maintenance window for those topologies and for off-host storage.
+
+**Recovering from a local point.** Keep the application stopped.
+
+```bash
+export RESTIC_REPOSITORY=/data/backups/startup-recovery
+export RESTIC_PASSWORD_FILE=/data/config/migration-recovery/local-restic-password
+restic snapshots --tag uta-startup-complete-v1
+restic restore SNAPSHOT_ID --target /restore
+```
+
+The restored bundle (`manifest.json`, `recovery-keys.json`, `database.dump`) is under the
+temporary directory path recorded in the snapshot; restored app files are under the original
+`APP_DATA_DIR` path. Restore the dump into an empty database with the matching image's
+PostgreSQL 18 client (`pg_restore --no-owner --dbname NEW_DB database.dump`), rehearsing on a
+separate clone first. If `SECRET_KEY` was changed since, restore the value from
+`recovery-keys.json`. Run the previous application image against the restored database.
+
 ## Verified pre-upgrade recovery
 
-`MIGRATION_BACKUP_MODE=required` is the default, including when `STARTUP_MODE` selects
-development or testing defaults. Before changing a populated database, the runner requires
+`MIGRATION_BACKUP_MODE=required` keeps the stricter operator-run flow: startup refuses to
+migrate without an operator-issued full deployment point and never takes its own backup. Set
+it explicitly in the deployment environment to require that flow. Before changing a populated database, the runner requires
 a recent recovery point issued for this deployment, source revision and **actual target
 database Python sources**. This includes explicit history replay and repair at the current
 head. A truly empty database needs no backup; a healthy unchanged database starts without
@@ -165,7 +232,9 @@ upgrades and merge parents, empty setup, explicit replay, rollback of deliberate
 records/new DDL, read-only inspection, lock contention/retry and two real startup processes.
 `tests/test_migrations.py` retains the existing replay and data-preservation coverage. The
 history-focused safety suite explicitly selects development mode; required-mode integration
-coverage lives in `tests/test_migration_backup_runtime.py`, with isolated PostgreSQL databases,
+coverage lives in `tests/test_migration_backup_runtime.py`, and automatic mode in
+`tests/test_startup_backup_runtime.py` (real Restic, a restore into a separate database,
+failure-before-DDL and concurrent starts), with isolated PostgreSQL databases,
 invalid/missing/stale evidence, explicit repair, unchanged starts, rollback and concurrent
 processes. `tests/test_migration_backup_gate.py` covers the private document contract.
 

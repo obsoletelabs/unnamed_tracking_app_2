@@ -675,8 +675,8 @@ CONFIG_REGISTRY: tuple[ConfigSpec, ...] = (
         "MIGRATION_BACKUP_MODE",
         source=ConfigSource.ENV,
         visible=False,
-        default="required",
-        description="Require verified recovery before populated database changes; development is an explicit opt-out.",
+        default="automatic",
+        description="Automatically capture local recovery before upgrades; required uses operator-issued full recovery evidence, and development explicitly opts out.",
     ),
     ConfigSpec(
         "MIGRATION_BACKUP_MAX_AGE_SECONDS",
