@@ -33,13 +33,15 @@ flows named below, not of every screen.
 | Statistics burn-down card | games request fails | the optional card is silently omitted; the main statistics keep their own error state | left |
 | Plugin popup UI and logs | request fails | intentionally tolerated; the popup shows the remaining sections | left |
 
+## Scanned, no defect confirmed
+
+Login, accepting an invitation, first-run setup and the upload section each guard their submit with a busy or saving flag, clear it in `finally` and show the error, so a failed request neither double-submits nor looks like success. The game library load is guarded by a request token, keeps the previous list while refreshing, and has an error state; its optional extras (duplicate check, layout, completion badges) fail quietly by design and the page falls back to the plain library. These were read, not exercised with injected failures.
+
+One gap is left: when toggling a favourite fails, the star silently reverts with no message (`useGameLibrary.toggleFavorite`).
+
 ## Not audited yet
 
-Notification pages (they follow the notification overhaul contract), game library list and game detail internals, anime,
-movie and TV detail views, the setup page, login and recovery, the upload sections and the Steam and connection dialogs were
-only scanned for swallowed-error patterns; no defect was confirmed. Each needs the same four questions asked against its real
-requests, so a later change can take them one at a time rather than editing many components at once. Modern, Classic and
-narrow-screen checks reuse the existing `ui-state` and `small-button` styles.
+Notification pages (they follow the notification overhaul contract), game detail internals (`useGameDetail`, 37 error handlers), anime, movie and TV detail views, the Steam and connection dialogs and the plugin manager's remaining handlers. Each needs the same four questions asked against its real requests, so a later change can take them one at a time rather than editing many components at once.
 
 ## How to check a flow
 
@@ -56,3 +58,13 @@ Captured against the development stack with the games request forced to answer 5
 | --- | --- | --- |
 | Collection detail | ![A failed request shown as an empty collection](../assets/ui-state-audit/collection-detail-before.jpg) | ![The failure named, with a Retry button](../assets/ui-state-audit/collection-detail-after.jpg) |
 | Collections index | ![Error without a way to retry](../assets/ui-state-audit/collections-index-before.jpg) | ![Error with a Retry button](../assets/ui-state-audit/collections-index-after.jpg) |
+
+### Phone width and Classic
+
+The collection pages were also checked at 375 px in Modern and Classic with the same forced failure. Both keep the layout (header, actions, error and **Retry** on their own lines, no horizontal scroll).
+
+| Collection detail | Modern, phone | Classic, phone |
+| --- | --- | --- |
+| After | ![Modern theme at phone width, failure with Retry](../assets/ui-state-audit/collection-detail-modern-phone.jpg) | ![Classic theme at phone width, failure with Retry](../assets/ui-state-audit/collection-detail-classic-phone.jpg) |
+
+Settings > Users, media lists and achievement notes are covered by tests only; they have no screenshots. The collection detail page also shows two messages for one failure (the raw "Failed to fetch games: 500" and the friendlier "Could not load this collection"), which is redundant but harmless.
