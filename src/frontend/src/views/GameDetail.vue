@@ -22,7 +22,6 @@ import {
   KIND_LABEL,
 } from "../utils/achievements";
 import type { AchFilter } from "../composables/useGameAchievements";
-import GamePlayPanel from "../components/game/GamePlayPanel.vue";
 import GameLaunchButton from "../components/game/GameLaunchButton.vue";
 import GameVersionsPanel from "../components/game/GameVersionsPanel.vue";
 import GameManualTrackingPanel from "../components/game/GameManualTrackingPanel.vue";
@@ -576,8 +575,6 @@ async function onCopiesChanged() {
           </div>
         </div>
       </div>
-
-      <GamePlayPanel :game="game" @saved="onGameSaved" />
 
       <section
         v-if="

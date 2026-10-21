@@ -519,8 +519,7 @@ Clicking a game opens its page. The header holds the cover, title, status,
 score, favorite heart and collections button, and below it are the tabs:
 
 - **Overview**: what the game is first (genres and description), then the
-  copies and their numbers, your completion, multiplayer details and where you
-  left off.
+  copies and their numbers, your completion and where you left off.
 - **Achievements**, **Screenshots**, **Clips**, **Soundtrack**, **Saves**,
   **Docs** and **Notes**. See [Game Media and Files](game-media.md) and
   [Game Notes](game-notes.md).
@@ -576,14 +575,13 @@ supported yet.
 
 ### Multiplayer settings
 
-On **Overview**, choose **Edit multiplayer settings**. Tick **Playable with
+Choose **Edit** on the game page and open the **Play** tab. Tick **Playable with
 others** and save to mark multiplayer without supplying extra details. Exact
 player limits remain unknown. Enable **Set known player limits** to enter both
 minimum and maximum, or choose a common range. Session duration and confirmed
-crossplay are optional. These details are self-reported and also available in
-the game's ordinary Edit form.
+crossplay are optional. These details are self-reported. They live in the Edit
+form only; the Overview no longer carries a multiplayer panel.
 
-![Multiplayer settings on a game page](../images/game-multiplayer-editor.jpg)
 
 For several games, select them in the library and open **Bulk Edit**. Tick
 **Apply multiplayer settings** and review the replacement before saving. It
