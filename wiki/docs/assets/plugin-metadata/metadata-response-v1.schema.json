@@ -77,6 +77,76 @@
       "title": "MediaType",
       "type": "string"
     },
+    "MetadataAchievement": {
+      "additionalProperties": false,
+      "description": "An achievement definition from a provider's catalogue. Progress is never provider-owned.",
+      "properties": {
+        "name": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "external_id": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "External Id",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "hidden": {
+          "default": false,
+          "title": "Hidden",
+          "type": "boolean"
+        },
+        "global_percent": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Global Percent"
+        },
+        "icon_url": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Icon Url"
+        }
+      },
+      "required": [
+        "name",
+        "external_id"
+      ],
+      "title": "MetadataAchievement",
+      "type": "object"
+    },
     "MetadataAiring": {
       "additionalProperties": false,
       "properties": {
@@ -826,6 +896,96 @@
           ],
           "default": null,
           "title": "Relation Group"
+        },
+        "players_min": {
+          "anyOf": [
+            {
+              "maximum": 32,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Players Min"
+        },
+        "players_max": {
+          "anyOf": [
+            {
+              "maximum": 32,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Players Max"
+        },
+        "crossplay": {
+          "anyOf": [
+            {
+              "enum": [
+                "yes",
+                "no",
+                "partial"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Crossplay"
+        },
+        "achievements": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/MetadataAchievement"
+          },
+          "maxItems": 2000,
+          "title": "Achievements",
+          "type": "array"
+        },
+        "custom": {
+          "maxProperties": 32,
+          "patternProperties": {
+            "^[a-z0-9][a-z0-9._-]*$": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "maxLength": 500,
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "maxItems": 50,
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          "propertyNames": {
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "title": "Custom",
+          "type": "object"
         }
       },
       "title": "MetadataPatch",
@@ -1135,5 +1295,5 @@
   "title": "ProviderResponse",
   "type": "object",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "x-api-contract-version": "1.1.14"
+  "x-api-contract-version": "1.1.15"
 }

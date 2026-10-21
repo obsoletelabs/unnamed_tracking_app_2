@@ -173,6 +173,8 @@ class Game(Base):
         default=list,
     )
     play_compatibility: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # provider-reported fields the host has no column for (read-only; replaced by refreshes)
+    provider_custom: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     features: Mapped[list[str]] = mapped_column(
         ARRAY(String),

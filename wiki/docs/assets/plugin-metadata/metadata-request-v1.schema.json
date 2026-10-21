@@ -72,7 +72,8 @@
         "episodes",
         "airing",
         "relations",
-        "recommendations"
+        "recommendations",
+        "achievements"
       ],
       "title": "Resource",
       "type": "string"
@@ -125,5 +126,5 @@
   "title": "MetadataProviderRequest",
   "type": "object",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "x-api-contract-version": "1.1.14"
+  "x-api-contract-version": "1.1.15"
 }

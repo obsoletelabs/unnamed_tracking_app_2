@@ -62,6 +62,20 @@ contract check. Unknown fields, invalid identifiers, unsafe types, non-finite
 scores and oversized collections are rejected. Canonical provider scores use
 0–100; existing library score fields retain their 0–10 scale.
 
+### Group play and provider custom fields (API 1.1.15)
+
+`MetadataPatch` accepts three more optional fields: `players_min` and `players_max` (whole numbers from 1 to 32, minimum not above maximum) and `crossplay` (`yes`, `no` or `partial`). Missing means unknown, never "no". A metadata refresh stores them in the game's group-play details only when **both** limits are known and the game has no user-confirmed details; provider values are marked `source: "provider"` and are refreshed by later refreshes, while anything the user confirmed (no `source`) is never replaced. A game with the `play_compatibility` field protected is skipped and reported. The stored crossplay flag is true only for `yes` (`no`, `partial` and silence stay false because one flag cannot express them).
+
+`MetadataPatch` also accepts `custom`: up to 32 provider-defined fields with keys matching the usual action id pattern (`a-z0-9._-`) and bounded values (text up to 500 characters, whole or decimal numbers, booleans, or lists of up to 50 short strings; no nesting, no `null`, finite numbers only). They are merged per key (higher-priority provider first), stored on the game as read-only **provider custom** values (`provider_custom`, returned by the game API) and replaced key by key on refresh. They never overwrite a column the host already has, and a game with `provider_custom` protected is skipped.
+
+These fields need **Plugin API 1.1.15**: a provider that emits them must target 1.1.15 so older hosts reject it before execution. Regenerate the schema snapshots with `tools/export_metadata_contract.py` and copy them to the companion repository as described above.
+
+### Achievement catalogues (API 1.1.15)
+
+A provider can offer a game's achievement **definitions** by declaring `achievements` in `metadata_resources` and answering the `metadata` operation when the request's `resource` is `achievements`, with `achievements` in the patch: up to 2,000 items of `name` (200), `external_id` (unique per game), optional `description` (2,000), `hidden`, `global_percent` (0-100) and an HTTPS `icon_url`. Definitions never carry progress: the host stores them as locked achievements under the provider's name next to Steam, PlayStation and RetroAchievements ones, which keep their own rows and their unlock state.
+
+The host asks for a catalogue in two places: **Refresh achievements** (`POST /api/library-sync/games/{id}/achievements`) for a game that did not come from Steam, PlayStation or RetroAchievements, and a metadata refresh of a game that has no achievements yet (failures there only add a note to the refresh result). Definitions are updated by `external_id` (so media linked to an achievement keeps its link, and a missing description never erases a known one); definitions the provider stops listing are removed.
+
 ### Completion-time categories (API 1.1.13)
 
 `MetadataPatch` accepts three additional optional hour values:

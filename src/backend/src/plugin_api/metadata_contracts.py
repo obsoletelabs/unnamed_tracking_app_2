@@ -7,10 +7,28 @@ from enum import StrEnum
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AnyHttpUrl,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictBool,
+    StrictFloat,
+    StrictInt,
+    model_validator,
+)
 
 Identifier = Annotated[str, Field(min_length=1, max_length=512)]
 ActionId = Annotated[str, Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")]
+
+
+CustomValue = (
+    StrictBool
+    | StrictInt
+    | Annotated[StrictFloat, Field(allow_inf_nan=False)]
+    | Annotated[str, Field(max_length=500)]
+    | Annotated[tuple[Annotated[str, Field(max_length=200)], ...], Field(max_length=50)]
+)
 
 
 class MetadataModel(BaseModel):
@@ -51,7 +69,9 @@ class MetadataProviderRequest(MetadataModel):
     policy: Literal["interactive", "background"] = "interactive"
     limit: int = Field(default=20, ge=1, le=50)
     cursor: Identifier | None = None
-    resource: Literal["entity", "episodes", "airing", "relations", "recommendations"] = "entity"
+    resource: Literal[
+        "entity", "episodes", "airing", "relations", "recommendations", "achievements"
+    ] = "entity"
     season_number: int | None = Field(default=None, ge=0, le=10_000)
     options: dict[ActionId, Annotated[str, Field(max_length=512)] | bool | int] = Field(
         default_factory=dict, max_length=32
@@ -91,6 +111,17 @@ class MetadataEpisode(MetadataModel):
     air_at: int | None = Field(default=None, ge=0)
     runtime_minutes: int | None = Field(default=None, ge=0, le=100_000)
     still_url: AnyHttpUrl | None = None
+
+
+class MetadataAchievement(MetadataModel):
+    """An achievement definition from a provider's catalogue. Progress is never provider-owned."""
+
+    name: str = Field(min_length=1, max_length=200)
+    external_id: Identifier
+    description: str | None = Field(default=None, max_length=2000)
+    hidden: bool = False
+    global_percent: float | None = Field(default=None, ge=0, le=100, allow_inf_nan=False)
+    icon_url: AnyHttpUrl | None = None
 
 
 class MetadataSeason(MetadataModel):
@@ -176,6 +207,24 @@ class MetadataPatch(MetadataModel):
     airing: MetadataAiring | None = None
     relations: tuple[MetadataRelation, ...] = Field(default=(), max_length=500)
     relation_group: str | None = Field(default=None, max_length=512)
+    # Group play as reported by the provider. Unknown stays unset: absence never means "no".
+    players_min: int | None = Field(default=None, ge=1, le=32)
+    players_max: int | None = Field(default=None, ge=1, le=32)
+    crossplay: Literal["yes", "no", "partial"] | None = None
+    # Achievement definitions, only requested through the "achievements" resource.
+    achievements: tuple[MetadataAchievement, ...] = Field(default=(), max_length=2000)
+    # Provider-defined fields the host has no column for, kept as read-only provider details.
+    custom: dict[ActionId, CustomValue] = Field(default_factory=dict, max_length=32)
+
+    @model_validator(mode="after")
+    def ordered_players(self) -> "MetadataPatch":
+        if (
+            self.players_min is not None
+            and self.players_max is not None
+            and self.players_min > self.players_max
+        ):
+            raise ValueError("players_max must be at least players_min")
+        return self
 
 
 class MediaAsset(MetadataModel):
@@ -241,8 +290,9 @@ class MetadataProviderRegistration(MetadataModel):
     media_types: tuple[MediaType, ...] = Field(min_length=1, max_length=4)
     identifier_namespace: ActionId | None = None
     metadata_resources: tuple[
-        Literal["entity", "episodes", "airing", "relations", "recommendations"], ...
-    ] = Field(default=("entity",), min_length=1, max_length=5)
+        Literal["entity", "episodes", "airing", "relations", "recommendations", "achievements"],
+        ...,
+    ] = Field(default=("entity",), min_length=1, max_length=6)
     episode_source: Literal["primary", "fallback"] = "fallback"
     operations: ProviderOperations
     configuration: tuple[ProviderConfigurationField, ...] = Field(default=(), max_length=32)

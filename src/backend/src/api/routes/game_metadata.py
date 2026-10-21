@@ -29,6 +29,11 @@ from src.core.preferences import load_preferences
 from src.core.titles import normalize_metadata_title as _normalize_metadata_title
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features.achievement_catalogue import (
+    fetch_catalogue,
+    has_achievements,
+    store_catalogue,
+)
 from src.features.game_identity import names
 from src.features.metadata.locked_fields import apply_metadata_updates
 from src.features.metadata.service import (
@@ -37,6 +42,7 @@ from src.features.metadata.service import (
     resolve_library_record,
     search_games,
 )
+from src.features.provider_play import provider_custom_values, provider_play_compatibility
 from src.helpers.remote_images import MAX_BYTES, download_image
 from src.helpers.save_game_asset import (
     ASSET_FILENAMES,
@@ -276,6 +282,20 @@ async def refresh_game_metadata(
         if fresh != current:
             updates[field] = fresh
 
+    provider_play = provider_play_compatibility(match, game.play_compatibility)
+    if provider_play is not None:
+        if "play_compatibility" in game.locked_fields:
+            skipped_locked.append("play_compatibility")
+        else:
+            updates["play_compatibility"] = provider_play
+
+    provider_custom = provider_custom_values(match, game.provider_custom)
+    if provider_custom is not None:
+        if "provider_custom" in game.locked_fields:
+            skipped_locked.append("provider_custom")
+        else:
+            updates["provider_custom"] = provider_custom
+
     changed_fields = sorted(updates)
     key_art_url = match.get("key_art_url")
     banner_url = match.get("banner_url")
@@ -339,6 +359,15 @@ async def refresh_game_metadata(
                 )
             else:
                 would_add_banner = True
+
+    if payload.update_text and not await has_achievements(db, game.id):
+        # A game with no achievements yet may get its definitions from a provider (such as Atlas).
+        try:
+            label, catalogue, _errors = await fetch_catalogue(db, current_user.id, game)
+            if catalogue:
+                await store_catalogue(db, game.id, label, catalogue)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            provider_errors.append(f"Achievements: {type(exc).__name__}")
 
     await db.commit()
     await db.refresh(game)

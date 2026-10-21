@@ -2,10 +2,17 @@
 
 from datetime import date
 from decimal import Decimal
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
 from src.api.schemas.title_protection import TitleProtectionUpdate
 from src.core.page_settings import validate_page_settings
@@ -38,13 +45,23 @@ ProviderIds = dict[
 
 
 class GamePlayCompatibility(BaseModel):
-    """User-confirmed group play details; no provider or purchase verification."""
+    """Group play details. Without ``source`` they are user-confirmed; ``provider`` marks values
+    a metadata provider reported (replaced on refresh, never over user-confirmed details)."""
 
     model_config = ConfigDict(extra="forbid")
     min_players: int | None = Field(default=None, ge=1, le=32, strict=True)
     max_players: int | None = Field(default=None, ge=1, le=32, strict=True)
     duration_minutes: int | None = Field(default=None, ge=1, le=1440, strict=True)
     crossplay: bool = Field(default=False, strict=True)
+    source: Literal["provider"] | None = None
+
+    @model_serializer(mode="wrap")
+    def _omit_unset_source(self, handler: Any) -> dict[str, Any]:
+        """User-confirmed details keep their established shape: no ``source`` key."""
+        data = handler(self)
+        if data.get("source") is None:
+            data.pop("source", None)
+        return data
 
     @model_validator(mode="after")
     def ordered_players(self) -> "GamePlayCompatibility":
@@ -293,6 +310,10 @@ class GameRead(GameBase):
     user_id: UUID
     sort_title: str
     locked_fields: list[str] = Field(default_factory=list)
+    provider_custom: dict[str, Any] | None = Field(
+        default=None,
+        description="Read-only extra fields reported by metadata providers; replaced by refreshes.",
+    )
     created_at: int = Field(description="Unix timestamp in seconds when the game was created.")
     updated_at: int = Field(description="Unix timestamp in seconds when the game was last updated.")
     last_played_at: int | None = Field(
