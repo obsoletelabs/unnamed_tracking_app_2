@@ -33,15 +33,25 @@ flows named below, not of every screen.
 | Statistics burn-down card | games request fails | the optional card is silently omitted; the main statistics keep their own error state | left |
 | Plugin popup UI and logs | request fails | intentionally tolerated; the popup shows the remaining sections | left |
 
-## Scanned, no defect confirmed
+## Exercised with injected failures
 
-Login, accepting an invitation, first-run setup and the upload section each guard their submit with a busy or saving flag, clear it in `finally` and show the error, so a failed request neither double-submits nor looks like success. The game library load is guarded by a request token, keeps the previous list while refreshing, and has an error state; its optional extras (duplicate check, layout, completion badges) fail quietly by design and the page falls back to the plain library. These were read, not exercised with injected failures.
+Run against the development stack with the browser's `fetch` forced to answer 500 for one endpoint at a time, then cleared to check that Retry recovers.
 
-One gap is left: when toggling a favourite fails, the star silently reverts with no message (`useGameLibrary.toggleFavorite`).
+| Flow | Injected failure | Result |
+| --- | --- | --- |
+| Game library, returning to `/games` with a library already seen | `/api/game/list` answers 500 | **fixed**: the cached games disappeared and the error had no Retry. The list now stays, with an alert "The list below may be out of date" and **Retry** (`GameLibrary.vue`) |
+| Game page favourite heart | `PATCH /api/game/update/:id` answers 500 | **fixed**: the heart reverted with no message and a second click could race the first. It now shows "Could not update the favourite" beside the heart and ignores clicks while saving (`useFavoriteToggle`) |
+| Library favourite star | same | **fixed**: same silent revert; now names the game and ignores a second click while saving |
+| Game page | game requests answer 500 | already covered: "We couldn't load this game" with **Try again** and a way back |
+| Media lists index | `/api/lists` answers 500 | covered by the earlier fix; Retry restores the lists |
+| Settings > Users | `/api/auth/users` answers 500 | covered by the earlier fix; message with Retry |
+| Collections index and detail | games request answers 500 | covered by the earlier fix (screenshots above) |
+
+Login, accepting an invitation, first-run setup and the upload section were read, not exercised: each guards its submit with a busy or saving flag, clears it in `finally` and shows the error.
 
 ## Not audited yet
 
-Notification pages (they follow the notification overhaul contract), game detail internals (`useGameDetail`, 37 error handlers), anime, movie and TV detail views, the Steam and connection dialogs and the plugin manager's remaining handlers. Each needs the same four questions asked against its real requests, so a later change can take them one at a time rather than editing many components at once.
+Notification pages (they follow the notification overhaul contract), the rest of the game page (`useGameDetail` has 37 error handlers; only load and favourite were exercised), anime, movie and TV detail views, the Steam and connection dialogs and the plugin manager's remaining handlers. The anime, movie, TV and plugin flows need provider data or a running plugin runtime, which the test stack did not have. Each needs the same four questions asked against its real requests.
 
 ## How to check a flow
 
@@ -67,4 +77,13 @@ The collection pages were also checked at 375 px in Modern and Classic with the 
 | --- | --- | --- |
 | After | ![Modern theme at phone width, failure with Retry](../assets/ui-state-audit/collection-detail-modern-phone.jpg) | ![Classic theme at phone width, failure with Retry](../assets/ui-state-audit/collection-detail-classic-phone.jpg) |
 
-Settings > Users, media lists and achievement notes are covered by tests only; they have no screenshots. The collection detail page also shows two messages for one failure (the raw "Failed to fetch games: 500" and the friendlier "Could not load this collection"), which is redundant but harmless.
+Achievement notes are covered by tests only (the test stack has no achievements). The collection detail page also shows two messages for one failure (the raw "Failed to fetch games: 500" and the friendlier "Could not load this collection"), which is redundant but harmless.
+
+### More screenshots
+
+| Flow | Screenshot |
+| --- | --- |
+| Settings > Users, request failed | ![Users failure with Retry](../assets/ui-state-audit/settings-users-failure.jpg) |
+| Media lists, request failed | ![Media lists failure with Retry](../assets/ui-state-audit/media-lists-failure.jpg) |
+| Library refresh failed, games kept | ![Library with the old list and a Retry alert](../assets/ui-state-audit/library-refresh-failure-after.jpg) |
+| Favourite change failed on the game page | ![Message beside the heart](../assets/ui-state-audit/favourite-toggle-failure.jpg) |

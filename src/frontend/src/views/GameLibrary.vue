@@ -129,6 +129,7 @@ const {
   onGameSaved,
   onDeleteFromModal,
   toggleFavorite,
+  favoriteError,
   onGameUpdated,
   collectionPickerGame,
   handleAddToCollection,
@@ -630,8 +631,22 @@ function nestedLabel(game: Game): string | null {
         </button>
       </div>
 
+      <p v-if="favoriteError" class="empty-state error" role="alert">
+        {{ favoriteError }}
+      </p>
+      <p v-if="error && hasAnyGames" class="empty-state error" role="alert">
+        {{ error }} The list below may be out of date.
+        <button type="button" class="ui-btn" @click="loadGames">Retry</button>
+      </p>
       <p v-if="loading" class="empty-state">Loading…</p>
-      <p v-else-if="error" class="empty-state error">{{ error }}</p>
+      <p
+        v-else-if="error && !hasAnyGames"
+        class="empty-state error"
+        role="alert"
+      >
+        {{ error }}
+        <button type="button" class="ui-btn" @click="loadGames">Retry</button>
+      </p>
 
       <div v-else-if="isEmpty" class="empty-state rich">
         <svg
