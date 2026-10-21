@@ -38,13 +38,15 @@ ProviderIds = dict[
 
 
 class GamePlayCompatibility(BaseModel):
-    """User-confirmed group play details; no provider or purchase verification."""
+    """Group play details. Without ``source`` they are user-confirmed; ``provider`` marks values
+    a metadata provider reported (replaced on refresh, never over user-confirmed details)."""
 
     model_config = ConfigDict(extra="forbid")
     min_players: int | None = Field(default=None, ge=1, le=32, strict=True)
     max_players: int | None = Field(default=None, ge=1, le=32, strict=True)
     duration_minutes: int | None = Field(default=None, ge=1, le=1440, strict=True)
     crossplay: bool = Field(default=False, strict=True)
+    source: Literal["provider"] | None = None
 
     @model_validator(mode="after")
     def ordered_players(self) -> "GamePlayCompatibility":

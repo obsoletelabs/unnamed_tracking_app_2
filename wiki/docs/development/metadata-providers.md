@@ -62,6 +62,12 @@ contract check. Unknown fields, invalid identifiers, unsafe types, non-finite
 scores and oversized collections are rejected. Canonical provider scores use
 0–100; existing library score fields retain their 0–10 scale.
 
+### Group play (players and crossplay)
+
+`MetadataPatch` accepts three more optional fields: `players_min` and `players_max` (whole numbers from 1 to 32, minimum not above maximum) and `crossplay` (`yes`, `no` or `partial`). Missing means unknown, never "no". A metadata refresh stores them in the game's group-play details only when **both** limits are known and the game has no user-confirmed details; provider values are marked `source: "provider"` and are refreshed by later refreshes, while anything the user confirmed (no `source`) is never replaced. A game with the `play_compatibility` field protected is skipped and reported. The stored crossplay flag is true only for `yes` (`no`, `partial` and silence stay false because one flag cannot express them).
+
+The fields are additive and the contract rejects unknown fields, so a host older than this change rejects a response that contains them. A provider that emits them must therefore be published only for hosts that include this change. Regenerate the schema snapshots with `tools/export_metadata_contract.py` and copy them to the companion repository as described above.
+
 ### Completion-time categories (API 1.1.13)
 
 `MetadataPatch` accepts three additional optional hour values:

@@ -176,6 +176,20 @@ class MetadataPatch(MetadataModel):
     airing: MetadataAiring | None = None
     relations: tuple[MetadataRelation, ...] = Field(default=(), max_length=500)
     relation_group: str | None = Field(default=None, max_length=512)
+    # Group play as reported by the provider. Unknown stays unset: absence never means "no".
+    players_min: int | None = Field(default=None, ge=1, le=32)
+    players_max: int | None = Field(default=None, ge=1, le=32)
+    crossplay: Literal["yes", "no", "partial"] | None = None
+
+    @model_validator(mode="after")
+    def ordered_players(self) -> "MetadataPatch":
+        if (
+            self.players_min is not None
+            and self.players_max is not None
+            and self.players_min > self.players_max
+        ):
+            raise ValueError("players_max must be at least players_min")
+        return self
 
 
 class MediaAsset(MetadataModel):

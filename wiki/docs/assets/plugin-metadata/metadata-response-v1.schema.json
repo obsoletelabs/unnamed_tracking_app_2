@@ -826,6 +826,51 @@
           ],
           "default": null,
           "title": "Relation Group"
+        },
+        "players_min": {
+          "anyOf": [
+            {
+              "maximum": 32,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Players Min"
+        },
+        "players_max": {
+          "anyOf": [
+            {
+              "maximum": 32,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Players Max"
+        },
+        "crossplay": {
+          "anyOf": [
+            {
+              "enum": [
+                "yes",
+                "no",
+                "partial"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Crossplay"
         }
       },
       "title": "MetadataPatch",
