@@ -138,6 +138,16 @@ def library_candidate(
     )
 
 
+def game_candidate(game: Any) -> MetadataCandidate:
+    """The library identity of a stored game row, for focused provider lookups."""
+    return library_candidate(
+        game.title,
+        MediaType.GAME,
+        game.provider_ids or {},
+        game.release_date.year if game.release_date else None,
+    )
+
+
 async def collect_owned_record(
     user_id: UUID,
     candidate: MetadataCandidate,

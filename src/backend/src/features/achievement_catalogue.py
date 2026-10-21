@@ -1,5 +1,7 @@
 """Achievement definitions from metadata providers, stored beside synced ones without progress."""
 
+# pylint: disable=not-callable
+
 import time
 from typing import Any
 from uuid import UUID
@@ -9,8 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.achievement import Achievement
 from src.database.models.game import Game
-from src.features.metadata.service import collect_record, library_candidate
-from src.plugin_api.metadata_contracts import MediaType
+from src.features.metadata.service import collect_record, game_candidate
 
 MAX_ROWS = 2000
 PROVIDER_LABEL_LENGTH = 30
@@ -48,13 +49,9 @@ async def fetch_catalogue(
     db: AsyncSession, user_id: UUID, game: Game
 ) -> tuple[str, list[dict[str, Any]], list[str]]:
     """Ask the user's metadata providers for this game's achievement definitions."""
-    candidate = library_candidate(
-        game.title,
-        MediaType.GAME,
-        game.provider_ids or {},
-        game.release_date.year if game.release_date else None,
+    record, errors = await collect_record(
+        db, user_id, game_candidate(game), resource="achievements"
     )
-    record, errors = await collect_record(db, user_id, candidate, resource="achievements")
     return provider_label(record), catalogue_rows(record), errors
 
 

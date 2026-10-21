@@ -32,6 +32,7 @@ export function pluginContributionsActive(plugin: PluginSummary): boolean {
       "1.1.11",
       "1.1.12",
       "1.1.13",
+      "1.1.14",
       PLUGIN_API_CONTRACT_VERSION,
     ].includes(plugin.api_contract_version ?? "") ||
       (plugin.legacy_compatibility === true &&

@@ -55,7 +55,7 @@ from src.features.metadata.games.retroachievements import (
     RetroAchievementsError,
 )
 from src.features.metadata.locked_fields import apply_metadata_updates
-from src.features.metadata.service import game_result, library_candidate, resolve_library_record
+from src.features.metadata.service import game_candidate, game_result, resolve_library_record
 from src.helpers import save_game_asset
 from src.helpers.remote_images import MAX_BYTES, RemoteImageError, download_image
 from src.helpers.save_game_asset import ASSET_FILENAMES, AssetKind, save_locked_game_asset
@@ -65,7 +65,6 @@ from src.helpers.steam_achievement_rows import (  # noqa: F401
 from src.helpers.steam_achievement_rows import (
     steam_achievement_rows as _steam_achievement_rows,
 )
-from src.plugin_api.metadata_contracts import MediaType
 
 router = APIRouter(
     prefix="/api/library-sync", tags=["library-sync"], dependencies=[Depends(get_current_user)]
@@ -186,12 +185,7 @@ async def _enrich_new_game(
     `artwork_only` is the retry mode: it never rewrites details a person may since have edited
     and only fetches pictures the game does not already have."""
     outcome = EnrichOutcome()
-    candidate = library_candidate(
-        game.title,
-        MediaType.GAME,
-        game.provider_ids or {},
-        game.release_date.year if game.release_date else None,
-    )
+    candidate = game_candidate(game)
     async with SessionLocal() as metadata_db:
         record, _ = await resolve_library_record(
             metadata_db,
