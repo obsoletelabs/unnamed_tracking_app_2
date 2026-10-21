@@ -1,8 +1,10 @@
-"""Keep bearer proof, opt-out, live-link, calendar-feed and OIDC exchange values out of the access log."""
+"""Redact bearer values and suppress routine successful gateway and PWA access logs."""
 
 import logging
 import re
 
+_ROUTINE_PWA_PATHS = ("/pwa/status", "/manifest.webmanifest", "/service-worker.js")
+_PWA_ICON_PATH = re.compile(r"/pwa/icons/[0-9a-f]{64}/(?:192|512)\.png")
 _CALENDAR_FEED_PATH = re.compile(r"^(/api/calendar/feed/)[^/?]+(\.ics)$")
 _LIVE_LINK_PREFIXES = ("/api/notifications/live/", "/api/notifications/stories/by-link/")
 _REDACTED_LIVE_LINK = "/api/notifications/live/<redacted>"
@@ -31,6 +33,20 @@ class NotificationLinkFilter(logging.Filter):  # pylint: disable=too-few-public-
         if isinstance(record.args, tuple) and len(record.args) == 5:
             path = record.args[2]
             if isinstance(path, str):
+                target = path.partition("?")[0]
+                method, status = record.args[1], record.args[4]
+                routine_gateway = (
+                    method == "POST" and target == "/api/plugins/runtime/gateway" and status == 200
+                )
+                routine_pwa = (
+                    method == "GET"
+                    and status in {200, 304}
+                    and (
+                        target in _ROUTINE_PWA_PATHS or _PWA_ICON_PATH.fullmatch(target) is not None
+                    )
+                )
+                if record.levelno == logging.INFO and (routine_gateway or routine_pwa):
+                    return False
                 record.args = (*record.args[:2], redact_request_target(path), *record.args[3:])
         return True
 

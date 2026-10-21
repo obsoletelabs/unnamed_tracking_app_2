@@ -88,6 +88,7 @@ export interface Game {
   playCompatibility?: GamePlayCompatibility | null;
   lockedFields?: string[];
   providerIds?: Record<string, string>;
+  playniteGuid?: string | null;
   id: string;
   title: string;
   coverColor: string;

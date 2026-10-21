@@ -70,19 +70,18 @@ scores and oversized collections are rejected. Canonical provider scores use
 
 These fields need **Plugin API 1.1.15**: a provider that emits them must target 1.1.15 so older hosts reject it before execution. Regenerate the schema snapshots with `tools/export_metadata_contract.py` and copy them to the companion repository as described above.
 
-### Achievement catalogues (API 1.1.16)
+### Achievement catalogues (API 1.1.15)
 
-`MetadataPatch` accepts `achievements`: up to 500 catalogue entries describing what a game offers, never what a player earned. Each entry has `external_id` (the provider's id), `name` (up to 200 characters), optional `description` (2000), `hidden`, `kind` (`progression`, `missable` or `win_condition`), `tier` (`bronze`, `silver` or `gold`), `points` (0 to 100000), `global_percent` (0 to 100), `icon_url` and `locked_icon_url` (absolute `http(s)` URLs, resolved by the plugin) and `source_ids` (up to 8 platform ids such as `{"steam": "ACH_X"}`). Unknown fields, non-finite numbers and non-HTTP URLs are rejected. A provider that hides a secret achievement sends a placeholder with `hidden: true`; it never sends per-player data.
+A provider can offer a game's achievement **definitions** by declaring `achievements` in `metadata_resources` and answering the `metadata` operation when the request's `resource` is `achievements`, with `achievements` in the patch: up to 2,000 items. Each item has `external_id` (the provider's id, unique per game), `name` (200), optional `description` (2,000), `hidden`, `kind` (`progression`, `missable` or `win_condition`), `tier` (`bronze`, `silver` or `gold`), `points` (0 to 100000), `global_percent` (0-100), `icon_url` and `locked_icon_url` (absolute `http(s)` URLs, resolved by the plugin) and `source_ids` (up to 8 platform ids such as `{"steam": "ACH_X"}`). Unknown fields, non-finite numbers and non-HTTP URLs are rejected. Definitions never carry progress. A provider that hides a secret achievement sends a placeholder with `hidden: true`; no per-player data exists in the contract.
 
-A metadata refresh (with "update text" on) stores the winning provider's list as catalogue rows (`provider = "catalog"`, `source_provider` records which metadata provider supplied them). Rules:
+The host asks for a catalogue in two places: **Refresh achievements** (`POST /api/library-sync/games/{id}/achievements`) for a game that did not come from Steam, PlayStation or RetroAchievements, and a metadata refresh of a game that has no catalogue yet (failures there only add a note to the refresh result). It stores the definitions as catalogue rows (`provider = "catalog"`, `source_provider` records which metadata provider supplied them), updated by `external_id` (so media linked to an achievement keeps its link, and a missing description never erases a known one). Definitions the provider stops listing are removed; an empty answer changes nothing; synced rows (Steam, PlayStation, RetroAchievements, manual) are never touched.
 
-- An empty or missing list changes nothing; a non-empty list replaces the previous catalogue rows of the game, and synced rows (Steam, PlayStation, RetroAchievements, manual) are never touched.
-- A catalogue row whose `source_ids` match a synced row (same platform and id) is **folded into it** in the achievements list: the synced row keeps its unlock state and text and only gains the missing icon, locked icon, rarity, kind, medal and points. Unmatched catalogue rows are listed as locked entries of their own.
+- A catalogue row whose `source_ids` match a synced row (same platform and id) is **folded into it** in the achievements list: the synced row keeps its unlock state and text and only gains the missing icon, locked icon, rarity, kind, medal and points. Unmatched catalogue rows are listed as locked entries of their own, labelled with the provider.
 - Library totals count a catalogue only for games no platform has reported achievements for, so nothing is counted twice. Statistics, the plugin game API and delegated (shared) reads ignore catalogue rows.
 - Hidden achievements stay hidden in the app until they are unlocked or revealed by the user, and the delegated achievement page replaces the name and description of a locked hidden achievement.
 - Icons are fetched lazily through the host's cached icon route (`/api/achievement-icon/{id}` and `/{id}/locked`) using the same remote image rules as other artwork: only public hosts, size and format limits. A provider on a private address therefore cannot supply icons.
 
-Providers emitting `achievements` must target **Plugin API 1.1.16**. Reveal-on-unlock (asking a provider for the real text of achievements the user has earned) is not part of this release.
+Reveal-on-unlock (asking a provider for the real text of achievements the user has earned) is not part of this contract version.
 
 ### Completion-time categories (API 1.1.13)
 

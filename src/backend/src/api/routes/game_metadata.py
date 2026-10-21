@@ -29,7 +29,11 @@ from src.core.preferences import load_preferences
 from src.core.titles import normalize_metadata_title as _normalize_metadata_title
 from src.database.models.user import User
 from src.database.session import get_db
-from src.features.achievement_catalog import store_catalog
+from src.features.achievement_catalogue import (
+    fetch_catalogue,
+    has_catalogue,
+    store_catalogue,
+)
 from src.features.game_identity import names
 from src.features.metadata.locked_fields import apply_metadata_updates
 from src.features.metadata.service import (
@@ -331,9 +335,6 @@ async def refresh_game_metadata(
         if "title" in updates:
             names.note_title_change(game, trusted_metadata=True)
             await names.reconcile_games(db, game.user_id, [game])
-        provider_achievements = match.get("achievements")
-        if isinstance(provider_achievements, list):
-            await store_catalog(db, game.id, provider_achievements)
 
     if payload.fill_missing_art:
 
@@ -358,6 +359,15 @@ async def refresh_game_metadata(
                 )
             else:
                 would_add_banner = True
+
+    if payload.update_text and not await has_catalogue(db, game.id):
+        # A game with no achievements yet may get its definitions from a provider (such as Atlas).
+        try:
+            label, catalogue, _errors = await fetch_catalogue(db, current_user.id, game)
+            if catalogue:
+                await store_catalogue(db, game.id, label, catalogue)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            provider_errors.append(f"Achievements: {type(exc).__name__}")
 
     await db.commit()
     await db.refresh(game)

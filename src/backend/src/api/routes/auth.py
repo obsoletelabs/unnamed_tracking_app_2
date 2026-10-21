@@ -28,6 +28,7 @@ from src.core.auth import (
     revoke_session,
     session_cookie_name,
     set_password_policy_override,
+    username_in_use,
     validate_display_name,
     validate_password,
     validate_username,
@@ -45,7 +46,7 @@ from src.database.models.user import User
 from src.database.session import get_db
 from src.features.admin_users import is_primary_user, record_audit
 from src.features.game_ingestion.legacy import PLAYSTATION, record_disconnect
-from src.features.local_auth import DUMMY_PASSWORD_HASH, local_login_attempt
+from src.features.local_auth import local_login_attempt, verify_login_password
 from src.features.metadata.games.psn import PSNClient, PSNError
 from src.features.notification_urls import remember_app_url
 from src.features.profile_pictures import profile_picture_version
@@ -218,17 +219,15 @@ async def login(
             )
         if user is not None:
             await reservation.for_account(user.id)
-        stored_hash = (
-            user.password_hash if user is not None and user.is_active else DUMMY_PASSWORD_HASH
-        )
-        matches = await run_password_job(verify_password, payload.password, stored_hash)
+        stored_hash = user.password_hash if user is not None and user.is_active else None
+        matches = await verify_login_password(db, payload.password, stored_hash, verify_password)
         if user is None or not user.is_active or not matches:
             reservation.failed = True
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials."
             )
 
-        if password_needs_rehash(stored_hash):
+        if stored_hash is not None and password_needs_rehash(stored_hash):
             # The row is locked above, so a concurrent password change or reset cannot be
             # overwritten. A busy hashing pool only postpones the upgrade to the next sign-in.
             try:
@@ -311,9 +310,20 @@ async def update_current_user(
 
     if payload.username is not None and payload.username.strip() != user.username:
         try:
-            user.username = validate_username(payload.username)
+            new_username = validate_username(payload.username)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if await username_in_use(db, new_username, exclude_user_id=user.id):
+            # Same disclosure rule as any other collision: only administrators learn the field.
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "That username is already taken. Choose a different username."
+                    if user.is_admin
+                    else ACCOUNT_CONFLICT_DETAIL
+                ),
+            )
+        user.username = new_username
     if "display_name" in payload.model_fields_set:
         user.display_name = payload.display_name
     if payload.email is not None:

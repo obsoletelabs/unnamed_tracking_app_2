@@ -26,6 +26,16 @@ The application accepts either the individual PostgreSQL variables or the legacy
 
 Environment-only authentication quota controls (`AUTH_RATE_LIMIT_PERCENT`, `AUTH_LOGIN_ACCOUNT_PER_MINUTE`, `AUTH_LOGIN_ACCOUNT_PER_15_MINUTES`, `AUTH_LOGIN_IP_PER_MINUTE`, `AUTH_LOGIN_IP_FAILURES_PER_15_MINUTES` and `AUTH_PASSWORD_WORKERS`) are documented with defaults, accepted ranges and replica/proxy requirements in [Authentication Protection](../deployment/authentication-protection.md).
 
+Prometheus metrics are configured with these environment-only variables, described in [Prometheus metrics](../deployment/metrics.md):
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `METRICS_ENABLED` | `true` in the production image, `false` in the development backend | Serves `/metrics` from the backend. `false` also removes the scrape port. |
+| `METRICS_LISTEN_PORT` | `9464` | Production image: port of the always-present scrape listener (no token). Closed unless you publish it. Not 80 or 443. |
+| `METRICS_NGINX_ROUTE_ENABLED` | `false` | Production image: opt in to token-protected `/metrics` on the public web ports. |
+| `METRICS_TOKEN` | generated and saved | Bearer token for `/metrics` (32+ characters). |
+| `PROMETHEUS_MULTIPROC_DIR` | unset | Only with several backend worker processes. |
+
 | Variable | Source | Default | Purpose |
 |---|---|---|---|
 | `SECRET_KEY` | ENV | Generated/persisted when omitted | Stable Fernet encryption and session-signing key. It is hidden from the setup UI. |
@@ -87,7 +97,7 @@ Environment-only settings for the Argon2id parameters used for new and upgraded 
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `PUBLIC_APP_URL` | Automatic per-user origin | Optional HTTPS public FQDN used after notification URL preferences and before each user's last-used app URL. ENV takes precedence over the setup/Application setting. Independent of OIDC; credentials, paths, queries and fragments are rejected. |
+| `PUBLIC_APP_URL` | Automatic per-user origin | Optional HTTPS public FQDN used after notification URL preferences and before each user's last-used app URL. ENV takes precedence over the setup/Application setting. OIDC callbacks are generated separately from the current sign-in address. Credentials, paths, queries and fragments are rejected. |
 
 Each signed-in user has an independently remembered app origin. Users can override notification links globally or per external destination, including separate email and webhook domains. Public DNS for the configured FQDN is managed outside the app.
 
@@ -161,11 +171,12 @@ Secret fields are not returned as plaintext by the setup configuration API.
 | `OIDC_ISSUER_URL` | — | OIDC issuer or discovery URL. |
 | `OIDC_CLIENT_ID` | — | OIDC client ID. |
 | `OIDC_CLIENT_SECRET` | — | OIDC client secret. |
-| `OIDC_REDIRECT_URI` | Generated when omitted | Optional deployment-provided callback URI; otherwise the current request is used. |
+| `OIDC_REDIRECT_URI` | Current sign-in address | Optional fixed HTTPS callback for the matching environment-managed issuer/client, including named callback aliases. When unset, callbacks follow the current request URL, including its scheme, host, port and proxy mount path. |
+| `OIDC_PRIVATE_ISSUER_ORIGINS` | Empty; legacy ENV only | No longer required: configuring a trusted HTTPS issuer permits its exact origin to route publicly or privately. Existing values remain accepted for compatibility and do not grant private access to other origins. |
 | `OIDC_SCOPES` | `openid profile email` | Space-separated OIDC scopes. |
 | `OIDC_GROUPS_CLAIM` | `groups` | Claim containing group membership. |
 | `OIDC_ADMIN_GROUP` | — | Optional group whose members receive administrator access. |
-| `OIDC_USER_MATCH_FIELD` | `email` | Match an OIDC identity by `email` or `username`. |
+| `OIDC_USER_MATCH_FIELD` | `email` | Match an OIDC identity by `email` or `username`; `none` disables account matching while retaining existing linked sign-ins. |
 | `OIDC_ALLOW_NEW_USERS` | `true` | Allow unmatched OIDC identities to create local accounts. |
 | `OIDC_REQUIRE_VERIFIED_EMAIL` | `false` | Require an explicit boolean `email_verified=true` for the matching bootstrap/environment provider and its callback aliases. False, missing or malformed claims are rejected when enabled. Named providers can enable this independently. |
 | `OIDC_DEFAULT_LOGIN_METHOD` | `local` | Default login choice: `local` or `sso`. |

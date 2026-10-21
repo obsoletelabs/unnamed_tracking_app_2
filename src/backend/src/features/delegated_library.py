@@ -12,7 +12,7 @@ from src.api.schemas.delegation import AchievementReportWrite
 from src.database.models.achievement import Achievement
 from src.database.models.achievement_override import AchievementOverride
 from src.database.models.game import Game, GameStatus
-from src.features.achievement_catalog import CATALOG, HIDDEN_NAME
+from src.features.achievement_folding import CATALOG, HIDDEN_NAME
 from src.features.game_identity import graph
 from src.plugin_api.game_library import game_details, owned_game
 

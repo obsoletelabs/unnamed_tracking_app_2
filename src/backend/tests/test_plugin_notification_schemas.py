@@ -10,7 +10,7 @@ from src.plugin_api import (
     PLUGIN_NOTIFICATION_DOCUMENTS,
     plugin_notification_schemas,
 )
-from src.plugin_api.base_contracts import PLUGIN_API_CONTRACT_VERSION
+from src.plugin_api.notification_plugin_contracts import NOTIFICATION_PLUGIN_API_VERSION
 from src.plugin_api.notification_story_contracts import NOTIFICATION_CONTRACT_VERSION
 
 FIXTURES = Path(__file__).parent / "fixtures" / "notification_contract"
@@ -34,7 +34,7 @@ def test_plugin_conformance_cases(item):
 
 
 def test_conformance_covers_every_document_in_both_directions():
-    assert CONFORMANCE["api_contract_version"] == PLUGIN_API_CONTRACT_VERSION
+    assert CONFORMANCE["api_contract_version"] == NOTIFICATION_PLUGIN_API_VERSION
     assert CONFORMANCE["contract_version"] == NOTIFICATION_CONTRACT_VERSION
     for name in PLUGIN_NOTIFICATION_DOCUMENTS:
         outcomes = {item["valid"] for item in CONFORMANCE["cases"] if item["document_type"] == name}
@@ -46,7 +46,7 @@ def test_published_schemas_match_reviewed_snapshots(name):
     schema = plugin_notification_schemas()[name]
     snapshot = json.loads((FIXTURES / "plugin_schemas" / f"{name}.schema.json").read_text("utf-8"))
     assert schema == snapshot
-    assert schema["x-api-contract-version"] == PLUGIN_API_CONTRACT_VERSION
+    assert schema["x-api-contract-version"] == NOTIFICATION_PLUGIN_API_VERSION
     assert schema["additionalProperties"] is False
 
 
@@ -73,7 +73,7 @@ def test_exporter_publishes_every_document_the_sdk_pins(tmp_path):
         "notification-canonical-event-v1",
     } <= names
     provider = json.loads((tmp_path / "notification-provider-v1.schema.json").read_text("utf-8"))
-    assert provider["x-api-contract-version"] == PLUGIN_API_CONTRACT_VERSION
+    assert provider["x-api-contract-version"] == NOTIFICATION_PLUGIN_API_VERSION
     for name in PLUGIN_NOTIFICATION_DOCUMENTS:
         exported = json.loads((tmp_path / f"{name}.schema.json").read_text("utf-8"))
         snapshot = json.loads(
@@ -102,7 +102,7 @@ def test_older_documents_keep_their_pinned_versions(tmp_path):
     }
     for name in ("notification-lifecycle-query-v1", "notification-lifecycle-page-v1"):
         schema = json.loads((tmp_path / f"{name}.schema.json").read_text("utf-8"))
-        assert schema["x-api-contract-version"] == PLUGIN_API_CONTRACT_VERSION
+        assert schema["x-api-contract-version"] == NOTIFICATION_PLUGIN_API_VERSION
     for name, version in expected.items():
         schema = json.loads((tmp_path / f"{name}.schema.json").read_text("utf-8"))
         assert schema["x-api-contract-version"] == version

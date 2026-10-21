@@ -16,6 +16,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.crypto import encrypt_secret
+from src.core.metrics import PROVIDER_CALLS, PROVIDER_DURATION
 from src.core.preferences import load_preferences
 from src.core.provider_credentials import resolve_metadata_provider_credentials
 from src.database.models.app_integration_settings import AppIntegrationSettings
@@ -195,6 +196,7 @@ class CoreMetadataProvider:
         if candidate is not None:
             values["candidate"] = candidate.model_dump(mode="json")
         token = core_http.context.set((work, self.values))
+        started = time.monotonic()
         try:
             result = getattr(CORE_PROVIDERS[self.id], operation)(values)
             if inspect.isawaitable(result):
@@ -208,6 +210,9 @@ class CoreMetadataProvider:
             response = ProviderResponse.model_validate({"failure": {"code": "invalid_response"}})
         finally:
             core_http.context.reset(token)
+        outcome = response.failure.code if response.failure else "ok"
+        PROVIDER_CALLS.labels(self.id, operation, outcome).inc()
+        PROVIDER_DURATION.labels(self.id, operation).observe(time.monotonic() - started)
         if not await self.authorized(operation):
             return ProviderResponse.model_validate({"failure": {"code": "invalid_configuration"}})
         return response

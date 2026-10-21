@@ -404,9 +404,6 @@ class MetadataHandler:
             for name, value in patch.model_dump(mode="json").items():
                 if value is None or value == [] or value == {} or value == "":
                     continue
-                if name == "achievements":
-                    # one provider's complete list wins; each entry keeps its provenance
-                    value = [{**item, "provider": provider_id} for item in value]
                 if name in _COMPLETION_ESTIMATE_FIELDS:
                     if value <= 0:
                         continue
@@ -656,7 +653,7 @@ class MetadataHandler:
                 # Episode lists need a resolved provider identity. ID mapping capabilities
                 # without their own namespace can still contribute authoritative cross-IDs.
                 if (
-                    session.request.resource == "episodes"
+                    session.request.resource in ("episodes", "achievements")
                     and not known_identity
                     and provider.declaration.identifier_namespace
                 ):

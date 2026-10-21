@@ -14,7 +14,7 @@ from sqlalchemy.sql.functions import count
 from src.database.models.achievement import Achievement
 from src.database.models.game import Game
 from src.database.models.media_item import MediaItem
-from src.features.achievement_catalog import CATALOG
+from src.features.achievement_folding import CATALOG
 
 _PUBLIC_FIELDS = (
     "id",

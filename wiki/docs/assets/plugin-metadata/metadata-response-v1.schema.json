@@ -79,7 +79,7 @@
     },
     "MetadataAchievement": {
       "additionalProperties": false,
-      "description": "One catalogue entry of a game's achievements; never carries a player's progress.",
+      "description": "An achievement definition from a provider's catalogue. Progress is never provider-owned.",
       "properties": {
         "external_id": {
           "maxLength": 512,
@@ -1020,6 +1020,15 @@
           "default": null,
           "title": "Crossplay"
         },
+        "achievements": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/MetadataAchievement"
+          },
+          "maxItems": 2000,
+          "title": "Achievements",
+          "type": "array"
+        },
         "custom": {
           "maxProperties": 32,
           "patternProperties": {
@@ -1055,15 +1064,6 @@
           },
           "title": "Custom",
           "type": "object"
-        },
-        "achievements": {
-          "default": [],
-          "items": {
-            "$ref": "#/$defs/MetadataAchievement"
-          },
-          "maxItems": 500,
-          "title": "Achievements",
-          "type": "array"
         }
       },
       "title": "MetadataPatch",
@@ -1373,5 +1373,5 @@
   "title": "ProviderResponse",
   "type": "object",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "x-api-contract-version": "1.1.16"
+  "x-api-contract-version": "1.1.15"
 }

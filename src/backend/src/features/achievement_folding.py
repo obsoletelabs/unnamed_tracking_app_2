@@ -1,4 +1,4 @@
-"""Achievement lists reported by metadata providers, kept apart from what a player earned.
+"""Matching provider catalogues to what a player earned, and merging the copies of a game.
 
 A catalogue row (``provider == "catalog"``) says an achievement exists. It never carries
 progress: the platform syncs (Steam, PlayStation, RetroAchievements) and the user own that.
@@ -8,13 +8,9 @@ only lends the synced row the details it lacks (icons, rarity, points, kind).
 
 from __future__ import annotations
 
-import time
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable
 from typing import Any
 from uuid import UUID
-
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.achievement import Achievement
 
@@ -24,70 +20,6 @@ HIDDEN_NAME = "Hidden achievement"
 
 def is_catalog(row: Achievement) -> bool:
     return row.provider == CATALOG
-
-
-def catalog_values(item: dict[str, Any]) -> dict[str, Any]:
-    """Column values for one validated ``MetadataAchievement`` as a plain dict."""
-    return {
-        "name": item["name"],
-        "description": item.get("description"),
-        "icon_url": item.get("icon_url"),
-        "locked_icon_url": item.get("locked_icon_url"),
-        "hidden": bool(item.get("hidden")),
-        "tier": item.get("kind"),
-        "medal": item.get("tier"),
-        "points": item.get("points"),
-        "global_percent": item.get("global_percent"),
-        "source_ids": dict(item.get("source_ids") or {}) or None,
-        "source_provider": str(item.get("provider") or "")[:128] or None,
-    }
-
-
-async def store_catalog(db: AsyncSession, game_id: UUID, items: Sequence[dict[str, Any]]) -> int:
-    """Upsert the provider's list for this game and return how many rows changed.
-
-    An empty list changes nothing: a provider that knows no achievements, or failed to say,
-    must not wipe a list an earlier refresh stored. Rows the provider stopped listing go away,
-    but only those a metadata provider wrote."""
-    if not items:
-        return 0
-    rows = await db.scalars(
-        select(Achievement).where(Achievement.game_id == game_id, Achievement.provider == CATALOG)
-    )
-    existing = {row.external_id: row for row in rows}
-    changed = 0
-    seen: set[str] = set()
-    for item in items:
-        external_id = item["external_id"]
-        if external_id in seen:
-            continue
-        seen.add(external_id)
-        values = catalog_values(item)
-        row = existing.get(external_id)
-        if row is None:
-            db.add(
-                Achievement(
-                    game_id=game_id,
-                    provider=CATALOG,
-                    external_id=external_id,
-                    created_at=int(time.time()),
-                    unlocked=False,
-                    **values,
-                )
-            )
-            changed += 1
-            continue
-        dirty = False
-        for field, value in values.items():
-            if getattr(row, field) != value:
-                setattr(row, field, value)
-                dirty = True
-        changed += dirty
-    for external_id, row in existing.items():
-        if external_id not in seen:
-            await db.delete(row)
-            changed += 1
-    return changed
 
 
 def fold_catalog(
