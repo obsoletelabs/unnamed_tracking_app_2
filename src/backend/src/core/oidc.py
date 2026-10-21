@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import logging
+import socket
+import ssl
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
+import httpx
 from authlib.integrations.starlette_client import OAuth
 from fastapi import Request
 from sqlalchemy import select
@@ -18,6 +22,7 @@ from src.database.models.oidc_settings import OidcSettings
 from src.helpers.public_http import parse_http_url
 
 oauth = OAuth()
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -185,16 +190,60 @@ async def validate_oidc_metadata(client: Any, config: OidcConfig) -> str:
     return str(issuer)
 
 
+def _login_failure_reason(error: Exception) -> str:
+    """Classify failures without logging URLs, credentials or provider response text."""
+    cause: BaseException = error
+    for _ in range(4):
+        if cause.__cause__ is None:
+            break
+        cause = cause.__cause__
+    for error_type, reason in (
+        (ssl.SSLCertVerificationError, "certificate_error"),
+        (ssl.SSLError, "tls_error"),
+        (socket.gaierror, "dns_error"),
+        (TimeoutError, "timeout"),
+        (httpx.TimeoutException, "timeout"),
+        (httpx.HTTPStatusError, "provider_http_error"),
+        (OSError, "connection_error"),
+    ):
+        if isinstance(cause, error_type):
+            return reason
+    # Only exact, application-owned policy messages select diagnostic labels.
+    # Unknown exception messages are never copied into logs.
+    return {
+        "OIDC callback requires HTTPS": "insecure_callback",
+        "OIDC destinations require HTTPS": "insecure_destination",
+        "OIDC discovery issuer mismatch": "issuer_mismatch",
+        "Host must resolve exclusively to public addresses.": "private_address",
+        "OIDC endpoint redirects are not allowed": "endpoint_redirect",
+        "OIDC response is too large": "response_too_large",
+        "Compressed OIDC responses are not supported": "compressed_response",
+        "No supported OIDC signing algorithm": "unsupported_signing_algorithm",
+        "Invalid OIDC signing algorithms": "invalid_signing_algorithms",
+    }.get(str(cause), "provider_failure")
+
+
 async def begin_oidc(request: Request, config: OidcConfig) -> RedirectResponse:
     client_name = f"oidc_{config.slug}" if config.slug != "default" else "oidc"
+    stage = "registration"
     try:
         register_oidc_provider(config, client_name)
         client = oauth.create_client(client_name)
         if client is None:
             return RedirectResponse("/login?oidc_error=provider_unavailable", 303)
+        stage = "callback_url"
         redirect_uri = callback_url(request, config)
+        stage = "discovery"
         await validate_oidc_metadata(client, config)
+        stage = "authorization_redirect"
         return await client.authorize_redirect(request, redirect_uri)
     # External-provider failures return a constant error without leaking URLs or secrets.
-    except Exception:  # pylint: disable=broad-exception-caught
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        logger.warning(
+            "OIDC login failed provider=%r stage=%s reason=%s error_type=%s",
+            config.slug,
+            stage,
+            _login_failure_reason(exc),
+            type(exc).__name__,
+        )
         return RedirectResponse("/login?oidc_error=authentication_failed", 303)

@@ -81,7 +81,7 @@ a UserInfo response never replaces failed ID-token validation.
 The provider must publish valid signing keys at its discovered JWKS endpoint.
 Fix the provider's discovery/key configuration when validation fails rather than
 disabling verified-email checks. Provider errors return a generic sign-in failure;
-application logs record the exception type without copying provider response text.
+application logs record safe failure classifications without copying provider response text.
 
 ## Account matching
 
@@ -123,7 +123,7 @@ See the [Authentik provider documentation](https://docs.goauthentik.io/add-secur
 | Tokens and keys | Configured issuer, asymmetric signatures, audience/expiry/nonce validation, no UserInfo downgrade | Actual signed invalid-token matrix, signature failure and JWKS rotation |
 | Account ownership | Exact issuer/subject binding, administrator-selected matching and optional email verification | Matching enabled/disabled, optional/required verification, legacy bindings, issuer-change denials, opaque subjects and email ownership conflicts |
 | Provider network | DNS-pinned public HTTPS or an explicit issuer-origin exception; no redirects; 1 MiB responses | Private/metadata address denial, exact-origin/port isolation, hostile discovery options, response bounds and actual certificate validation |
-| Errors and secrets | Generic sign-in errors and exception-type-only logs | Provider errors containing token/client-secret text never appear in captured logs |
+| Errors and secrets | Generic sign-in errors and safe stage/reason/type logs | Provider errors containing token/client-secret text never appear in captured logs |
 
 Run the focused tests from `src/backend` against a dedicated migrated test database:
 
@@ -145,6 +145,7 @@ The public sign-in page, `/login/local`, provider entry pages and callback error
 
 - **Callback rejected:** compare the identity provider callback with the exact URI shown in Settings.
 - **Provider unavailable:** check the issuer/discovery URL and client credentials.
+- **Sign-in fails before reaching the provider:** inspect the backend log for `OIDC login failed`. It records the provider slug, stage (`registration`, `callback_url`, `discovery` or `authorization_redirect`), a fixed reason and the exception type. It does not include URLs, response text, authorization codes, tokens, client secrets or a traceback. For example, `reason=private_address` means the backend DNS resolves the provider to a private address; explicitly allow only the trusted issuer's exact HTTPS origin with `OIDC_PRIVATE_ISSUER_ORIGINS` if that routing is intentional. `certificate_error`, `dns_error` and `timeout` indicate backend certificate, resolver or connectivity problems. `insecure_callback` means the request or explicit override generates HTTP outside local development; correct the callback or trusted reverse-proxy forwarding. `issuer_mismatch` requires the exact discovery issuer, including its trailing slash. Retry after correcting the deployment; do not disable certificate, issuer or network validation.
 - **User cannot be created:** check **Allow new users**.
 - **Verified email required:** enable this option only when the provider supplies an explicit true verification claim; check its claim mapping and user verification status.
 - **Email conflict:** correct the provider email or local account mapping with an administrator.

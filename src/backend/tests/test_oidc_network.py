@@ -1,14 +1,83 @@
 """OIDC network policy, bounded responses and hostile discovery configuration."""
 
+import logging
+import socket
+import ssl
 from http.client import HTTPConnection
-from unittest.mock import Mock
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
 
 import httpx
 import pytest
+from fastapi import FastAPI, Request
+from starlette.responses import RedirectResponse
 
 from src.core import oidc, oidc_http
 from src.core.config import settings
 from src.helpers import public_http
+
+
+@pytest.mark.parametrize(
+    ("stage", "reason"),
+    [
+        ("registration", "provider_failure"),
+        ("callback_url", "insecure_callback"),
+        ("discovery", "private_address"),
+        ("discovery", "certificate_error"),
+        ("discovery", "dns_error"),
+        ("discovery", "timeout"),
+        ("authorization_redirect", "provider_failure"),
+    ],
+)
+async def test_login_failure_logs_safe_stage_without_provider_secrets(
+    monkeypatch, caplog, stage, reason
+):
+    secret = "never-log-client-secret-token-authorization-code-nonce"
+    error = RuntimeError(f"https://provider.example.test/?secret={secret}")
+    metadata_error = httpx.TransportError(f"provider response: {secret}")
+    metadata_error.__cause__ = {
+        "certificate_error": ssl.SSLCertVerificationError(secret),
+        "dns_error": socket.gaierror(-2, secret),
+        "timeout": TimeoutError(secret),
+    }.get(reason, ValueError("Host must resolve exclusively to public addresses."))
+    client = SimpleNamespace(
+        load_server_metadata=AsyncMock(return_value={"issuer": "https://issuer.example.test"}),
+        authorize_redirect=AsyncMock(return_value=RedirectResponse("https://issuer.example.test")),
+    )
+    register = Mock()
+    monkeypatch.setattr(oidc, "register_oidc_provider", register)
+    monkeypatch.setattr(oidc, "oauth", SimpleNamespace(create_client=Mock(return_value=client)))
+    monkeypatch.setattr(
+        oidc, "callback_url", Mock(return_value="https://tracking.example.test/callback")
+    )
+    if stage == "registration":
+        register.side_effect = error
+    elif stage == "callback_url":
+        oidc.callback_url.side_effect = ValueError("OIDC callback requires HTTPS")
+    elif stage == "discovery":
+        client.load_server_metadata.side_effect = metadata_error
+    else:
+        client.authorize_redirect.side_effect = error
+    config = oidc.OidcConfig("https://issuer.example.test", "test-client", secret, slug="authentik")
+    app = FastAPI()
+
+    @app.get("/start")
+    async def start(request: Request):
+        return await oidc.begin_oidc(request, config)
+
+    with caplog.at_level(logging.WARNING, logger="src.core.oidc"):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="https://tracking.example.test"
+        ) as http:
+            response = await http.get("/start")
+    assert response.status_code == 303
+    assert response.headers["location"] == "/login?oidc_error=authentication_failed"
+    assert "provider='authentik'" in caplog.text
+    assert f"stage={stage}" in caplog.text
+    assert f"reason={reason}" in caplog.text
+    assert secret not in caplog.text
+    assert "provider.example.test" not in caplog.text
+    assert all(record.exc_info is None for record in caplog.records)
 
 
 class ProviderResponse:
