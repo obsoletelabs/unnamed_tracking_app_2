@@ -50,6 +50,45 @@ def test_merged_metadata_carries_group_play_from_the_best_provider():
     )
 
 
+@pytest.mark.parametrize(
+    ("priorities", "expected_title"),
+    [
+        ({"core.steam": 0, "official.metadata-atlas.atlas": 1}, "Steam title"),
+        ({"core.steam": 1, "official.metadata-atlas.atlas": 0}, "Atlas title"),
+    ],
+)
+def test_metadata_merge_uses_provider_order_and_fills_complementary_fields(
+    priorities, expected_title
+):
+    session = SimpleNamespace(
+        providers=[
+            SimpleNamespace(id=provider_id, priority=priority)
+            for provider_id, priority in priorities.items()
+        ]
+    )
+    # Keep Atlas first in the input list so the assertions verify configured order,
+    # not member insertion order.
+    members = [
+        SimpleNamespace(
+            priority=0,
+            metadata={
+                "official.metadata-atlas.atlas": MetadataPatch(
+                    title="Atlas title", description="Atlas summary"
+                )
+            },
+        ),
+        SimpleNamespace(
+            priority=0,
+            metadata={"core.steam": MetadataPatch(title="Steam title")},
+        ),
+    ]
+
+    merged = MetadataHandler._metadata(session, members)  # pylint: disable=protected-access
+
+    assert merged["title"] == expected_title
+    assert merged["description"] == "Atlas summary"
+
+
 def test_provider_values_fill_an_unconfirmed_game():
     match = {"players_min": 1, "players_max": 4, "crossplay": "yes"}
     assert provider_play_compatibility(match, None) == {
