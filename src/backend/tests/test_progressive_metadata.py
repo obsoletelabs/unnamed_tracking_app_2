@@ -102,11 +102,15 @@ async def test_achievement_catalogue_providers_can_resolve_a_linked_foreign_id()
                 media_types=("game",),
                 identifier_namespace="atlas",
                 metadata_resources=("entity", "episodes", "achievements"),
-                operations=ProviderOperations(search="search", metadata="metadata", health="health"),
+                operations=ProviderOperations(
+                    search="search", metadata="metadata", health="health"
+                ),
             )
 
     atlas = AtlasProvider("official.metadata-atlas.atlas")
-    library_game = candidate(provider="local.library", provider_ids={"steam": "620"}, media_type="game")
+    library_game = candidate(
+        provider="local.library", provider_ids={"steam": "620"}, media_type="game"
+    )
     achievements_request = request().model_copy(update={"resource": "achievements"})
     record, failures = await MetadataHandler().enrich(
         achievements_request, [atlas], library_game, include_media=False
