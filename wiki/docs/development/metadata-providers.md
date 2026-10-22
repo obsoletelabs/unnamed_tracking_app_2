@@ -78,6 +78,14 @@ The host asks for a catalogue in two places: **Import / refresh achievements** i
 
 The host stores definitions as catalogue rows (`provider = "catalog"`, `source_provider` records which metadata provider supplied them), updated by `external_id` (so media linked to an achievement keeps its link, and a missing description never erases a known one). Definitions the provider stops listing are removed; an empty answer changes nothing; synced rows (Steam, PlayStation, RetroAchievements, manual) are never touched.
 
+### Local Atlas import evidence
+
+The local Atlas 0.7.0 integration fixture was imported into the app's Portal 2 library entry. The Library summary reports one game checked and one locked achievement; the achievement page shows the imported description and locked state.
+
+![Library import summary showing one Atlas achievement checked](https://github.com/user-attachments/assets/065f0a7f-888d-4a78-94c1-e12c1c9a28f0)
+
+![Imported Atlas achievement details in the app](https://github.com/user-attachments/assets/5b213bde-bdd9-495e-936f-3bf9f33baf1d)
+
 - A catalogue row whose `source_ids` match a synced row (same platform and id) is **folded into it** in the achievements list: the synced row keeps its unlock state and text and only gains the missing icon, locked icon, rarity, kind, medal and points. Unmatched catalogue rows are listed as locked entries of their own, labelled with the provider.
 - Library totals count a catalogue only for games no platform has reported achievements for, so nothing is counted twice. Statistics, the plugin game API and delegated (shared) reads ignore catalogue rows.
 - Hidden achievements stay hidden in the app until they are unlocked or revealed by the user, and the delegated achievement page replaces the name and description of a locked hidden achievement.
