@@ -1221,6 +1221,22 @@
   min-width: 0;
 }
 
+.game-detail-page .ach-note-preview {
+  display: grid;
+  gap: 2px;
+  margin: 8px 0 0;
+  color: var(--ui-dim);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.game-detail-page .ach-note-preview strong {
+  color: var(--ui-text);
+  font-size: 0.75rem;
+}
+
 .game-detail-page .ach-name {
   display: flex;
   align-items: center;

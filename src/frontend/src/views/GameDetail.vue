@@ -7,7 +7,7 @@ import { HERO_WIDTH, POSTER_WIDTH, sizedAssetUrl } from "../utils/gameImages";
 import type { TrashedGameFile } from "../services/media";
 import SkeletonBlock from "../components/SkeletonBlock.vue";
 import { normalizePlatformFamily } from "../utils/platforms";
-import type { GameStatus } from "../types/game";
+import type { Achievement, GameStatus } from "../types/game";
 import GameRatingPicker from "../components/GameRatingPicker.vue";
 import GameCollectionsButton from "../components/GameCollectionsButton.vue";
 import BackButton from "../components/BackButton.vue";
@@ -57,6 +57,9 @@ const GameAccountsPanel = defineAsyncComponent(
 );
 const GameWorldsPanel = defineAsyncComponent(
   () => import("../components/game/GameWorldsPanel.vue"),
+);
+const AchievementEditDialog = defineAsyncComponent(
+  () => import("../components/AchievementEditDialog.vue"),
 );
 const model = useGameDetail();
 provide(gameDetailKey, model);
@@ -170,8 +173,6 @@ const {
   achProvider,
   achSearch,
   achLocal,
-  noteOpen,
-  noteDraft,
   overallOpen,
   overallDraft,
   isPinned,
@@ -179,13 +180,9 @@ const {
   isHiddenLocked,
   revealAchievement,
   hideAchievement,
-  toggleNote,
-  saveNote,
-  clearNote,
   progressUpdating,
   progressError,
-  toggleManualProgress,
-  useSyncedProgress,
+  saveAchievementEdit,
   toggleOverall,
   saveOverall,
   unlockedCount,
@@ -199,6 +196,21 @@ const {
   achStats,
   formatPlaytime,
 } = model;
+
+const editingAchievement = ref<Achievement | null>(null);
+function openAchievementEditor(achievement: Achievement) {
+  progressError.value = "";
+  editingAchievement.value = achievement;
+}
+async function onAchievementEditSave(
+  progress: "synced" | "unlocked" | "locked",
+  note: string,
+) {
+  const achievement = editingAchievement.value;
+  if (!achievement) return;
+  if (await saveAchievementEdit(achievement, progress, note))
+    editingAchievement.value = null;
+}
 
 // A copy was added, removed or made main: reload the game and remount the
 // panels that read the group, so every figure on the page agrees.
@@ -1104,6 +1116,10 @@ async function onCopiesChanged() {
                   </button>
                 </template>
               </div>
+              <p v-if="achLocal.notes[a.id]" class="ach-note-preview">
+                <strong>Your note</strong>
+                <span>{{ achLocal.notes[a.id] }}</span>
+              </p>
               <div
                 v-if="(a.sources?.length ?? 0) > 1 && !isHiddenLocked(a)"
                 class="ach-sources"
@@ -1160,43 +1176,20 @@ async function onCopiesChanged() {
                 type="button"
                 class="ach-btn"
                 :disabled="progressUpdating.has(a.id)"
-                :title="`Manually set ${a.name} as ${isUnlocked(a) ? 'locked' : 'unlocked'}`"
-                @click="toggleManualProgress(a)"
+                :aria-label="`Edit ${a.name}`"
+                @click="openAchievementEditor(a)"
               >
-                {{
-                  progressUpdating.has(a.id)
-                    ? "Saving…"
-                    : isUnlocked(a)
-                      ? "Mark locked"
-                      : "Mark unlocked"
-                }}
-              </button>
-              <button
-                v-if="a.manualOverride"
-                type="button"
-                class="ach-btn"
-                :disabled="progressUpdating.has(a.id)"
-                title="Return to the latest synced progress"
-                @click="useSyncedProgress(a)"
-              >
-                Use synced
+                Edit
               </button>
               <button
                 type="button"
                 class="ach-btn"
                 :class="{ on: isPinned(a) }"
                 :aria-pressed="isPinned(a)"
+                :aria-label="`${isPinned(a) ? 'Unpin' : 'Pin'} ${a.name}`"
                 @click="togglePin(a)"
               >
-                {{ isPinned(a) ? "Pinned" : "Pin" }}
-              </button>
-              <button
-                type="button"
-                class="ach-btn"
-                :class="{ on: !!achLocal.notes[a.id] || noteOpen === a.id }"
-                @click="toggleNote(a)"
-              >
-                {{ achLocal.notes[a.id] ? "Note · 1" : "Note" }}
+                {{ isPinned(a) ? "Unpin" : "Pin" }}
               </button>
               <button
                 v-if="mediaByAchievement.get(a.id)?.length"
@@ -1252,42 +1245,20 @@ async function onCopiesChanged() {
               ></audio>
             </template>
           </div>
-
-          <div v-if="noteOpen === a.id" class="ach-note-box">
-            <textarea
-              v-model="noteDraft"
-              class="ach-textarea"
-              rows="2"
-              placeholder="How you got it, or how you plan to"
-              :aria-label="`Note on ${a.name}`"
-            ></textarea>
-            <div class="ach-note-actions">
-              <button
-                type="button"
-                class="ui-btn ui-btn-primary ui-btn-sm"
-                @click="saveNote(a)"
-              >
-                Save
-              </button>
-              <button
-                type="button"
-                class="ui-btn ui-btn-ghost ui-btn-sm"
-                @click="noteOpen = null"
-              >
-                Cancel
-              </button>
-              <button
-                v-if="achLocal.notes[a.id]"
-                type="button"
-                class="ui-btn ui-btn-ghost ui-btn-sm"
-                @click="clearNote(a)"
-              >
-                Delete note
-              </button>
-            </div>
-          </div>
         </li>
       </ul>
+      <p v-if="progressError" class="ach-progress-error" role="status">
+        {{ progressError }}
+      </p>
+      <AchievementEditDialog
+        v-if="editingAchievement"
+        :achievement="editingAchievement"
+        :note="achLocal.notes[editingAchievement.id] ?? ''"
+        :saving="progressUpdating.has(editingAchievement.id)"
+        :error="progressError"
+        @close="editingAchievement = null"
+        @save="onAchievementEditSave"
+      />
       <div
         v-if="lightboxUrl"
         class="lightbox-backdrop"
