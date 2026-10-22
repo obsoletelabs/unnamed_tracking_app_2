@@ -332,9 +332,7 @@ async def refresh_game_metadata(
             for namespace, identity in offered_provider_ids.items()
             if namespace not in conflicting_namespaces
         }
-        provider_ids_to_save, _replaced = merge_provider_ids(
-            existing_provider_ids, safe_incoming
-        )
+        provider_ids_to_save, _replaced = merge_provider_ids(existing_provider_ids, safe_incoming)
 
     changed_fields = sorted(updates)
     key_art_url = match.get("key_art_url")
