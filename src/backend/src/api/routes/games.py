@@ -389,12 +389,9 @@ async def _ensure_provider_ids_available(
     candidates = {
         namespace: identity
         for namespace, identity in provider_ids.items()
-        if existing_provider_ids is None
-        or existing_provider_ids.get(namespace) != identity
+        if existing_provider_ids is None or existing_provider_ids.get(namespace) != identity
     }
-    conflicts = await find_provider_id_conflicts(
-        db, user_id, excluded_game_id, candidates
-    )
+    conflicts = await find_provider_id_conflicts(db, user_id, excluded_game_id, candidates)
     if conflicts:
         namespace = conflicts[0][0]
         raise HTTPException(
