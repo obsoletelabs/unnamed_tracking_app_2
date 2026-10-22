@@ -92,6 +92,36 @@ async def eventually(condition):
             await asyncio.sleep(0.001)
 
 
+async def test_achievement_catalogue_providers_can_resolve_a_linked_foreign_id():
+    class AtlasProvider(ContractProvider):
+        @property
+        def declaration(self):
+            return MetadataProviderRegistration(
+                provider_id=self.id,
+                name="Atlas",
+                media_types=("game",),
+                identifier_namespace="atlas",
+                metadata_resources=("entity", "episodes", "achievements"),
+                operations=ProviderOperations(search="search", metadata="metadata", health="health"),
+            )
+
+    atlas = AtlasProvider("official.metadata-atlas.atlas")
+    library_game = candidate(provider="local.library", provider_ids={"steam": "620"}, media_type="game")
+    achievements_request = request().model_copy(update={"resource": "achievements"})
+    record, failures = await MetadataHandler().enrich(
+        achievements_request, [atlas], library_game, include_media=False
+    )
+    assert failures == []
+    assert ("metadata", library_game.external_id) in atlas.calls
+    assert record["metadata"]["description"] == "Useful partial metadata"
+
+    # Episode endpoints still require the provider's own linked identity.
+    atlas.calls.clear()
+    episodes_request = request().model_copy(update={"resource": "episodes"})
+    await MetadataHandler().enrich(episodes_request, [atlas], library_game, include_media=False)
+    assert not atlas.calls
+
+
 @pytest.mark.parametrize("preferred_state", ["partial", "empty", "failed"])
 async def test_native_completion_times_fill_only_categories_missing_from_other_sources(
     preferred_state,
