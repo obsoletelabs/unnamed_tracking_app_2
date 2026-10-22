@@ -18,7 +18,7 @@ import asyncio
 import dataclasses
 import re
 import time
-from datetime import UTC, date, datetime
+from datetime import date
 from typing import Literal
 from uuid import UUID
 
@@ -39,13 +39,13 @@ from src.database.models.user import User
 from src.database.session import SessionLocal, get_db
 from src.features import game_folders
 from src.features.achievement_catalogue import fetch_catalogue, store_catalogue
+from src.features.achievement_folding import fold_catalog
 from src.features.achievement_sync import (
     _unix_from_text as _unix_from_text,
     psn_trophy_rows as _psn_trophy_rows,
     replace_achievements as _replace_achievements,
     retro_achievement_rows as _retro_achievement_rows,
 )
-from src.features.achievement_folding import fold_catalog
 from src.features.connection_jobs import sync_scope
 from src.features.game_identity import names
 from src.features.game_ingestion import legacy as ingestion

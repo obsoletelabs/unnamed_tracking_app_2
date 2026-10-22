@@ -114,5 +114,3 @@ async def replace_achievements(
     for external_id, achievement in existing.items():
         if external_id not in seen_ids:
             await db.delete(achievement)
-
-
