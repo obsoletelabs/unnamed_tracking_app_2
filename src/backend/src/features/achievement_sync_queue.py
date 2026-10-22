@@ -24,9 +24,7 @@ async def enqueue_game(db: AsyncSession, user_id: UUID, game_id: UUID) -> None:
 async def enqueue_user_games(db: AsyncSession, user_id: UUID) -> int:
     """Queue every active game for a full manual or scheduled sync."""
     game_ids = list(
-        await db.scalars(
-            select(Game.id).where(Game.user_id == user_id, Game.deleted_at.is_(None))
-        )
+        await db.scalars(select(Game.id).where(Game.user_id == user_id, Game.deleted_at.is_(None)))
     )
     for game_id in game_ids:
         await enqueue_game(db, user_id, game_id)

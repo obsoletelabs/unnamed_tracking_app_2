@@ -33,18 +33,34 @@ from src.api.routes.utils.games import _scan_settings_to_preferences
 from src.core.app_integrations import get_max_upload_size_mb
 from src.core.auth import get_current_user
 from src.core.crypto import decrypt_secret
-from src.database.models.achievement import Achievement
-from src.database.models.achievement_override import AchievementOverride
 from src.database.models.game import Game, GameStatus
 from src.database.models.user import User
 from src.database.session import SessionLocal, get_db
+from src.features import achievement_sync as _achievement_sync
 from src.features import game_folders
-from src.features.achievement_catalogue import fetch_catalogue, store_catalogue
-from src.features.achievement_folding import apply_manual_progress, fold_catalog
+from src.features.achievement_catalogue import fetch_catalogue
+from src.features.achievement_refresh import (
+    AchievementRefreshSources,
+)
+from src.features.achievement_refresh import (
+    fetch_psn_rows as _fetch_psn_rows_impl,
+)
+from src.features.achievement_refresh import (
+    fetch_retro_rows as _fetch_retro_rows,
+)
+from src.features.achievement_refresh import (
+    fetch_steam_rows as _fetch_steam_rows,
+)
+from src.features.achievement_refresh import (
+    refresh_game_achievements as _refresh_achievement_progress,
+)
 from src.features.achievement_sync import (
-    _unix_from_text as _unix_from_text,
     psn_trophy_rows as _psn_trophy_rows,
+)
+from src.features.achievement_sync import (
     replace_achievements as _replace_achievements,
+)
+from src.features.achievement_sync import (
     retro_achievement_rows as _retro_achievement_rows,
 )
 from src.features.connection_jobs import sync_scope
@@ -78,7 +94,22 @@ router = APIRouter(
     prefix="/api/library-sync", tags=["library-sync"], dependencies=[Depends(get_current_user)]
 )
 
+# Keep this legacy helper available to callers that imported it from this route module.
+_unix_from_text = _achievement_sync._unix_from_text  # pylint: disable=protected-access
+
 _SYNC_CONCURRENCY = 5
+
+
+async def _fetch_psn_rows(user: User, external_id: str, platform: str | None) -> list[dict]:
+    """Keep PSN client dependencies injectable through this route module."""
+    return await _fetch_psn_rows_impl(
+        user,
+        external_id,
+        platform,
+        secret_decryptor=decrypt_secret,
+        client_factory=PSNClient,
+    )
+
 
 # Steam's owned-games list includes non-game companion apps alongside real
 # games — public playtests, test/staging servers, and Valve's own
@@ -310,207 +341,14 @@ async def refresh_game_achievements(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> dict:
-    """Import metadata catalogues and refresh platform progress for one game.
-
-    Metadata providers contribute definitions; Steam, PlayStation and
-    RetroAchievements contribute the player's progress. A game can use both.
-    """
-    game = await db.scalar(
-        select(Game).where(
-            Game.id == game_id, Game.user_id == current_user.id, Game.deleted_at.is_(None)
-        )
+    """Refresh provider progress and metadata definitions for one game."""
+    sources = AchievementRefreshSources(
+        fetch_steam_rows=_fetch_steam_rows,
+        fetch_retro_rows=_fetch_retro_rows,
+        fetch_psn_rows=_fetch_psn_rows,
+        fetch_catalogue=fetch_catalogue,
     )
-    if game is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
-    external_id = game.external_id or ""
-    platform = game.platform
-    source = game.source
-    provider_ids = dict(game.provider_ids or {})
-    progress_provider: str | None = None
-    progress_rows: list[dict] = []
-    progress_error: HTTPException | None = None
-    if game.source == "Steam":
-        progress_provider = "Steam"
-        try:
-            progress_rows = await _fetch_steam_rows(current_user, external_id, db)
-        except HTTPException as exc:
-            progress_error = exc
-    elif game.source == "RetroAchievements":
-        progress_provider = "RetroAchievements"
-        try:
-            progress_rows = await _fetch_retro_rows(current_user, external_id)
-        except HTTPException as exc:
-            progress_error = exc
-    elif game.source == "PlayStation":
-        progress_provider = "PlayStation"
-        try:
-            progress_rows = await _fetch_psn_rows(current_user, external_id, platform)
-        except HTTPException as exc:
-            progress_error = exc
-
-    # Always ask metadata providers for definitions. Platform imports remain
-    # the source of unlock state, while Atlas can add definitions and richer
-    # fields to those same achievements through their linked IDs.
-    catalogue_provider, catalogue_rows, catalogue_errors = await fetch_catalogue(
-        db, current_user.id, game
-    )
-    if not progress_rows and not catalogue_rows:
-        existing_rows = (
-            await db.scalars(select(Achievement).where(Achievement.game_id == game_id))
-        ).all()
-        if not existing_rows:
-            if progress_error is not None:
-                raise progress_error
-            if catalogue_errors:
-                detail = "Metadata provider lookup failed: " + ", ".join(catalogue_errors[:3])
-                raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=detail)
-            # No matching catalogue is a successful check, especially during an
-            # all-library import where most games may not have Atlas definitions.
-
-    if progress_rows or catalogue_rows:
-        # Recheck that the same active library identity is still present after
-        # network work before saving either progress or a metadata catalogue.
-        current = await db.scalar(
-            select(Game)
-            .where(
-                Game.id == game_id,
-                Game.user_id == current_user.id,
-                Game.deleted_at.is_(None),
-            )
-            .with_for_update()
-            .execution_options(populate_existing=True)
-        )
-        if (
-            current is None
-            or current.source != source
-            or (current.external_id or "") != external_id
-            or current.platform != platform
-            or dict(current.provider_ids or {}) != provider_ids
-        ):
-            raise HTTPException(
-                status_code=409,
-                detail="This game changed during the refresh. Saved progress was kept.",
-            )
-        if progress_rows and progress_provider:
-            await _replace_achievements(db, current.id, progress_provider, progress_rows)
-            apply_provider_progress(
-                current,
-                total_achievements=len(progress_rows),
-                unlocked_achievements=sum(1 for row in progress_rows if row["unlocked"]),
-            )
-        if catalogue_rows:
-            await store_catalogue(db, current.id, catalogue_provider, catalogue_rows)
-        await db.commit()
-
-    saved_rows = list(
-        (await db.scalars(select(Achievement).where(Achievement.game_id == game_id))).all()
-    )
-    overrides = (
-        await db.scalars(
-            select(AchievementOverride).where(AchievementOverride.game_id == game_id)
-        )
-    ).all()
-    merged = fold_catalog(apply_manual_progress(saved_rows, overrides))
-    warnings: list[str] = []
-    if progress_error is not None:
-        warnings.append(f"{progress_provider} progress was unavailable: {progress_error.detail}")
-    if catalogue_errors:
-        warnings.append("Metadata provider lookup had errors: " + ", ".join(catalogue_errors[:3]))
-
-    providers = []
-    if progress_rows and progress_provider:
-        providers.append(progress_provider)
-    if catalogue_rows:
-        providers.append(catalogue_provider)
-    result = {
-        "provider": " + ".join(providers) if providers else "No new data",
-        "achievements": len(merged),
-        "unlocked": sum(1 for row, _entry in merged if row.unlocked),
-        "hidden": sum(
-            1
-            for row, entry in merged
-            if not row.unlocked and (row.hidden or (entry is not None and entry.hidden))
-        ),
-    }
-    if warnings:
-        result["warnings"] = warnings
-    return result
-
-
-async def _fetch_steam_rows(user: User, external_id: str, db: AsyncSession) -> list[dict]:
-    if not external_id.isdigit():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="This game has no Steam app id."
-        )
-    app_id = int(external_id)
-    try:
-        steam_id, api_key = await steam_connection.credentials(db, user)
-        schema, unlocked, descriptions = await fetch_steam_achievements(steam_id, api_key, app_id)
-        percentages = (
-            await asyncio.to_thread(steam.get_global_percentages, app_id)
-            if schema and unlocked is not None
-            else None
-        )
-        await steam_connection.recheck(db, user.id, steam_id, api_key)
-    except steam_connection.SteamConnectionError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
-    except steam.SteamLibraryError as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from None
-    if unlocked is None:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Steam achievement progress was unavailable. Saved progress was kept. "
-            "Reconnect Steam in Connections if its session has expired.",
-        )
-    if not schema:
-        return []
-    return _steam_achievement_rows(schema, unlocked, percentages, descriptions)
-
-
-async def _fetch_retro_rows(user: User, external_id: str) -> list[dict]:
-    if not user.retroachievements_username or not user.retroachievements_api_key:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Save your RetroAchievements username and API key first.",
-        )
-    if not external_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="This game has no RetroAchievements id."
-        )
-    client = RetroAchievementsClient(api_key=user.retroachievements_api_key)
-    try:
-        progress = await asyncio.to_thread(
-            client.get_game_progress, user.retroachievements_username, external_id
-        )
-    except RetroAchievementsError as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
-    return _retro_achievement_rows(progress)
-
-
-async def _fetch_psn_rows(user: User, external_id: str, platform: str | None) -> list[dict]:
-    if not user.psn_npsso_token:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Connect your PlayStation account first.",
-        )
-    if not external_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="This game has no PlayStation id."
-        )
-    client = PSNClient(decrypt_secret(user.psn_npsso_token))
-    # PS5 titles use the newer trophy service, so ask it first for those and
-    # fall back to the other when a title comes back empty
-    services = ["trophy2", "trophy"] if "PS5" in (platform or "") else ["trophy", "trophy2"]
-    try:
-        for service_name in services:
-            trophies = await asyncio.to_thread(
-                client.get_trophies_for_title, external_id, service_name
-            )
-            if trophies:
-                return _psn_trophy_rows(trophies)
-    except PSNError as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
-    return []
+    return await _refresh_achievement_progress(game_id, db, current_user, sources)
 
 
 # Keep the established workflow and public parameters together.

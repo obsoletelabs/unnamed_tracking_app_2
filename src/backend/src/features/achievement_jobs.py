@@ -5,13 +5,15 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from dataclasses import dataclass
 from typing import Any
 from uuid import UUID, uuid5
 
 from fastapi import HTTPException
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.functions import count as sql_count
 
 from src.database.models.achievement_sync_queue import AchievementSyncQueue
 from src.database.models.game import Game
@@ -25,6 +27,13 @@ logger = logging.getLogger(__name__)
 MAX_GAMES_PER_RUN = 20
 CONTINUE_AFTER_SECONDS = 60
 _running: dict[str, asyncio.Task[None]] = {}
+
+
+@dataclass
+class _RunCounts:
+    checked: int = 0
+    synced: int = 0
+    failed: int = 0
 
 
 def achievement_job_id(user_id: UUID) -> str:
@@ -80,14 +89,17 @@ async def pending_job_specs(db: AsyncSession, now: int) -> list[JobSpec]:
             continue
         spec = _job_spec(user_id)
         row = await get_setting(db, spec)
-        if (
-            not spec.is_running()
-            and not row.paused
-            and not row.cancel_requested
-            and row.status not in {"cancelled", "paused"}
-            and (row.retry_at is None or row.retry_at <= now)
-            and not lease_active(row, now)
-        ):
+        can_run = all(
+            [
+                not spec.is_running(),
+                not row.paused,
+                not row.cancel_requested,
+                row.status not in {"cancelled", "paused"},
+                row.retry_at is None or row.retry_at <= now,
+                not lease_active(row, now),
+            ]
+        )
+        if can_run:
             specs.append(spec)
     return specs
 
@@ -126,16 +138,12 @@ async def _continue(spec: JobSpec) -> None:
 
 
 async def _run_locked(spec: JobSpec, mode: str) -> tuple[dict[str, Any], bool]:
-    checked = synced = failed = 0
-    should_continue = False
     try:
         async with SessionLocal() as db:
-            if spec.user_id is None:
+            current_user = await db.get(User, spec.user_id) if spec.user_id is not None else None
+            if current_user is None or not current_user.is_active:
                 return {"completed": False, "summary": "The account is unavailable."}, False
-            user = await db.get(User, spec.user_id)
-            if user is None or not user.is_active:
-                return {"completed": False, "summary": "The account is unavailable."}, False
-            user_id = user.id
+            user_id = current_user.id
             setting = await get_setting(db, spec)
             if mode == "needed" and not setting.enabled:
                 return {
@@ -149,89 +157,13 @@ async def _run_locked(spec: JobSpec, mode: str) -> tuple[dict[str, Any], bool]:
                 await enqueue_games(db, user_id)
                 await db.commit()
 
-            queued_game_ids = list(
-                (
-                    await db.scalars(
-                        select(AchievementSyncQueue.game_id)
-                        .where(AchievementSyncQueue.user_id == user_id)
-                        .order_by(AchievementSyncQueue.queued_at, AchievementSyncQueue.game_id)
-                        .limit(MAX_GAMES_PER_RUN)
-                    )
-                ).all()
+            counts, user_unavailable = await _refresh_queued_games(db, user_id, setting)
+            if user_unavailable:
+                return {"completed": False, "summary": "The account is unavailable."}, False
+            remaining = await _queued_game_count(db, user_id)
+            should_continue = (
+                remaining > 0 and counts.failed == 0 and counts.checked == MAX_GAMES_PER_RUN
             )
-            # Import here so importing the task registry does not initialize API routers.
-            # pylint: disable=import-outside-toplevel
-            from src.api.routes.library_sync import refresh_game_achievements
-
-            for game_id in queued_game_ids:
-                await db.refresh(setting)
-                if setting.paused or setting.cancel_requested:
-                    break
-                game = await db.get(Game, game_id)
-                if game is None or game.user_id != user_id or game.deleted_at is not None:
-                    await db.execute(
-                        delete(AchievementSyncQueue).where(
-                            AchievementSyncQueue.game_id == game_id
-                        )
-                    )
-                    await db.commit()
-                    continue
-                checked += 1
-                try:
-                    current_user = await db.get(User, user_id)
-                    if current_user is None or not current_user.is_active:
-                        return {
-                            "completed": False,
-                            "summary": "The account is unavailable.",
-                        }, False
-                    await refresh_game_achievements(
-                        game_id, db=db, current_user=current_user
-                    )
-                except HTTPException as exc:
-                    await db.rollback()
-                    await db.execute(
-                        update(AchievementSyncQueue)
-                        .where(AchievementSyncQueue.game_id == game_id)
-                        .values(
-                            attempts=AchievementSyncQueue.attempts + 1,
-                            last_error=f"HTTP {exc.status_code}",
-                            queued_at=int(time.time()),
-                        )
-                    )
-                    await db.commit()
-                    failed += 1
-                except Exception:  # pylint: disable=broad-exception-caught
-                    logger.exception("Achievement refresh failed for game %s", game_id)
-                    await db.rollback()
-                    await db.execute(
-                        update(AchievementSyncQueue)
-                        .where(AchievementSyncQueue.game_id == game_id)
-                        .values(
-                            attempts=AchievementSyncQueue.attempts + 1,
-                            last_error="Unexpected refresh error",
-                            queued_at=int(time.time()),
-                        )
-                    )
-                    await db.commit()
-                    failed += 1
-                else:
-                    await db.execute(
-                        delete(AchievementSyncQueue).where(
-                            AchievementSyncQueue.game_id == game_id
-                        )
-                    )
-                    await db.commit()
-                    synced += 1
-
-            remaining = int(
-                await db.scalar(
-                    select(func.count())
-                    .select_from(AchievementSyncQueue)
-                    .where(AchievementSyncQueue.user_id == user_id)
-                )
-                or 0
-            )
-            should_continue = remaining > 0 and failed == 0 and checked == MAX_GAMES_PER_RUN
     except SQLAlchemyError:
         logger.exception("Achievement sync database work failed: %s", spec.id)
         return {
@@ -240,19 +172,107 @@ async def _run_locked(spec: JobSpec, mode: str) -> tuple[dict[str, Any], bool]:
         }, False
 
     complete = remaining == 0
-    summary = f"{synced} game(s) refreshed"
-    if failed:
-        summary += f", {failed} failed and remain queued for retry"
+    summary = f"{counts.synced} game(s) refreshed"
+    if counts.failed:
+        summary += f", {counts.failed} failed and remain queued for retry"
     if remaining:
         summary += f", {remaining} game(s) still queued"
     result: dict[str, Any] = {
         "completed": complete,
-        "checked": checked,
-        "synced": synced,
-        "failed": failed,
+        "checked": counts.checked,
+        "synced": counts.synced,
+        "failed": counts.failed,
         "queued": remaining,
         "summary": summary + ".",
     }
     if should_continue:
         result["continue_after_seconds"] = CONTINUE_AFTER_SECONDS
     return result, should_continue
+
+
+async def _refresh_queued_games(
+    db: AsyncSession, user_id: UUID, setting: Any
+) -> tuple[_RunCounts, bool]:
+    queued_game_ids = list(
+        (
+            await db.scalars(
+                select(AchievementSyncQueue.game_id)
+                .where(AchievementSyncQueue.user_id == user_id)
+                .order_by(AchievementSyncQueue.queued_at, AchievementSyncQueue.game_id)
+                .limit(MAX_GAMES_PER_RUN)
+            )
+        ).all()
+    )
+    counts = _RunCounts()
+    for game_id in queued_game_ids:
+        await db.refresh(setting)
+        if setting.paused or setting.cancel_requested:
+            break
+        outcome = await _refresh_queued_game(db, game_id, user_id)
+        if outcome == "unavailable":
+            return counts, True
+        if outcome == "discarded":
+            continue
+        counts.checked += 1
+        if outcome == "synced":
+            counts.synced += 1
+        else:
+            counts.failed += 1
+    return counts, False
+
+
+async def _refresh_queued_game(db: AsyncSession, game_id: UUID, user_id: UUID) -> str:
+    game = await db.get(Game, game_id)
+    if game is None or game.user_id != user_id or game.deleted_at is not None:
+        await db.execute(
+            delete(AchievementSyncQueue).where(AchievementSyncQueue.game_id == game_id)
+        )
+        await db.commit()
+        return "discarded"
+
+    current_user = await db.get(User, user_id)
+    if current_user is None or not current_user.is_active:
+        return "unavailable"
+
+    # Import here so importing the task registry does not initialize API routers.
+    # pylint: disable=import-outside-toplevel
+    from src.api.routes.library_sync import refresh_game_achievements
+
+    try:
+        await refresh_game_achievements(game_id, db=db, current_user=current_user)
+    except HTTPException as exc:
+        await _record_retry(db, game_id, f"HTTP {exc.status_code}")
+        return "failed"
+    except Exception:  # pylint: disable=broad-exception-caught
+        logger.exception("Achievement refresh failed for game %s", game_id)
+        await _record_retry(db, game_id, "Unexpected refresh error")
+        return "failed"
+
+    await db.execute(delete(AchievementSyncQueue).where(AchievementSyncQueue.game_id == game_id))
+    await db.commit()
+    return "synced"
+
+
+async def _record_retry(db: AsyncSession, game_id: UUID, error: str) -> None:
+    await db.rollback()
+    await db.execute(
+        update(AchievementSyncQueue)
+        .where(AchievementSyncQueue.game_id == game_id)
+        .values(
+            attempts=AchievementSyncQueue.attempts + 1,
+            last_error=error,
+            queued_at=int(time.time()),
+        )
+    )
+    await db.commit()
+
+
+async def _queued_game_count(db: AsyncSession, user_id: UUID) -> int:
+    return int(
+        await db.scalar(
+            select(sql_count())
+            .select_from(AchievementSyncQueue)
+            .where(AchievementSyncQueue.user_id == user_id)
+        )
+        or 0
+    )

@@ -10,7 +10,7 @@ from fastapi import HTTPException, Response
 from pydantic import ValidationError
 from sqlalchemy import delete, select
 
-from src.api.routes import games, library_sync
+from src.api.routes import game_achievements, games, library_sync
 from src.api.schemas.game import GameCreate
 from src.database.models.achievement import Achievement
 from src.database.models.achievement_override import AchievementOverride
@@ -215,7 +215,7 @@ async def test_route_imports_atlas_catalogue_alongside_steam_progress(scratch_ga
         user = await db.get(User, scratch_game.user_id)
         await db.commit()
         result = await library_sync.refresh_game_achievements(game.id, db, user)
-        listed = await games.list_game_achievements(game.id, db, user)
+        listed = await game_achievements.list_game_achievements(game.id, db, user)
 
     assert result == {
         "provider": "Steam + Atlas",
@@ -254,8 +254,14 @@ async def test_manual_atlas_progress_survives_platform_achievement_refresh(scrat
         db.add_all([progress, atlas])
         await db.commit()
 
-        await games.set_game_achievement_progress(game.id, atlas.id, True, None, db, user)
-        listed = await games.list_game_achievements(game.id, db, user)
+        await game_achievements.set_game_achievement_progress(
+            game.id,
+            atlas.id,
+            game_achievements.AchievementProgressUpdate(unlocked=True),
+            db,
+            user,
+        )
+        listed = await game_achievements.list_game_achievements(game.id, db, user)
         assert len(listed) == 1
         assert listed[0]["unlocked"] is True and listed[0]["manual_override"] is True
 
@@ -266,11 +272,17 @@ async def test_manual_atlas_progress_survives_platform_achievement_refresh(scrat
             [{"external_id": "ACH_1", "name": "Wake Up Call", "unlocked": False}],
         )
         await db.commit()
-        listed = await games.list_game_achievements(game.id, db, user)
+        listed = await game_achievements.list_game_achievements(game.id, db, user)
         assert listed[0]["unlocked"] is True and listed[0]["manual_override"] is True
 
-        await games.set_game_achievement_progress(game.id, atlas.id, False, None, db, user)
-        listed = await games.list_game_achievements(game.id, db, user)
+        await game_achievements.set_game_achievement_progress(
+            game.id,
+            atlas.id,
+            game_achievements.AchievementProgressUpdate(unlocked=False),
+            db,
+            user,
+        )
+        listed = await game_achievements.list_game_achievements(game.id, db, user)
         assert listed[0]["unlocked"] is False and listed[0]["manual_override"] is True
         saved = await db.scalar(
             select(AchievementOverride).where(
@@ -288,8 +300,8 @@ async def test_manual_atlas_progress_survives_platform_achievement_refresh(scrat
             [{"external_id": "ACH_1", "name": "Wake Up Call", "unlocked": True}],
         )
         await db.commit()
-        await games.clear_game_achievement_progress(game.id, atlas.id, db, user)
-        listed = await games.list_game_achievements(game.id, db, user)
+        await game_achievements.clear_game_achievement_progress(game.id, atlas.id, db, user)
+        listed = await game_achievements.list_game_achievements(game.id, db, user)
         assert listed[0]["unlocked"] is True
         assert listed[0]["manual_override"] is False
 

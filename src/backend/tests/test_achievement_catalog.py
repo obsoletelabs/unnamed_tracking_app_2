@@ -8,7 +8,7 @@ from fastapi import Response
 from pydantic import ValidationError
 from sqlalchemy import delete, select
 
-from src.api.routes import games, library_sync
+from src.api.routes import game_achievements, games, library_sync
 from src.api.schemas.game import GameCreate
 from src.database.models.achievement import Achievement
 from src.database.models.user import User
@@ -145,7 +145,7 @@ async def test_catalogue_lends_details_to_the_matching_synced_row_without_duplic
             ],
         )
         await db.commit()
-        listed = await games.list_game_achievements(game_id, db, scratch_user)
+        listed = await game_achievements.list_game_achievements(game_id, db, scratch_user)
     by_name = {item["name"]: item for item in listed}
     assert set(by_name) == {"Won", "Unplayed one"}  # the matched catalogue row is not a copy
     won = by_name["Won"]
@@ -203,7 +203,7 @@ async def test_summary_counts_a_catalogue_only_for_games_without_synced_rows(scr
         await store_catalog(db, synced_id, [_item("x"), _item("y"), _item("z")])
         await store_catalog(db, catalogue_id, [_item("x"), _item("y")])
         await db.commit()
-        summary = await games.get_achievements_summary(db, scratch_user)
+        summary = await game_achievements.get_achievements_summary(db, scratch_user)
     assert summary[str(synced_id)] == {"total": 1, "unlocked": 1}
     assert summary[str(catalogue_id)] == {"total": 2, "unlocked": 0}
 
@@ -299,7 +299,9 @@ async def test_a_grouped_request_for_an_unmerged_game_lists_its_own_achievements
             db, game_id, "Steam", [_synced("A", "Mine", unlocked=True)]
         )
         await db.commit()
-        plain = await games.list_game_achievements(game_id, db, scratch_user)
-        grouped = await games.list_game_achievements(game_id, db, scratch_user, group=True)
+        plain = await game_achievements.list_game_achievements(game_id, db, scratch_user)
+        grouped = await game_achievements.list_game_achievements(
+            game_id, db, scratch_user, group=True
+        )
     assert [i["name"] for i in grouped] == [i["name"] for i in plain] == ["Mine"]
     assert grouped[0]["sources"][0]["unlocked"] is True

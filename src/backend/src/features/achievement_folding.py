@@ -63,12 +63,9 @@ def apply_manual_progress(
     saved = list(rows)
     for row in saved:
         row.manual_override = False  # type: ignore[attr-defined]
-    catalog = {
-        (row.game_id, row.external_id): row for row in saved if is_catalog(row)
-    }
+    catalog = {(row.game_id, row.external_id): row for row in saved if is_catalog(row)}
     overrides_by_key = {
-        (row.game_id, row.provider.casefold(), row.external_id): row
-        for row in overrides
+        (row.game_id, row.provider.casefold(), row.external_id): row for row in overrides
     }
     for row in saved:
         provider_key = CATALOG if is_catalog(row) else row.provider.casefold()

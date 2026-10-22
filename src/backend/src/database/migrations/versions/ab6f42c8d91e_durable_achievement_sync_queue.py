@@ -1,7 +1,7 @@
 """durable achievement sync queue
 
 Revision ID: ab6f42c8d91e
-Revises: a97470898855, 65acf36995e5, f1b4375a624c, f186cf8aa5c4, d2b7e4a91c36, b7e3d92a41c8, a1c2e4f7b920
+Revises: b7e3d92a41c8
 Create Date: 2026-10-22
 
 """
@@ -16,15 +16,7 @@ from src.database import migration_helpers as h
 
 # revision identifiers, used by Alembic.
 revision: str = "ab6f42c8d91e"
-down_revision: Union[str, Sequence[str], None] = (
-    "a97470898855",
-    "65acf36995e5",
-    "f1b4375a624c",
-    "f186cf8aa5c4",
-    "d2b7e4a91c36",
-    "b7e3d92a41c8",
-    "a1c2e4f7b920",
-)
+down_revision: Union[str, Sequence[str], None] = "b7e3d92a41c8"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

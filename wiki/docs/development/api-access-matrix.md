@@ -325,6 +325,8 @@ are redacted. Validation errors never echo submitted values.
 | GET | `/api/game/trash` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | PATCH | `/api/game/update/{game_id}` | user-or-app | Game queried with `user_id == caller`; any child ID must also belong to that game. App grants need `library.sync`. |
 | GET | `/api/game/{game_id}/achievements` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
+| DELETE | `/api/game/{game_id}/achievements/{achievement_id}/progress` | user | Game and achievement are queried with `user_id == caller`; only that user's manual progress override is removed. |
+| PUT | `/api/game/{game_id}/achievements/{achievement_id}/progress` | user | Game and achievement are queried with `user_id == caller`; only that user's manual progress override is changed. |
 | DELETE | `/api/game/{game_id}/archives/{archive_id}` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | PATCH | `/api/game/{game_id}/archives/{archive_id}` | user-or-app | Game queried with `user_id == caller`; any child ID must also belong to that game. App grants need `saves.write`. |
 | POST | `/api/game/{game_id}/archives/{archive_id}/restore` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |

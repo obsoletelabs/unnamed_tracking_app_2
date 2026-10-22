@@ -11,7 +11,7 @@ import pytest
 from fastapi import HTTPException, Response
 from sqlalchemy import delete
 
-from src.api.routes import games, library_sync
+from src.api.routes import game_achievements, games, library_sync
 from src.api.schemas.game import GameCreate
 from src.database.models.game import Game
 from src.database.models.user import User
@@ -56,7 +56,7 @@ async def _game_with(user, provider: str, rows: list[dict]):
 
 async def _listed(user, game_id) -> dict[str, dict]:
     async with SessionLocal() as db:
-        items = await games.list_game_achievements(game_id, db, user)
+        items = await game_achievements.list_game_achievements(game_id, db, user)
     return {item["name"]: item for item in items}
 
 

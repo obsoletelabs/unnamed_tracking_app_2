@@ -19,6 +19,7 @@ from src.database.models.plugin_permissions import PluginPermissionGrant
 from src.database.models.user import User
 from src.database.session import SessionLocal
 from src.features import job_runs, jobs, plugin_jobs
+from src.features.achievement_jobs import achievement_job_id as achievement_sync_job_id
 from src.features.job_runs import job_lease
 from src.plugin_api.contracts import PluginManifest, PluginScheduledTask
 from src.plugin_api.runtime_client import PluginRuntimeUnavailable
@@ -357,7 +358,7 @@ async def test_personal_schedules_use_non_admin_owner_and_cannot_be_managed_by_a
         actor.is_admin = False
         await db.commit()
         personal = await job_routes.list_user_jobs(db, actor)
-        personal = [job for job in personal if not job["id"].startswith("user-anilist:")]
+        personal = [job for job in personal if job["id"] == job_id]
         assert len(personal) == 1 and personal[0]["available"] and not personal[0]["enabled"]
         assert await plugin_jobs.get_plugin_jobs(db) == []
         other = await db.get(User, other_id)
@@ -371,11 +372,9 @@ async def test_personal_schedules_use_non_admin_owner_and_cannot_be_managed_by_a
             job_id, job_routes.JobUpdate(enabled=True, interval_minutes=60), db, actor
         )
         assert (await db.get(JobSetting, job_id)).user_id == actor_id
-        assert [
-            spec.id
-            for spec in await jobs.get_scheduled_user_jobs(db)
-            if not spec.id.startswith("user-anilist:")
-        ] == [job_id]
+        scheduled_ids = {spec.id for spec in await jobs.get_scheduled_user_jobs(db)}
+        assert job_id in scheduled_ids
+        assert achievement_sync_job_id(actor_id) in scheduled_ids
         assert await job_routes.run_user_job(job_id, db, actor) == {"running": True}
     await asyncio.gather(*list(plugin_jobs._running.values()))
     transport.run_scheduled_task.assert_awaited_once_with(
