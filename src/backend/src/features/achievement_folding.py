@@ -13,6 +13,7 @@ from typing import Any
 from uuid import UUID
 
 from src.database.models.achievement import Achievement
+from src.database.models.achievement_override import AchievementOverride
 
 CATALOG = "catalog"
 HIDDEN_NAME = "Hidden achievement"
@@ -49,6 +50,55 @@ def fold_catalog(
     ]
     pairs.extend((entry, None) for entry in catalog if entry.id not in used)
     return pairs
+
+
+def apply_manual_progress(
+    rows: Iterable[Achievement], overrides: Iterable[AchievementOverride]
+) -> list[Achievement]:
+    """Overlay user-selected progress without changing provider-owned records.
+
+    Atlas catalogue ids remain stable when linked to a platform achievement, so an
+    override stored against a catalogue row is also applied to its linked progress row.
+    """
+    saved = list(rows)
+    for row in saved:
+        row.manual_override = False  # type: ignore[attr-defined]
+    catalog = {
+        (row.game_id, row.external_id): row for row in saved if is_catalog(row)
+    }
+    overrides_by_key = {
+        (row.game_id, row.provider.casefold(), row.external_id): row
+        for row in overrides
+    }
+    for row in saved:
+        provider_key = CATALOG if is_catalog(row) else row.provider.casefold()
+        override = overrides_by_key.get((row.game_id, provider_key, row.external_id))
+        if override is not None:
+            _apply_progress(row, override)
+
+    for (game_id, provider, external_id), override in overrides_by_key.items():
+        if provider != CATALOG:
+            continue
+        entry = catalog.get((game_id, external_id))
+        if entry is None:
+            continue
+        _apply_progress(entry, override)
+        for linked_provider, linked_id in (entry.source_ids or {}).items():
+            for row in saved:
+                if (
+                    row.game_id == game_id
+                    and not is_catalog(row)
+                    and row.provider.casefold() == linked_provider.casefold()
+                    and row.external_id == linked_id
+                ):
+                    _apply_progress(row, override)
+    return saved
+
+
+def _apply_progress(row: Achievement, override: AchievementOverride) -> None:
+    row.unlocked = override.unlocked
+    row.unlocked_at = override.unlocked_at
+    row.manual_override = True  # type: ignore[attr-defined]
 
 
 def _icon_path(owner: Achievement, url: str | None, locked: bool = False) -> str | None:
@@ -141,6 +191,7 @@ def _list_entry(row: Achievement, entry: Achievement | None) -> dict[str, Any]:
         "name": row.name,
         "unlocked": bool(row.unlocked),
         "unlocked_at": row.unlocked_at,
+        "manual_override": bool(getattr(row, "manual_override", False)),
         **lend(row, entry),
     }
 

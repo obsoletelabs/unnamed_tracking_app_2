@@ -12,6 +12,7 @@ export interface BackendAchievement {
   icon_url: string | null;
   unlocked: boolean;
   unlocked_at: number | null;
+  manual_override?: boolean;
   locked_icon_url?: string | null;
   sources?: {
     game_id: string;
@@ -38,6 +39,7 @@ export function mapAchievements(raw: BackendAchievement[]): Achievement[] {
     unlocked: a.unlocked,
     unlockedAt: a.unlocked ? unixSecondsToIso(a.unlocked_at) : null,
     provider: a.provider,
+    manualOverride: a.manual_override ?? false,
     iconUrl: a.icon_url,
     lockedIconUrl: a.locked_icon_url ?? null,
     sources: (a.sources ?? []).map((s) => ({

@@ -20,6 +20,7 @@ from src.core.auth import get_current_user
 from src.database.models.game import Game, GameLink
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features.achievement_sync_queue import enqueue_game as enqueue_achievement_sync
 from src.features.backup.scheduler import (
     _BACKUP_ROOT,
     BACKUPS_TO_KEEP_PER_USER,
@@ -157,6 +158,7 @@ async def import_library(
             game.links = link_rows
             db.add(game)
             await db.flush()
+            await enqueue_achievement_sync(db, current_user.id, game.id)
             create_game_folder(current_user.id, game.folder_location)
             await db.commit()
             created += 1

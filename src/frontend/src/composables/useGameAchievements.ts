@@ -8,7 +8,11 @@ import {
 } from "../state/achievementLocal";
 import type { AchievementLocal } from "../state/achievementLocal";
 import type { Ref } from "vue";
-import { fetchGameAchievements } from "../services/games";
+import {
+  clearGameAchievementProgress,
+  fetchGameAchievements,
+  setGameAchievementProgress,
+} from "../services/games";
 export type AchFilter = "all" | "unlocked" | "locked" | "hidden" | "pinned";
 
 export function useGameAchievements(game: Ref<Game | null>) {
@@ -61,6 +65,8 @@ export function useGameAchievements(game: Ref<Game | null>) {
   const noteDraft = ref("");
   const overallOpen = ref(false);
   const overallDraft = ref("");
+  const progressUpdating = ref<Set<string>>(new Set());
+  const progressError = ref("");
 
   watch(
     () => game.value?.id,
@@ -72,6 +78,8 @@ export function useGameAchievements(game: Ref<Game | null>) {
       achProvider.value = "all";
       noteOpen.value = null;
       overallOpen.value = false;
+      progressError.value = "";
+      progressUpdating.value = new Set();
     },
     { immediate: true },
   );
@@ -119,6 +127,85 @@ export function useGameAchievements(game: Ref<Game | null>) {
   function clearNote(a: Achievement) {
     noteDraft.value = "";
     saveNote(a);
+  }
+
+  async function toggleManualProgress(a: Achievement) {
+    const current = game.value;
+    if (!current || progressUpdating.value.has(a.id)) return;
+    const unlocked = !isUnlocked(a);
+    progressError.value = "";
+    progressUpdating.value = new Set(progressUpdating.value).add(a.id);
+    let saved = false;
+    try {
+      await setGameAchievementProgress(current.id, a.id, unlocked);
+      saved = true;
+      const refreshed = await fetchGameAchievements(current.id);
+      if (game.value?.id === current.id) {
+        game.value.achievements = refreshed;
+        game.value.achievementTotal = refreshed.length;
+        game.value.achievementPercent = refreshed.length
+          ? Math.round(
+              (refreshed.filter(isUnlocked).length / refreshed.length) * 100,
+            )
+          : 0;
+      }
+    } catch (error) {
+      // The write may have succeeded even if the follow-up list fetch failed.
+      if (saved && game.value?.id === current.id) {
+        a.unlocked = unlocked;
+        a.unlockedAt = unlocked ? new Date().toISOString() : null;
+        a.manualOverride = true;
+        current.achievementPercent = current.achievements.length
+          ? Math.round(
+              (current.achievements.filter(isUnlocked).length /
+                current.achievements.length) *
+                100,
+            )
+          : 0;
+      }
+      progressError.value = saved
+        ? "Progress was saved, but the achievement list could not be refreshed."
+        : error instanceof Error
+          ? error.message
+          : "Achievement progress could not be updated.";
+    } finally {
+      const next = new Set(progressUpdating.value);
+      next.delete(a.id);
+      progressUpdating.value = next;
+    }
+  }
+
+  async function useSyncedProgress(a: Achievement) {
+    const current = game.value;
+    if (!current || !a.manualOverride || progressUpdating.value.has(a.id))
+      return;
+    progressError.value = "";
+    progressUpdating.value = new Set(progressUpdating.value).add(a.id);
+    let saved = false;
+    try {
+      await clearGameAchievementProgress(current.id, a.id);
+      saved = true;
+      const refreshed = await fetchGameAchievements(current.id);
+      if (game.value?.id === current.id) {
+        game.value.achievements = refreshed;
+        game.value.achievementTotal = refreshed.length;
+        game.value.achievementPercent = refreshed.length
+          ? Math.round(
+              (refreshed.filter(isUnlocked).length / refreshed.length) * 100,
+            )
+          : 0;
+      }
+    } catch (error) {
+      progressError.value = saved
+        ? "The synced progress could not be reloaded."
+        : error instanceof Error
+          ? error.message
+          : "The manual override could not be cleared.";
+    } finally {
+      const next = new Set(progressUpdating.value);
+      next.delete(a.id);
+      progressUpdating.value = next;
+    }
   }
   function toggleOverall() {
     overallOpen.value = !overallOpen.value;
@@ -326,6 +413,10 @@ export function useGameAchievements(game: Ref<Game | null>) {
     toggleNote,
     saveNote,
     clearNote,
+    progressUpdating,
+    progressError,
+    toggleManualProgress,
+    useSyncedProgress,
     toggleOverall,
     saveOverall,
     unlockedCount,

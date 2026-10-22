@@ -182,6 +182,10 @@ const {
   toggleNote,
   saveNote,
   clearNote,
+  progressUpdating,
+  progressError,
+  toggleManualProgress,
+  useSyncedProgress,
   toggleOverall,
   saveOverall,
   unlockedCount,
@@ -997,6 +1001,9 @@ async function onCopiesChanged() {
       <p v-else-if="!shownAchievements.length" class="ach-empty">
         Nothing matches that search or filter.
       </p>
+      <p v-if="progressError" class="ach-empty" role="alert">
+        {{ progressError }}
+      </p>
 
       <div
         v-if="game.achievements.length && shownAchievements.length"
@@ -1069,6 +1076,7 @@ async function onCopiesChanged() {
                   :class="a.kind"
                   >{{ KIND_LABEL[a.kind] }}</span
                 >
+                <span v-if="a.manualOverride" class="ach-tag">Manual</span>
                 <span v-if="a.points && !isHiddenLocked(a)" class="ach-tag"
                   >{{ a.points }} pts</span
                 >
@@ -1148,6 +1156,31 @@ async function onCopiesChanged() {
             </div>
 
             <div class="ach-acts">
+              <button
+                type="button"
+                class="ach-btn"
+                :disabled="progressUpdating.has(a.id)"
+                :title="`Manually set ${a.name} as ${isUnlocked(a) ? 'locked' : 'unlocked'}`"
+                @click="toggleManualProgress(a)"
+              >
+                {{
+                  progressUpdating.has(a.id)
+                    ? "Saving…"
+                    : isUnlocked(a)
+                      ? "Mark locked"
+                      : "Mark unlocked"
+                }}
+              </button>
+              <button
+                v-if="a.manualOverride"
+                type="button"
+                class="ach-btn"
+                :disabled="progressUpdating.has(a.id)"
+                title="Return to the latest synced progress"
+                @click="useSyncedProgress(a)"
+              >
+                Use synced
+              </button>
               <button
                 type="button"
                 class="ach-btn"

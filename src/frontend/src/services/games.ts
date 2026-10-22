@@ -431,6 +431,36 @@ export async function refreshGameAchievements(
   return await response.json();
 }
 
+export async function setGameAchievementProgress(
+  gameId: string,
+  achievementId: string,
+  unlocked: boolean,
+): Promise<void> {
+  if (import.meta.env.VITE_USE_MOCK_DATA === "true") return;
+  const response = await fetch(
+    `/api/game/${gameId}/achievements/${achievementId}/progress`,
+    {
+      method: "PUT",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ unlocked }),
+    },
+  );
+  if (!response.ok) throw await failedRequest(response);
+}
+
+export async function clearGameAchievementProgress(
+  gameId: string,
+  achievementId: string,
+): Promise<void> {
+  if (import.meta.env.VITE_USE_MOCK_DATA === "true") return;
+  const response = await fetch(
+    `/api/game/${gameId}/achievements/${achievementId}/progress`,
+    { method: "DELETE", credentials: "include" },
+  );
+  if (!response.ok) throw await failedRequest(response);
+}
+
 export async function fetchGame(
   id: string,
   signal?: AbortSignal,

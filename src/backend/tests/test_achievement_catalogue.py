@@ -1,7 +1,9 @@
 """Provider achievement catalogues: contract, row mapping, storage and the route fallbacks."""
 
+import asyncio
 import uuid
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import HTTPException, Response
@@ -11,10 +13,13 @@ from sqlalchemy import delete, select
 from src.api.routes import games, library_sync
 from src.api.schemas.game import GameCreate
 from src.database.models.achievement import Achievement
+from src.database.models.achievement_override import AchievementOverride
+from src.database.models.achievement_sync_queue import AchievementSyncQueue
 from src.database.models.game import Game
+from src.database.models.job_setting import JobSetting
 from src.database.models.user import User
 from src.database.session import SessionLocal
-from src.features import achievement_catalogue
+from src.features import achievement_catalogue, achievement_jobs
 from src.features.achievement_catalogue import catalogue_rows, store_catalogue
 from src.plugin_api.metadata_contracts import (
     MetadataAchievement,
@@ -224,6 +229,132 @@ async def test_route_imports_atlas_catalogue_alongside_steam_progress(scratch_ga
     assert by_name["Wake Up Call"]["description"] == "Wake up in the relaxation vault."
     assert by_name["Local Integration Achievement"]["unlocked"] is False
     assert by_name["Local Integration Achievement"]["provider"] == "Atlas"
+
+
+async def test_manual_atlas_progress_survives_platform_achievement_refresh(scratch_game):
+    async with SessionLocal() as db:
+        game = await db.get(Game, scratch_game.game_id)
+        user = await db.get(User, scratch_game.user_id)
+        progress = Achievement(
+            game_id=game.id,
+            provider="Steam",
+            external_id="ACH_1",
+            name="Wake Up Call",
+            unlocked=False,
+        )
+        atlas = Achievement(
+            game_id=game.id,
+            provider="catalog",
+            source_provider="Atlas",
+            external_id="atlas-achievement-1",
+            name="Wake Up Call",
+            source_ids={"steam": "ACH_1"},
+            unlocked=False,
+        )
+        db.add_all([progress, atlas])
+        await db.commit()
+
+        await games.set_game_achievement_progress(game.id, atlas.id, True, None, db, user)
+        listed = await games.list_game_achievements(game.id, db, user)
+        assert len(listed) == 1
+        assert listed[0]["unlocked"] is True and listed[0]["manual_override"] is True
+
+        await library_sync._replace_achievements(
+            db,
+            game.id,
+            "Steam",
+            [{"external_id": "ACH_1", "name": "Wake Up Call", "unlocked": False}],
+        )
+        await db.commit()
+        listed = await games.list_game_achievements(game.id, db, user)
+        assert listed[0]["unlocked"] is True and listed[0]["manual_override"] is True
+
+        await games.set_game_achievement_progress(game.id, atlas.id, False, None, db, user)
+        listed = await games.list_game_achievements(game.id, db, user)
+        assert listed[0]["unlocked"] is False and listed[0]["manual_override"] is True
+        saved = await db.scalar(
+            select(AchievementOverride).where(
+                AchievementOverride.game_id == game.id,
+                AchievementOverride.provider == "catalog",
+                AchievementOverride.external_id == "atlas-achievement-1",
+            )
+        )
+        assert saved is not None and saved.unlocked is False and saved.unlocked_at is None
+
+        await library_sync._replace_achievements(
+            db,
+            game.id,
+            "Steam",
+            [{"external_id": "ACH_1", "name": "Wake Up Call", "unlocked": True}],
+        )
+        await db.commit()
+        await games.clear_game_achievement_progress(game.id, atlas.id, db, user)
+        listed = await games.list_game_achievements(game.id, db, user)
+        assert listed[0]["unlocked"] is True
+        assert listed[0]["manual_override"] is False
+
+
+async def test_new_game_is_queued_and_the_personal_job_refreshes_it(scratch_game, monkeypatch):
+    monkeypatch.setattr(achievement_jobs, "_running", {})
+    refresh = AsyncMock(return_value={"provider": "Atlas", "achievements": 1})
+    monkeypatch.setattr(library_sync, "refresh_game_achievements", refresh)
+
+    async with SessionLocal() as db:
+        user = await db.get(User, scratch_game.user_id)
+        queued = await db.get(AchievementSyncQueue, scratch_game.game_id)
+        assert queued is not None and queued.user_id == user.id
+        pending = await achievement_jobs.pending_job_specs(db, 2_000_000_000)
+        spec = next(spec for spec in pending if spec.user_id == user.id)
+        assert spec.name == "Achievements sync"
+        assert spec.start("queued")["running"]
+        task = achievement_jobs._running[spec.id]
+
+    await asyncio.gather(task)
+    refresh.assert_awaited_once()
+    async with SessionLocal() as db:
+        assert await db.get(AchievementSyncQueue, scratch_game.game_id) is None
+        saved = await db.get(JobSetting, spec.id)
+        assert saved is not None
+        assert saved.last_result["completed"] is True
+        assert saved.last_result["synced"] == 1
+
+
+@pytest.mark.parametrize(
+    ("failure", "last_error"),
+    [("provider", "HTTP 502"), ("unexpected", "Unexpected refresh error")],
+)
+async def test_new_game_queue_survives_refresh_failure(
+    scratch_game, monkeypatch, failure, last_error
+):
+    monkeypatch.setattr(achievement_jobs, "_running", {})
+
+    async def unavailable(*_args, **kwargs):
+        # Provider routes can roll back before returning an error. Expire the loaded
+        # game and job rows to exercise the worker's retry bookkeeping after rollback.
+        await kwargs["db"].rollback()
+        if failure == "provider":
+            raise HTTPException(status_code=502, detail="Atlas is unavailable")
+        raise RuntimeError("Unexpected provider error")
+
+    monkeypatch.setattr(library_sync, "refresh_game_achievements", unavailable)
+    async with SessionLocal() as db:
+        pending = await db.get(AchievementSyncQueue, scratch_game.game_id)
+        assert pending is not None
+        specs = await achievement_jobs.pending_job_specs(db, 2_000_000_000)
+        spec = next(spec for spec in specs if spec.user_id == scratch_game.user_id)
+        spec.start("queued")
+        task = achievement_jobs._running[spec.id]
+
+    await asyncio.gather(task)
+    async with SessionLocal() as db:
+        pending = await db.get(AchievementSyncQueue, scratch_game.game_id)
+        assert pending is not None
+        assert pending.attempts == 1
+        assert pending.last_error == last_error
+        saved = await db.get(JobSetting, spec.id)
+        assert saved is not None
+        assert saved.last_result["completed"] is False
+        assert "1 failed and remain queued for retry" in saved.last_result["summary"]
 
 
 async def test_catalogue_import_succeeds_when_platform_progress_is_unavailable(

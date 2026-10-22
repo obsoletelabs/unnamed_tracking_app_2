@@ -34,12 +34,13 @@ from src.core.app_integrations import get_max_upload_size_mb
 from src.core.auth import get_current_user
 from src.core.crypto import decrypt_secret
 from src.database.models.achievement import Achievement
+from src.database.models.achievement_override import AchievementOverride
 from src.database.models.game import Game, GameStatus
 from src.database.models.user import User
 from src.database.session import SessionLocal, get_db
 from src.features import game_folders
 from src.features.achievement_catalogue import fetch_catalogue, store_catalogue
-from src.features.achievement_folding import fold_catalog
+from src.features.achievement_folding import apply_manual_progress, fold_catalog
 from src.features.achievement_sync import (
     _unix_from_text as _unix_from_text,
     psn_trophy_rows as _psn_trophy_rows,
@@ -401,8 +402,15 @@ async def refresh_game_achievements(
             await store_catalogue(db, current.id, catalogue_provider, catalogue_rows)
         await db.commit()
 
-    saved_rows = (await db.scalars(select(Achievement).where(Achievement.game_id == game_id))).all()
-    merged = fold_catalog(saved_rows)
+    saved_rows = list(
+        (await db.scalars(select(Achievement).where(Achievement.game_id == game_id))).all()
+    )
+    overrides = (
+        await db.scalars(
+            select(AchievementOverride).where(AchievementOverride.game_id == game_id)
+        )
+    ).all()
+    merged = fold_catalog(apply_manual_progress(saved_rows, overrides))
     warnings: list[str] = []
     if progress_error is not None:
         warnings.append(f"{progress_provider} progress was unavailable: {progress_error.detail}")

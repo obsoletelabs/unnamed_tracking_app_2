@@ -67,6 +67,7 @@ async def test_configured_connections_create_off_daily_tasks_scoped_to_each_owne
             "PlayStation autosync",
             "RetroAchievements autosync",
             "AniList import",
+            "Achievements sync",
         ]
         assert all(not task["enabled"] and task["interval_minutes"] == 1440 for task in listed)
         assert all(task["available"] and not task["plugin_id"] for task in listed[:3])
