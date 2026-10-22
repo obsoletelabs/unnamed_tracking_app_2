@@ -650,10 +650,11 @@ class MetadataHandler:
                     or provider.id in candidate.provider_ids
                     or provider.declaration.identifier_namespace in candidate.provider_ids
                 )
-                # Episode lists need a resolved provider identity. ID mapping capabilities
-                # without their own namespace can still contribute authoritative cross-IDs.
+                # Episode lists need a resolved provider identity. Achievement catalogues may
+                # resolve a library's linked IDs (for example Steam IDs to an Atlas record); the
+                # provider receives the full typed identity and must apply its own match rules.
                 if (
-                    session.request.resource in ("episodes", "achievements")
+                    session.request.resource == "episodes"
                     and not known_identity
                     and provider.declaration.identifier_namespace
                 ):

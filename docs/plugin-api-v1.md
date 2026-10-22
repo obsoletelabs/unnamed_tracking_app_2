@@ -63,6 +63,8 @@ Additive fields require compatibility review. Removing a field or changing its m
 
 Notification and metadata providers are extension points behind core-owned coordinators. Plugins return normalized DTOs; core retains provider selection/priority, user preferences, authorization, retries, delivery state, persistence, lifecycle, and cross-provider orchestration.
 
+For entity metadata, the user's provider order selects the first non-empty value for each field; later providers fill fields that earlier providers leave empty. Linked provider IDs and other structured values are merged. Artwork uses its own image-provider order. Achievement catalogues are separate from entity metadata: a provider declaring `achievements` can receive the library item's linked provider IDs and resolve them to its own record (for example, a Steam ID to an Atlas game). Episode requests still require that provider's own linked identity.
+
 ## Security boundary
 
 The contract package has no ORM or application-service imports. Strict validation reduces accidental internal-model leakage.
