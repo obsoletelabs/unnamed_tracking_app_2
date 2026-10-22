@@ -3,6 +3,7 @@
 from types import SimpleNamespace
 
 from src.api.routes.games import _metadata_value_is_present, _normalize_metadata_title
+from src.features.game_identity.provider_ids import merge_provider_ids
 from src.features.metadata.locked_fields import apply_updates_with_locking
 
 
@@ -33,3 +34,13 @@ def test_provider_refresh_skips_existing_manual_lock():
     apply_updates_with_locking(game, safe, {"description", "developer"})
     assert game.description == "My description"
     assert game.developer == "New"
+
+
+def test_provider_refresh_adds_complementary_ids_without_replacing_atlas_identity():
+    merged, conflicts = merge_provider_ids(
+        {"atlas": "atlas:canonical", "steam": "620"},
+        {"atlas": "atlas:other", "steam": "621", "igdb": "72"},
+    )
+
+    assert merged == {"atlas": "atlas:canonical", "steam": "620", "igdb": "72"}
+    assert conflicts == ["atlas", "steam"]

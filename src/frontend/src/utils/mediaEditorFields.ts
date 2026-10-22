@@ -180,6 +180,16 @@ export interface ProviderIdRow {
   value: string;
 }
 
+// Identity values already saved by the user stay authoritative; metadata
+// lookups may contribute identifiers from new providers, but cannot replace
+// an Atlas canonical ID or an existing store ID for the same namespace.
+export function mergeProviderIds(
+  existing: Record<string, string>,
+  incoming: Record<string, string>,
+): Record<string, string> {
+  return { ...incoming, ...existing };
+}
+
 export function providerIdRows(ids: Record<string, string>): ProviderIdRow[] {
   return Object.entries(ids).map(([key, value]) => ({ key, value }));
 }

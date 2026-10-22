@@ -145,6 +145,7 @@ from src.features import game_folders, game_ownership
 from src.features.achievement_folding import CATALOG, merge_copies
 from src.features.game_identity import manual
 from src.features.game_identity.copies import CopyLabel, page_copies
+from src.features.game_identity.provider_ids import find_provider_id_conflicts
 from src.features.game_ingestion import playnite
 from src.features.game_ingestion.legacy import (
     has_manual_observation,
@@ -429,6 +430,23 @@ async def create_game(
             return existing
         await _reject_trashed_playnite_game(payload.playnite_guid, current_user.id, db)
 
+    identity_conflicts = await find_provider_id_conflicts(
+        db, current_user.id, None, payload.provider_ids
+    )
+    if identity_conflicts:
+        namespace, _identity, _linked_game_id = identity_conflicts[0]
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error": "provider_id_conflict",
+                "field": "provider_ids",
+                "provider": namespace,
+                "message": (
+                    f"This {namespace} ID is already linked to another game in your library."
+                ),
+            },
+        )
+
     await _ensure_folder_location_available(payload.folder_location, current_user.id, db)
     try:
         game_folders.ensure_name_available(_DATA_ROOT, current_user.id, payload.folder_location)
@@ -602,6 +620,27 @@ async def update_game(
         await _ensure_folder_location_available(
             updates["folder_location"], current_user.id, db, exclude_game_id=game_id
         )
+
+    if "provider_ids" in updates and updates["provider_ids"] is not None:
+        new_ids = {
+            namespace: identity
+            for namespace, identity in updates["provider_ids"].items()
+            if (game.provider_ids or {}).get(namespace) != identity
+        }
+        conflicts = await find_provider_id_conflicts(db, current_user.id, game_id, new_ids)
+        if conflicts:
+            namespace, _identity, _linked_game_id = conflicts[0]
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "error": "provider_id_conflict",
+                    "field": "provider_ids",
+                    "provider": namespace,
+                    "message": (
+                        f"This {namespace} ID is already linked to another game in your library."
+                    ),
+                },
+            )
 
     if "parent_game_id" in updates or "relationship_type" in updates:
         effective_parent = updates.get("parent_game_id", game.parent_game_id)

@@ -12,6 +12,7 @@ import EditorShell from "./EditorShell.vue";
 import GamePlayFields from "./game/GamePlayFields.vue";
 import GameArtPicker from "./game/GameArtPicker.vue";
 import GameCollectionsField from "./game/GameCollectionsField.vue";
+import GameProviderIds from "./GameProviderIds.vue";
 import { createGame, fetchGames, updateGame } from "../services/games";
 import type { MetadataSearchResult } from "../services/games";
 import type {
@@ -46,6 +47,7 @@ import MetadataComparison from "./MetadataComparison.vue";
 import { gameMetadataResult } from "../utils/metadataCandidate";
 import { useTitleProtection } from "../utils/titleProtection";
 import { numberOrNull } from "../utils/numberInput";
+import { mergeProviderIds } from "../utils/mediaEditorFields";
 import {
   attachArtwork,
   stagedArtworkList,
@@ -360,6 +362,7 @@ const appliedNote = ref<string | null>(null);
 const metadataProviders = ref<MetadataProviderStatus[]>([]);
 const metadataProvidersLoaded = ref(false);
 const providerWarnings = progressiveSearch.warnings;
+const providerIdError = ref<string | null>(null);
 
 // offered by the selected metadata result; choosing one only stages it
 const keyArtCandidates = ref<string[]>([]);
@@ -531,7 +534,7 @@ watch([progressiveSearch.selected, artwork.urls], ([candidate]) => {
         result.time_to_beat_completionist_hours,
       ),
       time_to_beat_all_hours: hours(result.time_to_beat_all_hours),
-      provider_ids: { ...lookupIds.value, ...candidate.provider_ids },
+      provider_ids: mergeProviderIds(lookupIds.value, candidate.provider_ids),
       key_art: artwork.urls.value.cover,
       banner: artwork.urls.value.banner,
     },
@@ -718,6 +721,11 @@ async function submit() {
   if (saving.value || selectingMetadata.value) return;
   if (compact.value) suggestFolderFromTitle();
   if (!validateBasics()) return;
+  if (providerIdError.value) {
+    error.value = providerIdError.value;
+    activeTab.value = "Links";
+    return;
+  }
 
   saving.value = true;
   error.value = null;
@@ -1216,6 +1224,10 @@ async function submit() {
         <button type="button" class="secondary-button" @click="addLink">
           + Add Link
         </button>
+        <GameProviderIds
+          v-model="lookupIds"
+          @invalid="providerIdError = $event"
+        />
       </div>
 
       <div v-else-if="activeTab === 'Ownership'" class="tab-panel">

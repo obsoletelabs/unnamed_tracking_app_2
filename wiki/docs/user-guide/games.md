@@ -67,6 +67,20 @@ genres/tags/features, description, time-to-beat data, favorite, collections,
 playtime, the resume note and artwork; see [Adding a game](#adding-a-game).
 Field-change history records supported metadata changes.
 
+### Store and Atlas identities
+
+Open the full editor's **Links** tab to add the namespaced IDs that identify a
+game across metadata sources. Atlas IDs point to a canonical Atlas record;
+Steam, GOG, Epic Games Store and other IDs connect that record to matching
+store/provider entries. Known store IDs show an **Open store page** link next to
+the ID. When metadata is refreshed, new provider IDs are added while IDs you
+already saved remain in place. An ID already claimed by another game in your
+library is rejected with a conflict message so it cannot silently relink the
+wrong record. Atlas metadata includes an **Atlas record** link; open it to
+review the canonical entry and propose missing store IDs through Atlas.
+
+![Store and Atlas identities in the game editor](../assets/game-provider-identities.png)
+
 Bulk edit changes selected records only. Locked fields are not overwritten by refresh operations.
 
 ### Quick edit

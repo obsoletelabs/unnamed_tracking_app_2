@@ -35,6 +35,10 @@ from src.features.achievement_catalogue import (
     store_catalogue,
 )
 from src.features.game_identity import names
+from src.features.game_identity.provider_ids import (
+    find_provider_id_conflicts,
+    merge_provider_ids,
+)
 from src.features.metadata.locked_fields import apply_metadata_updates
 from src.features.metadata.service import (
     game_result,
@@ -296,6 +300,42 @@ async def refresh_game_metadata(
         else:
             updates["provider_custom"] = provider_custom
 
+    existing_provider_ids = game.provider_ids or {}
+    provider_ids_to_save = existing_provider_ids
+    if "provider_ids" in game.locked_fields:
+        skipped_locked.append("provider_ids")
+    else:
+        offered_provider_ids = match.get("provider_ids", {})
+        provider_ids_to_add = {
+            namespace: identity
+            for namespace, identity in offered_provider_ids.items()
+            if namespace not in existing_provider_ids
+        }
+        _, replaced_namespaces = merge_provider_ids(existing_provider_ids, offered_provider_ids)
+        for namespace in replaced_namespaces:
+            provider_errors.append(
+                f"{match.get('provider', 'Metadata')} returned a different "
+                f"{namespace} ID; the saved identity was kept."
+            )
+
+        identity_conflicts = await find_provider_id_conflicts(
+            db, current_user.id, game.id, provider_ids_to_add
+        )
+        conflicting_namespaces = {namespace for namespace, _identity, _id in identity_conflicts}
+        for namespace in sorted(conflicting_namespaces):
+            provider_errors.append(
+                f"{match.get('provider', 'Metadata')} returned a {namespace} ID "
+                "already linked to another game; it was skipped."
+            )
+        safe_incoming = {
+            namespace: identity
+            for namespace, identity in offered_provider_ids.items()
+            if namespace not in conflicting_namespaces
+        }
+        provider_ids_to_save, _replaced = merge_provider_ids(
+            existing_provider_ids, safe_incoming
+        )
+
     changed_fields = sorted(updates)
     key_art_url = match.get("key_art_url")
     banner_url = match.get("banner_url")
@@ -328,7 +368,7 @@ async def refresh_game_metadata(
             "game_updated_at": game.updated_at,
         }
 
-    game.provider_ids = {**(game.provider_ids or {}), **match.get("provider_ids", {})}
+    game.provider_ids = provider_ids_to_save
     if payload.update_text:
         _record_field_changes(game, updates, db)
         apply_metadata_updates(game, updates)
