@@ -11,6 +11,7 @@ from sqlalchemy import delete, select
 from src.api.routes import games, library_sync
 from src.api.schemas.game import GameCreate
 from src.database.models.achievement import Achievement
+from src.database.models.game import Game
 from src.database.models.user import User
 from src.database.session import SessionLocal
 from src.features import achievement_catalogue
@@ -79,6 +80,12 @@ def test_rows_are_never_unlocked_and_deduplicated_by_external_id():
     assert achievement_catalogue.provider_label(record) == "Atlas"
     assert achievement_catalogue.provider_label({}) == "Metadata providers"
     assert catalogue_rows({}) == [] and catalogue_rows({"metadata": {"achievements": None}}) == []
+
+
+def test_provider_label_uses_the_contributor_for_a_library_candidate():
+    provider = SimpleNamespace(id="official.metadata-atlas.atlas", name="Atlas")
+    record = {"provider_name": "Library", "contributors": [provider.id]}
+    assert achievement_catalogue.provider_label(record, [provider]) == "Atlas"
 
 
 @pytest.fixture
@@ -159,13 +166,120 @@ async def test_route_fetches_a_catalogue_for_games_without_a_synced_provider(
     assert [(r.provider, r.source_provider) for r in stored] == [("catalog", "Atlas")]
 
 
-async def test_route_explains_when_no_provider_offers_achievements(scratch_game, monkeypatch):
+async def test_route_imports_atlas_catalogue_alongside_steam_progress(scratch_game, monkeypatch):
+    atlas_id = "atlas:01m5h9c0bz0gk20mw9ks9y6cw8"
+    progress = {
+        "external_id": "ACH_1",
+        "name": "Wake Up Call",
+        "description": None,
+        "icon_url": None,
+        "unlocked": True,
+        "unlocked_at": 1_700_000_000,
+        "hidden": False,
+    }
+    catalogue = catalogue_rows(
+        {
+            "metadata": {
+                "achievements": [
+                    {
+                        **ITEM,
+                        "description": "Wake up in the relaxation vault.",
+                        "source_ids": {"steam": "ACH_1"},
+                    },
+                    {"name": "Local Integration Achievement", "external_id": "atlas-2"},
+                ]
+            }
+        }
+    )
+
+    async def steam_rows(_user, external_id, _db):
+        assert external_id == "620"
+        return [progress]
+
+    async def fetch_atlas(_db, _user_id, game):
+        assert game.provider_ids["atlas"] == atlas_id
+        return "Atlas", catalogue, []
+
+    monkeypatch.setattr(library_sync, "_fetch_steam_rows", steam_rows)
+    monkeypatch.setattr(library_sync, "fetch_catalogue", fetch_atlas)
+    async with SessionLocal() as db:
+        game = await db.get(Game, scratch_game.game_id)
+        game.source = "Steam"
+        game.external_id = "620"
+        game.provider_ids = {"steam": "620", "atlas": atlas_id}
+        user = await db.get(User, scratch_game.user_id)
+        await db.commit()
+        result = await library_sync.refresh_game_achievements(game.id, db, user)
+        listed = await games.list_game_achievements(game.id, db, user)
+
+    assert result == {
+        "provider": "Steam + Atlas",
+        "achievements": 2,
+        "unlocked": 1,
+        "hidden": 0,
+    }
+    by_name = {item["name"]: item for item in listed}
+    assert set(by_name) == {"Wake Up Call", "Local Integration Achievement"}
+    assert by_name["Wake Up Call"]["unlocked"] is True
+    assert by_name["Wake Up Call"]["description"] == "Wake up in the relaxation vault."
+    assert by_name["Local Integration Achievement"]["unlocked"] is False
+    assert by_name["Local Integration Achievement"]["provider"] == "Atlas"
+
+
+async def test_catalogue_import_succeeds_when_platform_progress_is_unavailable(
+    scratch_game, monkeypatch
+):
+    async def steam_failure(*_args):
+        raise HTTPException(status_code=502, detail="Steam is unavailable")
+
+    async def fetch_atlas(*_args):
+        return "Atlas", catalogue_rows({"metadata": {"achievements": [ITEM]}}), []
+
+    monkeypatch.setattr(library_sync, "_fetch_steam_rows", steam_failure)
+    monkeypatch.setattr(library_sync, "fetch_catalogue", fetch_atlas)
+    async with SessionLocal() as db:
+        game = await db.get(Game, scratch_game.game_id)
+        game.source = "Steam"
+        game.external_id = "620"
+        user = await db.get(User, scratch_game.user_id)
+        await db.commit()
+        result = await library_sync.refresh_game_achievements(game.id, db, user)
+
+    assert result["provider"] == "Atlas"
+    assert result["achievements"] == 1 and result["unlocked"] == 0
+    assert result["warnings"] == ["Steam progress was unavailable: Steam is unavailable"]
+    assert [(row.provider, row.source_provider) for row in await _rows(scratch_game.game_id)] == [
+        ("catalog", "Atlas")
+    ]
+
+
+async def test_route_returns_zero_when_no_provider_offers_achievements(scratch_game, monkeypatch):
     async def collect(*_args, **_options):
         return {"metadata": {}}, []
 
     monkeypatch.setattr(achievement_catalogue, "collect_record", collect)
     async with SessionLocal() as db:
         user = await db.get(User, scratch_game.user_id)
+        result = await library_sync.refresh_game_achievements(scratch_game.game_id, db, user)
+    assert result == {
+        "provider": "No new data",
+        "achievements": 0,
+        "unlocked": 0,
+        "hidden": 0,
+    }
+
+
+async def test_route_surfaces_catalogue_errors_when_no_data_is_available(
+    scratch_game, monkeypatch
+):
+    async def failed_lookup(*_args):
+        return "Atlas", [], ["Atlas is unavailable"]
+
+    monkeypatch.setattr(library_sync, "fetch_catalogue", failed_lookup)
+    async with SessionLocal() as db:
+        user = await db.get(User, scratch_game.user_id)
         with pytest.raises(HTTPException) as raised:
             await library_sync.refresh_game_achievements(scratch_game.game_id, db, user)
-    assert raised.value.status_code == 400 and "metadata provider" in raised.value.detail
+
+    assert raised.value.status_code == 502
+    assert raised.value.detail == "Metadata provider lookup failed: Atlas is unavailable"

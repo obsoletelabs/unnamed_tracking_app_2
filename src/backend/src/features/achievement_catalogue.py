@@ -15,10 +15,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.database.models.achievement import Achievement
 from src.database.models.game import Game
 from src.features.achievement_folding import CATALOG
+from src.features.metadata.providers import discover_providers
 from src.features.metadata.service import collect_record, game_candidate
 
 MAX_ROWS = 2000
-PROVIDER_LABEL_LENGTH = 30
+PROVIDER_LABEL_LENGTH = 128
 
 
 def catalogue_rows(record: dict[str, Any]) -> list[dict[str, Any]]:
@@ -49,7 +50,17 @@ def catalogue_rows(record: dict[str, Any]) -> list[dict[str, Any]]:
     return rows[:MAX_ROWS]
 
 
-def provider_label(record: dict[str, Any]) -> str:
+def provider_label(record: dict[str, Any], providers: list[Any] | None = None) -> str:
+    contributors = set(record.get("contributors") or [])
+    names = list(
+        dict.fromkeys(
+            provider.name
+            for provider in providers or []
+            if provider.id in contributors and isinstance(provider.name, str) and provider.name.strip()
+        )
+    )
+    if names:
+        return " + ".join(names)[:PROVIDER_LABEL_LENGTH]
     name = str(record.get("provider_name") or "Metadata providers").strip()
     return name[:PROVIDER_LABEL_LENGTH] or "Metadata providers"
 
@@ -58,10 +69,10 @@ async def fetch_catalogue(
     db: AsyncSession, user_id: UUID, game: Game
 ) -> tuple[str, list[dict[str, Any]], list[str]]:
     """Ask the user's metadata providers for this game's achievement definitions."""
-    record, errors = await collect_record(
-        db, user_id, game_candidate(game), resource="achievements"
-    )
-    return provider_label(record), catalogue_rows(record), errors
+    candidate = game_candidate(game)
+    record, errors = await collect_record(db, user_id, candidate, resource="achievements")
+    providers = await discover_providers(db, user_id, candidate.media_type)
+    return provider_label(record, providers), catalogue_rows(record), errors
 
 
 async def has_catalogue(db: AsyncSession, game_id: UUID) -> bool:

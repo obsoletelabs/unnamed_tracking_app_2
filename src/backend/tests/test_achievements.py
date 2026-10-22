@@ -493,11 +493,20 @@ async def test_playstation_refresh_falls_back_to_the_other_trophy_service(
     assert result["unlocked"] == 1
 
 
-async def test_refresh_is_refused_for_a_game_from_another_source(scratch_user):
+async def test_refresh_checks_metadata_for_a_game_from_another_source(scratch_user, monkeypatch):
     game_id = await _provider_game(scratch_user, source="GOG", external_id="abc")
-    with pytest.raises(HTTPException) as exc:
-        await _refresh(_creds(scratch_user), game_id)
-    assert exc.value.status_code == 400
+
+    async def no_catalogue(_db, _user_id, _game):
+        return "Metadata providers", [], []
+
+    monkeypatch.setattr(library_sync, "fetch_catalogue", no_catalogue)
+    result = await _refresh(_creds(scratch_user), game_id)
+    assert result == {
+        "provider": "No new data",
+        "achievements": 0,
+        "unlocked": 0,
+        "hidden": 0,
+    }
 
 
 async def test_refresh_needs_saved_credentials(scratch_user):
@@ -530,5 +539,6 @@ async def test_an_empty_answer_does_not_wipe_stored_achievements(scratch_user, m
     monkeypatch.setattr(library_sync.steam, "resolve_steam_id", lambda sid, _key: sid)
     monkeypatch.setattr(library_sync.steam, "get_schema_for_game", lambda _key, _app: {})
     result = await _refresh(user, game_id)
-    assert result["achievements"] == 0
+    assert result["achievements"] == 1
+    assert result["unlocked"] == 1
     assert "Kept" in await _listed(user, game_id)
