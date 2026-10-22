@@ -23,7 +23,11 @@ const STORE_CATALOG: readonly StoreDefinition[] = [
     label: "Steam",
     url: (id) => `https://store.steampowered.com/app/${id}`,
   },
-  { namespace: "gog", label: "GOG", url: (id) => `https://www.gog.com/game/${id}` },
+  {
+    namespace: "gog",
+    label: "GOG",
+    url: (id) => `https://www.gog.com/game/${id}`,
+  },
   {
     namespace: "epic",
     label: "Epic Games Store",
@@ -36,7 +40,11 @@ const STORE_CATALOG: readonly StoreDefinition[] = [
   },
   { namespace: "itch", label: "itch.io", url: null },
   { namespace: "igdb", label: "IGDB", url: null },
-  { namespace: "rawg", label: "RAWG", url: (id) => `https://rawg.io/games/${id}` },
+  {
+    namespace: "rawg",
+    label: "RAWG",
+    url: (id) => `https://rawg.io/games/${id}`,
+  },
 ];
 
 const SAFE_STORE_ID = /^[A-Za-z0-9._-]{1,100}$/;

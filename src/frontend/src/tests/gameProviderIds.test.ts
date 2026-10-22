@@ -14,7 +14,12 @@ describe("game provider identities", () => {
 
   it("builds links from the store catalogue and rejects unsafe IDs", () => {
     expect(
-      gameProviderLinks({ steam: "620", gog: "portal_2", epic: "../admin", igdb: "72" }),
+      gameProviderLinks({
+        steam: "620",
+        gog: "portal_2",
+        epic: "../admin",
+        igdb: "72",
+      }),
     ).toEqual([
       {
         namespace: "steam",

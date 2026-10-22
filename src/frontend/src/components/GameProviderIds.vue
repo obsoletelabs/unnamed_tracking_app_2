@@ -12,7 +12,10 @@ const links = computed(() => gameProviderLinks(ids.value));
 </script>
 
 <template>
-  <section class="provider-identities" aria-labelledby="provider-identities-heading">
+  <section
+    class="provider-identities"
+    aria-labelledby="provider-identities-heading"
+  >
     <p id="provider-identities-heading" class="editor-section">
       Store and Atlas identities
     </p>
