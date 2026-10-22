@@ -73,6 +73,47 @@ async def test_group_play_details_roundtrip_and_clear(scratch_user):
         assert (await db.get(Game, game_id)).play_compatibility is None
 
 
+async def test_game_create_rejects_a_provider_id_already_linked_in_the_library(scratch_user):
+    async with SessionLocal() as db:
+        await games.create_game(
+            _create("Store_Original", provider_ids={"steam": "620"}),
+            Response(),
+            db,
+            scratch_user,
+        )
+        with pytest.raises(HTTPException) as error:
+            await games.create_game(
+                _create("Store_Second", provider_ids={"steam": "620"}),
+                Response(),
+                db,
+                scratch_user,
+            )
+    assert error.value.status_code == 409
+    assert error.value.detail["error"] == "provider_id_conflict"
+    assert error.value.detail["provider"] == "steam"
+
+
+async def test_game_update_rejects_a_new_provider_id_already_linked_elsewhere(scratch_user):
+    async with SessionLocal() as db:
+        await games.create_game(
+            _create("Identity_Original", provider_ids={"atlas": "atlas:canonical"}),
+            Response(),
+            db,
+            scratch_user,
+        )
+        target = await games.create_game(_create("Identity_Target"), Response(), db, scratch_user)
+        with pytest.raises(HTTPException) as error:
+            await games.update_game(
+                target.id,
+                GameUpdate(provider_ids={"atlas": "atlas:canonical"}),
+                db,
+                scratch_user,
+            )
+    assert error.value.status_code == 409
+    assert error.value.detail["error"] == "provider_id_conflict"
+    assert error.value.detail["provider"] == "atlas"
+
+
 async def test_group_play_can_be_marked_without_extra_metadata(scratch_user):
     async with SessionLocal() as db:
         created = await games.create_game(

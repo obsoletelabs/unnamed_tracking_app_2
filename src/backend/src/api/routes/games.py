@@ -145,6 +145,7 @@ from src.features import game_folders, game_ownership
 from src.features.achievement_folding import CATALOG, merge_copies
 from src.features.game_identity import manual
 from src.features.game_identity.copies import CopyLabel, page_copies
+from src.features.game_identity.provider_ids import find_provider_id_conflicts
 from src.features.game_ingestion import playnite
 from src.features.game_ingestion.legacy import (
     has_manual_observation,
@@ -375,6 +376,37 @@ async def _validate_game_relationship(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
+async def _ensure_provider_ids_available(
+    db: AsyncSession,
+    user_id: UUID,
+    excluded_game_id: UUID | None,
+    provider_ids: dict[str, str] | None,
+    existing_provider_ids: dict[str, str] | None = None,
+) -> None:
+    """Reject provider identities already claimed by another active game."""
+    if not provider_ids:
+        return
+    candidates = {
+        namespace: identity
+        for namespace, identity in provider_ids.items()
+        if existing_provider_ids is None or existing_provider_ids.get(namespace) != identity
+    }
+    conflicts = await find_provider_id_conflicts(db, user_id, excluded_game_id, candidates)
+    if conflicts:
+        namespace = conflicts[0][0]
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error": "provider_id_conflict",
+                "field": "provider_ids",
+                "provider": namespace,
+                "message": (
+                    f"This {namespace} ID is already linked to another game in your library."
+                ),
+            },
+        )
+
+
 @router.post(
     "/create",
     response_model=GameRead,
@@ -428,6 +460,8 @@ async def create_game(
             response.status_code = status.HTTP_200_OK
             return existing
         await _reject_trashed_playnite_game(payload.playnite_guid, current_user.id, db)
+
+    await _ensure_provider_ids_available(db, current_user.id, None, payload.provider_ids)
 
     await _ensure_folder_location_available(payload.folder_location, current_user.id, db)
     try:
@@ -602,6 +636,14 @@ async def update_game(
         await _ensure_folder_location_available(
             updates["folder_location"], current_user.id, db, exclude_game_id=game_id
         )
+
+    await _ensure_provider_ids_available(
+        db,
+        current_user.id,
+        game_id,
+        updates.get("provider_ids"),
+        game.provider_ids,
+    )
 
     if "parent_game_id" in updates or "relationship_type" in updates:
         effective_parent = updates.get("parent_game_id", game.parent_game_id)
