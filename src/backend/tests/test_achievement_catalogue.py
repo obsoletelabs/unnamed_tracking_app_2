@@ -269,9 +269,7 @@ async def test_route_returns_zero_when_no_provider_offers_achievements(scratch_g
     }
 
 
-async def test_route_surfaces_catalogue_errors_when_no_data_is_available(
-    scratch_game, monkeypatch
-):
+async def test_route_surfaces_catalogue_errors_when_no_data_is_available(scratch_game, monkeypatch):
     async def failed_lookup(*_args):
         return "Atlas", [], ["Atlas is unavailable"]
 

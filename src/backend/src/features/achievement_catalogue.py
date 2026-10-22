@@ -56,7 +56,9 @@ def provider_label(record: dict[str, Any], providers: list[Any] | None = None) -
         dict.fromkeys(
             provider.name
             for provider in providers or []
-            if provider.id in contributors and isinstance(provider.name, str) and provider.name.strip()
+            if provider.id in contributors
+            and isinstance(provider.name, str)
+            and provider.name.strip()
         )
     )
     if names:

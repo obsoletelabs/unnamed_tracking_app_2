@@ -39,6 +39,12 @@ from src.database.models.user import User
 from src.database.session import SessionLocal, get_db
 from src.features import game_folders
 from src.features.achievement_catalogue import fetch_catalogue, store_catalogue
+from src.features.achievement_sync import (
+    _unix_from_text as _unix_from_text,
+    psn_trophy_rows as _psn_trophy_rows,
+    replace_achievements as _replace_achievements,
+    retro_achievement_rows as _retro_achievement_rows,
+)
 from src.features.achievement_folding import fold_catalog
 from src.features.connection_jobs import sync_scope
 from src.features.game_identity import names
@@ -46,7 +52,7 @@ from src.features.game_ingestion import legacy as ingestion
 from src.features.game_ingestion.contract import SourceObservationV1
 from src.features.imports import steam_connection
 from src.features.imports.game_progression import apply_provider_progress
-from src.features.imports.library_games import LibraryIndex, lock_imported_game
+from src.features.imports.library_games import LibraryIndex
 from src.features.imports.library_games import get_or_create_game as _get_or_create_game
 from src.features.imports.steam_achievements import SteamAchievementData, fetch_steam_achievements
 from src.features.metadata.games import steam
@@ -297,110 +303,6 @@ async def _flag_stale_games(
     return newly_flagged
 
 
-def _unix_from_text(text: object) -> int | None:
-    """A provider's timestamp text ("2023-05-02 14:03:00" or an ISO string
-    ending in Z) as unix seconds, or None when it's missing or unreadable."""
-    if not isinstance(text, str) or not text:
-        return None
-    try:
-        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=UTC)
-    return int(parsed.timestamp())
-
-
-def _retro_achievement_rows(progress: dict) -> list[dict]:
-    """Stored rows for one RetroAchievements game. `NumAwarded` over the
-    game's player count is the share of players who earned each one."""
-    players = progress.get("NumDistinctPlayers") or progress.get("NumDistinctPlayersCasual")
-    rows = []
-    for ach_id, ach in (progress.get("Achievements") or {}).items():
-        earned = ach.get("DateEarned") or ach.get("DateEarnedHardcore")
-        awarded = ach.get("NumAwarded")
-        row = {
-            "external_id": str(ach_id),
-            "name": ach.get("Title") or str(ach_id),
-            "description": ach.get("Description"),
-            "icon_url": f"https://media.retroachievements.org/Badge/{ach['BadgeName']}.png"
-            if ach.get("BadgeName")
-            else None,
-            "unlocked": bool(earned),
-            "unlocked_at": _unix_from_text(earned),
-            # RA's classic API's exact casing for this field isn't documented
-            # as clearly as the newer v1 API's: check both
-            "tier": (ach.get("Type") or ach.get("type") or "").lower() or None,
-        }
-        if isinstance(awarded, int | float) and isinstance(players, int | float) and players > 0:
-            row["global_percent"] = round(awarded / players * 100, 2)
-        rows.append(row)
-    return rows
-
-
-def _psn_trophy_rows(trophies: list[dict]) -> list[dict]:
-    """Stored rows for one PlayStation title: earned state and time, whether
-    it's a hidden trophy, and the rate of players who earned it."""
-    rows = []
-    for t in trophies:
-        if t.get("trophyId") is None:
-            continue
-        row = {
-            "external_id": str(t.get("trophyId")),
-            "name": t.get("trophyName") or "Trophy",
-            "description": t.get("trophyDetail"),
-            "icon_url": t.get("trophyIconUrl"),
-            "unlocked": bool(t.get("earned")),
-            "unlocked_at": _unix_from_text(t.get("earnedDateTime")),
-            "hidden": bool(t.get("trophyHidden")),
-        }
-        try:
-            row["global_percent"] = round(float(t["trophyEarnedRate"]), 2)
-        except (KeyError, TypeError, ValueError):
-            pass
-        rows.append(row)
-    return rows
-
-
-async def _replace_achievements(
-    db: AsyncSession, game_id: UUID, provider: str, rows: list[dict]
-) -> None:
-    """Upserts by (game_id, provider, external_id) rather than delete +
-    reinsert — a media item can link to a specific achievement
-    (MediaItem.linked_achievement_id), and that FK is ON DELETE SET NULL,
-    so wiping every row on each re-sync was silently unlinking every
-    screenshot/clip tagged to an achievement the next time the game synced."""
-    existing = {
-        a.external_id: a
-        for a in (
-            await db.execute(
-                select(Achievement).where(
-                    Achievement.game_id == game_id, Achievement.provider == provider
-                )
-            )
-        )
-        .scalars()
-        .all()
-    }
-    now = int(time.time())
-    seen_ids: set[str] = set()
-    for row in rows:
-        seen_ids.add(row["external_id"])
-        current = existing.get(row["external_id"])
-        if current is not None:
-            for field, value in row.items():
-                # a lookup that found no description (Steam refused the extra
-                # request, say) must not erase one we already have
-                if field == "description" and value is None and current.description:
-                    continue
-                setattr(current, field, value)
-        else:
-            db.add(Achievement(game_id=game_id, provider=provider, created_at=now, **row))
-    for external_id, achievement in existing.items():
-        if external_id not in seen_ids:
-            await db.delete(achievement)
-
-
 @router.post("/games/{game_id}/achievements")
 async def refresh_game_achievements(
     game_id: UUID,
@@ -499,9 +401,7 @@ async def refresh_game_achievements(
             await store_catalogue(db, current.id, catalogue_provider, catalogue_rows)
         await db.commit()
 
-    saved_rows = (
-        await db.scalars(select(Achievement).where(Achievement.game_id == game_id))
-    ).all()
+    saved_rows = (await db.scalars(select(Achievement).where(Achievement.game_id == game_id))).all()
     merged = fold_catalog(saved_rows)
     warnings: list[str] = []
     if progress_error is not None:

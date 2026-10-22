@@ -432,6 +432,11 @@ async def _refresh(user, game_id):
 async def test_steam_refresh_stores_hidden_percent_and_unlock_state(scratch_user, monkeypatch):
     user = _creds(scratch_user, steam_id="76561190000000000", steam_api_key="key")
     game_id = await _provider_game(user, source="Steam", external_id="12345")
+
+    async def empty_catalogue(*_args):
+        return "Atlas", [], []
+
+    monkeypatch.setattr(library_sync, "fetch_catalogue", empty_catalogue)
     monkeypatch.setattr(library_sync.steam, "resolve_steam_id", lambda sid, _key: sid)
     monkeypatch.setattr(library_sync.steam, "get_schema_for_game", lambda _key, _app: _SCHEMA)
     monkeypatch.setattr(
