@@ -218,7 +218,7 @@ owned-copy grouping (its closing comment cites PR46 and PR48 and a browser accep
    Search and filters match any copy (`copiesOf`).
 5. **Copy panel** — `components/game/GameOwnedCopiesPanel.vue` lists each copy and **sums**
    their playtime; provider overlap is not deduplicated (documented in
-   [Games](../user-guide/games.md#owned-copies)).
+   [Games](../user-guide/games.md#one-game-several-copies)).
 
 Covered by `tests/test_game_duplicates.py` (14), `tests/test_game_ownership.py` (11) and
 `frontend/src/tests/gameOwnership.test.ts`. Gaps for #99 are listed in [H13](#h13).
