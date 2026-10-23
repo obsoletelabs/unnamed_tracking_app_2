@@ -443,9 +443,12 @@ onMounted(() => void refresh());
             }}</small>
             <PasswordInput
               v-if="field.secret"
-              v-model="values[provider.provider_id]![field.key]"
+              :model-value="values[provider.provider_id]?.[field.key] ?? ''"
               autocomplete="new-password"
               placeholder="Leave blank to keep"
+              @update:model-value="
+                values[provider.provider_id]![field.key] = $event
+              "
             />
             <input
               v-else
