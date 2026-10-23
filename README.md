@@ -102,8 +102,9 @@ Each account also has an **Achievements sync** task. Its recurring schedule
 starts off; games added to the library are queued for an automatic refresh.
 The task combines metadata catalogues such as Atlas with available Steam,
 PlayStation or RetroAchievements progress. See the
-[achievement sync guide](docs/achievement-sync.md) for manual progress and
-provider behavior.
+[achievement sync guide](docs/achievement-sync.md) for provider behavior and
+the game page's achievement editor. Each achievement has separate **Pin** and
+**Edit** controls; Edit manages synced or manual progress and a local note.
 
 Jobs are registered in `src/backend/src/features/jobs.py`.
      

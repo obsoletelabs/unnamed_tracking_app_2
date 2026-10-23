@@ -1193,15 +1193,6 @@
   border-color: color-mix(in srgb, var(--ui-accent) 40%, transparent);
 }
 
-.game-detail-page .ach-row.done {
-  background: var(--ui-good-soft);
-  border-color: var(--ui-good);
-}
-
-.game-detail-page .ach-row.pin {
-  border-color: color-mix(in srgb, var(--ui-accent) 50%, transparent);
-}
-
 .game-detail-page .ach-icon {
   width: 64px;
   height: 64px;

@@ -1175,21 +1175,21 @@ async function onCopiesChanged() {
               <button
                 type="button"
                 class="ach-btn"
-                :disabled="progressUpdating.has(a.id)"
-                :aria-label="`Edit ${a.name}`"
-                @click="openAchievementEditor(a)"
-              >
-                Edit
-              </button>
-              <button
-                type="button"
-                class="ach-btn"
                 :class="{ on: isPinned(a) }"
                 :aria-pressed="isPinned(a)"
                 :aria-label="`${isPinned(a) ? 'Unpin' : 'Pin'} ${a.name}`"
                 @click="togglePin(a)"
               >
                 {{ isPinned(a) ? "Unpin" : "Pin" }}
+              </button>
+              <button
+                type="button"
+                class="ach-btn"
+                :disabled="progressUpdating.has(a.id)"
+                :aria-label="`Edit ${a.name}`"
+                @click="openAchievementEditor(a)"
+              >
+                Edit
               </button>
               <button
                 v-if="mediaByAchievement.get(a.id)?.length"
