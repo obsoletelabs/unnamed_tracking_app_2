@@ -24,7 +24,7 @@ The local app test stack ran against Atlas 0.7.1. The Background tasks page show
 
 The game page shows an Atlas catalogue achievement in a neutral row, with **Pin** and **Edit** as separate actions:
 
-![Atlas achievement row with separate Pin and Edit actions](https://github.com/user-attachments/assets/32cb8bd1-a00e-4342-8d73-df4598ca701b)
+![Atlas achievement row with loaded icon and separate Pin and Edit actions](https://github.com/user-attachments/assets/3105f083-1949-4f8e-9eee-7f7958dd21ab)
 
 The editor keeps the synced or manual progress choice together with the local note:
 
