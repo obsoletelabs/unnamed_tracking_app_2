@@ -49,6 +49,7 @@ export interface Achievement {
   // whether it is unlocked at all; use isUnlocked() rather than the time
   unlocked?: boolean;
   provider?: string;
+  manualOverride?: boolean;
   iconUrl?: string | null;
   // the greyed-out icon a metadata provider supplies for a not yet earned one
   lockedIconUrl?: string | null;

@@ -237,9 +237,9 @@
 }
 
 .game-detail-page .edit-btn {
-  background: var(--ui-accent);
-  border: none;
-  color: var(--ui-on-accent);
+  background: transparent;
+  color: var(--ui-text);
+  border: 1px solid color-mix(in srgb, var(--ui-text) 22%, transparent);
   border-radius: var(--ui-radius-control);
   padding: 0 20px;
   height: 38px;
@@ -253,14 +253,7 @@
   white-space: nowrap;
 }
 
-/* With a launch button the page has one primary action: Edit steps back to an outline */
-.game-detail-page .action-row:has(.launch-group) .edit-btn {
-  background: transparent;
-  color: var(--ui-text);
-  border: 1px solid color-mix(in srgb, var(--ui-text) 22%, transparent);
-}
-
-.game-detail-page .action-row:has(.launch-group) .edit-btn:hover {
+.game-detail-page .edit-btn:hover {
   border-color: color-mix(in srgb, var(--ui-accent) 55%, transparent);
 }
 
@@ -1200,15 +1193,6 @@
   border-color: color-mix(in srgb, var(--ui-accent) 40%, transparent);
 }
 
-.game-detail-page .ach-row.done {
-  background: var(--ui-good-soft);
-  border-color: var(--ui-good);
-}
-
-.game-detail-page .ach-row.pin {
-  border-color: color-mix(in srgb, var(--ui-accent) 50%, transparent);
-}
-
 .game-detail-page .ach-icon {
   width: 64px;
   height: 64px;
@@ -1226,6 +1210,22 @@
 
 .game-detail-page .ach-main {
   min-width: 0;
+}
+
+.game-detail-page .ach-note-preview {
+  display: grid;
+  gap: 2px;
+  margin: 8px 0 0;
+  color: var(--ui-dim);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.game-detail-page .ach-note-preview strong {
+  color: var(--ui-text);
+  font-size: 0.75rem;
 }
 
 .game-detail-page .ach-name {

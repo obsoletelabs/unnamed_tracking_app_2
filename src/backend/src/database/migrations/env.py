@@ -13,6 +13,7 @@ from src.database.base import Base
 from src.database.models import (
     achievement,  # noqa: F401
     achievement_override,  # noqa: F401
+    achievement_sync_queue,  # noqa: F401
     admin_user_audit,  # noqa: F401
     anime,  # noqa: F401
     app_integration_settings,  # noqa: F401

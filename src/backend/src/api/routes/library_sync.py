@@ -18,7 +18,7 @@ import asyncio
 import dataclasses
 import re
 import time
-from datetime import UTC, date, datetime
+from datetime import date
 from typing import Literal
 from uuid import UUID
 
@@ -33,19 +33,43 @@ from src.api.routes.utils.games import _scan_settings_to_preferences
 from src.core.app_integrations import get_max_upload_size_mb
 from src.core.auth import get_current_user
 from src.core.crypto import decrypt_secret
-from src.database.models.achievement import Achievement
 from src.database.models.game import Game, GameStatus
 from src.database.models.user import User
 from src.database.session import SessionLocal, get_db
+from src.features import achievement_sync as _achievement_sync
 from src.features import game_folders
-from src.features.achievement_catalogue import fetch_catalogue, store_catalogue
+from src.features.achievement_catalogue import fetch_catalogue
+from src.features.achievement_refresh import (
+    AchievementRefreshSources,
+)
+from src.features.achievement_refresh import (
+    fetch_psn_rows as _fetch_psn_rows_impl,
+)
+from src.features.achievement_refresh import (
+    fetch_retro_rows as _fetch_retro_rows,
+)
+from src.features.achievement_refresh import (
+    fetch_steam_rows as _fetch_steam_rows,
+)
+from src.features.achievement_refresh import (
+    refresh_game_achievements as _refresh_achievement_progress,
+)
+from src.features.achievement_sync import (
+    psn_trophy_rows as _psn_trophy_rows,
+)
+from src.features.achievement_sync import (
+    replace_achievements as _replace_achievements,
+)
+from src.features.achievement_sync import (
+    retro_achievement_rows as _retro_achievement_rows,
+)
 from src.features.connection_jobs import sync_scope
 from src.features.game_identity import names
 from src.features.game_ingestion import legacy as ingestion
 from src.features.game_ingestion.contract import SourceObservationV1
 from src.features.imports import steam_connection
 from src.features.imports.game_progression import apply_provider_progress
-from src.features.imports.library_games import LibraryIndex, lock_imported_game
+from src.features.imports.library_games import LibraryIndex
 from src.features.imports.library_games import get_or_create_game as _get_or_create_game
 from src.features.imports.steam_achievements import SteamAchievementData, fetch_steam_achievements
 from src.features.metadata.games import steam
@@ -70,7 +94,22 @@ router = APIRouter(
     prefix="/api/library-sync", tags=["library-sync"], dependencies=[Depends(get_current_user)]
 )
 
+# Keep this legacy helper available to callers that imported it from this route module.
+_unix_from_text = _achievement_sync._unix_from_text  # pylint: disable=protected-access
+
 _SYNC_CONCURRENCY = 5
+
+
+async def _fetch_psn_rows(user: User, external_id: str, platform: str | None) -> list[dict]:
+    """Keep PSN client dependencies injectable through this route module."""
+    return await _fetch_psn_rows_impl(
+        user,
+        external_id,
+        platform,
+        secret_decryptor=decrypt_secret,
+        client_factory=PSNClient,
+    )
+
 
 # Steam's owned-games list includes non-game companion apps alongside real
 # games — public playtests, test/staging servers, and Valve's own
@@ -296,257 +335,20 @@ async def _flag_stale_games(
     return newly_flagged
 
 
-def _unix_from_text(text: object) -> int | None:
-    """A provider's timestamp text ("2023-05-02 14:03:00" or an ISO string
-    ending in Z) as unix seconds, or None when it's missing or unreadable."""
-    if not isinstance(text, str) or not text:
-        return None
-    try:
-        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=UTC)
-    return int(parsed.timestamp())
-
-
-def _retro_achievement_rows(progress: dict) -> list[dict]:
-    """Stored rows for one RetroAchievements game. `NumAwarded` over the
-    game's player count is the share of players who earned each one."""
-    players = progress.get("NumDistinctPlayers") or progress.get("NumDistinctPlayersCasual")
-    rows = []
-    for ach_id, ach in (progress.get("Achievements") or {}).items():
-        earned = ach.get("DateEarned") or ach.get("DateEarnedHardcore")
-        awarded = ach.get("NumAwarded")
-        row = {
-            "external_id": str(ach_id),
-            "name": ach.get("Title") or str(ach_id),
-            "description": ach.get("Description"),
-            "icon_url": f"https://media.retroachievements.org/Badge/{ach['BadgeName']}.png"
-            if ach.get("BadgeName")
-            else None,
-            "unlocked": bool(earned),
-            "unlocked_at": _unix_from_text(earned),
-            # RA's classic API's exact casing for this field isn't documented
-            # as clearly as the newer v1 API's: check both
-            "tier": (ach.get("Type") or ach.get("type") or "").lower() or None,
-        }
-        if isinstance(awarded, int | float) and isinstance(players, int | float) and players > 0:
-            row["global_percent"] = round(awarded / players * 100, 2)
-        rows.append(row)
-    return rows
-
-
-def _psn_trophy_rows(trophies: list[dict]) -> list[dict]:
-    """Stored rows for one PlayStation title: earned state and time, whether
-    it's a hidden trophy, and the rate of players who earned it."""
-    rows = []
-    for t in trophies:
-        if t.get("trophyId") is None:
-            continue
-        row = {
-            "external_id": str(t.get("trophyId")),
-            "name": t.get("trophyName") or "Trophy",
-            "description": t.get("trophyDetail"),
-            "icon_url": t.get("trophyIconUrl"),
-            "unlocked": bool(t.get("earned")),
-            "unlocked_at": _unix_from_text(t.get("earnedDateTime")),
-            "hidden": bool(t.get("trophyHidden")),
-        }
-        try:
-            row["global_percent"] = round(float(t["trophyEarnedRate"]), 2)
-        except (KeyError, TypeError, ValueError):
-            pass
-        rows.append(row)
-    return rows
-
-
-async def _replace_achievements(
-    db: AsyncSession, game_id: UUID, provider: str, rows: list[dict]
-) -> None:
-    """Upserts by (game_id, provider, external_id) rather than delete +
-    reinsert — a media item can link to a specific achievement
-    (MediaItem.linked_achievement_id), and that FK is ON DELETE SET NULL,
-    so wiping every row on each re-sync was silently unlinking every
-    screenshot/clip tagged to an achievement the next time the game synced."""
-    existing = {
-        a.external_id: a
-        for a in (
-            await db.execute(
-                select(Achievement).where(
-                    Achievement.game_id == game_id, Achievement.provider == provider
-                )
-            )
-        )
-        .scalars()
-        .all()
-    }
-    now = int(time.time())
-    seen_ids: set[str] = set()
-    for row in rows:
-        seen_ids.add(row["external_id"])
-        current = existing.get(row["external_id"])
-        if current is not None:
-            for field, value in row.items():
-                # a lookup that found no description (Steam refused the extra
-                # request, say) must not erase one we already have
-                if field == "description" and value is None and current.description:
-                    continue
-                setattr(current, field, value)
-        else:
-            db.add(Achievement(game_id=game_id, provider=provider, created_at=now, **row))
-    for external_id, achievement in existing.items():
-        if external_id not in seen_ids:
-            await db.delete(achievement)
-
-
 @router.post("/games/{game_id}/achievements")
 async def refresh_game_achievements(
     game_id: UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> dict:
-    """Re-reads one game's achievements from the provider it came from (Steam,
-    PlayStation or RetroAchievements): what each is, whether it's hidden, what
-    you've unlocked and when, and how many players have it. It doesn't sync the
-    library. Fresh progress may advance eligible Backlog games; other saved
-    statuses, including Wishlist without ownership evidence, are preserved."""
-    game = await db.scalar(
-        select(Game).where(
-            Game.id == game_id, Game.user_id == current_user.id, Game.deleted_at.is_(None)
-        )
+    """Refresh provider progress and metadata definitions for one game."""
+    sources = AchievementRefreshSources(
+        fetch_steam_rows=_fetch_steam_rows,
+        fetch_retro_rows=_fetch_retro_rows,
+        fetch_psn_rows=_fetch_psn_rows,
+        fetch_catalogue=fetch_catalogue,
     )
-    if game is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
-    external_id = game.external_id or ""
-    platform = game.platform
-    if game.source == "Steam":
-        provider, rows = "Steam", await _fetch_steam_rows(current_user, external_id, db)
-    elif game.source == "RetroAchievements":
-        provider, rows = "RetroAchievements", await _fetch_retro_rows(current_user, external_id)
-    elif game.source == "PlayStation":
-        provider = "PlayStation"
-        rows = await _fetch_psn_rows(current_user, external_id, game.platform)
-    else:
-        # Any other game: a metadata provider (such as Atlas) may offer the achievement list
-        # (definitions only, so there is no progress to advance and no ownership to recheck).
-        provider, rows, _errors = await fetch_catalogue(db, current_user.id, game)
-        if not rows:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No achievements were found for this game. Steam, PlayStation and "
-                "RetroAchievements games refresh from their own provider; other games need "
-                "a metadata provider that offers achievement lists.",
-            )
-        await store_catalogue(db, game.id, provider, rows)
-        await db.commit()
-        return {
-            "provider": provider,
-            "achievements": len(rows),
-            "unlocked": 0,
-            "hidden": sum(1 for r in rows if r.get("hidden")),
-        }
-    if rows:
-        # Every provider must recheck ownership and identity after network work.
-        current = await lock_imported_game(db, current_user.id, game_id, provider)
-        if (
-            current is None
-            or (current.external_id or "") != external_id
-            or (provider == "PlayStation" and current.platform != platform)
-        ):
-            raise HTTPException(
-                status_code=409,
-                detail="This game changed during the refresh. Saved progress was kept.",
-            )
-        await _replace_achievements(db, current.id, provider, rows)
-        apply_provider_progress(
-            current,
-            total_achievements=len(rows),
-            unlocked_achievements=sum(1 for row in rows if row["unlocked"]),
-        )
-        await db.commit()
-    return {
-        "provider": provider,
-        "achievements": len(rows),
-        "unlocked": sum(1 for r in rows if r["unlocked"]),
-        "hidden": sum(1 for r in rows if r.get("hidden")),
-    }
-
-
-async def _fetch_steam_rows(user: User, external_id: str, db: AsyncSession) -> list[dict]:
-    if not external_id.isdigit():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="This game has no Steam app id."
-        )
-    app_id = int(external_id)
-    try:
-        steam_id, api_key = await steam_connection.credentials(db, user)
-        schema, unlocked, descriptions = await fetch_steam_achievements(steam_id, api_key, app_id)
-        percentages = (
-            await asyncio.to_thread(steam.get_global_percentages, app_id)
-            if schema and unlocked is not None
-            else None
-        )
-        await steam_connection.recheck(db, user.id, steam_id, api_key)
-    except steam_connection.SteamConnectionError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
-    except steam.SteamLibraryError as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from None
-    if unlocked is None:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Steam achievement progress was unavailable. Saved progress was kept. "
-            "Reconnect Steam in Connections if its session has expired.",
-        )
-    if not schema:
-        return []
-    return _steam_achievement_rows(schema, unlocked, percentages, descriptions)
-
-
-async def _fetch_retro_rows(user: User, external_id: str) -> list[dict]:
-    if not user.retroachievements_username or not user.retroachievements_api_key:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Save your RetroAchievements username and API key first.",
-        )
-    if not external_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="This game has no RetroAchievements id."
-        )
-    client = RetroAchievementsClient(api_key=user.retroachievements_api_key)
-    try:
-        progress = await asyncio.to_thread(
-            client.get_game_progress, user.retroachievements_username, external_id
-        )
-    except RetroAchievementsError as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
-    return _retro_achievement_rows(progress)
-
-
-async def _fetch_psn_rows(user: User, external_id: str, platform: str | None) -> list[dict]:
-    if not user.psn_npsso_token:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Connect your PlayStation account first.",
-        )
-    if not external_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="This game has no PlayStation id."
-        )
-    client = PSNClient(decrypt_secret(user.psn_npsso_token))
-    # PS5 titles use the newer trophy service, so ask it first for those and
-    # fall back to the other when a title comes back empty
-    services = ["trophy2", "trophy"] if "PS5" in (platform or "") else ["trophy", "trophy2"]
-    try:
-        for service_name in services:
-            trophies = await asyncio.to_thread(
-                client.get_trophies_for_title, external_id, service_name
-            )
-            if trophies:
-                return _psn_trophy_rows(trophies)
-    except PSNError as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
-    return []
+    return await _refresh_achievement_progress(game_id, db, current_user, sources)
 
 
 # Keep the established workflow and public parameters together.

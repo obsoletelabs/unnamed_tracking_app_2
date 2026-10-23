@@ -488,6 +488,7 @@ async def get_user_jobs(db: AsyncSession, user_id: UUID) -> list[JobSpec]:
     """Share the personal task registry between account controls and the scheduler."""
     # Adapters depend on JobSpec; import them after this registry is initialized.
     # pylint: disable=import-outside-toplevel
+    from src.features.achievement_jobs import get_achievement_jobs
     from src.features.anilist_jobs import get_anilist_jobs
     from src.features.connection_jobs import get_connection_jobs
     from src.features.plugin_jobs import get_plugin_jobs
@@ -496,6 +497,7 @@ async def get_user_jobs(db: AsyncSession, user_id: UUID) -> list[JobSpec]:
         *await get_connection_jobs(db, user_id),
         *await get_anilist_jobs(db, user_id),
         *await get_plugin_jobs(db, user_id),
+        *await get_achievement_jobs(db, user_id),
     ]
 
 
@@ -565,10 +567,21 @@ async def run_jobs_loop() -> None:
                     *await get_scheduled_user_jobs(db),
                 ]
                 due = await due_jobs(db, specs, now)
+                # Queued additions must resume after a server restart even when the user has
+                # left periodic autosync disabled. Scheduled runs still use the normal cadence.
+                # pylint: disable=import-outside-toplevel
+                from src.features.achievement_jobs import pending_job_specs
+
+                pending_achievement_jobs = await pending_job_specs(db, now)
                 await db.commit()
             for spec in due:
                 logger.info("Starting the scheduled job %s", spec.id)
                 spec.start("needed")
+            due_ids = {spec.id for spec in due}
+            for spec in pending_achievement_jobs:
+                if spec.id not in due_ids:
+                    logger.info("Resuming queued achievement work for %s", spec.user_id)
+                    spec.start("queued")
         # An unexpected worker failure must not terminate the remaining scheduled work.
         # pylint: disable-next=broad-exception-caught
         except Exception:

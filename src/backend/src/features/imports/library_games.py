@@ -11,6 +11,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.game import FOLDER_NAME_MAX_LENGTH, Game, GameStatus
+from src.features.achievement_sync_queue import enqueue_game as enqueue_achievement_sync
 from src.features.game_folders import reserved_names
 from src.features.game_identity import names
 from src.helpers import save_game_asset
@@ -199,6 +200,7 @@ async def get_or_create_game(
     )
     db.add(game)
     await db.flush()
+    await enqueue_achievement_sync(db, user_id, game.id)
     if index is not None:
         index.remember(game)
     create_game_folder(user_id, folder_location)

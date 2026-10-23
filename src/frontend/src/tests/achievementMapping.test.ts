@@ -68,4 +68,10 @@ describe("mapAchievements", () => {
       mapAchievements([{ ...raw, medal: "platinum" }])[0].tierOverride,
     ).toBeNull();
   });
+
+  it("marks progress that was manually overridden", () => {
+    expect(
+      mapAchievements([{ ...raw, manual_override: true }])[0].manualOverride,
+    ).toBe(true);
+  });
 });

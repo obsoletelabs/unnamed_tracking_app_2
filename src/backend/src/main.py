@@ -28,6 +28,7 @@ from src.api.routes import (
     default_game_assets,
     delegation,
     export_import,
+    game_achievements,
     game_archives,
     game_duplicates,
     game_identity,
@@ -161,6 +162,7 @@ async def validation_error_without_submitted_values(
 
 
 app.include_router(default_game_assets.router)
+app.include_router(game_achievements.router)
 app.include_router(games.router)
 app.include_router(game_duplicates.router)
 app.include_router(game_identity.router)

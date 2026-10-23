@@ -11,7 +11,7 @@ import pytest
 from fastapi import HTTPException, Response
 from sqlalchemy import delete
 
-from src.api.routes import games, library_sync
+from src.api.routes import game_achievements, games, library_sync
 from src.api.schemas.game import GameCreate
 from src.database.models.game import Game
 from src.database.models.user import User
@@ -56,7 +56,7 @@ async def _game_with(user, provider: str, rows: list[dict]):
 
 async def _listed(user, game_id) -> dict[str, dict]:
     async with SessionLocal() as db:
-        items = await games.list_game_achievements(game_id, db, user)
+        items = await game_achievements.list_game_achievements(game_id, db, user)
     return {item["name"]: item for item in items}
 
 
@@ -432,6 +432,11 @@ async def _refresh(user, game_id):
 async def test_steam_refresh_stores_hidden_percent_and_unlock_state(scratch_user, monkeypatch):
     user = _creds(scratch_user, steam_id="76561190000000000", steam_api_key="key")
     game_id = await _provider_game(user, source="Steam", external_id="12345")
+
+    async def empty_catalogue(*_args):
+        return "Atlas", [], []
+
+    monkeypatch.setattr(library_sync, "fetch_catalogue", empty_catalogue)
     monkeypatch.setattr(library_sync.steam, "resolve_steam_id", lambda sid, _key: sid)
     monkeypatch.setattr(library_sync.steam, "get_schema_for_game", lambda _key, _app: _SCHEMA)
     monkeypatch.setattr(
@@ -493,11 +498,20 @@ async def test_playstation_refresh_falls_back_to_the_other_trophy_service(
     assert result["unlocked"] == 1
 
 
-async def test_refresh_is_refused_for_a_game_from_another_source(scratch_user):
+async def test_refresh_checks_metadata_for_a_game_from_another_source(scratch_user, monkeypatch):
     game_id = await _provider_game(scratch_user, source="GOG", external_id="abc")
-    with pytest.raises(HTTPException) as exc:
-        await _refresh(_creds(scratch_user), game_id)
-    assert exc.value.status_code == 400
+
+    async def no_catalogue(_db, _user_id, _game):
+        return "Metadata providers", [], []
+
+    monkeypatch.setattr(library_sync, "fetch_catalogue", no_catalogue)
+    result = await _refresh(_creds(scratch_user), game_id)
+    assert result == {
+        "provider": "No new data",
+        "achievements": 0,
+        "unlocked": 0,
+        "hidden": 0,
+    }
 
 
 async def test_refresh_needs_saved_credentials(scratch_user):
@@ -530,5 +544,6 @@ async def test_an_empty_answer_does_not_wipe_stored_achievements(scratch_user, m
     monkeypatch.setattr(library_sync.steam, "resolve_steam_id", lambda sid, _key: sid)
     monkeypatch.setattr(library_sync.steam, "get_schema_for_game", lambda _key, _app: {})
     result = await _refresh(user, game_id)
-    assert result["achievements"] == 0
+    assert result["achievements"] == 1
+    assert result["unlocked"] == 1
     assert "Kept" in await _listed(user, game_id)

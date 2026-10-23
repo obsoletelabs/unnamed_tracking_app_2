@@ -2,7 +2,6 @@
 import { ref, computed, onMounted } from "vue";
 import {
   fetchGames,
-  fetchAchievementsSummary,
   refreshGameAchievements,
   refreshGameMetadata,
   previewGameMetadataRefresh,
@@ -257,6 +256,7 @@ const achievementSummary = ref<{
   hidden: number;
   failed: number;
   reason: string | null;
+  warnings: string[];
 } | null>(null);
 const achievementError = ref<string | null>(null);
 
@@ -266,14 +266,13 @@ async function refreshAllAchievements() {
   achievementError.value = null;
   let taskId: string | null = null;
   try {
-    const [allGames, withAchievements] = await Promise.all([
-      fetchGames(),
-      fetchAchievementsSummary(),
-    ]);
-    const targets = allGames.filter((g) => g.id in withAchievements);
+    // This action imports new catalogues too, so games with no achievement
+    // rows yet must be checked rather than filtered out of the batch.
+    const targets = await fetchGames();
     achievementProgress.value = { done: 0, total: targets.length };
-    taskId = startTask("Refreshing achievements", targets.length);
+    taskId = startTask("Importing and refreshing achievements", targets.length);
     const totals = { achievements: 0, unlocked: 0, hidden: 0, failed: 0 };
+    const warnings: string[] = [];
     let reason: string | null = null;
     let done = 0;
     await runInBatches(targets, REFRESH_CONCURRENCY, async (game: Game) => {
@@ -282,6 +281,9 @@ async function refreshAllAchievements() {
         totals.achievements += result.achievements;
         totals.unlocked += result.unlocked;
         totals.hidden += result.hidden;
+        for (const warning of result.warnings ?? []) {
+          warnings.push(`${game.title}: ${warning}`);
+        }
       } catch (err) {
         totals.failed++;
         // keep the first reason so a failure says why, instead of just a count
@@ -295,11 +297,12 @@ async function refreshAllAchievements() {
       games: targets.length - totals.failed,
       ...totals,
       reason,
+      warnings,
     };
     if (taskId)
       completeTask(
         taskId,
-        `${targets.length - totals.failed} refreshed, ${totals.failed} failed`,
+        `${targets.length - totals.failed} checked, ${totals.failed} failed`,
       );
   } catch (err) {
     achievementError.value =
@@ -458,13 +461,13 @@ async function restoreGameById(game: TrashedGame) {
   </section>
 
   <section class="settings-section">
-    <h2>Refresh Achievements</h2>
+    <h2>Import and Refresh Achievements</h2>
     <p class="section-hint">
-      Re-reads the achievements of every game that has some, from the service
-      each one came from (Steam, PlayStation or RetroAchievements): names,
-      descriptions, icons, which are hidden, what you've unlocked and when, and
-      how many players have each. It doesn't sync your library or change
-      anything else about your games, and your notes and pins are kept.
+      Checks every game for achievement definitions from metadata providers such
+      as Atlas, then refreshes unlocked progress from its platform source
+      (Steam, PlayStation or RetroAchievements). Catalogue definitions can be
+      matched to platform progress through linked IDs. This doesn't sync your
+      library, and your notes and pins are kept.
     </p>
     <button
       type="button"
@@ -474,8 +477,8 @@ async function restoreGameById(game: TrashedGame) {
     >
       {{
         refreshingAchievements
-          ? `Refreshing… (${achievementProgress.done}/${achievementProgress.total})`
-          : "Refresh achievements"
+          ? `Checking… (${achievementProgress.done}/${achievementProgress.total})`
+          : "Import / refresh achievements"
       }}
     </button>
     <div v-if="achievementError" class="form-error">{{ achievementError }}</div>
@@ -487,7 +490,7 @@ async function restoreGameById(game: TrashedGame) {
         {{ achievementSummary.games }} game{{
           achievementSummary.games === 1 ? "" : "s"
         }}
-        refreshed:
+        checked:
         {{ achievementSummary.achievements.toLocaleString() }} achievements,
         {{ achievementSummary.unlocked.toLocaleString() }} unlocked,
         {{ achievementSummary.hidden.toLocaleString() }} hidden<template
@@ -500,6 +503,11 @@ async function restoreGameById(game: TrashedGame) {
           ></template
         >.
       </p>
+      <ul v-if="achievementSummary.warnings.length" class="form-error">
+        <li v-for="warning in achievementSummary.warnings" :key="warning">
+          {{ warning }}
+        </li>
+      </ul>
     </div>
   </section>
 

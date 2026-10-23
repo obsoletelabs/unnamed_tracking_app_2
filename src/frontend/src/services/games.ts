@@ -407,15 +407,15 @@ export async function fetchAchievementsSummary(): Promise<
   return await response.json();
 }
 
-// Re-reads one game's achievements from the service it came from (Steam,
-// PlayStation or RetroAchievements): what each is, whether it's hidden, what
-// you've unlocked and when, and how many players have it. The backend does that
-// for just this game, with no library sync.
+// Imports one game's metadata catalogue and refreshes platform progress when
+// available. The backend combines definitions with Steam, PlayStation or
+// RetroAchievements progress, with no library sync.
 export interface AchievementsRefresh {
   provider: string;
   achievements: number;
   unlocked: number;
   hidden: number;
+  warnings?: string[];
 }
 export async function refreshGameAchievements(
   gameId: string,
@@ -429,6 +429,36 @@ export async function refreshGameAchievements(
   );
   if (!response.ok) throw await failedRequest(response);
   return await response.json();
+}
+
+export async function setGameAchievementProgress(
+  gameId: string,
+  achievementId: string,
+  unlocked: boolean,
+): Promise<void> {
+  if (import.meta.env.VITE_USE_MOCK_DATA === "true") return;
+  const response = await fetch(
+    `/api/game/${gameId}/achievements/${achievementId}/progress`,
+    {
+      method: "PUT",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ unlocked }),
+    },
+  );
+  if (!response.ok) throw await failedRequest(response);
+}
+
+export async function clearGameAchievementProgress(
+  gameId: string,
+  achievementId: string,
+): Promise<void> {
+  if (import.meta.env.VITE_USE_MOCK_DATA === "true") return;
+  const response = await fetch(
+    `/api/game/${gameId}/achievements/${achievementId}/progress`,
+    { method: "DELETE", credentials: "include" },
+  );
+  if (!response.ok) throw await failedRequest(response);
 }
 
 export async function fetchGame(
