@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
-import { fetchGames, searchNotes } from "../services/games";
+import { searchNotes } from "../services/games";
 import type { NoteSearchHit } from "../services/games";
-import type { Game } from "../types/game";
+import {
+  fetchCollectionIndex,
+  type CollectionIndexGame,
+} from "../services/collections";
 import { searchPluginRecords } from "../state/pluginSearch";
 import { isCommandPaletteOpen } from "../state/commandPalette";
 import { smartCollections } from "../state/smartCollections";
@@ -25,24 +28,35 @@ const open = isCommandPaletteOpen;
 const query = ref("");
 const inputRef = ref<HTMLInputElement | null>(null);
 
-const gamesCache = ref<Game[]>([]);
+const gamesCache = ref<CollectionIndexGame[]>([]);
 const loaded = ref(false);
 const loadError = ref("");
 const mediaResults = ref<Result[]>([]);
 const pluginResults = ref<Result[]>([]);
 const mediaLoading = ref(false);
 let loadGeneration = 0;
+let lastGamesLoadedAt = 0;
 let mediaGeneration = 0;
 let mediaTimer: ReturnType<typeof setTimeout> | undefined;
 let pluginTimer: ReturnType<typeof setTimeout> | undefined;
 let pluginGeneration = 0;
 
-async function ensureLoaded() {
+async function ensureLoaded(force = false) {
+  if (
+    !force &&
+    loaded.value &&
+    !loadError.value &&
+    Date.now() - lastGamesLoadedAt < 60_000
+  )
+    return;
   const generation = ++loadGeneration;
   loadError.value = "";
-  const [games] = await Promise.allSettled([fetchGames()]);
+  const [games] = await Promise.allSettled([fetchCollectionIndex()]);
   if (generation !== loadGeneration) return;
-  if (games.status === "fulfilled") gamesCache.value = games.value;
+  if (games.status === "fulfilled") {
+    gamesCache.value = games.value;
+    lastGamesLoadedAt = Date.now();
+  }
   if (games.status === "rejected")
     loadError.value =
       "Some library results could not be loaded. Try again when connected.";
@@ -260,6 +274,7 @@ watch(
     clearTimeout(mediaTimer);
     clearTimeout(pluginTimer);
     gamesCache.value = [];
+    lastGamesLoadedAt = 0;
     mediaResults.value = [];
     pluginResults.value = [];
     loaded.value = false;
@@ -341,7 +356,7 @@ watch(query, (value) => {
 });
 
 function retrySearch() {
-  void ensureLoaded();
+  void ensureLoaded(true);
   searchMedia(query.value);
   searchPlugins(query.value);
 }
