@@ -88,26 +88,41 @@ const disposeNavigationViewport = initializeNavigationViewport();
 onUnmounted(disposeNavigationViewport);
 let pluginRefreshTimer: ReturnType<typeof setInterval> | undefined;
 let pluginRefreshUser: string | undefined;
-// Session and plugin state is re-checked every few seconds, but only while
-// the page is visible: a background tab has nobody to show the result to.
-async function pollSessionAndPlugins(id: string) {
+let lastPluginRefreshAt = 0;
+// Session state is re-checked every 15 seconds. Plugin UI documents are
+// refreshed separately at most every five minutes: they are not required for
+// ordinary page navigation or button handling, and refreshing them on every
+// session poll created needless requests while users browsed unrelated pages.
+async function pollSession(id: string) {
   if (document.visibilityState === "hidden") return;
   try {
     const user = await fetchCurrentUser();
     if (currentUser.value?.id !== id) return;
     if (!user) {
       currentUser.value = null;
-      await router.replace("/login");
+      // A server restart can expire or temporarily reject the session while
+      // the user is deep in a library/detail page. Preserve that destination
+      // through re-authentication instead of silently sending them to Home.
+      await router.replace({
+        path: "/login",
+        query: { return_to: route.fullPath },
+      });
       return;
     }
-    await refreshPluginExtensions({ background: true });
+    refreshPluginStateIfStale();
   } catch {
     // Preserve the current screen during transient connectivity failures.
   }
 }
+function refreshPluginStateIfStale() {
+  if (Date.now() - lastPluginRefreshAt < 5 * 60_000) return;
+  lastPluginRefreshAt = Date.now();
+  void refreshPluginExtensions({ background: true });
+}
 function onPageVisible() {
-  if (document.visibilityState === "visible" && pluginRefreshUser)
-    void pollSessionAndPlugins(pluginRefreshUser);
+  if (document.visibilityState !== "visible" || !pluginRefreshUser) return;
+  void pollSession(pluginRefreshUser);
+  refreshPluginStateIfStale();
 }
 document.addEventListener("visibilitychange", onPageVisible);
 watch(
@@ -117,10 +132,11 @@ watch(
     clearPluginExtensions();
     pluginRefreshUser = id;
     if (id) {
+      lastPluginRefreshAt = Date.now();
       void refreshPluginExtensions({ background: true });
       pluginRefreshTimer = setInterval(
-        () => void pollSessionAndPlugins(id),
-        5000,
+        () => void pollSession(id),
+        15_000,
       );
     }
   },

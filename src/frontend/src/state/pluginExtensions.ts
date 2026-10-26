@@ -547,9 +547,9 @@ const documentReaderState = ref<PluginDocumentReaderContribution[]>([]);
 let refreshVersion = 0;
 let pendingRefresh: Promise<void> | undefined;
 let lastRefreshFinishedAt = 0;
-// Background callers (mounted components, the poll) skip a load that would
-// repeat one that just finished; explicit manager changes never do.
-const BACKGROUND_REFRESH_FRESH_MS = 2000;
+// Background callers (mounted components, the poll) reuse plugin state for a
+// minute; explicit manager changes still load immediately to reflect revocation.
+const BACKGROUND_REFRESH_FRESH_MS = 60_000;
 const documentState = ref<Record<string, PluginUiDocument>>({});
 export const activePluginDocuments = shallowReadonly(documentState);
 
@@ -652,7 +652,7 @@ export function comparePluginContributions(
 export function refreshPluginExtensions(
   options: { background?: boolean } = {},
 ): Promise<void> {
-  // Mounts and the five-second poll share a pending load. Otherwise a slow
+  // Mounts and the background poll share a pending load. Otherwise a slow
   // multi-plugin refresh is repeatedly invalidated before it can publish.
   // Explicit manager mutations still start a fresh load to reflect revocation.
   if (options.background && pendingRefresh) return pendingRefresh;

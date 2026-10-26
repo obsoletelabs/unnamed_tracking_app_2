@@ -54,7 +54,7 @@ it("redirects a signed-out base URL to login without a return query", async () =
   await router.push("/");
   expect(router.currentRoute.value.fullPath).toBe("/login");
 });
-it("redirects first-run setup without returning to the base URL", async () => {
+it("redirects first-run setup while the initial session read runs in parallel", async () => {
   services.setup.mockResolvedValue({
     setup_required: true,
     startup_ui_enabled: true,
@@ -62,7 +62,7 @@ it("redirects first-run setup without returning to the base URL", async () => {
   const { default: router } = await import("../router");
   await router.push("/");
   expect(router.currentRoute.value.fullPath).toBe("/setup");
-  expect(services.auth).not.toHaveBeenCalled();
+  expect(services.auth).toHaveBeenCalledTimes(1);
 });
 it.each(["/", "/login", "/login/local", "/setup?return_to=/games"])(
   "cleans an existing login return query for %s and preserves other query fields",
