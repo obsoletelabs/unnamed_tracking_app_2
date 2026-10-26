@@ -22,12 +22,13 @@ import { takeLibraryScroll } from "../state/libraryScroll";
 import { useRoute, useRouter, stringifyQuery } from "vue-router";
 import type { LocationQueryRaw } from "vue-router";
 import { useWindowVirtualizer } from "@tanstack/vue-virtual";
+import { viewportPrefetchRows } from "../services/gamePages";
 
 import { activePriority, priorityLabel } from "../utils/priority";
 import { formatDisplayDate } from "../utils/dates";
 
 import {
-  fetchGames,
+  fetchGamesForViewport,
   peekAllGames,
   deleteGame,
   setFavorite,
@@ -85,6 +86,12 @@ export function useGameLibrary() {
   const route = useRoute();
 
   const games = ref<Game[]>([]);
+  const totalGameCount = ref(0);
+  const serverStatusCounts = ref<Record<string, number> | null>(null);
+  const loadingMoreGames = ref(false);
+  let nextGameOffset = 0;
+  let pageRequest: AbortController | null = null;
+  let pendingPageLoad: Promise<void> | null = null;
   const duplicatePairs = ref<[string, string][]>([]);
   let duplicateRequest: AbortController | null = null;
   onUnmounted(() => duplicateRequest?.abort());
@@ -535,6 +542,11 @@ export function useGameLibrary() {
   const filterCount = computed(
     () => advancedFilterCount.value + (platformFilter.value !== "all" ? 1 : 0),
   );
+  const canUseServerStatusCounts = computed(
+    () =>
+      filterCount.value === (favoritesOnly.value ? 1 : 0) &&
+      searchQuery.value.trim().length < 4,
+  );
 
   function clearAdvancedFilters() {
     franchiseFilter.value = "all";
@@ -694,8 +706,27 @@ export function useGameLibrary() {
     counts.all = gamesMatchingFilters.value.length;
     for (const game of gamesMatchingFilters.value)
       counts[game.status] = (counts[game.status] ?? 0) + 1;
+    // For the default library view, use the small aggregate returned with the
+    // first page. With client-side filters, keep the exact loaded calculation
+    // until all matching rows have arrived rather than presenting a partial
+    // slice as the final result.
+    if (canUseServerStatusCounts.value && serverStatusCounts.value) {
+      return {
+        ...counts,
+        ...serverStatusCounts.value,
+        all: Object.values(serverStatusCounts.value).reduce(
+          (sum, count) => sum + count,
+          0,
+        ),
+      };
+    }
     return counts;
   });
+  const statusCountsComplete = computed(() =>
+    canUseServerStatusCounts.value
+      ? serverStatusCounts.value !== null
+      : !hasMoreGames.value,
+  );
 
   const filterRefs = {
     searchQuery,
@@ -865,6 +896,53 @@ export function useGameLibrary() {
   // collection changes) that can overlap
   let loadGamesToken = 0;
   const refreshing = ref(false);
+  let lastGamesLoadedAt = 0;
+
+  const hasMoreGames = computed(
+    () => games.value.length < totalGameCount.value,
+  );
+
+  function loadMoreGames(): Promise<void> {
+    if (pendingPageLoad) return pendingPageLoad;
+    if (!hasMoreGames.value) return Promise.resolve();
+    loadingMoreGames.value = true;
+    pageRequest?.abort();
+    pageRequest = new AbortController();
+    const request = (async () => {
+      try {
+        const result = await fetchGamesForViewport(
+          nextGameOffset,
+          pageRequest?.signal,
+          serverSearchText(),
+          statusFilter.value,
+          favoritesOnly.value,
+        );
+        const seenIds = new Set(games.value.map((game) => game.id));
+        games.value = [
+          ...games.value,
+          ...result.games.filter((game) => !seenIds.has(game.id)),
+        ];
+        nextGameOffset += result.games.length;
+        if (result.total !== null) totalGameCount.value = result.total;
+      } catch {
+        // Keep the visible rows available; the next scroll or explicit refresh
+        // can retry this page after a transient network or server restart.
+      } finally {
+        loadingMoreGames.value = false;
+        pendingPageLoad = null;
+      }
+    })();
+    pendingPageLoad = request;
+    return request;
+  }
+
+  async function loadAllGames(): Promise<void> {
+    while (hasMoreGames.value) {
+      const before = nextGameOffset;
+      await loadMoreGames();
+      if (nextGameOffset === before) break;
+    }
+  }
 
   function selectFirstForDetailView() {
     if (
@@ -878,62 +956,100 @@ export function useGameLibrary() {
   async function loadGames() {
     const token = ++loadGamesToken;
     duplicateRequest?.abort();
-    duplicateRequest = new AbortController();
-    // Review hints never block the library or request external providers.
-    void fetchGameDuplicates(duplicateRequest.signal)
-      .then((result) => {
-        if (token === loadGamesToken)
-          duplicatePairs.value = result.pairs.map((pair) => [
-            pair.first.id,
-            pair.second.id,
-          ]);
-      })
-      .catch(() => {
-        /* A failed check does not imply the games are unique. */
-      });
-    void fetchLibraryLayout(duplicateRequest.signal)
-      .then((result) => {
-        if (token === loadGamesToken) layout.value = result;
-      })
-      .catch(() => {
-        /* Without a layout the library lists each record as before. */
-      });
+    const enrichmentRequest = new AbortController();
+    duplicateRequest = enrichmentRequest;
     refreshing.value = true;
+    pageRequest?.abort();
+    totalGameCount.value = 0;
+    serverStatusCounts.value = null;
+    nextGameOffset = 0;
     // A library seen earlier in this visit is drawn at once and refreshed
     // behind it, instead of a "Loading…" screen on every return to the page.
     const seen = games.value.length ? null : peekAllGames();
     if (seen) {
       games.value = seen;
+      totalGameCount.value = seen.length;
+      nextGameOffset = seen.length;
       selectFirstForDetailView();
       loading.value = false;
     } else if (!games.value.length) {
       loading.value = true;
     }
     try {
-      // the completion numbers are best-effort, a failed summary fetch just
-      // means no completion badges, not a broken library page, and it is asked
-      // for alongside the games rather than after them
-      const [fetched, summary] = await Promise.all([
-        fetchGames(),
-        fetchAchievementsSummary().catch(() => null),
-      ]);
+      const firstPage = await fetchGamesForViewport(
+        0,
+        enrichmentRequest.signal,
+        serverSearchText(),
+        statusFilter.value,
+        favoritesOnly.value,
+      );
       if (token !== loadGamesToken) return;
-      games.value = fetched;
+      games.value = firstPage.games;
+      totalGameCount.value = firstPage.total ?? firstPage.games.length;
+      serverStatusCounts.value = firstPage.statusCounts;
+      nextGameOffset = firstPage.games.length;
       error.value = null;
       if (selectedGame.value)
         selectedGame.value =
-          fetched.find((game) => game.id === selectedGame.value?.id) ?? null;
-      if (summary) {
-        for (const game of games.value) {
-          const entry = summary[game.id];
-          if (!entry) continue;
-          game.achievementTotal = entry.total;
-          game.achievementPercent = entry.total
-            ? Math.round((entry.unlocked / entry.total) * 100)
-            : 0;
-        }
-      }
+          firstPage.games.find((game) => game.id === selectedGame.value?.id) ??
+          null;
+      lastGamesLoadedAt = Date.now();
       selectFirstForDetailView();
+      // These library-wide enrichments are not needed to paint the first
+      // viewport. Wait until Vue has rendered the first slice and the browser
+      // is idle before starting their heavier requests.
+      const loadEnrichment = () => {
+        if (token !== loadGamesToken) return;
+        void fetchAchievementsSummary()
+          .then((summary) => {
+            if (token !== loadGamesToken) return;
+            for (const game of games.value) {
+              const entry = summary[game.id];
+              if (!entry) continue;
+              game.achievementTotal = entry.total;
+              game.achievementPercent = entry.total
+                ? Math.round((entry.unlocked / entry.total) * 100)
+                : 0;
+            }
+          })
+          .catch(() => null);
+        void fetchGameDuplicates(enrichmentRequest.signal)
+          .then((result) => {
+            if (token === loadGamesToken)
+              duplicatePairs.value = result.pairs.map((pair) => [
+                pair.first.id,
+                pair.second.id,
+              ]);
+          })
+          .catch(() => {
+            /* A failed check does not imply the games are unique. */
+          });
+        void fetchLibraryLayout(enrichmentRequest.signal)
+          .then((result) => {
+            if (token === loadGamesToken) layout.value = result;
+          })
+          .catch(() => {
+            /* Without a layout the library lists each record as before. */
+          });
+      };
+      void nextTick().then(() => {
+        // Idle can happen immediately after the first API response. Give the
+        // user a short interaction window before issuing three library-wide
+        // enrichment requests that compete with scrolling and artwork.
+        window.setTimeout(() => {
+          if (token !== loadGamesToken) return;
+          const requestIdle = (
+            window as Window & {
+              requestIdleCallback?: (
+                callback: () => void,
+                options?: { timeout: number },
+              ) => number;
+            }
+          ).requestIdleCallback;
+          if (requestIdle) requestIdle(loadEnrichment, { timeout: 2_000 });
+          else loadEnrichment();
+        }, 2_500);
+      });
     } catch (err) {
       if (token !== loadGamesToken) return;
       error.value = err instanceof Error ? err.message : "Failed to load games";
@@ -944,6 +1060,28 @@ export function useGameLibrary() {
       }
     }
   }
+
+  // Short searches use the same literal contains semantics on the server as
+  // the existing client matcher. Longer searches retain the typo-tolerant
+  // client behavior until that matcher has a server equivalent.
+  function serverSearchText(): string | undefined {
+    const query = searchQuery.value.trim();
+    return query.length > 0 && query.length < 4 ? query : undefined;
+  }
+
+  let searchReloadTimer: ReturnType<typeof setTimeout> | undefined;
+  watch(searchQuery, () => {
+    if (searchReloadTimer) clearTimeout(searchReloadTimer);
+    searchReloadTimer = setTimeout(() => {
+      if (route.path === "/games") void loadGames();
+    }, 180);
+  });
+  watch([statusFilter, favoritesOnly], () => {
+    if (route.path === "/games") void loadGames();
+  });
+  onUnmounted(() => {
+    if (searchReloadTimer) clearTimeout(searchReloadTimer);
+  });
 
   async function restoreLibraryScroll() {
     await nextTick();
@@ -957,7 +1095,14 @@ export function useGameLibrary() {
   });
   useKeptAlive(
     () => {
-      void loadGames();
+      // KeepAlive preserves the library and its controls between routes. Do
+      // not immediately repeat the full paged transfer when returning to a
+      // recently loaded library; failed/stale data still refreshes on return.
+      if (
+        error.value !== null ||
+        Date.now() - lastGamesLoadedAt >= 60_000
+      )
+        void loadGames();
       void restoreLibraryScroll();
     },
     {
@@ -1667,8 +1812,87 @@ export function useGameLibrary() {
       enabled: isLibraryActive.value,
       useAnimationFrameWithResizeObserver: true,
       estimateSize: () => 330,
-      overscan: 3,
+      // Keep several nearby rows mounted so rapid direction changes do not
+      // tear down in-flight cover decodes immediately outside the viewport.
+      overscan: 6,
     })),
+  );
+  const listRowVirtualizer = useWindowVirtualizer(
+    computed(() => ({
+      count: filteredGames.value.length,
+      enabled: isLibraryActive.value && viewMode.value === "list",
+      estimateSize: () => 108,
+      // Artwork requests may still be decoding after a fast scroll. Retain a
+      // larger two-sided row buffer to make reversing direction feel stable.
+      overscan: 16,
+    })),
+  );
+  const lazyLibraryMode = computed(
+    // Shelves and list views are virtualized, so changing a filter or sort
+    // should not force every game through the network before those views can
+    // show results. Keep detail preview's existing full-order behavior.
+    () => viewMode.value !== "detail",
+  );
+  const nearLoadedEnd = computed(() => {
+    if (!filteredGames.value.length) return false;
+    if (viewMode.value === "detail") return true;
+    if (viewMode.value === "cards") {
+      const virtualRows = rowVirtualizer.value.getVirtualItems?.() ?? [];
+      const lastVisibleRow = virtualRows
+        .filter(isVirtualRowInViewport)
+        .at(-1)?.index ?? -1;
+      const loadedRows = Math.ceil(
+        filteredGames.value.length / CARD_COLUMNS.value,
+      );
+      const prefetchRows = Math.min(
+        Math.max(2, Math.floor(loadedRows / 2)),
+        viewportPrefetchRows(),
+      );
+      return lastVisibleRow >= loadedRows - prefetchRows;
+    }
+    const visibleRows = (listRowVirtualizer.value.getVirtualItems?.() ?? []).filter(
+      (row) => isLibraryRowInViewport(row.index),
+    );
+    const lastVisibleItem = visibleRows.at(-1)?.index ?? -1;
+    const prefetchRows = Math.min(
+      Math.max(4, Math.floor(filteredGames.value.length / 2)),
+      Math.max(8, viewportPrefetchRows()),
+    );
+    return lastVisibleItem >= filteredGames.value.length - prefetchRows;
+  });
+  function isLibraryRowInViewport(index: number): boolean {
+    const row = contentEl.value?.querySelector<HTMLElement>(
+      `.list-virtual-container [data-index="${index}"]`,
+    );
+    if (!row) return false;
+    const rect = row.getBoundingClientRect();
+    return rect.bottom > 0 && rect.top < window.innerHeight;
+  }
+  function isVirtualRowInViewport(item: { index: number }): boolean {
+    const row = contentEl.value?.querySelector<HTMLElement>(
+      `.grid-virtual-container [data-index="${item.index}"]`,
+    );
+    if (!row) return false;
+    const rect = row.getBoundingClientRect();
+    return rect.bottom > 0 && rect.top < window.innerHeight;
+  }
+  watch(
+    [nearLoadedEnd, hasMoreGames, lazyLibraryMode],
+    ([nearEnd, hasMore, canPage]) => {
+      if (
+        hasMore &&
+        (!canPage || nearEnd || filteredGames.value.length === 0)
+      )
+        void loadMoreGames();
+    },
+    { flush: "post" },
+  );
+  watch(
+    [lazyLibraryMode, totalGameCount],
+    ([canPage]) => {
+      if (!canPage && hasMoreGames.value) void loadAllGames();
+    },
+    { flush: "post" },
   );
   // The list sits below the header, toolbar and tabs, which the window
   // virtualizer doesn't know about. As each row is measured and replaces its
@@ -1699,6 +1923,13 @@ export function useGameLibrary() {
     layout,
     possibleDuplicateIds,
     loading,
+    totalGameCount,
+    hasMoreGames,
+    loadingMoreGames,
+    loadMoreGames,
+    loadAllGames,
+    isLibraryRowInViewport,
+    isVirtualRowInViewport,
     error,
     showFormModal,
     editingGame,
@@ -1770,6 +2001,7 @@ export function useGameLibrary() {
     statusOptions,
     VIEW_OPTIONS,
     statusCounts,
+    statusCountsComplete,
     platformOptions,
     platformExtraOptions,
     tagOptions,
@@ -1803,6 +2035,7 @@ export function useGameLibrary() {
     CARD_COLUMNS,
     rankByGameId,
     rowVirtualizer,
+    listRowVirtualizer,
     cardsInRow,
   };
 }

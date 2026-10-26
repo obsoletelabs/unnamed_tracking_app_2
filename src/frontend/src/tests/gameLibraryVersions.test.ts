@@ -24,7 +24,11 @@ vi.mock("../utils/useKeptAlive", () => ({ useKeptAlive: vi.fn() }));
 const services = vi.hoisted(() => ({ games: [] as unknown[] }));
 vi.mock("../services/games", async (original) => ({
   ...(await original<typeof import("../services/games")>()),
-  fetchGames: vi.fn(async () => services.games),
+  fetchGamesForViewport: vi.fn(async () => ({
+    games: services.games,
+    total: services.games.length,
+    statusCounts: null,
+  })),
   peekAllGames: vi.fn(() => null),
   fetchAchievementsSummary: vi.fn(async () => null),
 }));
@@ -79,7 +83,16 @@ beforeEach(() => {
     getItem: (key: string) => data.get(key) ?? null,
     setItem: (key: string, value: string) => data.set(key, value),
   });
-  vi.stubGlobal("window", { innerWidth: 1440 });
+  vi.stubGlobal("window", {
+    innerWidth: 1440,
+    setTimeout: (callback: () => void, delay: number) => {
+      if (delay === 2_500) {
+        callback();
+        return 1;
+      }
+      return setTimeout(callback, delay);
+    },
+  });
   vi.stubGlobal("document", { documentElement: { clientWidth: 1440 } });
   routing.route = reactive({
     path: "/games",
@@ -174,11 +187,12 @@ describe("umbrella library", () => {
     const view = await library();
     services.games = view.games.value;
     await view.loadGames();
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect([...view.possibleDuplicateIds.value].sort()).toEqual([
-      "hades",
-      "java",
-    ]);
+    await vi.waitFor(() =>
+      expect([...view.possibleDuplicateIds.value].sort()).toEqual([
+        "hades",
+        "java",
+      ]),
+    );
   });
 
   it("filters by any version's platform", async () => {

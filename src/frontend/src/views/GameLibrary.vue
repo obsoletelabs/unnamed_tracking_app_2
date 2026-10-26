@@ -3,6 +3,7 @@ import AutomaticMatchBanner from "../components/game/AutomaticMatchBanner.vue";
 import { sizedAssetUrl } from "../utils/gameImages";
 import HeartIcon from "../components/HeartIcon.vue";
 import GameCard from "../components/GameCard.vue";
+import GameArtwork from "../components/GameArtwork.vue";
 import CheckIcon from "../components/CheckIcon.vue";
 import FilterCombobox from "../components/FilterCombobox.vue";
 import TagFilterPicker from "../components/TagFilterPicker.vue";
@@ -46,6 +47,11 @@ const {
   searchContext,
   possibleDuplicateIds,
   loading,
+  totalGameCount,
+  hasMoreGames,
+  loadingMoreGames,
+  loadAllGames,
+  isLibraryRowInViewport,
   error,
   showFormModal,
   editingGame,
@@ -109,6 +115,7 @@ const {
   statusOptions,
   VIEW_OPTIONS,
   statusCounts,
+  statusCountsComplete,
   platformOptions,
   platformExtraOptions,
   tagOptions,
@@ -147,8 +154,15 @@ const {
   CARD_COLUMNS,
   rankByGameId,
   rowVirtualizer,
+  listRowVirtualizer,
   cardsInRow,
 } = useGameLibrary();
+const visibleListRows = computed(() =>
+  listRowVirtualizer.value.getVirtualItems().flatMap((row) => {
+    const game = filteredGames.value[row.index];
+    return game ? [{ ...row, game }] : [];
+  }),
+);
 const previewToolsOpen = ref(false);
 const compactControls = computed(
   () =>
@@ -170,6 +184,14 @@ function nestedLabel(game: Game): string | null {
   return nested.length === 1
     ? `+ ${relationshipKindLabel(nested[0].kind, nested[0].label)}: ${nested[0].game.title}`
     : `+ ${nested.length} related games`;
+}
+async function selectAllGames() {
+  await loadAllGames();
+  selectedIds.value = new Set(filteredGames.value.map((game) => game.id));
+}
+async function openRandomPicker() {
+  await loadAllGames();
+  showRandomPicker.value = true;
 }
 </script>
 
@@ -206,8 +228,19 @@ function nestedLabel(game: Game): string | null {
         <div>
           <h1>Games</h1>
           <div class="sub">
-            {{ filteredGames.length }}
-            {{ filteredGames.length === 1 ? "game" : "games" }}
+            <template v-if="hasMoreGames">
+              <template v-if="filterCount === 0">
+                {{ statusFilter === "all" ? totalGameCount : statusCounts[statusFilter] ?? totalGameCount }} games
+              </template>
+              <template v-else>
+                {{ filteredGames.length }} loaded · counting matches from
+                {{ totalGameCount }} games
+              </template>
+            </template>
+            <template v-else>
+              {{ filteredGames.length }}
+              {{ filteredGames.length === 1 ? "game" : "games" }}
+            </template>
           </div>
         </div>
         <button
@@ -240,7 +273,7 @@ function nestedLabel(game: Game): string | null {
             class="select-btn"
             :disabled="!games.length"
             title="Pick a game to play, filtered by status, platform, genre, length and priority"
-            @click="showRandomPicker = true"
+            @click="openRandomPicker"
           >
             Random
           </button>
@@ -275,7 +308,7 @@ function nestedLabel(game: Game): string | null {
           type="button"
           class="btn-outline"
           :disabled="filteredGames.length === 0"
-          @click="selectedIds = new Set(filteredGames.map((g) => g.id))"
+          @click="selectAllGames"
         >
           Select all ({{ filteredGames.length }})
         </button>
@@ -607,7 +640,9 @@ function nestedLabel(game: Game): string | null {
           @click="statusFilter = s"
         >
           {{ s === "all" ? "All" : s }}
-          <span class="n">{{ statusCounts[s] }}</span>
+          <span class="n">
+            {{ statusCountsComplete ? statusCounts[s] : "…" }}
+          </span>
         </button>
       </div>
 
@@ -794,133 +829,152 @@ function nestedLabel(game: Game): string | null {
             <span>Status</span>
           </div>
           <div
-            v-for="game in filteredGames"
-            :key="game.id"
-            class="list-row"
-            @click="selectMode ? toggleSelect(game) : openGame(game)"
+            class="list-virtual-container"
+            :style="{ height: `${listRowVirtualizer.getTotalSize()}px` }"
           >
-            <div class="list-thumb-wrap">
-              <img
-                class="list-cover"
-                :src="game.coverImageUrl"
-                alt=""
-                loading="lazy"
-                decoding="async"
-              />
-              <div
-                v-if="selectMode"
-                class="select-checkbox"
-                :class="{ checked: selectedIds.has(game.id) }"
-                @click.stop="toggleSelect(game)"
-              >
-                <CheckIcon v-if="selectedIds.has(game.id)" />
-              </div>
-            </div>
-            <div class="list-title-col">
-              <div class="list-title">{{ game.title }}</div>
-              <RouterLink
-                v-if="possibleDuplicateIds.has(game.id)"
-                class="list-sub"
-                to="/settings?section=library&tab=duplicates"
-                @click.stop
-                >Review possible duplicate</RouterLink
-              >
-              <div v-if="contextFor(game)" class="list-sub">
-                {{ contextFor(game)?.label }}
-              </div>
-              <div v-else-if="copySummary(game)" class="list-sub">
-                {{ copySummary(game) }}
-              </div>
-              <div v-if="nestedLabel(game)" class="list-sub">
-                {{ nestedLabel(game) }}
-              </div>
-              <div class="list-sub">
-                {{ game.tags[0] ?? "No genre"
-                }}<template v-if="game.platforms[0]">
-                  · {{ game.platforms[0].platform }}</template
-                >
-              </div>
-            </div>
-            <div class="icon-cluster">
-              <button
-                type="button"
-                class="icon-btn"
-                :class="{ active: game.favorite }"
-                :title="
-                  game.favorite ? 'Remove from favorites' : 'Add to favorites'
-                "
-                @click.stop="toggleFavorite(game)"
-              >
-                <HeartIcon :filled="game.favorite" />
-              </button>
-              <button
-                type="button"
-                class="icon-btn"
-                title="Add to collection"
-                @click.stop="handleAddToCollection(game)"
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-                </svg>
-              </button>
-              <button
-                type="button"
-                class="icon-btn"
-                title="Edit"
-                @click.stop="openEditModal(game)"
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <path d="M12 20h9" />
-                  <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                </svg>
-              </button>
-            </div>
-            <div class="stat-cell strong">
-              {{ totalPlaytime(game) === "N/A" ? "–" : totalPlaytime(game) }}
-            </div>
-            <div class="score-cell" :class="{ empty: !computeScore(game) }">
-              {{
-                computeScore(game)
-                  ? `★ ${computeScore(game)!.sum.toFixed(1)}`
-                  : "–"
-              }}
-            </div>
-            <div class="rank-cell">
-              <span v-if="rankByGameId.get(game.id)" class="rank-badge"
-                >#{{ rankByGameId.get(game.id) }}</span
-              >
-              <span v-else class="rank-empty">–</span>
-            </div>
-            <div class="stat-cell">
-              {{
-                gameLastPlayed(game)
-                  ? new Date(gameLastPlayed(game)!).toLocaleDateString()
-                  : "–"
-              }}
-            </div>
-            <div class="stat-cell">
-              {{ game.releaseDate ? formatDisplayDate(game.releaseDate) : "–" }}
-            </div>
-            <div class="status-cell">
-              <span
-                class="status-pill"
-                :class="`st-${game.status.replace(' ', '-')}`"
-                >{{ game.status }}</span
-              >
+            <div
+              v-for="row in visibleListRows"
+              :key="row.index"
+              :ref="
+                (el) => listRowVirtualizer.measureElement(el as HTMLElement)
+              "
+              :data-index="row.index"
+              class="list-row virtual-list-row"
+              :style="{ transform: `translateY(${row.start}px)` }"
+              @click="selectMode ? toggleSelect(row.game) : openGame(row.game)"
+            >
+              <template v-for="game in [row.game]" :key="game.id">
+                <div class="list-thumb-wrap">
+                  <GameArtwork
+                    class="list-cover"
+                    :src="game.hasKeyArt === false ? '' : sizedAssetUrl(game.coverImageUrl, 112)"
+                    :title="game.title"
+                    :eager="isLibraryRowInViewport(row.index)"
+                  />
+                  <div
+                    v-if="selectMode"
+                    class="select-checkbox"
+                    :class="{ checked: selectedIds.has(game.id) }"
+                    @click.stop="toggleSelect(game)"
+                  >
+                    <CheckIcon v-if="selectedIds.has(game.id)" />
+                  </div>
+                </div>
+                <div class="list-title-col">
+                  <div class="list-title">{{ game.title }}</div>
+                  <RouterLink
+                    v-if="possibleDuplicateIds.has(game.id)"
+                    class="list-sub"
+                    to="/settings?section=library&tab=duplicates"
+                    @click.stop
+                    >Review possible duplicate</RouterLink
+                  >
+                  <div v-if="contextFor(game)" class="list-sub">
+                    {{ contextFor(game)?.label }}
+                  </div>
+                  <div v-else-if="copySummary(game)" class="list-sub">
+                    {{ copySummary(game) }}
+                  </div>
+                  <div v-if="nestedLabel(game)" class="list-sub">
+                    {{ nestedLabel(game) }}
+                  </div>
+                  <div class="list-sub">
+                    {{ game.tags[0] ?? "No genre"
+                    }}<template v-if="game.platforms[0]">
+                      · {{ game.platforms[0].platform }}</template
+                    >
+                  </div>
+                </div>
+                <div class="icon-cluster">
+                  <button
+                    type="button"
+                    class="icon-btn"
+                    :class="{ active: game.favorite }"
+                    :title="
+                      game.favorite
+                        ? 'Remove from favorites'
+                        : 'Add to favorites'
+                    "
+                    @click.stop="toggleFavorite(game)"
+                  >
+                    <HeartIcon :filled="game.favorite" />
+                  </button>
+                  <button
+                    type="button"
+                    class="icon-btn"
+                    title="Add to collection"
+                    @click.stop="handleAddToCollection(game)"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <path
+                        d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"
+                      />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    class="icon-btn"
+                    title="Edit"
+                    @click.stop="openEditModal(game)"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <path d="M12 20h9" />
+                      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                    </svg>
+                  </button>
+                </div>
+                <div class="stat-cell strong">
+                  {{
+                    totalPlaytime(game) === "N/A" ? "–" : totalPlaytime(game)
+                  }}
+                </div>
+                <div class="score-cell" :class="{ empty: !computeScore(game) }">
+                  {{
+                    computeScore(game)
+                      ? `★ ${computeScore(game)!.sum.toFixed(1)}`
+                      : "–"
+                  }}
+                </div>
+                <div class="rank-cell">
+                  <span v-if="rankByGameId.get(game.id)" class="rank-badge"
+                    >#{{ rankByGameId.get(game.id) }}</span
+                  >
+                  <span v-else class="rank-empty">–</span>
+                </div>
+                <div class="stat-cell">
+                  {{
+                    gameLastPlayed(game)
+                      ? new Date(gameLastPlayed(game)!).toLocaleDateString()
+                      : "–"
+                  }}
+                </div>
+                <div class="stat-cell">
+                  {{
+                    game.releaseDate ? formatDisplayDate(game.releaseDate) : "–"
+                  }}
+                </div>
+                <div class="status-cell">
+                  <span
+                    class="status-pill"
+                    :class="`st-${game.status.replace(' ', '-')}`"
+                    >{{ game.status }}</span
+                  >
+                </div>
+              </template>
             </div>
           </div>
         </div>
@@ -935,12 +989,10 @@ function nestedLabel(game: Game): string | null {
               :class="{ active: selectedGame?.id === game.id }"
               @click="selectedGame = game"
             >
-              <img
+              <GameArtwork
                 class="detail-list-thumb"
-                :src="game.coverImageUrl"
-                alt=""
-                loading="lazy"
-                decoding="async"
+                :src="game.hasKeyArt === false ? '' : sizedAssetUrl(game.coverImageUrl, 112)"
+                :title="game.title"
               />
               <span>{{ game.title }}</span>
             </button>
@@ -1195,6 +1247,10 @@ function nestedLabel(game: Game): string | null {
         @close="collectionPickerGame = null"
         @added="onCollectionAdded"
       />
+
+      <div v-if="loadingMoreGames" class="library-load-status" role="status">
+        Loading items…
+      </div>
 
       <BulkEditModal
         v-if="showBulkEditModal"
