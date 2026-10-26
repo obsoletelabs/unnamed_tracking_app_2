@@ -9,6 +9,7 @@ import { useRoute, useRouter } from "vue-router";
 import BackButton from "../components/BackButton.vue";
 import CollectionDetailHeader from "../components/CollectionDetailHeader.vue";
 import CollectionItemTile from "../components/CollectionItemTile.vue";
+import GameArtwork from "../components/GameArtwork.vue";
 import CollectionAddDialog from "../components/CollectionAddDialog.vue";
 import { useReorderGrid } from "../utils/useReorderGrid";
 import GameTopBar from "../components/GameTopBar.vue";
@@ -21,6 +22,11 @@ import {
   fetchCollectionIndex,
 } from "../services/collections";
 import type { CollectionIndexGame } from "../services/collections";
+import {
+  collectionCoverUrl,
+  removeCollectionCover,
+  uploadCollectionCover,
+} from "../services/collectionCovers";
 import type { Game, GameStatus } from "../types/game";
 import {
   findSmartCollectionByName,
@@ -222,6 +228,44 @@ function setCoverPick(gameId: string) {
 const coverGameId = computed(
   () => coverPickedGameId.value ?? collectionGames.value[0]?.id ?? null,
 );
+const coverPreviewIds = computed(() => {
+  const ids = collectionGames.value.map((game) => game.id);
+  const picked = coverPickedGameId.value;
+  if (picked && ids.includes(picked))
+    return [picked, ...ids.filter((id) => id !== picked)].slice(0, 4);
+  return ids.slice(0, 4);
+});
+const coverInput = ref<HTMLInputElement | null>(null);
+const coverBusy = ref(false);
+const coverError = ref<string | null>(null);
+async function uploadCover(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file) return;
+  coverBusy.value = true;
+  coverError.value = null;
+  try {
+    await uploadCollectionCover(collectionName.value, file);
+  } catch (reason) {
+    coverError.value =
+      reason instanceof Error ? reason.message : "Could not upload cover.";
+  } finally {
+    coverBusy.value = false;
+  }
+}
+async function useAutomaticCover() {
+  coverBusy.value = true;
+  coverError.value = null;
+  try {
+    await removeCollectionCover(collectionName.value);
+  } catch (reason) {
+    coverError.value =
+      reason instanceof Error ? reason.message : "Could not remove cover.";
+  } finally {
+    coverBusy.value = false;
+  }
+}
 
 // A failed load is not an empty collection: keep any games already loaded,
 // say so, and offer a retry that cannot be started twice.
@@ -354,9 +398,15 @@ async function deleteSmartRule() {
     danger: true,
   });
   if (!ok) return;
-  removeSmartCollection(smartRule.value.id);
-  forgetCollectionKeys(collectionName.value);
-  router.push("/games/collections");
+  try {
+    await removeCollectionCover(collectionName.value);
+    removeSmartCollection(smartRule.value.id);
+    forgetCollectionKeys(collectionName.value);
+    router.push("/games/collections");
+  } catch (reason) {
+    error.value =
+      reason instanceof Error ? reason.message : "Could not delete collection.";
+  }
 }
 
 const deletingCollection = ref(false);
@@ -372,6 +422,7 @@ async function deleteCollection() {
   deletingCollection.value = true;
   error.value = null;
   try {
+    await removeCollectionCover(collectionName.value);
     for (const game of collectionGames.value) {
       await removeGameFromCollection(game.id, collectionName.value);
     }
@@ -426,6 +477,47 @@ async function deleteCollection() {
         @delete="isSmart ? deleteSmartRule() : deleteCollection()"
       />
       <p v-if="description" class="subtitle">{{ description }}</p>
+      <div class="collection-cover-controls">
+        <GameArtwork
+          class="collection-cover-preview"
+          :src="collectionCoverUrl(collectionName, coverPreviewIds)"
+          :title="`${collectionName} cover`"
+          :placeholder-key="collectionName"
+          fill
+        />
+        <div class="collection-cover-buttons">
+          <input
+            ref="coverInput"
+            type="file"
+            accept="image/*"
+            class="cover-file-input"
+            aria-label="Choose a custom collection cover"
+            @change="uploadCover"
+          />
+          <button
+            type="button"
+            class="ui-btn ui-btn-secondary"
+            :disabled="coverBusy"
+            @click="coverInput?.click()"
+          >
+            Upload custom cover
+          </button>
+          <button
+            type="button"
+            class="ui-btn ui-btn-ghost"
+            :disabled="coverBusy"
+            @click="useAutomaticCover"
+          >
+            Use automatic cover
+          </button>
+          <small
+            >Automatic covers use the first four games in your order.</small
+          >
+          <span v-if="coverError" class="ui-error" role="alert">{{
+            coverError
+          }}</span>
+        </div>
+      </div>
       <p v-if="smartRule" class="subtitle rule-line">
         Matches: {{ describeSmartCollection(smartRule) }}
       </p>
@@ -440,6 +532,7 @@ async function deleteCollection() {
           :key="game.id"
           :title="game.title"
           :poster-url="game.coverImageUrl"
+          game-artwork
           :status-label="game.status"
           :status-class="statusTone(game.status)"
           :index="index"
@@ -507,3 +600,30 @@ async function deleteCollection() {
 </template>
 
 <style scoped src="../styles/shared/listDetail.css"></style>
+<style scoped>
+.collection-cover-controls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 12px 0 20px;
+}
+.collection-cover-preview {
+  width: 68px;
+  height: 102px;
+  flex: 0 0 auto;
+  border-radius: var(--ui-radius-row);
+}
+.collection-cover-buttons {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.collection-cover-buttons small,
+.collection-cover-buttons .ui-error {
+  flex-basis: 100%;
+}
+.cover-file-input {
+  display: none;
+}
+</style>

@@ -25,6 +25,7 @@ from src.api.routes import (
     calendar_events,
     calendar_feed,
     calendar_sources,
+    collection_covers,
     default_game_assets,
     delegation,
     export_import,
@@ -162,6 +163,7 @@ async def validation_error_without_submitted_values(
 
 
 app.include_router(default_game_assets.router)
+app.include_router(collection_covers.router)
 app.include_router(game_achievements.router)
 app.include_router(games.router)
 app.include_router(game_duplicates.router)

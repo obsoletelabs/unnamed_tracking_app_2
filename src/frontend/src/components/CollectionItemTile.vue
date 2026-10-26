@@ -3,10 +3,12 @@
 // a status pill. In reorder mode it is draggable and shows move arrows;
 // otherwise a star (use as the cover) and a remove button show on hover.
 import { vLazyBg } from "../directives/lazyBackground";
+import GameArtwork from "./GameArtwork.vue";
 
 defineProps<{
   title: string;
   posterUrl: string | null | undefined;
+  gameArtwork?: boolean;
   statusLabel: string;
   statusClass: string;
   index: number;
@@ -51,7 +53,14 @@ const emit = defineEmits<{
     @dragend="emit('dragend')"
   >
     <div class="item-cover">
-      <div class="item-poster" v-lazy-bg="posterUrl"></div>
+      <GameArtwork
+        v-if="gameArtwork"
+        class="item-poster"
+        :src="posterUrl ?? ''"
+        :title="title"
+        fill
+      />
+      <div v-else class="item-poster" v-lazy-bg="posterUrl"></div>
       <span
         v-if="coverMark"
         class="cover-mark"

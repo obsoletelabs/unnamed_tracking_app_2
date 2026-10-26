@@ -1,7 +1,6 @@
 """Fallback artwork for games that do not have stored cover art."""
 
 import asyncio
-import hashlib
 from html import escape
 from typing import Annotated
 from uuid import UUID
@@ -21,6 +20,7 @@ from src.helpers.artwork_revisions import (
 )
 from src.helpers.asset_previews import ensure_preview, preview_path
 from src.helpers.async_storage import finish_storage_operation
+from src.helpers.game_cover_placeholder import cover_palette
 from src.helpers.save_game_asset import ASSET_FILENAMES, AssetKind
 
 router = APIRouter(
@@ -30,60 +30,30 @@ router = APIRouter(
 )
 
 
-def _cover_palette(game_id: UUID) -> tuple[str, str, str]:
-    """Pick a stable palette so a game's fallback cover does not change."""
-    digest = hashlib.sha256(str(game_id).encode("utf-8")).hexdigest()
-    palettes = (
-        ("#16132a", "#3d2a68", "#9b87f5"),
-        ("#102326", "#1f5960", "#65d6c7"),
-        ("#26151b", "#633044", "#ef8aa8"),
-        ("#201a12", "#66502b", "#e3bd69"),
-        ("#151c2b", "#294a78", "#76a8ee"),
-        ("#1b1722", "#4d315e", "#cf8fe8"),
-    )
-    index = int(digest[:8], 16) % len(palettes)
-    return palettes[index]
-
-
 def _default_cover_svg(game_id: UUID, title: str) -> str:
     """Build a lightweight, title-aware SVG fallback cover."""
-    background, foreground, accent = _cover_palette(game_id)
+    background, foreground, accent = cover_palette(game_id)
     safe_title = escape(title.strip() or "Unknown Game")
-    digest = hashlib.sha256(str(game_id).encode("utf-8")).hexdigest()
-    x1 = 20 + int(digest[8:12], 16) % 60
-    y1 = 20 + int(digest[12:16], 16) % 55
-    x2 = 35 + int(digest[16:20], 16) % 55
-    y2 = 40 + int(digest[20:24], 16) % 45
-
     return f"""<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 600 900\" role=\"img\"
     aria-label=\"{safe_title} default cover\">
+  <title>{safe_title} — NO COVER ART</title>
   <defs>
     <linearGradient id=\"bg\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"1\">
-      <stop offset=\"0\" stop-color=\"{background}\"/>
-      <stop offset=\"1\" stop-color=\"{foreground}\"/>
+      <stop offset=\"0\" stop-color=\"{foreground}\"/>
+      <stop offset=\".78\" stop-color=\"{background}\"/>
     </linearGradient>
-    <radialGradient id=\"glow\" cx=\"{x1}%\" cy=\"{y1}%\" r=\"70%\">
-      <stop offset=\"0\" stop-color=\"{accent}\" stop-opacity=\".38\"/>
+    <radialGradient id=\"glow\" cx=\"50%\" cy=\"38%\" r=\"74%\">
+      <stop offset=\"0\" stop-color=\"{accent}\" stop-opacity=\".27\"/>
       <stop offset=\"1\" stop-color=\"{accent}\" stop-opacity=\"0\"/>
     </radialGradient>
-    <filter id=\"blur\"><feGaussianBlur stdDeviation=\"42\"/></filter>
   </defs>
   <rect width=\"600\" height=\"900\" fill=\"url(#bg)\"/>
-  <circle cx=\"{x1 * 6}\" cy=\"{y1 * 9}\" r=\"250\" fill=\"url(#glow)\" filter=\"url(#blur)\"/>
-  <circle cx=\"{x2 * 6}\" cy=\"{y2 * 9}\" r=\"180\" fill=\"{accent}\" opacity=\".09\"/>
-  <path d=\"M0 650 C140 570 260 760 600 600 V900 H0Z\" fill=\"#000\" opacity=\".22\"/>
-  <g transform=\"translate(300 330)\" fill=\"none\" stroke=\"{accent}\" stroke-width=\"10\"
-    stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\".9\">
-    <path d=\"M-112 8 L-84 -48 H-32 L-16 -70 H16 L32 -48 H84 L112 8 L90 62 H52 L26 20 H-26 L-52 62 H-90 Z\"/>
-    <path d=\"M-67 -10 V26 M-85 8 H-49\"/>
-    <circle cx=\"62\" cy=\"-5\" r=\"7\" fill=\"{accent}\" stroke=\"none\"/>
-    <circle cx=\"84\" cy=\"17\" r=\"7\" fill=\"{accent}\" stroke=\"none\"/>
-  </g>
-  <rect x=\"54\" y=\"650\" width=\"492\" height=\"2\" fill=\"{accent}\" opacity=\".45\"/>
-  <text x=\"54\" y=\"705\" fill=\"#fff\" font-family=\"system-ui, -apple-system, Segoe UI, sans-serif\"
-    font-size=\"42\" font-weight=\"700\">{safe_title}</text>
-  <text x=\"54\" y=\"750\" fill=\"#fff\" opacity=\".55\" font-family=\"system-ui, -apple-system, Segoe UI,
-    sans-serif\" font-size=\"16\" letter-spacing=\"3\">NO COVER ART</text>
+  <rect width=\"600\" height=\"900\" fill=\"url(#glow)\"/>
+  <svg x=\"138\" y=\"207\" width=\"324\" height=\"486\" viewBox=\"0 0 64 64\"
+    fill=\"none\" stroke=\"#aeb7c2\" stroke-width=\"3\" stroke-linejoin=\"round\">
+    <path d=\"M17 24h30c6 0 9 4 10 11l2 13c1 6-6 9-10 4l-5-6H20l-5 6c-4 5-11 2-10-4l2-13c1-7 4-11 10-11Z\"/>
+    <path d=\"M19 31v12m-6-6h12m17-3h.1M49 39h.1\" stroke-linecap=\"round\"/>
+  </svg>
 </svg>"""
 
 

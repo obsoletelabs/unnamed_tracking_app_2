@@ -8,6 +8,10 @@ import type { SegmentOption } from "../components/SegmentedTabs.vue";
 import { fetchCollectionIndex } from "../services/collections";
 import type { CollectionIndexGame } from "../services/collections";
 import {
+  collectionCoverUrl,
+  orderCollectionCoverGames,
+} from "../services/collectionCovers";
+import {
   smartCollections,
   addSmartCollection,
   matchesSmartCollection,
@@ -139,6 +143,15 @@ function loadCoverPicks(): Record<string, string> {
   }
 }
 
+function loadGameOrders(): Record<string, string[]> {
+  try {
+    const raw = localStorage.getItem("collectionGameOrder");
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
 // description, pin and place in "My order" are kept locally per name
 function detailsOf(name: string) {
   const meta = collectionMeta.value[name] ?? {};
@@ -161,24 +174,19 @@ const collectionSummaries = computed<CollectionSummary[]>(() => {
     if (!map.has(name)) map.set(name, []);
   }
   const coverPicks = loadCoverPicks();
-  const manual = Array.from(map.entries()).map(([name, list]) => {
-    const pickedId = coverPicks[name];
-    const pickedIndex = pickedId
-      ? list.findIndex((g) => g.id === pickedId)
-      : -1;
-    const orderedGames =
-      pickedIndex > 0
-        ? [
-            list[pickedIndex],
-            ...list.slice(0, pickedIndex),
-            ...list.slice(pickedIndex + 1),
-          ]
-        : list;
-    return { name, games: orderedGames, ...detailsOf(name) };
-  });
+  const gameOrders = loadGameOrders();
+  const manual = Array.from(map.entries()).map(([name, list]) => ({
+    name,
+    games: orderCollectionCoverGames(list, gameOrders[name], coverPicks[name]),
+    ...detailsOf(name),
+  }));
   const smart = smartCollections.value.map((rule) => ({
     name: rule.name,
-    games: games.value.filter((g) => matchesSmartCollection(g, rule)),
+    games: orderCollectionCoverGames(
+      games.value.filter((g) => matchesSmartCollection(g, rule)),
+      undefined,
+      coverPicks[rule.name],
+    ),
     isSmart: true,
     ...detailsOf(rule.name),
   }));
@@ -191,7 +199,11 @@ const collectionSummaries = computed<CollectionSummary[]>(() => {
     : [
         {
           name: FAVORITES_NAME,
-          games: games.value.filter((g) => g.favorite),
+          games: orderCollectionCoverGames(
+            games.value.filter((g) => g.favorite),
+            undefined,
+            coverPicks[FAVORITES_NAME],
+          ),
           isSmart: true,
           isSystem: true,
           ...detailsOf(FAVORITES_NAME),
@@ -390,6 +402,12 @@ const tagOptions = computed(() => {
             :key="col.name"
             :name="col.name"
             :covers="col.games.slice(0, 4).map((g) => g.coverImageUrl)"
+            :cover-image="
+              collectionCoverUrl(
+                col.name,
+                col.games.map((g) => g.id),
+              )
+            "
             :count="col.games.length"
             count-noun="game"
             noun="collection"
