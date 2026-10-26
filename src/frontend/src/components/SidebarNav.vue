@@ -892,10 +892,10 @@ dialog.navigation {
   width: 34px;
   height: 34px;
   border-radius: 50%;
-  background: var(--ui-surface-2);
-  color: var(--ui-accent-text);
-  font-size: 11px;
-  font-weight: 600;
+  background: var(--ui-accent);
+  color: var(--ui-on-accent);
+  font-size: 12px;
+  font-weight: 700;
   flex-shrink: 0;
   /* Definite square tracks: an auto track would take the picture's own width. */
   grid-template-columns: minmax(0, 1fr);

@@ -2,11 +2,14 @@
 import {
   computed,
   defineAsyncComponent,
+  defineComponent,
+  h,
   nextTick,
   onBeforeUnmount,
   onMounted,
   ref,
   watch,
+  type Component,
 } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { currentUser } from "../state/auth";
@@ -38,88 +41,114 @@ import AppIcon from "../components/AppIcon.vue";
 import { usePageTitle } from "../state/pageTitle";
 
 // Settings sections load on demand; only the selected area's code is fetched.
-const ProfileSection = defineAsyncComponent(
-  () => import("../components/settings/ProfileSection.vue"),
-);
-const GamePageSection = defineAsyncComponent(
+const LoadingSettingsSection = defineComponent({
+  render: () =>
+    h("p", { class: "ui-state", role: "status" }, "Loading settings…"),
+});
+function lazySettingsSection(loader: () => Promise<{ default: Component }>) {
+  return defineAsyncComponent({
+    loader,
+    loadingComponent: LoadingSettingsSection,
+    delay: 0,
+  });
+}
+const loadProfileSection = () =>
+  import("../components/settings/ProfileSection.vue");
+const loadAppearanceSection = () =>
+  import("../components/settings/AppearanceSection.vue");
+const loadLibrarySettings = () =>
+  import("../components/settings/LibrarySettings.vue");
+const loadMetadataSettings = () =>
+  import("../components/settings/MetadataSettings.vue");
+const loadPluginManagerSection = () =>
+  import("../components/settings/PluginManagerSection.vue");
+const loadThemesSection = () =>
+  import("../components/settings/ThemesSection.vue");
+const loadNotificationSettingsSection = () =>
+  import("../components/settings/NotificationSettingsSection.vue");
+const sectionPreloads: Record<string, () => Promise<unknown>> = {
+  profile: loadProfileSection,
+  appearance: loadAppearanceSection,
+  library: loadLibrarySettings,
+  metadata: loadMetadataSettings,
+  plugins: loadPluginManagerSection,
+  themes: loadThemesSection,
+  notifications: loadNotificationSettingsSection,
+};
+function prefetchSection(id: string) {
+  const loader = sectionPreloads[id];
+  if (loader) void loader().catch(() => undefined);
+}
+const ProfileSection = lazySettingsSection(loadProfileSection);
+const GamePageSection = lazySettingsSection(
   () => import("../components/settings/GamePageSection.vue"),
 );
-const AppearanceSection = defineAsyncComponent(
-  () => import("../components/settings/AppearanceSection.vue"),
-);
-const BrandingSection = defineAsyncComponent(
+const AppearanceSection = lazySettingsSection(loadAppearanceSection);
+const BrandingSection = lazySettingsSection(
   () => import("../components/settings/BrandingSection.vue"),
 );
-const LibrarySettings = defineAsyncComponent(
-  () => import("../components/settings/LibrarySettings.vue"),
-);
-const MetadataSettings = defineAsyncComponent(
-  () => import("../components/settings/MetadataSettings.vue"),
-);
-const AdminSection = defineAsyncComponent(
+const LibrarySettings = lazySettingsSection(loadLibrarySettings);
+const MetadataSettings = lazySettingsSection(loadMetadataSettings);
+const AdminSection = lazySettingsSection(
   () => import("../components/settings/AdminSection.vue"),
 );
-const OidcSettingsSection = defineAsyncComponent(
+const OidcSettingsSection = lazySettingsSection(
   () => import("../components/settings/OidcSettingsSection.vue"),
 );
-const PasswordPolicySection = defineAsyncComponent(
+const PasswordPolicySection = lazySettingsSection(
   () => import("../components/settings/PasswordPolicySection.vue"),
 );
-const ServerIntegrationsSection = defineAsyncComponent(
+const ServerIntegrationsSection = lazySettingsSection(
   () => import("../components/settings/ServerIntegrationsSection.vue"),
 );
-const AppSettingsSection = defineAsyncComponent(
+const AppSettingsSection = lazySettingsSection(
   () => import("../components/settings/AppSettingsSection.vue"),
 );
-const LimitsSection = defineAsyncComponent(
+const LimitsSection = lazySettingsSection(
   () => import("../components/settings/LimitsSection.vue"),
 );
-const DevToolsSection = defineAsyncComponent(
+const DevToolsSection = lazySettingsSection(
   () => import("../components/settings/DevToolsSection.vue"),
 );
-const TasksSection = defineAsyncComponent(
+const TasksSection = lazySettingsSection(
   () => import("../components/settings/TasksSection.vue"),
 );
-const StatsSection = defineAsyncComponent(
+const StatsSection = lazySettingsSection(
   () => import("../components/settings/StatsSection.vue"),
 );
-const ExportImportSection = defineAsyncComponent(
+const ExportImportSection = lazySettingsSection(
   () => import("../components/settings/ExportImportSection.vue"),
 );
-const CalendarSettingsSection = defineAsyncComponent(
+const CalendarSettingsSection = lazySettingsSection(
   () => import("../components/settings/CalendarSettingsSection.vue"),
 );
-const NotificationSettingsSection = defineAsyncComponent(
-  () => import("../components/settings/NotificationSettingsSection.vue"),
+const NotificationSettingsSection = lazySettingsSection(
+  loadNotificationSettingsSection,
 );
-const AdminNotificationSettings = defineAsyncComponent(
+const AdminNotificationSettings = lazySettingsSection(
   () => import("../components/settings/AdminNotificationSettings.vue"),
 );
-const KeyboardShortcutsSection = defineAsyncComponent(
+const KeyboardShortcutsSection = lazySettingsSection(
   () => import("../components/settings/KeyboardShortcutsSection.vue"),
 );
-const ConnectionsSection = defineAsyncComponent(
+const ConnectionsSection = lazySettingsSection(
   () => import("../components/settings/ConnectionsSection.vue"),
 );
-const ApiKeysSection = defineAsyncComponent(
+const ApiKeysSection = lazySettingsSection(
   () => import("../components/settings/ApiKeysSection.vue"),
 );
-const ConnectedAppsSection = defineAsyncComponent(
+const ConnectedAppsSection = lazySettingsSection(
   () => import("../components/settings/ConnectedAppsSection.vue"),
 );
-const IntegrationPolicySection = defineAsyncComponent(
+const IntegrationPolicySection = lazySettingsSection(
   () => import("../components/settings/IntegrationPolicySection.vue"),
 );
-const SessionsSection = defineAsyncComponent(
+const SessionsSection = lazySettingsSection(
   () => import("../components/settings/SessionsSection.vue"),
 );
-const PluginManagerSection = defineAsyncComponent(
-  () => import("../components/settings/PluginManagerSection.vue"),
-);
-const ThemesSection = defineAsyncComponent(
-  () => import("../components/settings/ThemesSection.vue"),
-);
-const PwaSettingsSection = defineAsyncComponent(
+const PluginManagerSection = lazySettingsSection(loadPluginManagerSection);
+const ThemesSection = lazySettingsSection(loadThemesSection);
+const PwaSettingsSection = lazySettingsSection(
   () => import("../components/settings/PwaSettingsSection.vue"),
 );
 
@@ -373,6 +402,7 @@ async function openSearchResult(entry: SettingsSearchEntry) {
           :active-section="activeSection"
           :groups="areaGroups"
           @update:active-section="openSection"
+          @prefetch="prefetchSection"
         />
         <div v-if="!selectedSection" class="settings-landing">
           <section
@@ -386,6 +416,8 @@ async function openSearchResult(entry: SettingsSearchEntry) {
                 v-for="section in group.sections"
                 :key="section.id"
                 type="button"
+                @pointerenter="prefetchSection(section.id)"
+                @focus="prefetchSection(section.id)"
                 @click="openSection(section.id)"
               >
                 <span>{{ section.label }}</span

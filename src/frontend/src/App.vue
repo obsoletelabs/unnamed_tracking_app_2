@@ -181,6 +181,7 @@ const contentStyle = computed(() => {
   return {};
 });
 const KEPT_ALIVE = [
+  "HomeHub",
   "GameLibrary",
   "MovieLibrary",
   "TVShowLibrary",
@@ -239,7 +240,7 @@ const KEPT_ALIVE = [
       :style="contentStyle"
     >
       <router-view v-slot="{ Component }">
-        <KeepAlive :include="KEPT_ALIVE" :max="8" :key="currentUser?.id">
+        <KeepAlive :include="KEPT_ALIVE" :max="10" :key="currentUser?.id">
           <component :is="Component" />
         </KeepAlive>
       </router-view>

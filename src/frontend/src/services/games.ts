@@ -4,7 +4,20 @@ export type { MetadataSearchResult } from "./metadata";
 import { mockGames } from "../data/mockGames";
 import { failedRequest } from "./apiError";
 import { mapAchievements } from "./achievementMapping";
-import { createEntityCache } from "../utils/entityCache";
+import {
+  forgetGame,
+  gameCache,
+  gameLibraryRevision,
+  invalidateGameLibrary,
+  rememberFetchedGame,
+  rememberGameMutation,
+} from "./gameCache";
+export {
+  gameLibraryRevision,
+  peekGame,
+  peekAllGames,
+  rememberGameRelationship,
+} from "./gameCache";
 import {
   POSTER_WIDTH,
   gameAssetUrl,
@@ -12,6 +25,8 @@ import {
   sizedAssetUrl,
 } from "../utils/gameImages";
 import type { ContentCounts, PageOverrides } from "../utils/gamePage";
+import type { BackendGame } from "./gameApiTypes";
+export type { BackendGame } from "./gameApiTypes";
 import type {
   Achievement,
   AchievementsProvider,
@@ -22,70 +37,6 @@ import type {
   GameRelationshipType,
   GamePlayCompatibility,
 } from "../types/game";
-
-// The exact shape FastAPI sends, snake_case, matching the Python model
-// field-for-field. This is deliberately a separate type from `Game`:
-// nothing outside this file should ever see raw backend data directly.
-export interface BackendGame {
-  play_compatibility?: {
-    min_players: number | null;
-    max_players: number | null;
-    duration_minutes: number | null;
-    crossplay: boolean;
-  } | null;
-  provider_ids?: Record<string, string>;
-  playnite_guid?: string | null;
-  locked_fields?: string[];
-  id: string;
-  title: string;
-  sort_title: string;
-  has_key_art?: boolean | null;
-  description: string | null;
-  release_date: string | null;
-  developer: string | null;
-  publisher: string | null;
-  series: string | null;
-  tags: string[];
-  features: string[];
-  source: string | null;
-  platform: string | null;
-  region: string | null;
-  language: string | null;
-  age_rating: string | null;
-  parent_game_id: string | null;
-  relationship_type: GameRelationshipType | null;
-  time_to_beat_hours: number | string | null;
-  time_to_beat_extras_hours?: number | string | null;
-  time_to_beat_completionist_hours?: number | string | null;
-  time_to_beat_all_hours?: number | string | null;
-  status: string;
-  priority: string | null;
-  favorite: boolean;
-  notes: string | null;
-  resume_note: string | null;
-  playtime_seconds: number;
-  purchase_date: number | null;
-  completion_date: number | null;
-  purchase_price: number | string | null;
-  purchase_price_currency_code: string | null;
-  physical_condition: string | null;
-  rating_story: number | string | null;
-  rating_gameplay: number | string | null;
-  rating_soundtrack: number | string | null;
-  rating_overall: number | string | null;
-  personal_rank: number | null;
-  // unix timestamps in seconds, not ISO strings
-  created_at: number;
-  updated_at: number;
-  folder_location: string;
-  last_played_at: number | null;
-  stale_since: number | null;
-  profiles_enabled: boolean;
-  page_settings?: PageOverrides | null;
-  osrs_stats_enabled: boolean;
-  collections: string[];
-  links: GameLink[];
-}
 
 // Pydantic can serialize a Decimal as either a JSON number or a string
 // depending on config, handle both rather than assume one
@@ -242,58 +193,13 @@ export function mapBackendGame(raw: BackendGame): Game {
   };
 }
 
-// Every game this page has seen, so opening one can draw at once from what the
-// library already fetched and refresh quietly behind it.
-const gameCache = createEntityCache<Game>();
-let mutationVersion = 0;
-const gameMutationVersions = new Map<string, number>();
-export const peekGame = gameCache.peek;
-export function rememberGameRelationship(
-  id: string,
-  parentGameId: string | null,
-  relationshipType: GameRelationshipType | null,
-): void {
-  const game = gameCache.peek(id);
-  if (game) gameCache.put({ ...game, parentGameId, relationshipType });
-}
-// Every game, if a full list has been fetched this visit, so the library can
-// draw at once and refresh behind it.
-export const peekAllGames = (): Game[] | null =>
-  gameCache.listLoaded() ? gameCache.all() : null;
-function rememberGame(game: Game): Game {
-  const before = gameCache.peek(game.id);
-  // what a visit to the page loaded for this game (the achievements) is not
-  // in the list, so keep it until the next visit replaces it
-  if (before && !game.achievements.length && before.achievements.length) {
-    game.achievements = before.achievements;
-  }
-  // likewise the completion numbers the library fills in from its summary
-  if (before && !game.achievementTotal && before.achievementTotal) {
-    game.achievementTotal = before.achievementTotal;
-    game.achievementPercent = before.achievementPercent;
-  }
-  return gameCache.put(game);
-}
-
-function rememberGameMutation(game: Game): Game {
-  gameMutationVersions.set(game.id, ++mutationVersion);
-  return rememberGame(game);
-}
-
-function rememberFetchedGame(game: Game, started: number): Game {
-  const current = gameCache.peek(game.id);
-  return current && (gameMutationVersions.get(game.id) ?? 0) > started
-    ? current
-    : rememberGame(game);
-}
-
 // Bulk list consumers still page through the endpoint to completion. The
 // Games view uses fetchGamesForViewport below so its first paint stays bounded.
 export async function fetchGames(): Promise<Game[]> {
   if (import.meta.env.VITE_USE_MOCK_DATA === "true") {
     return mockGames;
   }
-  const started = mutationVersion;
+  const started = gameLibraryRevision();
   const all = await fetchAllGamePages<BackendGame>();
   const games = all.map((raw) =>
     rememberFetchedGame(mapBackendGame(raw), started),
@@ -330,7 +236,7 @@ export async function fetchGamesForViewport(
       statusCounts: null,
     };
   }
-  const started = mutationVersion;
+  const started = gameLibraryRevision();
   const result = await fetchViewportGamePage<BackendGame>(
     skip,
     signal,
@@ -513,7 +419,7 @@ export async function fetchGame(
   if (import.meta.env.VITE_USE_MOCK_DATA === "true") {
     return mockGames.find((g) => g.id === id) ?? null;
   }
-  const started = mutationVersion;
+  const started = gameLibraryRevision();
   const response = await fetch(`/api/game/get/${id}`, {
     credentials: "include",
     signal,
@@ -909,7 +815,7 @@ export async function createGame(input: NewGameInput): Promise<Game> {
   if (!response.ok) throw await failedRequest(response);
 
   const raw: BackendGame = await response.json();
-  return mapBackendGame(raw);
+  return rememberGameMutation(mapBackendGame(raw));
 }
 export async function updateGame(
   id: string,
@@ -1044,7 +950,7 @@ export async function updateGame(
   if (!response.ok) throw await failedRequest(response);
 
   const raw: BackendGame = await response.json();
-  return mapBackendGame(raw);
+  return rememberGameMutation(mapBackendGame(raw));
 }
 
 export interface GameNoteListResponse {
@@ -1922,6 +1828,7 @@ export async function bulkUpdateGames(
   });
   if (!response.ok) throw await failedRequest(response);
   const result: { updated: number } = await response.json();
+  invalidateGameLibrary();
   return result.updated;
 }
 
@@ -1940,7 +1847,7 @@ async function patchCollections(
   });
   if (!response.ok) throw await failedRequest(response);
   const raw: BackendGame = await response.json();
-  return mapBackendGame(raw);
+  return rememberGameMutation(mapBackendGame(raw));
 }
 
 export async function addGameToCollection(
@@ -2003,6 +1910,7 @@ export async function deleteGame(gameId: string): Promise<void> {
       `Failed to delete game ${gameId}: ${response.status} ${response.statusText} ${message}`,
     );
   }
+  forgetGame(gameId);
 }
 
 // deleteGame is a soft-delete (see the backend route), restorable for 7

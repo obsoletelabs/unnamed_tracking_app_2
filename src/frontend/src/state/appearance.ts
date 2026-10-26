@@ -16,6 +16,13 @@ export function resetAppearanceSettings(): void {
   appearanceLoaded.value = false;
 }
 
+export function rememberAppearanceSettings(settings: AppearanceSettings): void {
+  if (settings.user_id !== currentUser.value?.id) return;
+  generation++;
+  appearanceSettings.value = settings;
+  appearanceLoaded.value = true;
+}
+
 watch(() => currentUser.value?.id, resetAppearanceSettings, { flush: "sync" });
 
 export async function loadAppearanceSettings() {
