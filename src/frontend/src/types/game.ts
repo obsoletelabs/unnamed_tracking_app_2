@@ -108,6 +108,9 @@ export interface Game {
   // real placeholder image for the detail page's hero + blurred backdrop.
   // temporary, will point at real IGDB artwork once that sync exists
   coverImageUrl: string;
+  // false means the server will synthesize a generic gamepad cover; the UI
+  // can render its local styled placeholder without a per-game image request.
+  hasKeyArt?: boolean | null;
   bannerImageUrl: string;
   status: GameStatus;
   ratingOverall: number | null;

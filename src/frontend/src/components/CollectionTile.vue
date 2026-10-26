@@ -4,8 +4,8 @@
 // every event carries back the `id` it was given, so a collection (keyed by
 // name) and a list (keyed by id) use it the same way.
 import { computed } from "vue";
+import GameArtwork from "./GameArtwork.vue";
 import { blurOnLeave } from "../utils/blurOnLeave";
-import { vLazyBg } from "../directives/lazyBackground";
 
 const props = defineProps<{
   id: string;
@@ -42,8 +42,9 @@ const emit = defineEmits<{
   dragend: [];
 }>();
 
-const shownCovers = computed(() => props.covers.slice(0, 4));
-const emptySlots = computed(() => Math.max(0, 4 - shownCovers.value.length));
+const coverSlots = computed(() =>
+  Array.from({ length: 4 }, (_, index) => props.covers[index] ?? ""),
+);
 
 // nesting is a pure naming convention, "Parent/Child", not a separate data
 // model: collections have no backend row to hang real structure off
@@ -78,17 +79,14 @@ const displayName = computed(() =>
     <div class="collection-card">
       <div class="cover">
         <div class="cover-grid">
-          <div
-            v-for="(cover, i) in shownCovers"
+          <GameArtwork
+            v-for="(cover, i) in coverSlots"
             :key="i"
             class="cover-cell"
-            v-lazy-bg="cover"
-          ></div>
-          <div
-            v-for="i in emptySlots"
-            :key="`empty-${i}`"
-            class="cover-cell empty"
-          ></div>
+            :src="cover"
+            :title="`${name} cover ${i + 1}`"
+            fill
+          />
         </div>
         <span
           v-if="isSmart"
