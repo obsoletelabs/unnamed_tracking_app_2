@@ -230,7 +230,12 @@ async function openRandomPicker() {
           <div class="sub">
             <template v-if="hasMoreGames">
               <template v-if="filterCount === 0">
-                {{ statusFilter === "all" ? totalGameCount : statusCounts[statusFilter] ?? totalGameCount }} games
+                {{
+                  statusFilter === "all"
+                    ? totalGameCount
+                    : (statusCounts[statusFilter] ?? totalGameCount)
+                }}
+                games
               </template>
               <template v-else>
                 {{ filteredGames.length }} loaded · counting matches from
@@ -847,7 +852,11 @@ async function openRandomPicker() {
                 <div class="list-thumb-wrap">
                   <GameArtwork
                     class="list-cover"
-                    :src="game.hasKeyArt === false ? '' : sizedAssetUrl(game.coverImageUrl, 112)"
+                    :src="
+                      game.hasKeyArt === false
+                        ? ''
+                        : sizedAssetUrl(game.coverImageUrl, 112)
+                    "
                     :title="game.title"
                     :eager="isLibraryRowInViewport(row.index)"
                   />
@@ -991,7 +1000,11 @@ async function openRandomPicker() {
             >
               <GameArtwork
                 class="detail-list-thumb"
-                :src="game.hasKeyArt === false ? '' : sizedAssetUrl(game.coverImageUrl, 112)"
+                :src="
+                  game.hasKeyArt === false
+                    ? ''
+                    : sizedAssetUrl(game.coverImageUrl, 112)
+                "
                 :title="game.title"
               />
               <span>{{ game.title }}</span>

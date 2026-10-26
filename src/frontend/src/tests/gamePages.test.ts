@@ -62,13 +62,14 @@ it("reads only an adaptive viewport page and its status-count summary", async ()
 });
 
 it("sends selected status and favorites filters to the paged endpoint", async () => {
-  const fetcher = vi.fn(async (_url: string) =>
-    new Response(JSON.stringify(rows(0, 3)), {
-      headers: {
-        "X-Total-Count": "3",
-        "X-Status-Counts": "playing:3,backlog:8",
-      },
-    }),
+  const fetcher = vi.fn(
+    async (_url: string) =>
+      new Response(JSON.stringify(rows(0, 3)), {
+        headers: {
+          "X-Total-Count": "3",
+          "X-Status-Counts": "playing:3,backlog:8",
+        },
+      }),
   );
   vi.stubGlobal("fetch", fetcher);
   const result = await fetchViewportGamePage<{ id: number }>(
@@ -100,9 +101,8 @@ it("sizes its first game page for a wide compact-card viewport", async () => {
   });
   vi.stubGlobal("fetch", fetcher);
 
-  const { fetchViewportGamePage: fetchViewport } = await import(
-    "../services/gamePages"
-  );
+  const { fetchViewportGamePage: fetchViewport } =
+    await import("../services/gamePages");
   const result = await fetchViewport<{ id: number }>(0);
   const requestedUrl = fetcher.mock.calls[0]?.[0];
   expect(new URL(requestedUrl!, "http://x").searchParams.get("limit")).toBe(

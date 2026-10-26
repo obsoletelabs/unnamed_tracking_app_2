@@ -308,18 +308,36 @@ export async function fetchGamesForViewport(
   search?: string,
   status?: GameStatus | "all",
   favorite = false,
-): Promise<{ games: Game[]; total: number | null; statusCounts: Record<string, number> | null }> {
+): Promise<{
+  games: Game[];
+  total: number | null;
+  statusCounts: Record<string, number> | null;
+}> {
   if (import.meta.env.VITE_USE_MOCK_DATA === "true") {
     return {
       games: mockGames
-        .filter((game) => (!status || status === "all" || game.status === status) && (!favorite || game.favorite))
+        .filter(
+          (game) =>
+            (!status || status === "all" || game.status === status) &&
+            (!favorite || game.favorite),
+        )
         .slice(skip, skip + 100),
-      total: mockGames.filter((game) => (!status || status === "all" || game.status === status) && (!favorite || game.favorite)).length,
+      total: mockGames.filter(
+        (game) =>
+          (!status || status === "all" || game.status === status) &&
+          (!favorite || game.favorite),
+      ).length,
       statusCounts: null,
     };
   }
   const started = mutationVersion;
-  const result = await fetchViewportGamePage<BackendGame>(skip, signal, search, status, favorite);
+  const result = await fetchViewportGamePage<BackendGame>(
+    skip,
+    signal,
+    search,
+    status,
+    favorite,
+  );
   const games = result.games.map((raw) =>
     rememberFetchedGame(mapBackendGame(raw), started),
   );

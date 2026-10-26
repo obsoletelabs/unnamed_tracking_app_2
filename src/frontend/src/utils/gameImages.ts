@@ -39,8 +39,7 @@ export function sizedAssetUrl(url: string, width: number): string {
   if (!url.startsWith("/api/")) return url;
   // Replace the data-layer default when a component knows its actual display
   // size (e.g. a small list thumbnail vs. a detail poster).
-  if (/[?&]w=\d+/.test(url))
-    return url.replace(/([?&])w=\d+/, `$1w=${width}`);
+  if (/[?&]w=\d+/.test(url)) return url.replace(/([?&])w=\d+/, `$1w=${width}`);
   return `${url}${url.includes("?") ? "&" : "?"}w=${width}`;
 }
 

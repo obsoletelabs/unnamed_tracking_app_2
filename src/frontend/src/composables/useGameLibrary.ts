@@ -1098,10 +1098,7 @@ export function useGameLibrary() {
       // KeepAlive preserves the library and its controls between routes. Do
       // not immediately repeat the full paged transfer when returning to a
       // recently loaded library; failed/stale data still refreshes on return.
-      if (
-        error.value !== null ||
-        Date.now() - lastGamesLoadedAt >= 60_000
-      )
+      if (error.value !== null || Date.now() - lastGamesLoadedAt >= 60_000)
         void loadGames();
       void restoreLibraryScroll();
     },
@@ -1838,9 +1835,8 @@ export function useGameLibrary() {
     if (viewMode.value === "detail") return true;
     if (viewMode.value === "cards") {
       const virtualRows = rowVirtualizer.value.getVirtualItems?.() ?? [];
-      const lastVisibleRow = virtualRows
-        .filter(isVirtualRowInViewport)
-        .at(-1)?.index ?? -1;
+      const lastVisibleRow =
+        virtualRows.filter(isVirtualRowInViewport).at(-1)?.index ?? -1;
       const loadedRows = Math.ceil(
         filteredGames.value.length / CARD_COLUMNS.value,
       );
@@ -1850,9 +1846,9 @@ export function useGameLibrary() {
       );
       return lastVisibleRow >= loadedRows - prefetchRows;
     }
-    const visibleRows = (listRowVirtualizer.value.getVirtualItems?.() ?? []).filter(
-      (row) => isLibraryRowInViewport(row.index),
-    );
+    const visibleRows = (
+      listRowVirtualizer.value.getVirtualItems?.() ?? []
+    ).filter((row) => isLibraryRowInViewport(row.index));
     const lastVisibleItem = visibleRows.at(-1)?.index ?? -1;
     const prefetchRows = Math.min(
       Math.max(4, Math.floor(filteredGames.value.length / 2)),
@@ -1879,10 +1875,7 @@ export function useGameLibrary() {
   watch(
     [nearLoadedEnd, hasMoreGames, lazyLibraryMode],
     ([nearEnd, hasMore, canPage]) => {
-      if (
-        hasMore &&
-        (!canPage || nearEnd || filteredGames.value.length === 0)
-      )
+      if (hasMore && (!canPage || nearEnd || filteredGames.value.length === 0))
         void loadMoreGames();
     },
     { flush: "post" },

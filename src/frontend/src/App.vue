@@ -134,10 +134,7 @@ watch(
     if (id) {
       lastPluginRefreshAt = Date.now();
       void refreshPluginExtensions({ background: true });
-      pluginRefreshTimer = setInterval(
-        () => void pollSession(id),
-        15_000,
-      );
+      pluginRefreshTimer = setInterval(() => void pollSession(id), 15_000);
     }
   },
   { immediate: true },

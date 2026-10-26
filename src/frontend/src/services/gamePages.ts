@@ -89,9 +89,9 @@ export function viewportPrefetchRows(): number {
     return 3;
   }
   if (typeof navigator === "undefined") return 3;
-  const rtt = (
-    navigator as Navigator & { connection?: { rtt?: number } }
-  ).connection?.rtt ?? 0;
+  const rtt =
+    (navigator as Navigator & { connection?: { rtt?: number } }).connection
+      ?.rtt ?? 0;
   if (rtt > 800) return 10;
   if (rtt > 400) return 7;
   if (rtt > 180) return 5;
@@ -106,7 +106,11 @@ async function fetchPage<T>(
   search?: string,
   status?: string,
   favorite?: boolean,
-): Promise<{ page: T[]; total: number | null; statusCounts: Record<string, number> | null }> {
+): Promise<{
+  page: T[];
+  total: number | null;
+  statusCounts: Record<string, number> | null;
+}> {
   const started = performance.now();
   const params = new URLSearchParams({
     skip: String(skip),
@@ -117,10 +121,10 @@ async function fetchPage<T>(
   if (status && status !== "all")
     params.set("status", status.toUpperCase().replace(/ /g, "_"));
   if (favorite) params.set("favorite", "true");
-  const response = await fetch(
-    `/api/game/list?${params.toString()}`,
-    { credentials: "include", signal },
-  );
+  const response = await fetch(`/api/game/list?${params.toString()}`, {
+    credentials: "include",
+    signal,
+  });
   if (!response.ok) {
     throw new Error(
       `Failed to fetch games: ${response.status} ${response.statusText}`,
@@ -167,9 +171,22 @@ export async function fetchViewportGamePage<T>(
   search?: string,
   status?: string,
   favorite?: boolean,
-): Promise<{ games: T[]; total: number | null; nextPageSize: number; statusCounts: Record<string, number> | null }> {
+): Promise<{
+  games: T[];
+  total: number | null;
+  nextPageSize: number;
+  statusCounts: Record<string, number> | null;
+}> {
   const size = viewportGamePageSize();
-  const result = await fetchPage<T>(skip, size, signal, skip === 0, search, status, favorite);
+  const result = await fetchPage<T>(
+    skip,
+    size,
+    signal,
+    skip === 0,
+    search,
+    status,
+    favorite,
+  );
   return {
     games: result.page,
     total: result.total,
