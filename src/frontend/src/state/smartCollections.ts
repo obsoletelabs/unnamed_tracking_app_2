@@ -80,7 +80,7 @@ export function findSmartCollectionByName(
 }
 
 export function matchesSmartCollection(
-  game: Game,
+  game: Pick<Game, "status" | "favorite" | "source" | "tags" | "platforms">,
   rule: SmartCollection,
 ): boolean {
   switch (rule.field) {

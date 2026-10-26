@@ -17,9 +17,8 @@ vi.mock("vue-router", async (original) => ({
   useRoute: () => routing,
   useRouter: () => ({ push: vi.fn(), back: vi.fn() }),
 }));
-vi.mock("../services/games", async (original) => ({
-  ...(await original<typeof import("../services/games")>()),
-  fetchGames: vi.fn(async () => []),
+vi.mock("../services/collections", () => ({
+  fetchCollectionIndex: vi.fn(async () => []),
 }));
 vi.mock("../services/mediaExtras", async (original) => ({
   ...(await original<typeof import("../services/mediaExtras")>()),

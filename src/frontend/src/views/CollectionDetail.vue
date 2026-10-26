@@ -13,10 +13,14 @@ import CollectionAddDialog from "../components/CollectionAddDialog.vue";
 import { useReorderGrid } from "../utils/useReorderGrid";
 import GameTopBar from "../components/GameTopBar.vue";
 import {
-  fetchGames,
   addGameToCollection,
   removeGameFromCollection,
 } from "../services/games";
+import {
+  collectionIndexFromGame,
+  fetchCollectionIndex,
+} from "../services/collections";
+import type { CollectionIndexGame } from "../services/collections";
 import type { Game, GameStatus } from "../types/game";
 import {
   findSmartCollectionByName,
@@ -38,7 +42,7 @@ const confirm = useConfirm();
 const route = useRoute();
 const router = useRouter();
 
-const games = ref<Game[]>([]);
+const games = ref<CollectionIndexGame[]>([]);
 const loading = ref(true);
 const error = ref<string | null>(null);
 
@@ -109,7 +113,7 @@ const collectionGames = computed(() => {
     : games.value.filter((g) => g.collections.includes(collectionName.value));
   if (smartRule.value || !gameOrder.value) return members;
   const byId = new Map(members.map((g) => [g.id, g]));
-  const ordered: Game[] = [];
+  const ordered: CollectionIndexGame[] = [];
   for (const id of gameOrder.value) {
     const g = byId.get(id);
     if (g) {
@@ -137,7 +141,7 @@ const STATUS_ORDER: GameStatus[] = [
   "backlog",
   "wishlist",
 ];
-const shownGames = computed<Game[]>(() => {
+const shownGames = computed<CollectionIndexGame[]>(() => {
   if (sortMode.value === "manual") return collectionGames.value;
   const copy = [...collectionGames.value];
   if (sortMode.value === "title")
@@ -159,7 +163,7 @@ function statusTone(status: GameStatus): string {
   return "plan";
 }
 
-function openGame(game: Game) {
+function openGame(game: CollectionIndexGame) {
   if (reorderMode.value) return;
   router.push(`/games/${game.id}`);
 }
@@ -176,7 +180,7 @@ const {
   onDragOver,
   onDragEnd,
   nudge,
-} = useReorderGrid<Game>({
+} = useReorderGrid<CollectionIndexGame>({
   getItems: () => collectionGames.value,
   setItems: (next) => {
     gameOrder.value = next.map((g) => g.id);
@@ -230,7 +234,7 @@ async function loadGames() {
   loadFailed.value = false;
   error.value = null;
   try {
-    games.value = await fetchGames();
+    games.value = await fetchCollectionIndex();
   } catch (err) {
     loadFailed.value = true;
     error.value = err instanceof Error ? err.message : "Failed to load games";
@@ -243,11 +247,13 @@ async function loadGames() {
 onMounted(loadGames);
 
 function replaceGame(updated: Game) {
-  games.value = games.value.map((g) => (g.id === updated.id ? updated : g));
+  games.value = games.value.map((g) =>
+    g.id === updated.id ? collectionIndexFromGame(updated) : g,
+  );
 }
 
 // ---- removing ----
-async function removeItem(game: Game) {
+async function removeItem(game: CollectionIndexGame) {
   error.value = null;
   try {
     replaceGame(await removeGameFromCollection(game.id, collectionName.value));
@@ -275,7 +281,7 @@ const addResults = computed(() => {
     .sort((a, b) => a.title.localeCompare(b.title))
     .slice(0, 60);
 });
-async function addGame(game: Game) {
+async function addGame(game: CollectionIndexGame) {
   addError.value = null;
   try {
     replaceGame(await addGameToCollection(game.id, collectionName.value));
