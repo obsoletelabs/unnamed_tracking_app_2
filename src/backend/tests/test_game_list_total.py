@@ -43,15 +43,11 @@ async def test_total_header_follows_filters_and_hides_other_accounts(flow):
 
 async def test_status_page_is_narrow_but_tab_counts_keep_the_search_scope(flow):
     await _add_games(flow, 4)
-    response = await flow.client.get(
-        "/api/game/list?search=Total&status=BACKLOG&limit=2"
-    )
+    response = await flow.client.get("/api/game/list?search=Total&status=BACKLOG&limit=2")
     assert response.status_code == 200
     assert len(response.json()) == 2
     assert response.headers["x-total-count"] == "4"
-    counts = dict(
-        item.split(":") for item in response.headers["x-status-counts"].split(",")
-    )
+    counts = dict(item.split(":") for item in response.headers["x-status-counts"].split(","))
     assert counts["backlog"] == "4"
 
 

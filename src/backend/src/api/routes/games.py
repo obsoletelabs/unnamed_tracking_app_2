@@ -483,13 +483,7 @@ async def list_games(
     # Count the selected status and all status tabs in one aggregate query;
     # then fetch only the requested page. This keeps browser-visible filtering
     # to one HTTP request while preserving accurate tab totals.
-    page_stmt = (
-        select(Game)
-        .where(*predicates)
-        .order_by(Game.sort_title)
-        .offset(skip)
-        .limit(limit)
-    )
+    page_stmt = select(Game).where(*predicates).order_by(Game.sort_title).offset(skip).limit(limit)
     if include_counts:
         total_count = sql_count(Game.id)
         if status_filter is not None:
@@ -506,8 +500,7 @@ async def list_games(
             .subquery()
         )
         status_count_columns = [
-            count_subquery.c[f"status_{game_status.value}"]
-            for game_status in GameStatus
+            count_subquery.c[f"status_{game_status.value}"] for game_status in GameStatus
         ]
         result = await db.execute(
             select(Game, count_subquery.c.total_count, *status_count_columns)
@@ -534,11 +527,7 @@ async def list_games(
     # which rows have real stored art so missing-art rows can use the local
     # styled placeholder without one authenticated request per game.
     artwork_paths = [
-        _DATA_ROOT
-        / str(game.user_id)
-        / "games"
-        / game.folder_location
-        / ASSET_FILENAMES["key_art"]
+        _DATA_ROOT / str(game.user_id) / "games" / game.folder_location / ASSET_FILENAMES["key_art"]
         for game in games
     ]
     artwork_presence = await asyncio.gather(
