@@ -38,6 +38,19 @@ class GameLinkSchema(BaseModel):
     url: str = Field(min_length=1, max_length=2_048)
 
 
+class CollectionIndexGame(BaseModel):
+    """Only the fields needed to build the client-owned collection overview."""
+
+    id: UUID
+    title: str
+    status: GameStatus
+    favorite: bool
+    source: str | None
+    tags: list[str]
+    collections: list[str]
+    playtime_seconds: int
+
+
 ProviderIds = dict[
     Annotated[str, Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")],
     Annotated[str, Field(min_length=1, max_length=512)],
@@ -309,6 +322,9 @@ class GameRead(GameBase):
     id: UUID
     user_id: UUID
     sort_title: str
+    # Games list responses set this from the per-game asset manifest check so
+    # clients can paint a local placeholder without requesting generated cover art.
+    has_key_art: bool | None = None
     locked_fields: list[str] = Field(default_factory=list)
     provider_custom: dict[str, Any] | None = Field(
         default=None,
