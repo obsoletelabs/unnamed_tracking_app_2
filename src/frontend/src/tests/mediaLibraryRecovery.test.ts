@@ -106,7 +106,7 @@ describe.each([
     expect(fetchPage).toHaveBeenCalledTimes(2);
     expect(fetchPage).toHaveBeenLastCalledWith(
       0,
-      100,
+      48,
       expect.objectContaining({ search: "Puzzle" }),
     );
     expect(state.error).toBeNull();

@@ -96,6 +96,7 @@ export function createMediaApi<
       skip: String(offset),
       limit: String(limit),
     });
+    if (offset > 0) params.set("include_facets", "false");
     const filters = typeof search === "string" ? null : search;
     const searchText = typeof search === "string" ? search : search.search;
     if (searchText.trim()) params.set("search", searchText.trim());

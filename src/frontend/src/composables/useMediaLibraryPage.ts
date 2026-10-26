@@ -37,7 +37,8 @@ export function useMediaLibraryPage<T extends { id: string }>(
     statusBucket: "all",
     sort: savedMediaSort(kind),
   });
-  const pageSize = 100;
+  // Match the first DOM render batch. Larger libraries continue near the viewport.
+  const pageSize = 48;
   let generation = 0;
   let lastLoadedAt = 0;
   let loadedRevision = -1;
@@ -87,6 +88,7 @@ export function useMediaLibraryPage<T extends { id: string }>(
         const limit = Math.min(pageSize, extent - offset);
         latest = await fetchPage(offset, limit, query);
         if (request !== generation) return;
+        if (offset === 0) rememberPage(latest);
         const fresh = latest.items.filter((item) => {
           if (seen.has(item.id)) return false;
           seen.add(item.id);
@@ -113,7 +115,7 @@ export function useMediaLibraryPage<T extends { id: string }>(
             ? local
             : item;
         });
-      rememberPage(latest);
+      total.value = latest.total;
       paginationStopped.value = false;
       lastLoadedAt = Date.now();
       loadedRevision = revision;
@@ -149,7 +151,7 @@ export function useMediaLibraryPage<T extends { id: string }>(
       });
       entries.value.push(...fresh);
       paginationStopped.value = !fresh.length;
-      rememberPage(page);
+      total.value = page.total;
       error.value = null;
     } catch (e) {
       if (request === generation)

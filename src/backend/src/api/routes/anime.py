@@ -321,6 +321,7 @@ async def list_anime(
         current_user.id,
         skip=query.skip,
         limit=query.limit,
+        include_facets=query.include_facets,
         filters=LibraryFilters.from_query(
             query,
             AnimeStatus,

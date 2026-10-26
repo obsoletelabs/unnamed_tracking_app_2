@@ -23,6 +23,7 @@ class LibraryQuery(BaseModel, Generic[StatusT]):
     search: str | None = Field(default=None, description="Case-insensitive title search")
     skip: int = Field(default=0, ge=0)
     limit: int = Field(default=100, ge=1, le=200)
+    include_facets: bool = True
     status_bucket: str | None = None
     genre: list[str] = []
     genre_match_all: bool = False
