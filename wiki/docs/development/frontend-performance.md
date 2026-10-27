@@ -8,7 +8,9 @@ without requiring every page's code to execute during startup.
 
 The plugin contribution host loads its declarative form/table renderer only for
 an active contribution that needs it. Native contributions use their registered
-component. Password controls are not forced into the application shell bundle.
+component. The native plugin API exposes its password component through a lazy
+Vue wrapper with the same props/events. Password controls are not forced into
+the application shell bundle.
 
 ## Controlled transfer comparison
 
@@ -28,6 +30,14 @@ start of each run.
 Games required 22 JS/CSS requests and 228,755 compressed bytes before this
 grouping; the selected build requires 11 requests and 221,987 compressed bytes.
 The comparison includes deferring the unused declarative plugin renderer.
+These comparison builds used the local Vite 8.3.5 installation. A separate
+production-lockfile build using Vite 8.2.2 confirmed the same 8-script /
+3-stylesheet layout, at 216,678 compressed bytes. The RTT table is from the
+comparison builds; it is not a timing claim for the production container.
+Deferring the native API's password control subsequently reduced that production
+footprint to 215,881 compressed bytes, with the same request count. Its rules
+are absent from the Games static stylesheet dependency closure. The RTT
+comparison predates that final small deferral.
 
 Combining the whole application into one script and one stylesheet reduced the
 request count to two, but transferred 665,087 compressed bytes. That option was

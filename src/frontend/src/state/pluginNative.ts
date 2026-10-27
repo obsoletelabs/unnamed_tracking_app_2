@@ -1,11 +1,16 @@
-import { markRaw, shallowReadonly, shallowRef, type Component } from "vue";
+import {
+  defineAsyncComponent,
+  markRaw,
+  shallowReadonly,
+  shallowRef,
+  type Component,
+} from "vue";
 import type { Router } from "vue-router";
 import * as Vue from "vue";
 import PageHeader from "../components/PageHeader.vue";
 import UiModal from "../components/UiModal.vue";
 import AppIcon from "../components/AppIcon.vue";
 import AccountChip from "../components/AccountChip.vue";
-import PasswordInput from "../components/PasswordInput.vue";
 import { dispatchPluginAction } from "../services/pluginUi";
 import { pluginRequestError } from "../services/apiError";
 import { registerPluginSearch, type PluginSearchResult } from "./pluginSearch";
@@ -26,6 +31,12 @@ import {
 } from "../services/pluginAppearance";
 import { checkAuth } from "./auth";
 import { registerPluginShortcut, type NativeShortcut } from "./shortcuts";
+
+// Expose the same component API without fetching a secret-field control until
+// a native plugin actually renders it.
+const PasswordInput = defineAsyncComponent(
+  () => import("../components/PasswordInput.vue"),
+);
 
 export interface NativeFrontendSource {
   pluginId: string;

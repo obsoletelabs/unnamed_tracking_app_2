@@ -2,6 +2,7 @@
 
 import asyncio
 import time
+from collections.abc import Sequence
 from uuid import UUID
 
 from fastapi import (
@@ -18,6 +19,7 @@ from fastapi import (
 from sqlalchemy import and_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 from sqlalchemy.sql.functions import count as sql_count
 
 from src.api.routes import (
@@ -446,6 +448,54 @@ async def create_game(
     return game
 
 
+async def _counted_game_page(
+    db: AsyncSession,
+    filters: Sequence[ColumnElement[bool]],
+    status_filter: GameStatus | None,
+    skip: int,
+    limit: int,
+) -> tuple[list[Game], dict[str, str]]:
+    """Count matching tabs and return the selected page without detail queries."""
+    predicates = list(filters)
+    if status_filter is not None:
+        predicates.append(Game.status == status_filter)
+    total_count = (
+        sql_count(Game.id).filter(Game.status == status_filter)
+        if status_filter is not None
+        else sql_count(Game.id)
+    )
+    status_columns = [
+        sql_count(Game.id).filter(Game.status == game_status).label(f"status_{game_status.value}")
+        for game_status in GameStatus
+    ]
+    count_subquery = (
+        select(total_count.label("total_count"), *status_columns).where(*filters).subquery()
+    )
+    status_count_columns = [
+        count_subquery.c[f"status_{game_status.value}"] for game_status in GameStatus
+    ]
+    result = await db.execute(
+        select(Game, count_subquery.c.total_count, *status_count_columns)
+        .select_from(count_subquery.outerjoin(Game, and_(*predicates)))
+        .order_by(Game.sort_title)
+        .offset(skip)
+        .limit(limit)
+    )
+    rows = result.all()
+    games = [row[0] for row in rows if row[0] is not None]
+    counts = rows[0][1:] if rows else (await db.execute(select(count_subquery))).one()
+    status_counts = {
+        game_status.value.lower().replace("_", " "): int(counts[index + 1])
+        for index, game_status in enumerate(GameStatus)
+    }
+    return games, {
+        "X-Total-Count": str(int(counts[0])),
+        "X-Status-Counts": ",".join(
+            f"{game_status}:{value}" for game_status, value in status_counts.items()
+        ),
+    }
+
+
 # Keep the established workflow and public parameters together.
 # pylint: disable=too-many-positional-arguments
 @router.get("/list", response_model=list[GameRead])
@@ -460,7 +510,7 @@ async def list_games(
     skip: int = _SKIP_DEFAULT,
     limit: int = _LIMIT_DEFAULT_2,
     include_counts: bool = Query(default=True),
-) -> list[Game]:
+) -> list[GameRead]:
     """Return one page of games filtered by status, favorite flag, or title search.
 
     The body stays a plain array. `X-Total-Count` carries the number of games
@@ -476,55 +526,29 @@ async def list_games(
     if title_match is not None:
         base_predicates.append(title_match)
 
-    predicates = list(base_predicates)
-    if status_filter is not None:
-        predicates.append(Game.status == status_filter)
-
-    # Count the selected status and all status tabs in one aggregate query;
-    # then fetch only the requested page. This keeps browser-visible filtering
-    # to one HTTP request while preserving accurate tab totals.
-    page_stmt = select(Game).where(*predicates).order_by(Game.sort_title).offset(skip).limit(limit)
     if include_counts:
-        total_count = (
-            sql_count(Game.id).filter(Game.status == status_filter)
-            if status_filter is not None
-            else sql_count(Game.id)
-        )
-        status_columns = [
-            sql_count(Game.id)
-            .filter(Game.status == game_status)
-            .label(f"status_{game_status.value}")
-            for game_status in GameStatus
-        ]
-        count_subquery = (
-            select(total_count.label("total_count"), *status_columns)
-            .where(*base_predicates)
-            .subquery()
-        )
-        status_count_columns = [
-            count_subquery.c[f"status_{game_status.value}"] for game_status in GameStatus
-        ]
-        result = await db.execute(
-            select(Game, count_subquery.c.total_count, *status_count_columns)
-            .select_from(count_subquery.outerjoin(Game, and_(*predicates)))
-            .order_by(Game.sort_title)
-            .offset(skip)
-            .limit(limit)
-        )
-        rows = result.all()
-        games = [row[0] for row in rows if row[0] is not None]
-        counts = rows[0][1:] if rows else (await db.execute(select(count_subquery))).one()
-        total = int(counts[0])
-        response.headers["X-Total-Count"] = str(total)
-        status_counts = {
-            game_status.value.lower().replace("_", " "): int(counts[index + 1])
-            for index, game_status in enumerate(GameStatus)
-        }
-        response.headers["X-Status-Counts"] = ",".join(
-            f"{game_status}:{value}" for game_status, value in status_counts.items()
-        )
+        games, headers = await _counted_game_page(db, base_predicates, status_filter, skip, limit)
+        response.headers.update(headers)
     else:
-        games = list((await db.scalars(page_stmt)).all())
+        predicates = list(base_predicates)
+        if status_filter is not None:
+            predicates.append(Game.status == status_filter)
+        games = list(
+            (
+                await db.scalars(
+                    select(Game)
+                    .where(*predicates)
+                    .order_by(Game.sort_title)
+                    .offset(skip)
+                    .limit(limit)
+                )
+            ).all()
+        )
+    return await _game_page_reads(games)
+
+
+async def _game_page_reads(games: list[Game]) -> list[GameRead]:
+    """Serialize the returned page with response-only artwork availability."""
     # Default covers are generated by the artwork route. Tell the browser
     # which rows have real stored art so missing-art rows can use the local
     # styled placeholder without one authenticated request per game.
@@ -535,9 +559,10 @@ async def list_games(
     artwork_presence = await asyncio.gather(
         *(asyncio.to_thread(path.is_file) for path in artwork_paths)
     )
-    for game, has_key_art in zip(games, artwork_presence, strict=True):
-        game.has_key_art = has_key_art
-    return games
+    records = [GameRead.model_validate(game) for game in games]
+    for record, has_key_art in zip(records, artwork_presence, strict=True):
+        record.has_key_art = has_key_art
+    return records
 
 
 # pylint: enable=too-many-positional-arguments
@@ -569,7 +594,7 @@ async def collection_index(
         .where(Game.user_id == current_user.id, Game.deleted_at.is_(None))
         .order_by(Game.sort_title, Game.id)
     )
-    return [CollectionIndexGame.model_validate(row._mapping) for row in result]
+    return [CollectionIndexGame.model_validate(row) for row in result.mappings()]
 
 
 @router.get("/get/{game_id}", response_model=GameRead)
