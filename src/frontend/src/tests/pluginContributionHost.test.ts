@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
+import { flushPromises } from "@vue/test-utils";
 import * as Vue from "vue";
 import {
   createRenderer,
@@ -38,6 +39,7 @@ vi.mock("../services/pluginUi", async (importOriginal) => ({
 vi.mock("../components/plugins/PluginUiHost.vue", async () => {
   const { defineComponent, h } = await import("vue");
   return {
+    __esModule: true,
     default: defineComponent({
       props: ["document"],
       emits: ["action"],
@@ -181,6 +183,8 @@ it.each([
     app.provide(ssrContextKey, { modules: new Set<string>() });
     app.mount(root);
     try {
+      await flushPromises();
+      await vi.waitFor(() => expect(findButton(root)).toBeDefined());
       (findButton(root)!.props.onClick as () => void)();
       await nextTick();
       await nextTick();

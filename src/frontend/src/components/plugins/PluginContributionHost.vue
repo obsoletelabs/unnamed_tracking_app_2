@@ -1,5 +1,11 @@
 <script setup lang="ts">
-import { computed, onErrorCaptured, ref, watch } from "vue";
+import {
+  computed,
+  defineAsyncComponent,
+  onErrorCaptured,
+  ref,
+  watch,
+} from "vue";
 import type {
   PluginActionContext,
   PluginUiDocument,
@@ -19,7 +25,9 @@ import {
   nativePluginFailures,
 } from "../../state/pluginNative";
 import { activePluginDocuments } from "../../state/pluginExtensions";
-import PluginUiHost from "./PluginUiHost.vue";
+// The form/table renderer (including secret fields) is only needed for an
+// active declarative contribution, not to mount the application shell.
+const PluginUiHost = defineAsyncComponent(() => import("./PluginUiHost.vue"));
 
 const props = defineProps<{
   pluginId: string;
