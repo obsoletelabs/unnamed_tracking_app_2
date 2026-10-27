@@ -15,12 +15,10 @@ scrape_configs:
     static_configs:
       - targets: ["unnamed-tracking:9464"]
 
-  # Development stack (compose.yaml): the backend container serves /metrics itself on 8000.
+  # Development stack (compose.yaml): set METRICS_ENABLED=true and let Prometheus reach
+  # the backend container's dedicated metrics port. No bearer token is needed there.
   # Use this job instead of the one above when running the split frontend/backend images.
   # - job_name: unnamed-tracking-dev
   #   metrics_path: /metrics
   #   static_configs:
-  #     - targets: ["backend:8000"]
-  #   authorization:
-  #     type: Bearer
-  #     credentials_file: /etc/prometheus/unnamed-tracking-metrics-token
+  #     - targets: ["backend:9464"]

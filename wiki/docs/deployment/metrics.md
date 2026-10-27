@@ -1,19 +1,21 @@
 # Prometheus metrics
 
-The backend can expose operational metrics in the Prometheus text format. The endpoint is **off by default**, requires a bearer token when on, and is not served by the public web listener.
+The backend can expose operational metrics in the Prometheus text format. The endpoint is **off by default** in the standalone backend, and is not served by the public web listener. The normal API port requires a bearer token; the dedicated scrape port is restricted by network reachability.
 
 ## Summary
 
 * **Production image:** metrics are on by default. A **scrape port** (`9464`, remappable with `METRICS_LISTEN_PORT`) is always present inside the container and needs no token. It is closed unless you publish it, so there is nothing to configure: map the port to a trusted network and point Prometheus at it.
 * **Public web ports (80/443):** `/metrics` answers 404 unless you opt in with `METRICS_NGINX_ROUTE_ENABLED=true`, which passes it through to the backend with the bearer token still required.
-* **Development stack:** the backend serves `/metrics` itself on port 8000 only when `METRICS_ENABLED=true`, and always requires the token.
+* **Standalone/development backend:** with `METRICS_ENABLED=true`, port 9464 serves only `/metrics` without a token. The regular API port 8000 still requires the token. Publishing 9464 is an explicit operator choice.
 
 ## Settings
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `METRICS_ENABLED` | `true` in the production image, `false` in the development backend | Serves `GET /metrics` from the backend. `false` makes the path answer 404 and removes the scrape port. |
-| `METRICS_LISTEN_PORT` | `9464` | Production image: the token-free scrape port. Any port except 80 and 443. |
+| `METRICS_LISTEN_PORT` | `9464` | Token-free scrape port in both images. For the standalone backend it must be 1–65535, different from API port 8000 and unused. |
+| `METRICS_LISTEN_HOST` | `0.0.0.0` | Standalone backend only: interface for the dedicated scrape listener. |
+| `METRICS_DIRECT_LISTENER_ENABLED` | `true` in the standalone backend, `false` in the combined image | Start a Python metrics-only listener on the backend event loop. The combined image uses its existing Nginx scrape listener instead. |
 | `METRICS_NGINX_ROUTE_ENABLED` | `false` | Production image: opt in to token-protected `/metrics` on the public web ports. |
 | `METRICS_TOKEN` | generated | Bearer token (at least 32 characters, `openssl rand -hex 32`). Leave it empty and the application generates one on first start and saves it as `config/metrics.token` in `APP_DATA_DIR` (mode 0600, kept across restarts and included in volume backups). A configured token shorter than 32 characters stops the backend from starting. The scrape port presents this token for you. |
 | `PROMETHEUS_MULTIPROC_DIR` | unset | Only when you run several backend worker processes in one container; see below. |
@@ -21,7 +23,7 @@ The backend can expose operational metrics in the Prometheus text format. The en
 
 ## Finding the token
 
-You only need the token for the opt-in public route or the development backend; the scrape port supplies it itself.
+You only need the token for the opt-in public route or the regular backend API port. Neither dedicated scrape port requires it.
 
 * If you set `METRICS_TOKEN`, you already have it; it is never shown by the application.
 * If you left it empty, an administrator can read the generated value with `GET /api/settings/metrics` (an authenticated, `no-store` response with `token`, `token_source`, the path and the configured listen port), or read `config/metrics.token` from the data volume.
@@ -31,17 +33,23 @@ Rotating a generated token means deleting `config/metrics.token` and restarting.
 ## Security: who can reach what
 
 * `/metrics` is answered by the backend before routing. It is not an API route, is absent from the OpenAPI schema and plugins cannot shadow it. `/api/metrics` does not exist.
-* **The scrape port is not authenticated.** Anything that can connect to it can read route names, job state, plugin counts and runtime health. It is reachable from outside the container only if you publish it, so publish it only to a trusted network (a private Docker network shared with Prometheus, a VPN interface, or `127.0.0.1:9464:9464` for a local scraper). The example compose files show the mapping commented out; do not add it to a service that is directly reachable from the internet. Remap the number with `METRICS_LISTEN_PORT` if 9464 clashes (and change the published mapping to match).
+* **The scrape port is not authenticated.** Anything that can connect to it can read route names, job state, plugin counts and runtime health. It is reachable from outside the container only if you publish it, so publish it only to a trusted network (a private Docker network shared with Prometheus, a VPN interface, or `127.0.0.1:9464:9464` for a local scraper). The example compose files show the mapping commented out; do not add it to a service that is directly reachable from the internet. Remap the number with `METRICS_LISTEN_PORT` if 9464 clashes (and change the published mapping to match). The standalone listener accepts only `GET` and `HEAD /metrics`; all other paths return 404.
 * **The public route is opt-in** because a mistake there would put the endpoint on the internet-facing ports. With `METRICS_NGINX_ROUTE_ENABLED=true`, `GET /metrics` on 80/443 reaches the backend, which requires the bearer token (401 without it). Put it behind your own access controls if you can.
-* The backend listens only on the container's loopback interface in the production image. In the development stack it is on the Compose `core` network; do not publish port 8000.
-* Requests without a valid token receive 401; with `METRICS_ENABLED=false` they receive 404.
+* The regular backend API listens only on the container's loopback interface in the production image. In the development stack it is on the Compose `core` network; do not publish port 8000.
+* Requests to the regular API port without a valid token receive 401; with `METRICS_ENABLED=false` they receive 404 and the standalone scrape listener does not start.
 
 ## Scraping the production deployment
 
 1. Publish the scrape port to a network Prometheus can reach, for example by uncommenting `"9464:9464"` in the compose file, or by putting Prometheus on a Docker network shared with the container (no `ports:` mapping needed).
 2. Point Prometheus at `<host or service name>:9464` with path `/metrics`. No token is needed.
 
-`examples/metrics/prometheus.yml` has this job (and the token-authenticated development job as a commented alternative). `examples/metrics/compose.yaml` runs Prometheus and Grafana on a `monitoring` network you attach the application to. If you opted in to the public route instead, use `authorization.credentials_file` with the token and the public address.
+`examples/metrics/prometheus.yml` has this job (and the standalone backend job as a commented alternative). `examples/metrics/compose.yaml` runs Prometheus and Grafana on a `monitoring` network you attach the application to. If you opted in to the public route instead, use `authorization.credentials_file` with the token and the public address.
+
+## Scraping a standalone backend
+
+Set `METRICS_ENABLED=true` for the backend service and publish/forward only port 9464 to a trusted scraper. The development Compose file shows a commented localhost mapping. Run `curl http://127.0.0.1:9464/metrics` to check the direct port; `curl http://backend:8000/metrics` still needs `Authorization: Bearer <token>`. The listener and API share the same Python event loop and registry, so API requests appear in direct scrapes. No Nginx service is needed.
+
+The direct listener supports one backend worker. `WEB_CONCURRENCY` greater than one fails startup; workers started separately also fail to bind the occupied port. The combined image disables this listener and retains its Nginx implementation. Turning metrics off closes the direct listener. A failed dependency probe leaves other series scrapeable. A failed backend process cannot report its own failure; monitor the scrape target's `up` series as well.
 
 ## Scrape example
 
@@ -109,7 +117,7 @@ Plugins run in the isolated runtime and cannot add their own series: Plugin API 
 
 ## Multiple workers
 
-The shipped images run one backend process, so counters are exact. If you start several workers in one container, set `PROMETHEUS_MULTIPROC_DIR` to an empty, writable directory (cleared on start) before the processes start; `/metrics` then aggregates all workers, and the per-process CPU, memory and GC collectors are omitted (use node or cAdvisor exporters instead). With several replicas, scrape each one and aggregate in Prometheus (`sum by (...)`).
+The shipped images run one backend process, so counters are exact. The standalone Python scrape listener requires one worker. For deployments using several workers, disable the direct listener and use a separately managed authenticated `/metrics` collector with `PROMETHEUS_MULTIPROC_DIR` set to an empty, writable directory (cleared on start) before the processes start. The per-process CPU, memory and GC collectors are omitted in that mode (use node or cAdvisor exporters instead). With several replicas, scrape each one and aggregate in Prometheus (`sum by (...)`).
 
 ## Retention and alerting guidance
 

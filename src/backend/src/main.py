@@ -13,6 +13,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from src.api.auth_limits import AuthThrottleMiddleware, auth_retry_response
 from src.api.auth_policy import authentication_operation
 from src.api.metrics import MetricsMiddleware
+from src.api.metrics_listener import MetricsListener
 from src.api.request_bodies import AnonymousBodyLimitMiddleware
 from src.api.routes import (
     achievement_icons,
@@ -345,3 +346,20 @@ reserve_host_routes(
     if hasattr(route, "path") and hasattr(route, "methods")
 )
 app.include_router(plugin_host_routes)
+
+
+@app.on_event("startup")
+async def start_direct_metrics_listener() -> None:
+    if not app_settings.METRICS_ENABLED or not app_settings.METRICS_DIRECT_LISTENER_ENABLED:
+        return
+    listener = MetricsListener(app_settings.METRICS_LISTEN_HOST, app_settings.METRICS_LISTEN_PORT)
+    await listener.start()
+    app.state.metrics_listener = listener
+
+
+@app.on_event("shutdown")
+async def stop_direct_metrics_listener() -> None:
+    listener = getattr(app.state, "metrics_listener", None)
+    if listener is not None:
+        await listener.stop()
+        app.state.metrics_listener = None

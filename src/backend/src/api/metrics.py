@@ -43,13 +43,15 @@ def _bearer(scope: Scope) -> str | None:
     return None
 
 
-async def _scrape(scope: Scope, receive: Receive, send: Send) -> None:
+async def _scrape(
+    scope: Scope, receive: Receive, send: Send, *, require_token: bool = True
+) -> None:
     headers = {"Cache-Control": "no-store"}
     if not metrics.metrics_enabled():
         response: Response = JSONResponse({"detail": "Not Found"}, 404, headers)
     elif scope["method"] not in {"GET", "HEAD"}:
         response = JSONResponse({"detail": "Method Not Allowed"}, 405, {**headers, "Allow": "GET"})
-    elif not metrics.token_valid(_bearer(scope)):
+    elif require_token and not metrics.token_valid(_bearer(scope)):
         response = JSONResponse(
             {"detail": "Metrics credentials are required."},
             401,
