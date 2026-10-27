@@ -13,7 +13,7 @@ it("loads every routed view on demand", () => {
     expect(component).toMatch(/component:\s*\(\)\s*=>\s*import\(/);
 });
 
-it("fetches a Settings section only when it is opened", () => {
+it("keeps Settings sections in dynamic imports for opening or intent prefetch", () => {
   const settings = source("views/Settings.vue");
   const sections = settings.match(/components\/settings\/\w+\.vue/g) ?? [];
   expect(sections.length).toBeGreaterThan(25);
@@ -26,10 +26,10 @@ it("fetches a Settings section only when it is opened", () => {
     )
       continue;
     expect(settings).toMatch(
-      new RegExp(
-        `const ${name} = defineAsyncComponent\\(\\s*\\(\\) => import\\(`,
-      ),
+      new RegExp(`const ${name} = lazySettingsSection\\(`),
     );
+    expect(settings).toContain(`import("../components/settings/${name}.vue")`);
+    expect(settings).not.toMatch(new RegExp(`import ${name} from`));
   }
 });
 

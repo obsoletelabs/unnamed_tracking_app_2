@@ -11,7 +11,10 @@ import type {
   BadgeStyle,
   BadgePlacement,
 } from "../../services/appearanceSettings";
-import { loadAppearanceSettings } from "../../state/appearance";
+import {
+  appearanceSettings,
+  rememberAppearanceSettings,
+} from "../../state/appearance";
 import UiAppearanceSection from "./UiAppearanceSection.vue";
 import InterfaceSection from "./InterfaceSection.vue";
 import CompletionBadge from "../CompletionBadge.vue";
@@ -30,15 +33,22 @@ const previewTitle =
   previewTitles[Math.floor(Math.random() * previewTitles.length)]!;
 const previewCoverUrl = `/api/game/preview-cover?title=${encodeURIComponent(previewTitle)}`;
 
-const loading = ref(true);
+const initialAppearance = appearanceSettings.value;
+const loading = ref(!initialAppearance);
 const saving = ref(false);
 const error = ref<string | null>(null);
 const saveSuccess = ref(false);
 
-const style = ref<BadgeStyle>("glow");
-const color = ref("#e5e4e2");
-const placement = ref<BadgePlacement>("top-right");
-const imageUrl = ref<string | null>(null);
+const style = ref<BadgeStyle>(
+  initialAppearance?.completion_badge_style ?? "glow",
+);
+const color = ref(initialAppearance?.completion_badge_color ?? "#e5e4e2");
+const placement = ref<BadgePlacement>(
+  initialAppearance?.completion_badge_placement ?? "top-right",
+);
+const imageUrl = ref<string | null>(
+  initialAppearance?.completion_badge_image_url ?? null,
+);
 
 const styleOptions = [
   { value: "none", label: "Off" },
@@ -62,8 +72,10 @@ const usesImage = computed(
 );
 
 onMounted(async () => {
+  if (initialAppearance) return;
   try {
     const settings = await fetchAppearanceSettings();
+    rememberAppearanceSettings(settings);
     style.value = settings.completion_badge_style;
     color.value = settings.completion_badge_color;
     placement.value = settings.completion_badge_placement;
@@ -81,12 +93,12 @@ async function save() {
   error.value = null;
   saveSuccess.value = false;
   try {
-    await updateAppearanceSettings({
+    const settings = await updateAppearanceSettings({
       completion_badge_style: style.value,
       completion_badge_color: color.value,
       completion_badge_placement: placement.value,
     });
-    await loadAppearanceSettings();
+    rememberAppearanceSettings(settings);
     saveSuccess.value = true;
   } catch (err) {
     error.value =
@@ -110,7 +122,7 @@ async function onImageSelected(e: Event) {
   try {
     const settings = await uploadBadgeImage(file);
     imageUrl.value = settings.completion_badge_image_url;
-    await loadAppearanceSettings();
+    rememberAppearanceSettings(settings);
   } catch (err) {
     error.value =
       err instanceof Error ? err.message : "Failed to upload badge image";
@@ -124,9 +136,9 @@ async function removeImage() {
   uploading.value = true;
   error.value = null;
   try {
-    await deleteBadgeImage();
+    const settings = await deleteBadgeImage();
     imageUrl.value = null;
-    await loadAppearanceSettings();
+    rememberAppearanceSettings(settings);
   } catch (err) {
     error.value =
       err instanceof Error ? err.message : "Failed to remove badge image";

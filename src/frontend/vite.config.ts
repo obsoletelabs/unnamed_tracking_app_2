@@ -19,8 +19,21 @@ export default defineConfig({
               // authenticated shell. Route views remain separate dynamic
               // chunks and keep their own CSS.
               name: "app-shell",
-              test: /[\\/]src[\\/](?:main\.ts|App\.vue|router[\\/]index\.ts|state[\\/](?:auth|preferences|shortcuts|dialog|pluginExtensions|uiPalette)\.ts|components[\\/](?:PageHeader|AppIcon|UiModal|ProfileAvatar|AccountChip|PasswordInput|PluginField)\.vue|services[\\/](?:apiError|providerEvents|notifications)\.ts)$/,
+              test: /[\\/]src[\\/](?:main\.ts|App\.vue|router[\\/]index\.ts|state[\\/](?:auth|preferences|shortcuts|dialog|pluginExtensions|uiPalette)\.ts|components[\\/](?:PageHeader|AppIcon|UiModal|ProfileAvatar|AccountChip)\.vue|services[\\/](?:apiError|providerEvents|notifications)\.ts)$/,
               priority: 1,
+            },
+            {
+              // Consolidate small data helpers used together by library routes.
+              name: "library-utils",
+              test: /[\\/]src[\\/](?:utils[\\/](?:priority|dates|platforms|scoring|genres|libraryLayout|useKeptAlive|gameOwnership|gameCopies)\.ts|state[\\/]libraryNav\.ts|services[\\/](?:identityReview|gameDuplicates|gameIdentity|librarySync|gameCache|settings)\.ts)$/,
+              priority: 0,
+            },
+            {
+              // Keep the library card and top-bar controls/styles together.
+              // Route views and occasional forms retain their own assets.
+              name: "library-ui",
+              test: /[\\/]src[\\/]components[\\/](?:SegmentedTabs|CheckIcon|HeartIcon|CompletionBadge|GameArtwork|GameCard|AppTopBar|GameTopBar|game[\\/]AutomaticMatchBanner)\.vue$/,
+              priority: 0,
             },
           ],
         },

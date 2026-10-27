@@ -263,15 +263,18 @@ async def library_page(
     filters: LibraryFilters,
     skip: int,
     limit: int,
+    include_facets: bool = True,
 ) -> PaginatedResponse[Any]:
     """Filter before pagination, while status tabs count every matching status.
 
     Rankings cover the user's complete rated library, independently of the filters.
     """
     stmt = _library_statement(model, user_id, filters)
-    count_stmt = stmt.with_only_columns(model.status, sql_count()).group_by(model.status)
-    counts_result = await db.execute(count_stmt)
-    status_counts = {row_status.value: count for row_status, count in counts_result.all()}
+    status_counts = {}
+    if include_facets:
+        count_stmt = stmt.with_only_columns(model.status, sql_count()).group_by(model.status)
+        counts_result = await db.execute(count_stmt)
+        status_counts = {row_status.value: count for row_status, count in counts_result.all()}
     if filters.status_filter is not None:
         stmt = stmt.where(model.status == filters.status_filter)
     if filters.status_values:
@@ -285,7 +288,7 @@ async def library_page(
         offset=skip,
         limit=limit,
         status_counts=status_counts,
-        score_ranks=await score_ranks(db, model, user_id),
+        score_ranks=await score_ranks(db, model, user_id) if include_facets else {},
     )
 
 

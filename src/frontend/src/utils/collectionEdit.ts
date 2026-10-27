@@ -17,6 +17,10 @@ import {
   updateMeta,
 } from "../state/collectionMeta";
 import type { CollectionFormPayload } from "../components/CollectionFormModal.vue";
+import {
+  removeCollectionCover,
+  renameCollectionCover,
+} from "../services/collectionCovers";
 
 export async function saveCollectionEdit(args: {
   oldName: string;
@@ -41,6 +45,7 @@ export async function saveCollectionEdit(args: {
       await removeGameFromCollection(game.id, oldName);
     }
   }
+  await renameCollectionCover(oldName, name);
   renameCollectionKeys(oldName, name);
   updateMeta(name, { description: payload.description ?? undefined });
 }
@@ -52,6 +57,7 @@ export async function deleteCollectionFully(args: {
   members: Pick<Game, "id">[];
   smartId?: string;
 }): Promise<void> {
+  await removeCollectionCover(args.name);
   if (args.smartId) {
     removeSmartCollection(args.smartId);
   } else {

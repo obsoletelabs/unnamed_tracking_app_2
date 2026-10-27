@@ -20,13 +20,13 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function page(offset = 0, count = 100, total = 350): MediaPage<Item> {
+function page(offset = 0, count = 48, total = 350): MediaPage<Item> {
   return {
     items: Array.from({ length: count }, (_, index) => ({
       id: String(offset + index),
     })),
     offset,
-    limit: 100,
+    limit: 48,
     total,
     statusCounts: { WATCHED: total },
     scoreRanks: {},
@@ -57,30 +57,33 @@ function library(revision: () => number = () => 0) {
 
 it("keeps two minutes of freshness and refreshes the loaded extent with the active sort", async () => {
   const { state, fetchPage } = library();
-  fetchPage.mockResolvedValueOnce(page()).mockResolvedValueOnce(page(100));
+  fetchPage
+    .mockResolvedValueOnce(page())
+    .mockResolvedValueOnce({ ...page(48), statusCounts: {}, scoreRanks: {} });
   await state.load();
   await state.loadMore();
-  expect(state.entries.value).toHaveLength(200);
+  expect(state.entries.value).toHaveLength(96);
+  expect(state.statusCounts.value).toEqual({ WATCHED: 350 });
   await state.refreshLibrary();
   expect(fetchPage).toHaveBeenCalledTimes(2);
   vi.setSystemTime(Date.now() + 120_001);
-  fetchPage.mockResolvedValueOnce(page()).mockResolvedValueOnce(page(100));
+  fetchPage.mockResolvedValueOnce(page()).mockResolvedValueOnce(page(48));
   await state.refreshLibrary();
   expect(
     fetchPage.mock.calls.slice(2).map(([offset, limit]) => [offset, limit]),
   ).toEqual([
-    [0, 100],
-    [100, 100],
+    [0, 48],
+    [48, 48],
   ]);
-  expect(state.entries.value).toHaveLength(200);
+  expect(state.entries.value).toHaveLength(96);
   fetchPage.mockResolvedValueOnce(page());
   await state.load({ ...state.currentFilters.value, sort: "progress" });
   expect(fetchPage).toHaveBeenLastCalledWith(
     0,
-    100,
+    48,
     expect.objectContaining({ sort: "progress" }),
   );
-  expect(state.entries.value).toHaveLength(100);
+  expect(state.entries.value).toHaveLength(48);
 });
 
 it("invalidates freshness after a save and keeps local edits made during a refresh", async () => {
@@ -123,7 +126,7 @@ it("does not append a stale load-more response to a new query or change its load
     items: [{ id: "new-query" }],
   });
   await state.load({ ...state.currentFilters.value, search: "New" });
-  finishOld(page(100));
+  finishOld(page(48));
   await older;
   expect(state.entries.value).toEqual([{ id: "new-query" }]);
   expect(state.total.value).toBe(1);
@@ -137,7 +140,7 @@ it.each([{ items: [] }, { items: [{ id: "0" }] }])(
     const { state, fetchPage } = library();
     fetchPage.mockResolvedValueOnce(page());
     await state.load();
-    fetchPage.mockResolvedValueOnce({ ...page(100), items });
+    fetchPage.mockResolvedValueOnce({ ...page(48), items });
     await state.loadMore();
     expect(state.hasMore.value).toBe(false);
     expect(state.total.value).toBe(350);
@@ -148,7 +151,7 @@ it.each([{ items: [] }, { items: [{ id: "0" }] }])(
 
 it("retains cached rows when a loaded-extent refresh fails partway through", async () => {
   const { state, fetchPage } = library();
-  fetchPage.mockResolvedValueOnce(page()).mockResolvedValueOnce(page(100));
+  fetchPage.mockResolvedValueOnce(page()).mockResolvedValueOnce(page(48));
   await state.load();
   await state.loadMore();
   const original = [...state.entries.value];

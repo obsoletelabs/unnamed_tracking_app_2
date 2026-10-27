@@ -5,6 +5,11 @@ on screen and preserves their scroll position. Posters, backdrops and achievemen
 icons are downloaded into the server's cache when saved, with the original URL used
 as a fallback if the download fails. Existing images are cached when first viewed.
 
+The first media batch contains 48 titles, with more loaded near the viewport.
+Posters nearest the viewport centre start first, and images keep their source
+after scrolling out of view. Counts and ranks still describe the complete matching
+library, including titles that have not been downloaded yet.
+
 After a connection loss, the visible library retries when internet access returns.
 If the tab was hidden, it waits until you return. A failed load also retries when
 you focus the window again. Successful requests clear the previous error and keep

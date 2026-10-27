@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { computed, ref, watch, defineAsyncComponent } from "vue";
+import {
+  computed,
+  ref,
+  watch,
+  defineAsyncComponent,
+  onActivated,
+  onDeactivated,
+} from "vue";
 import PageHeader from "../components/PageHeader.vue";
 import AccountChip from "../components/AccountChip.vue";
 import HomeWidgetPicker from "../components/HomeWidgetPicker.vue";
@@ -25,7 +32,7 @@ import {
   CORE_HOME_WIDGETS,
   selectedHomeWidgets,
 } from "../services/homeWidgets";
-import { fetchGames, deleteGame } from "../services/games";
+import { fetchGames, deleteGame, gameLibraryRevision } from "../services/games";
 import { fetchWeeklyDigest, type WeeklyDigest } from "../services/stats";
 import type { Game } from "../types/game";
 import { gameOwnershipGroups } from "../utils/gameOwnership";
@@ -69,6 +76,10 @@ let digestLoaded = false;
 let dataGeneration = 0;
 let gamesRequest = 0;
 let digestRequest = 0;
+let lastGamesLoadedAt = 0;
+let lastDigestLoadedAt = 0;
+let lastGamesRevision = -1;
+let homeActive = true;
 const collections = computed(() =>
   [...new Set(games.value.flatMap((game) => game.collections))].sort((a, b) =>
     a.localeCompare(b),
@@ -125,6 +136,7 @@ const deleteError = ref<string | null>(null);
 async function loadGames() {
   const generation = dataGeneration;
   const request = ++gamesRequest;
+  const revision = gameLibraryRevision();
   gamesLoading.value = true;
   gamesError.value = null;
   try {
@@ -132,6 +144,8 @@ async function loadGames() {
     if (generation !== dataGeneration || request !== gamesRequest) return;
     games.value = gameOwnershipGroups(result).entries;
     gamesLoaded = true;
+    lastGamesLoadedAt = Date.now();
+    lastGamesRevision = revision;
   } catch (reason) {
     if (generation === dataGeneration && request === gamesRequest)
       gamesError.value =
@@ -151,6 +165,7 @@ async function loadDigest() {
     if (generation !== dataGeneration || request !== digestRequest) return;
     digest.value = result;
     digestLoaded = true;
+    lastDigestLoadedAt = Date.now();
   } catch (reason) {
     if (generation === dataGeneration && request === digestRequest)
       digestError.value =
@@ -167,6 +182,7 @@ function usesGames(id: string) {
 }
 function ensureData() {
   if (
+    !homeActive ||
     !preferencesLoaded.value ||
     preferencesError.value ||
     (hasHomeOverride.value && !replacementFailed.value)
@@ -188,6 +204,34 @@ function ensureData() {
   )
     void loadDigest();
 }
+onActivated(() => {
+  homeActive = true;
+  ensureData();
+  if (
+    !preferencesLoaded.value ||
+    preferencesError.value ||
+    (hasHomeOverride.value && !replacementFailed.value)
+  )
+    return;
+  if (
+    gamesLoaded &&
+    preferences.value.home_widgets.some(usesGames) &&
+    (lastGamesRevision !== gameLibraryRevision() ||
+      Date.now() - lastGamesLoadedAt > 60_000) &&
+    !gamesLoading.value
+  )
+    void loadGames();
+  if (
+    digestLoaded &&
+    preferences.value.home_widgets.includes("weekly-digest") &&
+    Date.now() - lastDigestLoadedAt > 60_000 &&
+    !digestLoading.value
+  )
+    void loadDigest();
+});
+onDeactivated(() => {
+  homeActive = false;
+});
 watch(
   () => currentUser.value?.id,
   () => {
@@ -195,6 +239,8 @@ watch(
     games.value = [];
     digest.value = null;
     gamesLoaded = digestLoaded = false;
+    lastGamesLoadedAt = lastDigestLoadedAt = 0;
+    lastGamesRevision = -1;
     gamesLoading.value = digestLoading.value = false;
     gamesError.value = digestError.value = null;
     showPicker.value = showForm.value = showRandom.value = false;

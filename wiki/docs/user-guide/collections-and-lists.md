@@ -1,8 +1,9 @@
 # Collections and Lists
 
 Games have **Collections** and Movies, TV and Anime have **Lists**. They look
-and behave the same way: a grid of cards, each showing a 2x2 collage of the
-first posters, and a page for each one.
+and behave the same way: a grid of cover cards and a page for each one. Game
+collections show a generated cover or your uploaded image; media lists show a
+collage of their first posters.
 
 ## The overview page
 
@@ -43,8 +44,8 @@ The page shows the count, a **Smart** tag if it is one, and:
 
 - **Sort**: Manual order, Title or Status.
 - **Reorder**: drag tiles or use the arrows. It saves as you go.
-- **Star**: on a tile, uses that title's poster as the cover of the whole
-  collection or list. Without a pick, the first item is the cover.
+- **Star**: on a tile, puts that title first in the cover preview. Without a
+  pick, the first items in the saved order supply the cover.
 - **Remove**: takes a title out (manual ones only).
 - **Edit** and **Delete**. Deleting never deletes the games or titles in it.
 
@@ -56,9 +57,23 @@ Names containing `%`, including **50% Off**, retain their literal spelling.
 Entering a media list's **Reorder** mode shows every media type and temporarily
 disables type filters, so arrow and drag positions match the full saved list.
 
+### Game collection covers
+
+The automatic cover uses the first four games in your saved manual order.
+Reordering those games changes the overview cover. A starred cover choice goes
+first, followed by the saved order. If none of those games has artwork, the
+collection shows one placeholder instead of four missing-image tiles.
+
+Choose **Upload custom cover** inside a collection to replace its automatic
+cover. Images can be up to 10 MB and 25 megapixels; the app fits them to the
+collection card. **Use automatic cover** removes the upload and restores the
+ordered preview. Favorites supports these cover controls too.
+
 ## Where it is stored
 
 Which games are in a collection is stored on the server with the game. The rest
 of a game collection (smart rules, empty collections, descriptions, pins, "My
 order" and cover picks) is currently kept in your browser, so it does not follow
-you to another browser or device. Lists are stored on the server in full.
+you to another browser or device. Uploaded collection covers are stored on the
+server for your account and follow a collection rename. Lists are stored on the
+server in full.

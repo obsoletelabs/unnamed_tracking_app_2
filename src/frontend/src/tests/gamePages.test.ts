@@ -62,8 +62,8 @@ it("reads only an adaptive viewport page and its status-count summary", async ()
 });
 
 it("sends selected status and favorites filters to the paged endpoint", async () => {
-  const fetcher = vi.fn(
-    async (_url: string) =>
+  const fetcher = vi.fn<typeof fetch>(
+    async () =>
       new Response(JSON.stringify(rows(0, 3)), {
         headers: {
           "X-Total-Count": "3",

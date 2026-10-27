@@ -11,6 +11,8 @@ const props = defineProps<{
   id: string;
   name: string;
   covers: (string | null | undefined)[];
+  // A server-rendered game collection cover replaces four image requests.
+  coverImage?: string;
   count: number;
   // "game" or "title", for the count line
   countNoun: string;
@@ -78,7 +80,15 @@ const displayName = computed(() =>
   >
     <div class="collection-card">
       <div class="cover">
-        <div class="cover-grid">
+        <GameArtwork
+          v-if="coverImage"
+          class="cover-cell"
+          :src="coverImage"
+          :title="`${name} cover`"
+          :placeholder-key="name"
+          fill
+        />
+        <div v-else class="cover-grid">
           <GameArtwork
             v-for="(cover, i) in coverSlots"
             :key="i"

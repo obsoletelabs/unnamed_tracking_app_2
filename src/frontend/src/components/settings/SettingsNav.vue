@@ -20,6 +20,7 @@ defineProps<{
 
 const emit = defineEmits<{
   "update:activeSection": [id: string];
+  prefetch: [id: string];
 }>();
 
 const ICON_PATHS: Record<string, string> = {
@@ -82,6 +83,8 @@ function iconPath(id: string): string {
             class="settings-nav-item"
             :class="{ active: activeSection === section.id }"
             :aria-current="activeSection === section.id ? 'page' : undefined"
+            @pointerenter="emit('prefetch', section.id)"
+            @focus="emit('prefetch', section.id)"
             @click="emit('update:activeSection', section.id)"
           >
             <span class="settings-nav-item-main">

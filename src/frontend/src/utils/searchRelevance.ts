@@ -4,6 +4,34 @@
 // 4 anything else the search still let through (typos, other spellings).
 export type TitleMatchRank = 0 | 1 | 2 | 3 | 4;
 
+// Shared by fuzzy title filtering and zero-result spelling suggestions.
+export function levenshtein(a: string, b: string): number {
+  const dp: number[][] = Array.from({ length: a.length + 1 }, (_, i) => [
+    i,
+    ...Array(b.length).fill(0),
+  ]);
+  for (let j = 0; j <= b.length; j++) dp[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      dp[i][j] =
+        a[i - 1] === b[j - 1]
+          ? dp[i - 1][j - 1]
+          : 1 + Math.min(dp[i - 1][j - 1], dp[i - 1][j], dp[i][j - 1]);
+    }
+  }
+  return dp[a.length][b.length];
+}
+
+export function fuzzyTitleMatch(title: string, query: string): boolean {
+  const lowerTitle = title.toLowerCase();
+  if (lowerTitle.includes(query)) return true;
+  if (query.length < 4) return false;
+  const threshold = Math.max(1, Math.floor(query.length * 0.34));
+  return lowerTitle
+    .split(/\s+/)
+    .some((word) => levenshtein(query, word) <= threshold);
+}
+
 export function titleMatchRank(
   titles: readonly string[],
   query: string,

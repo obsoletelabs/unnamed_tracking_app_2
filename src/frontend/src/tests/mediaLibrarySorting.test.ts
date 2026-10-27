@@ -155,3 +155,48 @@ it("exposes accessible sortable headers and preserves the server's global row or
   ).toContain("Title");
   view.unmount();
 });
+
+it("loads more at the end of a board status row without blanking its current cards", async () => {
+  localStorage.setItem("libraryLayout", "board");
+  const card: LibraryCardVM = {
+    id: "watched",
+    title: "Seen",
+    poster: null,
+    status: "watched",
+    favorite: false,
+    score: null,
+    personalRank: null,
+    note: null,
+    genres: [],
+    isEpisodic: false,
+    watched: 1,
+    total: 1,
+    progressLabel: "Seen",
+    canAdvance: false,
+    releaseYear: null,
+  };
+  const view = mount(MediaLibraryView, {
+    props: {
+      kind: "movie",
+      addLabel: "Add movie",
+      items: [
+        card,
+        { ...card, id: "planned", title: "Planned", status: "watchlist" },
+      ],
+      total: 20,
+      statusCounts: { WATCHED: 10, WATCHLIST: 10 },
+      hasMore: true,
+      loading: false,
+      error: null,
+      detailRoute: (id) => `/movies/${id}`,
+    },
+    global: { stubs: { RouterLink: true, MediaTopBar: true, UiModal: true } },
+  });
+  const row = view
+    .findAll(".board-section")
+    .find((section) => section.text().includes("Seen"))!;
+  await row.findAll(".board-nav button")[1]!.trigger("click");
+  expect(view.emitted("load-more")).toHaveLength(1);
+  expect(row.text()).toContain("Seen");
+  view.unmount();
+});

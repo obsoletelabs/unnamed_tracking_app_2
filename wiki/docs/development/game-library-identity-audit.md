@@ -319,7 +319,7 @@ metadata through cascades.
 
 | Method | Endpoint | Used for | Contract evidence |
 | --- | --- | --- | --- |
-| GET | `/api/game/list?skip=&limit=` | Read the library (`limit` ≤ 200, ordered by `sort_title`) | `test_list_pages_with_the_maximum_page_size` |
+| GET | `/api/game/list?skip=&limit=` | Read the library (`limit` ≤ 1,000; existing 200-row clients remain valid; ordered by `sort_title`) | `test_list_pages_with_the_maximum_page_size` |
 | POST | `/api/game/create` | Create; idempotent with `playnite_guid` (201 new, 200 existing, 409 folder owned by another GUID) | `test_create_is_idempotent_by_guid_across_renames_and_retries`, `test_folder_claimed_by_another_playnite_entry_is_a_conflict`, `tests/test_games.py` (4 Playnite tests) |
 | PATCH | `/api/game/update/{game_id}` | Update synced fields | `test_synced_state_updates_by_id_without_locking_or_dropping_the_guid` |
 | POST | `/api/game/{game_id}/assets/{asset_kind}` | Upload cover/banner | `test_artwork_over_one_megabyte_uploads_with_the_api_key` |

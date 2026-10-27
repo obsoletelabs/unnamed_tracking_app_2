@@ -15,6 +15,7 @@ const props = withDefaults(
   defineProps<{
     src: string;
     title: string;
+    placeholderKey?: string;
     eager?: boolean;
     fill?: boolean;
     fit?: "cover" | "contain";
@@ -33,7 +34,11 @@ const IMAGE_PREFETCH_MARGIN = 160;
 // titles still get distinct colors, and the choice stays fixed across renders.
 const placeholderBackground = computed(() => {
   const gameId =
-    props.src.match(/\/api\/game\/([0-9a-f-]+)/i)?.[1] ?? props.title;
+    props.placeholderKey ??
+    props.src.match(
+      /\/api\/game\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\//i,
+    )?.[1] ??
+    props.title;
   let hash = 2166136261;
   for (let index = 0; index < gameId.length; index++) {
     hash ^= gameId.charCodeAt(index);

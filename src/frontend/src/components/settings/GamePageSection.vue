@@ -4,24 +4,28 @@
 // Saved on the server as it is changed.
 import { ref, onMounted } from "vue";
 import PageSettingsEditor from "../PageSettingsEditor.vue";
+import { queuePreferences } from "../../services/preferences";
 import {
-  DEFAULT_PREFERENCES,
-  fetchPreferences,
-  queuePreferences,
-} from "../../services/preferences";
-import { preferences as sharedPreferences } from "../../state/preferences";
+  preferences as sharedPreferences,
+  preferencesLoaded,
+  preferencesError,
+  loadSharedPreferences,
+} from "../../state/preferences";
 import { resolvePage } from "../../utils/gamePage";
 import type { PageSettings } from "../../utils/gamePage";
 
 const settings = ref<PageSettings>(
-  resolvePage(DEFAULT_PREFERENCES.game_page, null),
+  resolvePage(sharedPreferences.value.game_page, null),
 );
-const loaded = ref(false);
+const loaded = ref(preferencesLoaded.value && !preferencesError.value);
 const error = ref<string | null>(null);
 
 onMounted(async () => {
+  if (loaded.value) return;
   try {
-    settings.value = resolvePage((await fetchPreferences()).game_page, null);
+    await loadSharedPreferences();
+    if (preferencesError.value) throw new Error(preferencesError.value);
+    settings.value = resolvePage(sharedPreferences.value.game_page, null);
   } catch (e) {
     error.value = e instanceof Error ? e.message : "Failed to load settings.";
   } finally {

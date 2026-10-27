@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import HeartIcon from "../HeartIcon.vue";
+import { vViewportImage } from "../../directives/lazyBackground";
 import {
   ref,
   computed,
@@ -442,12 +443,17 @@ function moveBoard(status: string, direction: -1 | 1, available: number) {
     boardPageStarts[status] = Math.max(0, current - available);
     return;
   }
+  const rowCount = props.items.filter(
+    (item) => statusBucket(item.status) === status && matchesFilterState(item),
+  ).length;
   if (
-    current + available >= props.items.length &&
+    current + available >= rowCount &&
     props.items.length < props.total &&
     props.hasMore !== false
   ) {
-    emit("load-more");
+    if (!props.loading) emit("load-more");
+    // Keep the current cards visible until another page is available.
+    return;
   }
   boardPageStarts[status] = current + available;
 }
@@ -1103,7 +1109,7 @@ defineExpose({ openQuickAdd });
                   <div class="list-thumb">
                     <img
                       v-if="it.poster"
-                      :src="it.poster"
+                      v-viewport-image="it.poster"
                       :alt="it.title"
                       loading="lazy"
                       decoding="async"
@@ -1261,7 +1267,7 @@ defineExpose({ openQuickAdd });
                 <div class="shelf-art">
                   <img
                     v-if="it.poster"
-                    :src="it.poster"
+                    v-viewport-image="it.poster"
                     :alt="it.title"
                     loading="lazy"
                     decoding="async"
@@ -1428,8 +1434,9 @@ defineExpose({ openQuickAdd });
                 <button
                   type="button"
                   :disabled="
-                    group.start + boardVisibleCount >= group.rowItems.length &&
-                    items.length >= total
+                    loading ||
+                    (group.start + boardVisibleCount >= group.rowItems.length &&
+                      (items.length >= total || hasMore === false))
                   "
                   @click="moveBoard(group.status.key, 1, boardVisibleCount)"
                 >
@@ -1453,7 +1460,7 @@ defineExpose({ openQuickAdd });
                   <div class="board-art">
                     <img
                       v-if="it.poster"
-                      :src="it.poster"
+                      v-viewport-image="it.poster"
                       :alt="it.title"
                       loading="lazy"
                       decoding="async"
