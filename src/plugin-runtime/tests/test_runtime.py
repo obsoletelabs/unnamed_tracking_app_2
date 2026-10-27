@@ -8,12 +8,20 @@ import zipfile
 from uuid import uuid4
 
 import pytest
+
+import runtime
 from runtime import (
     OutboundNetworkPolicy,
     PluginSpec,
     ResourceLimits,
     RuntimePolicyError,
 )
+
+
+def test_runtime_rejects_an_unsafe_token_before_starting(monkeypatch) -> None:
+    monkeypatch.setenv("PLUGIN_RUNTIME_TOKEN", "x" * 32 + "\n")
+    with pytest.raises(RuntimeError, match="header-safe ASCII"):
+        runtime.main()
 
 
 def test_plugin_environment_is_default_deny_for_core_secrets() -> None:

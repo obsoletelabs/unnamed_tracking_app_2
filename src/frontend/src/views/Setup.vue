@@ -36,6 +36,30 @@ const saving = ref(false);
 const error = ref<string | null>(null);
 const saved = ref(false);
 const passwordPolicy = ref<PasswordPolicy | null>(null);
+const passwordConfirmation = ref("");
+const setupRequired = ref(false);
+
+const setupPasswordPolicy = computed(() => {
+  if (!passwordPolicy.value) return null;
+  const policy = { ...passwordPolicy.value };
+  const fields: Array<[keyof PasswordPolicy, string]> = [
+    ["min_length", "PASSWORD_MIN_LENGTH"],
+    ["require_uppercase", "PASSWORD_REQUIRE_UPPERCASE"],
+    ["require_lowercase", "PASSWORD_REQUIRE_LOWERCASE"],
+    ["require_digit", "PASSWORD_REQUIRE_DIGIT"],
+    ["require_symbol", "PASSWORD_REQUIRE_SYMBOL"],
+  ];
+  for (const [key, name] of fields) {
+    const field = configuration.value?.sections
+      .flatMap((section) => section.fields)
+      .find((candidate) => candidate.name === name);
+    if (!field) continue;
+    const value = fieldValue(field);
+    if (key === "min_length") policy.min_length = Number(value);
+    else policy[key] = Boolean(value);
+  }
+  return policy;
+});
 
 const sections = computed(() =>
   (configuration.value?.sections ?? []).filter((section) => section.visible),
@@ -211,6 +235,7 @@ onMounted(async () => {
       fetchPasswordPolicy(),
     ]);
     passwordPolicy.value = policy;
+    setupRequired.value = status.setup_required;
 
     if (!status.setup_required && status.startup_mode === "development") {
       await checkAuth();
@@ -372,10 +397,15 @@ async function submit() {
     .find((section) => section.id === "first_admin")
     ?.fields.find((field) => field.name === "PRIMARY_USER_PASSWORD");
   const password = passwordField ? textFieldValue(passwordField) : "";
-  if (password && passwordPolicy.value) {
+  if (setupRequired.value && password !== passwordConfirmation.value) {
+    currentSection.value = "first_admin";
+    error.value = "Administrator passwords do not match.";
+    return;
+  }
+  if (password && setupPasswordPolicy.value) {
     const validationErrors = passwordValidationErrors(
       password,
-      passwordPolicy.value,
+      setupPasswordPolicy.value,
     );
     if (validationErrors.length) {
       currentSection.value = "first_admin";
@@ -635,10 +665,11 @@ async function submit() {
 
                   <PasswordRequirements
                     v-if="
-                      field.name === 'PRIMARY_USER_PASSWORD' && passwordPolicy
+                      field.name === 'PRIMARY_USER_PASSWORD' &&
+                      setupPasswordPolicy
                     "
                     :password="String(fieldValue(field) ?? '')"
-                    :policy="passwordPolicy"
+                    :policy="setupPasswordPolicy"
                   />
 
                   <small v-if="field.description">{{
@@ -659,6 +690,24 @@ async function submit() {
                     This value comes from the deployment environment and cannot
                     be changed here.
                   </small>
+                </label>
+                <label
+                  v-if="
+                    group.fields.some(
+                      (field) => field.name === 'PRIMARY_USER_PASSWORD',
+                    ) && setupRequired
+                  "
+                >
+                  <span
+                    >Confirm administrator password
+                    <b class="required-mark">*</b></span
+                  >
+                  <PasswordInput
+                    v-model="passwordConfirmation"
+                    mode="new"
+                    autocomplete="new-password"
+                    required
+                  />
                 </label>
               </div>
             </section>

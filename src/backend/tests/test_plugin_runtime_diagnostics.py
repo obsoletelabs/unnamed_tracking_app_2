@@ -5,6 +5,7 @@ import pytest
 
 from src.plugin_api import runtime_client
 from src.plugin_api.runtime_client import PluginRuntimeClient, PluginRuntimeUnavailable
+from src.plugin_api.runtime_token import runtime_token_valid
 
 REAL_CLIENT = httpx.AsyncClient  # patched per call below; keep the original
 TOKEN = "t" * 40
@@ -52,6 +53,15 @@ async def test_a_missing_token_is_a_configuration_error_that_names_the_setting(m
         and "32 characters" in str(error)
         and "restart" in str(error)
     )
+
+
+@pytest.mark.parametrize("token", ["x" * 31, "x" * 257, "x" * 32 + "é", "x" * 32 + ":"])
+def test_plugin_runtime_token_rejects_header_or_env_unsafe_values(token):
+    assert not runtime_token_valid(token)
+
+
+def test_plugin_runtime_token_accepts_generated_hex_value():
+    assert runtime_token_valid("a9" * 32)
 
 
 @pytest.mark.parametrize(

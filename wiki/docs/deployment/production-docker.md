@@ -41,9 +41,13 @@ PID 1 handles SIGTERM/SIGINT, sends SIGTERM to FastAPI, waits for it, then asks 
 ## Plugin Runtime isolation
 
 Production Compose also defines a separate plugin-runtime service for the
-Plugin Manager. Set `PLUGIN_RUNTIME_TOKEN` to a random value of at least 32
-characters; it is passed only to the application and runtime services for
-their authenticated internal transport.
+Plugin Manager. Generate `PLUGIN_RUNTIME_TOKEN` with `openssl rand -hex 32`
+and set the same value for the application and runtime. The token must be
+32–256 ASCII letters, digits, dots, underscores, tildes or hyphens; spaces,
+quotes, colons and non-ASCII characters are rejected with a configuration
+error. This avoids values that break HTTP headers or Compose `.env` parsing.
+It is passed only to the application and runtime services for their
+authenticated internal transport.
 
 The application joins a dedicated internal gateway network so it can reach the
 runtime. The runtime has no membership in the core application/database

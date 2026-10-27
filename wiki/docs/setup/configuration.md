@@ -37,7 +37,10 @@ On first setup:
 3. Required sections are selected automatically.
 4. Optional sections such as API keys and OIDC can be selected when needed.
 5. Environment-owned fields are populated and locked.
-6. The first administrator is created when setup is completed.
+6. Enter and confirm the first administrator password. The password requirements
+   update as you change the password policy in setup, and the server validates
+   against that final policy before creating the account.
+7. The first administrator is created when setup is completed.
 
 After the first administrator exists, setup becomes a configuration editor and configuration changes require an authenticated administrator.
 

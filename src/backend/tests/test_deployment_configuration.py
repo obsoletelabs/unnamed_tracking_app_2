@@ -13,7 +13,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from src.api.routes import auth_oidc, deployment_settings, setup
-from src.core.auth import hash_token, session_cookie_name
+from src.core.auth import hash_token, session_cookie_name, validate_password
 from src.core.crypto import decrypt_secret, encrypt_secret
 from src.core.env_handler import EnvConfigHandler
 from src.core.nginx_configuration import NginxActivationError
@@ -57,6 +57,38 @@ class ConfigurationDb:
 
     async def refresh(self, row):
         self.session.refresh(row)
+
+
+def test_first_admin_uses_policy_selected_during_setup(monkeypatch):
+    monkeypatch.setattr(
+        setup,
+        "password_policy",
+        lambda: {
+            "min_length": 9,
+            "require_uppercase": False,
+            "require_lowercase": False,
+            "require_digit": False,
+            "require_symbol": False,
+        },
+    )
+    app = AppIntegrationSettings()
+    handler = EnvConfigHandler({})
+    setup._save_password_policy(app, {"PASSWORD_MIN_LENGTH": 14}, handler)
+    policy = setup._effective_setup_password_policy(app, handler)
+    with pytest.raises(ValueError, match="at least 14"):
+        validate_password("short-pass", policy)
+    assert validate_password("long-enough-pass", policy) == "long-enough-pass"
+
+    setup._save_password_policy(app, {"PASSWORD_MIN_LENGTH": 4}, handler)
+    assert validate_password(
+        "short", setup._effective_setup_password_policy(app, handler)
+    ) == "short"
+
+    locked = EnvConfigHandler({"PASSWORD_MIN_LENGTH": "20"})
+    assert setup._effective_setup_password_policy(app, locked)["min_length"] == 9
+
+    # The request model must wait until submitted settings have been applied.
+    assert setup.SetupRequest(password="short-pass").password == "short-pass"
 
 
 @pytest.fixture

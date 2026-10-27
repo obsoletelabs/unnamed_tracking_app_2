@@ -3704,8 +3704,12 @@ class RuntimeServer(ThreadingHTTPServer):
 
 def main() -> None:
     token = os.environ.get("PLUGIN_RUNTIME_TOKEN", "")
-    if len(token) < 32:
-        raise RuntimeError("PLUGIN_RUNTIME_TOKEN must contain at least 256 bits")
+    if re.fullmatch(r"[A-Za-z0-9._~-]{32,256}", token) is None:
+        raise RuntimeError(
+            "PLUGIN_RUNTIME_TOKEN must be 32-256 header-safe ASCII characters "
+            "(letters, digits, dots, underscores, tildes or hyphens); "
+            "generate one with `openssl rand -hex 32`"
+        )
     root = Path(os.environ.get("PLUGIN_ROOT", "/var/lib/unnamed-tracking/plugins"))
     registry = PluginRegistry(root, PluginSupervisor())
     registry.supervisor.probe_isolation()

@@ -189,7 +189,7 @@ OIDC issuer, client ID, and client secret become required when the OIDC section 
 | Variable | Default | Purpose |
 |---|---|---|
 | `PLUGIN_RUNTIME_URL` | `http://plugin-runtime:8000` | Internal application-to-runtime URL. Do not publish it. |
-| `PLUGIN_RUNTIME_TOKEN` | — | Shared internal transport token; production values must be unique and at least 32 characters. |
+| `PLUGIN_RUNTIME_TOKEN` | — | Shared internal transport token; use `openssl rand -hex 32`. Values must be unique, 32–256 characters, and contain only ASCII letters, digits, `.`, `_`, `~` or `-`. The app and runtime must use the same value. |
 | `PLUGIN_GATEWAY_URL` | — | Internal app address reachable from plugin-runtime. An explicit runtime value wins; otherwise an explicitly configured app value is advertised over authenticated transport. Production Compose uses `http://app`, development uses `http://backend:8000`. |
 | `PLUGIN_TRUSTED_PUBLISHER_REGISTRY` | Built-in registry | Optional path to an additional reviewed publisher registry. |
 | `PLUGIN_CATALOG_URL` | Official repository `list.json` | Default official plugin catalogue URL. |

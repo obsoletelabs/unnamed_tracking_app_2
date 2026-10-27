@@ -76,6 +76,7 @@ from src.plugin_api.legacy_library import export_legacy_records
 from src.plugin_api.media_enrichment import dispatch_enrichment
 from src.plugin_api.media_sync import dispatch_media_sync
 from src.plugin_api.outbound import outbound_json
+from src.plugin_api.runtime_token import runtime_token_valid
 from src.plugin_api.sessions import dispatch_sessions
 
 _DATA_ROOT = Path("/data/users")
@@ -134,7 +135,7 @@ _METHOD_CAPABILITIES = {
 
 def runtime_token_is_valid(token: str | None) -> bool:
     configured = os.getenv("PLUGIN_RUNTIME_TOKEN", "")
-    if not configured or not token:
+    if not runtime_token_valid(configured) or not token:
         return False
     return hmac.compare_digest(configured, token)
 
