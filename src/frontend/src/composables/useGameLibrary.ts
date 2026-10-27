@@ -1,4 +1,8 @@
-import { titleMatchRank } from "../utils/searchRelevance";
+import {
+  titleMatchRank,
+  fuzzyTitleMatch,
+  levenshtein,
+} from "../utils/searchRelevance";
 import type { SegmentOption } from "../components/SegmentedTabs.vue";
 import { matchesShortcut } from "../state/shortcuts";
 import { preferences } from "../state/preferences";
@@ -1119,18 +1123,12 @@ export function useGameLibrary() {
   });
 
   // --- Keyboard shortcuts ------------------------------------------------
-  // "/" focuses search (common convention, GitHub, Linear, etc.), "n" opens
-  // Add Game, Escape backs out of whatever's active. All disabled while
-  // typing in a field or while a modal/dialog is open, so they never hijack
-  // normal typing or double-fire on top of a dialog's own Escape handling.
+  // Ignore shortcuts while typing or using a dialog so keys do not act twice.
   const searchInputRef = useTemplateRef<HTMLInputElement>("librarySearch");
   function isTypingTarget(target: EventTarget | null): boolean {
     if (!(target instanceof HTMLElement)) return false;
-    const tag = target.tagName;
     return (
-      tag === "INPUT" ||
-      tag === "TEXTAREA" ||
-      tag === "SELECT" ||
+      ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) ||
       target.isContentEditable
     );
   }
@@ -1554,39 +1552,6 @@ export function useGameLibrary() {
   const isEmpty = computed(
     () => !loading.value && !error.value && filteredGames.value.length === 0,
   );
-
-  // zero-result search suggestions, a cheap edit-distance check against
-  // every known title, not a real fuzzy-search index, but enough to catch
-  // the common case of a typo
-  function levenshtein(a: string, b: string): number {
-    const dp: number[][] = Array.from({ length: a.length + 1 }, (_, i) => [
-      i,
-      ...Array(b.length).fill(0),
-    ]);
-    for (let j = 0; j <= b.length; j++) dp[0][j] = j;
-    for (let i = 1; i <= a.length; i++) {
-      for (let j = 1; j <= b.length; j++) {
-        dp[i][j] =
-          a[i - 1] === b[j - 1]
-            ? dp[i - 1][j - 1]
-            : 1 + Math.min(dp[i - 1][j - 1], dp[i - 1][j], dp[i][j - 1]);
-      }
-    }
-    return dp[a.length][b.length];
-  }
-
-  // exact substring always wins first (cheap, predictable); only falls back to
-  // edit-distance against individual title words for queries long enough that
-  // a couple of typos won't produce false positives against short titles
-  function fuzzyTitleMatch(title: string, q: string): boolean {
-    const lowerTitle = title.toLowerCase();
-    if (lowerTitle.includes(q)) return true;
-    if (q.length < 4) return false;
-    const threshold = Math.max(1, Math.floor(q.length * 0.34));
-    return lowerTitle
-      .split(/\s+/)
-      .some((word) => levenshtein(q, word) <= threshold);
-  }
 
   const searchSuggestions = computed(() => {
     const q = searchQuery.value.trim().toLowerCase();

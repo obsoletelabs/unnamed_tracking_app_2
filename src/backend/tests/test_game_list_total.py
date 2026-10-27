@@ -30,6 +30,9 @@ async def test_total_header_counts_all_matches_regardless_of_page(flow):
     last = await flow.client.get("/api/game/list?skip=4&limit=2")
     assert len(last.json()) == 1
     assert last.headers["x-total-count"] == "5"
+    beyond = await flow.client.get("/api/game/list?skip=10&limit=2")
+    assert beyond.status_code == 200 and beyond.json() == []
+    assert beyond.headers["x-total-count"] == "5"
 
 
 async def test_total_header_follows_filters_and_hides_other_accounts(flow):

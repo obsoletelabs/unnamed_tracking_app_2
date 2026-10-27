@@ -485,9 +485,11 @@ async def list_games(
     # to one HTTP request while preserving accurate tab totals.
     page_stmt = select(Game).where(*predicates).order_by(Game.sort_title).offset(skip).limit(limit)
     if include_counts:
-        total_count = sql_count(Game.id)
-        if status_filter is not None:
-            total_count = total_count.filter(Game.status == status_filter)
+        total_count = (
+            sql_count(Game.id).filter(Game.status == status_filter)
+            if status_filter is not None
+            else sql_count(Game.id)
+        )
         status_columns = [
             sql_count(Game.id)
             .filter(Game.status == game_status)
@@ -511,11 +513,11 @@ async def list_games(
         )
         rows = result.all()
         games = [row[0] for row in rows if row[0] is not None]
-        counts = rows[0] if rows else None
-        total = int(counts[1]) if counts is not None else 0
+        counts = rows[0][1:] if rows else (await db.execute(select(count_subquery))).one()
+        total = int(counts[0])
         response.headers["X-Total-Count"] = str(total)
         status_counts = {
-            game_status.value.lower().replace("_", " "): int(counts[index + 2])
+            game_status.value.lower().replace("_", " "): int(counts[index + 1])
             for index, game_status in enumerate(GameStatus)
         }
         response.headers["X-Status-Counts"] = ",".join(
