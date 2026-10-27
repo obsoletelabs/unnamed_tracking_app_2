@@ -11,6 +11,8 @@ from pathlib import Path
 
 from PIL import Image
 
+from src.core.cache_metrics import cache_eviction, cache_refresh, cache_request
+
 _BACKDROP = (26, 26, 26)  # what a see-through PNG is laid over (the page's dark)
 _QUALITY = 82
 
@@ -29,19 +31,32 @@ def invalidate_previews(cache_root: Path, game_id: str, kind: str) -> None:
     request for any width is made from the replacement and never from the old image."""
     folder = cache_root / "asset-previews" / game_id
     for stale in folder.glob(f"{kind}-*.jpg"):
-        stale.unlink(missing_ok=True)
+        try:
+            stale.unlink()
+        except FileNotFoundError:
+            continue
+        cache_eviction("artwork_preview", "invalidation")
 
 
 def ensure_preview(source: Path, target: Path, width: int) -> tuple[Path, str]:
     """The file to send for `source` at most `width` pixels wide, and its media
     type. An image already that small (or smaller) is sent as it is."""
     if target.is_file() and target.stat().st_mtime >= source.stat().st_mtime:
+        cache_request("artwork_preview", "hit")
         return target, "image/jpeg"
     with Image.open(source) as opened:
         if opened.width <= width:
+            cache_request("artwork_preview", "bypass")
             return source, "image/png"
-        has_alpha = "A" in opened.getbands()
-        image = opened.convert("RGBA" if has_alpha else "RGB")
+        cache_request("artwork_preview", "stale" if target.is_file() else "miss")
+        with cache_refresh("artwork_preview"):
+            return _rebuild_preview(opened, target, width)
+
+
+def _rebuild_preview(opened: Image.Image, target: Path, width: int) -> tuple[Path, str]:
+    """The existing atomic resize/store operation, timed independently of hits."""
+    has_alpha = "A" in opened.getbands()
+    image = opened.convert("RGBA" if has_alpha else "RGB")
     height = max(1, round(image.height * width / image.width))
     image = image.resize((width, height), Image.Resampling.BILINEAR, reducing_gap=2.0)
     if has_alpha:

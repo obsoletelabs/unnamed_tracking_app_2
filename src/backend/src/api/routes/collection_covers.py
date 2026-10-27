@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.routes.utils.games import _DATA_ROOT
 from src.core.auth import app_grant, get_current_user
+from src.core.cache_metrics import cache_refresh, cache_request
 from src.database.models.game import Game
 from src.database.models.user import User
 from src.database.session import get_db
@@ -46,8 +47,15 @@ def _custom_path(user_id: UUID, name: str) -> Path:
 
 
 def _placeholder(canvas: Image.Image, seed: str, box: tuple[int, int, int, int]) -> None:
-    """Match the library's stable gamepad and color palette without an image request."""
+    """Match the library's stable gamepad and palette without an image request."""
     background, foreground, _accent = cover_palette(seed)
+    _placeholder_gradient(canvas, background, foreground, box)
+    _placeholder_gamepad(canvas, box)
+
+
+def _placeholder_gradient(
+    canvas: Image.Image, background: str, foreground: str, box: tuple[int, int, int, int]
+) -> None:
     left, top, right, bottom = box
     draw = ImageDraw.Draw(canvas)
     height = bottom - top
@@ -59,35 +67,40 @@ def _placeholder(canvas: Image.Image, seed: str, box: tuple[int, int, int, int])
             round(a * (1 - fraction) + b * fraction) for a, b in zip(start, end, strict=True)
         )
         draw.line((left, y, right, y), fill=color)
-    width = right - left
-    scale = 0.54 * min(width / 64, height / 64)
-    cx, cy = (left + right) / 2, (top + bottom) / 2
+
+
+_GAMEPAD_OUTLINE = (
+    (17, 24),
+    (47, 24),
+    (55, 30),
+    (59, 48),
+    (52, 54),
+    (44, 46),
+    (20, 46),
+    (12, 54),
+    (5, 48),
+    (9, 30),
+    (17, 24),
+)
+
+
+def _placeholder_gamepad(canvas: Image.Image, box: tuple[int, int, int, int]) -> None:
+    draw = ImageDraw.Draw(canvas)
+    scale = 0.54 * min((box[2] - box[0]) / 64, (box[3] - box[1]) / 64)
+    center = ((box[0] + box[2]) / 2, (box[1] + box[3]) / 2)
 
     def point(x: float, y: float) -> tuple[int, int]:
-        return round(cx + (x - 32) * scale), round(cy + (y - 32) * scale)
+        return round(center[0] + (x - 32) * scale), round(center[1] + (y - 32) * scale)
 
     stroke = max(2, round(3 * scale))
-    gamepad = (
-        (17, 24),
-        (47, 24),
-        (55, 30),
-        (59, 48),
-        (52, 54),
-        (44, 46),
-        (20, 46),
-        (12, 54),
-        (5, 48),
-        (9, 30),
-        (17, 24),
+    draw.line(
+        [point(x, y) for x, y in _GAMEPAD_OUTLINE], fill="#aeb7c2", width=stroke, joint="curve"
     )
-    path = [point(x, y) for x, y in gamepad]
-    icon_color = "#aeb7c2"
-    draw.line(path, fill=icon_color, width=stroke, joint="curve")
     for line in (((19, 31), (19, 43)), ((13, 37), (25, 37))):
-        draw.line((point(*line[0]), point(*line[1])), fill=icon_color, width=stroke)
+        draw.line((point(*line[0]), point(*line[1])), fill="#aeb7c2", width=stroke)
     for x, y in ((42, 34), (49, 39)):
         px, py = point(x, y)
-        draw.ellipse((px - stroke, py - stroke, px + stroke, py + stroke), fill=icon_color)
+        draw.ellipse((px - stroke, py - stroke, px + stroke, py + stroke), fill="#aeb7c2")
 
 
 def _source_signature(rows: list[tuple[UUID, str, Path]]) -> str:
@@ -154,42 +167,16 @@ def _save_custom(data: bytes, destination: Path) -> None:
     image.close()
 
 
-@router.get("/collection-cover")
-@app_grant("library.sync")
-async def get_collection_cover(
-    request: Request,
-    name: Annotated[str, Query(min_length=1, max_length=200)],
-    ids: Annotated[list[UUID] | None, Query()] = None,
-    owner: Annotated[UUID | None, Query()] = None,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> Response:
-    """Serve a user upload or a cached collage of the ordered first four games."""
-    if owner is not None and owner != current_user.id:
-        raise HTTPException(403, "This collection cover belongs to another account.")
-    cache_control = None if owner is not None else "private, no-cache"
-    chosen = ids or []
-    if len(chosen) > 4 or len(set(chosen)) != len(chosen):
-        raise HTTPException(400, "Choose up to four distinct games.")
-    custom = _custom_path(current_user.id, name)
-    if await asyncio.to_thread(custom.is_file):
-        revision = await stored_file_revision(custom)
-        return artwork_response(
-            request,
-            revision=revision,
-            source_revision=revision,
-            version=None,
-            media_type="image/webp",
-            path=custom,
-            cache_control=cache_control,
-        )
-
+async def _collection_rows(
+    db: AsyncSession, user_id: UUID, chosen: list[UUID]
+) -> list[tuple[UUID, str, Path]]:
+    """Validate ownership and hydrate source storage before rendering a collage."""
     games = (
         (
             await db.scalars(
                 select(Game)
                 .where(
-                    Game.user_id == current_user.id,
+                    Game.user_id == user_id,
                     Game.deleted_at.is_(None),
                     Game.id.in_(chosen),
                 )
@@ -209,23 +196,64 @@ async def get_collection_cover(
             )
     except game_folders.FolderStorageError as exc:
         raise HTTPException(409, str(exc)) from exc
-    rows = [
+    return [
         (
             game_id,
             by_id[game_id].title,
             _DATA_ROOT
-            / str(current_user.id)
+            / str(user_id)
             / "games"
             / by_id[game_id].folder_location
             / ASSET_FILENAMES["key_art"],
         )
         for game_id in chosen
     ]
+
+
+@router.get("/collection-cover")
+@app_grant("library.sync")
+async def get_collection_cover(
+    request: Request,
+    *,
+    name: Annotated[str, Query(min_length=1, max_length=200)],
+    ids: Annotated[list[UUID] | None, Query()] = None,
+    owner: Annotated[UUID | None, Query()] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Response:
+    """Serve a user upload or a cached collage of the ordered first four games."""
+    if owner is not None and owner != current_user.id:
+        raise HTTPException(403, "This collection cover belongs to another account.")
+    cache_control = None if owner is not None else "private, no-cache"
+    chosen = ids or []
+    if len(chosen) > 4 or len(set(chosen)) != len(chosen):
+        raise HTTPException(400, "Choose up to four distinct games.")
+    custom = _custom_path(current_user.id, name)
+    if await asyncio.to_thread(custom.is_file):
+        cache_request("collection_cover", "bypass")
+        revision = await stored_file_revision(custom)
+        return artwork_response(
+            request,
+            revision=revision,
+            source_revision=revision,
+            version=None,
+            media_type="image/webp",
+            path=custom,
+            cache_control=cache_control,
+        )
+
+    rows = await _collection_rows(db, current_user.id, chosen)
     signature = await asyncio.to_thread(_source_signature, rows)
     key = hashlib.sha256(f"v1:{name}:{signature}".encode("utf-8")).hexdigest()
     destination = _cover_dir(current_user.id) / "cache" / f"{key}.webp"
     if not await asyncio.to_thread(destination.is_file):
-        await finish_storage_operation(asyncio.to_thread(_render_cover, rows, name, destination))
+        cache_request("collection_cover", "miss")
+        with cache_refresh("collection_cover"):
+            await finish_storage_operation(
+                asyncio.to_thread(_render_cover, rows, name, destination)
+            )
+    else:
+        cache_request("collection_cover", "hit")
     revision = await stored_file_revision(destination)
     return artwork_response(
         request,

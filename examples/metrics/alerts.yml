@@ -27,6 +27,11 @@ groups:
         for: 10m
         labels: { severity: warning }
         annotations: { summary: "Sustained authentication rate limiting (possible credential stuffing)" }
+      - alert: UnnamedTrackingSlowLibraryResponses
+        expr: histogram_quantile(0.95, sum by (job, instance, route, le) (rate(uta_http_response_duration_seconds_bucket{method="GET",response_kind="response",outcome="complete",route=~"/api/game/(list|collection-index)"}[10m]))) > 2
+        for: 15m
+        labels: { severity: warning }
+        annotations: { summary: "Completed library response p95 exceeds two seconds on {{ $labels.instance }} ({{ $labels.route }})" }
       - alert: UnnamedTrackingPluginRuntimeDown
         expr: uta_plugin_runtime_up == 0
         for: 10m

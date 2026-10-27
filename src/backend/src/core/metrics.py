@@ -67,6 +67,57 @@ HTTP_DURATION = Histogram(
     buckets=_REQUEST_BUCKETS,
     registry=REGISTRY,
 )
+HTTP_RESPONSE_DURATION = Histogram(
+    "uta_http_response_duration_seconds",
+    "Time until the final ASGI body send or terminal error/disconnect, excluding background work.",
+    ("method", "route", "response_kind", "outcome"),
+    buckets=_REQUEST_BUCKETS,
+    registry=REGISTRY,
+)
+HTTP_RESPONSE_BYTES = Counter(
+    "uta_http_response_bytes_total",
+    "Application body bytes accepted by ASGI send, before reverse-proxy compression.",
+    ("method", "route", "response_kind"),
+    registry=REGISTRY,
+)
+HTTP_REQUEST_BYTES = Counter(
+    "uta_http_request_bytes_total",
+    "Request body bytes consumed by the application, without rereading or buffering.",
+    ("method", "route"),
+    registry=REGISTRY,
+)
+HTTP_DISCONNECTS = Counter(
+    "uta_http_disconnects_total",
+    "Observed disconnects, send failures or task cancellations, once per request.",
+    ("method", "route", "phase"),
+    registry=REGISTRY,
+)
+CACHE_REQUESTS = Counter(
+    "uta_cache_requests_total",
+    "Cache lookups by fixed kind and hit/miss/stale/bypass/negative_hit outcome.",
+    ("cache_kind", "outcome"),
+    registry=REGISTRY,
+)
+CACHE_REFRESH_DURATION = Histogram(
+    "uta_cache_refresh_duration_seconds",
+    "Metadata fetch/store or derived-artwork rebuild duration, including failures.",
+    ("cache_kind", "outcome"),
+    buckets=_SHORT_BUCKETS,
+    registry=REGISTRY,
+)
+CACHE_EVICTIONS = Counter(
+    "uta_cache_evictions_total",
+    "Observed cache entry removals by fixed kind and reason; not a storage inventory.",
+    ("cache_kind", "reason"),
+    registry=REGISTRY,
+)
+DATABASE_QUERY_DURATION = Histogram(
+    "uta_database_query_duration_seconds",
+    "SQL cursor execution time, excluding pool wait and result consumption.",
+    ("operation", "outcome"),
+    buckets=_REQUEST_BUCKETS,
+    registry=REGISTRY,
+)
 HTTP_IN_FLIGHT = Gauge(
     "uta_http_requests_in_flight",
     "HTTP requests currently being handled.",
