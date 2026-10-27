@@ -14,8 +14,10 @@ import hashlib
 import io
 import os
 import tempfile
+from dataclasses import dataclass, field
 from http.client import HTTPException
 from pathlib import Path
+from threading import Lock
 from urllib.parse import quote, urljoin
 
 from PIL import Image, UnidentifiedImageError
@@ -32,6 +34,39 @@ _BACKDROP = (26, 26, 26)  # what a see-through image is laid over
 
 class RemoteImageError(Exception):
     """The image could not be fetched or is not one we will keep."""
+
+
+@dataclass
+class _PendingDownload:
+    lock: Lock = field(default_factory=Lock)
+    users: int = 0
+    error: Exception | None = None
+
+
+_pending_guard = Lock()
+_pending_downloads: dict[Path, _PendingDownload] = {}
+
+
+def fetch_if_missing(url: str, target: Path, width: int) -> None:
+    """Share concurrent cache misses, including their failure, without changing force refresh."""
+    with _pending_guard:
+        pending = _pending_downloads.setdefault(target, _PendingDownload())
+        pending.users += 1
+    try:
+        with pending.lock:
+            if pending.error is not None:
+                raise pending.error
+            if not target.is_file():
+                try:
+                    fetch_and_store(url, target, width)
+                except Exception as exc:
+                    pending.error = exc
+                    raise
+    finally:
+        with _pending_guard:
+            pending.users -= 1
+            if pending.users == 0:
+                _pending_downloads.pop(target, None)
 
 
 def is_public_host(host: str) -> bool:

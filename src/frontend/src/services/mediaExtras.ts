@@ -113,6 +113,8 @@ export interface MediaListSummary {
   typeCounts: Partial<Record<MediaType, number>>;
   smartRule: SmartRule | null;
   coverMediaId: string | null;
+  coverUrl?: string | null;
+  hasCustomCover?: boolean;
   // up to 4 posters (cover first) so the overview grid needs no
   // per-list detail request
   previewPosters: (string | null)[];
@@ -154,6 +156,8 @@ interface BackendMediaListSummary {
   type_counts?: Partial<Record<MediaType, number>>;
   smart_rule: BackendSmartRule | null;
   cover_media_id: string | null;
+  cover_url?: string | null;
+  has_custom_cover?: boolean;
   preview_posters: (string | null)[];
   created_at: number;
   updated_at: number;
@@ -206,6 +210,8 @@ function mapListSummary(l: BackendMediaListSummary): MediaListSummary {
     typeCounts: l.type_counts ?? {},
     smartRule: mapSmartRule(l.smart_rule),
     coverMediaId: l.cover_media_id,
+    coverUrl: l.cover_url,
+    hasCustomCover: l.has_custom_cover,
     previewPosters: l.preview_posters,
     createdAt: l.created_at,
     updatedAt: l.updated_at,
@@ -227,7 +233,9 @@ function mapListItem(i: BackendMediaListItem): MediaListItemVM {
 }
 
 export async function fetchMediaLists(): Promise<MediaListSummary[]> {
-  const response = await fetch("/api/lists", { credentials: "include" });
+  const response = await fetch("/api/lists?include_previews=false", {
+    credentials: "include",
+  });
   const raw = await handle<BackendMediaListSummary[]>(response, "load lists");
   return raw.map(mapListSummary);
 }

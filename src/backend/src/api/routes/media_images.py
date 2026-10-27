@@ -17,7 +17,8 @@ from src.database.models.tv_show import TVShow
 from src.database.models.user import User
 from src.database.session import get_db
 from src.helpers.image_prefetch import MEDIA_ROOT, WIDTHS
-from src.helpers.remote_images import RemoteImageError, cache_path, fetch_and_store
+from src.helpers.remote_images import RemoteImageError, cache_path
+from src.helpers.remote_images import fetch_if_missing as fetch_and_store
 
 router = APIRouter(
     prefix="/api/media-image",

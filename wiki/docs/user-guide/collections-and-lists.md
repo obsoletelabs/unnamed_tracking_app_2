@@ -2,8 +2,7 @@
 
 Games have **Collections** and Movies, TV and Anime have **Lists**. They look
 and behave the same way: a grid of cover cards and a page for each one. Game
-collections show a generated cover or your uploaded image; media lists show a
-collage of their first posters.
+collections and media lists show one cached generated cover or your uploaded image.
 
 ## The overview page
 
@@ -57,12 +56,14 @@ Names containing `%`, including **50% Off**, retain their literal spelling.
 Entering a media list's **Reorder** mode shows every media type and temporarily
 disables type filters, so arrow and drag positions match the full saved list.
 
-### Game collection covers
+### Collection and list covers
 
-The automatic cover uses the first four games in your saved manual order.
-Reordering those games changes the overview cover. A starred cover choice goes
+The automatic cover uses the first four games or media titles in your saved manual order.
+Reordering those items changes the overview cover. A starred cover choice goes
 first, followed by the saved order. If none of those games has artwork, the
-collection shows one placeholder instead of four missing-image tiles.
+collection or list shows one placeholder instead of four missing-image tiles.
+Smart media lists use their title order. Media posters already cached by the app
+are reused; the first cover request can wait for uncached upstream posters.
 
 Choose **Upload custom cover** inside a collection to replace its automatic
 cover. Images can be up to 10 MB and 25 megapixels; the app fits them to the
@@ -75,5 +76,7 @@ Which games are in a collection is stored on the server with the game. The rest
 of a game collection (smart rules, empty collections, descriptions, pins, "My
 order" and cover picks) is currently kept in your browser, so it does not follow
 you to another browser or device. Uploaded collection covers are stored on the
-server for your account and follow a collection rename. Lists are stored on the
-server in full.
+server for your account and follow a collection rename. Lists, including uploaded
+covers and manual title order, are stored on the server in full. The media list
+overview resolves memberships together using lightweight title/artwork fields;
+it does not fetch each title's complete metadata separately.

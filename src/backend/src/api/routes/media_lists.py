@@ -3,7 +3,8 @@ with a pickable cover) and smart lists (a saved filter evaluated against
 the whole library on every read — the media-side twin of the Games
 side's Smart Collections)."""
 
-from typing import Any
+import asyncio
+import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -13,6 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.functions import max as sql_max
 
 from src.api.routes.media_extras import _MODEL_BY_TYPE, _resolve_media
+from src.api.routes.utils.media_lists import item_dict as _item_dict
+from src.api.routes.utils.media_lists import resolve_items
 from src.api.schemas.media_extras import (
     MediaListCreate,
     MediaListDetailRead,
@@ -25,114 +28,17 @@ from src.api.schemas.media_extras import (
 )
 from src.core.auth import get_current_user
 from src.core.preferences import load_preferences
-from src.core.titles import display_title
 from src.database.models.media_extras import MediaList, MediaListItem, MediaType
 from src.database.models.user import User
 from src.database.session import get_db
+from src.helpers.async_storage import finish_storage_operation
+from src.helpers.media_collection_artwork import cover_metadata, remove_collection_files
 
 router = APIRouter(prefix="/api", tags=["media-lists"], dependencies=[Depends(get_current_user)])
 
-# Same collapse the frontend's utils/mediaStatus.ts does — a smart rule
-# speaks in the five buckets users actually see, not the 8 raw statuses.
-_BUCKET_STATUSES: dict[str, set[str]] = {
-    "plan": {"WISHLIST", "WATCHLIST"},
-    "hold": {"BACKLOG"},
-    "watching": {"IN_PROGRESS", "REWATCH"},
-    "completed": {"WATCHED", "FAVORITE"},
-    "dropped": {"DROPPED"},
-}
-
-
-def _status_str(media: Any) -> str:
-    return media.status.value if hasattr(media.status, "value") else str(media.status)
-
-
-def _item_dict(
-    item_id: UUID, media_type: str, media: Any, added_at: int, language: str = "english"
-) -> dict:
-    return {
-        "id": item_id,
-        "media_type": media_type,
-        "media_id": media.id,
-        "title": display_title(media, language),
-        "poster_url": media.poster_url,
-        "status": _status_str(media),
-        "added_at": added_at,
-    }
-
-
-async def _resolve_smart_items(
-    rule: dict, user_id: UUID, db: AsyncSession, language: str
-) -> list[dict]:
-    wanted_types = rule.get("media_types") or list(_MODEL_BY_TYPE)
-    allowed_statuses: set[str] | None = None
-    if rule.get("status_buckets"):
-        allowed_statuses = set()
-        for bucket in rule["status_buckets"]:
-            allowed_statuses |= _BUCKET_STATUSES.get(bucket, set())
-    genre = (rule.get("genre") or "").strip().lower()
-    min_score = rule.get("min_score")
-    favorite = rule.get("favorite")
-
-    result: list[dict] = []
-    for media_type in wanted_types:
-        model = _MODEL_BY_TYPE.get(media_type)
-        if model is None:
-            continue
-        rows = (
-            (
-                await db.execute(
-                    select(model).where(model.user_id == user_id, model.deleted_at.is_(None))
-                )
-            )
-            .scalars()
-            .all()
-        )
-        for media in rows:
-            if allowed_statuses is not None and _status_str(media) not in allowed_statuses:
-                continue
-            if favorite is not None and bool(media.favorite) != favorite:
-                continue
-            if genre and genre not in [g.lower() for g in (media.genres or [])]:
-                continue
-            if min_score is not None and (
-                media.rating_overall is None or float(media.rating_overall) < min_score
-            ):
-                continue
-            # a smart list has no membership rows, so the media's own id
-            # stands in for the item id
-            result.append(_item_dict(media.id, media_type, media, 0, language))
-    result.sort(key=lambda i: i["title"].lower())
-    return result
-
-
-async def _resolve_manual_items(lst: MediaList, db: AsyncSession, language: str) -> list[dict]:
-    items = (
-        (
-            await db.execute(
-                select(MediaListItem)
-                .where(MediaListItem.list_id == lst.id)
-                .order_by(MediaListItem.position.asc(), MediaListItem.added_at.desc())
-            )
-        )
-        .scalars()
-        .all()
-    )
-    resolved: list[dict] = []
-    for item in items:
-        model = _MODEL_BY_TYPE.get(item.media_type)
-        media = await db.scalar(select(model).where(model.id == item.media_id)) if model else None
-        if media is None or getattr(media, "deleted_at", None) is not None:
-            continue
-        resolved.append(_item_dict(item.id, item.media_type, media, item.added_at, language))
-    return resolved
-
 
 async def _resolve_items(lst: MediaList, user_id: UUID, db: AsyncSession) -> list[dict]:
-    language = str((await load_preferences(db, user_id))["title_language"])
-    if lst.smart_rule is not None:
-        return await _resolve_smart_items(lst.smart_rule, user_id, db, language)
-    return await _resolve_manual_items(lst, db, language)
+    return (await resolve_items([lst], user_id, db, _MODEL_BY_TYPE))[lst.id]
 
 
 def _summary(lst: MediaList, items: list[dict]) -> dict:
@@ -140,6 +46,7 @@ def _summary(lst: MediaList, items: list[dict]) -> dict:
     if lst.cover_media_id is not None:
         ordered.sort(key=lambda i: 0 if i["media_id"] == lst.cover_media_id else 1)
     return {
+        **cover_metadata(lst, ordered),
         "id": lst.id,
         "name": lst.name,
         "description": lst.description,
@@ -211,6 +118,8 @@ async def _ensure_favorites_list(user_id: UUID, db: AsyncSession) -> None:
 async def list_media_lists(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    *,
+    include_previews: bool = Query(default=True),
 ) -> list[dict]:
     await _ensure_favorites_list(current_user.id, db)
     lists = (
@@ -229,7 +138,12 @@ async def list_media_lists(
         .scalars()
         .all()
     )
-    return [_summary(lst, await _resolve_items(lst, current_user.id, db)) for lst in lists]
+    items = await resolve_items(lists, current_user.id, db, _MODEL_BY_TYPE)
+    summaries = await asyncio.to_thread(lambda: [_summary(lst, items[lst.id]) for lst in lists])
+    if not include_previews:
+        for summary in summaries:
+            summary["preview_posters"] = []
+    return summaries
 
 
 @router.get("/lists/membership")
@@ -300,7 +214,7 @@ async def create_media_list(
     db.add(lst)
     await db.commit()
     await db.refresh(lst)
-    return _summary(lst, await _resolve_items(lst, current_user.id, db))
+    return await asyncio.to_thread(_summary, lst, await _resolve_items(lst, current_user.id, db))
 
 
 @router.patch("/lists/{list_id}", response_model=MediaListRead)
@@ -326,7 +240,7 @@ async def update_media_list(
         setattr(lst, field, value)
     await db.commit()
     await db.refresh(lst)
-    return _summary(lst, await _resolve_items(lst, current_user.id, db))
+    return await asyncio.to_thread(_summary, lst, await _resolve_items(lst, current_user.id, db))
 
 
 @router.delete("/lists/{list_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
@@ -342,6 +256,12 @@ async def delete_media_list(
         )
     await db.delete(lst)
     await db.commit()
+    try:
+        await finish_storage_operation(
+            asyncio.to_thread(remove_collection_files, current_user.id, list_id)
+        )
+    except OSError:
+        logging.getLogger(__name__).warning("Deleted collection cover cleanup failed")
 
 
 @router.get("/lists/{list_id}", response_model=MediaListDetailRead)
@@ -352,7 +272,7 @@ async def get_media_list(
 ) -> dict:
     lst = await _get_list_or_404(list_id, current_user.id, db)
     items = await _resolve_items(lst, current_user.id, db)
-    return {**_summary(lst, items), "items": items}
+    return {**(await asyncio.to_thread(_summary, lst, items)), "items": items}
 
 
 @router.post(
