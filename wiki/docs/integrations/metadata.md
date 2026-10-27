@@ -207,6 +207,21 @@ See [Progressive metadata and Plugin API 1.1.1](../development/metadata-provider
 for the public contract, session endpoints and migration details. Provider
 optional implementations are maintained in [obsoletelabs/unnamed_tracking_app_plugins](https://github.com/obsoletelabs/unnamed_tracking_app_plugins).
 
+## Atlas (optional provider)
+
+Atlas is a self-hosted metadata service. The optional Atlas provider plugin
+(`official.metadata-atlas`, from the plugin repository) lets the app use it as a
+metadata provider: it can supply fields such as tags, genres, languages, aliases,
+age rating, website and scores, player limits and crossplay, and a game's
+achievement list when Atlas has one. Install it from Plugin Manager and set it
+up like any other provider; order it with the others under
+[Provider order](#provider-order).
+
+Artwork only loads from an Atlas that the app can reach on a public address;
+the app refuses to fetch images from private network addresses. Atlas's own
+documentation covers running it and what it stores. How the fields reach the
+library is described in [Metadata providers for developers](../development/metadata-providers.md).
+
 ## Where keys go
 
 Open **Settings → Metadata → Sources & API keys**. Administrators can also use
