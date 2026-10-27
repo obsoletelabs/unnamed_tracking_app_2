@@ -46,8 +46,15 @@ def _custom_path(user_id: UUID, name: str) -> Path:
 
 
 def _placeholder(canvas: Image.Image, seed: str, box: tuple[int, int, int, int]) -> None:
-    """Match the library's stable gamepad and color palette without an image request."""
+    """Match the library's stable gamepad and palette without an image request."""
     background, foreground, _accent = cover_palette(seed)
+    _placeholder_gradient(canvas, background, foreground, box)
+    _placeholder_gamepad(canvas, box)
+
+
+def _placeholder_gradient(
+    canvas: Image.Image, background: str, foreground: str, box: tuple[int, int, int, int]
+) -> None:
     left, top, right, bottom = box
     draw = ImageDraw.Draw(canvas)
     height = bottom - top
@@ -59,35 +66,40 @@ def _placeholder(canvas: Image.Image, seed: str, box: tuple[int, int, int, int])
             round(a * (1 - fraction) + b * fraction) for a, b in zip(start, end, strict=True)
         )
         draw.line((left, y, right, y), fill=color)
-    width = right - left
-    scale = 0.54 * min(width / 64, height / 64)
-    cx, cy = (left + right) / 2, (top + bottom) / 2
+
+
+_GAMEPAD_OUTLINE = (
+    (17, 24),
+    (47, 24),
+    (55, 30),
+    (59, 48),
+    (52, 54),
+    (44, 46),
+    (20, 46),
+    (12, 54),
+    (5, 48),
+    (9, 30),
+    (17, 24),
+)
+
+
+def _placeholder_gamepad(canvas: Image.Image, box: tuple[int, int, int, int]) -> None:
+    draw = ImageDraw.Draw(canvas)
+    scale = 0.54 * min((box[2] - box[0]) / 64, (box[3] - box[1]) / 64)
+    center = ((box[0] + box[2]) / 2, (box[1] + box[3]) / 2)
 
     def point(x: float, y: float) -> tuple[int, int]:
-        return round(cx + (x - 32) * scale), round(cy + (y - 32) * scale)
+        return round(center[0] + (x - 32) * scale), round(center[1] + (y - 32) * scale)
 
     stroke = max(2, round(3 * scale))
-    gamepad = (
-        (17, 24),
-        (47, 24),
-        (55, 30),
-        (59, 48),
-        (52, 54),
-        (44, 46),
-        (20, 46),
-        (12, 54),
-        (5, 48),
-        (9, 30),
-        (17, 24),
+    draw.line(
+        [point(x, y) for x, y in _GAMEPAD_OUTLINE], fill="#aeb7c2", width=stroke, joint="curve"
     )
-    path = [point(x, y) for x, y in gamepad]
-    icon_color = "#aeb7c2"
-    draw.line(path, fill=icon_color, width=stroke, joint="curve")
     for line in (((19, 31), (19, 43)), ((13, 37), (25, 37))):
-        draw.line((point(*line[0]), point(*line[1])), fill=icon_color, width=stroke)
+        draw.line((point(*line[0]), point(*line[1])), fill="#aeb7c2", width=stroke)
     for x, y in ((42, 34), (49, 39)):
         px, py = point(x, y)
-        draw.ellipse((px - stroke, py - stroke, px + stroke, py + stroke), fill=icon_color)
+        draw.ellipse((px - stroke, py - stroke, px + stroke, py + stroke), fill="#aeb7c2")
 
 
 def _source_signature(rows: list[tuple[UUID, str, Path]]) -> str:
@@ -154,10 +166,54 @@ def _save_custom(data: bytes, destination: Path) -> None:
     image.close()
 
 
+async def _collection_rows(
+    db: AsyncSession, user_id: UUID, chosen: list[UUID]
+) -> list[tuple[UUID, str, Path]]:
+    """Validate ownership and hydrate source storage before rendering a collage."""
+    games = (
+        (
+            await db.scalars(
+                select(Game)
+                .where(
+                    Game.user_id == user_id,
+                    Game.deleted_at.is_(None),
+                    Game.id.in_(chosen),
+                )
+                .with_for_update(read=True)
+            )
+        ).all()
+        if chosen
+        else []
+    )
+    by_id = {game.id: game for game in games}
+    if len(by_id) != len(chosen):
+        raise HTTPException(404, "A collection cover game was not found.")
+    try:
+        for game in games:
+            await finish_storage_operation(
+                asyncio.to_thread(game_folders.ensure_storage_ready, _DATA_ROOT, game)
+            )
+    except game_folders.FolderStorageError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    return [
+        (
+            game_id,
+            by_id[game_id].title,
+            _DATA_ROOT
+            / str(user_id)
+            / "games"
+            / by_id[game_id].folder_location
+            / ASSET_FILENAMES["key_art"],
+        )
+        for game_id in chosen
+    ]
+
+
 @router.get("/collection-cover")
 @app_grant("library.sync")
 async def get_collection_cover(
     request: Request,
+    *,
     name: Annotated[str, Query(min_length=1, max_length=200)],
     ids: Annotated[list[UUID] | None, Query()] = None,
     owner: Annotated[UUID | None, Query()] = None,
@@ -184,43 +240,7 @@ async def get_collection_cover(
             cache_control=cache_control,
         )
 
-    games = (
-        (
-            await db.scalars(
-                select(Game)
-                .where(
-                    Game.user_id == current_user.id,
-                    Game.deleted_at.is_(None),
-                    Game.id.in_(chosen),
-                )
-                .with_for_update(read=True)
-            )
-        ).all()
-        if chosen
-        else []
-    )
-    by_id = {game.id: game for game in games}
-    if len(by_id) != len(chosen):
-        raise HTTPException(404, "A collection cover game was not found.")
-    try:
-        for game in games:
-            await finish_storage_operation(
-                asyncio.to_thread(game_folders.ensure_storage_ready, _DATA_ROOT, game)
-            )
-    except game_folders.FolderStorageError as exc:
-        raise HTTPException(409, str(exc)) from exc
-    rows = [
-        (
-            game_id,
-            by_id[game_id].title,
-            _DATA_ROOT
-            / str(current_user.id)
-            / "games"
-            / by_id[game_id].folder_location
-            / ASSET_FILENAMES["key_art"],
-        )
-        for game_id in chosen
-    ]
+    rows = await _collection_rows(db, current_user.id, chosen)
     signature = await asyncio.to_thread(_source_signature, rows)
     key = hashlib.sha256(f"v1:{name}:{signature}".encode("utf-8")).hexdigest()
     destination = _cover_dir(current_user.id) / "cache" / f"{key}.webp"

@@ -134,7 +134,12 @@ async def test_list_pages_with_the_maximum_page_size(clients):
     rest = (await playnite.api.get("/api/game/list?skip=2&limit=2")).json()
     assert [game["title"] for game in first + rest] == ["Alpha", "Bravo", "Charlie"]
     assert (await playnite.api.get("/api/game/list?limit=200")).status_code == 200
-    assert (await playnite.api.get("/api/game/list?limit=201")).status_code == 422
+    # Bulk workflows may now request 1,000 rows; the established 200-row client
+    # remains valid and the public endpoint still enforces a finite hard cap.
+    assert (await playnite.api.get("/api/game/list?limit=201")).status_code == 200
+    assert (await playnite.api.get("/api/game/list?limit=1000")).status_code == 200
+    assert (await playnite.api.get("/api/game/list?limit=1001")).status_code == 422
+    assert (await playnite.api.get("/api/game/list?limit=0")).status_code == 422
 
 
 async def test_artwork_over_one_megabyte_uploads_with_the_api_key(clients, storage):
