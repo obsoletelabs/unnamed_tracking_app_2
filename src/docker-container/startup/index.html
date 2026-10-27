@@ -21,7 +21,12 @@
                 sessionStorage.setItem("startup-switched", "true");
 
                 // Reload the page once
-                window.location.replace('/');
+                // Nginx serves this splash in place of the app while services
+                // start. Return to the originally requested deep link instead
+                // of always dropping users at Home after a restart.
+                window.location.replace(
+                    window.location.pathname + window.location.search + window.location.hash
+                );
                 return;
             }
         } catch (_) {

@@ -1,5 +1,9 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { fetchAllGamePages, GAMES_PAGE_SIZE } from "../services/gamePages";
+import {
+  fetchAllGamePages,
+  fetchViewportGamePage,
+  GAMES_PAGE_SIZE,
+} from "../services/gamePages";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -37,6 +41,74 @@ it("requests the remaining pages together once the total is known", async () => 
   expect(server.calls).toHaveLength(6);
   expect(server.peak()).toBeGreaterThan(1);
   expect(server.peak()).toBeLessThanOrEqual(4);
+});
+
+it("reads only an adaptive viewport page and its status-count summary", async () => {
+  const fetcher = vi.fn(async (url: string) => {
+    const limit = Number(new URL(url, "http://x").searchParams.get("limit"));
+    return new Response(JSON.stringify(rows(0, limit)), {
+      headers: {
+        "X-Total-Count": "5000",
+        "X-Status-Counts": "playing:800,backlog:4200",
+      },
+    });
+  });
+  vi.stubGlobal("fetch", fetcher);
+  const result = await fetchViewportGamePage<{ id: number }>(0);
+  expect(result.games.length).toBeLessThan(1000);
+  expect(result.total).toBe(5000);
+  expect(result.statusCounts).toEqual({ playing: 800, backlog: 4200 });
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
+it("sends selected status and favorites filters to the paged endpoint", async () => {
+  const fetcher = vi.fn(
+    async (_url: string) =>
+      new Response(JSON.stringify(rows(0, 3)), {
+        headers: {
+          "X-Total-Count": "3",
+          "X-Status-Counts": "playing:3,backlog:8",
+        },
+      }),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  const result = await fetchViewportGamePage<{ id: number }>(
+    0,
+    undefined,
+    "3",
+    "playing",
+    true,
+  );
+  const requestedUrl = fetcher.mock.calls[0]?.[0] as string;
+  const params = new URL(requestedUrl, "http://x").searchParams;
+  expect(params.get("search")).toBe("3");
+  expect(params.get("status")).toBe("PLAYING");
+  expect(params.get("favorite")).toBe("true");
+  expect(result.total).toBe(3);
+  expect(result.statusCounts).toEqual({ playing: 3, backlog: 8 });
+});
+
+it("sizes its first game page for a wide compact-card viewport", async () => {
+  vi.resetModules();
+  vi.stubGlobal("window", { innerWidth: 2560, innerHeight: 1440 });
+  vi.stubGlobal("navigator", {});
+  vi.stubGlobal("localStorage", { getItem: () => "compact" });
+  const fetcher = vi.fn(async (url: string) => {
+    const limit = Number(new URL(url, "http://x").searchParams.get("limit"));
+    return new Response(JSON.stringify(rows(0, limit)), {
+      headers: { "X-Total-Count": "5000" },
+    });
+  });
+  vi.stubGlobal("fetch", fetcher);
+
+  const { fetchViewportGamePage: fetchViewport } =
+    await import("../services/gamePages");
+  const result = await fetchViewport<{ id: number }>(0);
+  const requestedUrl = fetcher.mock.calls[0]?.[0];
+  expect(new URL(requestedUrl!, "http://x").searchParams.get("limit")).toBe(
+    "208",
+  );
+  expect(result.games).toHaveLength(208);
 });
 
 it("does not ask for more pages when the first one holds everything", async () => {

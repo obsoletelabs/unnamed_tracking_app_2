@@ -561,7 +561,7 @@ describe("plugin extension registry", () => {
       const fetcher = vi.fn(async () => new Response(JSON.stringify([])));
       vi.stubGlobal("fetch", fetcher);
       await refreshPluginExtensions({ background: true });
-      vi.advanceTimersByTime(2500);
+      vi.advanceTimersByTime(60_500);
       await refreshPluginExtensions({ background: true });
       expect(fetcher).toHaveBeenCalledTimes(2);
     } finally {

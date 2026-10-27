@@ -21,6 +21,8 @@ FastAPI listens on `127.0.0.1:8000`; it is not exposed directly by the container
 
 PID 1 starts the diagnostic Nginx configuration first, then waits for PostgreSQL, runs Alembic migrations, starts FastAPI, selects the production Nginx configuration (`ready.conf`, `readytls.conf`, or `readytlsredirect.conf`), validates it, copies the selected/rendered configuration to `/etc/nginx/nginx.conf`, reloads Nginx, and verifies the frontend.
 
+The ready-state Nginx configurations gzip JavaScript, CSS, JSON, and SVG responses when the client accepts gzip. Content-hashed files under `/assets/` retain long-lived immutable caching; the HTML entry point is revalidated so a new build can point to new asset hashes.
+
 The status model distinguishes starting, database failure, migration failure, backend failure/timeout, frontend/Nginx failure, readiness, and post-start backend crash.
 
 The Docker healthcheck is healthy only when `/_startup/status.json` reports `overall=ready`. Therefore:

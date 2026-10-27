@@ -5,8 +5,8 @@ import CollectionTile from "../components/CollectionTile.vue";
 import GameTopBar from "../components/GameTopBar.vue";
 import SegmentedTabs from "../components/SegmentedTabs.vue";
 import type { SegmentOption } from "../components/SegmentedTabs.vue";
-import { fetchGames } from "../services/games";
-import type { Game } from "../types/game";
+import { fetchCollectionIndex } from "../services/collections";
+import type { CollectionIndexGame } from "../services/collections";
 import {
   smartCollections,
   addSmartCollection,
@@ -34,7 +34,7 @@ type KindFilter = "all" | "manual" | "smart";
 
 const router = useRouter();
 
-const games = ref<Game[]>([]);
+const games = ref<CollectionIndexGame[]>([]);
 const loading = ref(true);
 const error = ref<string | null>(null);
 const searchQuery = ref("");
@@ -105,7 +105,7 @@ async function loadGames() {
   loading.value = true;
   error.value = null;
   try {
-    games.value = await fetchGames();
+    games.value = await fetchCollectionIndex();
   } catch (err) {
     error.value = err instanceof Error ? err.message : "Failed to load games";
   } finally {
@@ -118,7 +118,7 @@ onMounted(loadGames);
 
 interface CollectionSummary {
   name: string;
-  games: Game[];
+  games: CollectionIndexGame[];
   isSmart?: boolean;
   // kept by the app (Favorites): can't be edited or deleted
   isSystem?: boolean;
@@ -150,7 +150,7 @@ function detailsOf(name: string) {
 }
 
 const collectionSummaries = computed<CollectionSummary[]>(() => {
-  const map = new Map<string, Game[]>();
+  const map = new Map<string, CollectionIndexGame[]>();
   for (const g of games.value) {
     for (const c of g.collections) {
       if (!map.has(c)) map.set(c, []);

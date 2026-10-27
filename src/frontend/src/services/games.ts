@@ -1,4 +1,4 @@
-import { fetchAllGamePages } from "./gamePages";
+import { fetchAllGamePages, fetchViewportGamePage } from "./gamePages";
 import type { MetadataSearchResult } from "./metadata";
 export type { MetadataSearchResult } from "./metadata";
 import { mockGames } from "../data/mockGames";
@@ -39,6 +39,7 @@ export interface BackendGame {
   id: string;
   title: string;
   sort_title: string;
+  has_key_art?: boolean | null;
   description: string | null;
   release_date: string | null;
   developer: string | null;
@@ -144,6 +145,7 @@ export function mapBackendGame(raw: BackendGame): Game {
     lockedFields: raw.locked_fields ?? [],
     id: raw.id,
     title: raw.title,
+    hasKeyArt: raw.has_key_art ?? null,
     // placeholders, the backend has no artwork yet
     coverColor: "#2a2a2a",
     // every place a cover is shown is a card or a poster well under 400 px
@@ -285,9 +287,8 @@ function rememberFetchedGame(game: Game, started: number): Game {
     : rememberGame(game);
 }
 
-// /api/game/list caps a single page at 200, page through until a page
-// comes back short, otherwise only the first 50 (the endpoint's default)
-// ever reached the library view once a synced library grew past that.
+// Bulk list consumers still page through the endpoint to completion. The
+// Games view uses fetchGamesForViewport below so its first paint stays bounded.
 export async function fetchGames(): Promise<Game[]> {
   if (import.meta.env.VITE_USE_MOCK_DATA === "true") {
     return mockGames;
@@ -299,6 +300,50 @@ export async function fetchGames(): Promise<Game[]> {
   );
   gameCache.markListLoaded();
   return games;
+}
+
+export async function fetchGamesForViewport(
+  skip: number,
+  signal?: AbortSignal,
+  search?: string,
+  status?: GameStatus | "all",
+  favorite = false,
+): Promise<{
+  games: Game[];
+  total: number | null;
+  statusCounts: Record<string, number> | null;
+}> {
+  if (import.meta.env.VITE_USE_MOCK_DATA === "true") {
+    return {
+      games: mockGames
+        .filter(
+          (game) =>
+            (!status || status === "all" || game.status === status) &&
+            (!favorite || game.favorite),
+        )
+        .slice(skip, skip + 100),
+      total: mockGames.filter(
+        (game) =>
+          (!status || status === "all" || game.status === status) &&
+          (!favorite || game.favorite),
+      ).length,
+      statusCounts: null,
+    };
+  }
+  const started = mutationVersion;
+  const result = await fetchViewportGamePage<BackendGame>(
+    skip,
+    signal,
+    search,
+    status,
+    favorite,
+  );
+  const games = result.games.map((raw) =>
+    rememberFetchedGame(mapBackendGame(raw), started),
+  );
+  if (result.total !== null && skip + games.length >= result.total)
+    gameCache.markListLoaded();
+  return { games, total: result.total, statusCounts: result.statusCounts };
 }
 
 export interface FieldChange {

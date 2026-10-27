@@ -30,7 +30,11 @@ MUTABLE_MAX_AGE_SECONDS = 60
 MUTABLE_CACHE_CONTROL = f"private, max-age={MUTABLE_MAX_AGE_SECONDS}, must-revalidate"
 IMMUTABLE_CACHE_CONTROL = "private, max-age=31536000, immutable"
 
-_MEMO_LIMIT = 4096
+# Keep the source and resized revisions for a full 5k-game library resident.
+# Each stored image can occupy two entries (the original and its preview), so
+# the former 4k cap churned while a user moved through a large library and then
+# revisited earlier artwork.
+_MEMO_LIMIT = 16384
 _READ_CHUNK = 1024 * 1024
 _ETAG_TOKEN = re.compile(r'\s*(?:W/)?"([^"]*)"\s*(?:,|$)')
 

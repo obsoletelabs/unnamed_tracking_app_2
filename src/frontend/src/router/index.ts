@@ -320,6 +320,19 @@ function setupRedirect(toPath: string) {
 router.beforeEach(async (to, from) => {
   captureLibraryNavigation(to.path, from.path, window.scrollY);
 
+  // Start fetching this route's code while the startup checks are in flight.
+  // Vue Router normally resolves lazy components only after beforeEach guards
+  // finish, which serialized a static asset RTT behind setup/auth RTTs on a
+  // cold deep link. The same import is then reused by the router below.
+  const routeComponent = to.matched.at(-1)?.components?.default;
+  if (typeof routeComponent === "function") {
+    const lazyRouteLoader = routeComponent as unknown as () => Promise<unknown>;
+    void Promise.resolve(lazyRouteLoader()).catch(() => {
+      // Let Vue Router surface the import error through its normal navigation
+      // handling after the guard completes.
+    });
+  }
+
   const entryPage =
     to.path === "/reset-password" ||
     to.path === "/accept-invite" ||
@@ -345,7 +358,18 @@ router.beforeEach(async (to, from) => {
   if (setupState === "unknown") {
     setStartupState("checking");
     try {
-      const status = await fetchSetupStatus();
+      const publicAuthEntry =
+        to.name === "oidc-start" ||
+        to.name === "oidc-provider-start" ||
+        to.name === "password-reset" ||
+        to.name === "accept-invite";
+      // Setup status and the current session are independent reads. Start
+      // both together on the first ordinary route so high RTT does not charge
+      // two full network round trips before the page can render.
+      const [status] = await Promise.all([
+        fetchSetupStatus(),
+        ...(publicAuthEntry ? [] : [ensureAuthChecked()]),
+      ]);
       const state = classifySetupStatus(status);
       setupState = state === "setup-required" ? "required" : "complete";
       if (state === "setup-required") {
@@ -451,7 +475,9 @@ router.beforeEach(async (to, from) => {
 
   if (currentUser.value) {
     setStartupState("ready");
-    if (!appearanceLoaded.value) await loadAppearanceSettings();
+    // Appearance options only affect optional card decorations. Fetch them in
+    // the background so a settings round trip cannot delay the first route.
+    if (!appearanceLoaded.value) void loadAppearanceSettings();
   } else {
     setStartupState("auth-required");
   }

@@ -39,3 +39,45 @@ async def test_total_header_follows_filters_and_hides_other_accounts(flow):
     assert found.headers["x-total-count"] == "1"
     none = await flow.client.get("/api/game/list?search=nothing-matches")
     assert none.json() == [] and none.headers["x-total-count"] == "0"
+
+
+async def test_status_page_is_narrow_but_tab_counts_keep_the_search_scope(flow):
+    await _add_games(flow, 4)
+    response = await flow.client.get("/api/game/list?search=Total&status=BACKLOG&limit=2")
+    assert response.status_code == 200
+    assert len(response.json()) == 2
+    assert response.headers["x-total-count"] == "4"
+    counts = dict(item.split(":") for item in response.headers["x-status-counts"].split(","))
+    assert counts["backlog"] == "4"
+
+
+async def test_collection_index_only_returns_membership_fields(flow):
+    async with SessionLocal() as db:
+        game = await games.create_game(
+            GameCreate(
+                title="Collection index title",
+                folder_location="CollectionIndexTitle",
+                description="Long detail page text",
+                collections=["Favorites shelf"],
+                tags=["Puzzle"],
+                favorite=True,
+                playtime_seconds=7200,
+            ),
+            Response(),
+            db,
+            SimpleNamespace(id=flow.user_id),
+        )
+        game_id = str(game.id)
+    response = await flow.client.get("/api/game/collection-index")
+    assert response.status_code == 200
+    entry = next(item for item in response.json() if item["id"] == game_id)
+    assert entry == {
+        "id": game_id,
+        "title": "Collection index title",
+        "status": "BACKLOG",
+        "favorite": True,
+        "source": None,
+        "tags": ["Puzzle"],
+        "collections": ["Favorites shelf"],
+        "playtime_seconds": 7200,
+    }

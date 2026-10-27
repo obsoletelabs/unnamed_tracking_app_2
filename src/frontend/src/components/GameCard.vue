@@ -8,6 +8,7 @@ import { ref, computed, nextTick, onUnmounted, watch } from "vue";
 import { computeScore } from "../utils/scoring";
 import { activePriority, priorityLabel } from "../utils/priority";
 import { appearanceSettings } from "../state/appearance";
+import GameArtwork from "./GameArtwork.vue";
 import CompletionBadge from "./CompletionBadge.vue";
 import UiModal from "./UiModal.vue";
 
@@ -16,6 +17,7 @@ const props = defineProps<{
   selectMode?: boolean;
   selected?: boolean;
   keyboardFocused?: boolean;
+  prioritizeImages?: boolean;
   rank?: number | null;
   possibleDuplicate?: boolean;
   // the copies folded under this entry, or the store of a lone copy whose
@@ -261,12 +263,12 @@ function copyFolderPath() {
         @touchmove="onTouchMove"
         @touchend="onTouchEnd"
       >
-        <img
+        <GameArtwork
           class="cover-image"
-          :src="game.coverImageUrl"
-          alt=""
-          loading="lazy"
-          decoding="async"
+          :src="game.hasKeyArt === false ? '' : game.coverImageUrl"
+          :title="game.title"
+          :eager="prioritizeImages"
+          fill
         />
         <div
           v-if="selectMode"

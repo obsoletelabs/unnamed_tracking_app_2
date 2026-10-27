@@ -4,6 +4,35 @@ import { defineConfig } from "vite";
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [vue()],
+  build: {
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            {
+              name: "vendor",
+              test: /[\\/]node_modules[\\/]/,
+              priority: 2,
+            },
+            {
+              // Bundle only modules that are statically required to mount the
+              // authenticated shell. Route views remain separate dynamic
+              // chunks and keep their own CSS.
+              name: "app-shell",
+              test: /[\\/]src[\\/](?:main\.ts|App\.vue|router[\\/]index\.ts|state[\\/](?:auth|preferences|shortcuts|dialog|pluginExtensions|uiPalette)\.ts|components[\\/](?:PageHeader|AppIcon|UiModal|ProfileAvatar|AccountChip|PasswordInput|PluginField)\.vue|services[\\/](?:apiError|providerEvents|notifications)\.ts)$/,
+              priority: 1,
+            },
+          ],
+        },
+        // The previous static-asset experiment could cache asset 404s as
+        // immutable. Change the asset URL epoch once so browsers discard
+        // those poisoned entries; content hashes still cache unchanged files.
+        entryFileNames: "assets/[name]-[hash]-rev2.js",
+        chunkFileNames: "assets/[name]-[hash]-rev2.js",
+        assetFileNames: "assets/[name]-[hash]-rev2[extname]",
+      },
+    },
+  },
   server: {
     host: true, // listen on 0.0.0.0 so the container's port mapping works
     port: 80,

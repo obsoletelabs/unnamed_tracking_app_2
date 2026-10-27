@@ -19,11 +19,13 @@ vi.mock("../services/mediaExtras", async (importOriginal) => ({
   fetchMediaLists: (...args: unknown[]) => fetchMediaLists(...args),
 }));
 
-const fetchGames = vi.fn();
+const fetchCollectionIndex = vi.fn();
+vi.mock("../services/collections", () => ({
+  fetchCollectionIndex: (...args: unknown[]) => fetchCollectionIndex(...args),
+}));
 const listGameNoteSummaries = vi.fn();
 vi.mock("../services/games", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../services/games")>()),
-  fetchGames: (...args: unknown[]) => fetchGames(...args),
   fetchGame: vi.fn().mockResolvedValue(null),
   fetchGameAchievements: vi.fn().mockResolvedValue([]),
   listGameNoteSummaries: (...args: unknown[]) => listGameNoteSummaries(...args),
@@ -142,7 +144,7 @@ describe("list and collection indexes", () => {
   });
 
   it("retries a failed collections load", async () => {
-    fetchGames
+    fetchCollectionIndex
       .mockRejectedValueOnce(new Error("games down"))
       .mockResolvedValueOnce([]);
     const wrapper = mountView(CollectionsView);
@@ -150,7 +152,7 @@ describe("list and collection indexes", () => {
     expect(wrapper.text()).toContain("games down");
     await retryButton(wrapper)?.trigger("click");
     await flushPromises();
-    expect(fetchGames).toHaveBeenCalledTimes(2);
+    expect(fetchCollectionIndex).toHaveBeenCalledTimes(2);
     expect(wrapper.text()).not.toContain("games down");
   });
 });
@@ -158,7 +160,7 @@ describe("list and collection indexes", () => {
 describe("collection detail", () => {
   it("says the load failed instead of showing an empty collection", async () => {
     route.params = { name: "Favourites" };
-    fetchGames
+    fetchCollectionIndex
       .mockRejectedValueOnce(new Error("offline"))
       .mockResolvedValueOnce([]);
     const wrapper = mountView(CollectionDetailView);
@@ -174,10 +176,10 @@ describe("collection detail", () => {
   it("does not start a second load while one is running", async () => {
     route.params = { name: "Favourites" };
     const pending = deferred<unknown[]>();
-    fetchGames.mockReturnValue(pending.promise);
+    fetchCollectionIndex.mockReturnValue(pending.promise);
     mountView(CollectionDetailView);
     await flushPromises();
-    expect(fetchGames).toHaveBeenCalledTimes(1);
+    expect(fetchCollectionIndex).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -24,7 +24,7 @@ export async function saveCollectionEdit(args: {
   // set for a smart collection: its rule's id
   smartId?: string;
   // the games currently in it, only needed to rename a manual one
-  members: Game[];
+  members: Pick<Game, "id">[];
 }): Promise<void> {
   const { oldName, payload, smartId, members } = args;
   const name = payload.name;
@@ -49,7 +49,7 @@ export async function saveCollectionEdit(args: {
 // deleted); deleting a smart one only removes its rule.
 export async function deleteCollectionFully(args: {
   name: string;
-  members: Game[];
+  members: Pick<Game, "id">[];
   smartId?: string;
 }): Promise<void> {
   if (args.smartId) {

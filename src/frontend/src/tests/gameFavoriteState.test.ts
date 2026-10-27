@@ -31,7 +31,7 @@ const setFavorite = vi.fn();
 vi.mock("../services/games", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../services/games")>()),
   setFavorite: (...args: unknown[]) => setFavorite(...args),
-  fetchGames: vi.fn(),
+  fetchGamesForViewport: vi.fn(),
 }));
 
 function game(id: string, favorite = false): Game {
@@ -156,8 +156,10 @@ describe("game page favourite toggle", () => {
 describe("library refresh failure", () => {
   it("keeps the games already shown and reports the failure", async () => {
     const view = await library([game("Alpha"), game("Beta")]);
-    const { fetchGames } = await import("../services/games");
-    vi.mocked(fetchGames).mockRejectedValue(new Error("Failed to fetch"));
+    const { fetchGamesForViewport } = await import("../services/games");
+    vi.mocked(fetchGamesForViewport).mockRejectedValue(
+      new Error("Failed to fetch"),
+    );
 
     await view.loadGames();
 
