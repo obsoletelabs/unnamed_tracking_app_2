@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 from uuid import UUID, uuid4
 
+from src.core.cache_metrics import cache_eviction, cache_refresh, cache_request
 from src.plugin_api.metadata_contracts import (
     MetadataCandidate,
     MetadataPatch,
@@ -277,6 +278,9 @@ class MetadataHandler:
     async def _cached_search(self, provider: Provider, cache_key: tuple) -> ProviderResponse | None:
         cached = self.cache.get(cache_key)
         response = cached[1] if cached and cached[0] > time.monotonic() else None
+        outcome = "stale" if cached else "miss"
+        if response is not None:
+            outcome = "hit" if response.candidates else "negative_hit"
         # Cached data never bypasses current grants or lifecycle validation.
         if response is not None and isinstance(
             provider, (PluginMetadataProvider, CoreMetadataProvider)
@@ -286,6 +290,9 @@ class MetadataHandler:
                     response = ProviderResponse(failure=ProviderFailure(code="plugin_unavailable"))
             except Exception:  # pylint: disable=broad-exception-caught
                 response = ProviderResponse(failure=ProviderFailure(code="plugin_unavailable"))
+            if response.failure:
+                outcome = "bypass"
+        cache_request("metadata_search", outcome)
         return response
 
     async def _search_pages(
@@ -353,25 +360,32 @@ class MetadataHandler:
                 async for page in self._search_pages(session, provider):
                     yield page
 
-        async for response in pages():
-            if session.cancelled:
-                return
-            if response.failure:
-                self._failure(session, provider, response.failure)
-                return
-            incoming = response.candidates[: max(0, session.request.limit - len(candidates))]
-            self._accept_candidates(session, provider, incoming, len(candidates))
-            candidates.extend(incoming)
-            if len(candidates) >= session.request.limit:
-                break
-        if cached is None:
-            # A cache hit must not keep frequently reused provider data stale forever.
-            self.cache[cache_key] = (
-                time.monotonic() + SEARCH_CACHE_SECONDS,
-                ProviderResponse(candidates=tuple(candidates)),
-            )
-            while len(self.cache) > SEARCH_CACHE_CAPACITY:
-                self.cache.popitem(last=False)
+        with cache_refresh("metadata_search", active=cached is None) as refresh:
+            async for response in pages():
+                if session.cancelled:
+                    refresh.cancelled()
+                    return
+                if response.failure:
+                    refresh.failed()
+                    self._failure(session, provider, response.failure)
+                    return
+                incoming = response.candidates[: max(0, session.request.limit - len(candidates))]
+                self._accept_candidates(session, provider, incoming, len(candidates))
+                candidates.extend(incoming)
+                if len(candidates) >= session.request.limit:
+                    break
+            if cached is None:
+                # A cache hit must not keep frequently reused provider data stale forever.
+                previous = self.cache.get(cache_key)
+                if previous is not None and previous[0] <= time.monotonic():
+                    cache_eviction("metadata_search", "expiry")
+                self.cache[cache_key] = (
+                    time.monotonic() + SEARCH_CACHE_SECONDS,
+                    ProviderResponse(candidates=tuple(candidates)),
+                )
+                while len(self.cache) > SEARCH_CACHE_CAPACITY:
+                    self.cache.popitem(last=False)
+                    cache_eviction("metadata_search", "size_pressure")
         session.provider_states[provider.id] = "finished"
         session.emit("provider_finished", provider_id=provider.id, name=provider.name)
 

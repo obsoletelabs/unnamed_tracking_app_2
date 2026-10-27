@@ -52,7 +52,7 @@ Rotating a generated token means deleting `config/metrics.token` and restarting.
 * **Provisioned (recommended):** mount `examples/metrics/grafana/provisioning` at `/etc/grafana/provisioning` and the dashboard file at `/var/lib/grafana/dashboards/unnamed-tracking.json` (`examples/metrics/compose.yaml` does this). The provisioned Prometheus data source has uid `prometheus` and a 30-second scrape interval, matching the example scraper.
 * **Manual import:** create a Prometheus data source, set its scrape interval to match your scraper, then Dashboards, New, Import and upload `examples/metrics/grafana-dashboard.json`. Select it in the dashboard's **Data source** picker; the uid does not have to be `prometheus`.
 
-The dashboard groups 26 visualizations into an overview and sections for HTTP traffic, authentication, database, plugin runtime, scheduled jobs, metadata providers and process resources. It adds explicit scrape/readiness/dependency status, in-flight requests, unhandled exceptions, database probe duration, job duration, and separate CPU, memory and uptime graphs. The errors graph includes both 5xx responses and the dedicated 429 counter.
+The dashboard groups 40 visualizations into an overview and sections for HTTP traffic, authentication, database, plugin runtime, scheduled jobs, metadata providers and process resources. It adds explicit scrape/readiness/dependency status, in-flight requests, unhandled exceptions, database probe duration, job duration, and separate CPU, memory and uptime graphs. The errors graph includes both 5xx responses and the dedicated 429 counter.
 
 Choose a **Deployment** (the Prometheus scrape `job`) and one or more **Instances**. These filters apply throughout, so multiple replicas and unrelated process exporters are not mixed accidentally. **HTTP route** narrows the route-labelled HTTP graphs; the unlabelled in-flight gauge remains instance-wide. Shared database/runtime snapshot gauges are shown per instance instead of summed across replicas. The overview reports the worst measured state among selected instances; missing or incomplete measurements remain unknown instead of showing a healthy state.
 
@@ -95,6 +95,8 @@ All names start with `uta_` except the standard process, platform and GC exporte
 | `uta_plugin_runtime_requests_total`, `uta_plugin_runtime_request_duration_seconds` | counter, histogram | `operation`, `outcome` | Host-to-runtime calls, for example `POST /plugins/{id}/start`. Outcomes: `ok`, `rejected`, `unreachable`, `timeout`, `server_error`, `configuration`. |
 | `uta_build_info` | info | `version` | |
 
+See [response, SQL and cache performance metrics](metrics-performance.md) for the new lifecycle, byte, disconnect, query and cache series, definitions and PromQL.
+
 ### Privacy and cardinality
 
 Label values come only from fixed sets: route templates, HTTP methods, status classes, authentication operations, host job ids, built-in provider ids and plugin runtime operation names. Plugin identifiers, usernames, email addresses, titles, URLs with identifiers, client addresses, API keys and tokens are never labels, and the endpoint does not run per-user or library queries. Unknown paths are folded into a single `unmatched` series, so scanners cannot grow the series count.
@@ -115,7 +117,7 @@ At the default 30 second interval the series count is a few hundred. Keep 15 day
 
 ## Not yet covered
 
-Import/export outcomes, upload throughput, cache hit ratios for metadata and artwork, storage totals and migration failures (which happen before the application starts and are reported in the container log) are not exported.
+Import/export outcomes, upload throughput, cache inventory/storage totals and upstream byte accounting and migration failures (which happen before the application starts and are reported in the container log) are not exported.
 
 ## Logging
 

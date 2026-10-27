@@ -7,12 +7,14 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from src.core.config import settings
+from src.core.database_metrics import install_database_metrics
 
 # The engine manages the connection pool to PostgreSQL.
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=settings.DEBUG,
 )
+install_database_metrics(engine.sync_engine)
 
 
 # Factory for creating AsyncSession objects.

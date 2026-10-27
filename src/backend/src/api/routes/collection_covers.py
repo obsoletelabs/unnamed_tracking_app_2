@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.routes.utils.games import _DATA_ROOT
 from src.core.auth import app_grant, get_current_user
+from src.core.cache_metrics import cache_refresh, cache_request
 from src.database.models.game import Game
 from src.database.models.user import User
 from src.database.session import get_db
@@ -229,6 +230,7 @@ async def get_collection_cover(
         raise HTTPException(400, "Choose up to four distinct games.")
     custom = _custom_path(current_user.id, name)
     if await asyncio.to_thread(custom.is_file):
+        cache_request("collection_cover", "bypass")
         revision = await stored_file_revision(custom)
         return artwork_response(
             request,
@@ -245,7 +247,13 @@ async def get_collection_cover(
     key = hashlib.sha256(f"v1:{name}:{signature}".encode("utf-8")).hexdigest()
     destination = _cover_dir(current_user.id) / "cache" / f"{key}.webp"
     if not await asyncio.to_thread(destination.is_file):
-        await finish_storage_operation(asyncio.to_thread(_render_cover, rows, name, destination))
+        cache_request("collection_cover", "miss")
+        with cache_refresh("collection_cover"):
+            await finish_storage_operation(
+                asyncio.to_thread(_render_cover, rows, name, destination)
+            )
+    else:
+        cache_request("collection_cover", "hit")
     revision = await stored_file_revision(destination)
     return artwork_response(
         request,

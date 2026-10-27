@@ -9,6 +9,7 @@ from uuid import uuid4
 
 import pytest
 
+from src.core import metrics
 from src.features.metadata import handler as handler_module
 from src.features.metadata.core import CoreMetadataProvider
 from src.features.metadata.handler import MetadataHandler
@@ -499,6 +500,18 @@ async def test_optional_unavailable_providers_do_not_participate_or_emit_errors(
 
 @pytest.mark.asyncio
 async def test_search_cache_is_scoped_to_query_user_and_configuration():
+    hit_before = (
+        metrics.REGISTRY.get_sample_value(
+            "uta_cache_requests_total", {"cache_kind": "metadata_search", "outcome": "hit"}
+        )
+        or 0
+    )
+    miss_before = (
+        metrics.REGISTRY.get_sample_value(
+            "uta_cache_requests_total", {"cache_kind": "metadata_search", "outcome": "miss"}
+        )
+        or 0
+    )
     provider = ContractProvider("test.provider", (candidate(),))
     handler = MetadataHandler()
     first_request = request("port")
@@ -507,6 +520,18 @@ async def test_search_cache_is_scoped_to_query_user_and_configuration():
         await session.search_task
         handler.cancel(session)
     assert provider.calls == [("search", None)]
+    assert (
+        metrics.REGISTRY.get_sample_value(
+            "uta_cache_requests_total", {"cache_kind": "metadata_search", "outcome": "hit"}
+        )
+        == hit_before + 1
+    )
+    assert (
+        metrics.REGISTRY.get_sample_value(
+            "uta_cache_requests_total", {"cache_kind": "metadata_search", "outcome": "miss"}
+        )
+        == miss_before + 1
+    )
     for next_request in [request("port"), first_request.model_copy(update={"query": "portal"})]:
         session = handler.start(next_request, [provider])
         await session.search_task
