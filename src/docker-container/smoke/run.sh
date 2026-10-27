@@ -168,6 +168,8 @@ echo "Checking readiness through the Nginx diagnostic endpoint."
 curl --fail --silent --show-error "$BASE_URL/_startup/status.json?ts=$RANDOM" >"$ARTIFACT_DIR/ready-status.json"
 
 echo "Checking that Nginx is serving the compiled frontend."
+docker exec -i "$APP_CONTAINER" python - <"$SCRIPT_DIR/assert-production-frontend.py" \
+  >"$ARTIFACT_DIR/production-frontend.json"
 frontend_response="$(curl --fail --silent --show-error "$BASE_URL/")"
 printf '%s\n' "$frontend_response" >"$ARTIFACT_DIR/frontend.html"
 grep -q '<div id="app">' "$ARTIFACT_DIR/frontend.html"

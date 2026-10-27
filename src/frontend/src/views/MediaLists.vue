@@ -4,8 +4,9 @@
 // same search/sort controls, same card-collage grid — so a list reads
 // as "the same kind of thing" as a game collection, not a separate,
 // differently-styled feature.
-import { ref, computed, onMounted, watch } from "vue";
+import { ref, computed, onMounted, onActivated, watch } from "vue";
 import { useRouter } from "vue-router";
+import { mediaCollectionCoverImage } from "../services/mediaCollectionCovers";
 import CollectionTile from "../components/CollectionTile.vue";
 import SegmentedTabs from "../components/SegmentedTabs.vue";
 import type { SegmentOption } from "../components/SegmentedTabs.vue";
@@ -48,7 +49,7 @@ let loadInFlight = false;
 async function load() {
   if (loadInFlight) return;
   loadInFlight = true;
-  loading.value = true;
+  loading.value = lists.value.length === 0;
   error.value = null;
   try {
     lists.value = await fetchMediaLists();
@@ -60,6 +61,7 @@ async function load() {
   }
 }
 onMounted(load);
+onActivated(load);
 
 const createError = ref<string | null>(null);
 async function onCreate(payload: {
@@ -267,8 +269,12 @@ async function deleteList(id: string) {
 
       <p v-if="createError" class="ui-error-box">{{ createError }}</p>
 
+      <p v-if="error && lists.length" class="ui-error-box" role="alert">
+        {{ error }}
+        <button type="button" class="ui-btn" @click="load">Retry</button>
+      </p>
       <p v-if="loading" class="ui-state">Loading…</p>
-      <p v-else-if="error" class="ui-state error" role="alert">
+      <p v-else-if="error && !lists.length" class="ui-state error" role="alert">
         {{ error }}
         <button type="button" class="ui-btn" @click="load">Retry</button>
       </p>
@@ -281,6 +287,7 @@ async function deleteList(id: string) {
             :key="list.id"
             :name="list.name"
             :covers="list.previewPosters"
+            :cover-image="mediaCollectionCoverImage(list)"
             :count="list.itemCount"
             count-noun="title"
             noun="list"

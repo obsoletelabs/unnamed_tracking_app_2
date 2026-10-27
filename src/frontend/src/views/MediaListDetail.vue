@@ -21,6 +21,12 @@ import type {
   MediaType,
   SmartRule,
 } from "../services/mediaExtras";
+import CollectionCoverEditor from "../components/CollectionCoverEditor.vue";
+import {
+  mediaCollectionCoverImage,
+  uploadMediaCollectionCover,
+  removeMediaCollectionCover,
+} from "../services/mediaCollectionCovers";
 import ListFormModal from "../components/ListFormModal.vue";
 import BackButton from "../components/BackButton.vue";
 import CollectionDetailHeader from "../components/CollectionDetailHeader.vue";
@@ -118,6 +124,7 @@ async function removeItem(itemId: string) {
     await removeFromMediaList(list.value.id, itemId);
     list.value.items = list.value.items.filter((i) => i.id !== itemId);
     list.value.itemCount -= 1;
+    coverVersion.value += 1;
   } catch (e) {
     error.value =
       e instanceof Error ? e.message : "Failed to remove from list.";
@@ -151,6 +158,7 @@ async function persistOrder() {
       list.value.id,
       list.value.items.map((i) => i.id),
     );
+    coverVersion.value += 1;
   } catch (e) {
     error.value = e instanceof Error ? e.message : "Failed to save the order.";
     await load();
@@ -176,6 +184,37 @@ const {
   },
 });
 
+const coverVersion = ref(0);
+const coverBusy = ref(false);
+const coverError = ref<string | null>(null);
+async function uploadCover(file: File) {
+  if (!list.value) return;
+  coverBusy.value = true;
+  coverError.value = null;
+  try {
+    await uploadMediaCollectionCover(list.value.id, file);
+    list.value.hasCustomCover = true;
+  } catch (e) {
+    coverError.value = e instanceof Error ? e.message : "Could not save cover.";
+  } finally {
+    coverBusy.value = false;
+  }
+}
+async function automaticCover() {
+  if (!list.value) return;
+  coverBusy.value = true;
+  coverError.value = null;
+  try {
+    await removeMediaCollectionCover(list.value.id);
+    list.value.hasCustomCover = false;
+  } catch (e) {
+    coverError.value =
+      e instanceof Error ? e.message : "Could not remove cover.";
+  } finally {
+    coverBusy.value = false;
+  }
+}
+
 // ---- cover ----
 async function setCover(item: MediaListItemVM) {
   if (!list.value) return;
@@ -185,6 +224,8 @@ async function setCover(item: MediaListItemVM) {
     });
     list.value.coverMediaId = updated.coverMediaId;
     list.value.previewPosters = updated.previewPosters;
+    list.value.coverUrl = updated.coverUrl;
+    coverVersion.value += 1;
   } catch (e) {
     error.value = e instanceof Error ? e.message : "Failed to set the cover.";
   }
@@ -330,6 +371,7 @@ async function addTitle(m: PickItem) {
     // a fresh add lands at the end, matching the backend's position
     list.value.items = [...list.value.items, item];
     list.value.itemCount += 1;
+    coverVersion.value += 1;
   } catch (e) {
     addError.value = e instanceof Error ? e.message : "Failed to add title.";
   }
@@ -366,6 +408,15 @@ async function addTitle(m: PickItem) {
         @add="openAdd"
         @edit="showEdit = true"
         @delete="deleteList"
+      />
+      <CollectionCoverEditor
+        :src="mediaCollectionCoverImage(list, coverVersion)"
+        :title="list.name"
+        :custom="list.hasCustomCover"
+        :busy="coverBusy"
+        :error="coverError"
+        @upload="uploadCover"
+        @remove="automaticCover"
       />
       <p v-if="list.description" class="subtitle">{{ list.description }}</p>
       <p v-if="isSmart && ruleSummary" class="subtitle rule-line">

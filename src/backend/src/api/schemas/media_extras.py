@@ -67,6 +67,8 @@ class MediaListRead(BaseModel):
     # up to 4 poster URLs for the overview card's collage, cover first —
     # here so the grid doesn't need one detail request per list
     preview_posters: list[str | None] = Field(default_factory=list)
+    cover_url: str | None = None
+    has_custom_cover: bool = False
     created_at: int
     updated_at: int
 

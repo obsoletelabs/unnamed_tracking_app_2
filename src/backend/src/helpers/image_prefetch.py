@@ -21,7 +21,8 @@ from src.database.models.achievement import Achievement
 from src.database.models.anime import Anime
 from src.database.models.movies import Movie
 from src.database.models.tv_show import TVShow
-from src.helpers.remote_images import RemoteImageError, cache_path, fetch_and_store, icon_cache_path
+from src.helpers.remote_images import RemoteImageError, cache_path, icon_cache_path
+from src.helpers.remote_images import fetch_if_missing as fetch_and_store
 
 MEDIA_ROOT = Path("/data/users")
 ICON_ROOT = Path("/data/cache")

@@ -95,12 +95,14 @@ Kinds are the fixed allowlist `metadata_search`, `artwork_preview`,
   refresh timer. No upstream network call is added by instrumentation.
 - Removal reasons: `expiry` (expired metadata replaced), `size_pressure`
   (metadata capacity eviction), `invalidation` (existing previews removed after
-  source replacement). Expired entries merely inspected are not counted as
+  source replacement or media collection cover files removed on deletion). Expired entries merely inspected are not counted as
   removed. These are observed removals, not inventory estimates.
 
-The instrumented caches do not implement stale-while-revalidate or request
-coalescing. Concurrent callers that each rebuild/fetch are separate misses and
-refreshes; no avoided work is inferred. A conditional HTTP 304 after a preview
+The instrumented caches do not implement stale-while-revalidate. Media poster
+cache misses share an active download within each worker, including failures;
+later requests can retry. Collection-cover lookups still count each observed hit
+or miss, and callers that independently render covers count separate refreshes.
+No avoided work is inferred. A conditional HTTP 304 after a preview
 lookup is still a local cache hit. Cache lookup counters describe observed
 application lookups, not browser memory/disk hits that never reach the server.
 

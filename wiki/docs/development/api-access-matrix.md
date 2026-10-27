@@ -317,6 +317,9 @@ are redacted. Validation errors never echo submitted values.
 | PATCH | `/api/game/bulk-update` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | POST | `/api/game/create` | user-or-app | Game queried with `user_id == caller`; any child ID must also belong to that game. App grants need `library.sync`. |
 | GET | `/api/game/collection-index` | user-or-app | Compact projection of the caller's own nondeleted games. App grants need `library.sync`. |
+| GET | `/api/lists/{list_id}/cover` | user | The caller's own media collection and owned poster sources only. |
+| PUT | `/api/lists/{list_id}/cover` | user | Uploads only the caller's own media collection cover. |
+| DELETE | `/api/lists/{list_id}/cover` | user | Removes only the caller's own custom media collection cover. |
 | GET | `/api/game/collection-cover` | user-or-app | Cover belongs to the caller; every source game must belong to that account. App grants need `library.sync`. |
 | PUT | `/api/game/collection-cover` | user-or-app | Uploads only the caller's own collection cover. App grants need `library.sync`. |
 | DELETE | `/api/game/collection-cover` | user-or-app | Removes only the caller's own custom collection cover. App grants need `library.sync`. |

@@ -11,7 +11,7 @@ const props = defineProps<{
   id: string;
   name: string;
   covers: (string | null | undefined)[];
-  // A server-rendered game collection cover replaces four image requests.
+  // A server-rendered collection/list cover replaces four image requests.
   coverImage?: string;
   count: number;
   // "game" or "title", for the count line

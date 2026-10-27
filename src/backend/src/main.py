@@ -45,6 +45,7 @@ from src.api.routes import (
     jobs,
     library_sync,
     media,
+    media_collection_covers,
     media_extras,
     media_images,
     media_io,
@@ -218,6 +219,7 @@ app.include_router(steam_connections.router)
 app.include_router(steam_openid.router)
 app.include_router(steam_tags_refresh.router)
 app.include_router(media_lists.router)
+app.include_router(media_collection_covers.router)
 app.include_router(notification_stories.router)
 app.include_router(notifications.router)
 app.include_router(notification_live.router)
