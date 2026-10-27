@@ -58,7 +58,9 @@ body chunks are measured normally.
 Long-lived SSE/stream durations are not interactive API latency. Completion
 histograms only observe a stream when it ends; they do not replace the existing
 in-flight gauge. Nginx-served JS/CSS, browser parsing, rendering, image decode,
-network RTT and paint are outside the backend boundary.
+network RTT and paint are outside the backend boundary. The application's
+existing GZipMiddleware runs inside this observer, so negotiated application
+gzip body bytes are counted after that compression; later proxy work is not.
 
 ## SQL cursor execution
 
@@ -124,7 +126,7 @@ per-instance percentiles. Snapshot gauges retain their existing aggregation.
 
 No new application label named `job` is introduced. Use the Prometheus scrape
 job/instance to select a deployment. No labels contain users, plugin/provider
-identifiers, titles, paths, URLs, query text or raw exceptions. SQL has at most
+identifiers, titles, filesystem paths, raw URLs, query text or raw exceptions. SQL has at most
 18 operation/outcome combinations; cache lookups at most 15, refreshes at most
 9, removals at most 9. HTTP series are bounded by the existing route table and
 the enums above; only observed combinations create histograms. Each observed
