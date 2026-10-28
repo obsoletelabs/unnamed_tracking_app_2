@@ -20,6 +20,7 @@ class ObservedAsyncSession(AsyncSession):  # pylint: disable=abstract-method
 
     sync_session_class = ObservedSyncSession
 
+
 # The engine manages the connection pool to PostgreSQL.
 engine = create_async_engine(
     settings.DATABASE_URL,

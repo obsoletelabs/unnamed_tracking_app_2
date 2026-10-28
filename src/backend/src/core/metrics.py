@@ -255,61 +255,96 @@ JOB_LAST_SUCCESS = Gauge(
     registry=REGISTRY,
 )
 JOB_PENDING = Gauge(
-    "uta_job_pending", "Due scheduled work observed on the last scheduler tick, by fixed class.",
-    ("task_class",), multiprocess_mode="max", registry=REGISTRY,
+    "uta_job_pending",
+    "Due scheduled work observed on the last scheduler tick, by fixed class.",
+    ("task_class",),
+    multiprocess_mode="max",
+    registry=REGISTRY,
 )
 JOB_SCHEDULE_DELAY = Histogram(
-    "uta_job_schedule_delay_seconds", "Delay from the persisted due time to a scheduled start.",
-    ("task_class",), buckets=_JOB_BUCKETS, registry=REGISTRY,
+    "uta_job_schedule_delay_seconds",
+    "Delay from the persisted due time to a scheduled start.",
+    ("task_class",),
+    buckets=_JOB_BUCKETS,
+    registry=REGISTRY,
 )
 JOB_SCHEDULE_OUTCOMES = Counter(
-    "uta_job_schedule_outcomes_total", "Scheduled starts and observed skips by fixed task class.",
-    ("task_class", "outcome"), registry=REGISTRY,
+    "uta_job_schedule_outcomes_total",
+    "Scheduled starts and observed skips by fixed task class.",
+    ("task_class", "outcome"),
+    registry=REGISTRY,
 )
 BACKUP_OPERATIONS = Counter(
-    "uta_backup_operations_total", "Backup create and JSON readback outcomes.",
-    ("backend", "operation", "outcome"), registry=REGISTRY,
+    "uta_backup_operations_total",
+    "Backup create and JSON readback outcomes.",
+    ("backend", "operation", "outcome"),
+    registry=REGISTRY,
 )
 BACKUP_DURATION = Histogram(
-    "uta_backup_operation_duration_seconds", "Backup write and JSON readback duration.",
-    ("backend", "operation"), buckets=_JOB_BUCKETS, registry=REGISTRY,
+    "uta_backup_operation_duration_seconds",
+    "Backup write and JSON readback duration.",
+    ("backend", "operation"),
+    buckets=_JOB_BUCKETS,
+    registry=REGISTRY,
 )
 BACKUP_LAST_VERIFIED = Gauge(
-    "uta_backup_last_verified_timestamp_seconds", "Last completed JSON readback verification.",
-    ("backend",), multiprocess_mode="max", registry=REGISTRY,
+    "uta_backup_last_verified_timestamp_seconds",
+    "Last completed JSON readback verification.",
+    ("backend",),
+    multiprocess_mode="max",
+    registry=REGISTRY,
 )
 BACKUP_ARCHIVE_BYTES = Gauge(
-    "uta_backup_archive_bytes", "Size of the latest JSON snapshot checked by readback.",
-    ("backend",), multiprocess_mode="max", registry=REGISTRY,
+    "uta_backup_archive_bytes",
+    "Size of the latest JSON snapshot checked by readback.",
+    ("backend",),
+    multiprocess_mode="max",
+    registry=REGISTRY,
 )
 MIGRATION_RECOVERY_STATUS = Gauge(
-    "uta_migration_recovery_status", "Latest persisted pre-migration attempt status observed at startup.",
-    ("status",), multiprocess_mode="max", registry=REGISTRY,
+    "uta_migration_recovery_status",
+    "Latest persisted pre-migration attempt status observed at startup.",
+    ("status",),
+    multiprocess_mode="max",
+    registry=REGISTRY,
 )
 MIGRATION_MAINTENANCE_DURATION = Gauge(
     "uta_migration_maintenance_duration_seconds",
     "Elapsed wall time of the latest completed persisted migration attempt.",
-    multiprocess_mode="max", registry=REGISTRY,
+    multiprocess_mode="max",
+    registry=REGISTRY,
 )
 DATA_OPERATIONS = Counter(
-    "uta_data_operations_total", "Completed host import, export and sync operations.",
-    ("integration", "operation", "outcome"), registry=REGISTRY,
+    "uta_data_operations_total",
+    "Completed host import, export and sync operations.",
+    ("integration", "operation", "outcome"),
+    registry=REGISTRY,
 )
 DATA_OPERATION_DURATION = Histogram(
-    "uta_data_operation_duration_seconds", "Duration of host import, export and sync operations.",
-    ("integration", "operation"), buckets=_JOB_BUCKETS, registry=REGISTRY,
+    "uta_data_operation_duration_seconds",
+    "Duration of host import, export and sync operations.",
+    ("integration", "operation"),
+    buckets=_JOB_BUCKETS,
+    registry=REGISTRY,
 )
 DATA_RECORDS = Counter(
-    "uta_data_records_total", "Committed record outcomes from host-owned integrations.",
-    ("integration", "entity", "outcome"), registry=REGISTRY,
+    "uta_data_records_total",
+    "Committed record outcomes from host-owned integrations.",
+    ("integration", "entity", "outcome"),
+    registry=REGISTRY,
 )
 DATA_TRANSFER_BYTES = Counter(
-    "uta_data_transfer_bytes_total", "Observed serialized export and uploaded file bytes.",
-    ("integration", "direction"), registry=REGISTRY,
+    "uta_data_transfer_bytes_total",
+    "Observed serialized export and uploaded file bytes.",
+    ("integration", "direction"),
+    registry=REGISTRY,
 )
 INTEGRATION_LAST_SUCCESS = Gauge(
-    "uta_integration_last_success_timestamp_seconds", "Last successful host integration operation.",
-    ("integration",), multiprocess_mode="max", registry=REGISTRY,
+    "uta_integration_last_success_timestamp_seconds",
+    "Last successful host integration operation.",
+    ("integration",),
+    multiprocess_mode="max",
+    registry=REGISTRY,
 )
 
 PLUGIN_REPORTED_EVENTS = Counter(

@@ -27,7 +27,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.metrics import (
-    JOB_DURATION, JOB_PENDING, JOB_RUNS, JOB_SCHEDULE_DELAY, JOB_SCHEDULE_OUTCOMES,
+    JOB_DURATION,
+    JOB_PENDING,
+    JOB_RUNS,
+    JOB_SCHEDULE_DELAY,
+    JOB_SCHEDULE_OUTCOMES,
 )
 from src.database.models.job_setting import JobSetting
 from src.database.models.user import User
@@ -576,8 +580,7 @@ async def run_jobs_loop() -> None:
                 ]
                 due = await due_jobs(db, specs, now)
                 due_times = {
-                    spec.id: job_runs.next_run_at(await get_setting(db, spec), now)
-                    for spec in due
+                    spec.id: job_runs.next_run_at(await get_setting(db, spec), now) for spec in due
                 }
                 for task_class in ("core", "personal", "plugin"):
                     JOB_PENDING.labels(task_class).set(

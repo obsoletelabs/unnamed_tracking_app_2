@@ -15,7 +15,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.config import settings
 from src.core.crypto import decrypt_secret, encrypt_secret
 from src.core.metrics import (
-    DATA_OPERATION_DURATION, DATA_OPERATIONS, DATA_RECORDS, INTEGRATION_LAST_SUCCESS,
+    DATA_OPERATION_DURATION,
+    DATA_OPERATIONS,
+    DATA_RECORDS,
+    INTEGRATION_LAST_SUCCESS,
 )
 from src.database.models.calendar_source import (
     CalendarSource,
@@ -184,7 +187,8 @@ async def create_source(db: AsyncSession, user_id: UUID, values: dict[str, Any])
     await db.commit()
     _record_calendar_outcome(
         "not_modified" if snapshot.status == "not_modified" else "succeeded",
-        counts, time.monotonic() - started,
+        counts,
+        time.monotonic() - started,
     )
     return read_source(source)
 
@@ -265,9 +269,13 @@ async def refresh_source(
         )
     await db.commit()
     _record_calendar_outcome(
-        "failed" if snapshot is None else
-        "not_modified" if snapshot.status == "not_modified" else "succeeded",
-        counts, time.monotonic() - started,
+        "failed"
+        if snapshot is None
+        else "not_modified"
+        if snapshot.status == "not_modified"
+        else "succeeded",
+        counts,
+        time.monotonic() - started,
     )
     return read_source(source)
 

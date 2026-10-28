@@ -13,7 +13,9 @@ from sqlalchemy.engine import Connection
 
 from src.core.backup_process import BackupError
 from src.core.metrics import (
-    BACKUP_LAST_VERIFIED, MIGRATION_MAINTENANCE_DURATION, MIGRATION_RECOVERY_STATUS,
+    BACKUP_LAST_VERIFIED,
+    MIGRATION_MAINTENANCE_DURATION,
+    MIGRATION_RECOVERY_STATUS,
 )
 from src.database.backup_gate import (
     RecoveryPointError,
@@ -49,7 +51,8 @@ def publish_last_recovery_status() -> None:
             BACKUP_LAST_VERIFIED.labels("migration_recovery").set(verified_at)
         started_at, finished_at = report.get("started_at"), report.get("finished_at")
         if (
-            isinstance(started_at, int) and isinstance(finished_at, int)
+            isinstance(started_at, int)
+            and isinstance(finished_at, int)
             and finished_at >= started_at
         ):
             MIGRATION_MAINTENANCE_DURATION.set(finished_at - started_at)

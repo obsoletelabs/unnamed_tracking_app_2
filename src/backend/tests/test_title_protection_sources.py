@@ -300,7 +300,7 @@ async def test_plugin_gateway_rejects_protected_title_even_with_broad_grant(
     ) as client:
         response = await client.post(
             "/api/plugins/runtime/gateway",
-                headers={"X-Plugin-Runtime-Token": runtime_token},
+            headers={"X-Plugin-Runtime-Token": runtime_token},
             json={
                 "plugin_id": "test.title",
                 "installation_id": str(installation),

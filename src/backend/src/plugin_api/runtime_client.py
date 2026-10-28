@@ -121,11 +121,16 @@ class PluginRuntimeClient:
         started = time.monotonic()
         outcome = "error"
         lifecycle_operation = (
-            "start" if method == "POST" and path.endswith("/start")
-            else "stop" if method == "POST" and path.endswith("/stop")
-            else "remove" if method == "DELETE" and path.startswith("/plugins/")
-            else "rollback" if method == "PUT" and path.endswith("/installation")
-                and kwargs.get("json", {}).get("commit") is False
+            "start"
+            if method == "POST" and path.endswith("/start")
+            else "stop"
+            if method == "POST" and path.endswith("/stop")
+            else "remove"
+            if method == "DELETE" and path.startswith("/plugins/")
+            else "rollback"
+            if method == "PUT"
+            and path.endswith("/installation")
+            and kwargs.get("json", {}).get("commit") is False
             else None
         )
         try:

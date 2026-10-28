@@ -113,7 +113,9 @@ async def test_oidc_metrics_separate_cancellation_from_success(callback):
 
     response = await complete(callback, "?error=access_denied")
     assert response.status_code == 303
-    assert value("uta_auth_attempts_total", {"flow": "oidc", "outcome": "cancelled"}) == cancelled + 1
+    assert (
+        value("uta_auth_attempts_total", {"flow": "oidc", "outcome": "cancelled"}) == cancelled + 1
+    )
     assert value("uta_auth_session_transitions_total", {"transition": "created"}) == created
 
     response = await complete(callback)

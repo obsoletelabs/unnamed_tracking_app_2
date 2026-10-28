@@ -31,11 +31,7 @@ def serialized_lifecycle(function: Callable[_P, Awaitable[_R]]) -> Callable[_P, 
             except Exception:
                 PLUGIN_LIFECYCLE_OPERATIONS.labels(operation, "failed").inc()
                 raise
-            outcome = (
-                result.get("status", "completed")
-                if isinstance(result, dict)
-                else "completed"
-            )
+            outcome = result.get("status", "completed") if isinstance(result, dict) else "completed"
             if outcome not in {"completed", "awaiting_permissions", "rolled_back", "denied"}:
                 outcome = "completed"
             PLUGIN_LIFECYCLE_OPERATIONS.labels(operation, outcome).inc()

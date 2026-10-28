@@ -103,8 +103,8 @@ from src.features.auth_throttle import AuthRateLimited, AuthStoreUnavailable
 from src.features.jobs import run_jobs_loop
 from src.features.metadata.core import CORE_PROVIDERS, core_registration
 from src.features.metadata.health import monitor as provider_health_monitor
-from src.features.notification_metrics import refresh_notification_backlog
 from src.features.notification_logging import protect_notification_link_logs
+from src.features.notification_metrics import refresh_notification_backlog
 from src.helpers import image_prefetch
 from src.plugin_api.backend_routes import reserve_host_routes
 from src.plugin_api.public_apps import purge_expired_data

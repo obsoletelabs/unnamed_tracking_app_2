@@ -4,7 +4,8 @@ import asyncio
 
 import pytest
 from sqlalchemy import create_engine, text
-from sqlalchemy.exc import DBAPIError, TimeoutError as PoolTimeoutError
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import AsyncAdaptedQueuePool
 
@@ -60,12 +61,16 @@ async def test_cancelled_query_has_its_own_outcome():
 def test_session_transitions_count_commits_and_rollbacks_once():
     install_session_metrics()
     install_session_metrics()
-    before_commit = metrics.REGISTRY.get_sample_value(
-        "uta_database_transactions_total", {"outcome": "commit"}
-    ) or 0
-    before_rollback = metrics.REGISTRY.get_sample_value(
-        "uta_database_transactions_total", {"outcome": "rollback"}
-    ) or 0
+    before_commit = (
+        metrics.REGISTRY.get_sample_value("uta_database_transactions_total", {"outcome": "commit"})
+        or 0
+    )
+    before_rollback = (
+        metrics.REGISTRY.get_sample_value(
+            "uta_database_transactions_total", {"outcome": "rollback"}
+        )
+        or 0
+    )
     engine = create_engine("sqlite://")
     try:
         with sessionmaker(bind=engine, class_=ObservedSyncSession)() as db:
@@ -73,22 +78,33 @@ def test_session_transitions_count_commits_and_rollbacks_once():
             db.commit()
             db.execute(text("SELECT 1"))
             db.rollback()
-        assert metrics.REGISTRY.get_sample_value(
-            "uta_database_transactions_total", {"outcome": "commit"}
-        ) == before_commit + 1
-        assert metrics.REGISTRY.get_sample_value(
-            "uta_database_transactions_total", {"outcome": "rollback"}
-        ) == before_rollback + 1
+        assert (
+            metrics.REGISTRY.get_sample_value(
+                "uta_database_transactions_total", {"outcome": "commit"}
+            )
+            == before_commit + 1
+        )
+        assert (
+            metrics.REGISTRY.get_sample_value(
+                "uta_database_transactions_total", {"outcome": "rollback"}
+            )
+            == before_rollback + 1
+        )
     finally:
         engine.dispose()
 
 
 def test_pool_timeout_and_wait_are_measured(monkeypatch):
     pool = ObservedAsyncPool(lambda: object())
-    before_wait = metrics.REGISTRY.get_sample_value("uta_database_connection_wait_seconds_count") or 0
-    before_timeout = metrics.REGISTRY.get_sample_value(
-        "uta_database_pool_timeouts_total", {"reason": "exhausted"}
-    ) or 0
+    before_wait = (
+        metrics.REGISTRY.get_sample_value("uta_database_connection_wait_seconds_count") or 0
+    )
+    before_timeout = (
+        metrics.REGISTRY.get_sample_value(
+            "uta_database_pool_timeouts_total", {"reason": "exhausted"}
+        )
+        or 0
+    )
     monkeypatch.setattr(AsyncAdaptedQueuePool, "_do_get", lambda _self: object())
     pool._do_get()  # pylint: disable=protected-access
 
@@ -101,6 +117,9 @@ def test_pool_timeout_and_wait_are_measured(monkeypatch):
     assert metrics.REGISTRY.get_sample_value("uta_database_connection_wait_seconds_count") == (
         before_wait + 2
     )
-    assert metrics.REGISTRY.get_sample_value(
-        "uta_database_pool_timeouts_total", {"reason": "exhausted"}
-    ) == before_timeout + 1
+    assert (
+        metrics.REGISTRY.get_sample_value(
+            "uta_database_pool_timeouts_total", {"reason": "exhausted"}
+        )
+        == before_timeout + 1
+    )

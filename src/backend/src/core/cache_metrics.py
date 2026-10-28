@@ -68,7 +68,10 @@ def scan_disk_cache_inventory(root: Path, *, limit: int = 50_000) -> dict[str, t
             raise ValueError("cache inventory time limit exceeded")
         if not user.is_dir():
             continue
-        for kind, folder in (("artwork_preview", "asset-previews"), ("media_image", "media-images")):
+        for kind, folder in (
+            ("artwork_preview", "asset-previews"),
+            ("media_image", "media-images"),
+        ):
             cache_dir = user / ".cache" / folder
             for directory, _children, files in os.walk(cache_dir):
                 if time.monotonic() > deadline:

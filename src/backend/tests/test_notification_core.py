@@ -10,8 +10,8 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import delete, func, select
 
-from src.core.preferences import DEFAULTS, save_preferences, validate_preference
 from src.core.metrics import REGISTRY
+from src.core.preferences import DEFAULTS, save_preferences, validate_preference
 from src.database.models.game import Game, GameStatus
 from src.database.models.notification import Notification
 from src.database.models.notification_delivery import NotificationDelivery
@@ -486,14 +486,19 @@ async def test_provider_failure_isolated_retries_and_failures_persist(account, m
         )
 
 
-async def test_backlog_snapshot_distinguishes_known_work_from_collector_failure(account, monkeypatch):
+async def test_backlog_snapshot_distinguishes_known_work_from_collector_failure(
+    account, monkeypatch
+):
     async with SessionLocal() as db:
         await queued_work(db, account, {"plugin.example": Transport()})
     await refresh_notification_backlog()
     assert REGISTRY.get_sample_value("uta_notification_backlog_up") == 1
-    assert REGISTRY.get_sample_value(
-        "uta_notification_pending", {"channel": "plugin", "state": "pending"}
-    ) >= 1
+    assert (
+        REGISTRY.get_sample_value(
+            "uta_notification_pending", {"channel": "plugin", "state": "pending"}
+        )
+        >= 1
+    )
 
     from src.features import notification_metrics
 
@@ -503,9 +508,12 @@ async def test_backlog_snapshot_distinguishes_known_work_from_collector_failure(
     monkeypatch.setattr(notification_metrics, "SessionLocal", unavailable)
     await refresh_notification_backlog()
     assert REGISTRY.get_sample_value("uta_notification_backlog_up") == 0
-    assert REGISTRY.get_sample_value(
-        "uta_notification_pending", {"channel": "plugin", "state": "pending"}
-    ) is None
+    assert (
+        REGISTRY.get_sample_value(
+            "uta_notification_pending", {"channel": "plugin", "state": "pending"}
+        )
+        is None
+    )
 
 
 async def test_runtime_outage_waits_without_consuming_transport_attempt(account, monkeypatch):

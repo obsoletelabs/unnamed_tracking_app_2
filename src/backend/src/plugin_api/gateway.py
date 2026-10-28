@@ -135,9 +135,7 @@ _METHOD_CAPABILITIES = {
 }
 
 
-def _gateway_decision(
-    capability: str | None, external: bool, decision: str, reason: str
-) -> None:
+def _gateway_decision(capability: str | None, external: bool, decision: str, reason: str) -> None:
     # Never promote a plugin-supplied capability or method to a series label.
     safe_capability = capability if capability in _METHOD_CAPABILITIES.values() else "other"
     boundary = "external_app" if external else "account"
@@ -192,7 +190,9 @@ async def dispatch_gateway_request(
             capability not in {"plugin.storage", "integrations.public_app"},
         )
     ):
-        _gateway_decision(_METHOD_CAPABILITIES.get(method), external is not None, "denied", "principal")
+        _gateway_decision(
+            _METHOD_CAPABILITIES.get(method), external is not None, "denied", "principal"
+        )
         raise PermissionError("External app principals cannot access application account APIs")
     required_capability = (
         capability if method == "capabilities.check" else _METHOD_CAPABILITIES.get(method)
@@ -205,7 +205,9 @@ async def dispatch_gateway_request(
     except ValueError:
         authorizes_method = False
     if not authorizes_method:
-        _gateway_decision(required_capability, external is not None, "denied", "capability_mismatch")
+        _gateway_decision(
+            required_capability, external is not None, "denied", "capability_mismatch"
+        )
         raise PermissionError(f"method {method} requires capability {required_capability}")
     if not await has_capability_grant(
         db,
@@ -359,9 +361,12 @@ async def _authorized() -> dict[str, Any]:
 
 async def _record_plugin_metric(payload: dict[str, Any]) -> dict[str, Any]:
     """Accept only host-defined events after the gateway's live grant check."""
-    if set(payload) != {"event"} or not isinstance(payload["event"], str) or payload["event"] not in {
-        "operation_completed", "operation_failed", "item_processed", "item_failed"
-    }:
+    if (
+        set(payload) != {"event"}
+        or not isinstance(payload["event"], str)
+        or payload["event"]
+        not in {"operation_completed", "operation_failed", "item_processed", "item_failed"}
+    ):
         raise ValueError("metrics.record requires one supported event")
     PLUGIN_REPORTED_EVENTS.labels(payload["event"]).inc()
     return {"recorded": True}

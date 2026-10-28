@@ -30,7 +30,10 @@ async def test_library_backup_verification_counts_only_successful_readback(
 ) -> None:
     async def snapshot(*_args):
         return SimpleNamespace(
-            games=[1], movies=[], tv_shows=[], anime=[],
+            games=[1],
+            movies=[],
+            tv_shows=[],
+            anime=[],
             model_dump=lambda **_kwargs: {"games": [1], "exported_at": 123},
         )
 
@@ -42,9 +45,10 @@ async def test_library_backup_verification_counts_only_successful_readback(
     path = await scheduler.run_backup_for_user(uuid4())
     assert path is not None and json.loads(path.read_text()) == {"games": [1], "exported_at": 123}
     assert REGISTRY.get_sample_value("uta_backup_operations_total", labels) == before + 1
-    assert REGISTRY.get_sample_value(
-        "uta_backup_archive_bytes", {"backend": "library_json"}
-    ) == path.stat().st_size
+    assert (
+        REGISTRY.get_sample_value("uta_backup_archive_bytes", {"backend": "library_json"})
+        == path.stat().st_size
+    )
 
     original_read = Path.read_bytes
 
@@ -63,22 +67,29 @@ async def test_library_backup_verification_counts_only_successful_readback(
     assert REGISTRY.get_sample_value("uta_backup_operations_total", labels) == before + 1
 
 
-def test_migration_report_publishes_only_fixed_status(monkeypatch: pytest.MonkeyPatch,
-                                                      tmp_path: Path) -> None:
+def test_migration_report_publishes_only_fixed_status(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.setattr(migration_safety, "recovery_directory", lambda: tmp_path)
     (tmp_path / "attempt-01.json").write_text(
-        json.dumps({
-            "status": "succeeded", "verified_at": 1234, "backup_id": "secret",
-            "started_at": 100, "finished_at": 120,
-        })
+        json.dumps(
+            {
+                "status": "succeeded",
+                "verified_at": 1234,
+                "backup_id": "secret",
+                "started_at": 100,
+                "finished_at": 120,
+            }
+        )
     )
     migration_safety.publish_last_recovery_status()
-    assert REGISTRY.get_sample_value(
-        "uta_migration_recovery_status", {"status": "succeeded"}
-    ) == 1
-    assert REGISTRY.get_sample_value(
-        "uta_backup_last_verified_timestamp_seconds", {"backend": "migration_recovery"}
-    ) == 1234
+    assert REGISTRY.get_sample_value("uta_migration_recovery_status", {"status": "succeeded"}) == 1
+    assert (
+        REGISTRY.get_sample_value(
+            "uta_backup_last_verified_timestamp_seconds", {"backend": "migration_recovery"}
+        )
+        == 1234
+    )
     assert REGISTRY.get_sample_value("uta_migration_maintenance_duration_seconds") == 20
 
 
@@ -101,5 +112,7 @@ async def test_recovery_and_invitation_terminal_outcomes(monkeypatch: pytest.Mon
         await password_recovery.complete_reset(reset, _Session())
     with pytest.raises(HTTPException):
         await user_invitations.accept(invite, _Session())
-    assert REGISTRY.get_sample_value("uta_auth_attempts_total", recovery_labels) == recovery_before + 1
+    assert (
+        REGISTRY.get_sample_value("uta_auth_attempts_total", recovery_labels) == recovery_before + 1
+    )
     assert REGISTRY.get_sample_value("uta_auth_attempts_total", invite_labels) == invite_before + 1

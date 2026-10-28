@@ -16,7 +16,10 @@ from pathlib import Path
 from sqlalchemy import select
 
 from src.core.metrics import (
-    BACKUP_ARCHIVE_BYTES, BACKUP_DURATION, BACKUP_LAST_VERIFIED, BACKUP_OPERATIONS,
+    BACKUP_ARCHIVE_BYTES,
+    BACKUP_DURATION,
+    BACKUP_LAST_VERIFIED,
+    BACKUP_OPERATIONS,
 )
 from src.database.models.user import User
 from src.database.session import SessionLocal

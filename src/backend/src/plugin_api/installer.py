@@ -115,9 +115,12 @@ def inspect_package(
     except PackageVerificationError as exc:
         message = str(exc).lower()
         failure_class = (
-            "integrity" if "integrity" in message or "digest" in message
-            else "manifest" if "manifest" in message
-            else "signature" if "signature" in message
+            "integrity"
+            if "integrity" in message or "digest" in message
+            else "manifest"
+            if "manifest" in message
+            else "signature"
+            if "signature" in message
             else "package"
         )
         PLUGIN_PACKAGE_VALIDATION_FAILURES.labels(failure_class).inc()

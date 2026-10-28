@@ -78,8 +78,10 @@ def dispatch(db, *, method, capability, payload=None, user_id=None, installation
 
 def test_gateway_rejects_capability_confusion_before_dispatch() -> None:
     labels = {
-        "capability": "games.read", "boundary": "account",
-        "decision": "denied", "reason": "capability_mismatch",
+        "capability": "games.read",
+        "boundary": "account",
+        "decision": "denied",
+        "reason": "capability_mismatch",
     }
     before = REGISTRY.get_sample_value("uta_plugin_gateway_decisions_total", labels) or 0
     with pytest.raises(PermissionError, match="requires capability games.read"):
@@ -101,23 +103,40 @@ def test_plugin_metric_requires_grant_and_fixed_event(monkeypatch) -> None:
         return True
 
     monkeypatch.setattr(gateway, "has_capability_grant", grant)
-    before = REGISTRY.get_sample_value(
-        "uta_plugin_reported_events_total", {"event": "operation_completed"}
-    ) or 0
+    before = (
+        REGISTRY.get_sample_value(
+            "uta_plugin_reported_events_total", {"event": "operation_completed"}
+        )
+        or 0
+    )
     assert dispatch(
-        FakeDb(), method="metrics.record", capability="metrics.record",
+        FakeDb(),
+        method="metrics.record",
+        capability="metrics.record",
         payload={"event": "operation_completed"},
     ) == {"recorded": True}
-    assert REGISTRY.get_sample_value(
-        "uta_plugin_reported_events_total", {"event": "operation_completed"}
-    ) == before + 1
-    for invalid in ({"event": "private_id"}, {"event": ["item_processed"]},
-                    {"event": "item_processed", "plugin_id": "arbitrary"}):
+    assert (
+        REGISTRY.get_sample_value(
+            "uta_plugin_reported_events_total", {"event": "operation_completed"}
+        )
+        == before + 1
+    )
+    for invalid in (
+        {"event": "private_id"},
+        {"event": ["item_processed"]},
+        {"event": "item_processed", "plugin_id": "arbitrary"},
+    ):
         with pytest.raises(ValueError, match="supported event"):
-            dispatch(FakeDb(), method="metrics.record", capability="metrics.record", payload=invalid)
+            dispatch(
+                FakeDb(), method="metrics.record", capability="metrics.record", payload=invalid
+            )
     with pytest.raises(PermissionError, match="requires capability metrics.record"):
-        dispatch(FakeDb(), method="metrics.record", capability="plugin.storage",
-                 payload={"event": "operation_completed"})
+        dispatch(
+            FakeDb(),
+            method="metrics.record",
+            capability="plugin.storage",
+            payload={"event": "operation_completed"},
+        )
 
 
 def test_documents_read_returns_bounded_safe_content(tmp_path, monkeypatch) -> None:

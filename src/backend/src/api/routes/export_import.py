@@ -19,7 +19,10 @@ from src.api.schemas.game import GameCreate
 from src.api.schemas.library_export import LibraryExport
 from src.core.auth import get_current_user
 from src.core.metrics import (
-    DATA_OPERATION_DURATION, DATA_OPERATIONS, DATA_RECORDS, DATA_TRANSFER_BYTES,
+    DATA_OPERATION_DURATION,
+    DATA_OPERATIONS,
+    DATA_RECORDS,
+    DATA_TRANSFER_BYTES,
 )
 from src.database.models.game import Game, GameLink
 from src.database.models.user import User

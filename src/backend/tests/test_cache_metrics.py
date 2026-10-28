@@ -6,8 +6,7 @@ import os
 import pytest
 from PIL import Image
 
-from src.core import metrics
-from src.core import cache_metrics
+from src.core import cache_metrics, metrics
 from src.core.cache_metrics import (
     cache_eviction,
     cache_refresh,
@@ -134,9 +133,10 @@ async def test_disk_inventory_measures_known_files_and_distinguishes_failure(tmp
     monkeypatch.setattr(cache_metrics, "scan_disk_cache_inventory", unavailable)
     await refresh_disk_cache_inventory(tmp_path)
     assert sample("uta_cache_inventory_up", cache_kind="media_image") == 0
-    assert metrics.REGISTRY.get_sample_value(
-        "uta_cache_storage_bytes", {"cache_kind": "media_image"}
-    ) is None
+    assert (
+        metrics.REGISTRY.get_sample_value("uta_cache_storage_bytes", {"cache_kind": "media_image"})
+        is None
+    )
 
 
 def test_upstream_bytes_are_measured_and_label_allowlisted():
@@ -144,6 +144,9 @@ def test_upstream_bytes_are_measured_and_label_allowlisted():
     upstream_bytes("metadata_provider", 123)
     upstream_bytes("private-provider", 999)
     assert sample("uta_cache_upstream_bytes_total", cache_kind="metadata_provider") == before + 123
-    assert metrics.REGISTRY.get_sample_value(
-        "uta_cache_upstream_bytes_total", {"cache_kind": "private-provider"}
-    ) is None
+    assert (
+        metrics.REGISTRY.get_sample_value(
+            "uta_cache_upstream_bytes_total", {"cache_kind": "private-provider"}
+        )
+        is None
+    )
