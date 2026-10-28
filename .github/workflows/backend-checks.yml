@@ -50,10 +50,10 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -91,7 +91,7 @@ jobs:
 
       - name: Upload test diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: pytest-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -153,14 +153,14 @@ jobs:
         working-directory: src/backend
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - uses: ./.github/actions/changed-files
         id: changes
       - name: Set up Python
         if: steps.changes.outputs.backend == 'true'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Alembic migration graph
@@ -240,7 +240,7 @@ jobs:
     name: Backend file size
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Check changed backend file sizes
@@ -255,14 +255,14 @@ jobs:
         working-directory: src/backend
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - uses: ./.github/actions/changed-files
         id: changes
       - name: Set up Python
         if: steps.changes.outputs.backend == 'true'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -276,7 +276,7 @@ jobs:
           python3 ../../tools/ci_checks.py backend-typecheck 2>&1 | tee mypy-output.txt
       - name: Upload mypy diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: mypy-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
           path: src/backend/mypy-output.txt
@@ -291,9 +291,9 @@ jobs:
         working-directory: src/plugin-runtime
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -304,7 +304,7 @@ jobs:
         run: PYTHONPATH=. pytest -q tests 2>&1 | tee pytest-output.txt
       - name: Upload plugin runtime diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: plugin-runtime-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
           path: src/plugin-runtime/pytest-output.txt
