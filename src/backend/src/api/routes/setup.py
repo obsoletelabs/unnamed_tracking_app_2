@@ -83,6 +83,7 @@ class SetupRequest(BaseModel):
     oidc_button_text: str = "Continue with SSO"
     oidc_default_login_method: str = "local"
 
+
 _APP_FIELDS = {
     **NGINX_TLS_FIELDS,
     "PUBLIC_APP_URL": "public_app_url",

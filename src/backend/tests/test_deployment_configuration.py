@@ -80,9 +80,9 @@ def test_first_admin_uses_policy_selected_during_setup(monkeypatch):
     assert validate_password("long-enough-pass", policy) == "long-enough-pass"
 
     setup._save_password_policy(app, {"PASSWORD_MIN_LENGTH": 4}, handler)
-    assert validate_password(
-        "short", setup._effective_setup_password_policy(app, handler)
-    ) == "short"
+    assert (
+        validate_password("short", setup._effective_setup_password_policy(app, handler)) == "short"
+    )
 
     locked = EnvConfigHandler({"PASSWORD_MIN_LENGTH": "20"})
     assert setup._effective_setup_password_policy(app, locked)["min_length"] == 9
