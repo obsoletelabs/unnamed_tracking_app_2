@@ -101,6 +101,16 @@ sum(rate(uta_database_pool_timeouts_total{reason="exhausted"}[5m]))
 sum(rate(uta_database_transactions_total{outcome="rollback"}[5m]))
 ```
 
+For a reproducible overhead check, run
+`PYTHONPATH=src/backend DATABASE_URL=<test PostgreSQL URL> TEST_DATABASE_URL=<same URL> python examples/metrics/benchmark_database_metrics.py`
+from the repository root. It runs eight concurrent tasks against a two-connection
+pool, each doing twenty `SELECT 1` calls and holding the connection for 2 ms,
+then compares the median of three plain and instrumented runs. In the disposable
+PostgreSQL container used for this change, the plain median was 0.3126 s and
+the instrumented median was 0.3297 s (+5.5%). This is a local contention
+comparison, not a latency guarantee; connection setup, host scheduling and
+PostgreSQL load can change the result.
+
 ## Cache work
 
 | Metric | Type / unit | Labels |
@@ -234,7 +244,12 @@ own eligibility definition before making availability or latency guarantees.
 
 `uta_auth_attempts_total{flow,outcome}` counts terminal local credential checks
 (`success`, `invalid_credentials`) and OIDC callbacks (`success`, `failed`,
-`cancelled`). OIDC `access_denied` is a cancellation, never a server failure.
+`cancelled`). Parsed password-recovery requests count `accepted` or `limited`
+without revealing whether a private account exists or an email was delivered.
+Recovery completion and invitation acceptance count `success`, `invalid`, or
+`policy_error` after their corresponding feature call. Request-model validation
+failures before a route runs appear only in HTTP metrics. OIDC `access_denied` is
+a cancellation, never a server failure.
 The local authentication quota has its own existing decision counter; an
 attempt rejected before credential verification is not counted as a sign-in
 result. OIDC login initiation is also excluded until its callback arrives.

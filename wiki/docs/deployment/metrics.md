@@ -57,8 +57,8 @@ The direct listener supports one backend worker. `WEB_CONCURRENCY` greater than 
 
 ### Grafana
 
-* **Provisioned (recommended):** mount `examples/metrics/grafana/provisioning` at `/etc/grafana/provisioning` and the dashboard file at `/var/lib/grafana/dashboards/unnamed-tracking.json` (`examples/metrics/compose.yaml` does this). The provisioned Prometheus data source has uid `prometheus` and a 30-second scrape interval, matching the example scraper.
-* **Manual import:** create a Prometheus data source, set its scrape interval to match your scraper, then Dashboards, New, Import and upload `examples/metrics/grafana-dashboard.json`. Select it in the dashboard's **Data source** picker; the uid does not have to be `prometheus`.
+* **Provisioned (recommended):** mount `examples/metrics/grafana/provisioning` at `/etc/grafana/provisioning` and both dashboard files at `/var/lib/grafana/dashboards/` (`examples/metrics/compose.yaml` does this). The provisioned Prometheus data source has uid `prometheus` and a 30-second scrape interval, matching the example scraper. The second **Operations** dashboard covers authentication, plugins, notifications, scheduling, backup and integrations.
+* **Manual import:** create a Prometheus data source, set its scrape interval to match your scraper, then import `examples/metrics/grafana-dashboard.json` and `examples/metrics/grafana-operations.json` through Dashboards, New, Import. Select the source in each dashboard's **Data source** picker; its uid does not have to be `prometheus`.
 
 The dashboard groups 40 visualizations into an overview and sections for HTTP traffic, authentication, database, plugin runtime, scheduled jobs, metadata providers and process resources. It adds explicit scrape/readiness/dependency status, in-flight requests, unhandled exceptions, database probe duration, job duration, and separate CPU, memory and uptime graphs. The errors graph includes both 5xx responses and the dedicated 429 counter.
 
@@ -108,6 +108,62 @@ All names start with `uta_` except the standard process, platform and GC exporte
 
 See [response, SQL, cache, authentication and plugin host metrics](metrics-performance.md) for the new lifecycle, byte, disconnect, query and cache series, definitions and PromQL.
 
+### Scheduled work, recovery and integrations
+
+`uta_job_pending{task_class}` is the due work seen on the most recent scheduler
+tick, grouped into `core`, `personal` and `plugin`; it is not the number of
+running workers. `uta_job_schedule_delay_seconds{task_class}` observes the
+persisted due time through dispatch, in seconds, with buckets 0.1, 0.5, 1, 5,
+15, 60, 300, 900 and 3600. `uta_job_schedule_outcomes_total{task_class,outcome}`
+counts scheduler dispatches (`started`) and adapters returning no running work
+(`skipped`). These series reset on process restart. The existing `uta_job_*`
+series retain their `exported_job` label after Prometheus renames the client
+library's `job` label; new task series use `task_class` instead.
+
+`uta_backup_operations_total{backend,operation,outcome}` records `library_json`
+snapshot `create` and immediate `verify` (byte-for-byte JSON readback), with
+`succeeded` or `failed`. `uta_backup_operation_duration_seconds{backend,operation}`
+uses the same seconds buckets as scheduled jobs. `uta_backup_archive_bytes{backend}`
+is the latest checked JSON file size, and
+`uta_backup_last_verified_timestamp_seconds{backend}` is the last successful
+readback time. These gauges reset at process restart; a missing series means
+no verification was observed in this process. `migration_recovery` has a
+last-verified timestamp restored from the latest private migration report at
+startup; `uta_migration_recovery_status{status}` exposes only `succeeded`,
+`failed`, `in_progress` or `unavailable`, with no report paths or archive IDs.
+`uta_migration_maintenance_duration_seconds` shows the latest completed
+pre-migration attempt's elapsed wall time from its persisted report, including
+recovery creation and migration; it is absent when that attempt has no finish time.
+Startup failures before the HTTP process starts are visible through the
+container/Prometheus target status, not through a live self scrape. Neither
+readback check is an independent restore drill; #300 owns that workflow.
+
+`uta_data_operations_total{integration,operation,outcome}` and
+`uta_data_operation_duration_seconds{integration,operation}` cover `library_json`
+import/export, Playnite observation/inventory and calendar refresh. Streamed
+`file_upload` success or size rejection has an outcome counter but no operation
+timer. Duration uses the scheduled-job buckets.
+`uta_data_records_total{integration,entity,outcome}` counts committed game
+import/Playnite results and reconciled calendar components. ICS occurrence and
+series components are counted separately; a removed upstream event is a
+`removed` outcome and locally preserved overrides are not errors. A Playnite
+`unlinked` result is not silently called created. `uta_data_transfer_bytes_total`
+counts serialized JSON export bytes before compression and successfully stored
+streamed upload bytes. It does not count a rejected upload or claim network
+transfer size for calendar/Playnite. `uta_integration_last_success_timestamp_seconds`
+currently tracks deployment-wide calendar refresh only. No user, source, URL,
+title, filename or content becomes a label. These counters and freshness gauges
+reset with the process. The host does not currently expose Playnite note
+conflict-copy outcomes, so no such metric is claimed.
+
+For operations panels, useful PromQL includes
+`sum by (integration,outcome) (rate(uta_data_operations_total[5m]))`,
+`histogram_quantile(0.95, sum by (le,task_class) (rate(uta_job_schedule_delay_seconds_bucket[10m])))`,
+and `time() - max(uta_backup_last_verified_timestamp_seconds{backend="library_json"})`.
+An absent series is unknown, not zero; check Prometheus `up` and the feature's
+enabled state before alerting. Multiple replicas should be scraped separately;
+sum counters/rates and use `max` only for latest timestamps.
+
 ### Privacy and cardinality
 
 Label values come only from fixed sets: route templates, HTTP methods, status classes, authentication operations, host job ids, built-in provider ids and plugin runtime operation names. Plugin identifiers, usernames, email addresses, titles, URLs with identifiers, client addresses, API keys and tokens are never labels, and the endpoint does not run per-user or library queries. Unknown paths are folded into a single `unmatched` series, so scanners cannot grow the series count.
@@ -116,7 +172,16 @@ The plugin runtime is not scraped directly: it runs isolated with only an intern
 
 ## Plugins and metrics
 
-Plugins run in the isolated runtime and cannot add their own series: Plugin API v1 has no metrics capability, and a plugin-supplied label would be an uncontrolled-cardinality and privacy risk. What you can see for plugins today is everything the host observes about them: runtime health (`uta_plugin_runtime_up`), plugin counts by state (`uta_plugins`), every host-to-runtime operation with its latency and outcome (`uta_plugin_runtime_*`), the jobs plugins register (`uta_job_*`, grouped as `plugin`) and the HTTP routes they serve through the host (`uta_http_*`). A plugin metrics capability, with host-defined names, bounded labels and an explicit permission, would be a contract change and is tracked as a follow-up.
+Plugin API 1.1.16 adds the grantable `metrics.record` gateway method. It accepts
+only four host-defined event values and publishes the aggregate counter
+`uta_plugin_reported_events_total{event}`. Plugin names, account identifiers and
+arbitrary labels never enter the registry. See the
+[gateway contract](../development/plugin-api-v1.md) for the payload and permission.
+The host also reports independently observed runtime health (`uta_plugin_runtime_up`),
+plugin state (`uta_plugins`), host-to-runtime operation outcomes and latency
+(`uta_plugin_runtime_*`), registered job runs (`uta_job_*`) and routed HTTP traffic
+(`uta_http_*`). Plugin-reported events are unverified claims, so compare them with
+host-observed series before drawing operational conclusions.
 
 ## Multiple workers
 
@@ -128,7 +193,11 @@ At the default 30 second interval the series count is a few hundred. Keep 15 day
 
 ## Not yet covered
 
-Import/export outcomes, upload throughput and migration failures (which happen before the application starts and are reported in the container log) are not exported. Cache inventory covers the derived artwork preview and media image directories; other cache stores remain unmeasured.
+Independent restore-drill results are not exported because the drill workflow is
+not yet implemented (#300). There is no general host automation-rule evaluator;
+notification delivery and backlog series measure the existing durable delivery
+queue. Cache inventory covers the derived artwork preview and media image
+directories; other cache stores remain unmeasured.
 
 ## Logging
 

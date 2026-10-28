@@ -128,6 +128,19 @@ def build_tests(dashboard: dict) -> dict:
             ('{exported_job="cleanup",outcome="success"}', 300),
         ],
     )
+    operations = json.loads((EXAMPLE / "grafana-operations.json").read_text())
+    assert len({panel["id"] for panel in operations["panels"]}) == len(
+        operations["panels"]
+    ), "Operations panel IDs must be unique"
+    for panel in operations["panels"]:
+        expression = panel["targets"][0]["expr"]
+        for key, value in {
+            "__rate_interval": "2m", "__range": "5m", "job": "unnamed-tracking",
+            "instance": ".*",
+        }.items():
+            expression = expression.replace("$" + key, value)
+        assert "$" not in expression, expression
+        checks.append({"expr": expression, "eval_time": "5m", "exp_samples": []})
     return {
         "rule_files": [],
         "tests": [
