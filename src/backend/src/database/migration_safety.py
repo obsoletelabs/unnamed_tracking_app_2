@@ -12,11 +12,6 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
 from src.core.backup_process import BackupError
-from src.core.metrics import (
-    BACKUP_LAST_VERIFIED,
-    MIGRATION_MAINTENANCE_DURATION,
-    MIGRATION_RECOVERY_STATUS,
-)
 from src.database.backup_gate import (
     RecoveryPointError,
     database_fingerprint,
@@ -34,6 +29,15 @@ def recovery_directory() -> Path:
 
 def publish_last_recovery_status() -> None:
     """Read the private migration report once after the HTTP process starts."""
+    # The offline recovery-point invalidation command imports this module before
+    # Settings exists; keep the metrics/config import in the running HTTP process.
+    # pylint: disable-next=import-outside-toplevel
+    from src.core.metrics import (
+        BACKUP_LAST_VERIFIED,
+        MIGRATION_MAINTENANCE_DURATION,
+        MIGRATION_RECOVERY_STATUS,
+    )
+
     try:
         latest = max(
             recovery_directory().glob("attempt-*.json"),

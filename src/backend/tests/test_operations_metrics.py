@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
@@ -14,6 +16,20 @@ from src.api.routes import password_recovery, user_invitations
 from src.core.metrics import REGISTRY
 from src.database import migration_safety
 from src.features.backup import scheduler
+
+
+def test_offline_recovery_invalidation_does_not_require_database_settings(tmp_path: Path) -> None:
+    """The one-shot recovery tool must import before application settings exist."""
+    backend = Path(__file__).parents[1]
+    result = subprocess.run(
+        [sys.executable, "-m", "src.database.prepare_upgrade", "--invalidate"],
+        cwd=backend,
+        env={"PYTHONPATH": str(backend), "APP_DATA_DIR": str(tmp_path)},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 class _Session:
