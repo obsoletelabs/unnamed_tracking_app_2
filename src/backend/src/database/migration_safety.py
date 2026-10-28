@@ -12,6 +12,9 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
 from src.core.backup_process import BackupError
+from src.core.metrics import (
+    BACKUP_LAST_VERIFIED, MIGRATION_MAINTENANCE_DURATION, MIGRATION_RECOVERY_STATUS,
+)
 from src.database.backup_gate import (
     RecoveryPointError,
     database_fingerprint,
@@ -25,6 +28,34 @@ from src.database.startup_backup import StartupBackup
 
 def recovery_directory() -> Path:
     return Path(os.getenv("APP_DATA_DIR", "/data")) / "config" / "migration-recovery"
+
+
+def publish_last_recovery_status() -> None:
+    """Read the private migration report once after the HTTP process starts."""
+    try:
+        latest = max(
+            recovery_directory().glob("attempt-*.json"),
+            key=lambda path: path.stat().st_mtime,
+            default=None,
+        )
+        if latest is None:
+            return
+        report = json.loads(latest.read_text(encoding="utf-8"))
+        status = report.get("status")
+        safe_status = status if status in {"succeeded", "failed"} else "in_progress"
+        MIGRATION_RECOVERY_STATUS.labels(safe_status).set(1)
+        verified_at = report.get("verified_at")
+        if isinstance(verified_at, int) and verified_at > 0:
+            BACKUP_LAST_VERIFIED.labels("migration_recovery").set(verified_at)
+        started_at, finished_at = report.get("started_at"), report.get("finished_at")
+        if (
+            isinstance(started_at, int) and isinstance(finished_at, int)
+            and finished_at >= started_at
+        ):
+            MIGRATION_MAINTENANCE_DURATION.set(finished_at - started_at)
+    except (OSError, ValueError, TypeError):
+        # A damaged report is unavailable; it must not stop application startup.
+        MIGRATION_RECOVERY_STATUS.labels("unavailable").set(1)
 
 
 class MigrationSafety:

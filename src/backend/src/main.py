@@ -97,6 +97,7 @@ from src.core.password_work import PasswordWorkBusy
 from src.core.provider_credentials import apply_deployment_provider_credentials
 from src.core.session_manager import purge_old_sessions
 from src.database.auth_limits import auth_limit_engine
+from src.database.migration_safety import publish_last_recovery_status
 from src.database.session import SessionLocal
 from src.features.auth_throttle import AuthRateLimited, AuthStoreUnavailable
 from src.features.jobs import run_jobs_loop
@@ -397,6 +398,8 @@ async def stop_cache_inventory_loop() -> None:
 async def start_notification_backlog_loop() -> None:
     if not app_settings.METRICS_ENABLED:
         return
+
+    publish_last_recovery_status()
 
     async def loop() -> None:
         while True:

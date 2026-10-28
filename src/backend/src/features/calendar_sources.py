@@ -14,6 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import settings
 from src.core.crypto import decrypt_secret, encrypt_secret
+from src.core.metrics import (
+    DATA_OPERATION_DURATION, DATA_OPERATIONS, DATA_RECORDS, INTEGRATION_LAST_SUCCESS,
+)
 from src.database.models.calendar_source import (
     CalendarSource,
     CalendarSourceEvent,
@@ -76,8 +79,9 @@ async def owned_source(
 
 async def reconcile(
     db: AsyncSession, source: CalendarSource, snapshot: CalendarSnapshot, now: int
-) -> None:
+) -> dict[str, int]:
     """One validated complete response is applied in the source's locked transaction."""
+    counts = {"created": 0, "updated": 0, "removed": 0, "unchanged": 0}
     if snapshot.status != "not_modified":
         rows = (
             await db.scalars(
@@ -104,14 +108,19 @@ async def reconcile(
                     last_seen_at=now,
                 )
                 db.add(row)
+                counts["created"] += 1
             else:
                 row.last_seen_at = now
                 if component.sequence >= row.sequence:
+                    counts["updated" if row.content_sha256 != digest else "unchanged"] += 1
                     row.sequence, row.data, row.content_sha256 = component.sequence, data, digest
                     row.removed_at = None
+                else:
+                    counts["unchanged"] += 1
         for key, row in existing.items():
             if key not in seen and row.removed_at is None:
                 row.removed_at = now
+                counts["removed"] += 1
         source.etag, source.last_modified = snapshot.etag, snapshot.last_modified
         source.content_sha256 = snapshot.digest
         source.warnings = snapshot.warnings
@@ -119,9 +128,21 @@ async def reconcile(
     source.last_success_at = now
     source.consecutive_failures = 0
     source.next_refresh_at = now + source.refresh_minutes * 60 + source.id.int % 60
+    return counts
+
+
+def _record_calendar_outcome(status: str, counts: dict[str, int], duration: float) -> None:
+    DATA_OPERATION_DURATION.labels("calendar", "refresh").observe(duration)
+    DATA_OPERATIONS.labels("calendar", "refresh", status).inc()
+    if status in {"succeeded", "not_modified"}:
+        INTEGRATION_LAST_SUCCESS.labels("calendar").set(time.time())
+    for outcome, count in counts.items():
+        if count:
+            DATA_RECORDS.labels("calendar", "event", outcome).inc(count)
 
 
 async def create_source(db: AsyncSession, user_id: UUID, values: dict[str, Any]) -> dict[str, Any]:
+    started = time.monotonic()
     require_subscriptions()
     url, hostname = calendar_url(values.pop("url"))
     # Reject capped accounts before remote work; recheck under the owner lock below.
@@ -159,8 +180,12 @@ async def create_source(db: AsyncSession, user_id: UUID, values: dict[str, Any])
     await db.flush()
     now = int(time.time())
     source.last_attempt_at = now
-    await reconcile(db, source, snapshot, now)
+    counts = await reconcile(db, source, snapshot, now)
     await db.commit()
+    _record_calendar_outcome(
+        "not_modified" if snapshot.status == "not_modified" else "succeeded",
+        counts, time.monotonic() - started,
+    )
     return read_source(source)
 
 
@@ -179,6 +204,9 @@ async def preview_budget(db: AsyncSession, user_id: UUID) -> None:
 async def refresh_source(
     db: AsyncSession, source_id: UUID, user_id: UUID, *, manual: bool = True
 ) -> dict[str, Any]:
+    # The lease and reconciliation state already make this a large state machine.
+    # pylint: disable=too-many-locals
+    started = time.monotonic()
     source = await owned_source(db, source_id, user_id, lock=True)
     require_subscriptions()
     now = int(time.time())
@@ -208,6 +236,7 @@ async def refresh_source(
         source.next_refresh_at = now + 86400
         source.lease_token, source.lease_until = None, 0
         await db.commit()
+        _record_calendar_outcome("failed", {}, time.monotonic() - started)
         return read_source(source)
     etag, modified = source.etag, source.last_modified
     await db.commit()
@@ -223,8 +252,9 @@ async def refresh_source(
         return result
     now = int(time.time())
     source.lease_token, source.lease_until = None, 0
+    counts: dict[str, int] = {}
     if snapshot is not None:
-        await reconcile(db, source, snapshot, now)
+        counts = await reconcile(db, source, snapshot, now)
     else:
         source.last_status = failure
         source.consecutive_failures += 1
@@ -234,6 +264,11 @@ async def refresh_source(
             else source.refresh_minutes * 60
         )
     await db.commit()
+    _record_calendar_outcome(
+        "failed" if snapshot is None else
+        "not_modified" if snapshot.status == "not_modified" else "succeeded",
+        counts, time.monotonic() - started,
+    )
     return read_source(source)
 
 

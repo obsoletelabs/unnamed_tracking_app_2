@@ -213,6 +213,17 @@ not change package format, SDK, gateway transport or installation identity.
 | `tasks.subscribe`, `tasks.unsubscribe` | `tasks.background` | Explicit authenticated UI action's own user; a worker cannot subscribe another user |
 | `tasks.subscribers` | `tasks.background` | Plugin's opted-in user IDs; bounded offset/limit, maximum 100 |
 | `tasks.request` | `tasks.background` | Delegates reviewed media sync, notifications, and (Plugin API 1.1.14) `notification_sources.register` / `notifications.publish` to a subscribed target; checks both target grants live |
+| `metrics.record` | `metrics.record` | Records one host-defined event after the installation's live account grant is checked (Plugin API 1.1.16) |
+
+`metrics.record` accepts exactly `{"event": "operation_completed"}` with the event
+replaced by one of `operation_completed`, `operation_failed`, `item_processed`, or
+`item_failed`. The response is `{"recorded": true}`. It increments
+`uta_plugin_reported_events_total{event="..."}` once; arbitrary metric names,
+values, labels, plugin IDs and account IDs are rejected. This aggregate is
+reported by the plugin and does not prove that the host observed the operation.
+It uses the existing gateway and requires an authenticated account grant; a
+worker can call it only within an authorized account context. It adds no SDK
+import or access to the Prometheus registry inside the isolated plugin runtime.
 
 ### Media sync contract
 

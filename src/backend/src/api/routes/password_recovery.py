@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.metrics import AUTH_ATTEMPTS
 from src.core.session_manager import request_ip
 from src.database.session import get_db
 from src.features.auth_throttle import AuthRateLimited, caller_network
@@ -40,7 +41,9 @@ async def request_reset(
         db, payload.identifier, caller_network(request_ip(request))
     )
     if not decision.allowed:
+        AUTH_ATTEMPTS.labels("recovery_request", "limited").inc()
         raise AuthRateLimited(decision.retry_after)
+    AUTH_ATTEMPTS.labels("recovery_request", "accepted").inc()
     return {
         "message": "If the account has an eligible recovery destination, a reset link will arrive."
     }
@@ -53,7 +56,10 @@ async def complete_reset(
     try:
         success = await complete_password_reset(db, payload.id, payload.token, payload.password)
     except ValueError as exc:
+        AUTH_ATTEMPTS.labels("recovery_complete", "policy_error").inc()
         raise HTTPException(422, str(exc)) from exc
     if not success:
+        AUTH_ATTEMPTS.labels("recovery_complete", "invalid").inc()
         raise HTTPException(400, "This reset link is invalid or expired. Request a new link.")
+    AUTH_ATTEMPTS.labels("recovery_complete", "success").inc()
     return {"message": "Password changed. Sign in with your new password."}

@@ -96,6 +96,30 @@ def test_gateway_rejects_missing_installation_grant() -> None:
         )
 
 
+def test_plugin_metric_requires_grant_and_fixed_event(monkeypatch) -> None:
+    async def grant(*_args, **_kwargs):
+        return True
+
+    monkeypatch.setattr(gateway, "has_capability_grant", grant)
+    before = REGISTRY.get_sample_value(
+        "uta_plugin_reported_events_total", {"event": "operation_completed"}
+    ) or 0
+    assert dispatch(
+        FakeDb(), method="metrics.record", capability="metrics.record",
+        payload={"event": "operation_completed"},
+    ) == {"recorded": True}
+    assert REGISTRY.get_sample_value(
+        "uta_plugin_reported_events_total", {"event": "operation_completed"}
+    ) == before + 1
+    for invalid in ({"event": "private_id"}, {"event": ["item_processed"]},
+                    {"event": "item_processed", "plugin_id": "arbitrary"}):
+        with pytest.raises(ValueError, match="supported event"):
+            dispatch(FakeDb(), method="metrics.record", capability="metrics.record", payload=invalid)
+    with pytest.raises(PermissionError, match="requires capability metrics.record"):
+        dispatch(FakeDb(), method="metrics.record", capability="plugin.storage",
+                 payload={"event": "operation_completed"})
+
+
 def test_documents_read_returns_bounded_safe_content(tmp_path, monkeypatch) -> None:
     user_id = uuid4()
     game_id = uuid4()

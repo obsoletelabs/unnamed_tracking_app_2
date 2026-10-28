@@ -90,7 +90,7 @@ async def refresh_disk_cache_inventory(root: Path) -> None:
     """Run the bounded filesystem aggregation outside the scrape request path."""
     try:
         totals = await asyncio.to_thread(scan_disk_cache_inventory, root)
-    except Exception:
+    except (OSError, ValueError, RuntimeError):
         logger.exception("Cache inventory refresh failed")
         for kind in ("artwork_preview", "media_image"):
             metrics.CACHE_INVENTORY_UP.labels(kind).set(0)

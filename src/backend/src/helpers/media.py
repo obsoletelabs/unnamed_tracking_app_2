@@ -13,6 +13,7 @@ from typing import Literal
 from fastapi import UploadFile
 from PIL import Image, UnidentifiedImageError
 
+from src.core.metrics import DATA_OPERATIONS, DATA_TRANSFER_BYTES
 from src.helpers.remote_images import MAX_PIXELS
 
 MediaKind = Literal["screenshot", "clip", "soundtrack"]
@@ -221,11 +222,14 @@ async def save_upload_stream(
             while chunk := await upload.read(_UPLOAD_CHUNK_SIZE):
                 size += len(chunk)
                 if size > max_bytes:
+                    DATA_OPERATIONS.labels("file_upload", "upload", "rejected_too_large").inc()
                     raise UploadTooLargeError(path.name)
                 output.write(chunk)
     except BaseException:
         path.unlink(missing_ok=True)
         raise
+    DATA_OPERATIONS.labels("file_upload", "upload", "succeeded").inc()
+    DATA_TRANSFER_BYTES.labels("file_upload", "uploaded").inc(size)
     return path, size
 
 

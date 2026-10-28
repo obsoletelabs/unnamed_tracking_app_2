@@ -109,7 +109,8 @@ async def test_large_bodies_with_a_valid_session_are_read(received, session_toke
 
 async def test_large_bodies_from_the_plugin_runtime_are_read(received, monkeypatch):
     client, bodies = received
-    monkeypatch.setenv("PLUGIN_RUNTIME_TOKEN", "runtime-token")
+    token = "a" * 64  # Valid under the public runtime-token header contract.
+    monkeypatch.setenv("PLUGIN_RUNTIME_TOKEN", token)
     async with client:
         refused = await client.post(
             "/api/plugins/runtime/gateway",
@@ -119,7 +120,7 @@ async def test_large_bodies_from_the_plugin_runtime_are_read(received, monkeypat
         accepted = await client.post(
             "/api/plugins/runtime/gateway",
             content=LARGE,
-            headers={"x-plugin-runtime-token": "runtime-token"},
+            headers={"x-plugin-runtime-token": token},
         )
     assert (refused.status_code, accepted.status_code) == (413, 200)
     assert bodies == [LARGE]

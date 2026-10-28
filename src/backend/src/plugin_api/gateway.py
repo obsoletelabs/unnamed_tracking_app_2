@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.routes.settings import (
     get_or_create_scan_settings,
 )
-from src.core.metrics import PLUGIN_GATEWAY_DECISIONS
+from src.core.metrics import PLUGIN_GATEWAY_DECISIONS, PLUGIN_REPORTED_EVENTS
 from src.database.models.game import Game
 from src.database.models.game_file_item import GameFileItem
 from src.database.models.media_item import MediaItem
@@ -117,6 +117,7 @@ _METHOD_CAPABILITIES = {
     "media.import": "media.write",
     "media.sync": "media.write",
     "network.request": "network.outbound",
+    "metrics.record": "metrics.record",
     "events.poll": "events.subscribe",
     "notifications.lifecycle.poll": "notifications.lifecycle.read",
     "notification_destinations.status": "notification_destinations.read",
@@ -261,6 +262,7 @@ async def dispatch_gateway_request(
             provider_configuration, db, plugin_id, installation_id, user_id, payload
         ),
         "capabilities.check": _authorized,
+        "metrics.record": partial(_record_plugin_metric, payload),
         "library.legacy.export": partial(
             export_legacy_records, db, user_id=user_id, payload=payload
         ),
@@ -353,6 +355,16 @@ async def dispatch_gateway_request(
 
 async def _authorized() -> dict[str, Any]:
     return {"authorized": True}
+
+
+async def _record_plugin_metric(payload: dict[str, Any]) -> dict[str, Any]:
+    """Accept only host-defined events after the gateway's live grant check."""
+    if set(payload) != {"event"} or not isinstance(payload["event"], str) or payload["event"] not in {
+        "operation_completed", "operation_failed", "item_processed", "item_failed"
+    }:
+        raise ValueError("metrics.record requires one supported event")
+    PLUGIN_REPORTED_EVENTS.labels(payload["event"]).inc()
+    return {"recorded": True}
 
 
 async def _list_media(
