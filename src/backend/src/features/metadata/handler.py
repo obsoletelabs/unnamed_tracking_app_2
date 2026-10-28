@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 from uuid import UUID, uuid4
 
-from src.core.cache_metrics import cache_eviction, cache_refresh, cache_request
+from src.core.cache_metrics import cache_entries, cache_eviction, cache_refresh, cache_request
 from src.plugin_api.metadata_contracts import (
     MetadataCandidate,
     MetadataPatch,
@@ -139,6 +139,7 @@ class MetadataHandler:
         self.session_ttl = session_ttl
         self.sessions: dict[str, SearchSession] = {}
         self.cache: OrderedDict[tuple, tuple[float, ProviderResponse]] = OrderedDict()
+        cache_entries("metadata_search", 0)
 
     def start(
         self, request: MetadataProviderRequest, providers: Sequence[Provider]
@@ -386,6 +387,7 @@ class MetadataHandler:
                 while len(self.cache) > SEARCH_CACHE_CAPACITY:
                     self.cache.popitem(last=False)
                     cache_eviction("metadata_search", "size_pressure")
+                cache_entries("metadata_search", len(self.cache))
         session.provider_states[provider.id] = "finished"
         session.emit("provider_finished", provider_id=provider.id, name=provider.name)
 

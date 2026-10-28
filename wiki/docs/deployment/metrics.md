@@ -94,10 +94,13 @@ All names start with `uta_` except the standard process, platform and GC exporte
 | `uta_auth_sessions` | gauge | `state` (`active`, `revoked`) | Unexpired browser sessions; refreshed at most every 15 seconds. |
 | `uta_database_up`, `uta_database_probe_duration_seconds`, `uta_ready` | gauge | | One cached `SELECT 1` plus two small counts per 15 seconds, regardless of scrape rate. |
 | `uta_database_pool_connections` | gauge | `state` (`size`, `checked_out`, `overflow`) | Read from the pool object; no query. |
+| `uta_database_connection_wait_seconds`, `uta_database_pool_timeouts_total` | histogram, counter | timeout `reason` (`exhausted`) | Pool acquisition including connection creation; see [performance metrics](metrics-performance.md). |
+| `uta_database_query_duration_seconds`, `uta_database_transactions_total` | histogram, counter | query `operation`/`outcome`; transaction `outcome` | SQL cursor time and completed session commit/rollback transitions. |
 | `uta_job_runs_total` | counter | `job`, `outcome` | Host job ids are labels; plugin and personal jobs share `plugin` and `personal`. |
 | `uta_job_run_duration_seconds` | histogram | `job` | Recorded for the host maintenance jobs. |
 | `uta_job_last_success_timestamp_seconds` | gauge | `job` | From persisted job state, so it survives restarts. |
 | `uta_metadata_provider_calls_total`, `uta_metadata_provider_call_duration_seconds` | counter, histogram | `provider`, `operation`, `outcome` | The built-in providers only. |
+| `uta_cache_entries`, `uta_cache_storage_bytes`, `uta_cache_inventory_up`, `uta_cache_upstream_bytes_total` | gauges, counter | fixed `cache_kind` | Bounded cache inventory and measured upstream bytes; see [performance metrics](metrics-performance.md). |
 | `uta_plugin_runtime_up` | gauge | | Cached health probe of the isolated runtime. |
 | `uta_plugins` | gauge | `state` (`installed`, `enabled`, `healthy`, `unhealthy`) | From the runtime's plugin list, cached for 60 seconds. |
 | `uta_plugin_runtime_requests_total`, `uta_plugin_runtime_request_duration_seconds` | counter, histogram | `operation`, `outcome` | Host-to-runtime calls, for example `POST /plugins/{id}/start`. Outcomes: `ok`, `rejected`, `unreachable`, `timeout`, `server_error`, `configuration`. |

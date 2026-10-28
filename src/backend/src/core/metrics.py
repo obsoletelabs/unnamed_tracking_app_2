@@ -111,11 +111,56 @@ CACHE_EVICTIONS = Counter(
     ("cache_kind", "reason"),
     registry=REGISTRY,
 )
+CACHE_ENTRIES = Gauge(
+    "uta_cache_entries",
+    "Measured cache entries by fixed cache kind; absent when inventory is unavailable.",
+    ("cache_kind",),
+    multiprocess_mode="max",
+    registry=REGISTRY,
+)
+CACHE_STORAGE_BYTES = Gauge(
+    "uta_cache_storage_bytes",
+    "Measured on-disk cache bytes; budgets are not exported when none is configured.",
+    ("cache_kind",),
+    multiprocess_mode="max",
+    registry=REGISTRY,
+)
+CACHE_INVENTORY_UP = Gauge(
+    "uta_cache_inventory_up",
+    "1 when the last bounded cache inventory completed, 0 when unavailable.",
+    ("cache_kind",),
+    multiprocess_mode="max",
+    registry=REGISTRY,
+)
+CACHE_UPSTREAM_BYTES = Counter(
+    "uta_cache_upstream_bytes_total",
+    "Actual bytes received from upstream metadata and image services.",
+    ("cache_kind",),
+    registry=REGISTRY,
+)
 DATABASE_QUERY_DURATION = Histogram(
     "uta_database_query_duration_seconds",
     "SQL cursor execution time, excluding pool wait and result consumption.",
     ("operation", "outcome"),
     buckets=_REQUEST_BUCKETS,
+    registry=REGISTRY,
+)
+DATABASE_CONNECTION_WAIT = Histogram(
+    "uta_database_connection_wait_seconds",
+    "Time to acquire or create a connection from the application pool.",
+    buckets=_REQUEST_BUCKETS,
+    registry=REGISTRY,
+)
+DATABASE_POOL_TIMEOUTS = Counter(
+    "uta_database_pool_timeouts_total",
+    "Application pool acquisition timeouts.",
+    ("reason",),
+    registry=REGISTRY,
+)
+DATABASE_TRANSACTIONS = Counter(
+    "uta_database_transactions_total",
+    "Completed application session transaction transitions.",
+    ("outcome",),
     registry=REGISTRY,
 )
 HTTP_IN_FLIGHT = Gauge(

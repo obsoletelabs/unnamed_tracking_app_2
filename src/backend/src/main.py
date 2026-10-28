@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
@@ -90,6 +91,7 @@ from src.api.routes.setup import router as setup_router
 from src.api.routes.themes import router as themes_router
 from src.api.routes.utils.misc import router as misc_router
 from src.core.auth import ensure_primary_user, set_password_policy_override
+from src.core.cache_metrics import refresh_disk_cache_inventory
 from src.core.config import settings as app_settings
 from src.core.password_work import PasswordWorkBusy
 from src.core.provider_credentials import apply_deployment_provider_credentials
@@ -363,3 +365,28 @@ async def stop_direct_metrics_listener() -> None:
     if listener is not None:
         await listener.stop()
         app.state.metrics_listener = None
+
+
+@app.on_event("startup")
+async def start_cache_inventory_loop() -> None:
+    if not app_settings.METRICS_ENABLED:
+        return
+
+    async def loop() -> None:
+        while True:
+            await refresh_disk_cache_inventory(Path("/data/users"))
+            await asyncio.sleep(300)
+
+    app.state.cache_inventory_task = asyncio.create_task(loop())
+
+
+@app.on_event("shutdown")
+async def stop_cache_inventory_loop() -> None:
+    task = getattr(app.state, "cache_inventory_task", None)
+    if task is not None:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        app.state.cache_inventory_task = None

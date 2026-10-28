@@ -22,6 +22,7 @@ from urllib.parse import quote, urljoin
 
 from PIL import Image, UnidentifiedImageError
 
+from src.core.cache_metrics import cache_refresh, cache_request, upstream_bytes
 from src.helpers.public_http import parse_http_url, public_addresses, public_connection
 
 MAX_BYTES = 15 * 1024 * 1024
@@ -55,13 +56,18 @@ def fetch_if_missing(url: str, target: Path, width: int) -> None:
     try:
         with pending.lock:
             if pending.error is not None:
+                cache_request("media_image", "miss")
                 raise pending.error
             if not target.is_file():
+                cache_request("media_image", "miss")
                 try:
-                    fetch_and_store(url, target, width)
+                    with cache_refresh("media_image"):
+                        fetch_and_store(url, target, width)
                 except Exception as exc:
                     pending.error = exc
                     raise
+            else:
+                cache_request("media_image", "hit")
     finally:
         with _pending_guard:
             pending.users -= 1
@@ -88,7 +94,9 @@ def _validate_image(data: bytes) -> None:
         raise RemoteImageError("not a valid image") from exc
 
 
-def download_image(url: str, *, max_bytes: int = MAX_BYTES) -> bytes:
+def download_image(
+    url: str, *, max_bytes: int = MAX_BYTES, cache_kind: str = "media_image"
+) -> bytes:
     """Read a bounded raster image with pinned public DNS and checked redirects."""
     try:
         for _ in range(MAX_REDIRECTS + 1):
@@ -125,6 +133,7 @@ def download_image(url: str, *, max_bytes: int = MAX_BYTES) -> bytes:
                     raise RemoteImageError("too large")
                 data = bytearray()
                 while chunk := response.read(min(64 * 1024, max_bytes - len(data) + 1)):
+                    upstream_bytes(cache_kind, len(chunk))
                     data.extend(chunk)
                     if len(data) > max_bytes:
                         raise RemoteImageError("too large")

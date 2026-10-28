@@ -72,6 +72,35 @@ execution count, avoiding a parallel counter. Engine hooks are installed once.
 SQL text, parameters, table names, accounts and exception messages are never
 retained as labels. Comments/unrecognized SQL collapse to `OTHER`.
 
+### Pool and transaction pressure
+
+| Metric | Type / unit | Labels |
+|---|---|---|
+| `uta_database_connection_wait_seconds` | histogram / seconds | none |
+| `uta_database_pool_timeouts_total` | counter / timeouts | `reason=exhausted` |
+| `uta_database_transactions_total` | counter / completed transitions | `outcome=commit` or `rollback` |
+
+Pool acquisition timing wraps the application's SQLAlchemy async queue pool. It
+includes waiting for a free connection and creating a replacement; it is
+separate from cursor execution time. A failed acquisition contributes one
+histogram observation and one timeout. The fixed `exhausted` reason denotes
+the SQLAlchemy pool timeout, not a PostgreSQL lock timeout.
+
+Transaction transitions are observed on the application's async session core,
+after successful commit and actual rollback events. They count session
+transactions rather than logical API operations; one request can commit more
+than once. Deadlock and retry outcomes are absent until the application owns an
+explicit retry policy. Counters reset with the process and should be
+aggregated across replicas with `sum by (...) (rate(...))`. The pool histogram
+uses the same seconds buckets as SQL execution. No SQL text, table or account
+identifier is exported.
+
+```promql
+histogram_quantile(0.95, sum by (le) (rate(uta_database_connection_wait_seconds_bucket[5m])))
+sum(rate(uta_database_pool_timeouts_total{reason="exhausted"}[5m]))
+sum(rate(uta_database_transactions_total{outcome="rollback"}[5m]))
+```
+
 ## Cache work
 
 | Metric | Type / unit | Labels |
@@ -79,6 +108,10 @@ retained as labels. Comments/unrecognized SQL collapse to `OTHER`.
 | `uta_cache_requests_total` | counter / lookups | `cache_kind`, `outcome` |
 | `uta_cache_refresh_duration_seconds` | histogram / seconds | `cache_kind`, `outcome` |
 | `uta_cache_evictions_total` | counter / removed entries | `cache_kind`, `reason` |
+| `uta_cache_entries` | gauge / entries | `cache_kind` |
+| `uta_cache_storage_bytes` | gauge / bytes | `cache_kind` |
+| `uta_cache_inventory_up` | gauge / available (0/1) | `cache_kind` |
+| `uta_cache_upstream_bytes_total` | counter / bytes read | `cache_kind` |
 
 Kinds are the fixed allowlist `metadata_search`, `artwork_preview`,
 `collection_cover`. Unknown kind/outcome inputs are not exported.
@@ -106,11 +139,30 @@ No avoided work is inferred. A conditional HTTP 304 after a preview
 lookup is still a local cache hit. Cache lookup counters describe observed
 application lookups, not browser memory/disk hits that never reach the server.
 
-This is partial coverage of issue #355. Entry/storage inventory, configured
-budgets, persistent byte accounting, all other metadata/artwork caches and
-measured upstream/saved bytes are not implemented. Their absence means unknown,
-not zero. Cache lookup labels are initialized to known zero event counts;
-idle hit ratios remain undefined (0/0).
+The metadata search entry count is updated after each cache mutation. A
+background scan, at most once every five minutes, measures derived artwork
+previews and cached media images under the application data directory. The scan
+stops after 50,000 image entries or two seconds; a failure sets
+`uta_cache_inventory_up` to 0 and removes stale entry/byte gauges. An empty
+cache reports zero with inventory up. Scrapes themselves do not walk files.
+In-memory metadata search is counted per worker; on-disk gauges represent the
+shared deployment volume and use `max` aggregation in multiprocess mode.
+
+Upstream bytes are incremented for actual chunks read from built-in metadata
+HTTP providers and image fetches, including bytes from a response later rejected
+as too large or invalid. A shared in-flight image download is counted once;
+callers that find the completed file count as cache hits. No saved-byte estimate
+is exported. These caches have no configured byte budget, so there is no budget
+series to compare against storage use. Other provider-specific caches and
+collection-cover disk inventory remain unmeasured; absence means unknown, not
+zero. Cache lookup labels are initialized to known zero event counts; idle hit
+ratios remain undefined (0/0). Counters reset on process restart and should be
+summed across replicas; shared-volume disk gauges must not be summed.
+
+```promql
+sum by (cache_kind) (rate(uta_cache_upstream_bytes_total[5m]))
+max by (cache_kind) (uta_cache_storage_bytes) and on (cache_kind) (max by (cache_kind) (uta_cache_inventory_up) == 1)
+```
 
 ## Buckets, labels and aggregation
 
