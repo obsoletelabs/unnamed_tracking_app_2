@@ -1,4 +1,7 @@
+// @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
+import { mount } from "@vue/test-utils";
+import PluginPermissionAccess from "../components/plugins/PluginPermissionAccess.vue";
 import { permissionAccessRows } from "../services/pluginPermissionAccess";
 import type { PluginInstallPermission } from "../services/plugins";
 import type { PluginPermissionGrant } from "../services/pluginPermissions";
@@ -44,6 +47,25 @@ function grant(
 }
 
 describe("native permission access groups", () => {
+  it("reviews denied global scopes together without including active or personal grants", async () => {
+    const wrapper = mount(PluginPermissionAccess, {
+      props: {
+        permissions: [read, write],
+        grants: [grant("games.read", { user_id: "user" })],
+        requests: [],
+        busy: false,
+      },
+      global: { stubs: { AppIcon: true } },
+    });
+    const button = wrapper
+      .findAll("button")
+      .find((item) => item.text().includes("Review denied permissions"));
+    expect(button).toBeDefined();
+    await button!.trigger("click");
+    expect(wrapper.emitted("grant")?.[0]).toEqual([[write.key, read.key]]);
+    expect(wrapper.findAll("details")).toHaveLength(0);
+    wrapper.unmount();
+  });
   it("shows one logical permission across older revoked and active records", () => {
     const rows = permissionAccessRows(
       [read],

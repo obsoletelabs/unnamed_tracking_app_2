@@ -16,6 +16,13 @@ Only administrators can install, update, enable, disable, retry, inspect diagnos
 
 Permissions are shown as an expandable hierarchy. Approving a parent approves its requested subtree; approving a leaf does not grant its siblings. Required dependencies must already be installed at a compatible version. Available dependencies are shown as separate packages and must receive their own trust and permission review.
 
+For an installed plugin, the Permissions tab shows active, pending, and denied
+access together. Choose **Review denied permissions** to select one or more
+global scopes in a single review. Every scope starts unchecked; the grant action
+stays disabled until at least one is selected. You can also review a single
+denied scope from its row. Grant, denial, and revocation refresh the open plugin
+view immediately.
+
 ## Sources and updates
 
 The manager provides Installed, Updates Available, Available to Install and All
