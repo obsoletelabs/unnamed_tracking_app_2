@@ -26,7 +26,13 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.metrics import JOB_DURATION, JOB_RUNS
+from src.core.metrics import (
+    JOB_DURATION,
+    JOB_PENDING,
+    JOB_RUNS,
+    JOB_SCHEDULE_DELAY,
+    JOB_SCHEDULE_OUTCOMES,
+)
 from src.database.models.job_setting import JobSetting
 from src.database.models.user import User
 from src.database.session import SessionLocal
@@ -47,6 +53,12 @@ from src.features.user_invitations import expire_invitations
 
 logger = logging.getLogger(__name__)
 TICK_SECONDS = 60
+
+
+def _task_class(spec: JobSpec) -> str:
+    if spec.plugin_id is not None:
+        return "plugin"
+    return "personal" if spec.user_id is not None else "core"
 
 
 @dataclass(frozen=True)
@@ -567,6 +579,13 @@ async def run_jobs_loop() -> None:
                     *await get_scheduled_user_jobs(db),
                 ]
                 due = await due_jobs(db, specs, now)
+                due_times = {
+                    spec.id: job_runs.next_run_at(await get_setting(db, spec), now) for spec in due
+                }
+                for task_class in ("core", "personal", "plugin"):
+                    JOB_PENDING.labels(task_class).set(
+                        sum(_task_class(spec) == task_class for spec in due)
+                    )
                 # Queued additions must resume after a server restart even when the user has
                 # left periodic autosync disabled. Scheduled runs still use the normal cadence.
                 # pylint: disable=import-outside-toplevel
@@ -576,7 +595,14 @@ async def run_jobs_loop() -> None:
                 await db.commit()
             for spec in due:
                 logger.info("Starting the scheduled job %s", spec.id)
-                spec.start("needed")
+                task_class = _task_class(spec)
+                due_at = due_times[spec.id]
+                if due_at is not None:
+                    JOB_SCHEDULE_DELAY.labels(task_class).observe(max(0, time.time() - due_at))
+                started = spec.start("needed")
+                JOB_SCHEDULE_OUTCOMES.labels(
+                    task_class, "started" if started.get("running") else "skipped"
+                ).inc()
             due_ids = {spec.id for spec in due}
             for spec in pending_achievement_jobs:
                 if spec.id not in due_ids:

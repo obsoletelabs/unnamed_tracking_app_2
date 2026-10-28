@@ -10,10 +10,17 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from pathlib import Path
 
 from sqlalchemy import select
 
+from src.core.metrics import (
+    BACKUP_ARCHIVE_BYTES,
+    BACKUP_DURATION,
+    BACKUP_LAST_VERIFIED,
+    BACKUP_OPERATIONS,
+)
 from src.database.models.user import User
 from src.database.session import SessionLocal
 from src.features.imports.library_export import build_library_export
@@ -40,7 +47,30 @@ async def run_backup_for_user(user_id) -> Path | None:
         user_dir = _BACKUP_ROOT / str(user_id)
         user_dir.mkdir(parents=True, exist_ok=True)
         backup_path = user_dir / f"backup-{payload['exported_at']}.json"
-        backup_path.write_text(json.dumps(payload))
+        serialized = json.dumps(payload).encode()
+        started = time.monotonic()
+        try:
+            backup_path.write_bytes(serialized)
+        except OSError:
+            BACKUP_OPERATIONS.labels("library_json", "create", "failed").inc()
+            raise
+        finally:
+            BACKUP_DURATION.labels("library_json", "create").observe(time.monotonic() - started)
+        BACKUP_OPERATIONS.labels("library_json", "create", "succeeded").inc()
+
+        started = time.monotonic()
+        try:
+            if backup_path.read_bytes() != serialized:
+                raise OSError("Backup readback did not match the written snapshot")
+        except OSError:
+            BACKUP_OPERATIONS.labels("library_json", "verify", "failed").inc()
+            backup_path.unlink(missing_ok=True)
+            raise
+        finally:
+            BACKUP_DURATION.labels("library_json", "verify").observe(time.monotonic() - started)
+        BACKUP_OPERATIONS.labels("library_json", "verify", "succeeded").inc()
+        BACKUP_LAST_VERIFIED.labels("library_json").set(time.time())
+        BACKUP_ARCHIVE_BYTES.labels("library_json").set(len(serialized))
 
         # keep only the most recent N, this is a rolling safety net, not a
         # long-term archive (that's what the manual Export button is for)

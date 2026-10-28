@@ -12,7 +12,7 @@ from src.helpers.remote_images import MAX_BYTES, download_image
 
 
 def _preview(url: str) -> bytes:
-    data = download_image(url, max_bytes=MAX_BYTES)
+    data = download_image(url, max_bytes=MAX_BYTES, cache_kind="artwork_preview")
     with Image.open(io.BytesIO(data)) as source:
         source.thumbnail((800, 800))
         image = source.convert("RGBA")

@@ -12,6 +12,7 @@ from urllib.parse import quote, urlsplit
 import httpx
 
 from src.core.metrics import (
+    PLUGIN_LIFECYCLE_OPERATIONS,
     PLUGIN_RUNTIME_DURATION,
     PLUGIN_RUNTIME_REQUESTS,
     plugin_runtime_operation,
@@ -119,6 +120,19 @@ class PluginRuntimeClient:
         operation = plugin_runtime_operation(method, path)
         started = time.monotonic()
         outcome = "error"
+        lifecycle_operation = (
+            "start"
+            if method == "POST" and path.endswith("/start")
+            else "stop"
+            if method == "POST" and path.endswith("/stop")
+            else "remove"
+            if method == "DELETE" and path.startswith("/plugins/")
+            else "rollback"
+            if method == "PUT"
+            and path.endswith("/installation")
+            and kwargs.get("json", {}).get("commit") is False
+            else None
+        )
         try:
             result = await self._send(method, path, **kwargs)
             outcome = "ok"
@@ -132,6 +146,8 @@ class PluginRuntimeClient:
         finally:
             PLUGIN_RUNTIME_REQUESTS.labels(operation, outcome).inc()
             PLUGIN_RUNTIME_DURATION.labels(operation).observe(time.monotonic() - started)
+            if lifecycle_operation is not None:
+                PLUGIN_LIFECYCLE_OPERATIONS.labels(lifecycle_operation, outcome).inc()
 
     async def _send(self, method: str, path: str, **kwargs: Any) -> Any:
         """Send one request and translate transport and status failures."""

@@ -13,6 +13,11 @@ from sqlalchemy import or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.metrics import (
+    NOTIFICATION_ATTEMPTS,
+    NOTIFICATION_DELIVERIES,
+    NOTIFICATION_DELIVERY_DURATION,
+)
 from src.core.preferences import load_preferences
 from src.database.models.notification import Notification
 from src.database.models.notification_delivery import NotificationDelivery
@@ -63,6 +68,44 @@ logger = logging.getLogger(__name__)
 MAX_ATTEMPTS = 3
 LEASE_SECONDS = 90
 TRANSPORT_TIMEOUT_SECONDS = 35
+_REASONS = frozenset(
+    {
+        "source_revoked",
+        "routing_changed",
+        "provider_revoked",
+        "installation_changed",
+        "user_inactive",
+        "provider_unavailable",
+        "authorization_unavailable",
+        "transport_security_required",
+        "attempts_exhausted",
+        "muted",
+        "superseded",
+        "revision_in_flight",
+        "recovery_expired",
+        "dispatch_error",
+        "provider_error",
+        "edit_failed",
+        "delivered",
+        "cancelled",
+    }
+)
+
+
+def _channel(provider_id: str) -> str:
+    return {"core.browser": "browser", "core.smtp": "email", INBOX_PROVIDER: "inbox"}.get(
+        provider_id, "plugin"
+    )
+
+
+def _delivery_metric(provider_id: str, status: str, reason: str | None) -> None:
+    outcome = (
+        status
+        if status in {"sent", "retry_wait", "suppressed", "cancelled", "failed_permanent"}
+        else "other"
+    )
+    safe_reason = reason if reason in _REASONS else "other"
+    NOTIFICATION_DELIVERIES.labels(_channel(provider_id), outcome, safe_reason).inc()
 
 
 def retry_delay(attempts: int) -> int:
@@ -235,7 +278,8 @@ async def _claim(db: AsyncSession) -> tuple[UUID, UUID] | None:
 async def _finish(
     db: AsyncSession, delivery_id: UUID, token: UUID, status: str, error: str | None = None
 ) -> None:
-    await change_deliveries(
+    delivery = await db.get(NotificationDelivery, delivery_id)
+    changed = await change_deliveries(
         db,
         update(NotificationDelivery)
         .where(
@@ -254,6 +298,12 @@ async def _finish(
     if status in {"suppressed", "cancelled", "failed_permanent"}:
         await settle_finished_lead(db, delivery_id, status, error)
     await db.commit()
+    if changed and delivery is not None:
+        _delivery_metric(
+            delivery.provider_id,
+            status,
+            error or ("delivered" if status == "sent" else "cancelled"),
+        )
 
 
 @dataclass(frozen=True)
@@ -499,12 +549,29 @@ async def _prepare(
 async def _provider_call(
     db: AsyncSession, work: _DeliveryWork, destination: ProviderDestination, message, operation: str
 ) -> DeliveryResult:
-    if operation == "edit":
-        edit = work.provider.edit  # type: ignore[attr-defined]
-        return await asyncio.wait_for(edit(db, destination, message), TRANSPORT_TIMEOUT_SECONDS)
-    return await asyncio.wait_for(
-        work.provider.deliver(db, destination, message), TRANSPORT_TIMEOUT_SECONDS
-    )
+    channel = _channel(work.endpoint.provider_id)
+    started = time.perf_counter()
+    outcome = "failed"
+    try:
+        if operation == "edit":
+            edit = work.provider.edit  # type: ignore[attr-defined]
+            result = await asyncio.wait_for(
+                edit(db, destination, message), TRANSPORT_TIMEOUT_SECONDS
+            )
+        else:
+            result = await asyncio.wait_for(
+                work.provider.deliver(db, destination, message), TRANSPORT_TIMEOUT_SECONDS
+            )
+        outcome = "sent" if result.success else "failed"
+        return result
+    except asyncio.CancelledError:
+        outcome = "cancelled"
+        raise
+    finally:
+        NOTIFICATION_ATTEMPTS.labels(channel, outcome).inc()
+        NOTIFICATION_DELIVERY_DURATION.labels(channel, outcome).observe(
+            time.perf_counter() - started
+        )
 
 
 async def _close_attempt(db: AsyncSession, attempt_id: UUID, outcome: str, error: str | None):
@@ -633,7 +700,7 @@ async def _dispatch(db: AsyncSession, delivery_id: UUID, token: UUID) -> bool:
             keep_reference=plan.operation == "edit",
         )
     await db.flush()
-    await change_deliveries(
+    changed = await change_deliveries(
         db,
         update(NotificationDelivery)
         .where(
@@ -653,6 +720,8 @@ async def _dispatch(db: AsyncSession, delivery_id: UUID, token: UUID) -> bool:
     )
     await settle_batch(db, delivery_id, included, state, attempt.error_code)
     await db.commit()
+    if changed:
+        _delivery_metric(delivery.provider_id, state, attempt.error_code or "delivered")
     return result.success
 
 

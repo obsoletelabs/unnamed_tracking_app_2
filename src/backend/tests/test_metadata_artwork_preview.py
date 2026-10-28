@@ -41,7 +41,8 @@ async def test_owned_selected_artwork_only(native_boundary, monkeypatch, case): 
     routes.handler.sessions[session.id] = session
     calls = []
 
-    def download(value, *, max_bytes):
+    def download(value, *, max_bytes, cache_kind):
+        assert cache_kind == "artwork_preview"
         calls.append((value, max_bytes))
         if case == "invalid":
             raise RemoteImageError("bad image")

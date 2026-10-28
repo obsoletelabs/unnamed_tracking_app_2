@@ -8,6 +8,7 @@ from uuid import uuid4
 
 import pytest
 
+from src.core.metrics import REGISTRY
 from src.database.models.auth import UserSession
 from src.database.models.game import Game
 from src.database.models.game_file_item import GameFileItem
@@ -76,8 +77,16 @@ def dispatch(db, *, method, capability, payload=None, user_id=None, installation
 
 
 def test_gateway_rejects_capability_confusion_before_dispatch() -> None:
+    labels = {
+        "capability": "games.read",
+        "boundary": "account",
+        "decision": "denied",
+        "reason": "capability_mismatch",
+    }
+    before = REGISTRY.get_sample_value("uta_plugin_gateway_decisions_total", labels) or 0
     with pytest.raises(PermissionError, match="requires capability games.read"):
         dispatch(FakeDb(), method="games.list", capability="documents.read")
+    assert REGISTRY.get_sample_value("uta_plugin_gateway_decisions_total", labels) == before + 1
 
 
 def test_gateway_rejects_missing_installation_grant() -> None:
@@ -86,6 +95,47 @@ def test_gateway_rejects_missing_installation_grant() -> None:
             FakeDb(scalar_results=[None, None, None]),
             method="sessions.list",
             capability="sessions.read",
+        )
+
+
+def test_plugin_metric_requires_grant_and_fixed_event(monkeypatch) -> None:
+    async def grant(*_args, **_kwargs):
+        return True
+
+    monkeypatch.setattr(gateway, "has_capability_grant", grant)
+    before = (
+        REGISTRY.get_sample_value(
+            "uta_plugin_reported_events_total", {"event": "operation_completed"}
+        )
+        or 0
+    )
+    assert dispatch(
+        FakeDb(),
+        method="metrics.record",
+        capability="metrics.record",
+        payload={"event": "operation_completed"},
+    ) == {"recorded": True}
+    assert (
+        REGISTRY.get_sample_value(
+            "uta_plugin_reported_events_total", {"event": "operation_completed"}
+        )
+        == before + 1
+    )
+    for invalid in (
+        {"event": "private_id"},
+        {"event": ["item_processed"]},
+        {"event": "item_processed", "plugin_id": "arbitrary"},
+    ):
+        with pytest.raises(ValueError, match="supported event"):
+            dispatch(
+                FakeDb(), method="metrics.record", capability="metrics.record", payload=invalid
+            )
+    with pytest.raises(PermissionError, match="requires capability metrics.record"):
+        dispatch(
+            FakeDb(),
+            method="metrics.record",
+            capability="plugin.storage",
+            payload={"event": "operation_completed"},
         )
 
 

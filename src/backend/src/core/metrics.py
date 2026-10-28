@@ -111,11 +111,56 @@ CACHE_EVICTIONS = Counter(
     ("cache_kind", "reason"),
     registry=REGISTRY,
 )
+CACHE_ENTRIES = Gauge(
+    "uta_cache_entries",
+    "Measured cache entries by fixed cache kind; absent when inventory is unavailable.",
+    ("cache_kind",),
+    multiprocess_mode="max",
+    registry=REGISTRY,
+)
+CACHE_STORAGE_BYTES = Gauge(
+    "uta_cache_storage_bytes",
+    "Measured on-disk cache bytes; budgets are not exported when none is configured.",
+    ("cache_kind",),
+    multiprocess_mode="max",
+    registry=REGISTRY,
+)
+CACHE_INVENTORY_UP = Gauge(
+    "uta_cache_inventory_up",
+    "1 when the last bounded cache inventory completed, 0 when unavailable.",
+    ("cache_kind",),
+    multiprocess_mode="max",
+    registry=REGISTRY,
+)
+CACHE_UPSTREAM_BYTES = Counter(
+    "uta_cache_upstream_bytes_total",
+    "Actual bytes received from upstream metadata and image services.",
+    ("cache_kind",),
+    registry=REGISTRY,
+)
 DATABASE_QUERY_DURATION = Histogram(
     "uta_database_query_duration_seconds",
     "SQL cursor execution time, excluding pool wait and result consumption.",
     ("operation", "outcome"),
     buckets=_REQUEST_BUCKETS,
+    registry=REGISTRY,
+)
+DATABASE_CONNECTION_WAIT = Histogram(
+    "uta_database_connection_wait_seconds",
+    "Time to acquire or create a connection from the application pool.",
+    buckets=_REQUEST_BUCKETS,
+    registry=REGISTRY,
+)
+DATABASE_POOL_TIMEOUTS = Counter(
+    "uta_database_pool_timeouts_total",
+    "Application pool acquisition timeouts.",
+    ("reason",),
+    registry=REGISTRY,
+)
+DATABASE_TRANSACTIONS = Counter(
+    "uta_database_transactions_total",
+    "Completed application session transaction transitions.",
+    ("outcome",),
     registry=REGISTRY,
 )
 HTTP_IN_FLIGHT = Gauge(
@@ -141,6 +186,31 @@ AUTH_DECISIONS = Counter(
     "uta_auth_rate_limit_decisions_total",
     "Authentication quota decisions by operation and outcome (aggregate, never per account).",
     ("operation", "outcome"),
+    registry=REGISTRY,
+)
+AUTH_ATTEMPTS = Counter(
+    "uta_auth_attempts_total",
+    "Terminal sign-in outcomes by fixed authentication flow and result.",
+    ("flow", "outcome"),
+    registry=REGISTRY,
+)
+OIDC_STAGE_DURATION = Histogram(
+    "uta_oidc_stage_duration_seconds",
+    "OIDC discovery, token/claims and account-link stage duration.",
+    ("stage", "outcome"),
+    buckets=_SHORT_BUCKETS,
+    registry=REGISTRY,
+)
+OIDC_FAILURES = Counter(
+    "uta_oidc_failures_total",
+    "OIDC failures grouped by a host-defined safe reason.",
+    ("reason",),
+    registry=REGISTRY,
+)
+AUTH_SESSION_TRANSITIONS = Counter(
+    "uta_auth_session_transitions_total",
+    "Observed browser session creation, revocation and expiry cleanup.",
+    ("transition",),
     registry=REGISTRY,
 )
 AUTH_SESSIONS = Gauge(
@@ -184,6 +254,105 @@ JOB_LAST_SUCCESS = Gauge(
     multiprocess_mode="max",
     registry=REGISTRY,
 )
+JOB_PENDING = Gauge(
+    "uta_job_pending",
+    "Due scheduled work observed on the last scheduler tick, by fixed class.",
+    ("task_class",),
+    multiprocess_mode="max",
+    registry=REGISTRY,
+)
+JOB_SCHEDULE_DELAY = Histogram(
+    "uta_job_schedule_delay_seconds",
+    "Delay from the persisted due time to a scheduled start.",
+    ("task_class",),
+    buckets=_JOB_BUCKETS,
+    registry=REGISTRY,
+)
+JOB_SCHEDULE_OUTCOMES = Counter(
+    "uta_job_schedule_outcomes_total",
+    "Scheduled starts and observed skips by fixed task class.",
+    ("task_class", "outcome"),
+    registry=REGISTRY,
+)
+BACKUP_OPERATIONS = Counter(
+    "uta_backup_operations_total",
+    "Backup create and JSON readback outcomes.",
+    ("backend", "operation", "outcome"),
+    registry=REGISTRY,
+)
+BACKUP_DURATION = Histogram(
+    "uta_backup_operation_duration_seconds",
+    "Backup write and JSON readback duration.",
+    ("backend", "operation"),
+    buckets=_JOB_BUCKETS,
+    registry=REGISTRY,
+)
+BACKUP_LAST_VERIFIED = Gauge(
+    "uta_backup_last_verified_timestamp_seconds",
+    "Last completed JSON readback verification.",
+    ("backend",),
+    multiprocess_mode="max",
+    registry=REGISTRY,
+)
+BACKUP_ARCHIVE_BYTES = Gauge(
+    "uta_backup_archive_bytes",
+    "Size of the latest JSON snapshot checked by readback.",
+    ("backend",),
+    multiprocess_mode="max",
+    registry=REGISTRY,
+)
+MIGRATION_RECOVERY_STATUS = Gauge(
+    "uta_migration_recovery_status",
+    "Latest persisted pre-migration attempt status observed at startup.",
+    ("status",),
+    multiprocess_mode="max",
+    registry=REGISTRY,
+)
+MIGRATION_MAINTENANCE_DURATION = Gauge(
+    "uta_migration_maintenance_duration_seconds",
+    "Elapsed wall time of the latest completed persisted migration attempt.",
+    multiprocess_mode="max",
+    registry=REGISTRY,
+)
+DATA_OPERATIONS = Counter(
+    "uta_data_operations_total",
+    "Completed host import, export and sync operations.",
+    ("integration", "operation", "outcome"),
+    registry=REGISTRY,
+)
+DATA_OPERATION_DURATION = Histogram(
+    "uta_data_operation_duration_seconds",
+    "Duration of host import, export and sync operations.",
+    ("integration", "operation"),
+    buckets=_JOB_BUCKETS,
+    registry=REGISTRY,
+)
+DATA_RECORDS = Counter(
+    "uta_data_records_total",
+    "Committed record outcomes from host-owned integrations.",
+    ("integration", "entity", "outcome"),
+    registry=REGISTRY,
+)
+DATA_TRANSFER_BYTES = Counter(
+    "uta_data_transfer_bytes_total",
+    "Observed serialized export and uploaded file bytes.",
+    ("integration", "direction"),
+    registry=REGISTRY,
+)
+INTEGRATION_LAST_SUCCESS = Gauge(
+    "uta_integration_last_success_timestamp_seconds",
+    "Last successful host integration operation.",
+    ("integration",),
+    multiprocess_mode="max",
+    registry=REGISTRY,
+)
+
+PLUGIN_REPORTED_EVENTS = Counter(
+    "uta_plugin_reported_events_total",
+    "Explicit plugin-reported events from the fixed host vocabulary; no plugin-supplied labels.",
+    ("event",),
+    registry=REGISTRY,
+)
 
 PROVIDER_CALLS = Counter(
     "uta_metadata_provider_calls_total",
@@ -223,6 +392,69 @@ PLUGIN_RUNTIME_DURATION = Histogram(
     "Latency of requests from the host to the plugin runtime by operation.",
     ("operation",),
     buckets=_SHORT_BUCKETS,
+    registry=REGISTRY,
+)
+PLUGIN_GATEWAY_DECISIONS = Counter(
+    "uta_plugin_gateway_decisions_total",
+    "Host gateway permission decisions by fixed capability, principal boundary and reason.",
+    ("capability", "boundary", "decision", "reason"),
+    registry=REGISTRY,
+)
+PLUGIN_LIFECYCLE_OPERATIONS = Counter(
+    "uta_plugin_lifecycle_operations_total",
+    "Host-owned plugin lifecycle outcomes.",
+    ("operation", "outcome"),
+    registry=REGISTRY,
+)
+PLUGIN_PACKAGE_VALIDATION_FAILURES = Counter(
+    "uta_plugin_package_validation_failures_total",
+    "Rejected plugin package inspections by bounded failure class.",
+    ("failure_class",),
+    registry=REGISTRY,
+)
+PLUGIN_LIFECYCLE_QUEUE_WAIT = Histogram(
+    "uta_plugin_lifecycle_queue_wait_seconds",
+    "Wait for the host package transaction lock before install or recovery.",
+    buckets=_SHORT_BUCKETS,
+    registry=REGISTRY,
+)
+NOTIFICATION_DELIVERIES = Counter(
+    "uta_notification_deliveries_total",
+    "Logical delivery transitions and retry scheduling by fixed channel and reason.",
+    ("channel", "outcome", "reason"),
+    registry=REGISTRY,
+)
+NOTIFICATION_ATTEMPTS = Counter(
+    "uta_notification_attempts_total",
+    "Physical notification provider calls by fixed channel and outcome.",
+    ("channel", "outcome"),
+    registry=REGISTRY,
+)
+NOTIFICATION_DELIVERY_DURATION = Histogram(
+    "uta_notification_delivery_duration_seconds",
+    "Wall time of one physical provider delivery or edit attempt.",
+    ("channel", "outcome"),
+    buckets=_SHORT_BUCKETS,
+    registry=REGISTRY,
+)
+NOTIFICATION_PENDING = Gauge(
+    "uta_notification_pending",
+    "Cached deployment-wide delivery rows by channel and waiting state.",
+    ("channel", "state"),
+    multiprocess_mode="max",
+    registry=REGISTRY,
+)
+NOTIFICATION_OLDEST_PENDING = Gauge(
+    "uta_notification_oldest_pending_timestamp_seconds",
+    "Earliest next-attempt time among queued delivery rows; zero for an empty queue.",
+    ("channel",),
+    multiprocess_mode="max",
+    registry=REGISTRY,
+)
+NOTIFICATION_BACKLOG_UP = Gauge(
+    "uta_notification_backlog_up",
+    "1 when the last bounded notification backlog aggregation completed.",
+    multiprocess_mode="max",
     registry=REGISTRY,
 )
 

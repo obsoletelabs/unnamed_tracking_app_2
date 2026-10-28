@@ -4,6 +4,7 @@ TV shows and anime, including their tracked seasons and episodes.
 Folder assets, screenshots and saves
 aren't included in either direction."""
 
+import time
 from typing import Any
 from uuid import UUID
 
@@ -17,6 +18,12 @@ from src.api.routes.games import _derive_sort_title, _validate_game_relationship
 from src.api.schemas.game import GameCreate
 from src.api.schemas.library_export import LibraryExport
 from src.core.auth import get_current_user
+from src.core.metrics import (
+    DATA_OPERATION_DURATION,
+    DATA_OPERATIONS,
+    DATA_RECORDS,
+    DATA_TRANSFER_BYTES,
+)
 from src.database.models.game import Game, GameLink
 from src.database.models.user import User
 from src.database.session import get_db
@@ -40,7 +47,14 @@ async def export_library(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> LibraryExport:
-    return await build_library_export(db, current_user.id)
+    started = time.monotonic()
+    result = await build_library_export(db, current_user.id)
+    DATA_OPERATION_DURATION.labels("library_json", "export").observe(time.monotonic() - started)
+    DATA_OPERATIONS.labels("library_json", "export", "succeeded").inc()
+    DATA_TRANSFER_BYTES.labels("library_json", "exported").inc(
+        len(result.model_dump_json().encode())
+    )
+    return result
 
 
 class BackupStatus(BaseModel):
@@ -123,6 +137,9 @@ async def import_library(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> ImportResult:
+    # Import keeps per-entry transaction and manual-row state in this endpoint.
+    # pylint: disable=too-many-locals
+    started = time.monotonic()
     created = 0
     skipped = 0
     errors: list[str] = []
@@ -185,10 +202,15 @@ async def import_library(
         else manual.Restored()
     )
     errors.extend(restored.errors)
-    return ImportResult(
+    result = ImportResult(
         created=created,
         skipped=skipped,
         errors=errors[:20],
         manual_achievements=restored.achievements,
         manual_completion=restored.completions,
     )
+    DATA_OPERATION_DURATION.labels("library_json", "import").observe(time.monotonic() - started)
+    DATA_OPERATIONS.labels("library_json", "import", "partial" if errors else "succeeded").inc()
+    DATA_RECORDS.labels("library_json", "game", "created").inc(created)
+    DATA_RECORDS.labels("library_json", "game", "skipped").inc(skipped)
+    return result

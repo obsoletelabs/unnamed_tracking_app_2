@@ -84,7 +84,11 @@ def _recent_failure(url: str) -> bool:
 def _store(url: str) -> None:
     target = cache_file(url)
     try:
-        data = download_image(url, max_bytes=settings.NOTIFICATION_IMAGE_MAX_BYTES)
+        data = download_image(
+            url,
+            max_bytes=settings.NOTIFICATION_IMAGE_MAX_BYTES,
+            cache_kind="notification_image",
+        )
         save_shrunk(data, target, IMAGE_WIDTH)
         _failure_marker(url).unlink(missing_ok=True)
     except RemoteImageError:

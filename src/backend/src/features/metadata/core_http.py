@@ -14,6 +14,8 @@ from typing import Any
 
 import httpx
 
+from src.core.cache_metrics import upstream_bytes
+
 from .identity import normalized_title
 
 context: ContextVar[tuple[dict[str, Any], dict[str, str]]] = ContextVar("core_metadata_context")
@@ -88,6 +90,7 @@ async def _network(url: str, **options: Any) -> Any:
                     raise ProviderFailure("unavailable", status=response.status_code)
                 content = bytearray()
                 async for chunk in response.aiter_bytes():
+                    upstream_bytes("metadata_provider", len(chunk))
                     content.extend(chunk)
                     if len(content) > 16 * 1024 * 1024:
                         raise ProviderFailure("invalid_response")

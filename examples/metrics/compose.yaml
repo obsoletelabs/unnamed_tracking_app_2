@@ -17,6 +17,7 @@ services:
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana-dashboard.json:/var/lib/grafana/dashboards/unnamed-tracking.json:ro
+      - ./grafana-operations.json:/var/lib/grafana/dashboards/unnamed-tracking-operations.json:ro
       - grafana-data:/var/lib/grafana
     networks: [monitoring]
 volumes:

@@ -16,6 +16,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from src.api.auth_limits import AuthThrottleMiddleware
 from src.api.routes import auth_oidc
 from src.core.auth import hash_token, session_cookie_name
+from src.core.metrics import REGISTRY
 from src.core.oidc import OidcConfig
 from src.database.models.auth import UserSession
 from src.database.models.user import User
@@ -100,6 +101,27 @@ def auth_oidc_identity(config, subject="subject"):
 
 async def complete(callback, query="?code=code&state=state"):
     return await callback.http.get("/api/auth/oidc/callback" + query)
+
+
+async def test_oidc_metrics_separate_cancellation_from_success(callback):
+    def value(name, labels):
+        return REGISTRY.get_sample_value(name, labels) or 0
+
+    cancelled = value("uta_auth_attempts_total", {"flow": "oidc", "outcome": "cancelled"})
+    succeeded = value("uta_auth_attempts_total", {"flow": "oidc", "outcome": "success"})
+    created = value("uta_auth_session_transitions_total", {"transition": "created"})
+
+    response = await complete(callback, "?error=access_denied")
+    assert response.status_code == 303
+    assert (
+        value("uta_auth_attempts_total", {"flow": "oidc", "outcome": "cancelled"}) == cancelled + 1
+    )
+    assert value("uta_auth_session_transitions_total", {"transition": "created"}) == created
+
+    response = await complete(callback)
+    assert response.headers["location"] == "/login?oidc=success"
+    assert value("uta_auth_attempts_total", {"flow": "oidc", "outcome": "success"}) == succeeded + 1
+    assert value("uta_auth_session_transitions_total", {"transition": "created"}) == created + 1
 
 
 async def test_oidc_provisions_and_persists_a_cookie_bound_session(callback):

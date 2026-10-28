@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth_checks import check_credential
 from src.core.config import settings
+from src.core.metrics import AUTH_SESSION_TRANSITIONS
 from src.database.models.auth import UserApiKey, UserSession
 from src.database.models.user import User
 from src.database.session import get_db
@@ -304,6 +305,8 @@ async def revoke_session(db: AsyncSession, session_token: str) -> bool:
         .values(revoked_at=int(time.time()))
     )
     await db.commit()
+    if result.rowcount:
+        AUTH_SESSION_TRANSITIONS.labels("revoked").inc(result.rowcount)
     return bool(result.rowcount)
 
 
@@ -334,6 +337,8 @@ async def purge_expired_sessions(db: AsyncSession, now: int | None = None) -> in
     cutoff = int(time.time()) if now is None else now
     result = await db.execute(delete(UserSession).where(UserSession.expires_at <= cutoff))
     await db.commit()
+    if result.rowcount:
+        AUTH_SESSION_TRANSITIONS.labels("expired").inc(result.rowcount)
     return int(result.rowcount or 0)
 
 

@@ -47,7 +47,7 @@ const emit = defineEmits<{
   updatePackage: [file: File];
   operation: [operation: string, purge?: boolean];
   autoUpdate: [mode: string];
-  grant: [key: string];
+  grant: [keys: string[]];
   deleteHistory: [id: string];
 }>();
 

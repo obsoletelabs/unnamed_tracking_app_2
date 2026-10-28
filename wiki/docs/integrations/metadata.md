@@ -84,6 +84,13 @@ Ratings, playtime, ownership information, notes, status, and other personal libr
 
 If a provider does not return a value, the existing value is not cleared.
 
+Provider descriptions are sanitized before display. HTTPS images retained in
+a description load directly from the provider rather than through the host
+image cache. This preserves the provider's description layout, but opening a
+detail page can disclose the viewer's network address to that image host.
+Administrators should consider this when enabling optional metadata providers;
+the image cache is used for selected artwork, not arbitrary description HTML.
+
 ## Provider selection and priority
 
 In **Settings → Metadata/API → My account**, each provider has **Use for metadata**.

@@ -17,6 +17,7 @@ const props = defineProps<{
   busy: boolean;
   initialView?: "overview" | "access";
   error?: string;
+  requirePermissionSelection?: boolean;
 }>();
 const view = ref<"overview" | "access">(props.initialView ?? "access");
 const blockingIssue = computed(
@@ -122,6 +123,7 @@ const canInstall = computed(() => {
   return (
     props.preview.installable &&
     props.preview.dependency_ready &&
+    (!props.requirePermissionSelection || approved.value.size > 0) &&
     trustAcceptedOrVerified &&
     reauthenticated
   );
@@ -549,10 +551,14 @@ function close() {
               : view === "overview"
                 ? "Review access & install"
                 : !canInstall
-                  ? "Unable to install"
-                  : preview.operation === "update"
-                    ? "Update with selected access"
-                    : "Install with selected access"
+                  ? requirePermissionSelection && !approved.size
+                    ? "Select access to grant"
+                    : "Unable to install"
+                  : requirePermissionSelection
+                    ? "Grant selected access"
+                    : preview.operation === "update"
+                      ? "Update with selected access"
+                      : "Install with selected access"
         }}
       </button>
     </template>

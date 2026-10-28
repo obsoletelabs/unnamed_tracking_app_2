@@ -6,8 +6,15 @@ import os
 import pytest
 from PIL import Image
 
-from src.core import metrics
-from src.core.cache_metrics import cache_eviction, cache_refresh, cache_request
+from src.core import cache_metrics, metrics
+from src.core.cache_metrics import (
+    cache_eviction,
+    cache_refresh,
+    cache_request,
+    refresh_disk_cache_inventory,
+    scan_disk_cache_inventory,
+    upstream_bytes,
+)
 from src.helpers.asset_previews import ensure_preview, invalidate_previews, preview_path
 
 
@@ -99,3 +106,47 @@ def test_unknown_labels_and_inactive_refresh_do_not_create_series():
         if family.name.startswith("uta_cache"):
             for value in family.samples:
                 assert all(not label.startswith("private-") for label in value.labels.values())
+
+
+async def test_disk_inventory_measures_known_files_and_distinguishes_failure(tmp_path, monkeypatch):
+    previews = tmp_path / "user-one" / ".cache" / "asset-previews" / "game"
+    images = tmp_path / "user-one" / ".cache" / "media-images" / "movies"
+    previews.mkdir(parents=True)
+    images.mkdir(parents=True)
+    (previews / "one.jpg").write_bytes(b"1234")
+    (images / "two.jpg").write_bytes(b"123456")
+    (images / "unfinished.tmp").write_bytes(b"ignored")
+    assert scan_disk_cache_inventory(tmp_path) == {
+        "artwork_preview": (1, 4),
+        "media_image": (1, 6),
+    }
+    await refresh_disk_cache_inventory(tmp_path)
+    assert sample("uta_cache_entries", cache_kind="artwork_preview") == 1
+    assert sample("uta_cache_storage_bytes", cache_kind="media_image") == 6
+    assert sample("uta_cache_inventory_up", cache_kind="media_image") == 1
+    with pytest.raises(ValueError, match="entry limit"):
+        scan_disk_cache_inventory(tmp_path, limit=1)
+
+    def unavailable(_root):
+        raise ValueError("private path")
+
+    monkeypatch.setattr(cache_metrics, "scan_disk_cache_inventory", unavailable)
+    await refresh_disk_cache_inventory(tmp_path)
+    assert sample("uta_cache_inventory_up", cache_kind="media_image") == 0
+    assert (
+        metrics.REGISTRY.get_sample_value("uta_cache_storage_bytes", {"cache_kind": "media_image"})
+        is None
+    )
+
+
+def test_upstream_bytes_are_measured_and_label_allowlisted():
+    before = sample("uta_cache_upstream_bytes_total", cache_kind="metadata_provider")
+    upstream_bytes("metadata_provider", 123)
+    upstream_bytes("private-provider", 999)
+    assert sample("uta_cache_upstream_bytes_total", cache_kind="metadata_provider") == before + 123
+    assert (
+        metrics.REGISTRY.get_sample_value(
+            "uta_cache_upstream_bytes_total", {"cache_kind": "private-provider"}
+        )
+        is None
+    )

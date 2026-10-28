@@ -21,7 +21,7 @@ const emit = defineEmits<{
   revoke: [id: string];
   approve: [id: string];
   deny: [id: string];
-  grant: [key: string];
+  grant: [keys: string[]];
 }>();
 const rows = computed(() =>
   permissionAccessRows(props.permissions, props.grants, props.requests),
@@ -41,23 +41,32 @@ const groups = computed(() =>
     }))
     .filter((group) => group.rows.length),
 );
+const reviewableKeys = computed(() =>
+  rows.value
+    .filter((row) => row.state === "denied" && !row.userId && !row.deviceId)
+    .map((row) => row.permission.key),
+);
 </script>
 
 <template>
   <p class="permission-help">
-    Review active access or expand denied permissions to restore a scope.
-    Permissions are enforced by the gateway and can be revoked immediately.
+    Review active access and denied permissions below. Restoring access requires
+    selecting each permission in the review dialog. Permissions are enforced by
+    the gateway and can be revoked immediately.
   </p>
   <p v-if="!rows.length">This plugin requests no host permissions.</p>
-  <details
-    v-for="group in groups"
-    :key="group.state"
-    class="access-group"
-    :open="group.state !== 'denied'"
+  <button
+    v-if="reviewableKeys.length"
+    class="primary"
+    :disabled="busy"
+    @click="emit('grant', reviewableKeys)"
   >
-    <summary>
+    Review denied permissions ({{ reviewableKeys.length }})
+  </button>
+  <section v-for="group in groups" :key="group.state" class="access-group">
+    <h3>
       {{ group.label }} <span>{{ group.rows.length }}</span>
-    </summary>
+    </h3>
     <article v-for="row in group.rows" :key="row.key" class="access-row">
       <span class="permission-icon" :class="row.permission.risk">
         <AppIcon :name="permissionIcon(row.permission.capability)" :size="22" />
@@ -104,7 +113,7 @@ const groups = computed(() =>
         <button
           v-else-if="row.state === 'denied' && !row.userId && !row.deviceId"
           :disabled="busy"
-          @click="emit('grant', row.permission.key)"
+          @click="emit('grant', [row.permission.key])"
         >
           Review and grant
         </button>
@@ -113,7 +122,7 @@ const groups = computed(() =>
         >
       </div>
     </article>
-  </details>
+  </section>
 </template>
 
 <style scoped>
@@ -127,8 +136,8 @@ const groups = computed(() =>
   margin-block: var(--ui-space-4);
   overflow: hidden;
 }
-summary {
-  cursor: pointer;
+h3 {
+  margin: 0;
   min-height: 48px;
   padding: 14px 18px;
   font-weight: 700;

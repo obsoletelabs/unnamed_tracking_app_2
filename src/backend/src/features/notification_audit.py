@@ -86,9 +86,10 @@ async def record_deliveries(db: AsyncSession, delivery_ids: list[UUID]) -> None:
     await db.flush()
 
 
-async def change_deliveries(db: AsyncSession, statement) -> None:
+async def change_deliveries(db: AsyncSession, statement) -> int:
     ids = list(await db.scalars(statement.returning(NotificationDelivery.id)))
     await record_deliveries(db, ids)
+    return len(ids)
 
 
 async def lifecycle_stream(db: AsyncSession, *, write: bool) -> NotificationLifecycleStream:

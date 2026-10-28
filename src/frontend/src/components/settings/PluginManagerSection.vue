@@ -340,7 +340,7 @@ async function deleteHistory(id: string) {
   });
 }
 
-async function reviewGrant(key: string) {
+async function reviewGrant(keys: string[]) {
   if (!selected.value) return;
   const response = await fetch(
     `/api/plugins/${encodeURIComponent(selected.value.plugin_id)}/permissions/preview`,
@@ -357,7 +357,7 @@ async function reviewGrant(key: string) {
     operation: "update",
     requires_version_confirmation: false,
     permissions: preview.permissions
-      .filter((item) => item.key === key)
+      .filter((item) => keys.includes(item.key))
       .map((item) => ({ ...item, new: true })),
   };
 }
@@ -768,6 +768,7 @@ async function confirmInstall(confirmation: PluginInstallConfirmation) {
     updateSource.value = {};
     await load();
     await refreshPluginExtensions();
+    if (selected.value) await refreshPlugin();
   } catch (err) {
     error.value =
       err instanceof Error ? err.message : "Plugin installation failed.";
@@ -1586,6 +1587,7 @@ onMounted(() => {
       :preview="installPreview"
       :busy="installing"
       :initial-view="reviewView"
+      :require-permission-selection="Boolean(grantTarget)"
       :error="error"
       @cancel="cancelInstall"
       @confirm="confirmInstall"

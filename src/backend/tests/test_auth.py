@@ -12,6 +12,7 @@ from src.core.auth import (
     validate_password,
     verify_password,
 )
+from src.core.metrics import REGISTRY
 
 
 def test_validate_password_accepts_password_meeting_policy() -> None:
@@ -63,8 +64,16 @@ def test_api_key_contains_only_safe_persisted_derivatives() -> None:
 async def test_revoke_session_preserves_metadata_and_commits() -> None:
     db = AsyncMock()
     db.execute.return_value = Mock(rowcount=1)
+    before = (
+        REGISTRY.get_sample_value("uta_auth_session_transitions_total", {"transition": "revoked"})
+        or 0
+    )
 
     assert await revoke_session(db, "raw-browser-cookie") is True
+    assert (
+        REGISTRY.get_sample_value("uta_auth_session_transitions_total", {"transition": "revoked"})
+        == before + 1
+    )
 
     statement = db.execute.await_args.args[0]
     assert "UPDATE user_sessions" in str(statement)
