@@ -253,7 +253,8 @@ async def test_plugin_gateway_rejects_protected_title_even_with_broad_grant(
     owner, monkeypatch, kind, model, capability
 ):
     installation = uuid4()
-    monkeypatch.setenv("PLUGIN_RUNTIME_TOKEN", "runtime-test-secret")
+    runtime_token = "r" * 40
+    monkeypatch.setenv("PLUGIN_RUNTIME_TOKEN", runtime_token)
     monkeypatch.setattr(
         runtime.client,
         "plugin_state",
@@ -299,7 +300,7 @@ async def test_plugin_gateway_rejects_protected_title_even_with_broad_grant(
     ) as client:
         response = await client.post(
             "/api/plugins/runtime/gateway",
-            headers={"X-Plugin-Runtime-Token": "runtime-test-secret"},
+                headers={"X-Plugin-Runtime-Token": runtime_token},
             json={
                 "plugin_id": "test.title",
                 "installation_id": str(installation),
