@@ -6,6 +6,9 @@ import hashlib
 import json
 import logging
 import secrets
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import replace
 from typing import Annotated, Any
 from urllib.parse import urlparse
@@ -27,6 +30,12 @@ from src.core.auth import (
 )
 from src.core.config import settings
 from src.core.crypto import decrypt_secret
+from src.core.metrics import (
+    AUTH_ATTEMPTS,
+    AUTH_SESSION_TRANSITIONS,
+    OIDC_FAILURES,
+    OIDC_STAGE_DURATION,
+)
 from src.core.oidc import (
     OidcConfig,
     begin_oidc,
@@ -44,6 +53,25 @@ from src.features.smtp_configuration import normalize_email
 
 router = APIRouter(prefix="/api/auth/oidc", tags=["auth"])
 logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def _oidc_stage(stage: str) -> Iterator[None]:
+    started = time.perf_counter()
+    outcome = "ok"
+    try:
+        yield
+    except Exception:
+        outcome = "error"
+        raise
+    finally:
+        OIDC_STAGE_DURATION.labels(stage, outcome).observe(time.perf_counter() - started)
+
+
+def _oidc_terminal(outcome: str, *, failure_reason: str | None = None) -> None:
+    AUTH_ATTEMPTS.labels("oidc", outcome).inc()
+    if failure_reason is not None:
+        OIDC_FAILURES.labels(failure_reason).inc()
 
 
 def _env_config() -> OidcConfig | None:
@@ -273,18 +301,21 @@ async def _fetch_oidc_token(request: Request, client: Any, config: OidcConfig) -
     # Authlib exposes state/PKCE restoration only through this private adapter;
     # preserve the same saved parameters as its standard authorization-code flow.
     params = client._format_state_params(state_data, params)  # pylint: disable=protected-access
-    issuer = await validate_oidc_metadata(client, config)
-    token = await client.fetch_access_token(**params)
+    with _oidc_stage("discovery"):
+        issuer = await validate_oidc_metadata(client, config)
+    with _oidc_stage("token"):
+        token = await client.fetch_access_token(**params)
     id_token, nonce = token.get("id_token"), state_data.get("nonce")
     if not isinstance(id_token, str) or not id_token or not isinstance(nonce, str) or not nonce:
         raise ValueError("Missing OIDC ID token or nonce")
-    claims = dict(
-        await client.parse_id_token(
-            token,
-            nonce=nonce,
-            claims_options={"iss": {"essential": True, "value": issuer}},
+    with _oidc_stage("claims"):
+        claims = dict(
+            await client.parse_id_token(
+                token,
+                nonce=nonce,
+                claims_options={"iss": {"essential": True, "value": issuer}},
+            )
         )
-    )
     # Authlib allows nonce_supported=false to skip the nonce check. This host always
     # sends a nonce and requires the signed response to bind to that exact login.
     if claims.get("nonce") != nonce:
@@ -477,32 +508,46 @@ async def _complete_callback(
     request: Request, db: AsyncSession, config: OidcConfig, client_name: str
 ) -> RedirectResponse:
     try:
+        if request.query_params.get("error") == "access_denied":
+            raise ValueError("OIDC flow cancelled")
         register_oidc_provider(config, client_name)
         client = oauth.create_client(client_name)
         if client is None:
+            _oidc_terminal("failed", failure_reason="provider_unavailable")
             return RedirectResponse("/login?oidc_error=provider_unavailable", 303)
         token = await _fetch_oidc_token(request, client, config)
         claims = dict(token["userinfo"])
     # Provider token/userinfo failures must return to sign-in without opening a session.
     except Exception as exc:  # pylint: disable=broad-exception-caught
-        logger.warning("OIDC callback validation failed: %s", type(exc).__name__)
+        if request.query_params.get("error") == "access_denied":
+            _oidc_terminal("cancelled")
+        else:
+            logger.warning("OIDC callback validation failed: %s", type(exc).__name__)
+            reason = "timeout" if isinstance(exc, TimeoutError) else "validation"
+            _oidc_terminal("failed", failure_reason=reason)
         return RedirectResponse("/login?oidc_error=authentication_failed", 303)
 
     # Provider verification is checked before resolving or mutating any local account.
     if config.require_verified_email and claims.get("email_verified") is not True:
+        _oidc_terminal("failed", failure_reason="verified_email")
         return RedirectResponse("/login?oidc_error=verified_email_required", 303)
     try:
-        user = await _resolve_oidc_identity(db, config, claims)
-        if isinstance(user, str):
-            return RedirectResponse(f"/login?oidc_error={user}", 303)
-        session_context = await create_session(db, user, request)
-        session_token = session_context.token
-        await db.commit()
+        with _oidc_stage("account_link"):
+            user = await _resolve_oidc_identity(db, config, claims)
+            if isinstance(user, str):
+                _oidc_terminal("failed", failure_reason="linking_policy")
+                return RedirectResponse(f"/login?oidc_error={user}", 303)
+            session_context = await create_session(db, user, request)
+            session_token = session_context.token
+            await db.commit()
     except IntegrityError:
         # A competing identity/account update can win after the availability lookup.
         # Roll back all linking/provisioning/session work without exposing database details.
         await db.rollback()
+        _oidc_terminal("failed", failure_reason="linking_policy")
         return RedirectResponse("/login?oidc_error=identity_conflict", 303)
+    _oidc_terminal("success")
+    AUTH_SESSION_TRANSITIONS.labels("created").inc()
     response = RedirectResponse("/login?oidc=success", 303)
     response.set_cookie(
         key=session_cookie_name(request.headers.get("host", "")),
@@ -523,6 +568,7 @@ async def _complete_callback(
 async def oidc_callback(request: Request, db: Annotated[AsyncSession, Depends(get_db)]):
     config = await _get_config(db, request)
     if config is None:
+        _oidc_terminal("failed", failure_reason="not_configured")
         return RedirectResponse("/login?oidc_error=not_configured", 303)
     return await _complete_callback(request, db, config, "oidc")
 
@@ -533,5 +579,6 @@ async def oidc_callback_provider(
 ):
     config = await _get_config(db, request, provider_slug)
     if config is None:
+        _oidc_terminal("failed", failure_reason="not_configured")
         return RedirectResponse("/login?oidc_error=not_configured", 303)
     return await _complete_callback(request, db, config, f"oidc_{provider_slug}")

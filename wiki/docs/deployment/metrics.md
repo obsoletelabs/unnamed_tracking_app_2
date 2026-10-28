@@ -106,7 +106,7 @@ All names start with `uta_` except the standard process, platform and GC exporte
 | `uta_plugin_runtime_requests_total`, `uta_plugin_runtime_request_duration_seconds` | counter, histogram | `operation`, `outcome` | Host-to-runtime calls, for example `POST /plugins/{id}/start`. Outcomes: `ok`, `rejected`, `unreachable`, `timeout`, `server_error`, `configuration`. |
 | `uta_build_info` | info | `version` | |
 
-See [response, SQL and cache performance metrics](metrics-performance.md) for the new lifecycle, byte, disconnect, query and cache series, definitions and PromQL.
+See [response, SQL, cache, authentication and plugin host metrics](metrics-performance.md) for the new lifecycle, byte, disconnect, query and cache series, definitions and PromQL.
 
 ### Privacy and cardinality
 
@@ -128,7 +128,7 @@ At the default 30 second interval the series count is a few hundred. Keep 15 day
 
 ## Not yet covered
 
-Import/export outcomes, upload throughput, cache inventory/storage totals and upstream byte accounting and migration failures (which happen before the application starts and are reported in the container log) are not exported.
+Import/export outcomes, upload throughput and migration failures (which happen before the application starts and are reported in the container log) are not exported. Cache inventory covers the derived artwork preview and media image directories; other cache stores remain unmeasured.
 
 ## Logging
 

@@ -38,6 +38,7 @@ from src.core.client_address import request_ip
 from src.core.config import settings
 from src.core.crypto import encrypt_secret
 from src.core.env_handler import EnvConfigHandler
+from src.core.metrics import AUTH_ATTEMPTS, AUTH_SESSION_TRANSITIONS
 from src.core.password_work import PasswordWorkBusy, run_password_job
 from src.core.session_manager import create_session
 from src.database.models.app_integration_settings import AppIntegrationSettings
@@ -223,6 +224,7 @@ async def login(
         matches = await verify_login_password(db, payload.password, stored_hash, verify_password)
         if user is None or not user.is_active or not matches:
             reservation.failed = True
+            AUTH_ATTEMPTS.labels("local", "invalid_credentials").inc()
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials."
             )
@@ -238,6 +240,8 @@ async def login(
         session_context = await create_session(db, user, request)
         session_token = session_context.token
         await db.commit()
+        AUTH_ATTEMPTS.labels("local", "success").inc()
+        AUTH_SESSION_TRANSITIONS.labels("created").inc()
         response.set_cookie(
             key=session_cookie_name(request.headers.get("host", "")),
             value=session_token,

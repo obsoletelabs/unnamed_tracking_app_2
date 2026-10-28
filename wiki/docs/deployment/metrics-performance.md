@@ -229,3 +229,60 @@ GET `/api/game/list` and `/api/game/collection-index`, ordinary completed
 responses only. It is a diagnostic threshold to tune for your deployment,
 not an SLO or an error-budget calculation. Other routes/streams require their
 own eligibility definition before making availability or latency guarantees.
+
+## Authentication flow outcomes
+
+`uta_auth_attempts_total{flow,outcome}` counts terminal local credential checks
+(`success`, `invalid_credentials`) and OIDC callbacks (`success`, `failed`,
+`cancelled`). OIDC `access_denied` is a cancellation, never a server failure.
+The local authentication quota has its own existing decision counter; an
+attempt rejected before credential verification is not counted as a sign-in
+result. OIDC login initiation is also excluded until its callback arrives.
+Each observed callback contributes exactly one terminal result. Counters reset
+on process restart and rates should be summed across workers/replicas.
+
+`uta_oidc_stage_duration_seconds{stage,outcome}` times actual `discovery`,
+`token`, `claims`, and `account_link` work with the cache refresh bucket bounds
+listed above. A stage is counted only if reached; UserInfo can be part of the
+claims flow but is not included in the claims timer. `uta_oidc_failures_total`
+uses only `provider_unavailable`, `timeout`, `validation`, `verified_email`,
+`linking_policy`, and `not_configured`. No issuer, subject, claim, account or
+raw exception is a label. `uta_auth_session_transitions_total` counts sessions
+created after a successful local/OIDC commit, direct revocations after commit,
+and rows removed by expired-session cleanup. Expiry itself is not observed at
+its exact wall-clock time; other bulk revocation paths are not included.
+
+```promql
+sum by (flow, outcome) (rate(uta_auth_attempts_total[5m]))
+histogram_quantile(0.95, sum by (stage, le) (rate(uta_oidc_stage_duration_seconds_bucket[10m])))
+```
+
+## Plugin host decisions
+
+`uta_plugin_gateway_decisions_total{capability,boundary,decision,reason}`
+counts a host permission decision before dispatch. Capabilities are limited to
+the host method table plus `other`; boundaries are `account` or `external_app`;
+decisions are `allowed` or `denied`; reasons are `granted`, `principal`,
+`unsupported_method`, `capability_mismatch`, or `grant_missing`. A permitted
+handler can still fail later; this is a policy metric, not an action success
+metric. Plugin IDs, request IDs, user IDs and plugin-supplied method names are
+never exported.
+
+`uta_plugin_package_validation_failures_total{failure_class}` records rejected
+inspections as `integrity`, `manifest`, `signature`, `publisher_policy`, or
+`package`. An unsigned or unknown-publisher package presented for explicit
+review is not itself a validation failure. The host's serialized package
+transaction lock is measured by `uta_plugin_lifecycle_queue_wait_seconds`;
+this is actual install/recovery lock wait, not plugin worker capacity or queue
+depth. It uses the short histogram buckets above.
+`uta_plugin_lifecycle_operations_total{operation,outcome}` reports install and
+update transaction results, plus start/stop/remove/rollback runtime transport
+results. These are distinct attempts; a rolled-back update may contribute to
+both update and rollback counts. Both label sets are fixed by host code. Like
+other counters and histograms, these reset on restart and should be summed
+across workers/replicas.
+
+```promql
+sum by (capability, reason) (rate(uta_plugin_gateway_decisions_total{decision="denied"}[5m]))
+sum by (operation, outcome) (rate(uta_plugin_lifecycle_operations_total[5m]))
+```

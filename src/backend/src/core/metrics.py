@@ -188,6 +188,31 @@ AUTH_DECISIONS = Counter(
     ("operation", "outcome"),
     registry=REGISTRY,
 )
+AUTH_ATTEMPTS = Counter(
+    "uta_auth_attempts_total",
+    "Terminal sign-in outcomes by fixed authentication flow and result.",
+    ("flow", "outcome"),
+    registry=REGISTRY,
+)
+OIDC_STAGE_DURATION = Histogram(
+    "uta_oidc_stage_duration_seconds",
+    "OIDC discovery, token/claims and account-link stage duration.",
+    ("stage", "outcome"),
+    buckets=_SHORT_BUCKETS,
+    registry=REGISTRY,
+)
+OIDC_FAILURES = Counter(
+    "uta_oidc_failures_total",
+    "OIDC failures grouped by a host-defined safe reason.",
+    ("reason",),
+    registry=REGISTRY,
+)
+AUTH_SESSION_TRANSITIONS = Counter(
+    "uta_auth_session_transitions_total",
+    "Observed browser session creation, revocation and expiry cleanup.",
+    ("transition",),
+    registry=REGISTRY,
+)
 AUTH_SESSIONS = Gauge(
     "uta_auth_sessions",
     "Browser sessions by state, refreshed at most every 15 seconds.",
@@ -267,6 +292,30 @@ PLUGIN_RUNTIME_DURATION = Histogram(
     "uta_plugin_runtime_request_duration_seconds",
     "Latency of requests from the host to the plugin runtime by operation.",
     ("operation",),
+    buckets=_SHORT_BUCKETS,
+    registry=REGISTRY,
+)
+PLUGIN_GATEWAY_DECISIONS = Counter(
+    "uta_plugin_gateway_decisions_total",
+    "Host gateway permission decisions by fixed capability, principal boundary and reason.",
+    ("capability", "boundary", "decision", "reason"),
+    registry=REGISTRY,
+)
+PLUGIN_LIFECYCLE_OPERATIONS = Counter(
+    "uta_plugin_lifecycle_operations_total",
+    "Host-owned plugin lifecycle outcomes.",
+    ("operation", "outcome"),
+    registry=REGISTRY,
+)
+PLUGIN_PACKAGE_VALIDATION_FAILURES = Counter(
+    "uta_plugin_package_validation_failures_total",
+    "Rejected plugin package inspections by bounded failure class.",
+    ("failure_class",),
+    registry=REGISTRY,
+)
+PLUGIN_LIFECYCLE_QUEUE_WAIT = Histogram(
+    "uta_plugin_lifecycle_queue_wait_seconds",
+    "Wait for the host package transaction lock before install or recovery.",
     buckets=_SHORT_BUCKETS,
     registry=REGISTRY,
 )

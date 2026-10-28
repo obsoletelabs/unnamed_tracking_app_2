@@ -24,6 +24,7 @@ from cryptography.exceptions import InvalidSignature
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.metrics import PLUGIN_PACKAGE_VALIDATION_FAILURES
 from src.database.models.plugin_permissions import (
     PluginPermissionGrant,
 )
@@ -109,7 +110,18 @@ def inspect_package(
     verifier: PluginPackageVerifier,
 ) -> InspectedPackage:
     """Validate package bytes first, then classify signature trust precisely."""
-    candidate = verifier.inspect(package_path, verify_signature=False)
+    try:
+        candidate = verifier.inspect(package_path, verify_signature=False)
+    except PackageVerificationError as exc:
+        message = str(exc).lower()
+        failure_class = (
+            "integrity" if "integrity" in message or "digest" in message
+            else "manifest" if "manifest" in message
+            else "signature" if "signature" in message
+            else "package"
+        )
+        PLUGIN_PACKAGE_VALIDATION_FAILURES.labels(failure_class).inc()
+        raise
     integrity = candidate.manifest.integrity
     signature_present = integrity.signature is not None
     key_id = integrity.key_id
@@ -128,6 +140,7 @@ def inspect_package(
         )
 
     if not key_id:
+        PLUGIN_PACKAGE_VALIDATION_FAILURES.labels("signature").inc()
         return InspectedPackage(
             candidate,
             PackageTrust(
@@ -155,6 +168,7 @@ def inspect_package(
                 ),
             )
     except (ValueError, binascii.Error, InvalidSignature, PackageVerificationError):
+        PLUGIN_PACKAGE_VALIDATION_FAILURES.labels("signature").inc()
         return InspectedPackage(
             candidate,
             PackageTrust(
@@ -167,7 +181,11 @@ def inspect_package(
             ),
         )
 
-    verifier.validate_publisher_policy(candidate.manifest, candidate.archive_sha256)
+    try:
+        verifier.validate_publisher_policy(candidate.manifest, candidate.archive_sha256)
+    except PackageVerificationError:
+        PLUGIN_PACKAGE_VALIDATION_FAILURES.labels("publisher_policy").inc()
+        raise
     if publisher is None or not publisher.allows_package(
         candidate.manifest.plugin_id, candidate.archive_sha256
     ):

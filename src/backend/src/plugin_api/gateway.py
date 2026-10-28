@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.routes.settings import (
     get_or_create_scan_settings,
 )
+from src.core.metrics import PLUGIN_GATEWAY_DECISIONS
 from src.database.models.game import Game
 from src.database.models.game_file_item import GameFileItem
 from src.database.models.media_item import MediaItem
@@ -133,6 +134,15 @@ _METHOD_CAPABILITIES = {
 }
 
 
+def _gateway_decision(
+    capability: str | None, external: bool, decision: str, reason: str
+) -> None:
+    # Never promote a plugin-supplied capability or method to a series label.
+    safe_capability = capability if capability in _METHOD_CAPABILITIES.values() else "other"
+    boundary = "external_app" if external else "account"
+    PLUGIN_GATEWAY_DECISIONS.labels(safe_capability, boundary, decision, reason).inc()
+
+
 def runtime_token_is_valid(token: str | None) -> bool:
     configured = os.getenv("PLUGIN_RUNTIME_TOKEN", "")
     if not runtime_token_valid(configured) or not token:
@@ -181,17 +191,20 @@ async def dispatch_gateway_request(
             capability not in {"plugin.storage", "integrations.public_app"},
         )
     ):
+        _gateway_decision(_METHOD_CAPABILITIES.get(method), external is not None, "denied", "principal")
         raise PermissionError("External app principals cannot access application account APIs")
     required_capability = (
         capability if method == "capabilities.check" else _METHOD_CAPABILITIES.get(method)
     )
     if required_capability is None:
+        _gateway_decision(None, external is not None, "denied", "unsupported_method")
         raise ValueError(f"unsupported plugin gateway method: {method}")
     try:
         authorizes_method = capability_implies(capability, required_capability)
     except ValueError:
         authorizes_method = False
     if not authorizes_method:
+        _gateway_decision(required_capability, external is not None, "denied", "capability_mismatch")
         raise PermissionError(f"method {method} requires capability {required_capability}")
     if not await has_capability_grant(
         db,
@@ -201,7 +214,9 @@ async def dispatch_gateway_request(
         user_id=user_id,
         capability_version=capability_version,
     ):
+        _gateway_decision(required_capability, external is not None, "denied", "grant_missing")
         raise PermissionError(f"permission {capability} has not been granted")
+    _gateway_decision(required_capability, external is not None, "allowed", "granted")
     handlers: dict[str, Callable[[], Awaitable[dict[str, Any]]]] = {
         "auth_flows.user_invites.status": partial(
             invite_flow_status, db, plugin_id, installation_id, user_id, payload

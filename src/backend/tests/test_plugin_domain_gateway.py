@@ -8,6 +8,7 @@ from uuid import uuid4
 
 import pytest
 
+from src.core.metrics import REGISTRY
 from src.database.models.auth import UserSession
 from src.database.models.game import Game
 from src.database.models.game_file_item import GameFileItem
@@ -76,8 +77,14 @@ def dispatch(db, *, method, capability, payload=None, user_id=None, installation
 
 
 def test_gateway_rejects_capability_confusion_before_dispatch() -> None:
+    labels = {
+        "capability": "games.read", "boundary": "account",
+        "decision": "denied", "reason": "capability_mismatch",
+    }
+    before = REGISTRY.get_sample_value("uta_plugin_gateway_decisions_total", labels) or 0
     with pytest.raises(PermissionError, match="requires capability games.read"):
         dispatch(FakeDb(), method="games.list", capability="documents.read")
+    assert REGISTRY.get_sample_value("uta_plugin_gateway_decisions_total", labels) == before + 1
 
 
 def test_gateway_rejects_missing_installation_grant() -> None:
