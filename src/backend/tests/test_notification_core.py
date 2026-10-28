@@ -11,6 +11,7 @@ import pytest
 from sqlalchemy import delete, func, select
 
 from src.core.preferences import DEFAULTS, save_preferences, validate_preference
+from src.core.metrics import REGISTRY
 from src.database.models.game import Game, GameStatus
 from src.database.models.notification import Notification
 from src.database.models.notification_delivery import NotificationDelivery
@@ -25,6 +26,7 @@ from src.features.game_notifications import GamePriceObservation
 from src.features.notification_controller import NotificationEvent, emit, emit_legacy_rows
 from src.features.notification_destinations import invalidate_legacy_configuration
 from src.features.notification_lifecycle import delete_notice, dismiss, visible_inbox
+from src.features.notification_metrics import refresh_notification_backlog
 from src.features.notification_policy import (
     INBOX_PROVIDER,
     Trust,
@@ -435,6 +437,15 @@ async def queued_work(db, account, providers):
 
 
 async def test_provider_failure_isolated_retries_and_failures_persist(account, monkeypatch):
+    def observed(name, labels):
+        return REGISTRY.get_sample_value(name, labels) or 0
+
+    sent_labels = {"channel": "plugin", "outcome": "sent", "reason": "delivered"}
+    failed_labels = {"channel": "plugin", "outcome": "failed_permanent", "reason": "provider_error"}
+    attempt_labels = {"channel": "plugin", "outcome": "failed"}
+    before_sent = observed("uta_notification_deliveries_total", sent_labels)
+    before_failed = observed("uta_notification_deliveries_total", failed_labels)
+    before_attempts = observed("uta_notification_attempts_total", attempt_labels)
     failed, succeeded = Transport(RuntimeError("secret must not persist")), Transport()
     providers = {"a": failed, "b": succeeded}
     monkeypatch.setattr(
@@ -461,6 +472,9 @@ async def test_provider_failure_isolated_retries_and_failures_persist(account, m
             await process_pending_deliveries(db)
             await db.refresh(failure)
         assert failure.status == "failed_permanent" and failure.attempts == 3
+        assert observed("uta_notification_deliveries_total", sent_labels) == before_sent + 1
+        assert observed("uta_notification_deliveries_total", failed_labels) == before_failed + 1
+        assert observed("uta_notification_attempts_total", attempt_labels) == before_attempts + 3
         assert (await db.get(Notification, identity)).body == "Private body"
         assert (
             await db.scalar(
@@ -470,6 +484,28 @@ async def test_provider_failure_isolated_retries_and_failures_persist(account, m
             )
             == 3
         )
+
+
+async def test_backlog_snapshot_distinguishes_known_work_from_collector_failure(account, monkeypatch):
+    async with SessionLocal() as db:
+        await queued_work(db, account, {"plugin.example": Transport()})
+    await refresh_notification_backlog()
+    assert REGISTRY.get_sample_value("uta_notification_backlog_up") == 1
+    assert REGISTRY.get_sample_value(
+        "uta_notification_pending", {"channel": "plugin", "state": "pending"}
+    ) >= 1
+
+    from src.features import notification_metrics
+
+    def unavailable():
+        raise RuntimeError("temporary database outage")
+
+    monkeypatch.setattr(notification_metrics, "SessionLocal", unavailable)
+    await refresh_notification_backlog()
+    assert REGISTRY.get_sample_value("uta_notification_backlog_up") == 0
+    assert REGISTRY.get_sample_value(
+        "uta_notification_pending", {"channel": "plugin", "state": "pending"}
+    ) is None
 
 
 async def test_runtime_outage_waits_without_consuming_transport_attempt(account, monkeypatch):

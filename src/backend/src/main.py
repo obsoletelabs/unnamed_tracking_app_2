@@ -102,6 +102,7 @@ from src.features.auth_throttle import AuthRateLimited, AuthStoreUnavailable
 from src.features.jobs import run_jobs_loop
 from src.features.metadata.core import CORE_PROVIDERS, core_registration
 from src.features.metadata.health import monitor as provider_health_monitor
+from src.features.notification_metrics import refresh_notification_backlog
 from src.features.notification_logging import protect_notification_link_logs
 from src.helpers import image_prefetch
 from src.plugin_api.backend_routes import reserve_host_routes
@@ -390,3 +391,28 @@ async def stop_cache_inventory_loop() -> None:
         except asyncio.CancelledError:
             pass
         app.state.cache_inventory_task = None
+
+
+@app.on_event("startup")
+async def start_notification_backlog_loop() -> None:
+    if not app_settings.METRICS_ENABLED:
+        return
+
+    async def loop() -> None:
+        while True:
+            await refresh_notification_backlog()
+            await asyncio.sleep(60)
+
+    app.state.notification_backlog_task = asyncio.create_task(loop())
+
+
+@app.on_event("shutdown")
+async def stop_notification_backlog_loop() -> None:
+    task = getattr(app.state, "notification_backlog_task", None)
+    if task is not None:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        app.state.notification_backlog_task = None

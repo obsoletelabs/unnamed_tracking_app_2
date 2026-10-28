@@ -286,3 +286,41 @@ across workers/replicas.
 sum by (capability, reason) (rate(uta_plugin_gateway_decisions_total{decision="denied"}[5m]))
 sum by (operation, outcome) (rate(uta_plugin_lifecycle_operations_total[5m]))
 ```
+
+## Notification delivery
+
+`uta_notification_deliveries_total{channel,outcome,reason}` observes durable
+delivery transitions after commit. A delivery reaches `sent` once, while
+`retry_wait` can occur more than once before a terminal `failed_permanent`,
+`suppressed`, or `cancelled` state. The separate
+`uta_notification_attempts_total{channel,outcome}` and
+`uta_notification_delivery_duration_seconds{channel,outcome}` count and time
+physical provider calls, including edits. A policy suppression does not create
+a provider attempt. A provider call that raises still counts as failed; the
+application's existing retry rules remain unchanged. Channels are `browser`,
+`email`, `inbox`, or `plugin`; arbitrary plugin provider IDs collapse to
+`plugin`. Reasons are the fixed host delivery codes, with unknown codes folded
+to `other`. No recipient, message or destination identifier appears in a label.
+Delivery duration uses the short histogram buckets above.
+
+The background backlog snapshot runs at most once per minute over the indexed
+delivery queue. `uta_notification_pending{channel,state}` counts `pending`,
+`retry_wait`, and `processing`; `uta_notification_oldest_pending_timestamp_seconds`
+is the earliest **next-attempt** timestamp for queued work in a channel, or 0
+when that channel has no queued work. It is not a creation timestamp. The
+`uta_notification_backlog_up` gauge distinguishes a complete empty snapshot
+(1) from an unavailable collector (0); on failure the stale backlog gauges are
+removed. Scrapes never query the delivery table. In multiprocess deployments
+these deployment-wide gauges use `max` aggregation; do not sum them across
+replicas reading the same database. Counters/histograms reset on restart and
+their rates should be summed across workers/replicas.
+
+```promql
+sum by (channel, outcome) (rate(uta_notification_deliveries_total[10m]))
+time() - (uta_notification_oldest_pending_timestamp_seconds > 0)
+  and on(job, instance) (uta_notification_backlog_up == 1)
+```
+
+The host has no general automation-rule evaluator; this release does not invent
+`uta_automation_evaluations_total` from job runs or notification delivery
+outcomes. Scheduled jobs and plugin task calls have their own metrics.

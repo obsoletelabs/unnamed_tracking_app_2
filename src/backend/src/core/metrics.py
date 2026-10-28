@@ -319,6 +319,45 @@ PLUGIN_LIFECYCLE_QUEUE_WAIT = Histogram(
     buckets=_SHORT_BUCKETS,
     registry=REGISTRY,
 )
+NOTIFICATION_DELIVERIES = Counter(
+    "uta_notification_deliveries_total",
+    "Logical delivery transitions and retry scheduling by fixed channel and reason.",
+    ("channel", "outcome", "reason"),
+    registry=REGISTRY,
+)
+NOTIFICATION_ATTEMPTS = Counter(
+    "uta_notification_attempts_total",
+    "Physical notification provider calls by fixed channel and outcome.",
+    ("channel", "outcome"),
+    registry=REGISTRY,
+)
+NOTIFICATION_DELIVERY_DURATION = Histogram(
+    "uta_notification_delivery_duration_seconds",
+    "Wall time of one physical provider delivery or edit attempt.",
+    ("channel", "outcome"),
+    buckets=_SHORT_BUCKETS,
+    registry=REGISTRY,
+)
+NOTIFICATION_PENDING = Gauge(
+    "uta_notification_pending",
+    "Cached deployment-wide delivery rows by channel and waiting state.",
+    ("channel", "state"),
+    multiprocess_mode="max",
+    registry=REGISTRY,
+)
+NOTIFICATION_OLDEST_PENDING = Gauge(
+    "uta_notification_oldest_pending_timestamp_seconds",
+    "Earliest next-attempt time among queued delivery rows; zero for an empty queue.",
+    ("channel",),
+    multiprocess_mode="max",
+    registry=REGISTRY,
+)
+NOTIFICATION_BACKLOG_UP = Gauge(
+    "uta_notification_backlog_up",
+    "1 when the last bounded notification backlog aggregation completed.",
+    multiprocess_mode="max",
+    registry=REGISTRY,
+)
 
 BUILD_INFO = Info("uta_build", "Application build information.", registry=REGISTRY)
 BUILD_INFO.info({"version": os.environ.get("APP_VERSION", "").strip()[:64] or "unknown"})
