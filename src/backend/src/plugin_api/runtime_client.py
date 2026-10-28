@@ -17,6 +17,7 @@ from src.core.metrics import (
     plugin_runtime_operation,
 )
 from src.plugin_api.manager_state import manager_state
+from src.plugin_api.runtime_token import TOKEN_HELP, runtime_token_valid
 
 _ACTION_REQUEST_TIMEOUT = 35.0  # Allow the isolated runner's 30-second wall limit to report.
 
@@ -98,11 +99,9 @@ class PluginRuntimeClient:
 
     def _headers(self) -> dict[str, str]:
         """Authenticate transport and mirror the host administrator's isolation decision."""
-        if len(self.token) < 32:
+        if not runtime_token_valid(self.token):
             raise PluginRuntimeUnavailable(
-                "The plugin runtime token is missing or shorter than 32 characters. Set the same "
-                "PLUGIN_RUNTIME_TOKEN (at least 32 characters) for the application and the plugin "
-                "runtime, then restart both.",
+                TOKEN_HELP,
                 kind="configuration",
             )
         approved = manager_state().settings().get("reduced_isolation_acknowledged") is True

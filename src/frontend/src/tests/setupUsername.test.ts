@@ -107,3 +107,19 @@ it("explains a bad first-admin username at the field and blocks finishing", asyn
   expect(message().text()).toBe("");
   expect(usernameInput.attributes("aria-invalid")).toBeUndefined();
 });
+
+it("requires the first administrator password to be confirmed", async () => {
+  const wrapper = await openAdminStep();
+  await wrapper.find("input[type='text']").setValue("admin.one");
+  await wrapper.findAll("input[type='password']").at(0)!.setValue("pw");
+
+  await wrapper.find("button.primary").trigger("click");
+  await flushPromises();
+  expect(wrapper.text()).toContain("Administrator passwords do not match");
+  expect(createInitialAdmin).not.toHaveBeenCalled();
+
+  await wrapper.findAll("input[type='password']").at(-1)!.setValue("pw");
+  await wrapper.find("button.primary").trigger("click");
+  await flushPromises();
+  expect(createInitialAdmin).toHaveBeenCalledOnce();
+});

@@ -6,7 +6,7 @@ import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 from sqlalchemy import select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +17,7 @@ from src.core.auth import (
     get_current_admin,
     get_current_user,
     hash_password,
+    password_policy,
     session_cookie_name,
     set_password_policy_override,
     validate_password,
@@ -81,11 +82,6 @@ class SetupRequest(BaseModel):
     oidc_allow_new_users: bool = True
     oidc_button_text: str = "Continue with SSO"
     oidc_default_login_method: str = "local"
-
-    @field_validator("password")
-    @classmethod
-    def validate_setup_password(cls, value: str) -> str:
-        return validate_password(value) if value else value
 
 
 _APP_FIELDS = {
@@ -276,6 +272,25 @@ def _save_password_policy(
                 detail="Password minimum length must be between 1 and 1024.",
             )
         setattr(app, attribute, converted)
+
+
+def _effective_setup_password_policy(
+    app: AppIntegrationSettings, handler: EnvConfigHandler
+) -> dict[str, int | bool]:
+    """Include policy fields saved in this setup transaction without changing global state."""
+    policy = password_policy()
+    fields = {
+        "PASSWORD_MIN_LENGTH": ("min_length", "password_min_length"),
+        "PASSWORD_REQUIRE_UPPERCASE": ("require_uppercase", "password_require_uppercase"),
+        "PASSWORD_REQUIRE_LOWERCASE": ("require_lowercase", "password_require_lowercase"),
+        "PASSWORD_REQUIRE_DIGIT": ("require_digit", "password_require_digit"),
+        "PASSWORD_REQUIRE_SYMBOL": ("require_symbol", "password_require_symbol"),
+    }
+    for name, (key, attribute) in fields.items():
+        value = getattr(app, attribute)
+        if not handler.has(name) and value is not None:
+            policy[key] = value
+    return policy
 
 
 def _save_oidc_configuration(
@@ -495,6 +510,15 @@ async def setup_admin(
 
     nginx = await _save_configuration(db, values, selected, str(request.url_for("oidc_callback")))
     await db.flush()
+    try:
+        validate_password(
+            password,
+            _effective_setup_password_policy(
+                await get_or_create_app_integration_settings(db), handler
+            ),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     apply_deployment_provider_credentials(await get_or_create_app_integration_settings(db))
 
     user = User(
@@ -521,6 +545,10 @@ async def setup_admin(
     except NginxActivationError as exc:
         await db.rollback()
         raise HTTPException(400, str(exc)) from exc
+
+    set_password_policy_override(
+        _effective_setup_password_policy(await get_or_create_app_integration_settings(db), handler)
+    )
 
     response.set_cookie(
         key=session_cookie_name(request.headers.get("host", "")),

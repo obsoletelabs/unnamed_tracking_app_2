@@ -68,9 +68,9 @@ def set_password_policy_override(policy: dict[str, int | bool] | None) -> None:
     _password_policy_override = dict(policy) if policy is not None else None
 
 
-def validate_password(password: str) -> str:
+def validate_password(password: str, policy: dict[str, int | bool] | None = None) -> str:
     """Validate the configured password policy and return the original value."""
-    policy = password_policy()
+    policy = policy if policy is not None else password_policy()
     if len(password) < policy["min_length"]:
         raise ValueError(f"Password must be at least {policy['min_length']} characters long.")
     if policy["require_uppercase"] and not re.search(r"[A-Z]", password):
