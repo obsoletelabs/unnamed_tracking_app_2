@@ -412,3 +412,34 @@ queries. These are illustrative instrumentation costs, not page-load guarantees.
 A separate contended PostgreSQL run showed a 10.7% elapsed increase against an
 entirely uninstrumented engine; concurrent workloads and the existing metrics
 are included in that comparison. Metrics are not claimed to be free.
+
+## In-app performance viewer
+
+Administrators can open **Settings > Administration > Performance metrics**
+(`/settings?section=metrics`). The administrator-only
+`GET /api/settings/metrics/snapshot` reads a short cached, bounded selection from
+the same registry, including configured multi-worker aggregation. It exposes no
+scrape token or raw query text and performs no dependency probes.
+
+The lazy-loaded viewer provides route/method filters, response-start p50/p95/p99,
+phase/query-family/pool/commit/runtime/cache tables, process resources and a small
+p95 history chart. It polls every ten seconds while open and visible, supports
+Pause, aborts outstanding work when leaving, and stops polling when metrics are
+disabled. The recent observation window accumulates only while the viewer is
+open; the first sample is cumulative. A server restart resets that window.
+Prometheus/Grafana remain the durable history system. Histograms are estimates;
+sparse samples cannot support precise tail-latency claims.
+
+**Browser load timings** reads the current document's existing Resource Timing
+entries locally. Refresh the target page, then navigate to the viewer without
+another document reload. It shows bootstrap marks, the interval after initial
+assets finish, time before send, waiting, download and authenticated app handling.
+Before-send includes scheduling, cache/service-worker and connection setup; it is
+not identical to DevTools Queued/Stalled. No browser telemetry is uploaded or
+recorded in a server database. URL queries and UUIDs are removed from displayed
+resource paths. No continuous browser observer or additional startup request is
+introduced; three fixed User Timing marks identify bootstrap milestones.
+
+The viewer uses shared semantic controls in Modern and Classic, light and dark.
+
+![In-app performance viewer in dark mode](../assets/metrics/performance-viewer-dark.png)

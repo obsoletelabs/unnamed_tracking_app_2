@@ -11,9 +11,12 @@ import "./styles/classic.css";
 import { initializeUiAppearance } from "./state/uiAppearance";
 import { loadBranding } from "./state/branding";
 
+performance.mark("uta.bootstrap-start");
 initializeUiAppearance();
 void loadBranding();
 
 configureNativePluginHost(router, openPluginDialog);
 startPwa(router.isReady());
 createApp(App).use(router).mount("#app");
+performance.mark("uta.shell-mounted");
+void router.isReady().then(() => performance.mark("uta.route-ready"));

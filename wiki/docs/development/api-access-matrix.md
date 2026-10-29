@@ -560,6 +560,7 @@ are redacted. Validation errors never echo submitted values.
 | POST | `/api/settings/notification-diagnostics/deliveries/{delivery_id}/retry` | user | Delivery must belong to one of the caller's notifications (404 otherwise); sensitive purposes are never re-sent. |
 | POST | `/api/settings/notification-diagnostics/digest` | admin | Administrator; dry-run digest preview with fixtures. |
 | GET | `/api/settings/metrics` | admin | Administrator; scrape status and, only for an application-generated token, its value. |
+| GET | `/api/settings/metrics/snapshot` | admin | Administrator; cached telemetry snapshot without credentials or dependency probes. |
 | GET | `/api/settings/notification-diagnostics/overview` | admin | Administrator; instance delivery health, redacted. |
 | POST | `/api/settings/notification-diagnostics/preview` | admin | Administrator; dry-run render with fixtures. |
 | POST | `/api/settings/notification-diagnostics/simulate` | admin | Administrator; dry-run routing simulation, nothing is queued. |
