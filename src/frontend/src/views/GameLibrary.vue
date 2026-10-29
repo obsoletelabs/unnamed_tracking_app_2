@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import AutomaticMatchBanner from "../components/game/AutomaticMatchBanner.vue";
-import { sizedAssetUrl } from "../utils/gameImages";
+import { preloadImage, sizedAssetUrl } from "../utils/gameImages";
 import HeartIcon from "../components/HeartIcon.vue";
 import GameCard from "../components/GameCard.vue";
 import GameArtwork from "../components/GameArtwork.vue";
@@ -12,7 +12,7 @@ import LibrarySyncMenu from "../components/LibrarySyncMenu.vue";
 import SegmentedTabs from "../components/SegmentedTabs.vue";
 import type { ViewMode, CardDensity } from "../composables/useGameLibrary";
 import { useGameLibrary } from "../composables/useGameLibrary";
-import { computed, ref, defineAsyncComponent } from "vue";
+import { computed, ref, defineAsyncComponent, watch } from "vue";
 import { quickTourActive } from "../state/quickTour";
 import type { Game } from "../types/game";
 import { relationshipKindLabel } from "../utils/gameIdentityGroups";
@@ -157,6 +157,14 @@ const {
   listRowVirtualizer,
   cardsInRow,
 } = useGameLibrary();
+
+// Start only the first row's artwork before Vue mounts the buffered grid.
+// Other rows keep the shared viewport/scroll queue, including direction checks.
+watch(loading, (pending) => {
+  if (pending || viewMode.value !== "cards" || window.scrollY > 0) return;
+  for (const game of cardsInRow(0))
+    if (game.hasKeyArt !== false) preloadImage(game.coverImageUrl);
+});
 const visibleListRows = computed(() =>
   listRowVirtualizer.value.getVirtualItems().flatMap((row) => {
     const game = filteredGames.value[row.index];
@@ -775,6 +783,7 @@ async function openRandomPicker() {
               v-for="(game, colIndex) in cardsInRow(virtualRow.index)"
               :key="game.id"
               :game="game"
+              prioritize-images
               :copy-summary="copySummary(game)"
               :version-context="contextFor(game)"
               :nested-label="nestedLabel(game)"

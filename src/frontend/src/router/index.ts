@@ -286,7 +286,6 @@ const router = createRouter({
 });
 
 let setupState: "unknown" | "required" | "complete" = "unknown";
-let startupUiShown = false;
 
 export async function retryStartup() {
   setupState = "unknown";
@@ -374,15 +373,6 @@ router.beforeEach(async (to, from) => {
       setupState = state === "setup-required" ? "required" : "complete";
       if (state === "setup-required") {
         setStartupState("setup-required");
-      } else if (
-        !status.startup_ui_enabled &&
-        to.path !== "/setup" &&
-        !startupUiShown
-      ) {
-        startupUiShown = true;
-        return setupRedirect(destination);
-      } else {
-        startupUiShown = true;
       }
     } catch (err) {
       setStartupState(

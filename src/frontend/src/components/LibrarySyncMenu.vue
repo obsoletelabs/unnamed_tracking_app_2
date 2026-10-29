@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, defineAsyncComponent, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import {
   CONNECTIONS,
@@ -12,7 +12,9 @@ import {
   refreshPluginExtensions,
 } from "../state/pluginExtensions";
 import type { PluginConnectionContribution } from "../state/pluginExtensions";
-import PluginConnectionDialog from "./settings/PluginConnectionDialog.vue";
+const PluginConnectionDialog = defineAsyncComponent(
+  () => import("./settings/PluginConnectionDialog.vue"),
+);
 
 const emit = defineEmits<{ synced: [] }>();
 const router = useRouter();

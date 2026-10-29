@@ -340,3 +340,20 @@ Connection status and plugin notification reads share pending requests and reuse
 successful results for fifteen seconds in the current account. Explicit connection
 refreshes bypass that cache. Account changes and provider removal invalidate results;
 late responses cannot repopulate the next account's state.
+
+
+## Reviewing initial library loading
+
+The Games page schedules optional enrichment after the first viewport paint, with
+an idle deadline of 200 ms rather than a fixed 2.5-second timer. The first card row starts
+its artwork downloads before buffered grid mounting. Visible card artwork also
+receives the existing eager priority hint; the artwork component still
+checks actual bounds and retains its bounded per-frame queue for scrolling.
+Configured development instances bypass Setup when the setup UI is disabled, so
+opening Games does not preload password-policy or username controls through an
+intermediate setup navigation. First-run setup is still enforced.
+
+Game storage lookups retain their shared row locks and folder recovery checks,
+but run filesystem traversal in a worker thread. Cancellation waits for those
+checks to finish before releasing the request's resources. This prevents slow
+storage mounts from blocking concurrent artwork and unrelated API requests.

@@ -1,9 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, defineAsyncComponent, onMounted, ref, watch } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
-import ConnectionManageDialog from "./ConnectionManageDialog.vue";
-import PluginConnectionDialog from "./PluginConnectionDialog.vue";
-import SteamConnectionDialog from "./SteamConnectionDialog.vue";
 import {
   CONNECTION_BY_KEY,
   CONNECTIONS,
@@ -18,6 +15,18 @@ import { currentUser } from "../../state/auth";
 import type { PluginConnectionStatus } from "../../services/pluginConnections";
 import { pluginConnections } from "../../state/pluginExtensions";
 import type { PluginConnectionContribution } from "../../state/pluginExtensions";
+
+const ConnectionManageDialog = defineAsyncComponent(
+  () => import("./ConnectionManageDialog.vue"),
+);
+
+const PluginConnectionDialog = defineAsyncComponent(
+  () => import("./PluginConnectionDialog.vue"),
+);
+
+const SteamConnectionDialog = defineAsyncComponent(
+  () => import("./SteamConnectionDialog.vue"),
+);
 
 const state = useConnections();
 const route = useRoute();
