@@ -458,6 +458,10 @@ async def test_authenticated_frontend_inlines_verified_css_and_scripts(stored):
         assert f"'nonce-{nonce}'" in response.headers["content-security-policy"]
         assert "'unsafe-eval'" not in response.headers["content-security-policy"]
         assert "script-src 'unsafe-inline'" not in response.headers["content-security-policy"]
+        # Opened directly (not in the host's sandboxed iframe) the page must still not run
+        # with the host origin and the viewer's session.
+        assert response.headers["content-security-policy"].startswith("sandbox allow-scripts;")
+        assert "form-action 'none'" in response.headers["content-security-policy"]
         assert response.headers["cache-control"] == "private, no-store"
         assert (
             (await client.get(path.replace("index.html", "style.css")))
@@ -555,3 +559,25 @@ def test_office_zip_bombs_and_macros_are_rejected(tmp_path):
     )
     with pytest.raises(DocumentAccessError):
         read_representation(path)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "hostile",
+    [
+        "frontend/%252e%252e/ui.json",
+        "frontend/%252e%252e/%252e%252e/other/ui.json",
+        "frontend/..%252fui.json",
+        "%2e%2e/ui.json",
+    ],
+)
+async def test_frontend_route_refuses_double_encoded_traversal(stored, hostile):
+    boundary, _, _ = stored
+    boundary.runtime.frontend_asset = AsyncMock(return_value=b"secret")
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=boundary.app), base_url="http://test"
+    ) as client:
+        client.cookies.set(session_cookie_name("test"), boundary.tokens[boundary.users[0].id])
+        response = await client.get(f"/api/plugins/audit.plugin/frontend/{hostile}")
+    assert response.status_code == 404
+    boundary.runtime.frontend_asset.assert_not_awaited()

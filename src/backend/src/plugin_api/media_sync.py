@@ -13,7 +13,7 @@ from typing import Annotated, Any, Literal
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from fastapi import HTTPException
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -22,6 +22,7 @@ from src.database.models.anime import Anime, AnimeEpisode, AnimeSeason, AnimeSta
 from src.database.models.movies import Movie, MovieStatus
 from src.database.models.tv_show import TVEpisode, TVSeason, TVShow, TVShowStatus
 from src.features.metadata.locked_fields import apply_metadata_updates, authorize_title_update
+from src.helpers.public_http import names_a_private_host, parse_http_url
 
 
 class EpisodeInput(BaseModel):
@@ -48,6 +49,21 @@ class MediaSyncInput(BaseModel):
     genres: list[Annotated[str, Field(max_length=128)]] = Field(default_factory=list, max_length=50)
     runtime_minutes: int | None = Field(default=None, ge=0, le=100000)
     poster_url: str | None = Field(default=None, max_length=8192)
+
+    @field_validator("poster_url")
+    @classmethod
+    def web_poster(cls, value: str | None) -> str | None:
+        """The browser loads this address: plain public-looking HTTP(S) only."""
+        if value is None:
+            return None
+        try:
+            parts = parse_http_url(value)
+        except ValueError as exc:
+            raise ValueError("poster_url must be an HTTP(S) address without credentials") from exc
+        if names_a_private_host(parts.hostname or ""):
+            raise ValueError("poster_url must not name a private or local host")
+        return value
+
     played: bool = False
     in_progress: bool = False
     episodes: list[EpisodeInput] = Field(default_factory=list, max_length=100)

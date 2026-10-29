@@ -10,7 +10,7 @@ import secrets
 import time
 from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 from uuid import UUID, uuid4
 
 from fastapi import (
@@ -85,10 +85,14 @@ _METADATA_ACTION_OPERATIONS: dict[str, Operation] = {
 _DOCUMENT_DATA_ROOT = Path("/data/users")
 
 
+# `sandbox allow-scripts` gives the page an opaque origin however it is reached. The host
+# embeds these pages in an iframe with that same sandbox; without the directive, opening the
+# URL directly would run the plugin's script on the host origin with the viewer's session.
 _PLUGIN_FRONTEND_CSP = (
-    "default-src 'self'; script-src 'self' https://unpkg.com; "
+    "sandbox allow-scripts; default-src 'self'; script-src 'self' https://unpkg.com; "
     "style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; "
-    "frame-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'self'"
+    "frame-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none'; "
+    "frame-ancestors 'self'"
 )
 
 
@@ -99,7 +103,9 @@ async def plugin_frontend(
     db: AsyncSession = _PLUGIN_DB,
     user: User = _PLUGIN_USER,
 ) -> Response:
-    if not asset_path or ".." in Path(asset_path).parts:
+    # A second decoding ("%252e%252e") must not turn into a dot segment further along.
+    decoded = unquote(asset_path)
+    if not asset_path or ".." in Path(asset_path).parts or ".." in Path(decoded).parts:
         raise HTTPException(status_code=404, detail="Plugin frontend asset not found.")
     await runtime.plugin_and_capabilities(plugin_id, db, user)
     try:

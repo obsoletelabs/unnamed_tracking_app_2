@@ -5,6 +5,7 @@ import json
 import mimetypes
 import time
 from typing import Any
+from urllib.parse import unquote
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -95,7 +96,11 @@ async def asset(plugin_id: str, asset_path: str = "", db: AsyncSession = _DB) ->
     app = await apps.app_installation(db, plugin_id)
     entry = app["declaration"].entry
     path = entry if not asset_path else "frontend/" + asset_path
-    if any(part in {"..", ".", ""} for part in path.split("/")) or "\\" in path:
+    decoded = unquote(path)  # a second decoding must not turn into a dot segment further along
+    if (
+        any(part in {"..", ".", ""} for part in path.split("/") + decoded.split("/"))
+        or "\\" in decoded
+    ):
         raise HTTPException(404, "Public-app asset not found.")
     try:
         data = await apps.client.frontend_asset(plugin_id, path)

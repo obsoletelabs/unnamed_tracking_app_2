@@ -171,3 +171,30 @@ def test_image_fallback_still_redirects_ordinary_addresses():
     response = original_image_response("https://images.example/cover.png?size=big")
     assert response.status_code == 307
     assert response.headers["location"] == "https://images.example/cover.png?size=big"
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://192.168.1.1/cgi-bin/reboot?x=1",
+        "http://10.0.0.5/x.png",
+        "http://169.254.169.254/latest/meta-data/",
+        "http://127.0.0.1:8080/x.png",
+        "http://[::1]/x.png",
+        "http://localhost/x.png",
+        "http://router/x.png",
+        "http://printer.local/x.png",
+        "http://nas.lan/x.png",
+        "http://0x7f000001/x.png",
+    ],
+)
+def test_image_fallback_never_redirects_the_browser_to_the_viewers_own_network(url):
+    """The host refuses to fetch these (not public); redirecting the browser would only move the
+    request onto the viewer's LAN."""
+    from fastapi import HTTPException
+
+    from src.api.image_responses import original_image_response
+
+    with pytest.raises(HTTPException) as caught:
+        original_image_response(url)
+    assert caught.value.status_code == 404

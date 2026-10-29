@@ -38,6 +38,26 @@ def parse_http_url(url: object, *, allowed_ports: Collection[int] | None = None)
     return parts
 
 
+_LOCAL_SUFFIXES = (".localhost", ".local", ".internal", ".lan", ".home", ".home.arpa", ".corp")
+
+
+def names_a_private_host(hostname: str) -> bool:
+    """True for an address literal that is not public, `localhost` and single-label or
+    local-looking names.
+
+    A syntax-only check for places that hand a URL to the browser instead of fetching it (an
+    image fallback redirect): the host never resolves the name there, so DNS is not consulted,
+    but a plugin must not be able to aim the viewer's browser at their own LAN by address."""
+    name = hostname.strip().rstrip(".").lower().strip("[]")
+    if not name or name == "localhost" or "." not in name and ":" not in name:
+        return True
+    try:
+        ip = ipaddress.ip_address(name)
+    except ValueError:
+        return name.endswith(_LOCAL_SUFFIXES)
+    return not ip.is_global or ip.is_multicast
+
+
 def public_addresses(hostname: str, port: int) -> list[AddressInfo]:
     """Resolve once and reject the entire answer if any address is not public."""
     addresses = socket.getaddrinfo(hostname, port, type=socket.SOCK_STREAM)

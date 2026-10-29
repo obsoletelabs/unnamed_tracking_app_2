@@ -807,6 +807,22 @@ export function pluginExternalDestination(
 }
 
 /**
+ * A plugin frame can post a "run this action" message at any time, with no click. An action
+ * that leaves the app (`external_navigation`) must follow a real user gesture, or a hostile
+ * frame could send the whole app to a destination it chose. Browsers that cannot tell are
+ * given the benefit of the doubt, since the popup blocker still applies there.
+ */
+export function requireUserActivation(action: UiAction): void {
+  if (!action.external_navigation) return;
+  const activation =
+    typeof navigator === "undefined" ? undefined : navigator.userActivation;
+  if (activation && !activation.isActive)
+    throw new Error(
+      "A plugin can only open another site after you click something.",
+    );
+}
+
+/**
  * Reserve a blank tab for a declared external navigation action. It must be
  * opened while the click's user activation is still valid, i.e. before the
  * action's request; the plugin frame itself never gains popup permission.
