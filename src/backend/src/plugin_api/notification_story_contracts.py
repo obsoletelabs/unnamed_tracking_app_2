@@ -25,10 +25,10 @@ MAX_CONTENT_CHARACTERS = 48_000
 
 LINE_CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f-\x9f\u2028\u2029]")
 TEXT_CONTROL_CHARACTERS = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f\u2028\u2029]")
-# Direction overrides and isolates, and characters with no width: "Invoice ‮gpj.exe" reads as
+# Direction overrides and isolates, and characters with no width: "Invoice <U+202E>gpj.exe" reads as
 # "Invoice exe.jpg". The direction marks U+200E/U+200F and the joiners U+200C/U+200D are left
 # alone because right-to-left text and emoji sequences need them.
-SPOOFING_CHARACTERS = re.compile(r"[​‪-‮⁠⁦-⁩﻿]")
+SPOOFING_CHARACTERS = re.compile(r"[\u200b\u202a-\u202e\u2060\u2066-\u2069\ufeff]")
 _DNS_LABEL = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 _TOP_LEVEL_LABEL = re.compile(r"^(?:[a-z][a-z0-9-]*[a-z0-9]|xn--[a-z0-9-]+)$")
 _LOCAL_SUFFIXES = (".local", ".localhost", ".internal", ".lan", ".home.arpa", ".localdomain")

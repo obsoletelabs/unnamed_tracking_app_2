@@ -475,6 +475,6 @@ async def test_template_output_with_a_direction_override_is_refused(source):
     _owner, plugin, _installation = source
     async with SessionLocal() as db:
         await call(db, source, "notification_sources.register", definition(plugin))
-        spoofed = event(plugin, data={"title": "Invoice ‮gpj.exe", "count": 3})
+        spoofed = event(plugin, data={"title": "Invoice \u202egpj.exe", "count": 3})
         with pytest.raises(ValueError, match="direction-overriding"):
             await call(db, source, "notifications.emit", spoofed)

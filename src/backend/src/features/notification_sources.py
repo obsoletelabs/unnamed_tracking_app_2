@@ -157,6 +157,20 @@ async def check_acceptance_quota(
             raise ValueError("Notification source quota exceeded")
 
 
+def _render(
+    definition: NotificationTypeRegistration, event: NotificationEventEmission
+) -> tuple[str, str]:
+    """Template output carries plugin-chosen values, so it gets the canonical content checks."""
+    title = definition.title_template.format_map(event.data)
+    body = definition.body_template.format_map(event.data)
+    try:
+        check_plain_text(title)
+        check_plain_text(body)
+    except UnsafeContentError as exc:
+        raise ValueError(str(exc)) from exc
+    return title, body
+
+
 async def emit_source(
     db: AsyncSession, plugin_id: str, installation_id: UUID, user_id: UUID, payload: dict[str, Any]
 ) -> dict[str, Any]:
@@ -187,14 +201,7 @@ async def emit_source(
         for key, kind in definition.parameters.items()
     ):
         raise ValueError("Notification parameters do not match the registered type")
-    title = definition.title_template.format_map(event.data)
-    body = definition.body_template.format_map(event.data)
-    try:
-        # Template output carries plugin-chosen values, so it gets the checks canonical content does.
-        for text in (title, body):
-            check_plain_text(text)
-    except UnsafeContentError as exc:
-        raise ValueError(str(exc)) from exc
+    title, body = _render(definition, event)
     dedupe_key = source_receipt_key(plugin_id, event.event_type, event.dedupe_key)
     await check_acceptance_quota(db, user_id, plugin_id, dedupe_key, now)
     facts = json.dumps(event.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
