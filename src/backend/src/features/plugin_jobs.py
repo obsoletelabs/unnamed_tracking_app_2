@@ -30,6 +30,9 @@ client = PluginRuntimeClient()
 _last_inventory: list[dict[str, Any]] = []
 _running: dict[str, asyncio.Task[None]] = {}
 _runtime_state = {"reachable": False}
+# A person-initiated sync carries on through a plugin's checkpoints without waiting for the
+# schedule, but never indefinitely: the rest resumes on the owner's autosync if it is enabled.
+MAX_SYNC_STEPS = 25
 
 
 def runtime_reachable() -> bool:
@@ -173,6 +176,26 @@ async def _dispatch(
     return result
 
 
+async def _continues(spec: JobSpec, result: dict[str, Any], mode: str) -> bool:
+    """Whether a "complete" run should immediately take the next checkpoint step.
+
+    Only a saved, unfinished step that asked to continue qualifies; a provider rate limit, a
+    disabled schedule, a pause or a cancel request hands control back to the normal controls."""
+    if (
+        mode != "complete"
+        or result.get("completed") is not False
+        or "continue_after_seconds" not in result
+        or "retry_after_seconds" in result
+        or result.get("disable_schedule") is True
+    ):
+        return False
+    async with SessionLocal() as db:
+        setting = await get_setting(db, spec)
+        stopped = setting.paused or setting.cancel_requested
+        await db.commit()
+    return not stopped
+
+
 async def _execute_task(spec: JobSpec, installation_id: UUID, task_id: str, mode: str) -> None:
     """Hold the job's durable lease for one step so no second run can overlap it."""
     try:
@@ -185,6 +208,10 @@ async def _execute_task(spec: JobSpec, installation_id: UUID, task_id: str, mode
             }
             try:
                 result = await _dispatch(spec, installation_id, task_id, mode)
+                steps = 1
+                while steps < MAX_SYNC_STEPS and await _continues(spec, result, mode):
+                    result = await _dispatch(spec, installation_id, task_id, mode)
+                    steps += 1
             except (PluginRuntimeUnavailable, PluginRuntimeRequestError):
                 logger.warning("Plugin task dispatch failed: %s", spec.id)
             except (SQLAlchemyError, OSError, ValueError):
@@ -321,3 +348,24 @@ async def get_plugin_jobs(db: AsyncSession, user_id: UUID | None = None) -> list
             continue
         jobs.extend(await _plugin_task_jobs(db, plugin, declared, runtime_available, user_id))
     return jobs
+
+
+async def personal_sync_job(
+    db: AsyncSession, plugin: dict[str, Any], user_id: UUID, action_id: str
+) -> JobSpec | None:
+    """The account's personal task that runs a connection's declared sync action, if any.
+
+    It is the same job the Tasks page lists, so its grants, pause state and no-overlap lease
+    apply to a sync started from the Connections page."""
+    declared = _declared_tasks(plugin)
+    if declared is None:
+        return None
+    installation_id, declarations, api_version = declared
+    task = next(
+        (item for item in declarations if item.scope == "user" and item.action_id == action_id),
+        None,
+    )
+    if task is None or api_version < (1, 1, 11):
+        return None
+    availability = await _task_availability(db, plugin, installation_id, True, user_id)
+    return _declaration_job(plugin, installation_id, task, availability, user_id)

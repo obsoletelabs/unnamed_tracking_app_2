@@ -79,10 +79,12 @@ disconnecting stay on the Connections page instead of a separate sidebar entry.
 | `label` | Row name, 1-64 characters. |
 | `description` | Optional row text, at most 256 characters, shown until the plugin reports an account name. |
 | `page_id` | A declared page opened in the popup. |
-| `status_action_id` | Optional declared action the host runs for the signed-in user when the page loads and when the popup closes. |
+| `status_action_id` | Optional declared action the host runs for the signed-in user whenever the page loads and when the popup closes. |
 | `icon`, `order` | Optional presentation hints. |
 
-The status action returns an object. The host accepts only a literal boolean
+The host, not the browser, runs the status action: `GET /api/connections/plugins`
+returns every connection the signed-in user may see with its status already
+resolved, so the page never calls plugin actions itself. The status action returns an object. The host accepts only a literal boolean
 `connected` and an optional plain-text `display_name` (trimmed, 80 characters at
 most); anything else is treated as not connected, and `ok: false` or a failed action
 shows the row as unavailable. The action needs its own declared capability and grant,
@@ -96,11 +98,20 @@ Connections never receive a page-replacement or Settings placement. A document
 declaring `connections` below API 1.1.9 is rejected.
 
 API 1.1.11 adds an optional `sync_action_id`, which must reference a declared action.
-Such connections appear in the Games page's Sync / import menu. Choosing one opens
-the same host dialog and provides the action ID as `plugin.context.initial_action_id`;
-the bundled/native frontend starts its existing sync flow through the action bridge.
-Ordinary Connections dialogs provide an empty initial action. The menu also retains
-the built-in library providers and links to personal Background tasks.
+Such connections appear in the Games page's Sync / import menu and get a **Sync now**
+button on the Connections page. Both run the sync on the server (below); neither opens
+the plugin's page. The menu also retains the built-in library providers and links to
+personal Background tasks.
+
+The sync requires the plugin to declare a
+`scope: "user"` scheduled task for that action (API 1.1.11) and the user to grant
+`tasks.background`. The button calls `POST /api/connections/plugins/{plugin_id}/{connection_id}/sync`,
+and the host runs that personal task itself, with no plugin page open. A manual sync
+keeps taking the plugin's checkpoint steps (up to 25) while the action reports
+`completed: false` with `continue_after_seconds`; it stops at a rate limit
+(`retry_after_seconds`), a pause or a cancel, and the owner's autosync schedule
+resumes anything left. Progress and the last result come back in the connection's
+`sync` object and are shown in the task toast, the same as the built-in accounts.
 
 ## Navigation and host extensions
 

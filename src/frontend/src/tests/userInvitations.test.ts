@@ -44,7 +44,8 @@ it("fails closed on unavailable flows and preserves the host's policy error", as
       json: async () => ({ detail: "Username already used" }),
     }),
   );
-  expect(await invitationStatus()).toBe(false);
+  // a failed check is an error callers can retry, never "enabled"
+  await expect(invitationStatus()).rejects.toThrow("availability");
   await expect(
     acceptInvitation("id", "secret", "user", "password"),
   ).rejects.toThrow("Username already used");

@@ -3,7 +3,6 @@ import { derivePluginContributions } from "../state/pluginExtensions";
 import { validateDocument } from "../services/pluginUi";
 import type { PluginUiDocument } from "../services/pluginUi";
 import type { PluginSummary } from "../services/plugins";
-import { pluginConnectionStatus } from "../services/pluginConnections";
 
 const plugin: PluginSummary = {
   api_contract_version: "1.1.9",
@@ -109,33 +108,5 @@ describe("plugin connections", () => {
     expect(
       validateDocument({ ...document, api_contract_version: "1.2.0" }),
     ).toEqual([]);
-  });
-});
-
-describe("pluginConnectionStatus", () => {
-  it("accepts a boolean state and a bounded plain-text name", () => {
-    expect(
-      pluginConnectionStatus({ connected: true, display_name: " Ada " }),
-    ).toEqual({ connected: true, display_name: "Ada" });
-    expect(
-      pluginConnectionStatus({ connected: true, display_name: "x".repeat(200) })
-        .display_name,
-    ).toHaveLength(80);
-  });
-
-  it("treats anything but literal true as not connected", () => {
-    expect(pluginConnectionStatus({ connected: "yes" })).toEqual({
-      connected: false,
-    });
-    expect(pluginConnectionStatus({ display_name: 5 })).toEqual({
-      connected: false,
-    });
-  });
-
-  it("reports a failed action as an error", () => {
-    expect(pluginConnectionStatus({ ok: false, error: "x" })).toEqual({
-      connected: false,
-      error: true,
-    });
   });
 });

@@ -35,6 +35,10 @@ flows named below, not of every screen.
 | Game page: leftover error messages | a failed delete or load on one game or tab | "Failed to delete" stayed visible on the next game, and saves/worlds loads never cleared an earlier error | **fixed**: opening another game clears the media and file errors, and a retry clears the message |
 | Game page: edit saved, refresh fails | the re-read after saving an edit fails | the page kept the old values with no message | **fixed**: "Your change was saved, but this page could not be refreshed" with **Reload** |
 | Game notes | the note list request fails; switching games; two quick checkbox clicks | a failure looked like "Write your first note"; the previous game's notes stayed (and a late answer could overwrite the new list); a failed first toggle could undo the second | **fixed**: **Retry** instead of the empty prompt, the list is cleared and guarded on game change, checkbox clicks are ignored while one is saving |
+| First-run setup (`/setup`) | registry, status or password-policy request fails | rendered the full wizard with no sections and an enabled **Finish setup**, which would try to create an administrator from empty fields | **fixed** ([#334](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/334)): only the failure and **Try again** are shown; `submit()` refuses without a loaded configuration; a failed re-read after a successful save no longer reports "Setup failed" (`uiStateAuditAuth.test.ts`) |
+| Accept invitation, reset password | the availability check fails (offline, 5xx) | reported as "unavailable, contact the administrator" with the form hidden | **fixed**: a failed check is told apart from a disabled feature and offers **Try again**; the status services now throw instead of returning `false` |
+| Steam wishlist and Steam tags switches | preferences request fails | the hard-coded default was shown as the stored choice and stayed clickable | **fixed**: the switch is locked until the value is read, with **Retry** (`uiStateAuditSteam.test.ts`) |
+| Steam sign-in dialog | connection request fails on open | a "Connect Steam" sign-in form was offered, hiding an existing connection or pending sign-in | **fixed**: only the error and **Try again** until the connection is known |
 | Statistics burn-down card | games request fails | the optional card is silently omitted; the main statistics keep their own error state | left |
 | Plugin popup UI and logs | request fails | intentionally tolerated; the popup shows the remaining sections | left |
 
@@ -98,6 +102,13 @@ Achievement notes are covered by tests only (the test stack has no achievements)
 - Late answers can still write into the wrong game after a status, rating, resume-note or playtime change, and a failed status or rating change reverts silently (and onto the wrong game after navigating).
 - Bulk media edits and bulk save deletes apply or trash some items and not others when one fails, and do not refresh the list.
 - Trash listings swallow errors, so a failed fetch looks like an empty trash.
+### Setup, invitations and Steam settings
+
+| Flow | After |
+| --- | --- |
+| Setup, configuration could not be loaded | ![Setup failure with Try again](../assets/ui-state-audit/setup-load-failure-after.png) |
+| Accept invitation, availability check failed | ![Invitation check failure with Try again](../assets/ui-state-audit/invite-check-failure-after.png) |
+| Steam wishlist, preference could not be loaded | ![Locked switch with Retry](../assets/ui-state-audit/steam-wishlist-load-failure-after.png) |
 
 ### More screenshots
 

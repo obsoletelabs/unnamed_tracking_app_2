@@ -20,13 +20,19 @@ const enabled = ref(true);
 const error = ref<string | null>(null);
 const savedNote = ref("");
 
-onMounted(async () => {
+// The switch shows a stored value only once it has been read: until then it
+// would show the default as if it were the person's choice.
+const loaded = ref(false);
+async function load() {
+  error.value = null;
   try {
     enabled.value = (await fetchPreferences()).steam_user_tags;
+    loaded.value = true;
   } catch (e) {
     error.value = e instanceof Error ? e.message : "Failed to load settings.";
   }
-});
+}
+onMounted(load);
 
 async function change(next: boolean) {
   const previous = enabled.value;
@@ -97,12 +103,23 @@ async function updateNow() {
     </p>
     <ToggleButton
       :model-value="enabled"
+      :disabled="!loaded"
       label="Use popular Steam tags as genres"
       @update:model-value="change"
     >
       <strong>Use popular Steam tags as genres</strong>
     </ToggleButton>
-    <p v-if="error" class="error">{{ error }}</p>
+    <p v-if="error" class="error" role="alert">
+      {{ error }}
+      <button
+        v-if="!loaded"
+        type="button"
+        class="ui-btn ui-btn-secondary"
+        @click="load"
+      >
+        Retry
+      </button>
+    </p>
     <div class="update-row">
       <button
         type="button"
