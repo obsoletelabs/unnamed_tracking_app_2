@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { derivePluginContributions } from "../state/pluginExtensions";
 import { validateDocument } from "../services/pluginUi";
 import type { PluginUiDocument } from "../services/pluginUi";
@@ -138,4 +138,31 @@ describe("pluginConnectionStatus", () => {
       error: true,
     });
   });
+});
+
+it("deduplicates status reads while force refresh affects only its connection", async () => {
+  const { readPluginConnectionStatus, clearPluginConnectionStatuses } =
+    await import("../services/pluginConnections");
+  clearPluginConnectionStatuses();
+  const fetcher = vi.fn(
+    async () =>
+      new Response(
+        JSON.stringify({ connected: true, display_name: "Account" }),
+      ),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  try {
+    await Promise.all([
+      readPluginConnectionStatus("example.one", "status"),
+      readPluginConnectionStatus("example.one", "status"),
+    ]);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    await readPluginConnectionStatus("example.two", "status");
+    await readPluginConnectionStatus("example.one", "status", true);
+    await readPluginConnectionStatus("example.two", "status");
+    expect(fetcher).toHaveBeenCalledTimes(3);
+  } finally {
+    clearPluginConnectionStatuses();
+    vi.unstubAllGlobals();
+  }
 });

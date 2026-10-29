@@ -31,7 +31,6 @@ const remindersLoading = ref(false);
 let reminderGeneration = 0;
 async function refreshReminders() {
   const generation = ++reminderGeneration;
-  reminders.value = [];
   remindersLoading.value = true;
   const values = await readPluginReminders();
   if (generation !== reminderGeneration || !open.value) return;

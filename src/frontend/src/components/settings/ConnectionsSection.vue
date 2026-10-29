@@ -13,8 +13,8 @@ import {
 import type { ConnectionConfig } from "../../composables/useConnections";
 import { SOURCE_VISUALS } from "../../composables/useMetadataSources";
 import { steamOpenIdOutcome } from "../../services/steamOpenId";
-import { dispatchPluginAction } from "../../services/pluginUi";
-import { pluginConnectionStatus } from "../../services/pluginConnections";
+import { readPluginConnectionStatus } from "../../services/pluginConnections";
+import { currentUser } from "../../state/auth";
 import type { PluginConnectionStatus } from "../../services/pluginConnections";
 import { pluginConnections } from "../../state/pluginExtensions";
 import type { PluginConnectionContribution } from "../../state/pluginExtensions";
@@ -110,27 +110,47 @@ const rows = computed<Row[]>(() =>
   ),
 );
 
-async function loadPluginStatus() {
+const statusVersions = new Map<string, number>();
+async function loadPluginStatus(onlyPluginId?: string) {
+  const account = currentUser.value?.id;
   await Promise.all(
-    pluginConnections.value.map(async (item) => {
-      if (!item.statusAction) return;
-      let status: PluginConnectionStatus;
-      try {
-        status = pluginConnectionStatus(
-          await dispatchPluginAction(item.pluginId, item.statusAction.id),
-        );
-      } catch {
-        status = { connected: false, error: true };
-      }
-      pluginStatus.value = { ...pluginStatus.value, [pluginKey(item)]: status };
-    }),
+    pluginConnections.value
+      .filter((item) => !onlyPluginId || item.pluginId === onlyPluginId)
+      .map(async (item) => {
+        if (!item.statusAction) return;
+        const key = pluginKey(item);
+        const version = (statusVersions.get(key) ?? 0) + 1;
+        statusVersions.set(key, version);
+        let status: PluginConnectionStatus;
+        try {
+          status = await readPluginConnectionStatus(
+            item.pluginId,
+            item.statusAction.id,
+            !!onlyPluginId,
+          );
+        } catch {
+          status = { connected: false, error: true };
+        }
+        if (
+          statusVersions.get(key) !== version ||
+          account !== currentUser.value?.id ||
+          !pluginConnections.value.some(
+            (candidate) => pluginKey(candidate) === pluginKey(item),
+          )
+        )
+          return;
+        pluginStatus.value = {
+          ...pluginStatus.value,
+          [pluginKey(item)]: status,
+        };
+      }),
   );
 }
 
 function closePlugin() {
+  const pluginId = managingPlugin.value?.pluginId;
   managingPlugin.value = null;
-  // the popup may have connected or disconnected the account
-  void loadPluginStatus();
+  if (pluginId) void loadPluginStatus(pluginId);
 }
 
 function open(row: Row) {
@@ -164,7 +184,19 @@ onMounted(() => {
   // The callback URL carries only a status; drop it so a reload does not repeat it.
   void router.replace({ query: { section: "connections" } });
 });
-watch(pluginConnections, () => void loadPluginStatus(), { immediate: true });
+watch(
+  () =>
+    JSON.stringify([
+      currentUser.value?.id,
+      pluginConnections.value.map((item) => [
+        item.pluginId,
+        item.contributionId,
+        item.statusAction,
+      ]),
+    ]),
+  () => void loadPluginStatus(),
+  { immediate: true },
+);
 </script>
 
 <template>
