@@ -1,6 +1,7 @@
 export async function invitationStatus(): Promise<boolean> {
   const response = await fetch("/api/auth/user-invites/status");
-  if (!response.ok) return false;
+  // A failed check is not "disabled": callers tell the two apart and offer a retry.
+  if (!response.ok) throw new Error("Could not check availability.");
   const data = (await response.json()) as { enabled: boolean };
   return data.enabled === true;
 }

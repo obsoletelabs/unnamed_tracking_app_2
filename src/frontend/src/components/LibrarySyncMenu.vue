@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, ref } from "vue";
+import { computed, ref } from "vue";
 import { useRouter } from "vue-router";
 import {
   CONNECTIONS,
@@ -7,20 +7,19 @@ import {
   useConnections,
 } from "../composables/useConnections";
 import type { ConnectionConfig } from "../composables/useConnections";
+import { usePluginConnections } from "../composables/usePluginConnections";
+import { pluginConnectionKey } from "../services/pluginConnections";
 import {
   pluginConnections,
   refreshPluginExtensions,
 } from "../state/pluginExtensions";
 import type { PluginConnectionContribution } from "../state/pluginExtensions";
-const PluginConnectionDialog = defineAsyncComponent(
-  () => import("./settings/PluginConnectionDialog.vue"),
-);
 
 const emit = defineEmits<{ synced: [] }>();
 const router = useRouter();
 const state = useConnections();
 const menu = ref<HTMLDetailsElement | null>(null);
-const managing = ref<PluginConnectionContribution | null>(null);
+const pluginState = usePluginConnections();
 const builtIns = CONNECTIONS.filter((connection) => connection.syncProvider);
 const plugins = computed(() =>
   pluginConnections.value.filter((connection) => connection.syncAction),
@@ -36,16 +35,23 @@ async function syncBuiltIn(connection: ConnectionConfig) {
     await state.handleSyncLibrary(connection.syncProvider);
   emit("synced");
 }
-function syncPlugin(connection: PluginConnectionContribution) {
-  if (menu.value) menu.value.open = false;
-  managing.value = connection;
+function pluginKey(connection: PluginConnectionContribution): string {
+  return pluginConnectionKey(connection.pluginId, connection.contributionId);
 }
-function closePlugin() {
-  managing.value = null;
+// The host runs the sync; an account that is not connected goes to Connections.
+async function syncPlugin(connection: PluginConnectionContribution) {
+  if (menu.value) menu.value.open = false;
+  const key = pluginKey(connection);
+  if (!pluginState.states[key]?.connected) {
+    await router.push("/settings?section=connections");
+    return;
+  }
+  await pluginState.sync(key, connection.label);
   emit("synced");
 }
 function onToggle() {
   if (!menu.value?.open) return;
+  void pluginState.load();
   void state.loadCredentials();
   void refreshPluginExtensions({ background: true });
 }
@@ -84,21 +90,24 @@ function onToggle() {
         v-for="connection in plugins"
         :key="`${connection.pluginId}:${connection.contributionId}`"
         type="button"
+        :disabled="
+          pluginState.loading.value ||
+          pluginState.isSyncing(pluginKey(connection))
+        "
         @click="syncPlugin(connection)"
       >
-        Sync {{ connection.label }}
+        {{
+          pluginState.states[pluginKey(connection)]?.connected
+            ? "Sync"
+            : "Connect"
+        }}
+        {{ connection.label }}
       </button>
       <RouterLink to="/settings?section=background-tasks"
         >Autosync settings</RouterLink
       >
     </div>
   </details>
-  <PluginConnectionDialog
-    v-if="managing"
-    :connection="managing"
-    sync-on-open
-    @close="closePlugin"
-  />
 </template>
 
 <style scoped>

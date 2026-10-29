@@ -25,6 +25,7 @@ import {
 import type { AchFilter } from "../composables/useGameAchievements";
 import GameLaunchButton from "../components/game/GameLaunchButton.vue";
 import GameVersionsPanel from "../components/game/GameVersionsPanel.vue";
+import GameSourcesPanel from "../components/game/GameSourcesPanel.vue";
 import GameManualTrackingPanel from "../components/game/GameManualTrackingPanel.vue";
 import { provide, defineAsyncComponent, ref } from "vue";
 import { useGameDetail } from "../composables/useGameDetail";
@@ -69,7 +70,11 @@ const {
   game,
   loading,
   error,
+  refreshError,
   retryGame,
+  loadMedia,
+  loadGameFiles,
+  refreshSaveArchives,
   showEditModal,
   deleting,
   deleteError,
@@ -489,6 +494,17 @@ async function onCopiesChanged() {
           <p v-if="favoriteError" class="favorite-error" role="alert">
             {{ favoriteError }}
           </p>
+          <p v-if="refreshError" class="favorite-error" role="alert">
+            Your change was saved, but this page could not be refreshed and may
+            show old values.
+            <button
+              type="button"
+              class="ui-btn ui-btn-secondary"
+              @click="retryGame"
+            >
+              Reload
+            </button>
+          </p>
         </div>
       </div>
     </section>
@@ -562,6 +578,11 @@ async function onCopiesChanged() {
         :title="game.title"
         @changed="onCopiesChanged"
         @playtime="pagePlaytimeSeconds = $event"
+      />
+      <GameSourcesPanel
+        :key="`sources-${game.id}-${copiesRevision}`"
+        :game-id="game.id"
+        @changed="onCopiesChanged"
       />
       <GameManualTrackingPanel
         :key="`completion-${game.id}-${copiesRevision}`"
@@ -1305,7 +1326,7 @@ async function onCopiesChanged() {
         :trash="activeTabTrash"
         :achievements="tieAchievements"
         :profiles="game.profilesEnabled ? profiles : undefined"
-        :loading="mediaLoadedFor !== game.id && !mediaError"
+        :loading="mediaLoadedFor !== game.id"
         :uploading="uploadingMedia"
         :error="mediaError"
         @files="onMediaFilesSelected"
@@ -1319,6 +1340,7 @@ async function onCopiesChanged() {
         @open-achievement="openAchievement"
         @thumbnail="keepThumbnail"
         @problem="mediaError = $event"
+        @retry="loadMedia()"
       />
     </section>
 
@@ -1333,6 +1355,7 @@ async function onCopiesChanged() {
         :loaded="saveArchivesLoaded"
         :uploading="saveUploading.has('')"
         :error="filesError"
+        @retry="refreshSaveArchives"
         @files="onNewSaveSelected"
         @bulk-delete="bulkDeleteArchives($event, false)"
         @restore="onRestoreArchive($event, false)"
@@ -1377,6 +1400,7 @@ async function onCopiesChanged() {
         @bulk-delete="(items) => items.forEach((f) => removeGameFile('doc', f))"
         @restore="restoreFileItem('doc', $event as TrashedGameFile)"
         @problem="filesError = $event"
+        @retry="loadGameFiles('doc')"
       />
     </section>
 

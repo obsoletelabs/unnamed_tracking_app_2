@@ -198,23 +198,69 @@ most played becomes main, never simply whichever record was found first.
 
 ![Add a copy](../assets/game-identity-hub/after-add-copy.jpg)
 
+### Sources
+
+Under Copies & versions, **Sources** lists every connection that reports the game:
+Playnite, a store sync (**Steam sync**) or a plugin (**Epic Games plugin**). Each row
+shows which copies it covers, what it reports (playtime, last played, achievements,
+ownership, title and details) and when it last updated.
+
+When two sources report the same playtime, for example Playnite and the Epic plugin
+seeing one Epic copy, the one marked **Preferred for playtime** is used and the other
+is kept. Use **Prefer this source** to switch. This is the same source priority as
+the Counters tab in the Advanced dialog, so the two always agree.
+
+![Sources with Playnite preferred](../assets/game-identity-hub/sources-panel-playnite-preferred.png)
+
+![The same game after preferring the Epic plugin](../assets/game-identity-hub/sources-panel-epic-preferred.png)
+
+The achievement totals in the Overview use the same matching as the merged achievement
+list: an achievement counts once when it has the same id in the same store app, or the
+same name from another store (a Steam and a GOG copy), so "6 of 13 earned" always
+equals what the list shows.
+
 ### Suggestions
 
-Open **Settings > Library > Duplicates** to review suggestions. Each one names both
-records with their store, platform, playtime and status:
+Open **Settings > Library > Duplicates** to review suggestions. Each one shows both
+records side by side with their store, platform, playtime, last played and status,
+and says **where each record came from**: a **via Playnite**, **via Steam sync** or
+**via Epic Games plugin** tag names the connection that reported it. (Playnite names
+the store of every game it finds, so "Epic" alone does not tell you whether the record
+came from Playnite or from the Epic plugin.)
 
 - **Another copy of X?** The same game on another platform, store or edition (Hades
-  on Steam and Switch, The Witcher 3 and its GOTY edition). Choose which copy is main
-  (the most played is preselected), then **Group as copies**.
+  on Steam and Switch, The Witcher 3 and its GOTY edition).
 - **Possible duplicate**: two records that look like the same copy, for example the
-  same store game imported twice. **Merge** them.
+  same Epic game reported by both Playnite and the Epic plugin.
 
-**Keep separate** is remembered across checks and imports. Sequels, remakes,
-remasters and same-name games more than three years apart are not suggested.
+Then say what the two are under **What are these two?**:
+
+- **The same game** groups them as copies under one library entry. Each copy keeps its
+  own playtime, achievements and saves. Pick the **main copy** (the most played is
+  preselected) and how the other copy shows in the library: folded under the main
+  entry, also as its own entry, or hidden. Then say whether they are the **same
+  copy**, seen by two sources (for example Playnite and the Epic plugin both
+  reporting one Epic game), so its playtime is counted once, or **different copies**
+  that each keep their own playtime. Playnite's library names count: "Epic" and
+  "Epic Games" are one store, but an Epic record and a Steam record are always
+  different copies, so "same copy" is not offered for them. The Versions tab's merge
+  form has the same option.
+- **Related, but a different game** records a remake, port, DLC, sequel or similar
+  link instead of merging. Both stay in your library.
+- **Different games** keeps them apart and remembers the choice.
+
+![A possible duplicate reported by Playnite and by the Epic plugin](../assets/game-identity-hub/review-duplicate-playnite-epic.png)
+
+![Another copy: grouping as the same game](../assets/game-identity-hub/review-copy-same.png)
+
+![Another copy: recording a related game instead](../assets/game-identity-hub/review-copy-related.png)
+
+"Keep separate" and "related" are remembered across checks and imports. Sequels,
+remakes, remasters and same-name games more than three years apart are not suggested.
 Suggestions are never applied automatically, nothing is deleted, and each pair of
-games is asked about once. **Check again** looks for new suggestions.
-
-![The review queue](../assets/game-identity-hub/after-review-queue.jpg)
+games is asked about once. **Check again** looks for new suggestions. The same store
+under two names (Epic and Epic Games, GOG and GOG Galaxy) counts as one store, so it is
+not suggested as a copy from a different store.
 
 DLC, mods, remakes and series are **related games**, not copies: they link to each
 other but never merge playtime or achievements. They remain under **Variants** and

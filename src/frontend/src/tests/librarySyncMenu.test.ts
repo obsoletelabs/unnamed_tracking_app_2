@@ -6,12 +6,16 @@ import LibrarySyncMenu from "../components/LibrarySyncMenu.vue";
 const state = vi.hoisted(() => ({
   loadCredentials: vi.fn(),
   refresh: vi.fn(),
+  loadPlugins: vi.fn(),
 }));
 vi.mock("vue-router", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("../composables/useConnections", () => ({
   CONNECTIONS: [],
   isConnectionConnected: () => false,
   useConnections: () => ({ loadCredentials: state.loadCredentials }),
+}));
+vi.mock("../composables/usePluginConnections", () => ({
+  usePluginConnections: () => ({ load: state.loadPlugins }),
 }));
 vi.mock("../state/pluginExtensions", async () => {
   const { ref } = await import("vue");
@@ -26,12 +30,14 @@ it("loads connection state only when Sync/import opens", async () => {
     await flushPromises();
     expect(state.loadCredentials).not.toHaveBeenCalled();
     expect(state.refresh).not.toHaveBeenCalled();
+    expect(state.loadPlugins).not.toHaveBeenCalled();
     const menu = wrapper.get("details");
     menu.element.open = true;
     await vi.waitFor(() =>
       expect(state.loadCredentials).toHaveBeenCalledOnce(),
     );
     expect(state.refresh).toHaveBeenCalledOnce();
+    expect(state.loadPlugins).toHaveBeenCalledOnce();
     menu.element.open = false;
     await flushPromises();
     expect(state.loadCredentials).toHaveBeenCalledOnce();

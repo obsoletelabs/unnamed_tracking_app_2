@@ -26,6 +26,7 @@ const emit = defineEmits<{
   "bulk-delete": [archives: T[]];
   restore: [archive: TrashedArchive];
   problem: [message: string];
+  retry: [];
 }>();
 
 defineSlots<{
@@ -271,8 +272,24 @@ function daysLeft(purgeAt: number): number {
     </ul>
 
     <div class="ga-body">
-      <div v-if="!loaded" class="ga-grid" aria-busy="true" aria-label="Loading">
+      <div
+        v-if="!loaded && !error"
+        class="ga-grid"
+        aria-busy="true"
+        aria-label="Loading"
+      >
         <div v-for="n in 3" :key="n" class="ga-skel"></div>
+      </div>
+
+      <!-- Never loaded and the request failed: not an empty list, so no "Add" prompt. -->
+      <div v-else-if="!loaded" class="ga-failed">
+        <button
+          type="button"
+          class="ui-btn ui-btn-secondary"
+          @click="emit('retry')"
+        >
+          Retry
+        </button>
       </div>
 
       <button
@@ -413,6 +430,10 @@ function daysLeft(purgeAt: number): number {
 }
 .ga-bulk-sep {
   flex: 1;
+}
+.ga-failed {
+  display: flex;
+  padding: 12px 0;
 }
 .ga-error {
   display: flex;

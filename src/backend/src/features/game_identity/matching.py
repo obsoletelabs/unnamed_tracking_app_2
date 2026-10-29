@@ -15,6 +15,8 @@ from datetime import date
 from typing import Any
 from unicodedata import normalize
 
+from src.features.game_identity.stores import store_key
+
 RULE = "same-copy-evidence"
 RULE_VERSION = "1"
 AUTO_CONFIDENCE = 0.96
@@ -278,7 +280,7 @@ def assess_copy(a: Candidate, b: Candidate) -> Assessment | None:
     differs = []
     if _known_differ(a.platform, b.platform):
         differs.append("platform")
-    if _known_differ((a.source or "").casefold(), (b.source or "").casefold()):
+    if _known_differ(store_key(a.source), store_key(b.source)):
         differs.append("store")
     if a.edition != b.edition or a.key != b.key:
         differs.append("edition")

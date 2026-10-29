@@ -860,3 +860,7 @@
     max-height: none;
   }
 }
+.np-failed {
+  display: flex;
+  padding: 12px 0;
+}

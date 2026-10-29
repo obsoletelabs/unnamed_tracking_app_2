@@ -26,6 +26,8 @@ const {
   worldsLoaded,
   onNewWorldSelected,
   onAddWorldVersion,
+  refreshWorlds,
+  loadGameFiles,
 } = useGameDetailContext();
 </script>
 <template>
@@ -45,6 +47,7 @@ const {
       @bulk-delete="bulkDeleteArchives($event, true)"
       @restore="onRestoreArchive($event, true)"
       @problem="filesError = $event"
+      @retry="refreshWorlds"
     >
       <template #card="{ archive: world, selecting, selected, toggle }">
         <ArchiveCard
@@ -70,6 +73,7 @@ const {
         :loading="filesLoaded.modpack === null"
         :uploading="uploadingFiles"
         :error="null"
+        :failed="!!filesError"
         @files="onGameFilesSelected($event, 'modpack')"
         @delete="removeGameFile('modpack', $event)"
         @save="(item, patch) => saveGameFile('modpack', item, patch)"
@@ -79,6 +83,7 @@ const {
         "
         @restore="restoreFileItem('modpack', $event as TrashedGameFile)"
         @problem="filesError = $event"
+        @retry="loadGameFiles('modpack')"
       />
     </div>
   </section>

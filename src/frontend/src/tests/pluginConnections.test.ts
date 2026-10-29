@@ -1,9 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { derivePluginContributions } from "../state/pluginExtensions";
 import { validateDocument } from "../services/pluginUi";
 import type { PluginUiDocument } from "../services/pluginUi";
 import type { PluginSummary } from "../services/plugins";
-import { pluginConnectionStatus } from "../services/pluginConnections";
 
 const plugin: PluginSummary = {
   api_contract_version: "1.1.9",
@@ -110,59 +109,4 @@ describe("plugin connections", () => {
       validateDocument({ ...document, api_contract_version: "1.2.0" }),
     ).toEqual([]);
   });
-});
-
-describe("pluginConnectionStatus", () => {
-  it("accepts a boolean state and a bounded plain-text name", () => {
-    expect(
-      pluginConnectionStatus({ connected: true, display_name: " Ada " }),
-    ).toEqual({ connected: true, display_name: "Ada" });
-    expect(
-      pluginConnectionStatus({ connected: true, display_name: "x".repeat(200) })
-        .display_name,
-    ).toHaveLength(80);
-  });
-
-  it("treats anything but literal true as not connected", () => {
-    expect(pluginConnectionStatus({ connected: "yes" })).toEqual({
-      connected: false,
-    });
-    expect(pluginConnectionStatus({ display_name: 5 })).toEqual({
-      connected: false,
-    });
-  });
-
-  it("reports a failed action as an error", () => {
-    expect(pluginConnectionStatus({ ok: false, error: "x" })).toEqual({
-      connected: false,
-      error: true,
-    });
-  });
-});
-
-it("deduplicates status reads while force refresh affects only its connection", async () => {
-  const { readPluginConnectionStatus, clearPluginConnectionStatuses } =
-    await import("../services/pluginConnections");
-  clearPluginConnectionStatuses();
-  const fetcher = vi.fn(
-    async () =>
-      new Response(
-        JSON.stringify({ connected: true, display_name: "Account" }),
-      ),
-  );
-  vi.stubGlobal("fetch", fetcher);
-  try {
-    await Promise.all([
-      readPluginConnectionStatus("example.one", "status"),
-      readPluginConnectionStatus("example.one", "status"),
-    ]);
-    expect(fetcher).toHaveBeenCalledTimes(1);
-    await readPluginConnectionStatus("example.two", "status");
-    await readPluginConnectionStatus("example.one", "status", true);
-    await readPluginConnectionStatus("example.two", "status");
-    expect(fetcher).toHaveBeenCalledTimes(3);
-  } finally {
-    clearPluginConnectionStatuses();
-    vi.unstubAllGlobals();
-  }
 });

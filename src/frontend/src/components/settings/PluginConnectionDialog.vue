@@ -6,13 +6,10 @@ import type { PluginConnectionContribution } from "../../state/pluginExtensions"
 
 const props = defineProps<{
   connection: PluginConnectionContribution;
-  syncOnOpen?: boolean;
   connected?: boolean;
 }>();
 const emit = defineEmits<{ close: [] }>();
-const verb = computed(() =>
-  props.syncOnOpen ? "Sync" : props.connected ? "Manage" : "Connect",
-);
+const verb = computed(() => (props.connected ? "Manage" : "Connect"));
 </script>
 
 <template>
@@ -27,7 +24,7 @@ const verb = computed(() =>
       :page-id="connection.pageId"
       :context="{
         host_page: 'connections',
-        initial_action_id: syncOnOpen ? (connection.syncAction?.id ?? '') : '',
+        initial_action_id: '',
       }"
       inline
     />

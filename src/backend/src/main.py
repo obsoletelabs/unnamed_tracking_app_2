@@ -28,6 +28,7 @@ from src.api.routes import (
     calendar_feed,
     calendar_sources,
     collection_covers,
+    connections,
     default_game_assets,
     delegation,
     export_import,
@@ -216,6 +217,7 @@ app.include_router(media.router)
 app.include_router(stats.router)
 app.include_router(library_sync.router)
 app.include_router(export_import.router)
+app.include_router(connections.router)
 app.include_router(jobs.router)
 app.include_router(jobs.user_router)
 app.include_router(media_io.router)

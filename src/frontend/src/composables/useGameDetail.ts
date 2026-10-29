@@ -120,6 +120,7 @@ export function useGameDetail() {
   }
   const loading = ref(true);
   const error = ref<GameLinkFailure | null>(null);
+  const refreshError = ref(false); // an edit saved but re-reading the game failed
   usePageTitle(() =>
     error.value
       ? gameLinkStates[error.value].title
@@ -275,6 +276,9 @@ export function useGameDetail() {
   // Opening a game: forget what belonged to the one before, and have whichever
   // tab is showing start loading its own things.
   function resetForGame() {
+    mediaSeq++;
+    mediaLoading.value = false;
+    mediaError.value = filesError.value = null;
     mediaItems.value = [];
     mediaLoadedFor.value = null;
     mediaTrash.value = [];
@@ -334,6 +338,7 @@ export function useGameDetail() {
     const revision = ++loadRevision;
     activeRequest?.abort();
     error.value = null;
+    refreshError.value = false;
     if (!isGameId(id)) {
       game.value = null;
       relatedGames.value = [];
@@ -404,7 +409,7 @@ export function useGameDetail() {
       if (!refresh || status === 401 || status === 403 || status === 422) {
         game.value = null;
         error.value = gameFailureForStatus(status);
-      }
+      } else refreshError.value = true;
     } finally {
       window.clearTimeout(timeout);
       if (revision === loadRevision) loading.value = false;
@@ -923,25 +928,31 @@ export function useGameDetail() {
   // no args: every item regardless of account (the plain Screenshots/Clips/
   // Soundtrack tabs, which have no account concept of their own). Passed
   // explicitly by the Accounts tab to scope to one account or "General".
+  let mediaSeq = 0; // a newer request (another account, another game) wins
   async function loadMedia(profileId?: string | null, unscopedOnly = false) {
     if (!game.value) return;
+    const id = game.value.id;
+    const seq = ++mediaSeq;
     mediaLoading.value = true;
     mediaError.value = null;
     try {
       // The plain tabs list every copy merged into this game (#274); an account
       // scope belongs to this record alone.
-      mediaItems.value = await listGameScreenshots(
-        game.value.id,
+      const items = await listGameScreenshots(
+        id,
         profileId,
         unscopedOnly,
         !profileId && !unscopedOnly,
       );
-      mediaLoadedFor.value = game.value.id;
+      if (seq !== mediaSeq || game.value?.id !== id) return;
+      mediaItems.value = items;
+      mediaLoadedFor.value = id;
     } catch (err) {
+      if (seq !== mediaSeq || game.value?.id !== id) return;
       mediaError.value =
         err instanceof Error ? err.message : "Failed to load media";
     } finally {
-      mediaLoading.value = false;
+      if (seq === mediaSeq) mediaLoading.value = false;
     }
   }
 
@@ -1278,11 +1289,15 @@ export function useGameDetail() {
 
   async function loadGameFiles(kind: FlatFileKind) {
     if (!game.value || filesLoaded.value[kind] === game.value.id) return;
+    const id = game.value.id;
     filesError.value = null;
     try {
-      filesRefFor(kind).value = await listGameFiles(game.value.id, kind, true);
-      filesLoaded.value[kind] = game.value.id;
+      const files = await listGameFiles(id, kind, true);
+      if (game.value?.id !== id) return;
+      filesRefFor(kind).value = files;
+      filesLoaded.value[kind] = id;
     } catch (err) {
+      if (game.value?.id !== id) return;
       filesError.value =
         err instanceof Error ? err.message : "Failed to load files";
     }
@@ -1494,10 +1509,15 @@ export function useGameDetail() {
 
   async function refreshSaveArchives() {
     if (!game.value) return;
+    const id = game.value.id;
+    filesError.value = null;
     try {
-      saveArchives.value = await fetchArchives(game.value.id, "save", true);
+      const archives = await fetchArchives(id, "save", true);
+      if (game.value?.id !== id) return;
+      saveArchives.value = archives;
       saveArchivesLoaded.value = true;
     } catch (err) {
+      if (game.value?.id !== id) return;
       filesError.value =
         err instanceof Error ? err.message : "Failed to load saves";
     }
@@ -1770,6 +1790,7 @@ export function useGameDetail() {
     game,
     loading,
     error,
+    refreshError,
     retryGame,
     showEditModal,
     deleting,
@@ -1883,6 +1904,10 @@ export function useGameDetail() {
     mediaLoading,
     mediaError,
     mediaLoadedFor,
+    loadMedia,
+    loadGameFiles,
+    refreshSaveArchives,
+    refreshWorlds,
     screenshots,
     clips,
     soundtrackItems,

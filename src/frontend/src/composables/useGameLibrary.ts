@@ -9,7 +9,6 @@ import { preferences } from "../state/preferences";
 export type ViewMode = "cards" | "list" | "detail";
 import { PHONE_CARD_COLUMNS } from "../utils/libraryLayout";
 export type CardDensity = "compact" | "cozy" | "large";
-
 import {
   ref,
   computed,
@@ -22,6 +21,7 @@ import {
   useTemplateRef,
 } from "vue";
 import { useKeptAlive } from "../utils/useKeptAlive";
+import { libraryFreshness } from "../utils/libraryFreshness";
 import { takeLibraryScroll } from "../state/libraryScroll";
 import { useRoute, useRouter, stringifyQuery } from "vue-router";
 import type { LocationQueryRaw } from "vue-router";
@@ -30,7 +30,6 @@ import { viewportPrefetchRows } from "../services/gamePages";
 
 import { activePriority, priorityLabel } from "../utils/priority";
 import { formatDisplayDate } from "../utils/dates";
-
 import {
   fetchGamesForViewport,
   peekAllGames,
@@ -900,7 +899,7 @@ export function useGameLibrary() {
   // collection changes) that can overlap
   let loadGamesToken = 0;
   const refreshing = ref(false);
-  let lastGamesLoadedAt = 0;
+  const freshness = libraryFreshness();
 
   const hasMoreGames = computed(
     () => games.value.length < totalGameCount.value,
@@ -959,6 +958,7 @@ export function useGameLibrary() {
 
   async function loadGames() {
     const token = ++loadGamesToken;
+    const markLoaded = freshness.begin();
     duplicateRequest?.abort();
     const enrichmentRequest = new AbortController();
     duplicateRequest = enrichmentRequest;
@@ -997,7 +997,7 @@ export function useGameLibrary() {
         selectedGame.value =
           firstPage.games.find((game) => game.id === selectedGame.value?.id) ??
           null;
-      lastGamesLoadedAt = Date.now();
+      markLoaded();
       selectFirstForDetailView();
       // These library-wide enrichments are not needed to paint the first
       // viewport. Wait until Vue has rendered the first slice and the browser
@@ -1103,8 +1103,7 @@ export function useGameLibrary() {
       // KeepAlive preserves the library and its controls between routes. Do
       // not immediately repeat the full paged transfer when returning to a
       // recently loaded library; failed/stale data still refreshes on return.
-      if (error.value !== null || Date.now() - lastGamesLoadedAt >= 60_000)
-        void loadGames();
+      if (error.value !== null || freshness.isStale()) void loadGames();
       void restoreLibraryScroll();
     },
     {

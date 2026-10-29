@@ -35,7 +35,7 @@ from src.database.models.game_identity_tracking import (
     LockOrigin,
     ManualFactOrigin,
 )
-from src.features.achievement_folding import CATALOG
+from src.features.achievement_folding import CATALOG, CopyMatcher
 from src.features.game_identity import graph, policy
 from src.helpers.public_http import parse_http_url
 
@@ -348,14 +348,14 @@ def _group_entries(
     """`sets` maps a game to its provider set (the app ID): generic provider IDs such as
     ACH_1 in two different apps are two achievements, the same app on two rows is one."""
     entries: dict[tuple[str, ...], _Entry] = {}
+    matcher = CopyMatcher()  # the same matching as the merged achievement list
     for row in provider:
-        key: tuple[str, ...] = (
-            "provider",
-            row.provider.casefold(),
-            (sets or {}).get(row.game_id, ""),
-            row.external_id,
-        )
-        entry = entries.setdefault(key, _Entry(key, "provider", row.name))
+        app_id = (sets or {}).get(row.game_id, "")
+        key: tuple[str, ...] = ("provider", row.provider.casefold(), app_id, row.external_id)
+        entry = matcher.find(row, app_id)
+        if entry is None:
+            entry = entries.setdefault(key, _Entry(key, "provider", row.name))
+        matcher.remember(row, app_id, entry)
         entry.unlocked = entry.unlocked or bool(row.unlocked)
         entry.versions[row.game_id] = entry.versions.get(row.game_id, False) or bool(row.unlocked)
     for item in manual:

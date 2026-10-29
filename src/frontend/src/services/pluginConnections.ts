@@ -1,63 +1,75 @@
-import { dispatchPluginAction } from "./pluginUi";
+// Plugin connections as the host reports them. The host asks each plugin for its
+// account status and runs the sync itself; the browser only renders this state.
+
+import { providerRequestError } from "./apiError";
 import { currentUser } from "../state/auth";
 
-// Host-side reading of a plugin connection's optional status action. The plugin
-// is untrusted, so only a boolean and a short plain-text name are accepted.
+export interface PluginConnectionSync {
+  available: boolean;
+  unavailable_reason: string;
+  running: boolean;
+  paused: boolean;
+  // idle | partial | completed | failed | cancelled | disabled | paused
+  status: string;
+  last_run_at: number | null;
+  last_summary: string;
+}
 
-export interface PluginConnectionStatus {
+export interface PluginConnectionState {
+  plugin_id: string;
+  connection_id: string;
   connected: boolean;
-  display_name?: string;
-  error?: boolean;
+  display_name: string | null;
+  error: boolean;
+  // null when the connection declares no sync
+  sync: PluginConnectionSync | null;
 }
 
-const MAX_DISPLAY_NAME = 80;
-
-export function pluginConnectionStatus(
-  result: Record<string, unknown>,
-): PluginConnectionStatus {
-  if (result.ok === false) return { connected: false, error: true };
-  const name =
-    typeof result.display_name === "string" ? result.display_name.trim() : "";
-  return {
-    connected: result.connected === true,
-    ...(name ? { display_name: name.slice(0, MAX_DISPLAY_NAME) } : {}),
-  };
+export function pluginConnectionKey(
+  pluginId: string,
+  connectionId: string,
+): string {
+  return `${pluginId}:${connectionId}`;
 }
 
-const statusCache = new Map<
-  string,
-  { value: PluginConnectionStatus; expiresAt: number }
+const connectionsUrl = "/api/connections/plugins";
+
+const connectionRequests = new Map<
+  string | undefined,
+  Promise<PluginConnectionState[]>
 >();
-const statusRequests = new Map<string, Promise<PluginConnectionStatus>>();
 
 export function clearPluginConnectionStatuses(): void {
-  statusCache.clear();
-  statusRequests.clear();
+  connectionRequests.clear();
 }
 
-export async function readPluginConnectionStatus(
-  pluginId: string,
-  actionId: string,
-  force = false,
-): Promise<PluginConnectionStatus> {
-  const key = JSON.stringify([currentUser.value?.id, pluginId, actionId]);
-  const cached = statusCache.get(key);
-  if (!force && cached && cached.expiresAt > Date.now()) return cached.value;
-  const pending = statusRequests.get(key);
-  if (!force && pending) return pending;
-  const request = dispatchPluginAction(pluginId, actionId)
-    .then((result) => {
-      const value = pluginConnectionStatus(result);
-      if (statusRequests.get(key) === request) {
-        statusCache.set(key, { value, expiresAt: Date.now() + 15_000 });
-        while (statusCache.size > 128)
-          statusCache.delete(statusCache.keys().next().value!);
-      }
-      return value;
-    })
-    .finally(() => {
-      if (statusRequests.get(key) === request) statusRequests.delete(key);
-    });
-  statusRequests.set(key, request);
+export function fetchPluginConnections(): Promise<PluginConnectionState[]> {
+  const account = currentUser.value?.id;
+  const pending = connectionRequests.get(account);
+  if (pending) return pending;
+  const request = (async () => {
+    const response = await fetch(connectionsUrl, { credentials: "include" });
+    if (!response.ok) throw await providerRequestError(response);
+    const body = (await response.json()) as {
+      connections: PluginConnectionState[];
+    };
+    return body.connections;
+  })().finally(() => {
+    if (connectionRequests.get(account) === request)
+      connectionRequests.delete(account);
+  });
+  connectionRequests.set(account, request);
   return request;
+}
+
+export async function startPluginConnectionSync(
+  pluginId: string,
+  connectionId: string,
+): Promise<PluginConnectionSync> {
+  const response = await fetch(
+    `${connectionsUrl}/${encodeURIComponent(pluginId)}/${encodeURIComponent(connectionId)}/sync`,
+    { method: "POST", credentials: "include" },
+  );
+  if (!response.ok) throw await providerRequestError(response);
+  return ((await response.json()) as { sync: PluginConnectionSync }).sync;
 }

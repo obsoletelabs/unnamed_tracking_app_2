@@ -238,3 +238,31 @@ it("schedules enrichment after the first paint without a multi-second delay", as
   expect(fetchGameDuplicates).toHaveBeenCalledOnce();
   expect(fetchLibraryLayout).toHaveBeenCalledOnce();
 });
+
+describe("returning to a kept-alive library", () => {
+  async function returnToLibrary() {
+    const { useKeptAlive } = await import("../utils/useKeptAlive");
+    const { fetchGamesForViewport } = await import("../services/games");
+    const { useGameLibrary } = await import("../composables/useGameLibrary");
+    const view = useGameLibrary();
+    await view.loadGames();
+    const refresh = vi.mocked(useKeptAlive).mock.calls.at(-1)![0];
+    return { refresh, fetches: vi.mocked(fetchGamesForViewport) };
+  }
+
+  it("keeps a recent, unchanged library without refetching", async () => {
+    const { refresh, fetches } = await returnToLibrary();
+    fetches.mockClear();
+    refresh();
+    expect(fetches).not.toHaveBeenCalled();
+  });
+
+  it("refetches when a game was deleted elsewhere since the last load", async () => {
+    const { forgetGame } = await import("../services/gameCache");
+    const { refresh, fetches } = await returnToLibrary();
+    fetches.mockClear();
+    forgetGame("deleted-game");
+    refresh();
+    expect(fetches).toHaveBeenCalledTimes(1);
+  });
+});

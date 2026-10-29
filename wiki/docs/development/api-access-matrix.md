@@ -137,6 +137,8 @@ are redacted. Validation errors never echo submitted values.
 | POST | `/api/branding/assets/{kind}` | admin | Administrator only. |
 | GET | `/api/branding/assets/{kind}/{revision}.png` | public | Instance-level or pre-login data; no per-user object is addressed. |
 | GET | `/api/branding/default-icon.svg` | public | Instance-level or pre-login data; no per-user object is addressed. |
+| GET | `/api/connections/plugins` | user | Own plugin connections only; the host runs each declared status action as the caller and returns bounded state. |
+| POST | `/api/connections/plugins/{plugin_id}/{connection_id}/sync` | user | Own personal sync task only; requires the connection's declared sync action and the caller's `tasks.background` grant. |
 | GET | `/api/currency-codes` | user | Lookup using provider data or the caller's configured credentials; no stored object is addressed. |
 | GET | `/api/internal/real-ip` | local-or-admin | Trusted-proxy topology: direct loopback caller (nginx renderer), first-run setup, or administrator. |
 | GET | `/api/internal/real-ip/presets` | public | Inert normalization/presets; reads no stored configuration. |
@@ -259,6 +261,7 @@ are redacted. Validation errors never echo submitted values.
 | POST | `/api/game-identity/review/automatic/{decision_id}/keep` | user | Own identity, review and backfill state; foreign identifiers are refused. |
 | POST | `/api/game-identity/review/automatic/{decision_id}/undo` | user | Own identity, review and backfill state; foreign identifiers are refused. |
 | POST | `/api/game-identity/review/queue/{decision_id}/keep-separate` | user | Own identity, review and backfill state; foreign identifiers are refused. |
+| POST | `/api/game-identity/review/queue/{decision_id}/relate` | user | Own identity, review and backfill state; foreign identifiers are refused. |
 | POST | `/api/game-identity/review/queue/{decision_id}/merge` | user | Own identity, review and backfill state; foreign identifiers are refused. |
 | POST | `/api/game-identity/review/run` | user | Own identity, review and backfill state; foreign identifiers are refused. |
 | PUT | `/api/game-identity/relationships/{relationship_id}` | user | Own identity, review and backfill state; foreign identifiers are refused. |
