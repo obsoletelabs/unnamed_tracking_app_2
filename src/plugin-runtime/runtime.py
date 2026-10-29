@@ -31,7 +31,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 from urllib.error import HTTPError, URLError
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 from urllib.request import Request, urlopen
 from uuid import UUID, uuid4
 
@@ -2475,10 +2475,14 @@ class PluginRegistry:
         configuration.unlink(missing_ok=True)
         (self.root / plugin_id / ".settings.json").unlink(missing_ok=True)
 
-    def list(self) -> list[dict[str, Any]]:
+    def list(self, *, pwa_only: bool = False) -> list[dict[str, Any]]:
         result: list[dict[str, Any]] = []
         for package in self.packages():
             try:
+                # Declaration lookup is cheap; selected packages still undergo
+                # the full integrity/lifecycle checks in _item below.
+                if pwa_only and not self.package(package.name)[1].get("pwa"):
+                    continue
                 result.append(self._item(package))
             except Exception as exc:
                 result.append(
@@ -3322,6 +3326,9 @@ class PluginRegistry:
 
 class RuntimeHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
+    # Keep small JSON/asset replies from waiting on Nagle plus delayed ACKs
+    # when headers and body are written separately on a persistent connection.
+    disable_nagle_algorithm = True
     server_version = "UnnamedTrackingPluginRuntime/1.1"
 
     def _authorize(self) -> bool:
@@ -3406,7 +3413,11 @@ class RuntimeHandler(BaseHTTPRequestHandler):
                     },
                 )
             elif parts == ["plugins"]:
-                self._json(200, self.server.registry.list())  # type: ignore[attr-defined]
+                query = parse_qs(urlsplit(self.path).query)
+                if query.get("contribution") == ["pwa"]:
+                    self._json(200, self.server.registry.list(pwa_only=True))
+                else:
+                    self._json(200, self.server.registry.list())
             elif len(parts) == 3 and parts[0] == "plugins" and parts[2] == "state":
                 # Revalidate this installation without hashing every unrelated package.
                 self._json(200, self.server.registry.plugin_state(parts[1]))

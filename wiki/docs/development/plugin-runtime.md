@@ -364,3 +364,21 @@ credential lookup. A fresh session remains a read-only authentication path; the
 conditional activity update is committed only after its existing one-minute
 interval elapses. Every request still checks session expiry, revocation and
 account activation, and retains the shared failed-credential quota.
+
+
+The private runtime listener disables Nagle buffering for small HTTP/1.1 replies.
+This avoids delayed-ACK stalls between separately written response headers and
+JSON/asset bodies on pooled connections. Response framing, authentication and
+package validation still apply to every request. PWA discovery selects declared
+PWA providers before hashing package payloads, so unrelated plugins are not
+revalidated by each status/manifest/icon lookup. Older runtimes can return the
+full inventory; the host still filters declarations and checks live site-wide
+grants. PWA manifest/icon reads run
+concurrently and still validate all three inert assets before returning success.
+The frontend registers PWA lifecycle listeners immediately, then checks initial
+install metadata after the first route has rendered; explicit push registration
+can still request status immediately.
+
+The Games page gives its first viewport request and first-row artwork high
+browser priority. Sync/import fetches credential state only when its menu opens,
+rather than competing with initial library requests.

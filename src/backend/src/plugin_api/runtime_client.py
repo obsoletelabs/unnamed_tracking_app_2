@@ -240,9 +240,14 @@ class PluginRuntimeClient:
             raise PluginRuntimeRequestError("plugin task returned an invalid response")
         return result
 
-    async def plugins(self) -> list[dict[str, Any]]:
-        """List runtime installations and their lifecycle state."""
-        return await self._request("GET", "/plugins")
+    async def plugins(self, *, pwa_only: bool = False) -> list[dict[str, Any]]:
+        """List installations, optionally selecting declared PWA contributions first.
+
+        Older runtimes ignore the additive filter; callers still check declarations
+        and live grants. A filtered inventory must not reconcile global manager state.
+        """
+        options = {"params": {"contribution": "pwa"}} if pwa_only else {}
+        return await self._request("GET", "/plugins", **options)
 
     async def plugin_ui(self, plugin_id: str) -> dict[str, Any]:
         """Read the package's declared UI document."""

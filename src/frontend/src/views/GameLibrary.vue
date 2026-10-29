@@ -173,7 +173,7 @@ watch(
       return;
     initialArtworkQueued = true;
     for (const game of cardsInRow(0))
-      if (game.hasKeyArt !== false) preloadImage(game.coverImageUrl);
+      if (game.hasKeyArt !== false) preloadImage(game.coverImageUrl, "high");
   },
   { flush: "sync" },
 );

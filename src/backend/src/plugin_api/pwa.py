@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 from pathlib import Path
@@ -51,7 +52,7 @@ _HOST_ASSET_REVISION = host_asset_revision()
 async def provider(db: AsyncSession) -> dict[str, Any] | None:
     """Require one healthy provider with an installation-wide explicit grant."""
     try:
-        installed = await client.plugins()
+        installed = await client.plugins(pwa_only=True)
     except (PluginRuntimeUnavailable, PluginRuntimeRequestError) as exc:
         raise HTTPException(status_code=503, detail="PWA runtime unavailable") from exc
     candidates = []
@@ -112,10 +113,11 @@ async def checked_assets(plugin: dict[str, Any]) -> dict[str, bytes]:
     """Revalidate the live contribution before exposing any install metadata."""
     declaration = plugin["declaration"]
     try:
-        files = {
-            path: await client.pwa_asset(plugin["plugin_id"], path)
-            for path in (declaration.manifest, *declaration.icons)
-        }
+        paths = (declaration.manifest, *declaration.icons)
+        contents = await asyncio.gather(
+            *(client.pwa_asset(plugin["plugin_id"], path) for path in paths)
+        )
+        files = dict(zip(paths, contents, strict=True))
         validate_pwa_assets(declaration, files)
         return files
     except (

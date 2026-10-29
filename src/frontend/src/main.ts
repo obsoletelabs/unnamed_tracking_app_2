@@ -15,5 +15,5 @@ initializeUiAppearance();
 void loadBranding();
 
 configureNativePluginHost(router, openPluginDialog);
-startPwa();
+startPwa(router.isReady());
 createApp(App).use(router).mount("#app");

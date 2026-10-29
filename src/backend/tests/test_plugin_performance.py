@@ -138,3 +138,30 @@ async def test_access_snapshot_contains_only_the_live_authorized_local_capabilit
     )
     assert response.status_code == 200, response.text
     assert "runtime_access" not in response.json()["payload"]
+
+
+@pytest.mark.asyncio
+async def test_pwa_inventory_filter_is_additive_for_older_runtimes(monkeypatch):
+    from src.plugin_api import runtime_client
+
+    await runtime_client.close_runtime_transport()
+    original = httpx.AsyncClient
+    calls = []
+
+    def response(request):
+        calls.append(request.url.params.get("contribution"))
+        # An older runtime may ignore the query and return the full inventory.
+        return httpx.Response(200, json=[{"plugin_id": "example.ordinary"}])
+
+    monkeypatch.setattr(
+        runtime_client.httpx,
+        "AsyncClient",
+        lambda **options: original(transport=httpx.MockTransport(response), **options),
+    )
+    client = runtime_client.PluginRuntimeClient("http://runtime", "x" * 32)
+    try:
+        assert await client.plugins(pwa_only=True) == [{"plugin_id": "example.ordinary"}]
+        await client.plugins()
+        assert calls == ["pwa", None]
+    finally:
+        await runtime_client.close_runtime_transport()

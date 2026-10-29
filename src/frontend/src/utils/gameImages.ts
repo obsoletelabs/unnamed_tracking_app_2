@@ -61,8 +61,12 @@ export const HERO_WIDTH = 1920;
 export const POSTER_WIDTH = 240;
 
 // Starts downloading an image so it is already there when the page asks.
-export function preloadImage(url: string): void {
+export function preloadImage(
+  url: string,
+  priority: "high" | "low" | "auto" = "auto",
+): void {
   if (import.meta.env.VITE_USE_MOCK_DATA === "true") return;
   const image = new Image();
+  image.fetchPriority = priority;
   image.src = url;
 }
