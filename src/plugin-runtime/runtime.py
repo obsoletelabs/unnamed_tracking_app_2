@@ -3364,10 +3364,11 @@ class RuntimeHandler(BaseHTTPRequestHandler):
         return False
 
     def _json(self, status: int, payload: Any) -> None:
-        body = json.dumps(payload, default=str).encode()
+        body = b"" if status in {204, 304} else json.dumps(payload, default=str).encode()
         self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
+        if status not in {204, 304}:
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
         if status >= 400:
             # An early rejection may leave an unread request body on the socket.
             self.close_connection = True
