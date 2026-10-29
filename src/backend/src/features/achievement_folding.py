@@ -143,6 +143,42 @@ def _name_key(row: Achievement) -> str | None:
     return None if not name or name == HIDDEN_NAME.casefold() else name
 
 
+class CopyMatcher:
+    """Which entry an achievement joins when one page shows several copies of a game (#339).
+
+    The same achievement is one entry when it has the same platform id in the same store app,
+    or the same normalised name from another store on another copy (a Steam and a GOG copy of
+    one game). Two achievements of one copy, or of two apps of one store, that share a name stay
+    two. The achievements list and the Overview totals both use this, so they always agree
+    (#347)."""
+
+    def __init__(self) -> None:
+        self._by_id: dict[tuple[str, str, str], Any] = {}
+        self._by_name: dict[str, Any] = {}
+        self._stores: dict[int, set[str]] = {}  # entry -> the stores it already has a row from
+
+    @staticmethod
+    def _id_key(row: Achievement, app_id: str) -> tuple[str, str, str]:
+        return (row.provider.casefold(), app_id, row.external_id)
+
+    def find(self, row: Achievement, app_id: str) -> Any | None:
+        found = self._by_id.get(self._id_key(row, app_id))
+        if found is not None:
+            return found
+        name_key = _name_key(row)
+        named = self._by_name.get(name_key) if name_key else None
+        if named is not None and row.provider.casefold() in self._stores.get(id(named), ()):
+            return None
+        return named
+
+    def remember(self, row: Achievement, app_id: str, entry: Any) -> None:
+        self._by_id.setdefault(self._id_key(row, app_id), entry)
+        self._stores.setdefault(id(entry), set()).add(row.provider.casefold())
+        name_key = _name_key(row)
+        if name_key:
+            self._by_name.setdefault(name_key, entry)
+
+
 def merge_copies(
     copies: Sequence[tuple[Any, str]], rows: Iterable[Achievement]
 ) -> list[dict[str, Any]]:
@@ -159,14 +195,11 @@ def merge_copies(
     for row in rows:
         by_game.setdefault(row.game_id, []).append(row)
     merged: list[dict[str, Any]] = []
-    by_id: dict[tuple[str, str, str], dict[str, Any]] = {}
-    by_name: dict[str, dict[str, Any]] = {}
+    matcher = CopyMatcher()
     for label, app_id in copies:
         for row, entry in fold_catalog(by_game.get(label.game_id, [])):
             item = _list_entry(row, entry)
-            id_key = (row.provider.casefold(), app_id, row.external_id)
-            name_key = _name_key(row)
-            target = by_id.get(id_key) or (by_name.get(name_key) if name_key else None)
+            target = matcher.find(row, app_id)
             source = _source_of(row, label)
             if target is None:
                 item["sources"] = [source]
@@ -174,9 +207,7 @@ def merge_copies(
                 target = item
             else:
                 _absorb(target, item, source)
-            by_id.setdefault(id_key, target)
-            if name_key:
-                by_name.setdefault(name_key, target)
+            matcher.remember(row, app_id, target)
     return merged
 
 
