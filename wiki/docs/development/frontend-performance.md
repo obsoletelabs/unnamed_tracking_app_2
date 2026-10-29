@@ -79,3 +79,18 @@ paint, allowing the mounted route to issue its data request first. Upload badges
 read the recorded count through `/api/media/inbox/count`; the full inbox view
 retains filesystem reconciliation for unrecorded files. The count excludes trash
 and other accounts and discards late responses after an account change.
+
+
+## Optional dependency bundles
+
+The shared vendor group contains Vue and Vue Router. QR-code generation,
+Markdown rendering, HTML sanitization and virtual-list code follow their actual
+importers instead of being forced into every page's initial vendor bundle.
+Rich HTML still uses DOMPurify before rendering; this changes bundle placement,
+not sanitization. Route and occasional-dialog code splitting remains in place.
+
+In a production-lockfile comparison after merging main on 30 October 2026, the
+vendor script fell from 253.91 KB (90.32 KB gzip) to 136.92 KB (51.95 KB gzip).
+Games still needs its virtualizer and sanitizer, so its measured initial asset
+transfer fell by about 24 KB while adding one script request. This is a transfer
+reduction, not a claim that every page becomes faster by a fixed duration.
