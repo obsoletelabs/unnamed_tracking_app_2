@@ -96,8 +96,8 @@ class MetadataCandidate(MetadataModel):
 class MetadataLink(MetadataModel):
     """A provider reference rendered by the existing application links UI."""
 
-    label: str = Field(min_length=1, max_length=50)
-    url: AnyHttpUrl = Field(max_length=2_048)
+    label: str = Field(min_length=1, max_length=128)
+    url: AnyHttpUrl
 
 
 class MetadataEpisode(MetadataModel):
@@ -166,19 +166,19 @@ class MetadataAchievement(MetadataModel):
 class MetadataPatch(MetadataModel):
     """Partial canonical fields; missing values never erase existing information."""
 
-    title: str | None = Field(default=None, min_length=1, max_length=500)
+    title: str | None = Field(default=None, min_length=1, max_length=512)
     year: int | None = Field(default=None, ge=1800, le=3000)
     release_date: date | None = None
     description: str | None = Field(default=None, max_length=100_000)
     developer: str | None = Field(default=None, max_length=200)
     publisher: str | None = Field(default=None, max_length=200)
     series: str | None = Field(default=None, max_length=200)
-    age_rating: str | None = Field(default=None, max_length=20)
+    age_rating: str | None = Field(default=None, max_length=64)
     tags: tuple[Annotated[str, Field(max_length=128)], ...] = Field(default=(), max_length=128)
     features: tuple[Annotated[str, Field(max_length=128)], ...] = Field(default=(), max_length=128)
     genres: tuple[Annotated[str, Field(max_length=128)], ...] = Field(default=(), max_length=128)
     platforms: tuple[Annotated[str, Field(max_length=128)], ...] = Field(default=(), max_length=64)
-    time_to_beat_hours: float | None = Field(default=None, ge=0, le=99_999.9, allow_inf_nan=False)
+    time_to_beat_hours: float | None = Field(default=None, ge=0, le=100_000, allow_inf_nan=False)
     time_to_beat_extras_hours: float | None = Field(
         default=None, ge=0, le=99_999.9, allow_inf_nan=False
     )
@@ -202,7 +202,7 @@ class MetadataPatch(MetadataModel):
     links: tuple[MetadataLink, ...] = Field(default=(), max_length=32)
     episode_runtime_minutes: int | None = Field(default=None, ge=0, le=100_000)
     episode_count: int | None = Field(default=None, ge=0, le=100_000)
-    format: str | None = Field(default=None, max_length=20)
+    format: str | None = Field(default=None, max_length=64)
     scores: dict[ActionId, Annotated[float, Field(ge=0, le=100, allow_inf_nan=False)]] = Field(
         default_factory=dict, max_length=32
     )

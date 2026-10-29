@@ -2,11 +2,9 @@
 
 from types import SimpleNamespace
 
-import pytest
-from pydantic import ValidationError
-
 from src.api.routes.game_metadata import _game_links, _release_date
 from src.features.game_identity.provider_ids import merge_provider_ids
+from src.features.metadata.column_limits import fit_response
 from src.features.metadata.identity import same_entity
 from src.features.metadata.namespaces import confine_to_namespaces
 from src.plugin_api.media_enrichment import _apply_metadata
@@ -97,20 +95,23 @@ def test_enrichment_honours_the_provider_ids_lock():
     assert media.provider_ids == {"imdb": "tt1"}
 
 
-@pytest.mark.parametrize(
-    "model, values",
-    [
-        (MetadataPatch, {"format": "x" * 21}),
-        (MetadataPatch, {"age_rating": "x" * 21}),
-        (MetadataPatch, {"title": "x" * 501}),
-        (MetadataPatch, {"time_to_beat_hours": 100_000}),
-        (MetadataLink, {"label": "x" * 51, "url": "https://example.test/"}),
-        (MetadataLink, {"label": "ok", "url": "https://example.test/" + "a" * 2048}),
-    ],
-)
-def test_contract_limits_match_the_stored_columns(model, values):
-    with pytest.raises(ValidationError):
-        model(**values)
+def test_oversized_values_are_clipped_to_the_stored_columns():
+    patch = MetadataPatch(
+        title="t" * 512,
+        format="f" * 64,
+        age_rating="a" * 64,
+        time_to_beat_hours=100_000,
+        links=(
+            MetadataLink(label="l" * 128, url="https://example.test/ok"),
+            MetadataLink(label="long", url="https://example.test/" + "a" * 2100),
+        ),
+    )
+    fitted = fit_response(ProviderResponse(metadata=patch)).metadata
+    assert len(fitted.title) == 500
+    assert len(fitted.format) == 20
+    assert len(fitted.age_rating) == 20
+    assert fitted.time_to_beat_hours is None
+    assert [len(link.label) for link in fitted.links] == [50]
 
 
 def test_game_links_become_rows_and_bad_ones_are_dropped():

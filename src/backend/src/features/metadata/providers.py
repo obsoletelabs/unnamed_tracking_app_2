@@ -34,6 +34,7 @@ from src.plugin_api.runtime_client import (
 )
 
 from .automatic_search import automatic_search_status
+from .column_limits import fit_response
 from .configuration import (
     UNRANKED,
     configuration_presence,
@@ -258,7 +259,7 @@ class PluginMetadataProvider:
         owned = {self.id}
         if self.declaration.identifier_namespace:
             owned.add(self.declaration.identifier_namespace)
-        return confine_to_namespaces(result, owned)
+        return fit_response(confine_to_namespaces(result, owned))
 
 
 def _provider_state(
