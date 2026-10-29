@@ -103,20 +103,32 @@ watch(allTags, (tags) => {
     activeTag.value = null;
 });
 
+// Answers for another game, or older than the latest request, are dropped.
+let loadSeq = 0;
+// The first read failed, so there is no list yet: that is not "no notes".
+const loadFailed = ref(false);
 async function load() {
+  const seq = ++loadSeq;
   error.value = null;
   try {
-    notes.value = await listGameNoteSummaries(props.gameId);
+    const found = await listGameNoteSummaries(props.gameId);
+    if (seq !== loadSeq) return;
+    notes.value = found;
+    loadFailed.value = false;
   } catch (e) {
+    if (seq !== loadSeq) return;
     error.value = e instanceof Error ? e.message : "Failed to load notes";
+    loadFailed.value = !notes.value.length;
   } finally {
-    loaded.value = true;
+    if (seq === loadSeq) loaded.value = true;
   }
 }
 watch(
   () => props.gameId,
   () => {
     loaded.value = false;
+    loadFailed.value = false;
+    notes.value = [];
     mode.value = "list";
     void load();
   },
@@ -221,6 +233,7 @@ function backToList() {
   reading.value = null;
 }
 
+let toggling = false;
 async function onReaderClick(e: MouseEvent) {
   const box = e.target as HTMLInputElement;
   if (box?.dataset?.task === undefined || !reading.value) return;
@@ -236,6 +249,8 @@ async function onReaderClick(e: MouseEvent) {
     },
   );
   if (next === readingText.value) return;
+  if (toggling) return; // a second click must not race the first save
+  toggling = true;
   const name = reading.value.name;
   const before = readingText.value;
   readingText.value = next;
@@ -246,6 +261,8 @@ async function onReaderClick(e: MouseEvent) {
   } catch (err) {
     readingText.value = before;
     error.value = err instanceof Error ? err.message : "Failed to save note";
+  } finally {
+    toggling = false;
   }
 }
 
@@ -759,6 +776,12 @@ onBeforeUnmount(() => document.removeEventListener("keydown", onKey));
         <template v-if="showSkeleton">
           <div v-for="n in 3" :key="n" class="np-skel"></div>
         </template>
+      </div>
+
+      <div v-else-if="loadFailed" class="np-failed">
+        <button type="button" class="ui-btn ui-btn-secondary" @click="load">
+          Retry
+        </button>
       </div>
 
       <button

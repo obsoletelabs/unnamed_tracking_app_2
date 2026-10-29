@@ -30,6 +30,11 @@ flows named below, not of every screen.
 | Achievement detail notes | navigate to another achievement | a late response filled the wrong achievement's notes | **fixed**: sequence guarded and cleared on change |
 | Settings > Users: invitations | invitations request fails | failure was swallowed into an empty list | **fixed**: message with **Retry**, previous invitations kept |
 | Settings > Users: user table | users request fails, or a later action errors | any error replaced the whole table and had no retry | **fixed**: table stays when users are loaded, a load failure shows **Retry**, concurrent reloads are ignored |
+| Game page: Docs, Worlds modpack files, Saves, Worlds, Screenshots/Clips/Soundtrack, first load fails | the list request fails | Docs, Saves and Worlds showed a skeleton forever beside the error; media showed the "Add screenshots" prompt, so a failure looked like an empty list; retry only by leaving the tab and coming back | **fixed** ([#334](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/334)): the error stays, with a **Retry** and no skeleton or Add prompt; an error on an already loaded list is unchanged (`uiStateAuditGamePage.test.ts`) |
+| Game page: media, files, saves answering late | the page moves to another game, or another account is picked, before a slow answer arrives | the late answer filled the new game's tab or the wrong account's gallery, and could leave a permanent loading state | **fixed**: each loader keeps only the answer for the game (and, for media, the request) it was asked for |
+| Game page: leftover error messages | a failed delete or load on one game or tab | "Failed to delete" stayed visible on the next game, and saves/worlds loads never cleared an earlier error | **fixed**: opening another game clears the media and file errors, and a retry clears the message |
+| Game page: edit saved, refresh fails | the re-read after saving an edit fails | the page kept the old values with no message | **fixed**: "Your change was saved, but this page could not be refreshed" with **Reload** |
+| Game notes | the note list request fails; switching games; two quick checkbox clicks | a failure looked like "Write your first note"; the previous game's notes stayed (and a late answer could overwrite the new list); a failed first toggle could undo the second | **fixed**: **Retry** instead of the empty prompt, the list is cleared and guarded on game change, checkbox clicks are ignored while one is saving |
 | Statistics burn-down card | games request fails | the optional card is silently omitted; the main statistics keep their own error state | left |
 | Plugin popup UI and logs | request fails | intentionally tolerated; the popup shows the remaining sections | left |
 
@@ -78,6 +83,21 @@ The collection pages were also checked at 375 px in Modern and Classic with the 
 | After | ![Modern theme at phone width, failure with Retry](../assets/ui-state-audit/collection-detail-modern-phone.jpg) | ![Classic theme at phone width, failure with Retry](../assets/ui-state-audit/collection-detail-classic-phone.jpg) |
 
 Achievement notes are covered by tests only (the test stack has no achievements). The collection detail page also shows two messages for one failure (the raw "Failed to fetch games: 500" and the friendlier "Could not load this collection"), which is redundant but harmless.
+
+### Game page load failures
+
+| Flow | After |
+| --- | --- |
+| Docs, first load failed | ![Docs failure with Retry](../assets/ui-state-audit/game-docs-load-failure-after.png) |
+| Saves, first load failed | ![Saves failure with Retry](../assets/ui-state-audit/game-saves-load-failure-after.png) |
+| Notes, list could not be loaded | ![Notes failure with Retry](../assets/ui-state-audit/game-notes-load-failure-after.png) |
+
+### Found on the game page, not fixed yet
+
+- Edit dialogs for media, files and saves close before the save finishes, so the typed values are lost when the save fails.
+- Late answers can still write into the wrong game after a status, rating, resume-note or playtime change, and a failed status or rating change reverts silently (and onto the wrong game after navigating).
+- Bulk media edits and bulk save deletes apply or trash some items and not others when one fails, and do not refresh the list.
+- Trash listings swallow errors, so a failed fetch looks like an empty trash.
 
 ### More screenshots
 

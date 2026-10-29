@@ -59,6 +59,8 @@ const props = defineProps<{
   loading: boolean;
   uploading: boolean;
   error: string | null;
+  // the first load failed, when its message is shown elsewhere
+  failed?: boolean;
   scoped?: boolean;
   // re-reads a file's date from the file itself; true when it found one
   detect?: (item: MediaItem) => Promise<"file" | "achievement" | "none">;
@@ -75,8 +77,10 @@ const emit = defineEmits<{
   "open-achievement": [achievementId: string];
   thumbnail: [item: MediaItem, blob: Blob, duration: number];
   problem: [message: string];
+  retry: [];
 }>();
 
+const loadFailed = computed(() => props.failed || !!props.error);
 const achievementList = computed(() => props.achievements ?? []);
 const hasPreview = computed(
   () => props.kind === "screenshot" || props.kind === "clip",
@@ -724,12 +728,23 @@ onBeforeUnmount(() => {
 
     <div class="gm-body" :class="{ dropping: dragging }">
       <div
-        v-if="loading && !items.length"
+        v-if="loading && !items.length && !loadFailed"
         class="gm-grid"
         aria-busy="true"
         aria-label="Loading"
       >
         <div v-for="n in 3" :key="n" class="gm-skel"></div>
+      </div>
+
+      <!-- Never loaded and the request failed: not an empty list, so no "Add" prompt. -->
+      <div v-else-if="loading && !items.length" class="gm-failed">
+        <button
+          type="button"
+          class="ui-btn ui-btn-secondary"
+          @click="emit('retry')"
+        >
+          Retry
+        </button>
       </div>
 
       <button
@@ -1025,6 +1040,10 @@ onBeforeUnmount(() => {
   width: 150px;
   font-size: 0.8rem;
   color-scheme: dark;
+}
+.gm-failed {
+  display: flex;
+  padding: 12px 0;
 }
 .gm-error {
   display: flex;
