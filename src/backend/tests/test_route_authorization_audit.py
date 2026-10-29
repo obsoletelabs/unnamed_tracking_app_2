@@ -180,6 +180,7 @@ IDEMPOTENT_NOOPS = {
 }
 CATALOGUE_IDENTIFIERS = [
     "/api/anime/metadata/by-id/{anilist_id}",
+    "/api/connections/plugins/{plugin_id}/{connection_id}/sync",
     "/api/metadata/providers/{provider_id}/configuration",
     "/api/settings/notification-providers/{provider_id}",
     "/api/settings/user-jobs/{job_id}",
@@ -214,7 +215,7 @@ async def test_another_users_identifiers_are_rejected_on_every_ordinary_route(cl
             masked.append((method, template))
     assert checked > 120
     assert exposed == []
-    # These name instance catalogue entries (providers, scheduled jobs, AniList titles), not
+    # These name instance catalogue entries (providers, scheduled jobs, plugin connections, AniList titles), not
     # rows owned by a user; their per-user state is keyed by the authenticated caller.
     assert sorted(unresolved) == CATALOGUE_IDENTIFIERS
     # Validation can hide an ownership check; keep that set small and covered by the
