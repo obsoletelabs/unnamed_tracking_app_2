@@ -198,6 +198,27 @@ most played becomes main, never simply whichever record was found first.
 
 ![Add a copy](../assets/game-identity-hub/after-add-copy.jpg)
 
+### Sources
+
+Under Copies & versions, **Sources** lists every connection that reports the game:
+Playnite, a store sync (**Steam sync**) or a plugin (**Epic Games plugin**). Each row
+shows which copies it covers, what it reports (playtime, last played, achievements,
+ownership, title and details) and when it last updated.
+
+When two sources report the same playtime, for example Playnite and the Epic plugin
+seeing one Epic copy, the one marked **Preferred for playtime** is used and the other
+is kept. Use **Prefer this source** to switch. This is the same source priority as
+the Counters tab in the Advanced dialog, so the two always agree.
+
+![Sources with Playnite preferred](../assets/game-identity-hub/sources-panel-playnite-preferred.png)
+
+![The same game after preferring the Epic plugin](../assets/game-identity-hub/sources-panel-epic-preferred.png)
+
+The achievement totals in the Overview use the same matching as the merged achievement
+list: an achievement counts once when it has the same id in the same store app, or the
+same name from another store (a Steam and a GOG copy), so "6 of 13 earned" always
+equals what the list shows.
+
 ### Suggestions
 
 Open **Settings > Library > Duplicates** to review suggestions. Each one shows both

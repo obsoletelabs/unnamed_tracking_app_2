@@ -482,3 +482,33 @@ async def test_same_provider_achievement_id_in_two_apps_is_two_achievements(user
         await db.commit()
     view = await tracked(user, a)
     assert view["umbrella"]["total"] == 1 and view["umbrella"]["unlocked"] == 1
+
+
+async def test_overview_totals_match_the_merged_achievement_list(users):  # noqa: F811
+    """A Steam and a GOG copy list "First Blood" once, and the Overview counts it once (#347)."""
+    user = await users()
+    steam, gog = await make_game(user, "Game"), await make_game(user, "Game GOG")
+    await seed(steam, "Steam", row("ACH_1", "First Blood", True), row("ACH_2", "Win"))
+    await seed(gog, "GOG", row("77", "first  blood"), row("78", "Only on GOG", True))
+    await merge(user, gog, steam)
+    umbrella = (await tracked(user, steam))["umbrella"]
+    assert (umbrella["total"], umbrella["unlocked"]) == (3, 2)
+    assert umbrella["summary"] == "2 of 3 earned across 2 tracked versions"
+
+    from src.features.achievement_folding import merge_copies
+
+    async with SessionLocal() as db:
+        games = {g.id: g for g in await db.scalars(select(Game).where(Game.id.in_([steam, gog])))}
+        rows = list(
+            await db.scalars(select(Achievement).where(Achievement.game_id.in_([steam, gog])))
+        )
+    copies = [
+        (
+            SimpleNamespace(game_id=g, title=games[g].title, source=None, platform=None),
+            games[g].external_id or "",
+        )
+        for g in (steam, gog)
+    ]
+    listed = merge_copies(copies, rows)
+    assert len(listed) == umbrella["total"]
+    assert sum(1 for item in listed if item["unlocked"]) == umbrella["unlocked"]

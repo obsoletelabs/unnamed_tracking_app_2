@@ -25,6 +25,7 @@ import {
 import type { AchFilter } from "../composables/useGameAchievements";
 import GameLaunchButton from "../components/game/GameLaunchButton.vue";
 import GameVersionsPanel from "../components/game/GameVersionsPanel.vue";
+import GameSourcesPanel from "../components/game/GameSourcesPanel.vue";
 import GameManualTrackingPanel from "../components/game/GameManualTrackingPanel.vue";
 import { provide, defineAsyncComponent, ref } from "vue";
 import { useGameDetail } from "../composables/useGameDetail";
@@ -562,6 +563,11 @@ async function onCopiesChanged() {
         :title="game.title"
         @changed="onCopiesChanged"
         @playtime="pagePlaytimeSeconds = $event"
+      />
+      <GameSourcesPanel
+        :key="`sources-${game.id}-${copiesRevision}`"
+        :game-id="game.id"
+        @changed="onCopiesChanged"
       />
       <GameManualTrackingPanel
         :key="`completion-${game.id}-${copiesRevision}`"
