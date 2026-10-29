@@ -1,3 +1,4 @@
+import type { PluginUiDocument } from "./pluginUi";
 import { pluginRequestError } from "./apiError";
 
 export type PluginStatus =
@@ -44,6 +45,7 @@ export function pluginContributionsActive(plugin: PluginSummary): boolean {
   );
 }
 export interface PluginSummary {
+  ui_document?: PluginUiDocument | null;
   plugin_id: string;
   name: string;
   version: string;
@@ -481,7 +483,15 @@ export const installPluginFromUrl = async (
   return response.json();
 };
 
-export const fetchPlugins = () => request<PluginSummary[]>("/api/plugins");
+export const fetchPlugins = (options: { includeUi?: boolean } = {}) =>
+  request<PluginSummary[]>(
+    "/api/plugins",
+    options.includeUi
+      ? {
+          headers: { "X-Plugin-Include-UI": "true" },
+        }
+      : undefined,
+  );
 export const fetchPluginDetails = (id: string) =>
   request<{ readme: string | null }>(
     `/api/plugins/${encodeURIComponent(id)}/details`,

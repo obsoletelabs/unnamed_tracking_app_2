@@ -5,6 +5,9 @@ from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
 import pytest
+import httpx
+from test_plugin_authorization_http import boundary, grant  # noqa: F401
+from src.core.auth import session_cookie_name
 
 from src.api.routes.plugin_manager import runtime
 from src.plugin_api.manager_state import ManagerState
@@ -61,3 +64,27 @@ async def test_transport_is_pooled_across_wrappers_and_closed_at_shutdown(monkey
     await one.health()
     assert factory.call_count == 2
     await runtime_client.close_runtime_transport()
+
+
+@pytest.mark.asyncio
+async def test_discovery_batches_documents_and_filters_cached_content_with_live_grants(boundary):
+    boundary.plugin["digest"] = "a" * 64
+    permission = grant(boundary, "frontend.native")
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=boundary.app), base_url="http://test",
+        cookies={session_cookie_name("test"): boundary.tokens[boundary.users[0].id]},
+    ) as client:
+        for _ in range(2):
+            response = await client.get("/api/plugins", headers={"X-Plugin-Include-UI": "true"})
+            assert response.status_code == 200, response.text
+            assert response.json()[0]["ui_document"]["native_frontend"]
+        boundary.runtime.plugin_ui.assert_awaited_once()
+        permission.revoked_at = 123
+        boundary.session.commit()
+        response = await client.get("/api/plugins", headers={"X-Plugin-Include-UI": "true"})
+        assert response.json()[0]["ui_document"]["native_frontend"] is None
+        boundary.runtime.plugin_ui.assert_awaited_once()
+        boundary.plugin["installation_id"] = str(uuid4())
+        response = await client.get("/api/plugins", headers={"X-Plugin-Include-UI": "true"})
+        assert response.status_code == 200, response.text
+        assert boundary.runtime.plugin_ui.await_count == 2

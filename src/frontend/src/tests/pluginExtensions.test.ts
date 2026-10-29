@@ -904,3 +904,17 @@ it("only exposes plugin palettes under their independent grant", async () => {
   await refreshPluginExtensions();
   expect(pluginThemes.value).toEqual([]);
 });
+
+it("uses bundled discovery documents without a request per plugin", async () => {
+  const fetcher = vi.fn(
+    async (_url: string) =>
+      new Response(JSON.stringify([{ ...plugin, ui_document: document }])),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  await refreshPluginExtensions();
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(fetcher.mock.calls[0]?.[0]).toBe("/api/plugins");
+  expect(activePluginDocuments.value[plugin.plugin_id]?.plugin_id).toBe(
+    plugin.plugin_id,
+  );
+});

@@ -1291,6 +1291,7 @@ class PluginRegistry:
         self.root = root
         self.supervisor = supervisor
         self.state_path = root / ".runtime-state.json"
+        self._integrity_cache: dict[str, tuple[object, bool]] = {}
         self._state_lock = threading.RLock()
         self._operation_lock = threading.RLock()
         self.supervisor.execution_allowed = self._execution_allowed
@@ -1654,6 +1655,23 @@ class PluginRegistry:
             digest.update(b"\0")
         return digest.hexdigest()
 
+    def _integrity_valid(self, package: Path, expected: str) -> bool:
+        """Reuse a digest only while every payload file's kernel identity is unchanged."""
+        if os.name != "posix":
+            return self.digest(package).lower() == expected.lower()
+        files = self._payload_files(package)
+        signature = (expected.lower(), tuple(
+            (path.relative_to(package).as_posix(), info.st_dev, info.st_ino,
+             info.st_mode, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+            for path in files for info in (path.stat(),)
+        ))
+        cached = self._integrity_cache.get(package.name)
+        if cached is not None and cached[0] == signature:
+            return cached[1]
+        valid = self.digest(package).lower() == expected.lower()
+        self._integrity_cache[package.name] = (signature, valid)
+        return valid
+
     @staticmethod
     def _package_icon(package: Path, manifest: dict[str, Any]) -> str | None:
         for name, content_type in (
@@ -1691,7 +1709,7 @@ class PluginRegistry:
         plugin_id = data["plugin_id"]
         expected = data.get("integrity", {}).get("sha256")
         integrity_valid = (
-            bool(expected) and self.digest(package).lower() == str(expected).lower()
+            bool(expected) and self._integrity_valid(package, str(expected))
         )
         contract_error = self._contract_error(data)
         compatible = integrity_valid and contract_error is None

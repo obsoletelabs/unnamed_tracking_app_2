@@ -1,3 +1,4 @@
+import { clearPluginConnectionStatuses } from "../services/pluginConnections";
 import { ref, shallowReadonly } from "vue";
 import {
   fetchPlugins,
@@ -600,6 +601,7 @@ function retainContributions(pluginIds: ReadonlySet<string>): void {
 }
 
 export function clearPluginExtensions(): void {
+  clearPluginConnectionStatuses();
   refreshVersion++;
   pendingRefresh = undefined;
   lastRefreshFinishedAt = 0;
@@ -661,6 +663,7 @@ export function refreshPluginExtensions(
     Date.now() - lastRefreshFinishedAt < BACKGROUND_REFRESH_FRESH_MS
   )
     return Promise.resolve();
+  if (!options.background) clearPluginConnectionStatuses();
   const refresh = loadPluginExtensions().finally(() => {
     if (pendingRefresh === refresh) {
       pendingRefresh = undefined;
@@ -674,7 +677,7 @@ export function refreshPluginExtensions(
 async function loadPluginExtensions(): Promise<void> {
   const version = ++refreshVersion;
   try {
-    const plugins = await fetchPlugins();
+    const plugins = await fetchPlugins({ includeUi: true });
     if (version !== refreshVersion) return;
     const enabled = plugins
       .filter(pluginContributionsActive)
@@ -683,7 +686,10 @@ async function loadPluginExtensions(): Promise<void> {
     const loaded = await Promise.all(
       enabled.map(async (plugin) => {
         try {
-          const document = await fetchPluginUi(plugin.plugin_id);
+          if (plugin.ui_document === null)
+            throw new Error("Plugin UI unavailable.");
+          const document =
+            plugin.ui_document ?? (await fetchPluginUi(plugin.plugin_id));
           if (document.api_contract_version !== plugin.api_contract_version) {
             throw new Error(
               "Plugin UI and manifest API contracts do not match.",

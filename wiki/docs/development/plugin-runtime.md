@@ -296,3 +296,15 @@ Credentials and isolation policy remain attached to each request. Single-plugin
 UI, action and asset lookups validate that installation through its state
 endpoint rather than enumerating unrelated packages. Manager inventory still
 reconciles durable state, but unchanged snapshots do not rewrite it.
+
+Discovery can request `X-Plugin-Include-UI: true` on the existing plugin inventory
+endpoint. The host batches current user grants, returns compact inventory with
+filtered UI documents, and caches only unfiltered validated package documents by
+installation identity, payload digest and API contract. Every response reapplies
+current grants. Older hosts still work through per-plugin UI requests.
+
+On POSIX, package verification reuses a computed digest while the complete
+payload file list and each file's device, inode, mode, size, modification time
+and kernel change time remain identical. Mutations, additions and replacements
+force a full digest check; modification time alone never establishes integrity.
+Other platforms retain full digest verification.
