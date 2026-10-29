@@ -51,3 +51,21 @@ content. They exclude HTML transfer, module discovery, connection setup,
 JavaScript parsing/execution, API requests and artwork. HTTP/2 multiplexing also
 changes the effect of request waves. Browser traces and separate API timings
 are needed before claiming equivalent improvements in user-visible loading.
+
+## Startup and artwork priorities
+
+The command palette loads on its first opening and remains mounted afterward,
+retaining its search cache. The appearance welcome dialog loads only when needed.
+Neither is part of the ordinary library shell's initial dependency closure.
+
+Library posters request the standard, prebuilt 400 px width by default. Explicit
+thumbnail sizes remain supported. Data Saver or an effective connection type of
+`slow-2g`/`2g` selects 240 px; ordinary and unknown connections use 400 px. Smaller
+variants are generated and cached on demand, rather than eagerly generating
+every size. This avoids the first 240 px resize during normal library loading.
+
+The notification badge reads `/api/notifications/unread-count`, sharing simultaneous
+requests from mounted components. Opening the bell fetches ten persisted notices
+with `include_summary=false`; scrolling or Load more requests the next page.
+These reads do not run release discovery or calculate the full inbox summaries.
+The scheduled discovery loop and the full Notification Centre retain discovery.

@@ -1,6 +1,6 @@
 import { mockGames } from "../data/mockGames";
 import type { Game, GameStatus } from "../types/game";
-import { gameAssetUrl, POSTER_WIDTH, sizedAssetUrl } from "../utils/gameImages";
+import { gameAssetUrl, posterWidth, sizedAssetUrl } from "../utils/gameImages";
 
 // The overview needs membership fields and four cover URLs per collection.
 // Full game details remain on the existing game endpoint for detail views.
@@ -67,7 +67,7 @@ export async function fetchCollectionIndex(): Promise<CollectionIndexGame[]> {
     ],
     coverImageUrl: sizedAssetUrl(
       gameAssetUrl(record.id, "key_art"),
-      POSTER_WIDTH,
+      posterWidth(),
     ),
   }));
 }

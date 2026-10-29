@@ -8,9 +8,14 @@ import TaskProgressToast from "./components/TaskProgressToast.vue";
 import ShortcutsHelp from "./components/ShortcutsHelp.vue";
 import ShortcutConflictNotice from "./components/ShortcutConflictNotice.vue";
 import { useShortcutReconciliation } from "./composables/useShortcutReconciliation";
-import CommandPalette from "./components/CommandPalette.vue";
+import { isCommandPaletteOpen } from "./state/commandPalette";
+const CommandPalette = defineAsyncComponent(
+  () => import("./components/CommandPalette.vue"),
+);
 import AppDialog from "./components/AppDialog.vue";
-import AppearanceWelcome from "./components/AppearanceWelcome.vue";
+const AppearanceWelcome = defineAsyncComponent(
+  () => import("./components/AppearanceWelcome.vue"),
+);
 import QuickTour from "./components/QuickTour.vue";
 import { authChecked, currentUser } from "./state/auth";
 import { mediaUnread } from "./state/notifications";
@@ -30,7 +35,7 @@ import {
   navigationMenuOpen,
   initializeNavigationViewport,
 } from "./state/sidebarMode";
-import { computed, watchEffect } from "vue";
+import { computed, defineAsyncComponent, ref, watchEffect } from "vue";
 import {
   publicEntryAllowed,
   startupError,
@@ -53,6 +58,10 @@ import {
   appearancePreferences,
 } from "./state/uiAppearance";
 
+const commandPaletteNeeded = ref(isCommandPaletteOpen.value);
+watch(isCommandPaletteOpen, (open) => {
+  if (open) commandPaletteNeeded.value = true;
+});
 const route = useRoute();
 const router = useRouter();
 const stopShortcutReconciliation = useShortcutReconciliation();
@@ -255,7 +264,7 @@ const KEPT_ALIVE = [
     <AppDialog />
     <ShortcutsHelp v-if="sidebarShown" />
     <ShortcutConflictNotice v-if="currentUser" />
-    <CommandPalette v-if="sidebarShown" />
+    <CommandPalette v-if="sidebarShown && commandPaletteNeeded" />
     <QuickTour v-if="sidebarShown" />
     <AppearanceWelcome
       v-if="

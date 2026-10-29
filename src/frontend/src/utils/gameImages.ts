@@ -56,9 +56,21 @@ export function showGameCoverPlaceholder(event: Event, title: string): void {
 
 // The hero is about as wide as a big screen, so this is plenty for it.
 export const HERO_WIDTH = 1920;
-// A compact default for library cards. Detail views ask for a larger image
-// explicitly, avoiding 400px art for every small shelf/list thumbnail.
-export const POSTER_WIDTH = 240;
+// Match the server's prebuilt poster instead of requesting an uncommon resize.
+export const POSTER_WIDTH = 400;
+
+export function posterWidth(): number {
+  if (typeof navigator === "undefined") return POSTER_WIDTH;
+  const connection = (
+    navigator as Navigator & {
+      connection?: { saveData?: boolean; effectiveType?: string };
+    }
+  ).connection;
+  return connection?.saveData ||
+    ["slow-2g", "2g"].includes(connection?.effectiveType ?? "")
+    ? 240
+    : POSTER_WIDTH;
+}
 
 // Starts downloading an image so it is already there when the page asks.
 export function preloadImage(
