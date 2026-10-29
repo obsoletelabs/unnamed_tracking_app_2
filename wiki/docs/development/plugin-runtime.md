@@ -357,3 +357,10 @@ Game storage lookups retain their shared row locks and folder recovery checks,
 but run filesystem traversal in a worker thread. Cancellation waits for those
 checks to finish before releasing the request's resources. This prevents slow
 storage mounts from blocking concurrent artwork and unrelated API requests.
+
+
+Browser authentication reads the session activity timestamp with the existing
+credential lookup. A fresh session remains a read-only authentication path; the
+conditional activity update is committed only after its existing one-minute
+interval elapses. Every request still checks session expiry, revocation and
+account activation, and retains the shared failed-credential quota.
