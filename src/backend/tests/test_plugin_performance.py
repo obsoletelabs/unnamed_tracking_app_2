@@ -6,13 +6,14 @@ from uuid import uuid4
 
 import httpx
 import pytest
+from test_plugin_authorization_http import boundary as authorization_boundary
 from test_plugin_authorization_http import grant, request
 
 from src.api.routes.plugin_manager import runtime
 from src.core.auth import session_cookie_name
 from src.plugin_api.manager_state import ManagerState
 
-pytest_plugins = ("test_plugin_authorization_http",)
+boundary = authorization_boundary
 
 
 @pytest.mark.asyncio
@@ -97,8 +98,11 @@ async def test_discovery_batches_documents_and_filters_cached_content_with_live_
 
 
 @pytest.mark.asyncio
-async def test_permission_revocation_pushes_installation_scoped_access_invalidation(boundary):
-    permission = grant(boundary, "plugin.storage")
+@pytest.mark.parametrize("capability", ["plugin.storage", "plugin.settings", "api.full"])
+async def test_permission_revocation_pushes_installation_scoped_access_invalidation(
+    boundary, capability
+):
+    permission = grant(boundary, capability)
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=boundary.app),
         base_url="http://test",

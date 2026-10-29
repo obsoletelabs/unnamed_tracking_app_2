@@ -34,6 +34,9 @@ class FakeRuntimeClient:
             ]
         }
 
+    async def plugin_state(self, plugin_id: str) -> dict | None:
+        return next((item for item in await self.plugins() if item["plugin_id"] == plugin_id), None)
+
     async def plugins(self) -> list[dict]:
         return [
             {

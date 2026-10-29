@@ -272,7 +272,9 @@ async def revoke_grant(
             mode="password_reset" if row.capability == "auth.password_reset" else "user_invite",
         )
     await db.commit()
-    if row.device_id is None:
+    if row.device_id is None and any(
+        capability_implies(row.capability, local) for local in ("plugin.storage", "plugin.settings")
+    ):
         with plugin_runtime.runtime_errors():
             await plugin_runtime.client.invalidate_access(
                 row.plugin_id,
