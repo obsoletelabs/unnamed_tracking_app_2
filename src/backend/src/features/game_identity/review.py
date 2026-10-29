@@ -37,8 +37,10 @@ from src.features.game_identity import counters, decisions
 from src.features.game_identity.graph import (
     IdentityConflict,
     IdentityError,
+    add_relationship,
     lock_user_identities,
     merge_graph,
+    now_seconds,
 )
 from src.features.game_identity.matching import (
     COPY_RULE,
@@ -51,6 +53,7 @@ from src.features.game_identity.matching import (
     base_title_keys,
     title_key,
 )
+from src.features.game_identity.same_copy import group_as_same_copy
 
 logger = logging.getLogger(__name__)
 
@@ -494,9 +497,22 @@ async def _open_decision(
 
 
 async def resolve_merge(
-    db: AsyncSession, user_id: UUID, decision_id: UUID, target_id: UUID | None = None
+    db: AsyncSession,
+    user_id: UUID,
+    decision_id: UUID,
+    target_id: UUID | None = None,
+    *,
+    display: str | None = None,
+    same_copy: bool = False,
 ) -> None:
-    """Queue action: the person says these are the same game."""
+    """Queue action: the person says these are the same game.
+
+    `same_copy` says the two records are one copy reported by two sources (Playnite and a
+    store's own sync), so their playtime is counted once. Different stores or platforms are
+    different copies and are refused.
+
+    `display` is how the absorbed copy shows in the library: folded under the main entry
+    (default), also listed on its own ("link"), or hidden."""
     decision = await _open_decision(db, user_id, decision_id, _UNRESOLVED)
     first, second = _members(decision)
     if target_id not in (None, first, second):
@@ -505,6 +521,8 @@ async def resolve_merge(
     source = second if target == first else first
     actor = decisions.Actor(reason="Confirmed from the review queue")
     await decisions.merge_identities(db, user_id, source, target, actor)
+    if same_copy:
+        await group_as_same_copy(db, user_id, source, target)
     if target_id is None:
         # Nobody picked the main copy: use the furthest progressed, most played one
         # rather than whichever record happened to sort first (#274).
@@ -512,6 +530,45 @@ async def resolve_merge(
         await decisions.make_main(
             db, user_id, await decisions.choose_main(db, user_id, group), actor
         )
+    if display is not None and display != "default":
+        # After the main copy is settled: choosing it can re-point the merge edge.
+        merged = await merge_graph(db, user_id)
+        folded = source if merged.root(source) != source else target
+        edge = merged.edge.get(folded)
+        if edge is not None:
+            edge.display = display
+            edge.updated_at = now_seconds()
+            await db.flush()
+
+
+async def resolve_related(
+    db: AsyncSession,
+    user_id: UUID,
+    decision_id: UUID,
+    *,
+    kind: str,
+    from_id: UUID,
+    label: str = "",
+    display: str = "default",
+) -> None:
+    """Queue action: different games, but one is a remake, port, DLC... of the other.
+
+    Both stay separate library entries (so this is remembered like "keep separate") and the
+    typed relationship is recorded from `from_id` to the other game of the pair."""
+    decision = await _open_decision(db, user_id, decision_id, _UNRESOLVED)
+    first, second = _members(decision)
+    if from_id not in (first, second):
+        raise decisions.IdentityInvalid("The relationship must start at one of the two games")
+    await add_relationship(
+        db,
+        user_id,
+        kind,
+        from_id,
+        second if from_id == first else first,
+        label=label,
+        display=display,
+    )
+    await game_duplicates.keep_both(db, user_id, first, second)
 
 
 async def resolve_separate(db: AsyncSession, user_id: UUID, decision_id: UUID) -> None:
@@ -554,6 +611,7 @@ __all__ = [
     "keep_automatic",
     "queue",
     "resolve_merge",
+    "resolve_related",
     "resolve_separate",
     "run_matching",
     "title_key",

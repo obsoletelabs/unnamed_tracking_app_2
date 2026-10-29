@@ -520,3 +520,99 @@ async def test_playnite_and_plugin_epic_records_are_one_copy_reported_twice(user
     }
     assert reporters[via_playnite] == [("host", "playnite", "playnite")]
     assert reporters[via_plugin] == [("plugin", "epic-games", "Epic Games")]
+
+
+async def _one_copy_suggestion(user):
+    steam = await record(user, STEAM, "30", title="Stardew Valley", platform="PC", playtime=100)
+    android = await record(
+        user, PLAYNITE, "31", title="Stardew Valley", platform="Android", playtime=5
+    )
+    await match(user)
+    (entry,) = await queue(user)
+    return steam, android, entry
+
+
+async def test_queue_merge_can_list_the_other_copy_on_its_own(users, api):  # noqa: F811
+    user = await users()
+    steam, android, entry = await _one_copy_suggestion(user)
+    async with await api(user) as client:
+        done = await client.post(
+            f"/api/game-identity/review/queue/{entry['id']}/merge", json={"display": "link"}
+        )
+        assert done.status_code == 204
+        sources = (await client.get(f"/api/game-identity/games/{steam}/sources")).json()
+    shown = {
+        r["from_id"]: r["display"]
+        for r in sources["relationships"]
+        if r["kind"] == "same_game" and r["ended_at"] is None
+    }
+    assert list(shown.values()) == ["link"]
+    assert str(steam) not in shown  # the main copy is never the folded one
+
+
+async def test_queue_can_record_a_related_game_instead_of_merging(users, api):  # noqa: F811
+    user = await users()
+    steam, android, entry = await _one_copy_suggestion(user)
+    async with await api(user) as client:
+        done = await client.post(
+            f"/api/game-identity/review/queue/{entry['id']}/relate",
+            json={"kind": "port_of", "from_id": str(android)},
+        )
+        assert done.status_code == 204
+        assert (await client.get("/api/game-identity/review/queue")).json()["entries"] == []
+        sources = (await client.get(f"/api/game-identity/games/{steam}/sources")).json()
+        outside = await client.post(
+            f"/api/game-identity/review/queue/{entry['id']}/relate",
+            json={"kind": "port_of", "from_id": str(user)},
+        )
+    assert [(r["kind"], r["from_id"]) for r in sources["relationships"]] == [
+        ("port_of", str(android))
+    ]
+    assert sources["umbrella_id"] == str(steam)  # still two games, not merged
+    assert outside.status_code in (404, 409, 422)
+
+
+async def _epic_pair(user, second_store="Epic Games"):
+    """The same game reported by Playnite (as "Epic") and by a second source."""
+    first = await _record_with_facts(user, PLAYNITE, "guid-9")
+    second = await _record_with_facts(user, EPIC_PLUGIN, "ae-9")
+    async with SessionLocal() as db:
+        await db.execute(update(Game).where(Game.id == first).values(source="Epic"))
+        await db.execute(update(Game).where(Game.id == second).values(source=second_store))
+        await db.commit()
+    await match(user, allow_automatic=False)
+    (entry,) = await queue(user)
+    return first, second, entry
+
+
+async def test_same_copy_from_two_sources_counts_playtime_once(users, api):  # noqa: F811
+    user = await users()
+    first, _, entry = await _epic_pair(user)
+    async with await api(user) as client:
+        done = await client.post(
+            f"/api/game-identity/review/queue/{entry['id']}/merge", json={"same_copy": True}
+        )
+    assert done.status_code == 204
+    assert await _playtime(user, first) == 3600
+
+
+async def test_a_plain_merge_keeps_each_copys_own_playtime(users, api):  # noqa: F811
+    user = await users()
+    first, _, entry = await _epic_pair(user)
+    async with await api(user) as client:
+        done = await client.post(f"/api/game-identity/review/queue/{entry['id']}/merge")
+    assert done.status_code == 204
+    assert await _playtime(user, first) == 7200
+
+
+async def test_different_stores_cannot_be_merged_as_one_copy(users, api):  # noqa: F811
+    user = await users()
+    first, _, entry = await _epic_pair(user, second_store="Steam")
+    async with await api(user) as client:
+        refused = await client.post(
+            f"/api/game-identity/review/queue/{entry['id']}/merge", json={"same_copy": True}
+        )
+        still_open = (await client.get("/api/game-identity/review/queue")).json()["entries"]
+    assert refused.status_code == 422 and "different stores" in refused.json()["detail"]
+    assert [e["id"] for e in still_open] == [str(entry["id"])]  # nothing was merged
+    assert await _playtime(user, first) == 3600

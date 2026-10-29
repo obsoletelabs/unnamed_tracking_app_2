@@ -12,7 +12,7 @@ from src.database.models.game_identity import GameIdentityDecision
 from src.database.models.user import User
 from src.database.session import get_db
 from src.features import game_ownership
-from src.features.game_identity import counters, decisions, graph
+from src.features.game_identity import counters, decisions, graph, same_copy
 
 router = APIRouter(prefix="/api/game-identity", tags=["game"])
 _Reason = Annotated[str | None, Field(default=None, max_length=500)]
@@ -30,6 +30,9 @@ class MergeInput(_Body):
     # Which copy becomes the group's main entry: the target (the historical
     # behaviour), the source, or "auto" for the furthest progressed and most played.
     main: Literal["target", "source", "auto"] = "target"
+    # One copy reported by two sources (Playnite and the store's own sync): count its playtime
+    # once. Refused for different stores or platforms, which are different copies.
+    same_copy: bool = False
 
 
 class SplitInput(_Body):
@@ -147,6 +150,8 @@ async def _merge_and_choose_main(db: AsyncSession, user_id: UUID, body: MergeInp
         _actor(body.reason),
         replace_separate=body.replace_separate,
     )
+    if body.same_copy:
+        await same_copy.group_as_same_copy(db, user_id, body.source_id, body.target_id)
     if body.main != "target":
         main_id = body.source_id
         if body.main == "auto":

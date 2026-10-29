@@ -249,12 +249,14 @@ export async function mergeGames(
   targetId: string,
   replaceSeparate = false,
   main: MainChoice = "target",
+  sameCopy = false,
 ): Promise<void> {
   await call("/merge", "POST", {
     source_id: sourceId,
     target_id: targetId,
     replace_separate: replaceSeparate,
     main,
+    ...(sameCopy ? { same_copy: true } : {}),
   });
 }
 

@@ -259,6 +259,7 @@ are redacted. Validation errors never echo submitted values.
 | POST | `/api/game-identity/review/automatic/{decision_id}/keep` | user | Own identity, review and backfill state; foreign identifiers are refused. |
 | POST | `/api/game-identity/review/automatic/{decision_id}/undo` | user | Own identity, review and backfill state; foreign identifiers are refused. |
 | POST | `/api/game-identity/review/queue/{decision_id}/keep-separate` | user | Own identity, review and backfill state; foreign identifiers are refused. |
+| POST | `/api/game-identity/review/queue/{decision_id}/relate` | user | Own identity, review and backfill state; foreign identifiers are refused. |
 | POST | `/api/game-identity/review/queue/{decision_id}/merge` | user | Own identity, review and backfill state; foreign identifiers are refused. |
 | POST | `/api/game-identity/review/run` | user | Own identity, review and backfill state; foreign identifiers are refused. |
 | PUT | `/api/game-identity/relationships/{relationship_id}` | user | Own identity, review and backfill state; foreign identifiers are refused. |
