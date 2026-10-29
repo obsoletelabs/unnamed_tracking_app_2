@@ -458,7 +458,13 @@ it("merges a chosen game into the umbrella and reloads", async () => {
     .setValue("dungeons");
   await button(wrapper, "Merge").trigger("click");
   await flushPromises();
-  expect(identity.mergeGames).toHaveBeenCalledWith("dungeons", "java");
+  expect(identity.mergeGames).toHaveBeenCalledWith(
+    "dungeons",
+    "java",
+    false,
+    "target",
+    false,
+  );
   expect(identity.fetchIdentitySources).toHaveBeenCalledTimes(2);
 });
 
@@ -479,6 +485,8 @@ it("asks before reversing a keep-separate decision and retries with consent", as
     "dungeons",
     "java",
     true,
+    "target",
+    false,
   );
 });
 
@@ -576,4 +584,21 @@ it("shows manual tracking controls in the identity dialog", async () => {
   expect(
     wrapper.findComponent({ name: "GameManualTrackingPanel" }).exists(),
   ).toBe(true);
+});
+
+it("can merge a record as the same copy seen by another source", async () => {
+  const wrapper = await dialog();
+  await wrapper
+    .get("select[aria-label*='Merge another game']")
+    .setValue("dungeons");
+  await wrapper.get(".same-copy input").setValue(true);
+  await button(wrapper, "Merge").trigger("click");
+  await flushPromises();
+  expect(identity.mergeGames).toHaveBeenCalledWith(
+    "dungeons",
+    "java",
+    false,
+    "target",
+    true,
+  );
 });

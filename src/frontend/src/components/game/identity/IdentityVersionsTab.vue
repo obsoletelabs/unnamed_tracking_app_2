@@ -49,6 +49,7 @@ function displayChoice(gameId: string): string {
 }
 
 const toMerge = ref("");
+const mergeAsSameCopy = ref(false);
 const toKeepApart = ref("");
 const toRelate = ref("");
 const relKind = ref("related_to");
@@ -61,7 +62,7 @@ async function merge(): Promise<void> {
   const mine = props.data.umbrella_id;
   const done = await props.act(async () => {
     try {
-      await mergeGames(chosen, mine);
+      await mergeGames(chosen, mine, false, "target", mergeAsSameCopy.value);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "";
       if (!/marked as separate/i.test(message)) throw cause;
@@ -74,10 +75,13 @@ async function merge(): Promise<void> {
         }))
       )
         return;
-      await mergeGames(chosen, mine, true);
+      await mergeGames(chosen, mine, true, "target", mergeAsSameCopy.value);
     }
   });
-  if (done) toMerge.value = "";
+  if (done) {
+    toMerge.value = "";
+    mergeAsSameCopy.value = false;
+  }
 }
 async function split(gameId: string): Promise<void> {
   if (
@@ -177,6 +181,14 @@ function kindChanged(
           label="Merge another game into this one"
           :exclude="memberIds"
         />
+        <label class="same-copy">
+          <input v-model="mergeAsSameCopy" type="checkbox" />
+          <span
+            >Same copy, reported by another source (for example Playnite and the
+            store's own sync). Count its playtime once. Different stores are
+            different copies.</span
+          >
+        </label>
         <button
           class="ui-btn ui-btn-primary"
           type="submit"
