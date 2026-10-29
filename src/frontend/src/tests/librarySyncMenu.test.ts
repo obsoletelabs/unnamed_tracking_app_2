@@ -28,7 +28,9 @@ it("loads connection state only when Sync/import opens", async () => {
     expect(state.refresh).not.toHaveBeenCalled();
     const menu = wrapper.get("details");
     menu.element.open = true;
-    await vi.waitFor(() => expect(state.loadCredentials).toHaveBeenCalledOnce());
+    await vi.waitFor(() =>
+      expect(state.loadCredentials).toHaveBeenCalledOnce(),
+    );
     expect(state.refresh).toHaveBeenCalledOnce();
     menu.element.open = false;
     await flushPromises();
