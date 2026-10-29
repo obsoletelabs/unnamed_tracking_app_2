@@ -304,17 +304,25 @@ function close() {
   stopPolling();
   emit("close");
 }
-onMounted(async () => {
+// Until the connection is known the dialog must not offer a sign-in: an
+// already connected account would look unconnected and could be replaced.
+const loadFailed = ref(false);
+async function loadConnection() {
   const requestRevision = revision;
+  loading.value = true;
+  loadFailed.value = false;
+  error.value = "";
   try {
     await accept(await fetchSteamConnection(), requestRevision);
   } catch (e) {
+    loadFailed.value = true;
     error.value =
       e instanceof Error ? e.message : "Couldn't load Steam connection.";
   } finally {
     loading.value = false;
   }
-});
+}
+onMounted(loadConnection);
 onBeforeUnmount(() => {
   closed = true;
   ++revision;
@@ -333,7 +341,15 @@ onBeforeUnmount(() => {
   >
     <p v-if="loading" class="hint" role="status">Loading connection…</p>
     <p v-if="error" class="error" role="alert">{{ error }}</p>
-    <template v-if="!loading">
+    <button
+      v-if="loadFailed"
+      class="ui-btn ui-btn-secondary"
+      type="button"
+      @click="loadConnection"
+    >
+      Try again
+    </button>
+    <template v-if="!loading && !loadFailed">
       <SteamOpenIdLink
         v-if="!pending"
         :verified-steam-id="connection?.verified_steam_id ?? null"

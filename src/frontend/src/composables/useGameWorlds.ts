@@ -28,6 +28,7 @@ export function useGameWorlds(
   async function refreshWorlds() {
     if (!game.value) return;
     const gameId = game.value.id;
+    filesError.value = null;
     try {
       const archives = await fetchArchives(gameId, "world_save", true);
       if (game.value?.id !== gameId) return;
