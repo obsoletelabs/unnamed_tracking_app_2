@@ -180,3 +180,10 @@ When changing an API route:
 3. Add or update backend tests.
 4. Verify the generated `/api/docs` output.
 5. Update integration documentation when a documented client such as Playnite depends on the contract.
+
+### Profile integration credential status
+
+`GET /api/auth/me` and the profile PATCH response return
+`steamgriddb_configured` as a boolean. The legacy `steamgriddb_api_key` response
+field is always null; the stored credential is never returned by these routes.
+Existing explicit credential update requests remain supported.
