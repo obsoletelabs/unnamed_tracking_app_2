@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { afterPaint } from "../utils/afterPaint";
 import { computed, ref, watch, nextTick, onMounted, onUnmounted } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import { accountDisplayName, accountInitials, logout } from "../services/auth";
@@ -286,14 +287,18 @@ async function handleLogout() {
   }
 }
 let notificationTimer: number | undefined;
+let cancelInitialBadges = () => {};
 onMounted(() => {
-  void refreshInboxCount();
   void refreshPluginExtensions({ background: true });
-  void refreshMediaUnread({ shared: true });
+  cancelInitialBadges = afterPaint(() => {
+    void refreshInboxCount();
+    void refreshMediaUnread({ shared: true });
+  });
   notificationTimer = window.setInterval(refreshMediaUnread, 5 * 60 * 1000);
 });
 onUnmounted(() => {
   open.value = false;
+  cancelInitialBadges();
   window.clearInterval(notificationTimer);
   stopResize();
   if (scrollLocked) document.body.style.overflow = previousOverflow;

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { afterPaint } from "../../utils/afterPaint";
 import { onBeforeUnmount, onMounted, ref } from "vue";
 import {
   fetchAutomaticMerges,
@@ -49,8 +50,16 @@ async function act(
   }
 }
 
-onMounted(load);
-onBeforeUnmount(() => request.abort());
+let cancelInitialLoad = () => {};
+onMounted(() => {
+  cancelInitialLoad = afterPaint(() => {
+    void load();
+  });
+});
+onBeforeUnmount(() => {
+  cancelInitialLoad();
+  request.abort();
+});
 defineExpose({ load });
 </script>
 

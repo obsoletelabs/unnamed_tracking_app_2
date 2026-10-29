@@ -26,6 +26,7 @@ from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.functions import count as sql_count
 
 from src.api.routes.utils.games import _get_game_or_404
 from src.core.app_integrations import get_max_upload_size_mb, get_upload_limits_mb
@@ -223,6 +224,20 @@ async def list_inbox(
 
 
 # pylint: enable=duplicate-code
+
+
+@router.get("/inbox/count")
+async def count_inbox(
+    db: AsyncSession = _DB_DEFAULT,
+    current_user: User = _CURRENT_USER_DEFAULT,
+) -> dict[str, int]:
+    """Count recorded uploads without filesystem reconciliation or full item serialization."""
+    count = await db.scalar(
+        select(sql_count())
+        .select_from(InboxItem)
+        .where(InboxItem.user_id == current_user.id, InboxItem.deleted_at.is_(None))
+    )
+    return {"count": count or 0}
 
 
 @router.get("/inbox/trash")

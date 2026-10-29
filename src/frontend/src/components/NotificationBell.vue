@@ -5,6 +5,7 @@
 // panel already used, just always reachable instead of one tap into the
 // hamburger menu first.
 import { ref, watch, onMounted, onBeforeUnmount, nextTick, useId } from "vue";
+import { afterPaint } from "../utils/afterPaint";
 import { useRouter } from "vue-router";
 import { openTopbarPopover } from "../state/topbarPopover";
 import {
@@ -131,13 +132,17 @@ function onResize() {
   if (open.value) positionPanel();
 }
 
+let cancelInitialCount = () => {};
 onMounted(() => {
-  void refreshMediaUnread({ shared: true });
+  cancelInitialCount = afterPaint(() => {
+    void refreshMediaUnread({ shared: true });
+  });
   document.addEventListener("click", onDocumentClick);
   document.addEventListener("keydown", onKeydown);
   window.addEventListener("resize", onResize);
 });
 onBeforeUnmount(() => {
+  cancelInitialCount();
   reminderGeneration++;
   document.removeEventListener("click", onDocumentClick);
   document.removeEventListener("keydown", onKeydown);

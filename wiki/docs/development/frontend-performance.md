@@ -69,3 +69,13 @@ requests from mounted components. Opening the bell fetches ten persisted notices
 with `include_summary=false`; scrolling or Load more requests the next page.
 These reads do not run release discovery or calculate the full inbox summaries.
 The scheduled discovery loop and the full Notification Centre retain discovery.
+
+
+## Startup contention
+
+Concurrent appearance loads for the same account share their pending request.
+Optional sidebar/bell counts and automatic-match banners begin after the initial
+paint, allowing the mounted route to issue its data request first. Upload badges
+read the recorded count through `/api/media/inbox/count`; the full inbox view
+retains filesystem reconciliation for unrecorded files. The count excludes trash
+and other accounts and discards late responses after an account change.
