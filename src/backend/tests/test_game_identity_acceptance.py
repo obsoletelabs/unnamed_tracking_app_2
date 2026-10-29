@@ -681,6 +681,7 @@ def foreign_calls(w):
         ("post", f"{base}/counters/{w['counter']}/members/{w['observation']}/ungroup", None),
         ("post", f"{base}/review/queue/{w['queued']}/merge", None),
         ("post", f"{base}/review/queue/{w['queued']}/keep-separate", None),
+        ("post", f"{base}/review/queue/{w['queued']}/relate", {"kind": "port_of", "from_id": g}),
         ("post", f"{base}/review/automatic/{w['auto']}/undo", None),
         ("post", f"{base}/review/automatic/{w['auto']}/keep", None),
         ("post", f"{base}/names/reviews/{w['name_review']}/update", None),
