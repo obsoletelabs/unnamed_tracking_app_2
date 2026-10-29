@@ -1037,22 +1037,25 @@ export function useGameLibrary() {
           });
       };
       void nextTick().then(() => {
-        // Idle can happen immediately after the first API response. Give the
-        // user a short interaction window before issuing three library-wide
-        // enrichment requests that compete with scrolling and artwork.
-        window.setTimeout(() => {
-          if (token !== loadGamesToken) return;
-          const requestIdle = (
-            window as Window & {
-              requestIdleCallback?: (
-                callback: () => void,
-                options?: { timeout: number },
-              ) => number;
-            }
-          ).requestIdleCallback;
-          if (requestIdle) requestIdle(loadEnrichment, { timeout: 2_000 });
-          else loadEnrichment();
-        }, 2_500);
+        // Let the first viewport paint before scheduling optional work. A
+        // bounded idle callback keeps it responsive without a fixed multi-second
+        // pause on otherwise idle machines.
+        const schedule = () => {
+          if (token !== loadGamesToken || enrichmentRequest.signal.aborted)
+            return;
+          const run = () => {
+            if (token === loadGamesToken && !enrichmentRequest.signal.aborted)
+              loadEnrichment();
+          };
+          if (window.requestIdleCallback)
+            window.requestIdleCallback(run, { timeout: 200 });
+          else window.setTimeout(run, 0);
+        };
+        if (window.requestAnimationFrame)
+          window.requestAnimationFrame(() =>
+            window.requestAnimationFrame(schedule),
+          );
+        else schedule();
       });
     } catch (err) {
       if (token !== loadGamesToken) return;
