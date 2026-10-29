@@ -25,6 +25,7 @@ from src.plugin_api.notification_contracts import (
 from src.plugin_api.notification_story_contracts import (
     LINE_CONTROL_CHARACTERS,
     NOTIFICATION_CONTRACT_VERSION,
+    SPOOFING_CHARACTERS,
     TEXT_CONTROL_CHARACTERS,
     BooleanFactValue,
     CanonicalNotificationEvent,
@@ -227,12 +228,13 @@ def source_receipt_key(source: str, event_type: str, event_id: str) -> str:
 
 
 def _line(value: str, fallback: str) -> str:
-    text = LINE_CONTROL_CHARACTERS.sub(" ", value)
+    text = SPOOFING_CHARACTERS.sub("", LINE_CONTROL_CHARACTERS.sub(" ", value))
     return text if text.strip() else fallback
 
 
 def _text(value: str, fallback: str) -> str:
     text = TEXT_CONTROL_CHARACTERS.sub(" ", value.replace("\r\n", "\n"))
+    text = SPOOFING_CHARACTERS.sub("", text)
     return text if text.strip() else fallback
 
 

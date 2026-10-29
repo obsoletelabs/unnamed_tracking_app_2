@@ -469,3 +469,12 @@ async def test_recovery_source_reaches_only_verified_opted_in_email(source, mail
         assert not mailbox[-1]["List-Unsubscribe"]
         notice = await db.get(Notification, UUID(result["notification_id"]))
         assert not notice.inbox_visible
+
+
+async def test_template_output_with_a_direction_override_is_refused(source):
+    _owner, plugin, _installation = source
+    async with SessionLocal() as db:
+        await call(db, source, "notification_sources.register", definition(plugin))
+        spoofed = event(plugin, data={"title": "Invoice ‮gpj.exe", "count": 3})
+        with pytest.raises(ValueError, match="direction-overriding"):
+            await call(db, source, "notifications.emit", spoofed)
