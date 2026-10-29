@@ -41,8 +41,8 @@ from src.plugin_api.grants import (
     active_user_capabilities,
     effective_capabilities,
     ensure_capability_grant,
-    installation_is_executable,
     installation_capabilities,
+    installation_is_executable,
 )
 from src.plugin_api.installer import (
     InspectedPackage,
@@ -679,7 +679,9 @@ async def list_plugins(
                 ],
                 "granted_capabilities": sorted(set(granted)),
                 "effective_capabilities": (
-                    sorted(capabilities_by_plugin.get(str(plugin["plugin_id"]), ([], frozenset()))[1])
+                    sorted(
+                        capabilities_by_plugin.get(str(plugin["plugin_id"]), ([], frozenset()))[1]
+                    )
                     if include_ui and installation_id and installation_is_executable(plugin)
                     else sorted(
                         await effective_capabilities(
@@ -709,10 +711,21 @@ async def list_plugins(
 
         await asyncio.gather(*(attach_ui(item) for item in result))
         fields = {
-            "plugin_id", "name", "version", "digest", "api_contract_version",
-            "legacy_compatibility", "enabled", "compatible", "status", "health",
-            "effective_capabilities", "granted_capabilities", "permissions",
-            "compatibility_reason", "ui_document",
+            "plugin_id",
+            "name",
+            "version",
+            "digest",
+            "api_contract_version",
+            "legacy_compatibility",
+            "enabled",
+            "compatible",
+            "status",
+            "health",
+            "effective_capabilities",
+            "granted_capabilities",
+            "permissions",
+            "compatibility_reason",
+            "ui_document",
         }
         result = [{key: value for key, value in item.items() if key in fields} for item in result]
     return sorted(result, key=lambda value: value["plugin_id"])

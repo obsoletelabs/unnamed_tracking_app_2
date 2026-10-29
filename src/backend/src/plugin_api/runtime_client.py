@@ -318,6 +318,22 @@ class PluginRuntimeClient:
         """Uninstall the package and its runtime-owned data."""
         await self._request("DELETE", f"/plugins/{plugin_id}")
 
+    async def invalidate_access(
+        self, plugin_id: str, installation_id: str, user_id: str | None = None
+    ) -> bool:
+        """Revoke in-flight local access snapshots; older runtimes do not cache them."""
+        try:
+            result = await self._request(
+                "POST",
+                f"/plugins/{quote(plugin_id, safe='')}/access/invalidate",
+                json={"installation_id": installation_id, "user_id": user_id},
+            )
+        except PluginRuntimeRequestError as exc:
+            if exc.status_code == 404:
+                return False
+            raise
+        return isinstance(result, dict) and result.get("invalidated") is True
+
     async def save_secret(self, plugin_id: str, key: str, value: str) -> None:
         """Write one authorized plugin secret through the storage broker."""
         await self._request(

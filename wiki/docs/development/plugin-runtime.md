@@ -273,8 +273,8 @@ and owned by the runtime broker. Metadata and stored values have owner-only file
 permissions. In Bubblewrap, `/plugin-data` is an empty private filesystem and the
 package's legacy settings file is masked. Persistent storage and secrets are
 accessible through granted `storage.*`/`settings.get` operations, not a direct
-filesystem mount. Each operation rechecks the host grant so revocation applies
-to subsequent calls. Deleting a plugin removes package, configuration and storage.
+filesystem mount. The broker authorizes operations through live host grants and bounded local
+action snapshots, described below. Deleting a plugin removes package, configuration and storage.
 
 The secret-write bridge stores credentials under `secrets/<key>`. Plugins retrieve
 them through the authorized broker; credentials must not be ordinary action
@@ -303,8 +303,40 @@ filtered UI documents, and caches only unfiltered validated package documents by
 installation identity, payload digest and API contract. Every response reapplies
 current grants. Older hosts still work through per-plugin UI requests.
 
-On POSIX, package verification reuses a computed digest while the complete
-payload file list and each file's device, inode, mode, size, modification time
-and kernel change time remain identical. Mutations, additions and replacements
-force a full digest check; modification time alone never establishes integrity.
-Other platforms retain full digest verification.
+Package integrity continues to verify payload bytes. Filesystem timestamps can
+remain unchanged across rapid writes even on POSIX, so metadata alone is never
+used to skip verification. Host UI caching is keyed by a verified live installation
+and still reapplies current user grants.
+
+## Local action access snapshots
+
+An affirmative host authorization for local storage/settings may include the
+authorized capability, installation identity and a five-second lifetime.
+The broker reuses that snapshot only on the same action thread, user and
+installation. Host APIs, outbound network access and background worker messages
+continue through live host authorization. Older hosts return no snapshot and keep
+the original per-operation behavior.
+
+Individual permission revocation commits its database change then pushes a
+private installation/user invalidation to the runtime before reporting success.
+Stop/disable also invalidate local snapshots. A racing authorization response
+cannot repopulate an invalidated generation. Expiry bounds snapshots to five
+seconds if a control connection is interrupted; an unavailable invalidation is
+reported as a runtime error, while the committed database revocation remains in
+force. Revoked or expired access requires a fresh host authorization.
+
+
+## Native frontend activation
+
+Plugin API v1.1.17 adds `native_frontend.activation`: `startup` (the compatible
+default) or `page`. A page bundle is imported only when one of its declared
+contributions is mounted, including Settings, connections, routes, widgets or
+dialogs. Concurrent mounts share activation. Removing an installation or changing
+its package invalidates existing activation; permission checks still filter all
+discovery and asset requests. Plugins registering global search, notifications,
+appearance hooks or other startup services should retain `startup`.
+
+Connection status and plugin notification reads share pending requests and reuse
+successful results for fifteen seconds in the current account. Explicit connection
+refreshes bypass that cache. Account changes and provider removal invalidate results;
+late responses cannot repopulate the next account's state.

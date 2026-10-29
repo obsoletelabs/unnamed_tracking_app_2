@@ -284,30 +284,20 @@ def test_runtime_executes_declared_backend_route_with_request_user(
         )
 
 
-def test_integrity_cache_detects_same_size_changes_with_restored_mtime(tmp_path, monkeypatch):
+def test_integrity_detects_same_size_changes_with_restored_mtime(tmp_path):
     import os
-    if os.name != "posix":
-        pytest.skip("only POSIX has the kernel change time used by the runtime cache")
     package = tmp_path / "example.cached"
     package.mkdir()
     payload = package / "plugin.py"
     payload.write_bytes(b"first")
     registry = PluginRegistry(tmp_path, PluginSupervisor(root=tmp_path / ".work"))
     expected = registry.digest(package)
-    original = registry.digest
-    digests = []
-    def counted(path):
-        digests.append(path)
-        return original(path)
-    monkeypatch.setattr(registry, "digest", counted)
     assert registry._integrity_valid(package, expected)
     assert registry._integrity_valid(package, expected)
-    assert len(digests) == 1
     before = payload.stat()
     payload.write_bytes(b"other")
     os.utime(payload, ns=(before.st_atime_ns, before.st_mtime_ns))
     assert not registry._integrity_valid(package, expected)
-    assert len(digests) == 2
     payload.write_bytes(b"first")
     assert registry._integrity_valid(package, expected)
     (package / "extra.py").write_bytes(b"extra")

@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.api.routes.plugin_manager import runtime as plugin_runtime
 from src.api.routes.plugin_manager.runtime import live_plugin
 from src.core.auth import get_current_user
 from src.database.models.plugin_permissions import (
@@ -271,6 +272,13 @@ async def revoke_grant(
             mode="password_reset" if row.capability == "auth.password_reset" else "user_invite",
         )
     await db.commit()
+    if row.device_id is None:
+        with plugin_runtime.runtime_errors():
+            await plugin_runtime.client.invalidate_access(
+                row.plugin_id,
+                str(row.installation_id),
+                str(row.user_id) if row.user_id is not None else None,
+            )
     return {"id": str(row.id), "status": "revoked"}
 
 

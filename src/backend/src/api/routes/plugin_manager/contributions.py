@@ -213,7 +213,9 @@ _UI_DOCUMENT_CACHE: OrderedDict[tuple[str, str, str, str], PluginUiDocument] = O
 async def _validated_ui_document(plugin_id: str, plugin: dict[str, Any]) -> PluginUiDocument:
     """Cache package content, never a user's grant-filtered contribution document."""
     key = (
-        plugin_id, str(plugin.get("installation_id", "")), str(plugin.get("digest", "")),
+        plugin_id,
+        str(plugin.get("installation_id", "")),
+        str(plugin.get("digest", "")),
         str(plugin.get("api_contract_version", "1.0.0")),
     )
     cacheable = bool(key[1] and key[2])

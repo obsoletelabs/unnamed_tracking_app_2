@@ -721,6 +721,7 @@ async function loadPluginExtensions(): Promise<void> {
               version: plugin.version,
               digest: plugin.digest,
               entry: nativeFrontend.entry,
+              activation: nativeFrontend.activation,
               styles: nativeFrontend.styles,
               pageIds: document.pages.map((page) => page.id),
               actions: document.actions,

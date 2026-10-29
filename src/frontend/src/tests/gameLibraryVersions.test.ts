@@ -212,9 +212,9 @@ it("schedules enrichment after the first paint without a multi-second delay", as
   const frames: FrameRequestCallback[] = [];
   let idle: IdleRequestCallback | undefined;
   const idleRequest = vi.fn(
-    (callback: IdleRequestCallback, options: IdleRequestOptions) => {
+    (callback: IdleRequestCallback, options?: IdleRequestOptions) => {
       idle = callback;
-      expect(options.timeout).toBe(200);
+      expect(options?.timeout).toBe(200);
       return 1;
     },
   );

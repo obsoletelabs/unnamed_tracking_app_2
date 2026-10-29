@@ -906,8 +906,8 @@ it("only exposes plugin palettes under their independent grant", async () => {
 });
 
 it("uses bundled discovery documents without a request per plugin", async () => {
-  const fetcher = vi.fn(
-    async (_url: string) =>
+  const fetcher = vi.fn<(url: string) => Promise<Response>>(
+    async () =>
       new Response(JSON.stringify([{ ...plugin, ui_document: document }])),
   );
   vi.stubGlobal("fetch", fetcher);

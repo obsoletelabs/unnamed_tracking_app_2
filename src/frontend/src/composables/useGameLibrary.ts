@@ -1037,9 +1037,7 @@ export function useGameLibrary() {
           });
       };
       void nextTick().then(() => {
-        // Let the first viewport paint before scheduling optional work. A
-        // bounded idle callback keeps it responsive without a fixed multi-second
-        // pause on otherwise idle machines.
+        // Paint the first viewport, then start optional work in a short idle window.
         const schedule = () => {
           if (token !== loadGamesToken || enrichmentRequest.signal.aborted)
             return;

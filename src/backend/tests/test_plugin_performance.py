@@ -4,13 +4,15 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
-import pytest
 import httpx
-from test_plugin_authorization_http import boundary, grant  # noqa: F401
-from src.core.auth import session_cookie_name
+import pytest
+from test_plugin_authorization_http import grant, request
 
 from src.api.routes.plugin_manager import runtime
+from src.core.auth import session_cookie_name
 from src.plugin_api.manager_state import ManagerState
+
+pytest_plugins = ("test_plugin_authorization_http",)
 
 
 @pytest.mark.asyncio
@@ -42,14 +44,17 @@ def test_unchanged_inventory_does_not_rewrite_manager_state(tmp_path, monkeypatc
 @pytest.mark.asyncio
 async def test_transport_is_pooled_across_wrappers_and_closed_at_shutdown(monkeypatch):
     import httpx
+
     from src.plugin_api import runtime_client
 
     await runtime_client.close_runtime_transport()
     original = httpx.AsyncClient
     calls = []
+
     def response(request):
         calls.append(request.headers["X-Plugin-Runtime-Token"])
         return httpx.Response(200, json={"status": "ok"})
+
     factory = Mock(side_effect=lambda **kw: original(transport=httpx.MockTransport(response), **kw))
     monkeypatch.setattr(runtime_client.httpx, "AsyncClient", factory)
     one = runtime_client.PluginRuntimeClient("http://runtime", "x" * 32)
@@ -71,7 +76,8 @@ async def test_discovery_batches_documents_and_filters_cached_content_with_live_
     boundary.plugin["digest"] = "a" * 64
     permission = grant(boundary, "frontend.native")
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=boundary.app), base_url="http://test",
+        transport=httpx.ASGITransport(app=boundary.app),
+        base_url="http://test",
         cookies={session_cookie_name("test"): boundary.tokens[boundary.users[0].id]},
     ) as client:
         for _ in range(2):
@@ -88,3 +94,43 @@ async def test_discovery_batches_documents_and_filters_cached_content_with_live_
         response = await client.get("/api/plugins", headers={"X-Plugin-Include-UI": "true"})
         assert response.status_code == 200, response.text
         assert boundary.runtime.plugin_ui.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_permission_revocation_pushes_installation_scoped_access_invalidation(boundary):
+    permission = grant(boundary, "plugin.storage")
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=boundary.app),
+        base_url="http://test",
+        cookies={session_cookie_name("test"): boundary.tokens[boundary.users[0].id]},
+    ) as client:
+        response = await client.post(f"/api/plugin-permissions/grants/{permission.id}/revoke")
+    assert response.status_code == 200, response.text
+    boundary.runtime.invalidate_access.assert_awaited_once_with(
+        permission.plugin_id,
+        str(permission.installation_id),
+        str(permission.user_id) if permission.user_id else None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_access_snapshot_contains_only_the_live_authorized_local_capability(boundary):
+    grant(boundary, "plugin.storage")
+    response = await request(
+        boundary, method="capabilities.check", capability="plugin.storage", payload={}
+    )
+    assert response.status_code == 200, response.text
+    snapshot = response.json()["payload"]["runtime_access"]
+    assert snapshot == {
+        "installation_id": boundary.plugin["installation_id"],
+        "user_id": str(boundary.users[0].id),
+        "capabilities": ["plugin.storage"],
+        "expires_in_seconds": 5,
+    }
+    # Remote operations never acquire a reusable local grant.
+    grant(boundary, "games.read")
+    response = await request(
+        boundary, method="capabilities.check", capability="games.read", payload={}
+    )
+    assert response.status_code == 200, response.text
+    assert "runtime_access" not in response.json()["payload"]

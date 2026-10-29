@@ -37,6 +37,7 @@ from uuid import UUID, uuid4
 
 from legacy_compatibility import LEGACY_WARNING, legacy_plugin_allowed
 from notification_transport import send_discord
+from access import RuntimeAccess
 from storage import PluginStorage
 
 try:
@@ -45,7 +46,7 @@ except ImportError:  # pragma: no cover - Windows development/test fallback
     resource = None  # type: ignore[assignment]
 
 _PLUGIN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
-PLUGIN_API_CONTRACT_VERSION = "1.1.16"
+PLUGIN_API_CONTRACT_VERSION = "1.1.17"
 _ENTRYPOINT = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*(?::[A-Za-z_][A-Za-z0-9_]*)?$")
 # Linux parent-death signals follow the spawning thread. HTTP request threads
 # end after their response, while supervised workers must live until shutdown.
@@ -291,6 +292,7 @@ class PluginSupervisor:
         self._package_paths: dict[str, Path] = {}
         self._package_manifests: dict[str, dict[str, Any]] = {}
         self._lock = threading.RLock()
+        self.access = RuntimeAccess()
         self.reduced_isolation_acknowledged = False
         self.isolation: dict[str, Any] = {
             "bubblewrap_available": None,
@@ -800,6 +802,11 @@ class PluginSupervisor:
         version: int = 1,
         request_id: str | None = None,
     ) -> None:
+        actor = user_id or self._user_ids.get(plugin_id)
+        installation = self._installation_ids.get(plugin_id)
+        if self.access.allows(plugin_id, installation, actor, capability, version):
+            return
+        revision = self.access.revision(plugin_id, actor)
         response = self._handle_gateway_request(
             plugin_id,
             {
@@ -814,6 +821,8 @@ class PluginSupervisor:
         payload = response.get("payload")
         if not isinstance(payload, dict) or payload.get("authorized") is not True:
             raise RuntimePolicyError("host did not authorize the capability")
+        if version == 1:
+            self.access.accept(plugin_id, installation, actor, payload.get("runtime_access"), revision)
 
     @staticmethod
     def _limits(limits: ResourceLimits) -> None:
@@ -1014,6 +1023,10 @@ class PluginSupervisor:
         started_at = time.monotonic()
         self._log(spec.plugin_id, "Plugin action started.", event="action.started")
         process: subprocess.Popen[bytes] | None = None
+        previous_access = self.access.begin(
+            spec.plugin_id, self._installation_ids.get(spec.plugin_id),
+            user_id or self._user_ids.get(spec.plugin_id),
+        )
         try:
             self._storage(spec.plugin_id)
             with self._lock:
@@ -1175,6 +1188,7 @@ class PluginSupervisor:
                 with self._lock:
                     self._action_processes.get(spec.plugin_id, set()).discard(process)
             shutil.rmtree(workdir, ignore_errors=True)
+            self.access.end(previous_access)
         assert output is not None
         if len(output) > work_limit:
             raise RuntimePolicyError("public app output exceeds 4 MiB" if public_app_work else "plugin action output exceeds 64 KiB")
@@ -1187,6 +1201,7 @@ class PluginSupervisor:
         return output
 
     def stop(self, plugin_id: str, timeout: float = 5.0) -> None:
+        self.access.invalidate(plugin_id)
         with self._lock:
             process = self._processes.pop(plugin_id, None)
             actions = self._action_processes.pop(plugin_id, set())
@@ -1291,7 +1306,6 @@ class PluginRegistry:
         self.root = root
         self.supervisor = supervisor
         self.state_path = root / ".runtime-state.json"
-        self._integrity_cache: dict[str, tuple[object, bool]] = {}
         self._state_lock = threading.RLock()
         self._operation_lock = threading.RLock()
         self.supervisor.execution_allowed = self._execution_allowed
@@ -1656,21 +1670,8 @@ class PluginRegistry:
         return digest.hexdigest()
 
     def _integrity_valid(self, package: Path, expected: str) -> bool:
-        """Reuse a digest only while every payload file's kernel identity is unchanged."""
-        if os.name != "posix":
-            return self.digest(package).lower() == expected.lower()
-        files = self._payload_files(package)
-        signature = (expected.lower(), tuple(
-            (path.relative_to(package).as_posix(), info.st_dev, info.st_ino,
-             info.st_mode, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
-            for path in files for info in (path.stat(),)
-        ))
-        cached = self._integrity_cache.get(package.name)
-        if cached is not None and cached[0] == signature:
-            return cached[1]
-        valid = self.digest(package).lower() == expected.lower()
-        self._integrity_cache[package.name] = (signature, valid)
-        return valid
+        """Verify bytes; coarse filesystem timestamps cannot prove unchanged content."""
+        return self.digest(package).lower() == expected.lower()
 
     @staticmethod
     def _package_icon(package: Path, manifest: dict[str, Any]) -> str | None:
@@ -2106,6 +2107,11 @@ class PluginRegistry:
                 raise RuntimePolicyError(
                     "plugin manifest has an invalid native frontend declaration"
                 )
+            activation = native_frontend.get("activation", "startup")
+            if activation not in {"startup", "page"}:
+                raise RuntimePolicyError("invalid native frontend activation")
+            if activation == "page" and tuple(map(int, manifest.get("api_contract_version", "1.0.0").split("."))) < (1, 1, 17):
+                raise RuntimePolicyError("page activation requires Plugin API v1.1.17")
             native_styles = native_frontend.get("styles", [])
             if not isinstance(native_styles, list) or not all(
                 isinstance(value, str) for value in native_styles
@@ -2590,6 +2596,7 @@ class PluginRegistry:
             document["native_frontend"] = {
                 "entry": str(native_frontend["entry"]),
                 "styles": [str(value) for value in native_frontend.get("styles", [])],
+                "activation": native_frontend.get("activation", "startup"),
             }
         return document
 
@@ -3462,6 +3469,23 @@ class RuntimeHandler(BaseHTTPRequestHandler):
                 else:
                     self.server.registry.stop(parts[1], disable=parts[2] == "disable")
                 self._json(200, {"plugin_id": parts[1], "status": parts[2]})
+                return
+            if len(parts) == 4 and parts[0] == "plugins" and parts[2:] == ["access", "invalidate"]:
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 0 < length <= 2048:
+                    raise RuntimePolicyError("invalid access invalidation payload")
+                payload = json.loads(self.rfile.read(length))
+                if not isinstance(payload, dict):
+                    raise RuntimePolicyError("invalid access invalidation payload")
+                installation = str(UUID(str(payload.get("installation_id"))))
+                actor = payload.get("user_id")
+                actor = str(UUID(str(actor))) if actor is not None else None
+                self.server.registry.package(parts[1])
+                current = self.server.registry._state().get(parts[1], {})
+                matches = isinstance(current, dict) and current.get("installation_id") == installation
+                if matches:
+                    self.server.registry.supervisor.access.invalidate(parts[1], actor)
+                self._json(200, {"invalidated": matches})
                 return
             if len(parts) == 3 and parts[0] == "plugins" and parts[2] == "storage":
                 length = int(self.headers.get("Content-Length", "0"))

@@ -425,3 +425,15 @@ def test_connections_require_their_own_low_risk_grant():
     definition = capability_definition(Capability.FRONTEND_CONNECTIONS)
     assert definition.risk.value == "low"
     assert not definition.highly_privileged
+
+
+def test_native_page_activation_is_versioned_and_startup_stays_the_default() -> None:
+    data = document_data()
+    data["api_contract_version"] = "1.1.16"
+    data["native_frontend"] = {"entry": "native/index.js"}
+    assert PluginUiDocument.model_validate(data).native_frontend.activation == "startup"
+    data["native_frontend"]["activation"] = "page"
+    with pytest.raises(ValueError, match="1.1.17"):
+        PluginUiDocument.model_validate(data)
+    data["api_contract_version"] = "1.1.17"
+    assert PluginUiDocument.model_validate(data).native_frontend.activation == "page"

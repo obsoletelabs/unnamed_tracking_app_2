@@ -174,7 +174,8 @@ async def installation_capabilities(
     """Resolve one inventory's grants/revocations in one scoped database query."""
     installations = {
         str(item["plugin_id"]): UUID(str(item["installation_id"]))
-        for item in plugins if item.get("installation_id")
+        for item in plugins
+        if item.get("installation_id")
     }
     if not installations:
         return {}
