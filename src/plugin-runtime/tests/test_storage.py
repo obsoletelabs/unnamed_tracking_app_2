@@ -109,3 +109,49 @@ def test_backup_rejects_path_traversal(tmp_path) -> None:
         archive.addfile(info, BytesIO(b"x"))
     with pytest.raises(StorageSecurityError):
         storage.restore(buffer.getvalue())
+
+
+def test_index_is_shared_and_prefix_reads_and_writes_do_not_rescan(tmp_path, monkeypatch):
+    from pathlib import Path
+    one = PluginStorage(tmp_path, "example.indexed", quota_bytes=20)
+    one.put("accounts/one", b"1234")
+    two = PluginStorage(tmp_path, "example.indexed", quota_bytes=20)
+    def unexpected_scan(*_args, **_kwargs):
+        raise AssertionError("indexed operation walked the namespace")
+    monkeypatch.setattr(Path, "rglob", unexpected_scan)
+    two.put("other", b"12")
+    two.put("accounts/two", b"123")
+    assert one.keys("accounts/") == ("accounts/one", "accounts/two")
+    one.delete("accounts/one")
+    assert two.keys("accounts/") == ("accounts/two",)
+    assert one._usage() == 5
+    two.put("accounts/two", b"1")
+    assert one._usage() == 3
+    with pytest.raises(StorageQuotaExceeded):
+        one.put("too-large", b"x" * 18)
+
+
+def test_restore_invalidates_all_handles_and_rebuilds_quota(tmp_path):
+    one = PluginStorage(tmp_path, "example.restored", quota_bytes=6)
+    one.put("first", b"1234")
+    backup = one.backup()
+    two = PluginStorage(tmp_path, "example.restored", quota_bytes=6)
+    two.delete("first")
+    two.put("second", b"12")
+    one.restore(backup)
+    assert two.keys() == ("first",)
+    assert two._usage() == 4
+    with pytest.raises(StorageQuotaExceeded):
+        two.put("overflow", b"123")
+
+
+def test_runtime_restart_rebuilds_index_from_existing_files(tmp_path):
+    import storage as module
+    one = PluginStorage(tmp_path, "example.restarted", quota_bytes=8)
+    one.put("retained", b"12345")
+    module._NAMESPACE_INDEXES.clear()
+    reopened = PluginStorage(tmp_path, "example.restarted", quota_bytes=8)
+    assert reopened.keys() == ("retained",)
+    assert reopened._usage() == 5
+    with pytest.raises(StorageQuotaExceeded):
+        reopened.put("overflow", b"1234")

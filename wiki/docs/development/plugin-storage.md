@@ -89,3 +89,14 @@ migrations.
 src/plugin-runtime/tests/test_storage.py covers namespace isolation,
 persistence, quota enforcement, versioning, uninstall cleanup, backup/restore,
 cross-plugin restore rejection and archive traversal rejection.
+
+## Runtime indexing
+
+The runtime builds an in-memory namespace index from the existing durable files
+on first use. All handles share its lock, sorted keys, object sizes and usage
+total. Prefix lookups use the sorted index; successful writes, compare-and-swap
+and deletion update the same accounting. Failed quota checks do not change it.
+Restore and uninstall invalidate every handle's view; restart rebuilds from disk.
+The on-disk key format and backup format remain unchanged. The namespace is
+broker-owned: filesystem maintenance outside the public storage API requires
+stopping/restarting the runtime so its index is rebuilt before access resumes.
