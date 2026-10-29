@@ -501,6 +501,7 @@ async def resolve_merge(
     user_id: UUID,
     decision_id: UUID,
     target_id: UUID | None = None,
+    *,
     display: str | None = None,
     same_copy: bool = False,
 ) -> None:

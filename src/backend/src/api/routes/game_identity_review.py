@@ -71,8 +71,8 @@ async def merge(decision_id: UUID, db: Db, user: Owner, body: MergeChoice | None
             user.id,
             decision_id,
             body.target_id if body else None,
-            body.display if body else None,
-            body.same_copy if body else False,
+            display=body.display if body else None,
+            same_copy=body.same_copy if body else False,
         ),
     )
 
