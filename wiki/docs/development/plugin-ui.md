@@ -98,14 +98,12 @@ Connections never receive a page-replacement or Settings placement. A document
 declaring `connections` below API 1.1.9 is rejected.
 
 API 1.1.11 adds an optional `sync_action_id`, which must reference a declared action.
-Such connections appear in the Games page's Sync / import menu. Choosing one opens
-the same host dialog and provides the action ID as `plugin.context.initial_action_id`;
-the bundled/native frontend starts its existing sync flow through the action bridge.
-Ordinary Connections dialogs provide an empty initial action. The menu also retains
-the built-in library providers and links to personal Background tasks.
+Such connections appear in the Games page's Sync / import menu and get a **Sync now**
+button on the Connections page. Both run the sync on the server (below); neither opens
+the plugin's page. The menu also retains the built-in library providers and links to
+personal Background tasks.
 
-On the Connections page the same `sync_action_id` gives a connected account a
-**Sync now** button, like the built-in accounts. It requires the plugin to declare a
+The sync requires the plugin to declare a
 `scope: "user"` scheduled task for that action (API 1.1.11) and the user to grant
 `tasks.background`. The button calls `POST /api/connections/plugins/{plugin_id}/{connection_id}/sync`,
 and the host runs that personal task itself, with no plugin page open. A manual sync

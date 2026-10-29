@@ -73,6 +73,8 @@ async def _status_call(
         _, installation_id = await _authorize_action(
             plugin_id, action_id, payload, db=db, plugin=plugin, user=user
         )
+        # Same host context the action route builds; the two intentionally share this call.
+        # pylint: disable=duplicate-code
         context = await _host_action_context(
             plugin_id,
             action_id,
@@ -83,6 +85,7 @@ async def _status_call(
             user=user,
             request=request,
         )
+        # pylint: enable=duplicate-code
     except HTTPException:
         logger.warning("Plugin connection status not permitted: plugin_id=%s", plugin_id)
         return None
