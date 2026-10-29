@@ -3296,6 +3296,7 @@ class PluginRegistry:
 
 
 class RuntimeHandler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
     server_version = "UnnamedTrackingPluginRuntime/1.1"
 
     def _authorize(self) -> bool:
@@ -3342,6 +3343,10 @@ class RuntimeHandler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
+        if status >= 400:
+            # An early rejection may leave an unread request body on the socket.
+            self.close_connection = True
+            self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(body)
 

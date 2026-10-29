@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import os
 import time
 from typing import Any
 from urllib.parse import quote, urlsplit
+from weakref import WeakKeyDictionary
 
 import httpx
 
@@ -21,6 +23,30 @@ from src.plugin_api.manager_state import manager_state
 from src.plugin_api.runtime_token import TOKEN_HELP, runtime_token_valid
 
 _ACTION_REQUEST_TIMEOUT = 35.0  # Allow the isolated runner's 30-second wall limit to report.
+
+# Transport belongs to the server's event loop, not to one provider/client wrapper.
+# Keeping credentials on each request also makes token/policy changes immediate.
+_http_clients: WeakKeyDictionary[asyncio.AbstractEventLoop, httpx.AsyncClient] = WeakKeyDictionary()
+
+
+def _http_client() -> httpx.AsyncClient:
+    loop = asyncio.get_running_loop()
+    client = _http_clients.get(loop)
+    if client is None or client.is_closed:
+        client = httpx.AsyncClient(
+            timeout=10.0,
+            limits=httpx.Limits(max_connections=32, max_keepalive_connections=16),
+            trust_env=False,
+        )
+        _http_clients[loop] = client
+    return client
+
+
+async def close_runtime_transport() -> None:
+    """Release this worker's pooled transport when the application shuts down."""
+    client = _http_clients.pop(asyncio.get_running_loop(), None)
+    if client is not None:
+        await client.aclose()
 
 
 class PluginRuntimeUnavailable(RuntimeError):
@@ -152,13 +178,12 @@ class PluginRuntimeClient:
     async def _send(self, method: str, path: str, **kwargs: Any) -> Any:
         """Send one request and translate transport and status failures."""
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.request(
-                    method,
-                    f"{self.base_url}{path}",
-                    headers={**self._headers(), **kwargs.pop("headers", {})},
-                    **kwargs,
-                )
+            response = await _http_client().request(
+                method,
+                f"{self.base_url}{path}",
+                headers={**self._headers(), **kwargs.pop("headers", {})},
+                **kwargs,
+            )
         except httpx.HTTPError as exc:
             raise _unreachable(exc, self.base_url) from exc
         if response.status_code >= 500:

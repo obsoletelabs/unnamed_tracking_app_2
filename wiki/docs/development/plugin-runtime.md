@@ -286,3 +286,13 @@ isolation and suppresses the prominent warning; diagnostics still report the
 actual mode. It is not required when an administrator has acknowledged reduced
 isolation through Plugin Manager, and it does not provide Bubblewrap's namespace
 or filesystem guarantees.
+
+## Request transport and inventory
+
+The host pools private HTTP connections within each backend worker and closes
+them at shutdown. Runtime responses support HTTP/1.1 keep-alive; rejected
+requests close their socket so an unread body cannot become another request.
+Credentials and isolation policy remain attached to each request. Single-plugin
+UI, action and asset lookups validate that installation through its state
+endpoint rather than enumerating unrelated packages. Manager inventory still
+reconciles durable state, but unchanged snapshots do not rewrite it.
