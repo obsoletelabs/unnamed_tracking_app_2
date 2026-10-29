@@ -151,9 +151,7 @@ async def test_badge_and_compact_pages_skip_discovery_and_isolate_owners(inbox_o
             page = first.json()
             assert len(page["items"]) == 10 and page["next_offset"] == 10
             assert page["total"] is None and page["counts"] == {} and page["states"] == {}
-            second = await client.get(
-                "/api/notifications?include_summary=false&limit=10&offset=10"
-            )
+            second = await client.get("/api/notifications?include_summary=false&limit=10&offset=10")
             assert second.status_code == 200
             remainder = second.json()
             assert len(remainder["items"]) == 3 and remainder["next_offset"] is None

@@ -30,10 +30,21 @@ _VALUES = {
 _SAMPLE_NAMES = frozenset(_VALUES) | frozenset(
     name + suffix for name in _HISTOGRAMS for suffix in ("_bucket", "_count", "_sum")
 )
-_ALLOWED_LABELS = frozenset({
-    "method", "route", "phase", "pool", "query_group", "operation", "outcome",
-    "state", "status_class", "cache_kind", "result",
-})
+_ALLOWED_LABELS = frozenset(
+    {
+        "method",
+        "route",
+        "phase",
+        "pool",
+        "query_group",
+        "operation",
+        "outcome",
+        "state",
+        "status_class",
+        "cache_kind",
+        "result",
+    }
+)
 _STARTED = time.time()
 _TTL = 5.0
 _value: dict[str, Any] | None = None

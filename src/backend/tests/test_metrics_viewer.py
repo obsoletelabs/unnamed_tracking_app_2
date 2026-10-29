@@ -21,7 +21,7 @@ def reset_viewer(monkeypatch):
 
 async def test_viewer_is_admin_only_and_does_not_return_a_scrape_token(monkeypatch):
     monkeypatch.setattr(metrics.settings, "METRICS_TOKEN", "private-scrape-credential")
-    metrics.HTTP_DURATION.labels("GET", "/viewer-test/{item}").observe(.02)
+    metrics.HTTP_DURATION.labels("GET", "/viewer-test/{item}").observe(0.02)
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
     ) as client:
@@ -32,9 +32,12 @@ async def test_viewer_is_admin_only_and_does_not_return_a_scrape_token(monkeypat
             assert response.status_code == 200 and response.headers["cache-control"] == "no-store"
             body = response.json()
             assert body["enabled"] and body["scope"] == "process"
-            row = next(row for row in body["histograms"]["http"]
-                       if row["labels"]["route"] == "/viewer-test/{item}")
-            assert row["count"] == 1 and row["sum"] == .02
+            row = next(
+                row
+                for row in body["histograms"]["http"]
+                if row["labels"]["route"] == "/viewer-test/{item}"
+            )
+            assert row["count"] == 1 and row["sum"] == 0.02
             assert "private-scrape-credential" not in response.text
         finally:
             app.dependency_overrides.pop(get_current_admin, None)
