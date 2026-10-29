@@ -7,7 +7,11 @@ import type { SegmentOption } from "../components/SegmentedTabs.vue";
 import { matchesShortcut } from "../state/shortcuts";
 import { preferences } from "../state/preferences";
 export type ViewMode = "cards" | "list" | "detail";
-import { PHONE_CARD_COLUMNS } from "../utils/libraryLayout";
+import {
+  MIN_CARD_WIDTH,
+  PHONE_CARD_COLUMNS,
+  measureLibraryRow,
+} from "../utils/libraryLayout";
 export type CardDensity = "compact" | "cozy" | "large";
 import {
   ref,
@@ -1720,11 +1724,6 @@ export function useGameLibrary() {
   // column count is what an auto-fill grid of that minimum width would give
   // for the width the page actually has, so a "small" card is the same size
   // on both pages.
-  const MIN_CARD_WIDTH: Record<CardDensity, number> = {
-    compact: 150,
-    cozy: 200,
-    large: 260,
-  };
   const GRID_GAP = 14;
   const contentEl = useTemplateRef<HTMLElement>("libraryContent");
   const gridWidth = ref(document.documentElement.clientWidth - 72);
@@ -1759,8 +1758,7 @@ export function useGameLibrary() {
   const cardRowCount = computed(() =>
     Math.ceil(filteredGames.value.length / CARD_COLUMNS.value),
   );
-  // Same as Media: a leaderboard position among everything that has a rating,
-  // highest first, generated rather than assigned
+  // Rank rated games by score, matching the Media leaderboard.
   const rankByGameId = computed(() => {
     const rated = games.value
       .map((g) => ({ id: g.id, sum: computeScore(g)?.sum ?? null }))
@@ -1774,6 +1772,7 @@ export function useGameLibrary() {
       enabled: isLibraryActive.value,
       useAnimationFrameWithResizeObserver: true,
       estimateSize: () => 330,
+      measureElement: measureLibraryRow,
       // Keep several nearby rows mounted so rapid direction changes do not
       // tear down in-flight cover decodes immediately outside the viewport.
       overscan: 6,
@@ -1784,6 +1783,7 @@ export function useGameLibrary() {
       count: filteredGames.value.length,
       enabled: isLibraryActive.value && viewMode.value === "list",
       estimateSize: () => 108,
+      measureElement: measureLibraryRow,
       // Artwork requests may still be decoding after a fast scroll. Retain a
       // larger two-sided row buffer to make reversing direction feel stable.
       overscan: 16,

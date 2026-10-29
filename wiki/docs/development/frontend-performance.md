@@ -94,3 +94,31 @@ vendor script fell from 253.91 KB (90.32 KB gzip) to 136.92 KB (51.95 KB gzip).
 Games still needs its virtualizer and sanitizer, so its measured initial asset
 transfer fell by about 24 KB while adding one script request. This is a transfer
 reduction, not a claim that every page becomes faster by a fixed duration.
+
+
+## Virtual row measurements and cold refresh validation
+
+Games card and list rows retain a positive cached or estimated size until the
+ResizeObserver supplies their measured border box. A synchronous Vue ref call
+can precede a measurable DOM layout; caching its zero height previously placed
+all buffered rows at `translateY(0)`. That briefly classified offscreen artwork
+as visible and caused the near-end pagination watcher to fetch another page.
+The shared row measurement policy avoids that collapse without forcing layout
+reads for every ref callback. Normal scrolling still requests later pages.
+
+A clean Windows Edge run at 1920 x 1080 used five fresh browser contexts with
+browser caching disabled. The dedicated account had 85 games and 39 posters,
+including 14 visible posters. With the optional-dependency split already applied,
+median completion of the visible posters changed from 806 ms to 640 ms after
+fixing row measurement. The immediate extra game page disappeared in all five
+runs. Final first-viewport content took 247-487 ms; visible posters took
+553-879 ms, including the first-run outlier. These are local measurements, not
+an assurance that every browser profile or larger library meets those timings.
+Route-ready marks alone do not indicate that page data or artwork has rendered.
+
+The authentication phase breakdown also exposed quota-pool contention. A local
+24-request count-endpoint burst compared two, four and six authentication
+connections. Increasing capacity did not consistently improve end-to-end latency,
+so the independent two-connection pool and its security limits remain unchanged.
+Pool acquisition and database/commit phases overlap with reserve/refund phases;
+do not sum them as independent elapsed time.
