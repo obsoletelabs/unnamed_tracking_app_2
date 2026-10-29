@@ -16,6 +16,7 @@ from fastapi import (
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.request_metrics import phase
 from src.core.titles import derive_sort_title as _derive_sort_title
 from src.database.models.game import Game
 from src.database.models.game_field_change import GameFieldChange
@@ -256,9 +257,10 @@ async def _get_game_or_404(
             # Keep the row lock until checks finish, including cancellation, but
             # run filesystem traversal off the event loop so concurrent artwork
             # and library reads can proceed on slow/bind-mounted storage.
-            await finish_storage_operation(
-                asyncio.to_thread(game_folders.ensure_storage_ready, _DATA_ROOT, game)
-            )
+            with phase("storage.prepare"):
+                await finish_storage_operation(
+                    asyncio.to_thread(game_folders.ensure_storage_ready, _DATA_ROOT, game)
+                )
         except game_folders.FolderStorageError as exc:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return game

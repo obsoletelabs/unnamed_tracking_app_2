@@ -339,3 +339,76 @@ time() - (uta_notification_oldest_pending_timestamp_seconds > 0)
 The host has no general automation-rule evaluator; this release does not invent
 `uta_automation_evaluations_total` from job runs or notification delivery
 outcomes. Scheduled jobs and plugin task calls have their own metrics.
+
+## Request phase and query-family dashboard
+
+Import `examples/metrics/grafana-performance.json`, also provisioned by the example
+Compose stack. It provides response-start and phase p50/p95/p99, route selection,
+SQL calls/time per request, individual SQL percentiles, both database pools, commit
+latency, cache latency, plugin runtime latency, process resources and scrape encoding.
+Histogram quantiles are estimates within buckets; low-volume p99 needs enough samples.
+
+| Metric | Labels / meaning |
+|---|---|
+| `uta_http_phase_duration_seconds` | method, route, phase; accumulated phase before headers |
+| `uta_http_database_queries_total` | method, route, pool, query_group; calls before headers |
+| `uta_http_database_query_seconds_total` | same; SQL cursor time before headers |
+| `uta_database_query_group_duration_seconds` | pool, query_group, operation, outcome; individual executions |
+| `uta_database_pool_wait_seconds` | pool; acquisition including connection creation |
+| `uta_database_named_pool_connections` | pool, state; current connection counts without SQL |
+| `uta_database_named_pool_timeouts_total` | pool; acquisition timeouts |
+| `uta_database_commit_duration_seconds` | pool; successful session commit including flush |
+| `uta_metrics_serialization_duration_seconds` | scrape encoding work outside the event loop |
+| `uta_metrics_payload_bytes` | size of the previous encoded scrape |
+
+Pools are fixed to `application` and `authentication`. The authentication pool
+continues using its existing capacity and quota enforcement. Legacy global SQL,
+pool and transaction observations now include this pool too; the named series
+allow separating it from application work. Query groups are a coarse cached
+classification: credentials, auth_quota, games, media, plugins, notifications,
+settings, control and other. A mixed query is assigned one family. No SQL text,
+parameters, raw table names, account IDs or request URLs are exported.
+
+Fixed phases cover authentication reserve/verify/refund, pool acquisition, cursor
+execution, commit, storage preparation, plugin transport, PWA provider/assets and
+existing cache refresh boundaries. Nested/parallel phases overlap: **do not add
+them or subtract their percentiles** to infer missing time. Cursor time excludes
+result processing and pool acquisition; successful commit includes flush.
+
+When metrics are enabled, authenticated API responses also include numeric
+`Server-Timing` phases and the SQL execution count. This permits comparing one
+request's server phases with DevTools waiting time. These headers contain no
+identifiers or SQL and are omitted on unauthenticated responses. Backend timings
+exclude browser queueing, network/proxy work, JavaScript, rendering and image decode.
+No frontend timing beacons or per-request diagnostic database queries are added.
+
+Disabling metrics skips the new request breakdown allocation and query-family
+classification. Enabled collection uses bounded labels and existing boundaries.
+Scrapes retain the existing cached dependency probes, encode outside the event
+loop and share concurrent encoding work. A disconnected scraper does not cancel
+an encoding needed by another scraper. Threaded encoding still uses process CPU
+and is not a separate telemetry process.
+
+## Development and production scrape listeners
+
+Both listeners read the same registry. The development Python listener avoids a
+proxy hop and has its own private port, but shares the application process and
+event loop; it is not an isolated metrics server. It requires one application
+worker. Production Nginx retains its private scrape listener, bearer forwarding,
+connection handling and support for the configured multi-worker exporter.
+There is no evidence that replacing it with the development listener improves
+page response time. Do not bind both listeners to the same port.
+
+Encoding is now performed in a worker thread and concurrent encodings are shared.
+This avoids running the entire encoder synchronously on the event loop, but
+encoding still consumes Python CPU and can contend for the GIL. Use the example's
+30-second scrape interval rather than aggressive polling. No extra query probes
+are added by the request breakdowns or the in-app viewer.
+
+A local CPU microbenchmark of the additional instrumentation measured about
+3-6 microseconds per SQL execution beyond the existing SQL timer, and about
+65 microseconds for one request breakdown with seven phases and eight recorded
+queries. These are illustrative instrumentation costs, not page-load guarantees.
+A separate contended PostgreSQL run showed a 10.7% elapsed increase against an
+entirely uninstrumented engine; concurrent workloads and the existing metrics
+are included in that comparison. Metrics are not claimed to be free.

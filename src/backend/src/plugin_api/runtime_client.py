@@ -19,6 +19,7 @@ from src.core.metrics import (
     PLUGIN_RUNTIME_REQUESTS,
     plugin_runtime_operation,
 )
+from src.core.request_metrics import observe_phase
 from src.plugin_api.manager_state import manager_state
 from src.plugin_api.runtime_token import TOKEN_HELP, runtime_token_valid
 
@@ -170,8 +171,10 @@ class PluginRuntimeClient:
             outcome = exc.kind
             raise
         finally:
+            seconds = time.monotonic() - started
             PLUGIN_RUNTIME_REQUESTS.labels(operation, outcome).inc()
-            PLUGIN_RUNTIME_DURATION.labels(operation).observe(time.monotonic() - started)
+            PLUGIN_RUNTIME_DURATION.labels(operation).observe(seconds)
+            observe_phase("plugin.runtime", seconds)
             if lifecycle_operation is not None:
                 PLUGIN_LIFECYCLE_OPERATIONS.labels(lifecycle_operation, outcome).inc()
 

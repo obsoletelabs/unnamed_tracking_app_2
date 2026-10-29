@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
 from src.core.branding import load_branding, pwa_branding_icon
+from src.core.request_metrics import phase
 from src.database.models.plugin_permissions import PluginPermissionGrant
 from src.database.session import get_db
 from src.plugin_api.contracts import PluginPwaDeclaration
@@ -133,10 +134,12 @@ async def checked_assets(plugin: dict[str, Any]) -> dict[str, bytes]:
 @router.get("/pwa/status")
 async def status(db: AsyncSession = _DB) -> JSONResponse:
     """Publish only non-sensitive provider state, without requiring a session."""
-    plugin = await provider(db)
+    with phase("pwa.provider"):
+        plugin = await provider(db)
     if plugin is None:
         return JSONResponse({"enabled": False}, headers=_HEADERS)
-    await checked_assets(plugin)
+    with phase("pwa.assets"):
+        await checked_assets(plugin)
     return JSONResponse(
         {
             "enabled": True,
@@ -151,10 +154,12 @@ async def status(db: AsyncSession = _DB) -> JSONResponse:
 @router.get("/manifest.webmanifest")
 async def manifest(db: AsyncSession = _DB) -> Response:
     """Construct a root manifest from typed metadata, never plugin scripts."""
-    plugin = await provider(db)
+    with phase("pwa.provider"):
+        plugin = await provider(db)
     if plugin is None:
         raise HTTPException(status_code=404, detail="PWA plugin is not enabled")
-    await checked_assets(plugin)
+    with phase("pwa.assets"):
+        await checked_assets(plugin)
     declaration = plugin["declaration"]
     branding = plugin.get("branding")
     name = branding.branding_name if branding else None
@@ -183,10 +188,12 @@ async def manifest(db: AsyncSession = _DB) -> Response:
 @router.get("/pwa/icons/{revision}/{size}.png")
 async def icon(revision: str, size: int, db: AsyncSession = _DB) -> Response:
     """Serve inert icons only for the current live package generation."""
-    plugin = await provider(db)
+    with phase("pwa.provider"):
+        plugin = await provider(db)
     if plugin is None or revision != generation(plugin) or size not in {192, 512}:
         raise HTTPException(status_code=404, detail="PWA icon not available")
-    files = await checked_assets(plugin)
+    with phase("pwa.assets"):
+        files = await checked_assets(plugin)
     branding = plugin.get("branding")
     image = (branding.branding_logo_png or branding.branding_favicon_png) if branding else None
     if image:
@@ -213,9 +220,11 @@ async def offline() -> Response:
 @router.get("/service-worker.js")
 async def worker(db: AsyncSession = _DB) -> Response:
     """Keep the stable root worker URL alive even for affirmative withdrawal."""
-    plugin = await provider(db)
+    with phase("pwa.provider"):
+        plugin = await provider(db)
     if plugin is not None:
-        await checked_assets(plugin)
+        with phase("pwa.assets"):
+            await checked_assets(plugin)
     config = {
         "enabled": plugin is not None,
         "generation": generation(plugin) if plugin else "disabled",
