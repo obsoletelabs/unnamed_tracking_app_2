@@ -10,7 +10,7 @@ import { currentUser } from "../state/auth";
 import { activeSettingsArea } from "../state/settingsArea";
 import PluginSidebarEntries from "./plugins/PluginSidebarEntries.vue";
 import { inboxCount, refreshInboxCount } from "../state/inbox";
-import { mediaUnread, refreshMediaNotifications } from "../state/notifications";
+import { mediaUnread, refreshMediaUnread } from "../state/notifications";
 import {
   effectiveSidebarMode,
   navigationViewport,
@@ -289,11 +289,8 @@ let notificationTimer: number | undefined;
 onMounted(() => {
   void refreshInboxCount();
   void refreshPluginExtensions({ background: true });
-  void refreshMediaNotifications({ shared: true });
-  notificationTimer = window.setInterval(
-    refreshMediaNotifications,
-    5 * 60 * 1000,
-  );
+  void refreshMediaUnread({ shared: true });
+  notificationTimer = window.setInterval(refreshMediaUnread, 5 * 60 * 1000);
 });
 onUnmounted(() => {
   open.value = false;

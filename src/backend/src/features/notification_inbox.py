@@ -42,6 +42,7 @@ class InboxQuery(BaseModel):
     state: Literal["active", "dismissed", "expired", "deleted", "history"] = "active"
     limit: int = Field(default=50, ge=1, le=200)
     offset: int = Field(default=0, ge=0)
+    include_summary: bool = True
 
 
 def retention_policy(preferences: dict[str, Any]) -> dict[str, Any]:
@@ -146,6 +147,18 @@ async def state_counts(db: AsyncSession, user_id: UUID) -> dict[str, int]:
     return states
 
 
+async def count_unread(db: AsyncSession, user_id: UUID) -> int:
+    """Read the persisted badge count without discovery or inbox summaries."""
+    return (
+        await db.scalar(
+            select(sql_count())
+            .select_from(Notification)
+            .where(visible_inbox(user_id), Notification.read_at.is_(None))
+        )
+        or 0
+    )
+
+
 async def query_inbox(
     db: AsyncSession, user_id: UUID, query: InboxQuery
 ) -> tuple[list[Notification], dict[str, Any]]:
@@ -161,6 +174,28 @@ async def query_inbox(
         predicates.append(Notification.source == query.source)
     if query.severity:
         predicates.append(Notification.severity == query.severity)
+    if not query.include_summary:
+        if query.unread_only or query.category == "unread":
+            predicates.append(Notification.read_at.is_(None))
+        if query.category in CATEGORY_KINDS:
+            predicates.append(Notification.kind.in_(CATEGORY_KINDS[query.category]))
+        rows = list(
+            await db.scalars(
+                select(Notification)
+                .where(*predicates)
+                .order_by(Notification.event_at.desc(), Notification.id.desc())
+                .limit(query.limit + 1)
+                .offset(query.offset)
+            )
+        )
+        return rows[: query.limit], {
+            "unread": await count_unread(db, user_id),
+            "total": None,
+            "next_offset": query.offset + query.limit if len(rows) > query.limit else None,
+            "counts": {},
+            "states": {},
+            "sources": [],
+        }
     grouped_counts = await db.execute(
         select(Notification.kind, Notification.read_at.is_(None), sql_count())
         .where(*predicates)

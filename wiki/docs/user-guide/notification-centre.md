@@ -53,3 +53,7 @@ Switching either on adds your account to the server's scheduled **Anime franchis
 ![The same choices in Classic](../assets/anime-franchise-checks/notification-types-classic.png)
 
 See [notification providers](notification-providers.md) for the existing external-delivery compatibility boundary.
+
+The navigation badge loads only the unread count. Opening the bell loads the first
+ten notices; scroll or choose Load more for additional notices. Release discovery
+continues in the server's scheduled loop and when opening the full centre.

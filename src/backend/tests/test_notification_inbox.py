@@ -124,6 +124,48 @@ async def test_http_query_metadata_and_validation(inbox_owner):
         app.dependency_overrides.pop(get_current_user, None)
 
 
+async def test_badge_and_compact_pages_skip_discovery_and_isolate_owners(inbox_owner, monkeypatch):
+    from unittest.mock import AsyncMock
+
+    from src.api.routes import notifications as routes
+    from src.core.auth import get_current_user
+    from src.main import app
+
+    owner, stranger = inbox_owner
+    async with SessionLocal() as db:
+        db.add_all([notification(owner) for _ in range(13)])
+        db.add_all([notification(stranger), notification(owner, dismissed_at=int(time.time()))])
+        await db.commit()
+        user = await db.get(User, owner)
+    discovery = AsyncMock(side_effect=AssertionError("Badge reads must not run discovery"))
+    monkeypatch.setattr(routes, "generate_for_user", discovery)
+    app.dependency_overrides[get_current_user] = lambda: user
+    try:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            badge = await client.get("/api/notifications/unread-count")
+            assert badge.status_code == 200 and badge.json() == {"unread": 13}
+            first = await client.get("/api/notifications?include_summary=false&limit=10")
+            assert first.status_code == 200
+            page = first.json()
+            assert len(page["items"]) == 10 and page["next_offset"] == 10
+            assert page["total"] is None and page["counts"] == {} and page["states"] == {}
+            second = await client.get(
+                "/api/notifications?include_summary=false&limit=10&offset=10"
+            )
+            assert second.status_code == 200
+            remainder = second.json()
+            assert len(remainder["items"]) == 3 and remainder["next_offset"] is None
+            assert not {item["id"] for item in page["items"]} & {
+                item["id"] for item in remainder["items"]
+            }
+            assert remainder["unread"] == 13
+        discovery.assert_not_awaited()
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+
 async def test_existing_retention_choice_survives_server_defaults_and_cap(inbox_owner, monkeypatch):
     from src.core.config import settings
 
