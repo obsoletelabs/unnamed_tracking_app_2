@@ -1,6 +1,7 @@
 """Game metadata routes, composed by the games router."""
 
 import asyncio
+from datetime import date
 from uuid import UUID
 
 from fastapi import (
@@ -27,6 +28,7 @@ from src.core.app_integrations import get_max_upload_size_mb
 from src.core.auth import get_current_user
 from src.core.preferences import load_preferences
 from src.core.titles import normalize_metadata_title as _normalize_metadata_title
+from src.database.models.game import GameLink
 from src.database.models.user import User
 from src.database.session import get_db
 from src.features.achievement_catalogue import (
@@ -152,6 +154,29 @@ def _metadata_value_is_present(value: object) -> bool:
     return value is not None and value != "" and value != []
 
 
+def _game_links(raw: object) -> list[GameLink] | None:
+    """Provider links as rows the relationship accepts, clipped to the column sizes."""
+    if not isinstance(raw, list):
+        return None
+    rows = [
+        GameLink(label=str(link["label"])[:50], url=str(link["url"]))
+        for link in raw
+        if isinstance(link, dict)
+        and link.get("label")
+        and 0 < len(str(link.get("url", ""))) <= 2048
+    ]
+    return rows or None
+
+
+def _release_date(raw: object) -> date | None:
+    if isinstance(raw, date):
+        return raw
+    try:
+        return date.fromisoformat(str(raw)[:10]) if raw else None
+    except ValueError:
+        return None
+
+
 # Keep the established workflow and public parameters together.
 # pylint: disable=too-many-branches,too-many-locals,too-many-statements
 @router.post("/{game_id}/metadata/refresh")
@@ -247,12 +272,12 @@ async def refresh_game_metadata(
         "tags": match.get("tags"),
         "features": match.get("features"),
         "age_rating": match.get("age_rating"),
-        "release_date": match.get("release_date"),
+        "release_date": _release_date(match.get("release_date")),
         "time_to_beat_hours": match.get("time_to_beat_hours"),
         "time_to_beat_extras_hours": match.get("time_to_beat_extras_hours"),
         "time_to_beat_completionist_hours": match.get("time_to_beat_completionist_hours"),
         "time_to_beat_all_hours": match.get("time_to_beat_all_hours"),
-        "links": match.get("links"),
+        "links": _game_links(match.get("links")),
     }
     gated_flags = {
         "developer": "save_developer",
@@ -283,7 +308,10 @@ async def refresh_game_metadata(
             skipped_locked.append(field)
             continue
         current = getattr(game, field)
-        if fresh != current:
+        if field == "links" and isinstance(fresh, list):
+            if [(row.label, row.url) for row in fresh] != [(row.label, row.url) for row in current]:
+                updates[field] = fresh
+        elif fresh != current:
             updates[field] = fresh
 
     provider_play = provider_play_compatibility(match, game.play_compatibility)

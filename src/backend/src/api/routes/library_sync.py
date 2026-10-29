@@ -65,6 +65,7 @@ from src.features.achievement_sync import (
 )
 from src.features.connection_jobs import sync_scope
 from src.features.game_identity import names
+from src.features.game_identity.provider_ids import merge_provider_ids, unclaimed_provider_ids
 from src.features.game_ingestion import legacy as ingestion
 from src.features.game_ingestion.contract import SourceObservationV1
 from src.features.imports import steam_connection
@@ -233,6 +234,13 @@ async def _enrich_new_game(
             include_media=True,
             preferences=preferences,
         )
+        offered_ids = await unclaimed_provider_ids(
+            metadata_db,
+            user.id,
+            game.id,
+            game.provider_ids or {},
+            (record or {}).get("provider_ids", {}),
+        )
         max_image_bytes = MAX_BYTES
         if record and record.get("assets"):
             max_image_bytes = (await get_max_upload_size_mb(metadata_db)) * 1024 * 1024
@@ -244,7 +252,8 @@ async def _enrich_new_game(
     match = game_result(record)
     if artwork_only:
         return await _fetch_missing_artwork(game, match, max_image_bytes, outcome)
-    game.provider_ids = {**(game.provider_ids or {}), **record.get("provider_ids", {})}
+    if "provider_ids" not in (game.locked_fields or []):
+        game.provider_ids, _ = merge_provider_ids(game.provider_ids or {}, offered_ids)
     if match.get("title") and names.is_weak(
         names.classify_title(game.title, source=game.source, external_id=game.external_id)
     ):

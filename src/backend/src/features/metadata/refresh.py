@@ -466,8 +466,10 @@ async def heal_all_anime_metadata() -> int:
         )
         for show in shows:
             try:
-                if await _heal_anime_metadata(db, show):
-                    healed += 1
+                # A savepoint per row: one bad value rolls back only that show, not the sweep.
+                async with db.begin_nested():
+                    if await _heal_anime_metadata(db, show):
+                        healed += 1
             # Isolate unexpected provider data failures to this show while continuing the sweep.
             # pylint: disable-next=broad-exception-caught
             except Exception:

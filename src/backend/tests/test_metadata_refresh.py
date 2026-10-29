@@ -48,6 +48,9 @@ async def test_metadata_healing_does_not_block_the_event_loop_or_overwrite_exist
     db = AsyncMock()
     db.__aenter__.return_value = db
     db.execute.return_value = result
+    savepoint = AsyncMock()
+    savepoint.__aenter__.return_value = savepoint
+    db.begin_nested = Mock(return_value=savepoint)
     monkeypatch.setattr(refresh, "SessionLocal", lambda: db)
     monkeypatch.setattr(refresh, "resolve_library_record", resolve)
 

@@ -44,6 +44,20 @@ async def find_provider_id_conflicts(
     return conflicts
 
 
+async def unclaimed_provider_ids(
+    session: AsyncSession,
+    user_id: UUID,
+    game_id: UUID | None,
+    existing: dict[str, str],
+    incoming: dict[str, str],
+) -> dict[str, str]:
+    """The offered ids this game may take: new namespaces another game does not already hold."""
+    new = {ns: identity for ns, identity in incoming.items() if ns not in existing}
+    conflicts = await find_provider_id_conflicts(session, user_id, game_id, new)
+    taken = {namespace for namespace, _identity, _id in conflicts}
+    return {ns: identity for ns, identity in incoming.items() if ns not in taken}
+
+
 def merge_provider_ids(
     existing: dict[str, str], incoming: dict[str, str]
 ) -> tuple[dict[str, str], list[str]]:
