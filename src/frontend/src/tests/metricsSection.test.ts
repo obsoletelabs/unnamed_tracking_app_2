@@ -61,3 +61,33 @@ it("shows disabled metrics without leaving a polling loop", async () => {
     wrapper.unmount();
   }
 });
+
+it("drops observations older than five minutes after a pause", async () => {
+  vi.useFakeTimers();
+  vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+  state.fetch
+    .mockResolvedValueOnce({
+      enabled: true,
+      started_at: 1,
+      collected_at: 100,
+      histograms: { http: [] },
+      values: {},
+    })
+    .mockResolvedValueOnce({
+      enabled: true,
+      started_at: 1,
+      collected_at: 410,
+      histograms: { http: [] },
+      values: {},
+    });
+  const wrapper = mount(MetricsSection);
+  try {
+    await flushPromises();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(state.fetch).toHaveBeenCalledTimes(2);
+    expect(wrapper.text()).not.toContain("Observed 310 seconds");
+    expect(wrapper.text()).toContain("Cumulative since server start");
+  } finally {
+    wrapper.unmount();
+  }
+});

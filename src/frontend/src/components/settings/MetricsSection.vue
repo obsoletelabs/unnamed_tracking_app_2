@@ -182,7 +182,12 @@ async function refresh() {
     if (last?.started_at !== snapshot.started_at) history.value = [];
     if (!snapshot.enabled) history.value = [snapshot];
     else if (last?.collected_at !== snapshot.collected_at)
-      history.value = [...history.value, snapshot].slice(-31);
+      history.value = [...history.value, snapshot]
+        .filter(
+          (item) =>
+            (item.collected_at ?? 0) >= (snapshot.collected_at ?? 0) - 300,
+        )
+        .slice(-31);
     error.value = null;
   } catch (reason) {
     if (!request.signal.aborted)
