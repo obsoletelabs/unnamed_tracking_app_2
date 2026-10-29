@@ -325,8 +325,52 @@ def _differences(first: dict[str, Any], second: dict[str, Any]) -> list[dict[str
     ]
 
 
-def _summary(row: dict[str, Any]) -> dict[str, Any]:
-    return {name: row[name] for name in _SUMMARY}
+def _summary(
+    row: dict[str, Any], reported_by: list[dict[str, Any]] | None = None
+) -> dict[str, Any]:
+    return {**{name: row[name] for name in _SUMMARY}, "reported_by": reported_by or []}
+
+
+async def _reported_by(
+    db: AsyncSession, user_id: UUID, games: set[UUID]
+) -> dict[UUID, list[dict[str, Any]]]:
+    """Which connections currently report each game: Playnite, the Epic plugin, a Steam sync...
+
+    `Game.source` is the store a record says it belongs to, which Playnite fills in with the
+    store's name, so it cannot tell a Steam game synced from Steam from one Playnite found."""
+    if not games:
+        return {}
+    rows = await db.execute(
+        select(
+            GameSourceObservationLink.game_id,
+            GameSourceConnection.source_kind,
+            GameSourceConnection.source,
+            GameSourceConnection.label,
+            GameSourceConnection.disconnected_at,
+        )
+        .join(
+            GameSourceObservation,
+            GameSourceObservation.id == GameSourceObservationLink.observation_id,
+        )
+        .join(GameSourceConnection, GameSourceConnection.id == GameSourceObservation.connection_id)
+        .where(
+            GameSourceObservationLink.user_id == user_id,
+            GameSourceObservationLink.unlinked_at.is_(None),
+            GameSourceObservationLink.game_id.in_(games),
+        )
+        .order_by(GameSourceConnection.source, GameSourceConnection.label)
+    )
+    found: dict[UUID, list[dict[str, Any]]] = {}
+    for game_id, kind, source, label, disconnected_at in rows.all():
+        entry = {
+            "kind": kind,
+            "source": source,
+            "label": label or source,
+            "disconnected": disconnected_at is not None,
+        }
+        if entry not in found.setdefault(game_id, []):
+            found[game_id].append(entry)
+    return found
 
 
 async def queue(db: AsyncSession, user_id: UUID, limit: int = 50) -> dict[str, Any]:
@@ -352,6 +396,7 @@ async def queue(db: AsyncSession, user_id: UUID, limit: int = 50) -> dict[str, A
         db, user_id, {game for row in rows for game in _members(row)}
     )
     dismissed = await _dismissed(db, user_id)
+    reported = await _reported_by(db, user_id, set(summaries))
     entries: list[dict[str, Any]] = []
     # Once copies are grouped, a third record matches each of them; ask once per
     # pair of groups (the strongest suggestion first, as the rows are ordered).
@@ -378,8 +423,8 @@ async def queue(db: AsyncSession, user_id: UUID, limit: int = 50) -> dict[str, A
                 "reason": row.reason,
                 "evidence": row.evidence,
                 "created_at": row.created_at,
-                "first": _summary(summaries[pair[0]]),
-                "second": _summary(summaries[pair[1]]),
+                "first": _summary(summaries[pair[0]], reported.get(pair[0])),
+                "second": _summary(summaries[pair[1]], reported.get(pair[1])),
                 "differences": _differences(summaries[pair[0]], summaries[pair[1]]),
             }
         )
@@ -410,6 +455,7 @@ async def automatic_merges(
         user_id,
         {g for _, edge in pairs for g in (edge.from_game_id, edge.to_game_id) if g is not None},
     )
+    reported = await _reported_by(db, user_id, set(summaries))
     merged = []
     for decision, edge in pairs:
         if edge.from_game_id not in summaries or edge.to_game_id not in summaries:
@@ -421,8 +467,8 @@ async def automatic_merges(
                 "reason": decision.reason,
                 "evidence": decision.evidence,
                 "created_at": decision.created_at,
-                "absorbed": _summary(summaries[edge.from_game_id]),
-                "into": _summary(summaries[edge.to_game_id]),
+                "absorbed": _summary(summaries[edge.from_game_id], reported.get(edge.from_game_id)),
+                "into": _summary(summaries[edge.to_game_id], reported.get(edge.to_game_id)),
             }
         )
     return merged

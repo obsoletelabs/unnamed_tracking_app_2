@@ -469,3 +469,54 @@ async def test_queue_asks_once_per_pair_of_groups(users):  # noqa: F811
     entries = await queue(user)
     assert len(entries) == 1
     assert switch in {entries[0]["first"]["id"], entries[0]["second"]["id"]}
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [
+        ("Epic Games", "Epic"),
+        ("epic games store", "Epic"),
+        ("GOG Galaxy", "gog"),
+        ("Steam", "steam"),
+    ],
+)
+def test_one_store_under_two_names_is_not_a_different_store(first, second):
+    """Playnite says "Epic", the Epic plugin says "Epic Games": same store, not a new copy."""
+    a = Candidate(id=1, title="Hades", source=first, platform="PC")
+    b = Candidate(id=2, title="Hades", source=second, platform="PC")
+    assert matching.assess_copy(a, b) is None
+
+
+def test_different_stores_still_make_separate_copies():
+    a = Candidate(id=1, title="Hades", source="Epic Games", platform="PC")
+    b = Candidate(id=2, title="Hades", source="Steam", platform="PC")
+    verdict = matching.assess_copy(a, b)
+    assert verdict is not None and verdict.conflicts == ["store"]
+
+
+EPIC_PLUGIN = SourceConnectionRef(
+    source_kind="plugin", source="epic-games", source_scope="acct", label="Epic Games"
+)
+
+
+async def test_playnite_and_plugin_epic_records_are_one_copy_reported_twice(users):  # noqa: F811
+    """The same Epic game reached through Playnite and through the Epic plugin is a possible
+    duplicate (not another store's copy), and the entry says who reported each record."""
+    user = await users()
+    via_playnite = await record(user, PLAYNITE, "g", title="Alan Wake 2", release=None)
+    via_plugin = await record(user, EPIC_PLUGIN, "ae", title="Alan Wake 2", release=None)
+    async with SessionLocal() as db:
+        await db.execute(update(Game).where(Game.id == via_playnite).values(source="Epic"))
+        await db.execute(update(Game).where(Game.id == via_plugin).values(source="Epic Games"))
+        await db.commit()
+    await match(user)
+    (entry,) = await queue(user)
+    assert entry["kind"] == "duplicate"
+    reporters = {
+        entry[side]["id"]: [
+            (r["kind"], r["source"], r["label"]) for r in entry[side]["reported_by"]
+        ]
+        for side in ("first", "second")
+    }
+    assert reporters[via_playnite] == [("host", "playnite", "playnite")]
+    assert reporters[via_plugin] == [("plugin", "epic-games", "Epic Games")]
