@@ -158,13 +158,25 @@ const {
   cardsInRow,
 } = useGameLibrary();
 
-// Start only the first row's artwork before Vue mounts the buffered grid.
-// Other rows keep the shared viewport/scroll queue, including direction checks.
-watch(loading, (pending) => {
-  if (pending || viewMode.value !== "cards" || window.scrollY > 0) return;
-  for (const game of cardsInRow(0))
-    if (game.hasKeyArt !== false) preloadImage(game.coverImageUrl);
-});
+// Hand the first row to the browser before Vue mounts the buffered grid.
+// Later rows keep the shared viewport/scroll queue, including direction checks.
+let initialArtworkQueued = false;
+watch(
+  games,
+  (items) => {
+    if (
+      initialArtworkQueued ||
+      !items.length ||
+      viewMode.value !== "cards" ||
+      window.scrollY > 0
+    )
+      return;
+    initialArtworkQueued = true;
+    for (const game of cardsInRow(0))
+      if (game.hasKeyArt !== false) preloadImage(game.coverImageUrl);
+  },
+  { flush: "sync" },
+);
 const visibleListRows = computed(() =>
   listRowVirtualizer.value.getVirtualItems().flatMap((row) => {
     const game = filteredGames.value[row.index];
