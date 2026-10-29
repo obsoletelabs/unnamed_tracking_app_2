@@ -45,13 +45,17 @@ watch(
   { immediate: true },
 );
 
-onMounted(async () => {
+const statusFailed = ref(false);
+async function checkAvailability() {
+  statusFailed.value = false;
+  available.value = null;
   try {
     available.value = await invitationStatus();
   } catch {
-    available.value = false;
+    statusFailed.value = true;
   }
-});
+}
+onMounted(checkAvailability);
 
 async function submit() {
   if (!credential.value) return;
@@ -97,6 +101,19 @@ async function submit() {
       <AppBrand compact />
       <h1>Create your account</h1>
       <p v-if="message" role="status">{{ message }}</p>
+      <template v-else-if="statusFailed">
+        <p role="alert">
+          Could not check whether invitations are available. Your link is still
+          valid.
+        </p>
+        <button
+          class="ui-btn ui-btn-secondary"
+          type="button"
+          @click="checkAvailability"
+        >
+          Try again
+        </button>
+      </template>
       <p v-else-if="available === null">Checking invitation availability…</p>
       <p v-else-if="!available">
         Invitations are currently unavailable. Contact the administrator.

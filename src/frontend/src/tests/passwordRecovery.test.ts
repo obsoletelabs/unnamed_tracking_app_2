@@ -55,7 +55,8 @@ it("fails closed on unavailable contributions and preserves safe policy errors",
       json: async () => ({ detail: "Password policy" }),
     }),
   );
-  expect(await passwordResetStatus()).toBe(false);
+  // a failed check is an error callers can retry, never "enabled"
+  await expect(passwordResetStatus()).rejects.toThrow("availability");
   await expect(completePasswordReset("id", "secret", "short")).rejects.toThrow(
     "Password policy",
   );
