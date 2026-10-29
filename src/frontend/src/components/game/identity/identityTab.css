@@ -72,3 +72,9 @@ a {
     flex: 1 1 100%;
   }
 }
+.same-copy {
+  align-items: flex-start;
+  display: flex;
+  font-size: 0.85rem;
+  gap: 8px;
+}

@@ -1,4 +1,5 @@
 import { failedRequest } from "./apiError";
+import type { Reporter } from "../utils/gameOrigin";
 
 export interface ReviewGame {
   id: string;
@@ -11,6 +12,8 @@ export interface ReviewGame {
   status: string;
   playtime_seconds: number;
   last_played_at: number | null;
+  /** The connections reporting this record: Playnite, a plugin, a store sync. */
+  reported_by?: Reporter[];
 }
 
 export interface ReviewDifference {
@@ -67,20 +70,46 @@ export async function fetchAutomaticMerges(
   return (await send("/automatic", { signal })).json().then((r) => r.merges);
 }
 
+/** How the other copy shows in the library once grouped. */
+export type CopyDisplay = "default" | "link" | "hidden";
+
 /** Accept a suggestion. `mainId` picks the main copy; omitted, the furthest
- * progressed and most played copy stays main. */
+ * progressed and most played copy stays main. `display` is how the other copy
+ * shows in the library (default: folded under the main entry). `sameCopy`
+ * says the two records are one copy reported by two sources, so its playtime
+ * is counted once; the server refuses it for different stores or platforms. */
 export async function mergeReviewEntry(
   id: string,
   mainId?: string,
+  display?: CopyDisplay,
+  sameCopy = false,
 ): Promise<void> {
+  const body = {
+    ...(mainId ? { target_id: mainId } : {}),
+    ...(display && display !== "default" ? { display } : {}),
+    ...(sameCopy ? { same_copy: true } : {}),
+  };
   await send(`/queue/${id}/merge`, {
     method: "POST",
-    ...(mainId
+    ...(Object.keys(body).length
       ? {
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ target_id: mainId }),
+          body: JSON.stringify(body),
         }
       : {}),
+  });
+}
+
+/** Different games where one is a remake, port, DLC... of the other. Both
+ * stay in the library and the pair is not suggested again. */
+export async function relateReviewEntry(
+  id: string,
+  relation: { kind: string; fromId: string },
+): Promise<void> {
+  await send(`/queue/${id}/relate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind: relation.kind, from_id: relation.fromId }),
   });
 }
 
