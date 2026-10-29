@@ -227,7 +227,9 @@ function initialize(config: SetupConfiguration) {
   currentSection.value = "welcome";
 }
 
-onMounted(async () => {
+async function loadSetup() {
+  loading.value = true;
+  error.value = null;
   try {
     const [status, config, policy] = await Promise.all([
       fetchSetupStatus(),
@@ -266,7 +268,8 @@ onMounted(async () => {
   } finally {
     loading.value = false;
   }
-});
+}
+onMounted(loadSetup);
 
 function toggleOptional(section: SetupSection) {
   if (section.required || section.status === "completed_by_env") return;
@@ -335,6 +338,7 @@ function payloadValues(): Record<string, unknown> {
 }
 
 async function submit() {
+  if (!configuration.value) return; // nothing loaded: never create an admin from empty fields
   error.value = null;
   saved.value = false;
 
@@ -424,7 +428,11 @@ async function submit() {
     if (configuration.value && !(await fetchSetupStatus()).setup_required) {
       await saveSetupConfiguration(submission);
       saved.value = true;
-      configuration.value = await fetchSetupConfiguration();
+      try {
+        configuration.value = await fetchSetupConfiguration();
+      } catch {
+        // the save went through; the values on screen stay as entered
+      }
       return;
     }
 
@@ -466,6 +474,22 @@ async function submit() {
         <h1>{{ branding.app_name }} setup</h1>
       </div>
       <p class="subtitle">Loading the configuration registry…</p>
+    </section>
+
+    <section
+      v-else-if="error && !configuration"
+      class="setup-card"
+      aria-labelledby="setup-load-failed"
+    >
+      <div class="brand">
+        <span>🎮</span>
+        <AppBrand compact />
+        <h1 id="setup-load-failed">{{ branding.app_name }} setup</h1>
+      </div>
+      <p class="error" role="alert">{{ error }}</p>
+      <button class="ui-btn ui-btn-primary" type="button" @click="loadSetup">
+        Try again
+      </button>
     </section>
 
     <section v-else class="setup-shell">

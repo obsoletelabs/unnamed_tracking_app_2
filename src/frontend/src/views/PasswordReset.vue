@@ -41,13 +41,17 @@ watch(
   { immediate: true },
 );
 
-onMounted(async () => {
+const statusFailed = ref(false);
+async function checkAvailability() {
+  statusFailed.value = false;
+  available.value = null;
   try {
     available.value = await passwordResetStatus();
   } catch {
-    available.value = false;
+    statusFailed.value = true;
   }
-});
+}
+onMounted(checkAvailability);
 
 async function submit() {
   error.value = "";
@@ -84,7 +88,19 @@ async function submit() {
       <h1>
         {{ credential ? "Choose a new password" : "Reset your password" }}
       </h1>
-      <p v-if="available === null">Checking recovery availability…</p>
+      <template v-if="statusFailed">
+        <p role="alert">
+          Could not check whether password recovery is available.
+        </p>
+        <button
+          class="ui-btn ui-btn-secondary"
+          type="button"
+          @click="checkAvailability"
+        >
+          Try again
+        </button>
+      </template>
+      <p v-else-if="available === null">Checking recovery availability…</p>
       <p v-else-if="!available">
         Password recovery is currently unavailable. Contact your administrator.
       </p>
