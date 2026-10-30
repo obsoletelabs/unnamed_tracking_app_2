@@ -15,6 +15,10 @@ import {
   type ManualAchievement,
 } from "../../services/gameTracking";
 import { useConfirm } from "../../state/dialog";
+import {
+  localInputToUnixSeconds,
+  toLocalInput,
+} from "../../utils/achievements";
 
 const props = defineProps<{
   gameId: string;
@@ -56,6 +60,14 @@ const draft = ref({
   category: "",
   iconUrl: "",
   scope: "version" as "version" | "umbrella",
+  achieved: false,
+  earnedAt: "",
+});
+const nowInput = () => toLocalInput(new Date());
+const earnedAtInvalid = computed(() => {
+  if (!draft.value.achieved) return false;
+  const seconds = localInputToUnixSeconds(draft.value.earnedAt);
+  return seconds === null || seconds > Date.now() / 1000 + 60;
 });
 
 async function load(): Promise<void> {
@@ -105,6 +117,8 @@ function startAdd(): void {
     category: "",
     iconUrl: "",
     scope: "version",
+    achieved: false,
+    earnedAt: nowInput(),
   };
   editingId.value = null;
   adding.value = true;
@@ -116,6 +130,10 @@ function startEdit(item: ManualAchievement): void {
     category: item.category ?? "",
     iconUrl: "",
     scope: item.scope,
+    achieved: item.achieved,
+    earnedAt: item.achievedAt
+      ? toLocalInput(new Date(item.achievedAt * 1000))
+      : nowInput(),
   };
   adding.value = false;
   editingId.value = item.id;
@@ -129,12 +147,17 @@ const saveDraft = () =>
   act(async () => {
     const d = draft.value;
     if (!d.title.trim()) throw new Error("Give the achievement a title.");
+    if (earnedAtInvalid.value)
+      throw new Error("Choose an earned time that is not in the future.");
+    const earnedAt = d.achieved ? localInputToUnixSeconds(d.earnedAt) : null;
     if (editingId.value) {
       await updateManualAchievement(editingId.value, {
         title: d.title,
         description: blank(d.description),
         category: blank(d.category),
         ...(d.iconUrl.trim() ? { iconUrl: d.iconUrl.trim() } : {}),
+        achieved: d.achieved,
+        achievedAt: earnedAt,
       });
     } else {
       await createManualAchievement(props.gameId, {
@@ -143,6 +166,8 @@ const saveDraft = () =>
         category: blank(d.category),
         iconUrl: blank(d.iconUrl),
         scope: d.scope,
+        achieved: d.achieved,
+        achievedAt: earnedAt,
       });
     }
     cancel();
@@ -162,7 +187,7 @@ async function remove(item: ManualAchievement): Promise<void> {
     await act(async () => removeManualAchievement(item.id));
 }
 const when = (seconds: number | null) =>
-  seconds ? new Date(seconds * 1000).toLocaleDateString() : "";
+  seconds ? new Date(seconds * 1000).toLocaleString() : "";
 const manualItems = computed(() => totals.value?.manual ?? []);
 const several = computed(() => (totals.value?.versions.length ?? 0) > 1);
 </script>
@@ -287,6 +312,22 @@ const several = computed(() => (totals.value?.versions.length ?? 0) > 1);
           type="url"
           placeholder="https://"
       /></label>
+      <label class="earned"
+        ><input v-model="draft.achieved" type="checkbox" /> Earned</label
+      >
+      <label v-if="draft.achieved"
+        >Earned on
+        <input
+          v-model="draft.earnedAt"
+          class="ui-field"
+          type="datetime-local"
+          :max="nowInput()"
+          required
+        />
+        <span v-if="earnedAtInvalid" class="hint" role="alert"
+          >Choose a date and time that is not in the future.</span
+        ></label
+      >
       <label v-if="adding"
         >Applies to
         <select v-model="draft.scope" class="ui-field">
@@ -295,7 +336,11 @@ const several = computed(() => (totals.value?.versions.length ?? 0) > 1);
         </select>
       </label>
       <div class="actions">
-        <button class="ui-btn ui-btn-primary" type="submit" :disabled="busy">
+        <button
+          class="ui-btn ui-btn-primary"
+          type="submit"
+          :disabled="busy || earnedAtInvalid"
+        >
           {{ editingId ? "Save changes" : "Add" }}
         </button>
         <button

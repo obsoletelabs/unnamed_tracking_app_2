@@ -1,6 +1,7 @@
 """Provider achievement catalogues: contract, row mapping, storage and the route fallbacks."""
 
 import asyncio
+import time
 import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -424,3 +425,64 @@ async def test_route_surfaces_catalogue_errors_when_no_data_is_available(scratch
 
     assert raised.value.status_code == 502
     assert raised.value.detail == "Metadata provider lookup failed: Atlas is unavailable"
+
+
+@pytest.mark.asyncio
+async def test_earned_date_can_be_set_changed_and_is_validated(scratch_game):
+    async with SessionLocal() as db:
+        game = await db.get(Game, scratch_game.game_id)
+        user = await db.get(User, scratch_game.user_id)
+        achievement = Achievement(
+            game_id=game.id,
+            provider="Steam",
+            external_id="ACH_DATE",
+            name="Dated",
+            unlocked=False,
+        )
+        db.add(achievement)
+        await db.commit()
+
+        earned = 1_600_000_000
+        saved = await game_achievements.set_game_achievement_progress(
+            game.id,
+            achievement.id,
+            game_achievements.AchievementProgressUpdate(unlocked=True, unlocked_at=earned),
+            db,
+            user,
+        )
+        assert saved["unlocked_at"] == earned
+        listed = await game_achievements.list_game_achievements(game.id, db, user)
+        assert listed[0]["unlocked_at"] == earned
+
+        corrected = earned + 86_400
+        saved = await game_achievements.set_game_achievement_progress(
+            game.id,
+            achievement.id,
+            game_achievements.AchievementProgressUpdate(unlocked=True, unlocked_at=corrected),
+            db,
+            user,
+        )
+        assert saved["unlocked_at"] == corrected
+
+        with pytest.raises(HTTPException) as future:
+            await game_achievements.set_game_achievement_progress(
+                game.id,
+                achievement.id,
+                game_achievements.AchievementProgressUpdate(
+                    unlocked=True, unlocked_at=int(time.time()) + 86_400
+                ),
+                db,
+                user,
+            )
+        assert future.value.status_code == 422
+
+        unchanged = await game_achievements.list_game_achievements(game.id, db, user)
+        assert unchanged[0]["unlocked_at"] == corrected
+
+
+def test_earned_date_requires_an_unlock_and_a_positive_time():
+    with pytest.raises(ValidationError):
+        game_achievements.AchievementProgressUpdate(unlocked=False, unlocked_at=1_600_000_000)
+    with pytest.raises(ValidationError):
+        game_achievements.AchievementProgressUpdate(unlocked=True, unlocked_at=-5)
+    assert game_achievements.AchievementProgressUpdate(unlocked=True).unlocked_at is None

@@ -389,6 +389,7 @@ export async function setGameAchievementProgress(
   gameId: string,
   achievementId: string,
   unlocked: boolean,
+  unlockedAt: number | null = null,
 ): Promise<void> {
   if (import.meta.env.VITE_USE_MOCK_DATA === "true") return;
   const response = await fetch(
@@ -397,7 +398,11 @@ export async function setGameAchievementProgress(
       method: "PUT",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ unlocked }),
+      body: JSON.stringify(
+        unlockedAt === null
+          ? { unlocked }
+          : { unlocked, unlocked_at: unlockedAt },
+      ),
     },
   );
   if (!response.ok) throw await failedRequest(response);

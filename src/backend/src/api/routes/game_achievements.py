@@ -4,7 +4,7 @@ import time
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import Integer, exists, func, or_, select
 from sqlalchemy import cast as sql_cast
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,9 +31,20 @@ _DB_DEPENDENCY = Depends(get_db)
 _CURRENT_USER_DEPENDENCY = Depends(get_current_user)
 
 
+# A clock that is slightly ahead should not reject an earned date of "now".
+FUTURE_TOLERANCE_SECONDS = 300
+
+
 class AchievementProgressUpdate(BaseModel):
     unlocked: bool
-    unlocked_at: int | None = None
+    # Unix seconds the achievement was earned. Defaults to now when it is unlocked without one.
+    unlocked_at: int | None = Field(default=None, ge=1, le=2**53 - 1)
+
+    @model_validator(mode="after")
+    def date_requires_unlock(self) -> "AchievementProgressUpdate":
+        if self.unlocked_at is not None and not self.unlocked:
+            raise ValueError("An earned date can only be set on an unlocked achievement")
+        return self
 
 
 @router.get("/achievements-summary")
@@ -111,6 +122,14 @@ async def set_game_achievement_progress(
     )
     if achievement is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Achievement not found")
+
+    if progress.unlocked_at is not None and progress.unlocked_at > int(time.time()) + (
+        FUTURE_TOLERANCE_SECONDS
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="The earned date cannot be in the future",
+        )
 
     provider = CATALOG if is_catalog(achievement) else achievement.provider
     override = await db.scalar(

@@ -13,6 +13,12 @@ import {
   fetchGameAchievements,
   setGameAchievementProgress,
 } from "../services/games";
+function isoToUnixSeconds(value: string | null): number | null {
+  if (!value) return null;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? Math.floor(time / 1000) : null;
+}
+
 export type AchFilter = "all" | "unlocked" | "locked" | "hidden" | "pinned";
 
 export function useGameAchievements(game: Ref<Game | null>) {
@@ -107,15 +113,21 @@ export function useGameAchievements(game: Ref<Game | null>) {
   async function setManualProgress(
     a: Achievement,
     unlocked: boolean,
+    unlockedAt: number | null = null,
   ): Promise<boolean> {
     const current = game.value;
     if (!current || progressUpdating.value.has(a.id)) return false;
-    if (a.manualOverride && isUnlocked(a) === unlocked) return true;
+    if (
+      a.manualOverride &&
+      isUnlocked(a) === unlocked &&
+      (unlockedAt === null || unlockedAt === isoToUnixSeconds(a.unlockedAt))
+    )
+      return true;
     progressError.value = "";
     progressUpdating.value = new Set(progressUpdating.value).add(a.id);
     let saved = false;
     try {
-      await setGameAchievementProgress(current.id, a.id, unlocked);
+      await setGameAchievementProgress(current.id, a.id, unlocked, unlockedAt);
       saved = true;
       const refreshed = await fetchGameAchievements(current.id);
       if (game.value?.id === current.id) {
@@ -132,7 +144,9 @@ export function useGameAchievements(game: Ref<Game | null>) {
       // The write may have succeeded even if the follow-up list fetch failed.
       if (saved && game.value?.id === current.id) {
         a.unlocked = unlocked;
-        a.unlockedAt = unlocked ? new Date().toISOString() : null;
+        a.unlockedAt = unlocked
+          ? new Date((unlockedAt ?? Date.now() / 1000) * 1000).toISOString()
+          : null;
         a.manualOverride = true;
         current.achievementPercent = current.achievements.length
           ? Math.round(
@@ -193,14 +207,20 @@ export function useGameAchievements(game: Ref<Game | null>) {
     a: Achievement,
     progress: "synced" | "unlocked" | "locked",
     note: string,
+    earnedAt: number | null = null,
   ): Promise<boolean> {
     let progressSaved = true;
     if (progress === "synced") {
       if (a.manualOverride) progressSaved = await useSyncedProgress(a);
     } else {
       const unlocked = progress === "unlocked";
-      if (!a.manualOverride || isUnlocked(a) !== unlocked)
-        progressSaved = await setManualProgress(a, unlocked);
+      const date = unlocked ? earnedAt : null;
+      if (
+        !a.manualOverride ||
+        isUnlocked(a) !== unlocked ||
+        (date !== null && date !== isoToUnixSeconds(a.unlockedAt))
+      )
+        progressSaved = await setManualProgress(a, unlocked, date);
     }
     if (!progressSaved) return false;
 
