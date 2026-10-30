@@ -269,7 +269,9 @@ TMDB identities distinguish `tmdb.movie` from `tmdb.tv`. A unique provider-ID or
 exact trimmed case-insensitive title/year match can enrich an existing record;
 ambiguous, contradictory or incomplete matches return owned candidates for review.
 
-An enrich request may also carry `watch_url` (an HTTP(S) address without credentials; a
+Plugin API v1.1.18 adds `watch_url` and `watch_label` to `media.sync` enrich requests, so a plugin
+that sends them declares `api_contract_version` 1.1.18 and older hosts refuse it instead of failing
+its syncs. An enrich request may also carry `watch_url` (an HTTP(S) address without credentials; a
 fragment and a private host are allowed) and `watch_label` (up to 80 characters, such as
 "Jellyfin · Home"). The host stores them on that source's link when the sync is applied, so a
 media page can offer "Watch in …" from what the last sync recorded, with no live lookup. A
