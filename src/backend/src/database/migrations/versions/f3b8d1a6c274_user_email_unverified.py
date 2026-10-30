@@ -24,7 +24,9 @@ def upgrade() -> None:
     # Existing accounts keep their current behaviour: how their address was set is not recorded.
     h.add_column_if_missing(
         "users",
-        sa.Column("email_unverified", sa.Boolean(), server_default=sa.text("false"), nullable=False),
+        sa.Column(
+            "email_unverified", sa.Boolean(), server_default=sa.text("false"), nullable=False
+        ),
     )
 
 
