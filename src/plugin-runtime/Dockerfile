@@ -16,6 +16,10 @@ COPY src/plugin-runtime/legacy_compatibility.py ./legacy_compatibility.py
 COPY src/plugin-runtime/notification_transport.py ./notification_transport.py
 COPY src/backend/src/plugin_api/legacy_compatibility.json ./legacy_compatibility.json
 
+# Set only for the image name being phased out; the runtime then logs where to move to.
+ARG REPLACEMENT_IMAGE=""
+ENV PLUGIN_RUNTIME_REPLACEMENT_IMAGE=${REPLACEMENT_IMAGE}
+
 USER 10001:10001
 
 ENV PLUGIN_RUNTIME_HOST=0.0.0.0

@@ -1,25 +1,11 @@
 name: Production runtime smoke tests
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-    paths:
-      - "src/backend/**"
-      - "src/frontend/**"
-      - "src/docker-container/**"
-      - "compose.yaml"
-      - "example-docker-compose.yaml"
-      - "tools/check_plugin_runtime_deployment.py"
-      - ".github/workflows/docker-container.yml"
-      - ".github/workflows/production-runtime-smoke.yml"
+  workflow_call:
   workflow_dispatch:
   schedule:
     - cron: "17 3 * * 1"
   workflow_run:
-    workflows: ["Build and test production Docker container"]
+    workflows: ["CI"]
     types: [completed]
     branches:
       - main

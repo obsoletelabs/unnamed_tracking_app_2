@@ -1,0 +1,151 @@
+name: CI
+
+# The single entry point for CI. A `gate` job decides once whether this trigger should do the work
+# (see tools/ci_gate.py) and which areas changed; every pipeline below is a reusable workflow that
+# is skipped, without taking a runner, when it does not apply. The pipelines do not depend on each
+# other, so they start together; they are listed with the longest first so it gets a runner first.
+
+on:
+  push:
+    tags: ["v*"]
+    branches: ["**"]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  # Used by the Cut beta workflow: a tag pushed with the workflow token does not trigger CI itself.
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      run: ${{ steps.gate.outputs.run }}
+      reason: ${{ steps.gate.outputs.reason }}
+      backend: ${{ steps.gate.outputs.backend }}
+      frontend: ${{ steps.gate.outputs.frontend }}
+      images: ${{ steps.gate.outputs.images }}
+      smoke: ${{ steps.gate.outputs.smoke }}
+      recovery: ${{ steps.gate.outputs.recovery }}
+      restore_drill: ${{ steps.gate.outputs.restore_drill }}
+      docs: ${{ steps.gate.outputs.docs }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: tools/ci_gate.py
+          sparse-checkout-cone-mode: false
+      - id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/ci_gate.py
+      - name: Summarise the decision
+        run: |
+          {
+            echo "### CI gate"
+            echo "run: \`${{ steps.gate.outputs.run }}\` (${{ steps.gate.outputs.reason }})"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  backend:
+    name: Backend
+    needs: gate
+    if: needs.gate.outputs.run == 'true' && needs.gate.outputs.backend == 'true'
+    uses: ./.github/workflows/backend-checks.yml
+
+  frontend:
+    name: Frontend
+    needs: gate
+    if: needs.gate.outputs.run == 'true' && needs.gate.outputs.frontend == 'true'
+    uses: ./.github/workflows/frontend-checks.yml
+    permissions:
+      contents: write
+      pull-requests: write
+
+  ruff:
+    name: Ruff
+    needs: gate
+    if: needs.gate.outputs.run == 'true' && needs.gate.outputs.backend == 'true'
+    uses: ./.github/workflows/ruff.yml
+    permissions:
+      contents: write
+      pull-requests: write
+
+  production-container:
+    name: Production container
+    needs: gate
+    if: needs.gate.outputs.run == 'true' && needs.gate.outputs.images == 'true'
+    uses: ./.github/workflows/docker-container.yml
+    permissions:
+      contents: read
+      packages: write
+
+  images:
+    name: Images
+    needs: gate
+    if: needs.gate.outputs.run == 'true' && needs.gate.outputs.images == 'true'
+    uses: ./.github/workflows/docker.yml
+    permissions:
+      contents: read
+      packages: write
+
+  runtime-smoke:
+    name: Runtime smoke
+    needs: gate
+    if: needs.gate.outputs.run == 'true' && needs.gate.outputs.smoke == 'true'
+    uses: ./.github/workflows/production-runtime-smoke.yml
+    permissions:
+      contents: read
+      packages: read
+
+  recovery:
+    name: Backup recovery
+    needs: gate
+    if: needs.gate.outputs.run == 'true' && needs.gate.outputs.recovery == 'true'
+    uses: ./.github/workflows/deployment-backups.yml
+
+  restore-drill:
+    name: Restore drill
+    needs: gate
+    if: needs.gate.outputs.run == 'true' && needs.gate.outputs.restore_drill == 'true'
+    uses: ./.github/workflows/restore-drill.yml
+    permissions:
+      contents: read
+      issues: write
+
+  docs:
+    name: Documentation
+    needs: gate
+    if: needs.gate.outputs.run == 'true' && needs.gate.outputs.docs == 'true'
+    uses: ./.github/workflows/docs.yml
+
+  # The one status to require: green when nothing that ran failed. Skipped pipelines are fine.
+  ci-result:
+    name: CI result
+    needs: [gate, backend, frontend, ruff, production-container, images, runtime-smoke, recovery, restore-drill, docs]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every pipeline that ran to pass
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+
+          results = json.loads(os.environ["RESULTS"])
+          bad = {n: j["result"] for n, j in results.items() if j["result"] not in ("success", "skipped")}
+          for name, job in results.items():
+              print(f"{name}: {job['result']}")
+          if bad:
+              raise SystemExit(f"CI did not pass: {bad}")
+          PY

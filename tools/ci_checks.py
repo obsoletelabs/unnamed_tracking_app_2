@@ -18,7 +18,11 @@ BACKEND = "src/backend/"
 FRONTEND = "src/frontend/"
 FRONTEND_SOURCE = (".vue", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".css")
 FRONTEND_FORMAT = (*FRONTEND_SOURCE, ".json", ".html", ".md", ".yaml", ".yml", ".scss")
-SHARED_CONFIG = {"tools/ci_checks.py", ".github/actions/changed-files/action.yml"}
+SHARED_CONFIG = {
+    "tools/ci_checks.py",
+    ".github/actions/changed-files/action.yml",
+    ".github/workflows/ci.yml",
+}
 
 
 def git(*arguments: str, root: Path = ROOT) -> list[str]:

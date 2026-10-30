@@ -1,0 +1,71 @@
+name: Cut beta
+
+# Manually cut a prerelease from a branch or commit: pick the release line (for example 0.0.5)
+# and the ref to tag. The next `vX.Y.Z-beta.N` is worked out for you and then built, tagged and
+# released by the normal pipelines. Several lines can have betas at once; `X.Y.Z-beta` follows
+# each line, and `latest-beta` follows the next line to ship (see tools/release_tags.py).
+#
+# Give a label other than `beta` to publish a one-off preview of a branch (for example a feature
+# for a later release). Previews only get their exact tag and never move a shared tag.
+
+on:
+  workflow_dispatch:
+    inputs:
+      line:
+        description: Release line the beta belongs to, as X.Y.Z (for example 0.0.5)
+        required: true
+        type: string
+      ref:
+        description: Branch or commit to tag
+        required: true
+        default: main
+        type: string
+      label:
+        description: Prerelease label; leave as beta for a normal beta
+        required: true
+        default: beta
+        type: string
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: cut-beta
+  cancel-in-progress: false
+
+jobs:
+  cut:
+    name: Cut ${{ inputs.label }} for ${{ inputs.line }}
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LINE: ${{ inputs.line }}
+      REF: ${{ inputs.ref }}
+      LABEL: ${{ inputs.label }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Validate the request
+        run: |
+          [[ "$LINE" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "line must look like 0.0.5"; exit 1; }
+          [[ "$LABEL" =~ ^[a-z][a-z0-9-]{0,30}$ ]] || { echo "label must be lowercase letters, digits and hyphens"; exit 1; }
+          if git rev-parse -q --verify "refs/tags/v$LINE" >/dev/null; then
+            echo "v$LINE has already been released; cut a beta for a later line instead."
+            exit 1
+          fi
+
+      - name: Tag the next beta and start its release
+        run: |
+          last="$(git tag --list "v$LINE-$LABEL.*" | sed "s/.*\.//" | sort -n | tail -1)"
+          tag="v$LINE-$LABEL.$(( ${last:-0} + 1 ))"
+          git tag "$tag"
+          git push origin "refs/tags/$tag"
+          # Tags pushed with the workflow token do not trigger workflows, so start them directly.
+          gh workflow run ci.yml --ref "$tag"
+          gh workflow run release.yml --ref "$tag"
+          echo "Cut $tag from $(git rev-parse --short HEAD) ($REF)." | tee -a "$GITHUB_STEP_SUMMARY"

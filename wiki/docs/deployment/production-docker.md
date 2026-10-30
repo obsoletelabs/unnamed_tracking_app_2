@@ -72,6 +72,44 @@ validated by the runtime.
 
 The host enforces authenticated gateway access and capability grants. Plugin browser traffic is served through the application and is never published directly from the runtime.
 
+### Plugin runtime image name
+
+The runtime image is published as `ghcr.io/obsoletelabs/unnamed_tracking_plugin_runtime`.
+The original name, `ghcr.io/obsoletelabs/unnamed_tracking_app_2-plugin-runtime`, still
+receives the same tags and contents so existing deployments keep working, but it is being
+phased out. A runtime started from the original name logs a deprecation notice naming the new
+image at startup and every five minutes. Change the `image:` of your `plugin-runtime`
+service to the new name; the tags are unchanged.
+
+### Release tags
+
+Image tags follow the Git tag or branch that triggered the build
+(`tools/release_tags.py` decides the release tags):
+
+| Source | Image tags |
+| --- | --- |
+| `v1.2.3` | `v1.2.3`, `1.2.3`, `1.2`, and `latest` unless a higher stable release exists |
+| `v1.2.3-beta.4` | `v1.2.3-beta.4`, `1.2.3-beta.4`, `1.2.3-beta` (this line's newest beta), and `latest-beta` when 1.2.3 is the next line to ship |
+| `v1.2.3-remote-launch.1` (a labelled preview) | only `v1.2.3-remote-launch.1` and `1.2.3-remote-launch.1`; no shared tag moves |
+| branch without a pull request | the branch name and `sha-<commit>` |
+| pull request (same repository) | `pr-<number>`, the branch name and `sha-<commit>` |
+
+Betas for several release lines can exist at once. Each line keeps its own `X.Y.Z-beta` tag, and
+`latest-beta` follows only the next line to ship. Running a beta of a later line, or any
+`pr-<number>` image, against real data is risky: database migrations only move forward, so an older
+version cannot be pointed back at a database a newer one has migrated. Use a copy or throwaway data.
+
+### Cutting a beta
+
+Run the **Cut beta** workflow (Actions tab, or `gh workflow run beta.yml -f line=0.0.5 -f ref=main`).
+It takes the release line, the branch or commit to tag and a label (default `beta`), works out the
+next `-beta.N`, tags it and starts the normal build and release for that tag. It refuses a line
+that has already been released. Use another label to preview a branch for a later release.
+
+Pushing a `v*` tag also publishes a GitHub release with generated notes (marked as a
+prerelease when the tag has a suffix). A stable release closes the open milestone with the same
+name.
+
 ## Permissions and filesystem
 
 Nginx workers run as `www-data`; the master retains the privileges required to bind ports 80/443 and control the process. Runtime status/log files are under `/run/unnamed-tracking`.

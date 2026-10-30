@@ -6,20 +6,10 @@ on:
   schedule:
     - cron: "41 4 * * 2"
   workflow_dispatch:
-  pull_request:
-    paths:
-      - src/backend/src/database/restore_drill.py
-      - src/backend/src/database/startup_backup.py
-      - src/backend/tests/test_restore_drill.py
-      - src/backend/tests/test_migration_upgrade_matrix.py
-      - .github/workflows/restore-drill.yml
+  workflow_call:
 
 permissions:
   contents: read
-
-concurrency:
-  group: restore-drill-${{ github.ref }}
-  cancel-in-progress: true
 
 defaults:
   run:
@@ -66,7 +56,7 @@ jobs:
       PYTHONPATH: ${{ github.workspace }}/src/backend
       DATABASE_URL: postgresql+psycopg://test:test@localhost:5432/unnamed_tracking_test
       RESTORE_DRILL_TARGET_URL: postgresql+psycopg://test:test@localhost:5433/unnamed_tracking_test
-      RESTORE_DRILL_REPORT_DIR: ${{ runner.temp }}/restore-drill
+      RESTORE_DRILL_REPORT_DIR: /tmp/restore-drill
       PRIMARY_USER_USERNAME: test
       PRIMARY_USER_EMAIL: test@example.com
       PRIMARY_USER_PASSWORD: test-password
@@ -113,7 +103,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: restore-drill-report-${{ github.run_id }}
-          path: ${{ runner.temp }}/restore-drill
+          path: /tmp/restore-drill
           if-no-files-found: ignore
 
       # The alert: one open issue per failing period, with a link to the report.
