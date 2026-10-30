@@ -3,12 +3,19 @@
 // plugin), what each contributes and, where two sources report the same
 // playtime, which one is preferred. The choice is the counters' own source
 // priority, so the Advanced dialog's Counters tab always agrees (#339, #349).
+// A "Metadata" row shows the preferred metadata source and which fields the
+// sources disagree on; the per-field list lives beside the field itself.
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import {
   fetchIdentitySources,
   setCounterPriority,
   type IdentitySources,
 } from "../../services/gameIdentity";
+import {
+  fetchFieldSources,
+  type FieldSources,
+} from "../../services/gameFieldSources";
+import { FIELD_LABELS, metadataSummary } from "../../utils/fieldSources";
 import { agoLabel } from "../../utils/identityDisplay";
 import {
   hasContest,
@@ -20,6 +27,7 @@ const props = defineProps<{ gameId: string }>();
 const emit = defineEmits<{ changed: [] }>();
 
 const data = ref<IdentitySources | null>(null);
+const fieldSources = ref<FieldSources>({});
 const loading = ref(true);
 const error = ref<string | null>(null);
 const actionError = ref<string | null>(null);
@@ -42,6 +50,13 @@ async function load(): Promise<void> {
   } finally {
     if (!mine.signal.aborted) loading.value = false;
   }
+  // the metadata row is optional: the playtime sources show without waiting for it
+  try {
+    const fields = await fetchFieldSources(props.gameId, mine.signal);
+    if (!mine.signal.aborted) fieldSources.value = fields;
+  } catch {
+    if (!mine.signal.aborted) fieldSources.value = {};
+  }
 }
 
 watch(() => props.gameId, load, { immediate: true });
@@ -51,6 +66,18 @@ const sources = computed(() =>
   data.value ? summarizeSources(data.value) : [],
 );
 const contested = computed(() => hasContest(sources.value));
+const metadata = computed(() => metadataSummary(fieldSources.value));
+const showMetadata = computed(
+  () =>
+    !!metadata.value.preferredLabel || metadata.value.disagreeing.length > 0,
+);
+
+// the per-field list sits beside the field: take the person to its label
+function showField(field: string): void {
+  const label = document.getElementById(`field-source-${field}`);
+  label?.scrollIntoView({ block: "center" });
+  label?.focus();
+}
 
 async function prefer(key: string): Promise<void> {
   if (!data.value) return;
@@ -76,7 +103,7 @@ async function prefer(key: string): Promise<void> {
 
 <template>
   <section
-    v-if="error || sources.length || (loading && !data)"
+    v-if="error || sources.length || showMetadata || (loading && !data)"
     class="sources"
     aria-labelledby="game-sources-title"
   >
@@ -123,6 +150,26 @@ async function prefer(key: string): Promise<void> {
           </ul>
           <p v-if="source.lastObservedAt" class="sub">
             Updated {{ agoLabel(source.lastObservedAt) }}
+          </p>
+        </li>
+        <li v-if="showMetadata" class="source metadata-row">
+          <div class="head">
+            <strong>Metadata</strong>
+            <span v-if="metadata.preferredLabel" class="tag preferred"
+              >Preferred: {{ metadata.preferredLabel }} ({{
+                metadata.preferredFields
+              }}
+              {{ metadata.preferredFields === 1 ? "field" : "fields" }})</span
+            >
+          </div>
+          <p v-if="metadata.disagreeing.length" class="sub">
+            Sources disagree on
+            <template v-for="(field, i) in metadata.disagreeing" :key="field"
+              >{{ i ? ", " : ""
+              }}<button type="button" class="link" @click="showField(field)">
+                {{ FIELD_LABELS[field] }}
+              </button></template
+            >.
           </p>
         </li>
       </ul>
@@ -192,6 +239,15 @@ h2 {
   border-radius: 6px;
   font-size: 0.8rem;
   padding: 1px 8px;
+}
+.link {
+  background: none;
+  border: 0;
+  color: var(--ui-accent, inherit);
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  text-decoration: underline;
 }
 .state {
   align-items: center;

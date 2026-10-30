@@ -17,6 +17,11 @@ vi.mock("../services/gameIdentity", async (original) => ({
   setCounterPriority: vi.fn(async () => {}),
 }));
 
+vi.mock("../services/gameFieldSources", async (original) => ({
+  ...(await original<typeof import("../services/gameFieldSources")>()),
+  fetchFieldSources: vi.fn(async () => ({})),
+}));
+
 const observation = (
   over: Partial<SourceObservation> & { observation_id: string },
 ): SourceObservation => ({

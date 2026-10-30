@@ -42,7 +42,7 @@ PROVENANCE_FIELDS = frozenset(
 _LABEL_LENGTH = 64
 
 
-def _stored(value: Any) -> Any:
+def stored(value: Any) -> Any:
     if isinstance(value, date):
         return value.isoformat()
     if isinstance(value, (list, tuple, set)):
@@ -94,7 +94,7 @@ async def record_field_sources(
     }
     stamp = int(time.time())
     for field in sorted(fields):
-        value = _stored(values[field])
+        value = stored(values[field])
         existing = current.get(field)
         if (
             existing is not None

@@ -405,6 +405,36 @@ class GameFieldValue(Base):
     lock_origin: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
 
+class GameFieldPreference(Base):
+    """Which contributor a person trusts for one metadata field of one game (#349).
+
+    Kept apart from `games.locked_fields`: a lock freezes the value, a preference only decides
+    whose value a refresh takes when sources disagree. `source_key` is `copy:<game id>` or
+    `provider:<id>`."""
+
+    __tablename__ = "game_field_preferences"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["user_id", "game_id"],
+            ["games.user_id", "games.id"],
+            ondelete="CASCADE",
+            name="fk_game_field_preferences_game",
+        ),
+        UniqueConstraint("game_id", "field", name="uq_game_field_preferences_game_field"),
+        CheckConstraint("btrim(field) <> ''", name="ck_game_field_preferences_field"),
+        CheckConstraint("btrim(source_key) <> ''", name="ck_game_field_preferences_source_key"),
+    )
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    game_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    field: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[int] = mapped_column(BigInteger, nullable=False, default=unix_timestamp)
+
+
 class GameManualAchievement(Base):
     """A user-authored achievement for a tracked identity or a whole umbrella.
 
