@@ -7,11 +7,12 @@ Nothing here creates, merges or splits a canonical identity."""
 import time
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import app_grant, get_current_user
 from src.core.metrics import DATA_OPERATION_DURATION, DATA_OPERATIONS, DATA_RECORDS
+from src.database.models.delegation import DelegatedGrant
 from src.database.models.user import User
 from src.database.session import get_db
 from src.features.game_ingestion import playnite
@@ -36,8 +37,13 @@ def _unsupported(exc: playnite.UnsupportedContract) -> HTTPException:
 
 @router.get("/contract")
 @app_grant("library.sync")
-async def contract(_user: Owner) -> dict[str, Any]:
+async def contract(request: Request, db: Db, _user: Owner) -> dict[str, Any]:
     """Version negotiation and connection test in one authenticated call."""
+    grant = getattr(request.state, "app_grant", None)
+    if isinstance(grant, DelegatedGrant):
+        await playnite.record_extension_version(
+            db, grant, request.headers.get("x-playnite-extension-version")
+        )
     return playnite.contract_description()
 
 

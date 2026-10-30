@@ -199,7 +199,7 @@ async def test_first_run_setup_cannot_create_accounts_once_an_instance_has_users
         assert await db.scalar(select(User.id).where(User.username == "intruder")) is None
 
 
-async def test_guest_sign_in_creates_no_account_and_no_claim_route_exists(
+async def test_guest_sign_in_creates_no_account_and_no_account_claim_route_exists(
     public_flow,  # noqa: F811  (pytest fixture parameter)
 ):
     async with SessionLocal() as db:
@@ -207,8 +207,13 @@ async def test_guest_sign_in_creates_no_account_and_no_claim_route_exists(
     await sign_in(public_flow)
     async with SessionLocal() as db:
         assert await db.scalar(select(func.count()).select_from(User)) == before
-    served = {path for (_method, path) in live_matrix()}
-    assert [p for p in served if re.search(r"claim|signup|sign-up", p)] == []
+    matrix = live_matrix()
+    served = {path for (_method, path) in matrix}
+    # Claiming a queued Playnite request is not an account-claim operation,
+    # and it requires the receiving desktop grant rather than a guest session.
+    launch_claim = "/api/playnite/launch/v1/requests/claim"
+    assert {p for p in served if re.search(r"claim|signup|sign-up", p)} == {launch_claim}
+    assert matrix[("POST", launch_claim)] == "delegated-grant"
     # The only registration-shaped route registers a requester origin, never a person.
     assert [p for p in served if re.search(r"register", p)] == [
         "/api/delegation/v1/clients/register"
