@@ -8,6 +8,7 @@ import mimetypes
 import os
 import secrets
 import time
+from collections import OrderedDict
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import quote, unquote
@@ -212,8 +213,21 @@ async def plugin_native_frontend(
     )
 
 
+_UI_DOCUMENT_CACHE: OrderedDict[tuple[str, str, str, str], PluginUiDocument] = OrderedDict()
+
+
 async def _validated_ui_document(plugin_id: str, plugin: dict[str, Any]) -> PluginUiDocument:
-    """Read the runtime UI document and require it to match the live installation."""
+    """Cache package content, never a user's grant-filtered contribution document."""
+    key = (
+        plugin_id,
+        str(plugin.get("installation_id", "")),
+        str(plugin.get("digest", "")),
+        str(plugin.get("api_contract_version", "1.0.0")),
+    )
+    cacheable = bool(key[1] and key[2])
+    if cacheable and key in _UI_DOCUMENT_CACHE:
+        _UI_DOCUMENT_CACHE.move_to_end(key)
+        return _UI_DOCUMENT_CACHE[key]
     with runtime.runtime_errors():
         payload = await runtime.client.plugin_ui(quote(plugin_id, safe=""))
     try:
@@ -229,6 +243,11 @@ async def _validated_ui_document(plugin_id: str, plugin: dict[str, Any]) -> Plug
         raise HTTPException(
             status_code=409, detail="Plugin UI and manifest API contracts must match."
         )
+    if cacheable:
+        _UI_DOCUMENT_CACHE[key] = document
+        _UI_DOCUMENT_CACHE.move_to_end(key)
+        while len(_UI_DOCUMENT_CACHE) > 128:
+            _UI_DOCUMENT_CACHE.popitem(last=False)
     return document
 
 
@@ -239,6 +258,13 @@ async def plugin_ui(
     user: User = _PLUGIN_USER,
 ) -> dict:
     plugin, capabilities = await runtime.plugin_and_capabilities(plugin_id, db, user)
+    return await filtered_plugin_ui(plugin_id, plugin, capabilities)
+
+
+async def filtered_plugin_ui(
+    plugin_id: str, plugin: dict[str, Any], capabilities: frozenset[str]
+) -> dict:
+    """Apply live per-user grants to reusable package metadata."""
     document = await _validated_ui_document(plugin_id, plugin)
     if is_legacy_contract(document.api_contract_version):
         document = document.model_copy(

@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
-from src.core import metrics
+from src.core import metrics, request_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +135,6 @@ def cache_refresh(kind: str, *, active: bool = True) -> Iterator[CacheRefresh]:
     finally:
         if active and kind in _LOOKUP_KINDS:
             outcome = result.outcome if result.outcome in {"ok", "error", "cancelled"} else "error"
-            metrics.CACHE_REFRESH_DURATION.labels(kind, outcome).observe(
-                time.perf_counter() - started
-            )
+            elapsed = time.perf_counter() - started
+            metrics.CACHE_REFRESH_DURATION.labels(kind, outcome).observe(elapsed)
+            request_metrics.observe_phase("cache." + kind, elapsed)

@@ -88,7 +88,12 @@ async function disconnect() {
     <div class="connection-dialog">
       <p class="status-line">
         <span
-          v-if="!(connection.kind === 'psn' && state.psnLoading.value)"
+          v-if="
+            !(
+              connection.kind === 'psn' &&
+              (state.psnLoading.value || state.psnLoadFailed.value)
+            )
+          "
           class="pill"
           :class="{ ok: connected }"
           >{{ connected ? "Connected" : "Not connected" }}</span
@@ -113,6 +118,21 @@ async function disconnect() {
 
       <template v-if="connection.kind === 'psn'">
         <p v-if="state.psnLoading.value" class="hint" role="status">Loading…</p>
+        <!-- Unknown, not "not connected": no form until the status is read. -->
+        <div
+          v-else-if="state.psnLoadFailed.value"
+          class="form-error"
+          role="alert"
+        >
+          {{ state.psnError.value }}
+          <button
+            type="button"
+            class="ui-btn ui-btn-secondary"
+            @click="state.loadPsn()"
+          >
+            Retry
+          </button>
+        </div>
         <!-- shown while connected too: a fresh token is how PSN reconnects -->
         <form
           v-else

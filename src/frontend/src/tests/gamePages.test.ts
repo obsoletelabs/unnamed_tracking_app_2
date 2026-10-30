@@ -58,6 +58,10 @@ it("reads only an adaptive viewport page and its status-count summary", async ()
   expect(result.games.length).toBeLessThan(1000);
   expect(result.total).toBe(5000);
   expect(result.statusCounts).toEqual({ playing: 800, backlog: 4200 });
+  expect(fetcher).toHaveBeenCalledWith(
+    expect.any(String),
+    expect.objectContaining({ priority: "high" }),
+  );
   expect(fetcher).toHaveBeenCalledTimes(1);
 });
 

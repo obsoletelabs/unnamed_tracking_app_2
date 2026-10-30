@@ -26,6 +26,7 @@ engine = create_async_engine(
     settings.DATABASE_URL,
     echo=settings.DEBUG,
     poolclass=ObservedAsyncPool,
+    pool_logging_name="application",
 )
 install_database_metrics(engine.sync_engine)
 install_session_metrics()

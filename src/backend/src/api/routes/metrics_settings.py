@@ -9,6 +9,7 @@ from src.core.auth import get_current_admin
 from src.core.config import settings
 from src.core.metrics import metrics_enabled
 from src.database.models.user import User
+from src.features.metrics_viewer import snapshot
 
 router = APIRouter(prefix="/api/settings/metrics", tags=["settings"])
 
@@ -36,3 +37,9 @@ async def read_metrics_settings(_admin: User = Depends(get_current_admin)) -> JS
         },
         headers={"Cache-Control": "no-store"},
     )
+
+
+@router.get("/snapshot")
+async def read_metrics_snapshot(_admin: User = Depends(get_current_admin)) -> JSONResponse:
+    """A bounded registry view with no scrape token, dependency probes or raw queries."""
+    return JSONResponse(await snapshot(), headers={"Cache-Control": "no-store"})

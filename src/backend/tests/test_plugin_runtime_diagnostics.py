@@ -30,6 +30,7 @@ def raising(exc):
 
 
 async def failure(monkeypatch, handler, **kw):
+    await runtime_client.close_runtime_transport()
     client = client_with(handler, monkeypatch=monkeypatch, **kw)
     with pytest.raises(PluginRuntimeUnavailable) as caught:
         await client.health()

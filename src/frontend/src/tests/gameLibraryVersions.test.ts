@@ -86,7 +86,7 @@ beforeEach(() => {
   vi.stubGlobal("window", {
     innerWidth: 1440,
     setTimeout: (callback: () => void, delay: number) => {
-      if (delay === 2_500) {
+      if (delay === 0) {
         callback();
         return 1;
       }
@@ -203,6 +203,40 @@ describe("umbrella library", () => {
     view.layout.value = null;
     expect(ids(view)).toContain("bedrock");
   });
+});
+
+it("schedules enrichment after the first paint without a multi-second delay", async () => {
+  const { fetchAchievementsSummary } = await import("../services/games");
+  const { fetchGameDuplicates } = await import("../services/gameDuplicates");
+  const { fetchLibraryLayout } = await import("../services/gameIdentity");
+  const frames: FrameRequestCallback[] = [];
+  let idle: IdleRequestCallback | undefined;
+  const idleRequest = vi.fn(
+    (callback: IdleRequestCallback, options?: IdleRequestOptions) => {
+      idle = callback;
+      expect(options?.timeout).toBe(200);
+      return 1;
+    },
+  );
+  window.requestAnimationFrame = (callback) => {
+    frames.push(callback);
+    return frames.length;
+  };
+  window.requestIdleCallback = idleRequest;
+  const view = await library();
+  await view.loadGames();
+  await nextTick();
+  expect(view.loading.value).toBe(false);
+  expect(fetchAchievementsSummary).not.toHaveBeenCalled();
+  frames.shift()!(0);
+  expect(idleRequest).not.toHaveBeenCalled();
+  frames.shift()!(16);
+  expect(idleRequest).toHaveBeenCalledOnce();
+  expect(fetchGameDuplicates).not.toHaveBeenCalled();
+  idle!({ didTimeout: false, timeRemaining: () => 10 });
+  expect(fetchAchievementsSummary).toHaveBeenCalledOnce();
+  expect(fetchGameDuplicates).toHaveBeenCalledOnce();
+  expect(fetchLibraryLayout).toHaveBeenCalledOnce();
 });
 
 describe("returning to a kept-alive library", () => {

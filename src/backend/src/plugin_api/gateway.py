@@ -263,7 +263,14 @@ async def dispatch_gateway_request(
         "metadata_providers.configuration": partial(
             provider_configuration, db, plugin_id, installation_id, user_id, payload
         ),
-        "capabilities.check": _authorized,
+        "capabilities.check": partial(
+            _authorized,
+            installation_id=installation_id,
+            user_id=user_id,
+            capability=capability,
+            version=capability_version,
+            external=external is not None,
+        ),
         "metrics.record": partial(_record_plugin_metric, payload),
         "library.legacy.export": partial(
             export_legacy_records, db, user_id=user_id, payload=payload
@@ -355,8 +362,24 @@ async def dispatch_gateway_request(
 # pylint: enable=duplicate-code
 
 
-async def _authorized() -> dict[str, Any]:
-    return {"authorized": True}
+async def _authorized(
+    *,
+    installation_id: UUID,
+    user_id: UUID,
+    capability: str,
+    version: int,
+    external: bool,
+) -> dict[str, Any]:
+    result: dict[str, Any] = {"authorized": True}
+    local = frozenset({"plugin.storage", "plugin.settings"})
+    if not external and version == 1 and capability in local:
+        result["runtime_access"] = {
+            "installation_id": str(installation_id),
+            "user_id": str(user_id),
+            "capabilities": [capability],
+            "expires_in_seconds": 5,
+        }
+    return result
 
 
 async def _record_plugin_metric(payload: dict[str, Any]) -> dict[str, Any]:

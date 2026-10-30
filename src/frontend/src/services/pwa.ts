@@ -86,6 +86,7 @@ export async function refreshPwa() {
     const response = await fetch("/pwa/status", {
       cache: "no-store",
       credentials: "omit",
+      priority: "low",
     });
     if (!response.ok) throw new Error("PWA infrastructure is unavailable.");
     const status: {
@@ -190,7 +191,7 @@ export async function unsubscribeBrowserPush(): Promise<void> {
   }
 }
 
-export function startPwa() {
+export function startPwa(startupReady?: Promise<unknown>) {
   if (started) return;
   started = true;
   window.addEventListener("beforeinstallprompt", (event) => {
@@ -233,7 +234,18 @@ export function startPwa() {
       controlled = nowControlled;
     });
   }
-  void refreshPwa();
+  // Keep prompt/lifecycle listeners immediate, but let the initial route queue
+  // its data and render before optional install metadata competes for sockets.
+  const refreshAfterPaint = () => {
+    if (window.requestAnimationFrame)
+      window.requestAnimationFrame(() =>
+        window.requestAnimationFrame(() => void refreshPwa()),
+      );
+    else void refreshPwa();
+  };
+  if (startupReady)
+    void startupReady.then(refreshAfterPaint, refreshAfterPaint);
+  else void refreshPwa();
   window.setInterval(() => void refreshPwa(), 30000);
 }
 

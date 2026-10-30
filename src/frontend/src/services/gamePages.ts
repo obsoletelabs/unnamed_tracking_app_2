@@ -124,6 +124,7 @@ async function fetchPage<T>(
   const response = await fetch(`/api/game/list?${params.toString()}`, {
     credentials: "include",
     signal,
+    priority: skip === 0 && limit !== GAMES_PAGE_SIZE ? "high" : "auto",
   });
   if (!response.ok) {
     throw new Error(
