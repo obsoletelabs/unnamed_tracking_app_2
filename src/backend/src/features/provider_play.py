@@ -3,6 +3,7 @@
 from typing import Any, TypeGuard
 
 PROVIDER_SOURCE = "provider"
+MAX_CUSTOM_FIELDS = 64
 
 
 def _is_count(value: object) -> TypeGuard[int]:
@@ -17,6 +18,10 @@ def provider_custom_values(
     if not isinstance(fresh, dict) or not fresh:
         return None
     merged = {**(current or {}), **fresh}
+    if len(merged) > MAX_CUSTOM_FIELDS:
+        # a provider cannot grow the stored fields without bound: keep what is stored and
+        # take new keys only while there is room
+        merged = dict(list(merged.items())[:MAX_CUSTOM_FIELDS])
     return merged if merged != current else None
 
 
