@@ -333,7 +333,10 @@ async def update_current_user(
     if "display_name" in payload.model_fields_set:
         user.display_name = payload.display_name
     if payload.email is not None:
-        user.email = payload.email.strip().lower()
+        new_email = payload.email.strip().lower()
+        if new_email != user.email:
+            user.email = new_email
+            user.email_unverified = True
     if payload.new_password is not None:
         user.password_hash = await run_password_job(hash_password, payload.new_password)
     if payload.steamgriddb_api_key is not None:

@@ -453,6 +453,9 @@ async def _resolve_oidc_identity(
             user = await db.scalar(select(User).where(User.username == match))
         else:
             user = await db.scalar(select(User).where(func.lower(User.email) == email))
+            if user is not None and user.email_unverified and user.oidc_subject is None:
+                # The user typed this address into their own profile; nobody proved it is theirs.
+                return "email_unverified"
 
     email_matches = User.email.is_not(None) & (func.lower(User.email) == email)
     email_owner = await db.scalar(select(User.id).where(email_matches))
@@ -496,6 +499,7 @@ def _update_oidc_user(
     # user-chosen display name are never rewritten from provider claims.
     user.oidc_subject = linked_subject
     user.email = email
+    user.email_unverified = False
     if config.admin_group:
         user.is_admin = config.admin_group in _groups(claims, config.groups_claim)
 
