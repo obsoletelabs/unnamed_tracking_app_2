@@ -4,6 +4,7 @@ export const MEDIA_SORT_KEYS = [
   "title",
   "title_desc",
   "added",
+  "modified",
   "year_new",
   "year_old",
   "progress",

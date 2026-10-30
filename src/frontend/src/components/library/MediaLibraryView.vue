@@ -903,6 +903,7 @@ defineExpose({ openQuickAdd });
           <option value="title">Sort: Title A–Z</option>
           <option value="title_desc">Sort: Title Z–A</option>
           <option value="added">Sort: Recently added</option>
+          <option value="modified">Sort: Recently modified</option>
           <option value="year_new">Sort: Release year, newest</option>
           <option value="year_old">Sort: Release year, oldest</option>
           <option value="progress">Sort: Progress</option>

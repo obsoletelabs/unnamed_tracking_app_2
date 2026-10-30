@@ -47,3 +47,13 @@ export function localDateInputToUnixSeconds(value: string): number | null {
   );
   return Math.floor(date.getTime() / 1000);
 }
+
+/** Orders newest first; a missing date sorts last. Accepts ISO strings or unix seconds. */
+export function newest(
+  a: string | number | null | undefined,
+  b: string | number | null | undefined,
+): number {
+  const time = (v: string | number | null | undefined) =>
+    typeof v === "number" ? v * 1000 : Date.parse(v ?? "") || 0;
+  return time(b) - time(a);
+}

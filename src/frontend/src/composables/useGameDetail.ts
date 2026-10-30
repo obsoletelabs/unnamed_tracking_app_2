@@ -724,6 +724,11 @@ export function useGameDetail() {
         label: "Added",
         value: new Date(g.dateAdded).toLocaleDateString(),
       });
+    if (g.updatedAt)
+      facts.push({
+        label: "Last modified",
+        value: new Date(g.updatedAt * 1000).toLocaleDateString(),
+      });
     // the furthest you are through it on any platform
     const completions = g.platforms
       .map((p) => p.completionPercent)

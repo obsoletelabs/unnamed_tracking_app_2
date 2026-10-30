@@ -34,7 +34,7 @@ import { useWindowVirtualizer } from "@tanstack/vue-virtual";
 import { viewportPrefetchRows } from "../services/gamePages";
 
 import { activePriority, priorityLabel } from "../utils/priority";
-import { formatDisplayDate } from "../utils/dates";
+import { formatDisplayDate, newest } from "../utils/dates";
 import {
   fetchGamesForViewport,
   peekAllGames,
@@ -1483,8 +1483,8 @@ export function useGameLibrary() {
       // Preserve the API's global saved-title order across pages.
       if (sortBy.value === "name") return 0;
       if (sortBy.value === "name_desc") return b.title.localeCompare(a.title);
-      if (sortBy.value === "recent")
-        return (b.dateAdded ?? "").localeCompare(a.dateAdded ?? "");
+      if (sortBy.value === "recent") return newest(a.dateAdded, b.dateAdded);
+      if (sortBy.value === "modified") return newest(a.updatedAt, b.updatedAt);
       if (sortBy.value === "rating") {
         const scoreA = computeScore(a)?.sum ?? -1;
         const scoreB = computeScore(b)?.sum ?? -1;
