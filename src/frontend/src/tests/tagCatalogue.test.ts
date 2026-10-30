@@ -12,7 +12,6 @@ vi.mock("../services/tagCatalogue", async (original) => ({
   fetchTagUsage: vi.fn(),
   fetchAliasSuggestions: vi.fn(),
   loadCatalogueRules: vi.fn(async () => {}),
-  loadCatalogueRules: vi.fn(async () => {}),
   createTag: vi.fn(),
   renameTag: vi.fn(),
   deleteTag: vi.fn(),
