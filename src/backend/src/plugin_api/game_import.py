@@ -13,6 +13,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.game import Game
+from src.features.game_identity.provider_ids import merge_provider_ids
 from src.features.game_ingestion import legacy as ingestion
 from src.features.game_ingestion.contract import SourceObservationV1
 from src.features.imports.game_progression import apply_provider_progress
@@ -135,8 +136,11 @@ async def dispatch_game_import(
                 if getattr(item, field) is not None
             }
             updates.update(title=item.title, sort_title=item.title.lower())
-            if item.provider_ids is not None:
-                updates["provider_ids"] = {**(game.provider_ids or {}), **item.provider_ids}
+            if item.provider_ids is not None and "provider_ids" not in (game.locked_fields or []):
+                # Saved ids win: a sync cannot re-point a game at another store record.
+                updates["provider_ids"], _ = merge_provider_ids(
+                    game.provider_ids or {}, item.provider_ids
+                )
             if item.playtime_seconds is not None:
                 updates["playtime_seconds"] = max(game.playtime_seconds, item.playtime_seconds)
             apply_metadata_updates(game, updates)

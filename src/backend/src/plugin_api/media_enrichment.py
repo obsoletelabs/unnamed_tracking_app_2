@@ -25,6 +25,7 @@ from src.database.models.anime import Anime, AnimeSeason
 from src.database.models.media_provider import MediaPlaybackEvent, MediaProviderLink
 from src.database.models.movies import Movie
 from src.database.models.tv_show import TVSeason, TVShow
+from src.features.game_identity.provider_ids import merge_provider_ids
 from src.plugin_api.media_sync import (
     MediaSyncInput,
     ResolvedSync,
@@ -170,6 +171,12 @@ async def _matches(
     return candidates, False
 
 
+def _adopt_provider_ids(media: Any, item: EnrichmentInput, locked: set[str]) -> None:
+    """Add ids for new namespaces only: a plugin cannot re-point a saved identity."""
+    if "provider_ids" not in locked:
+        media.provider_ids, _ = merge_provider_ids(media.provider_ids or {}, item.provider_ids)
+
+
 def _apply_metadata(media: Any, item: EnrichmentInput) -> None:
     locked = set(media.locked_fields or [])
     for key in (
@@ -228,7 +235,7 @@ def _apply_metadata(media: Any, item: EnrichmentInput) -> None:
     if item.media_type != "movie" and item.runtime_minutes is not None:
         if "episode_runtime_minutes" not in locked:
             media.episode_runtime_minutes = item.runtime_minutes
-    media.provider_ids = {**(media.provider_ids or {}), **item.provider_ids}
+    _adopt_provider_ids(media, item, locked)
 
 
 async def _resolve_identity(
