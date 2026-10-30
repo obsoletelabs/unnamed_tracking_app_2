@@ -22,7 +22,7 @@ from src.database.models.anime import Anime, AnimeEpisode, AnimeSeason, AnimeSta
 from src.database.models.movies import Movie, MovieStatus
 from src.database.models.tv_show import TVEpisode, TVSeason, TVShow, TVShowStatus
 from src.features.metadata.locked_fields import apply_metadata_updates, authorize_title_update
-from src.helpers.public_http import names_a_private_host, parse_http_url
+from src.helpers.public_http import parse_http_url
 
 
 class EpisodeInput(BaseModel):
@@ -53,15 +53,16 @@ class MediaSyncInput(BaseModel):
     @field_validator("poster_url")
     @classmethod
     def web_poster(cls, value: str | None) -> str | None:
-        """The browser loads this address: plain public-looking HTTP(S) only."""
+        """The browser loads this address: plain HTTP(S), no credentials.
+
+        A private host stays allowed: media servers such as Jellyfin serve their posters from the
+        user's own network."""
         if value is None:
             return None
         try:
-            parts = parse_http_url(value)
+            parse_http_url(value)
         except ValueError as exc:
             raise ValueError("poster_url must be an HTTP(S) address without credentials") from exc
-        if names_a_private_host(parts.hostname or ""):
-            raise ValueError("poster_url must not name a private or local host")
         return value
 
     played: bool = False

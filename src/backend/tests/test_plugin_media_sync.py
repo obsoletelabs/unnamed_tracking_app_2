@@ -213,12 +213,10 @@ def test_episode_renumbering_retains_identity_and_watched_semantics():
         "javascript:alert(1)",
         "data:image/svg+xml,<svg onload=alert(1)>",
         "file:///etc/passwd",
-        "http://192.168.0.1/p.png",
-        "http://localhost:9000/p.png",
         "https://user:pw@images.example/p.png",
     ],
 )
-def test_poster_url_must_be_a_public_looking_web_address(poster):
+def test_poster_url_must_be_a_plain_web_address(poster):
     with pytest.raises(ValidationError):
         MediaSyncInput.model_validate(data(poster_url=poster))
 
@@ -226,3 +224,10 @@ def test_poster_url_must_be_a_public_looking_web_address(poster):
 def test_poster_url_accepts_an_ordinary_address():
     item = MediaSyncInput.model_validate(data(poster_url="https://images.example/p.png"))
     assert item.poster_url == "https://images.example/p.png"
+
+
+def test_poster_url_accepts_the_users_own_media_server():
+    item = MediaSyncInput.model_validate(
+        data(poster_url="http://192.168.0.10:8096/Items/1/Images/Primary")
+    )
+    assert item.poster_url.startswith("http://192.168.0.10:8096/")
