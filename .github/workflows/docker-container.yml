@@ -23,7 +23,25 @@ jobs:
       - name: Set lowercase repository name
         run: echo "REPO_LC=${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
 
+      # A registry or cache hiccup on a base image pull gets one retry.
       - name: Build production image for validation
+        id: build
+        continue-on-error: true
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: src/docker-container/Dockerfile
+          load: true
+          tags: unnamed_tracking_app:ci
+          cache-from: type=gha,scope=production-container
+          cache-to: type=gha,mode=max,scope=production-container
+
+      - name: Wait before retrying
+        if: steps.build.outcome == 'failure'
+        run: sleep 30
+
+      - name: Build production image for validation (retry)
+        if: steps.build.outcome == 'failure'
         uses: docker/build-push-action@v7
         with:
           context: .

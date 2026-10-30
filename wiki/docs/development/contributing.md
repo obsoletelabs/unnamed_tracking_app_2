@@ -10,8 +10,8 @@ Keep backend-only logic in the backend and frontend-only behavior in the fronten
 
 The backend CI uses Python 3.12 and runs:
 
-- backend pytest (with PostgreSQL and an Alembic upgrade);
-- repository-level tool tests from `tools/tests`, in the same Backend tests job;
+- backend pytest, split into shards that each run against their own PostgreSQL service after an Alembic upgrade (see [Test shards](backend-quality.md#test-shards));
+- repository-level tool tests from `tools/tests`, in their own job that runs once;
 - plugin runtime policy tests;
 - Alembic migration graph validation;
 - Python module size validation;
