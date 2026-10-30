@@ -210,6 +210,7 @@ class HostExtensionSlot(StrEnum):
     GAME_OVERVIEW_AFTER_HEADER = "game.overview.after-header"
     GAME_DOCUMENTS_ACTIONS = "game.documents.actions"
     MEDIA_DETAIL_AFTER_HEADER = "media.detail.after-header"
+    MEDIA_DETAIL_ACTIONS = "media.detail.actions"
     APP_GLOBAL = "app.global"
     HOME_REPLACE = "home.replace"
     ADMINISTRATION_USERS_ACTIONS = "administration.users.actions"
