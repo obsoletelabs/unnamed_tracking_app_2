@@ -72,6 +72,30 @@ validated by the runtime.
 
 The host enforces authenticated gateway access and capability grants. Plugin browser traffic is served through the application and is never published directly from the runtime.
 
+### Plugin runtime image name
+
+The runtime image is published as `ghcr.io/obsoletelabs/unnamed_tracking_plugin_runtime`.
+The original name, `ghcr.io/obsoletelabs/unnamed_tracking_app_2-plugin-runtime`, still
+receives the same tags and contents so existing deployments keep working, but it is being
+phased out. A runtime started from the original name logs a deprecation notice naming the new
+image at startup and every five minutes. Change the `image:` of your `plugin-runtime`
+service to the new name; the tags are unchanged.
+
+### Release tags
+
+Image tags follow the Git tag that triggered the build:
+
+| Git tag | Image tags |
+| --- | --- |
+| `v1.2.3` | `v1.2.3`, `1.2.3`, `1.2`, `latest` |
+| `v1.2.3-beta.1` | `v1.2.3-beta.1`, `1.2.3-beta.1`, `latest-beta` |
+| branch | the branch name and `sha-<commit>` |
+| pull request | `pr-<number>` (same-repository PRs only) |
+
+Pushing a `v*` tag also publishes a GitHub release with generated notes (marked as a
+prerelease when the tag has a suffix). A stable release closes the open milestone with the same
+name.
+
 ## Permissions and filesystem
 
 Nginx workers run as `www-data`; the master retains the privileges required to bind ports 80/443 and control the process. Runtime status/log files are under `/run/unnamed-tracking`.

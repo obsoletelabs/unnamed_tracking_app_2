@@ -80,6 +80,17 @@ jobs:
           docker push "$IMAGE_NAME:$IMAGE_TAG"
           docker push "$IMAGE_NAME:sha-$GITHUB_SHA"
 
+          # Release tags: stable (v1.2.3) moves `latest`; prerelease (v1.2.3-beta.1) moves `latest-beta`.
+          case "$GITHUB_REF" in
+            refs/tags/v*-*) MOVING_TAG="latest-beta" ;;
+            refs/tags/v*) MOVING_TAG="latest" ;;
+            *) MOVING_TAG="" ;;
+          esac
+          if [ -n "$MOVING_TAG" ]; then
+            docker tag unnamed_tracking_app:ci "$IMAGE_NAME:$MOVING_TAG"
+            docker push "$IMAGE_NAME:$MOVING_TAG"
+          fi
+
       - name: Show diagnostics on failure
         if: failure()
         run: |

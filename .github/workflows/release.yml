@@ -1,0 +1,51 @@
+name: Release
+
+# Pushing a version tag publishes a GitHub release for it. Images are built and tagged by CI
+# (`latest` for stable tags, `latest-beta` for prerelease tags such as v0.0.5-beta.1).
+# Stable releases also close the milestone of the same name, so finished milestones do not linger.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Publish release
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - name: Create or update the GitHub release
+        run: |
+          if [[ "$TAG" == *-* ]]; then
+            PRERELEASE="--prerelease"
+          else
+            PRERELEASE="--latest"
+          fi
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; leaving its notes alone."
+          else
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag \
+              --title "$TAG" --generate-notes $PRERELEASE
+          fi
+
+      - name: Close the matching milestone
+        if: ${{ !contains(github.ref_name, '-') }}
+        run: |
+          number="$(gh api "repos/$GITHUB_REPOSITORY/milestones?state=open&per_page=100" \
+            --jq ".[] | select(.title == \"$TAG\") | .number")"
+          if [ -z "$number" ]; then
+            echo "No open milestone named $TAG."
+            exit 0
+          fi
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/milestones/$number" -f state=closed >/dev/null
+          echo "Closed milestone $TAG."
