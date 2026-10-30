@@ -35,8 +35,8 @@ defineProps<{
 
 const status = defineModel<string>("status", { required: true });
 
-// A library source that has this title, or a plugin's own action, puts a "watch it" button
-// beside Edit, the way Launch sits on a game page; then Edit steps back to a secondary button.
+// A library source, a site to open the title in, or a plugin's own action puts a button beside
+// Edit, the way Launch sits on a game page; then Edit steps back to a secondary button.
 const hasSourceLink = ref(false);
 const hasWatchAction = computed(
   () =>
