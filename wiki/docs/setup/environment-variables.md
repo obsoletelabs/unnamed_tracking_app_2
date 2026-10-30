@@ -68,6 +68,7 @@ These variables are environment-only (they are not shown in the setup UI, but th
 |---|---|---|
 | `MIGRATION_BACKUP_MODE` | `automatic` | `automatic` creates and verifies an encrypted local recovery point before a pending migration touches an existing database, so a normal Portainer update or stack redeploy needs no extra step. `required` refuses to migrate without a full deployment recovery point issued by the operator backup workflow. `development` skips the check and is only for disposable data. |
 | `MIGRATION_BACKUP_MAX_AGE_SECONDS` | `7200` | Maximum age (60 to 604800 seconds) of an operator-issued recovery point when `required` (or an operator receipt in `automatic`) is used. |
+| `ALLOW_NEWER_DATABASE` | `true` | Lets an older build start on a database a newer build has already migrated, as long as the schema still has every table and column the older build needs. Nothing is migrated or rewritten, so going forward again picks up where you left off. Set to `false` (or `0`, `no`, `off`) to refuse such a database instead and require operator review. See [Going back to an older version](../deployment/migration-recovery.md#going-back-to-an-older-version). |
 
 What automatic mode captures, where it stores it, retention, storage needs, how to protect the repository password and how to recover are in [Migration inspection and recovery](../deployment/migration-recovery.md#automatic-startup-recovery-default). The full-deployment workflow is in [Backups](../deployment/backups.md).
 
