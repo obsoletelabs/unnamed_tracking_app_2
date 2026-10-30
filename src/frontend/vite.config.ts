@@ -11,7 +11,7 @@ export default defineConfig({
           groups: [
             {
               name: "vendor",
-              test: /[\\/]node_modules[\\/]/,
+              test: /[\\/]node_modules[\\/](?:@vue[\\/]|vue[\\/]|vue-router[\\/])/,
               priority: 2,
             },
             {

@@ -2,6 +2,7 @@
 // account status and runs the sync itself; the browser only renders this state.
 
 import { providerRequestError } from "./apiError";
+import { currentUser } from "../state/auth";
 
 export interface PluginConnectionSync {
   available: boolean;
@@ -33,15 +34,32 @@ export function pluginConnectionKey(
 
 const connectionsUrl = "/api/connections/plugins";
 
-export async function fetchPluginConnections(): Promise<
-  PluginConnectionState[]
-> {
-  const response = await fetch(connectionsUrl, { credentials: "include" });
-  if (!response.ok) throw await providerRequestError(response);
-  const body = (await response.json()) as {
-    connections: PluginConnectionState[];
-  };
-  return body.connections;
+const connectionRequests = new Map<
+  string | undefined,
+  Promise<PluginConnectionState[]>
+>();
+
+export function clearPluginConnectionStatuses(): void {
+  connectionRequests.clear();
+}
+
+export function fetchPluginConnections(): Promise<PluginConnectionState[]> {
+  const account = currentUser.value?.id;
+  const pending = connectionRequests.get(account);
+  if (pending) return pending;
+  const request = (async () => {
+    const response = await fetch(connectionsUrl, { credentials: "include" });
+    if (!response.ok) throw await providerRequestError(response);
+    const body = (await response.json()) as {
+      connections: PluginConnectionState[];
+    };
+    return body.connections;
+  })().finally(() => {
+    if (connectionRequests.get(account) === request)
+      connectionRequests.delete(account);
+  });
+  connectionRequests.set(account, request);
+  return request;
 }
 
 export async function startPluginConnectionSync(

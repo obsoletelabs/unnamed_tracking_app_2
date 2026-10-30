@@ -433,28 +433,33 @@ async def _resolve_user_credentials(
                 headers={"WWW-Authenticate": "Bearer"},
             )
     elif session_token:
-        user = await db.scalar(
-            select(User)
-            .join(UserSession, UserSession.user_id == User.id)
-            .where(
-                UserSession.token_hash == hash_token(session_token),
-                UserSession.expires_at > now,
-                UserSession.revoked_at.is_(None),
-                User.is_active.is_(True),
-            )
-        )
-
-        if user is not None:
+        session_row = (
             await db.execute(
-                update(UserSession)
+                select(User, UserSession.last_seen_at)
+                .join(UserSession, UserSession.user_id == User.id)
                 .where(
                     UserSession.token_hash == hash_token(session_token),
+                    UserSession.expires_at > now,
                     UserSession.revoked_at.is_(None),
-                    UserSession.last_seen_at <= now - 60,
+                    User.is_active.is_(True),
                 )
-                .values(last_seen_at=now)
             )
-            await db.commit()
+        ).first()
+        if session_row is not None:
+            user, last_seen_at = session_row
+            # Artwork/API bursts still authenticate every request, but activity
+            # only needs a write when the existing one-minute interval elapsed.
+            if last_seen_at <= now - 60:
+                await db.execute(
+                    update(UserSession)
+                    .where(
+                        UserSession.token_hash == hash_token(session_token),
+                        UserSession.revoked_at.is_(None),
+                        UserSession.last_seen_at <= now - 60,
+                    )
+                    .values(last_seen_at=now)
+                )
+                await db.commit()
 
     if user is None:
         raise HTTPException(

@@ -273,8 +273,8 @@ and owned by the runtime broker. Metadata and stored values have owner-only file
 permissions. In Bubblewrap, `/plugin-data` is an empty private filesystem and the
 package's legacy settings file is masked. Persistent storage and secrets are
 accessible through granted `storage.*`/`settings.get` operations, not a direct
-filesystem mount. Each operation rechecks the host grant so revocation applies
-to subsequent calls. Deleting a plugin removes package, configuration and storage.
+filesystem mount. The broker authorizes operations through live host grants and bounded local
+action snapshots, described below. Deleting a plugin removes package, configuration and storage.
 
 The secret-write bridge stores credentials under `secrets/<key>`. Plugins retrieve
 them through the authorized broker; credentials must not be ordinary action
@@ -286,3 +286,99 @@ isolation and suppresses the prominent warning; diagnostics still report the
 actual mode. It is not required when an administrator has acknowledged reduced
 isolation through Plugin Manager, and it does not provide Bubblewrap's namespace
 or filesystem guarantees.
+
+## Request transport and inventory
+
+The host pools private HTTP connections within each backend worker and closes
+them at shutdown. Runtime responses support HTTP/1.1 keep-alive; rejected
+requests close their socket so an unread body cannot become another request.
+Credentials and isolation policy remain attached to each request. Single-plugin
+UI, action and asset lookups validate that installation through its state
+endpoint rather than enumerating unrelated packages. Manager inventory still
+reconciles durable state, but unchanged snapshots do not rewrite it.
+
+Discovery can request `X-Plugin-Include-UI: true` on the existing plugin inventory
+endpoint. The host batches current user grants, returns compact inventory with
+filtered UI documents, and caches only unfiltered validated package documents by
+installation identity, payload digest and API contract. Every response reapplies
+current grants. Older hosts still work through per-plugin UI requests.
+
+Package integrity continues to verify payload bytes. Filesystem timestamps can
+remain unchanged across rapid writes even on POSIX, so metadata alone is never
+used to skip verification. Host UI caching is keyed by a verified live installation
+and still reapplies current user grants.
+
+## Local action access snapshots
+
+An affirmative host authorization for local storage/settings may include the
+authorized capability, installation identity and a five-second lifetime.
+The broker reuses that snapshot only on the same action thread, user and
+installation. Host APIs, outbound network access and background worker messages
+continue through live host authorization. Older hosts return no snapshot and keep
+the original per-operation behavior.
+
+Individual permission revocation commits its database change then pushes a
+private installation/user invalidation to the runtime before reporting success.
+Stop/disable also invalidate local snapshots. A racing authorization response
+cannot repopulate an invalidated generation. Expiry bounds snapshots to five
+seconds if a control connection is interrupted; an unavailable invalidation is
+reported as a runtime error, while the committed database revocation remains in
+force. Revoked or expired access requires a fresh host authorization.
+
+
+## Native frontend activation
+
+Plugin API v1.1.17 adds `native_frontend.activation`: `startup` (the compatible
+default) or `page`. A page bundle is imported only when one of its declared
+contributions is mounted, including Settings, connections, routes, widgets or
+dialogs. Concurrent mounts share activation. Removing an installation or changing
+its package invalidates existing activation; permission checks still filter all
+discovery and asset requests. Plugins registering global search, notifications,
+appearance hooks or other startup services should retain `startup`.
+
+Connection status and plugin notification reads share pending requests and reuse
+successful results for fifteen seconds in the current account. Explicit connection
+refreshes bypass that cache. Account changes and provider removal invalidate results;
+late responses cannot repopulate the next account's state.
+
+
+## Reviewing initial library loading
+
+The Games page schedules optional enrichment after the first viewport paint, with
+an idle deadline of 200 ms rather than a fixed 2.5-second timer. The first card row starts
+its artwork downloads before buffered grid mounting. Visible card artwork also
+receives the existing eager priority hint; the artwork component still
+checks actual bounds and retains its bounded per-frame queue for scrolling.
+Configured development instances bypass Setup when the setup UI is disabled, so
+opening Games does not preload password-policy or username controls through an
+intermediate setup navigation. First-run setup is still enforced.
+
+Game storage lookups retain their shared row locks and folder recovery checks,
+but run filesystem traversal in a worker thread. Cancellation waits for those
+checks to finish before releasing the request's resources. This prevents slow
+storage mounts from blocking concurrent artwork and unrelated API requests.
+
+
+Browser authentication reads the session activity timestamp with the existing
+credential lookup. A fresh session remains a read-only authentication path; the
+conditional activity update is committed only after its existing one-minute
+interval elapses. Every request still checks session expiry, revocation and
+account activation, and retains the shared failed-credential quota.
+
+
+The private runtime listener disables Nagle buffering for small HTTP/1.1 replies.
+This avoids delayed-ACK stalls between separately written response headers and
+JSON/asset bodies on pooled connections. Response framing, authentication and
+package validation still apply to every request. PWA discovery selects declared
+PWA providers before hashing package payloads, so unrelated plugins are not
+revalidated by each status/manifest/icon lookup. Older runtimes can return the
+full inventory; the host still filters declarations and checks live site-wide
+grants. PWA manifest/icon reads run
+concurrently and still validate all three inert assets before returning success.
+The frontend registers PWA lifecycle listeners immediately, then checks initial
+install metadata after the first route has rendered; explicit push registration
+can still request status immediately.
+
+The Games page gives its first viewport request and first-row artwork high
+browser priority. Sync/import fetches credential state only when its menu opens,
+rather than competing with initial library requests.

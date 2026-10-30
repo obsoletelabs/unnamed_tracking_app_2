@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  ensureNativePlugin,
   nativePluginComponent,
   nativePluginFailures,
   reconcileNativePlugins,
@@ -22,6 +23,54 @@ afterEach(() => {
 });
 
 describe("native plugin lifecycle", () => {
+  it("defers page bundles and deduplicates activation until a contribution opens", async () => {
+    let release!: () => void;
+    const wait = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const cleanup = vi.fn();
+    const importer = vi.fn(async () => {
+      await wait;
+      return {
+        activate(context: NativePluginContext) {
+          context.registerComponent("dashboard", { template: "<p>Native</p>" });
+          return cleanup;
+        },
+      };
+    });
+    const lazy = { ...source, activation: "page" as const };
+    await reconcileNativePlugins([lazy], importer);
+    expect(importer).not.toHaveBeenCalled();
+    const first = ensureNativePlugin(source.pluginId);
+    const second = ensureNativePlugin(source.pluginId);
+    expect(first).toBe(second);
+    expect(importer).toHaveBeenCalledTimes(1);
+    release();
+    await first;
+    expect(nativePluginComponent(source.pluginId, "dashboard")).toBeDefined();
+    await reconcileNativePlugins([{ ...lazy, version: "2.0.0" }], importer);
+    expect(cleanup).toHaveBeenCalledOnce();
+    expect(nativePluginComponent(source.pluginId, "dashboard")).toBeUndefined();
+    expect(importer).toHaveBeenCalledTimes(1);
+    await ensureNativePlugin(source.pluginId);
+    expect(importer).toHaveBeenCalledTimes(2);
+  });
+  it("does not activate a removed page bundle when a pending import completes", async () => {
+    let release!: (module: { activate: () => void }) => void;
+    const activate = vi.fn();
+    await reconcileNativePlugins(
+      [{ ...source, activation: "page" }],
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    const pending = ensureNativePlugin(source.pluginId);
+    await reconcileNativePlugins([]);
+    release({ activate });
+    await pending;
+    expect(activate).not.toHaveBeenCalled();
+  });
   it("shows host guidance for native action and settings failures", async () => {
     let context!: NativePluginContext;
     await reconcileNativePlugins([source], async () => ({

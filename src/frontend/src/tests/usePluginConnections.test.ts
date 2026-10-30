@@ -67,6 +67,31 @@ describe("usePluginConnections", () => {
     vi.unstubAllGlobals();
   });
 
+  it("shares concurrent status reads and refreshes the next completed read", async () => {
+    let finish!: (value: Response) => void;
+    const fetch = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    vi.stubGlobal("fetch", fetch);
+    const first = setup();
+    const second = setup();
+    const pending = Promise.all([first.state.load(), second.state.load()]);
+    expect(fetch).toHaveBeenCalledOnce();
+    finish(reply({ connections: [connection()] }));
+    await pending;
+    expect(first.state.states[KEY].connected).toBe(true);
+    expect(second.state.states[KEY].connected).toBe(true);
+    fetch.mockResolvedValue(reply({ connections: [connection(null)] }));
+    await first.state.load();
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(first.state.states[KEY].sync).toBeNull();
+    first.scope.stop();
+    second.scope.stop();
+  });
+
   it("loads connection state from the host, not from the plugin", async () => {
     const fetch = stubReplies([reply({ connections: [connection()] })]);
     const { state } = setup();

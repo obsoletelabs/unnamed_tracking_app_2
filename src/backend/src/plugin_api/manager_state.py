@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
@@ -56,6 +57,7 @@ class ManagerState:
         """Runtime reports health; an unavailable runtime never erases installations."""
         with self.lock:
             state = self.read()
+            previous = copy.deepcopy(state)
             seen = {plugin["plugin_id"] for plugin in plugins}
             for plugin_id, record in state["plugins"].items():
                 if plugin_id not in seen:
@@ -70,7 +72,8 @@ class ManagerState:
                 record.update(plugin)
                 record["runtime_available"] = True
                 record.pop("runtime_error", None)
-            self._save(state)
+            if state != previous:
+                self._save(state)
             return [dict(item) for item in state["plugins"].values()]
 
     def settings(self, changes: dict[str, Any] | None = None) -> dict[str, Any]:

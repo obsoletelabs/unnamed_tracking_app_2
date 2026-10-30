@@ -101,6 +101,12 @@ async def main():
         )
         async with apply_nginx_change(configuration):
             assert request_status(secure=True) == 200
+            protocol = subprocess.run(
+                ["curl", "--http2", "-kfsS", "-o", "/dev/null", "-w", "%{http_version}",
+                 "https://127.0.0.1/_startup/status.json"],
+                check=True, capture_output=True, text=True, timeout=3,
+            ).stdout
+            assert protocol == "2", f"Expected HTTP/2 negotiation, got {protocol}"
             check_proxy_client("198.51.100.20")
             check_proxy_client("198.51.100.20", secure=True)
         assert ACTIVE.read_bytes() != original

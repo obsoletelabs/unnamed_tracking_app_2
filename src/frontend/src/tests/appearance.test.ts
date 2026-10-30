@@ -58,3 +58,17 @@ it("clears personal badges and ignores responses from the previous account", asy
     completion_badge_style: "ribbon",
   });
 });
+
+it("shares the appearance read while startup navigation is still resolving", async () => {
+  currentUser.value = user("reader");
+  const fetcher = vi.fn(
+    async () =>
+      new Response(
+        JSON.stringify({ user_id: "reader", completion_badge_style: "none" }),
+      ),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  await Promise.all([loadAppearanceSettings(), loadAppearanceSettings()]);
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(appearanceLoaded.value).toBe(true);
+});

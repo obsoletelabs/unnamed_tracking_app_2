@@ -113,6 +113,9 @@ const DevToolsSection = lazySettingsSection(
 const TasksSection = lazySettingsSection(
   () => import("../components/settings/TasksSection.vue"),
 );
+const MetricsSection = lazySettingsSection(
+  () => import("../components/settings/MetricsSection.vue"),
+);
 const StatsSection = lazySettingsSection(
   () => import("../components/settings/StatsSection.vue"),
 );
@@ -518,6 +521,9 @@ async function openSearchResult(entry: SettingsSearchEntry) {
             :initial-tab="initialTab"
           />
           <StatsSection v-else-if="activeSection === 'stats'" />
+          <MetricsSection
+            v-else-if="activeSection === 'metrics' && currentUser?.is_admin"
+          />
           <AdminSection
             v-else-if="activeSection === 'users' && currentUser?.is_admin"
           />

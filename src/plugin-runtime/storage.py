@@ -5,6 +5,7 @@ application database. A PluginStorage instance is permanently bound to one
 plugin ID and refuses path traversal, symlinks and quota violations.
 """
 from __future__ import annotations
+from bisect import bisect_left, insort
 import io
 import json
 import os
@@ -13,7 +14,7 @@ import re
 import shutil
 import tarfile
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 _PLUGIN_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
 _KEY = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._/-]{0,254}$")
@@ -21,6 +22,17 @@ _METADATA = ".storage.json"
 _MAX_KEY_BYTES = 255
 _NAMESPACE_LOCKS: dict[Path, threading.RLock] = {}
 _LOCK_REGISTRY = threading.Lock()
+
+
+@dataclass
+class _NamespaceIndex:
+    identity: tuple[int, int]
+    sizes: dict[str, int] = field(default_factory=dict)
+    ordered_keys: list[str] = field(default_factory=list)
+    usage: int = 0
+
+
+_NAMESPACE_INDEXES: dict[Path, _NamespaceIndex] = {}
 
 class StorageError(ValueError):
     """Base error for plugin storage operations."""
@@ -103,16 +115,34 @@ class PluginStorage:
             raise StorageSecurityError("storage key escapes the plugin namespace") from exc
         return path
 
-    def _usage(self) -> int:
-        total = 0
+    def _index(self) -> _NamespaceIndex:
+        """Rebuild once per namespace lifetime; durable files remain authoritative.
+
+        Only the broker writes this directory in the supported sandbox. All
+        handles share its index/lock. Restore and uninstall invalidate the index;
+        a runtime restart rebuilds it, including any interrupted write's bytes.
+        """
+        stat = self.root.stat()
+        identity = (stat.st_dev, stat.st_ino)
+        index = _NAMESPACE_INDEXES.get(self.root)
+        if index is not None and index.identity == identity:
+            return index
+        index = _NamespaceIndex(identity)
         for path in self.root.rglob("*"):
             if path == self._metadata_path:
                 continue
             if path.is_symlink():
                 raise StorageSecurityError("symlinks are not permitted in plugin storage")
             if path.is_file():
-                total += path.stat().st_size
-        return total
+                key = path.relative_to(self.root).as_posix()
+                index.sizes[key] = path.stat().st_size
+        index.ordered_keys = sorted(index.sizes)
+        index.usage = sum(index.sizes.values())
+        _NAMESPACE_INDEXES[self.root] = index
+        return index
+
+    def _usage(self) -> int:
+        return self._index().usage
 
     def _ensure_quota(self, additional: int) -> None:
         if additional >= 0 and self._usage() + additional > self.quota_bytes:
@@ -127,12 +157,17 @@ class PluginStorage:
         if path.exists() and path.is_symlink():
             raise StorageSecurityError("symlinks are not permitted in plugin storage")
         previous = path.stat().st_size if path.is_file() else 0
+        index = self._index()
         self._ensure_quota(max(0, len(value) - previous))
         path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         temporary = path.with_name(f".{path.name}.tmp")
         temporary.write_bytes(value)
         temporary.chmod(0o600)
         os.replace(temporary, path)
+        if key not in index.sizes:
+            insort(index.ordered_keys, key)
+        index.usage += len(value) - index.sizes.get(key, 0)
+        index.sizes[key] = len(value)
 
     def get(self, key: str) -> bytes | None:
         path = self._path(key)
@@ -152,7 +187,12 @@ class PluginStorage:
             return False
         if path.is_symlink() or not path.is_file():
             raise StorageSecurityError("invalid storage object")
+        index = self._index()
         path.unlink()
+        index.usage -= index.sizes.pop(key, 0)
+        position = bisect_left(index.ordered_keys, key)
+        if position < len(index.ordered_keys) and index.ordered_keys[position] == key:
+            index.ordered_keys.pop(position)
         return True
 
     def compare_and_swap(self, key: str, expected: bytes | None, value: bytes | None) -> bool:
@@ -167,16 +207,16 @@ class PluginStorage:
             return True
 
     def keys(self, prefix: str = "") -> tuple[str, ...]:
-        values: list[str] = []
-        for path in self.root.rglob("*"):
-            if path == self._metadata_path or not path.is_file():
-                continue
-            if path.is_symlink():
-                raise StorageSecurityError("symlinks are not permitted in plugin storage")
-            key = path.relative_to(self.root).as_posix()
-            if not prefix or key.startswith(prefix):
-                values.append(key)
-        return tuple(sorted(values))
+        with self._lock:
+            ordered = self._index().ordered_keys
+            position = bisect_left(ordered, prefix)
+            result = []
+            for offset in range(position, len(ordered)):
+                key = ordered[offset]
+                if not key.startswith(prefix):
+                    break
+                result.append(key)
+            return tuple(result)
 
     def backup(self) -> bytes:
         buffer = io.BytesIO()
@@ -188,6 +228,10 @@ class PluginStorage:
         return buffer.getvalue()
 
     def restore(self, archive_data: bytes) -> None:
+        with self._lock:
+            self._restore(archive_data)
+
+    def _restore(self, archive_data: bytes) -> None:
         staging = self.root.parent / f".{self.plugin_id}.restore"
         if staging.exists():
             shutil.rmtree(staging)
@@ -228,6 +272,7 @@ class PluginStorage:
             if self.root.exists():
                 shutil.rmtree(self.root)
             os.replace(replacement, self.root)
+            _NAMESPACE_INDEXES.pop(self.root, None)
         except (tarfile.TarError, OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
             if isinstance(exc, StorageError):
                 raise
@@ -237,5 +282,7 @@ class PluginStorage:
                 shutil.rmtree(staging)
 
     def uninstall(self) -> None:
-        if self.root.exists():
-            shutil.rmtree(self.root)
+        with self._lock:
+            if self.root.exists():
+                shutil.rmtree(self.root)
+            _NAMESPACE_INDEXES.pop(self.root, None)

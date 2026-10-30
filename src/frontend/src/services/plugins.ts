@@ -1,3 +1,4 @@
+import type { PluginUiDocument } from "./pluginUi";
 import { pluginRequestError } from "./apiError";
 
 export type PluginStatus =
@@ -14,7 +15,7 @@ export type PluginStatus =
   | "disabled"
   | "incompatible"
   | "unknown";
-export const PLUGIN_API_CONTRACT_VERSION = "1.1.15";
+export const PLUGIN_API_CONTRACT_VERSION = "1.1.17";
 export function pluginContributionsActive(plugin: PluginSummary): boolean {
   return (
     ([
@@ -33,6 +34,8 @@ export function pluginContributionsActive(plugin: PluginSummary): boolean {
       "1.1.12",
       "1.1.13",
       "1.1.14",
+      "1.1.15",
+      "1.1.16",
       PLUGIN_API_CONTRACT_VERSION,
     ].includes(plugin.api_contract_version ?? "") ||
       (plugin.legacy_compatibility === true &&
@@ -44,6 +47,7 @@ export function pluginContributionsActive(plugin: PluginSummary): boolean {
   );
 }
 export interface PluginSummary {
+  ui_document?: PluginUiDocument | null;
   plugin_id: string;
   name: string;
   version: string;
@@ -481,7 +485,15 @@ export const installPluginFromUrl = async (
   return response.json();
 };
 
-export const fetchPlugins = () => request<PluginSummary[]>("/api/plugins");
+export const fetchPlugins = (options: { includeUi?: boolean } = {}) =>
+  request<PluginSummary[]>(
+    "/api/plugins",
+    options.includeUi
+      ? {
+          headers: { "X-Plugin-Include-UI": "true" },
+        }
+      : undefined,
+  );
 export const fetchPluginDetails = (id: string) =>
   request<{ readme: string | null }>(
     `/api/plugins/${encodeURIComponent(id)}/details`,

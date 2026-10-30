@@ -234,3 +234,23 @@ def test_ui_playground_permissions_match_capabilities() -> None:
     assert {
         (item.capability.name, item.capability.version) for item in manifest.permissions
     } <= capabilities
+
+
+def test_native_page_activation_requires_its_introducing_contract() -> None:
+    import pytest
+
+    data = backend_manifest(
+        native_frontend={"entry": "native/index.js", "activation": "page"},
+        api_contract_version="1.1.16",
+    )
+    data["capabilities"].append({"name": "frontend.native", "version": 1})
+    data["permissions"].append(
+        {
+            "capability": {"name": "frontend.native", "version": 1},
+            "rationale": "Render plugin components.",
+        }
+    )
+    with pytest.raises(ValueError, match="1.1.17"):
+        PluginManifest.model_validate(data)
+    data["api_contract_version"] = "1.1.17"
+    assert PluginManifest.model_validate(data).native_frontend.activation == "page"

@@ -65,7 +65,9 @@ async def test_login_uses_different_cookie_names_for_different_ports() -> None:
 async def test_session_cookie_only_authenticates_on_its_own_host() -> None:
     token = "host-a-session"
     db = AsyncMock()
-    db.scalar.return_value = SimpleNamespace(id="user-id", is_active=True)
+    db.execute.return_value = Mock(
+        first=Mock(return_value=(SimpleNamespace(id="user-id", is_active=True), 0)),
+    )
 
     user = await get_current_user(
         _request("localhost:5173", session_cookie_name("localhost:5173"), token),

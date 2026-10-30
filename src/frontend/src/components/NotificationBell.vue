@@ -5,6 +5,7 @@
 // panel already used, just always reachable instead of one tap into the
 // hamburger menu first.
 import { ref, watch, onMounted, onBeforeUnmount, nextTick, useId } from "vue";
+import { afterPaint } from "../utils/afterPaint";
 import { useRouter } from "vue-router";
 import { openTopbarPopover } from "../state/topbarPopover";
 import {
@@ -15,6 +16,10 @@ import {
   mediaNotifications,
   mediaUnread,
   refreshMediaNotifications,
+  refreshMediaUnread,
+  mediaNotificationsLoading,
+  mediaNextOffset,
+  loadMoreMediaNotifications,
   readMediaNotification,
   readAllMediaNotifications,
   mediaNotificationRoute,
@@ -31,7 +36,6 @@ const remindersLoading = ref(false);
 let reminderGeneration = 0;
 async function refreshReminders() {
   const generation = ++reminderGeneration;
-  reminders.value = [];
   remindersLoading.value = true;
   const values = await readPluginReminders();
   if (generation !== reminderGeneration || !open.value) return;
@@ -91,6 +95,15 @@ function onKeydown(e: KeyboardEvent) {
   }
 }
 
+function onNotificationsScroll(event: Event) {
+  const target = event.target as HTMLElement;
+  if (
+    open.value &&
+    target.scrollTop + target.clientHeight >= target.scrollHeight - 64
+  )
+    void loadMoreMediaNotifications();
+}
+
 function timeAgo(unix: number): string {
   const s = Math.max(0, Math.floor(Date.now() / 1000 - unix));
   if (s < 60) return "just now";
@@ -119,13 +132,17 @@ function onResize() {
   if (open.value) positionPanel();
 }
 
+let cancelInitialCount = () => {};
 onMounted(() => {
-  void refreshMediaNotifications({ shared: true });
+  cancelInitialCount = afterPaint(() => {
+    void refreshMediaUnread({ shared: true });
+  });
   document.addEventListener("click", onDocumentClick);
   document.addEventListener("keydown", onKeydown);
   window.addEventListener("resize", onResize);
 });
 onBeforeUnmount(() => {
+  cancelInitialCount();
   reminderGeneration++;
   document.removeEventListener("click", onDocumentClick);
   document.removeEventListener("keydown", onKeydown);
@@ -185,7 +202,10 @@ onBeforeUnmount(() => {
           </button>
         </div>
         <p
-          v-if="remindersLoading && !mediaNotifications.length"
+          v-if="
+            (remindersLoading || mediaNotificationsLoading) &&
+            !mediaNotifications.length
+          "
           class="panel-empty"
           role="status"
         >
@@ -197,7 +217,7 @@ onBeforeUnmount(() => {
         >
           Nothing to flag right now.
         </p>
-        <div class="panel-list">
+        <div class="panel-list" @scroll="onNotificationsScroll">
           <button
             v-for="reminder in reminders.slice(0, 15)"
             :key="`${reminder.pluginId}:${reminder.id}`"
@@ -217,7 +237,7 @@ onBeforeUnmount(() => {
             </span>
           </button>
           <button
-            v-for="n in mediaNotifications.slice(0, 15)"
+            v-for="n in mediaNotifications"
             :key="n.id"
             type="button"
             class="notification-row"
@@ -243,6 +263,15 @@ onBeforeUnmount(() => {
             <span v-if="!n.read" class="notification-unread-dot"></span>
           </button>
         </div>
+        <button
+          v-if="mediaNextOffset !== null"
+          type="button"
+          class="see-all-btn"
+          :disabled="mediaNotificationsLoading"
+          @click="loadMoreMediaNotifications"
+        >
+          {{ mediaNotificationsLoading ? "Loading…" : "Load more" }}
+        </button>
         <button type="button" class="see-all-btn" @click="seeAll">
           See all notifications
         </button>

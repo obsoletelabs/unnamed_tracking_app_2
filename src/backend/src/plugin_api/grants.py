@@ -166,3 +166,41 @@ async def has_capability_grant(
         )
     )
     return grant is not None
+
+
+async def installation_capabilities(
+    db: AsyncSession, plugins: list[dict[str, Any]], user_id: UUID
+) -> dict[str, tuple[list[str], frozenset[str]]]:
+    """Resolve one inventory's grants/revocations in one scoped database query."""
+    installations = {
+        str(item["plugin_id"]): UUID(str(item["installation_id"]))
+        for item in plugins
+        if item.get("installation_id")
+    }
+    if not installations:
+        return {}
+    rows = await db.execute(
+        select(
+            PluginPermissionGrant.plugin_id,
+            PluginPermissionGrant.installation_id,
+            PluginPermissionGrant.capability,
+            PluginPermissionGrant.revoked_at,
+        ).where(
+            PluginPermissionGrant.installation_id.in_(installations.values()),
+            PluginPermissionGrant.capability_version == 1,
+            PluginPermissionGrant.device_id.is_(None),
+            or_(PluginPermissionGrant.user_id.is_(None), PluginPermissionGrant.user_id == user_id),
+        )
+    )
+    active: dict[str, set[str]] = {key: set() for key in installations}
+    revoked: dict[str, set[str]] = {key: set() for key in installations}
+    for plugin_id, installation_id, capability, revoked_at in rows:
+        if installations.get(plugin_id) == installation_id:
+            (active if revoked_at is None else revoked)[plugin_id].add(capability)
+    return {
+        plugin_id: (
+            sorted(values),
+            frozenset(expand_capabilities(values)) - (revoked[plugin_id] - values),
+        )
+        for plugin_id, values in active.items()
+    }

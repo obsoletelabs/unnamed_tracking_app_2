@@ -387,6 +387,17 @@ export async function uploadToInbox(
   return uploadFiles("/api/media/inbox", files, onProgress);
 }
 
+export async function fetchInboxCount(): Promise<number> {
+  if (import.meta.env.VITE_USE_MOCK_DATA === "true") return 0;
+  const response = await fetch("/api/media/inbox/count", {
+    credentials: "include",
+    priority: "low",
+  });
+  if (!response.ok)
+    throw new Error(`Failed to count inbox: ${response.status}`);
+  return Number((await response.json()).count) || 0;
+}
+
 export async function listInbox(): Promise<InboxMediaItem[]> {
   if (import.meta.env.VITE_USE_MOCK_DATA === "true") return [];
   const response = await fetch("/api/media/inbox", { credentials: "include" });

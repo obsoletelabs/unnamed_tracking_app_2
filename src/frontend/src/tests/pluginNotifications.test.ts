@@ -1,4 +1,4 @@
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import {
   registerPluginReminders,
   readPluginReminders,
@@ -53,6 +53,44 @@ it("shows plugin-owned reminders and drops revoked results while isolating failu
     expect((await readPluginReminders()).map((item) => item.id)).toEqual([
       "due",
     ]);
+  } finally {
+    stop();
+  }
+});
+
+it("shares pending reminder reads and reuses fresh results until their provider changes", async () => {
+  let finish!: (
+    value: Array<{
+      id: string;
+      label: string;
+      description: string;
+      path: string;
+    }>,
+  ) => void;
+  const provider = vi.fn(
+    () =>
+      new Promise<
+        Array<{ id: string; label: string; description: string; path: string }>
+      >((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const stop = registerPluginReminders("example.shared", provider);
+  try {
+    const one = readPluginReminders();
+    const two = readPluginReminders();
+    expect(provider).toHaveBeenCalledTimes(1);
+    finish([
+      {
+        id: "one",
+        label: "One",
+        description: "Soon",
+        path: "/plugins/example.shared/page",
+      },
+    ]);
+    expect(await one).toEqual(await two);
+    await readPluginReminders();
+    expect(provider).toHaveBeenCalledTimes(1);
   } finally {
     stop();
   }

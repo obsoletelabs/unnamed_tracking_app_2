@@ -154,6 +154,56 @@ def build_tests(dashboard: dict) -> dict:
     }
 
 
+
+def performance_tests() -> list[dict]:
+    """Validate every performance target and route attribution with known samples."""
+    dashboard = json.loads((EXAMPLE / "grafana-performance.json").read_text())
+    panels = {panel["id"]: panel for panel in dashboard["panels"]}
+    assert len(panels) == len(dashboard["panels"]), "Performance panel IDs must be unique"
+    variables = {
+        "__rate_interval": "2m", "__range": "5m", "job": "unnamed-tracking",
+        "instance": ".*", "route": ".*", "method": ".*", "pool": ".*",
+        "query_group": ".*", "phase": ".*",
+    }
+    checks = []
+    for panel in panels.values():
+        for target in panel.get("targets", []):
+            expression = target["expr"]
+            for name, value in variables.items():
+                expression = expression.replace("$" + name, value)
+            assert "$" not in expression, expression
+            checks.append({"expr": expression, "eval_time": "5m", "exp_samples": []})
+    # Empty-series queries catch syntax and unknown functions. Separate fixtures
+    # check the denominator and route filter without changing the legacy fixture.
+    fixture_labels = 'job="unnamed-tracking",instance="app-a:9464",method="GET"'
+    route = ',route="/api/game/list"'
+    grouped = ',pool="application",query_group="games"'
+    samples = [
+        {"series": "uta_http_requests_total{" + fixture_labels + route + ',status_class="2xx"}',
+         "values": "0+60x10"},
+        {"series": "uta_http_database_queries_total{" + fixture_labels + route + grouped + "}",
+         "values": "0+180x10"},
+        {"series": "uta_http_database_query_seconds_total{" + fixture_labels + route + grouped + "}",
+         "values": "0+0.9375x10"},
+    ]
+    attributed = []
+    for panel_id, expected in [(5, 3), (6, 0.015625)]:
+        expression = panels[panel_id]["targets"][0]["expr"]
+        for name, value in {**variables, "route": "/api/game/list", "method": "GET"}.items():
+            expression = expression.replace("$" + name, value)
+        attributed.append({"expr": expression, "eval_time": "5m", "exp_samples": [
+            {"labels": '{pool="application",query_group="games"}', "value": expected}
+        ]})
+        attributed.append({"expr": expression.replace('/api/game/list', '/api/other'),
+                           "eval_time": "5m", "exp_samples": []})
+    return [
+        {"name": "performance query syntax", "interval": "30s", "input_series": [],
+         "promql_expr_test": checks},
+        {"name": "performance route SQL attribution", "interval": "30s",
+         "input_series": samples, "promql_expr_test": attributed},
+    ]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--promtool", default=shutil.which("promtool"))
@@ -162,6 +212,7 @@ def main() -> None:
         (EXAMPLE / "grafana-dashboard.json").read_text(encoding="utf-8")
     )
     fixture = build_tests(dashboard)
+    fixture["tests"].extend(performance_tests())
     with tempfile.TemporaryDirectory(prefix="uta-dashboard-") as directory:
         path = Path(directory) / "dashboard.test.json"
         path.write_text(json.dumps(fixture), encoding="utf-8")
@@ -187,7 +238,7 @@ def main() -> None:
             ]
         subprocess.run(command, check=True)
     print(
-        f"Validated {len(fixture['tests'][0]['promql_expr_test'])} dashboard query cases"
+        f"Validated {sum(len(test['promql_expr_test']) for test in fixture['tests'])} dashboard query cases"
     )
 
 
