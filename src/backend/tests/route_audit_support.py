@@ -342,6 +342,7 @@ def resolve_path(template: str, ids: dict[str, str]) -> str | None:
         "version_id": ids["archive_version_id"],
         "note_name": "owner-note",
         "asset_kind": "key_art",
+        "field": "developer",
         "media_id": ids["media_id"],
         "notification_id": ids["notification_id"],
         "destination_id": ids[f"{destination_kind}_destination_id"],

@@ -372,6 +372,8 @@ are redacted. Validation errors never echo submitted values.
 | PATCH | `/api/game/{game_id}/checklist/{item_id}` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | GET | `/api/game/{game_id}/content-counts` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | GET | `/api/game/{game_id}/field-changes` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
+| DELETE | `/api/game/{game_id}/field-preferences/{field}` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
+| PUT | `/api/game/{game_id}/field-preferences/{field}` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. A copy source must sit in the same umbrella. |
 | GET | `/api/game/{game_id}/field-sources` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | GET | `/api/game/{game_id}/files/{kind}` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | POST | `/api/game/{game_id}/files/{kind}` | user-or-app | Game queried with `user_id == caller`; any child ID must also belong to that game. App grants need `content.write` and may add `doc` only; `modpack` is refused (403). |

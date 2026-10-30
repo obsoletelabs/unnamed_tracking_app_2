@@ -16,7 +16,7 @@ from datetime import date
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.game import Game
@@ -42,12 +42,21 @@ PROVENANCE_FIELDS = frozenset(
 _LABEL_LENGTH = 64
 
 
-def _stored(value: Any) -> Any:
+def stored(value: Any) -> Any:
     if isinstance(value, date):
         return value.isoformat()
     if isinstance(value, (list, tuple, set)):
         return sorted(str(item) for item in value)
     return value
+
+
+def field_values_of(game: Game, fields: Collection[str]) -> Select[tuple[GameFieldValue]]:
+    """The recorded values of `fields` for one game (callers narrow by state and origin)."""
+    return select(GameFieldValue).where(
+        GameFieldValue.user_id == game.user_id,
+        GameFieldValue.game_id == game.id,
+        GameFieldValue.field.in_(fields),
+    )
 
 
 def changed_values(game: Game, updates: Mapping[str, Any]) -> dict[str, Any]:
@@ -82,19 +91,14 @@ async def record_field_sources(
     current = {
         row.field: row
         for row in await db.scalars(
-            select(GameFieldValue)
-            .where(
-                GameFieldValue.user_id == game.user_id,
-                GameFieldValue.game_id == game.id,
-                GameFieldValue.field.in_(fields),
-                GameFieldValue.state == FieldValueState.CURRENT.value,
-            )
+            field_values_of(game, fields)
+            .where(GameFieldValue.state == FieldValueState.CURRENT.value)
             .with_for_update()
         )
     }
     stamp = int(time.time())
     for field in sorted(fields):
-        value = _stored(values[field])
+        value = stored(values[field])
         existing = current.get(field)
         if (
             existing is not None
