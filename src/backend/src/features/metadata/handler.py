@@ -14,6 +14,7 @@ from uuid import UUID, uuid4
 
 from src.core.cache_metrics import cache_entries, cache_eviction, cache_refresh, cache_request
 from src.plugin_api.metadata_contracts import (
+    MAX_ACHIEVEMENTS,
     MetadataCandidate,
     MetadataPatch,
     MetadataProviderRegistration,
@@ -790,6 +791,11 @@ class MetadataHandler:
                     for entry in values.get(name, []) + value
                 }
                 values[name] = list(entries.values())
+            elif name == "achievements":
+                # A large catalogue arrives in pages that each fit the runtime's output limit; a
+                # later page adds to, and may refine, an earlier one. The contract's own cap holds.
+                entries = {entry["external_id"]: entry for entry in values.get(name, []) + value}
+                values[name] = list(entries.values())[:MAX_ACHIEVEMENTS]
             else:
                 values[name] = value
         source.metadata[provider_id] = MetadataPatch.model_validate(values)

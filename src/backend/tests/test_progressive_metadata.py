@@ -16,7 +16,9 @@ from src.features.metadata.handler import MetadataHandler
 from src.features.metadata.identity import same_entity
 from src.features.metadata.providers import PluginMetadataProvider
 from src.plugin_api.metadata_contracts import (
+    MAX_ACHIEVEMENTS,
     MediaAsset,
+    MetadataAchievement,
     MetadataCandidate,
     MetadataPatch,
     MetadataProviderRegistration,
@@ -636,3 +638,36 @@ async def test_search_cache_keeps_its_capacity_bound_with_longer_reuse():
         await session.search_task
         handler.cancel(session)
     assert sum(operation == "search" for operation, _ in provider.calls) == 258
+
+
+def _achievement_page(start, count, **extra):
+    return MetadataPatch(
+        achievements=tuple(
+            MetadataAchievement(external_id=f"ACH_{number}", name=f"Achievement {number}", **extra)
+            for number in range(start, start + count)
+        )
+    )
+
+
+def test_achievement_pages_accumulate_instead_of_replacing_each_other():
+    source = SimpleNamespace(metadata={})
+    for start in (0, 100, 200):
+        MetadataHandler._append_patch(source, "atlas", _achievement_page(start, 100))
+    merged = source.metadata["atlas"].achievements
+    assert [entry.external_id for entry in merged] == [f"ACH_{number}" for number in range(300)]
+
+
+def test_a_repeated_achievement_is_refined_by_the_later_page_without_duplicating():
+    source = SimpleNamespace(metadata={})
+    MetadataHandler._append_patch(source, "atlas", _achievement_page(0, 3))
+    MetadataHandler._append_patch(source, "atlas", _achievement_page(2, 2, points=50))
+    merged = source.metadata["atlas"].achievements
+    assert [entry.external_id for entry in merged] == ["ACH_0", "ACH_1", "ACH_2", "ACH_3"]
+    assert merged[2].points == 50 and merged[1].points is None
+
+
+def test_accumulated_achievements_stay_within_the_contract_cap():
+    source = SimpleNamespace(metadata={})
+    for start in range(0, MAX_ACHIEVEMENTS + 300, 500):
+        MetadataHandler._append_patch(source, "atlas", _achievement_page(start, 500))
+    assert len(source.metadata["atlas"].achievements) == MAX_ACHIEVEMENTS

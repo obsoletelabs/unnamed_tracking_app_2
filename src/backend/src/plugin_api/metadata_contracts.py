@@ -144,6 +144,10 @@ class MetadataAiring(MetadataModel):
     next_episode_at: int | None = Field(default=None, ge=0)
 
 
+# The most achievement definitions one catalogue may hold, across all of its pages.
+MAX_ACHIEVEMENTS = 2000
+
+
 class MetadataAchievement(MetadataModel):
     """An achievement definition from a provider's catalogue. Progress is never provider-owned."""
 
@@ -220,7 +224,7 @@ class MetadataPatch(MetadataModel):
     players_max: int | None = Field(default=None, ge=1, le=32)
     crossplay: Literal["yes", "no", "partial"] | None = None
     # Achievement definitions, only requested through the "achievements" resource.
-    achievements: tuple[MetadataAchievement, ...] = Field(default=(), max_length=2000)
+    achievements: tuple[MetadataAchievement, ...] = Field(default=(), max_length=MAX_ACHIEVEMENTS)
     # Provider-defined fields the host has no column for, kept as read-only provider details.
     custom: dict[ActionId, CustomValue] = Field(default_factory=dict, max_length=32)
 

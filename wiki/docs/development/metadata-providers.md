@@ -243,8 +243,9 @@ without discarding other providers' results.
 
 Pages share the original deadline, reject repeated cursors and have a bounded
 256-page ceiling. Runtime action results keep their 64 KiB limit. Companion
-providers use size-aware pages for large episode and relation inventories.
-Episode aggregates retain at most 10,000 entries and relation aggregates 500;
+providers use size-aware pages for large episode, relation and achievement inventories.
+Achievement pages accumulate by `external_id` (a later page refines an earlier one) up to the
+contract's 2,000 definitions. Episode aggregates retain at most 10,000 entries and relation aggregates 500;
 an invalid aggregate preserves previously accepted pages and reports failure.
 
 Patches are retained by source. Provider priority and stable provider ID determine
