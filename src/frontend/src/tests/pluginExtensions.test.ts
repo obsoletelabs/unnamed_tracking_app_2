@@ -918,3 +918,16 @@ it("uses bundled discovery documents without a request per plugin", async () => 
     plugin.plugin_id,
   );
 });
+
+describe("plugin contract support", () => {
+  it("keeps contributions for every 1.1.x contract up to the host's", async () => {
+    const { PLUGIN_API_CONTRACT_VERSION, pluginSupportsHostContract } =
+      await import("../services/plugins");
+    const hostPatch = Number(PLUGIN_API_CONTRACT_VERSION.split(".")[2]);
+    for (let patch = 0; patch <= hostPatch; patch += 1)
+      expect(pluginSupportsHostContract(`1.1.${patch}`)).toBe(true);
+    expect(pluginSupportsHostContract(`1.1.${hostPatch + 1}`)).toBe(false);
+    expect(pluginSupportsHostContract("1.2.0")).toBe(false);
+    expect(pluginSupportsHostContract(undefined)).toBe(false);
+  });
+});
