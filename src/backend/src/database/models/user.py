@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID, uuid4
 
-from sqlalchemy import BigInteger, Boolean, String, Text
+from sqlalchemy import BigInteger, Boolean, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -21,6 +21,12 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     oidc_subject: Mapped[str | None] = mapped_column(String(512), unique=True, nullable=True)
+    # Set when the user typed this address into their own profile. Nobody proved they own it,
+    # so a first single sign-on login must not adopt the account because the emails match.
+    # (No Python-side default: the migration tests insert users at revisions before this column.)
+    email_unverified: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     # Secret path token for the iCalendar feed — calendar apps subscribe

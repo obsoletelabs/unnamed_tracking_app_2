@@ -94,6 +94,7 @@ Providers sharing the same issuer and client ID use the strictest saved or envir
 Existing users are matched according to **User matching**:
 
 - **Email** matches the local account email.
+  An address a user typed into their own profile is not proof of ownership, so such an account is not linked by email on a first SSO sign-in (`email_unverified`). An administrator can change the address, which clears the mark, or the user can sign in locally and link by username matching. Accounts created by an administrator or an invitation, and existing accounts, are unaffected.
 - **Username** uses the string OIDC `preferred_username` claim without also requiring email matching. A free-form display name cannot select an account.
 - **Disabled** performs no email or username lookup. Already linked identities can still sign in, and **Allow new users** independently controls whether a distinct new account may be created. A local account's existing email cannot be claimed by creating a duplicate account.
 

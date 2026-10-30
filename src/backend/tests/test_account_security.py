@@ -426,3 +426,18 @@ async def test_invalid_username_reasons_reach_the_client_for_each_account_form(a
     )
     assert response.status_code == 422
     assert "Username cannot contain \u201c@\u201d" in response.text
+
+
+async def test_changing_your_own_email_marks_it_unverified_and_keeping_it_does_not(accounts):
+    sign_in(accounts)
+    member = accounts.users[0]
+    same = await accounts.client.patch("/api/auth/me", json={"email": member.email})
+    assert same.status_code == 200
+    async with SessionLocal() as db:
+        assert (await db.get(User, member.id)).email_unverified is False
+    new = f"new-{uuid4().hex}@example.test"
+    changed = await accounts.client.patch("/api/auth/me", json={"email": new})
+    assert changed.status_code == 200
+    async with SessionLocal() as db:
+        row = await db.get(User, member.id)
+        assert row.email == new and row.email_unverified is True
