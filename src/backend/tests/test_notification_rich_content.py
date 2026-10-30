@@ -405,3 +405,22 @@ def test_view_marks_stale_content_and_keeps_actions_inert():
     }  # fmt: skip
     # Plugin action entries never expose the plugin's id, input or target.
     assert view["actions"][1] == {"id": "run", "label": "Run", "style": "danger", "kind": "action"}
+
+
+@pytest.mark.parametrize(
+    "url, safe",
+    (
+        ("https://app.example.com/api/plugins/demo/frontend/index.html", False),
+        ("https://APP.example.com./api/plugins/demo/frontend/index.html", False),
+        ("https://app.example.com/%61pi/plugins/demo/frontend/index.html", False),
+        ("https://app.example.com/api", False),
+        ("https://app.example.com/games/1", True),
+        ("https://app.example.com/apidocs", True),
+        ("https://other.example.com/api/anything", True),
+    ),
+)
+def test_links_into_the_hosts_own_api_are_refused(monkeypatch, url, safe):
+    from src.features import notification_safety
+
+    monkeypatch.setattr(notification_safety.settings, "PUBLIC_APP_URL", "https://app.example.com")
+    assert notification_safety.url_is_safe(url) is safe

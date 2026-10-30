@@ -7,10 +7,11 @@ make a producer's mistake visible instead of shipping a mangled message.
 
 import re
 from collections.abc import Iterator
-from urllib.parse import parse_qsl, urlsplit
+from urllib.parse import parse_qsl, unquote, urlsplit
 
 from pydantic import TypeAdapter, ValidationError
 
+from src.core.config import settings
 from src.plugin_api.notification_story_contracts import (
     SPOOFING_CHARACTERS,
     ApplicationPath,
@@ -107,8 +108,23 @@ def url_is_safe(value: str) -> bool:
             adapter.validate_python(value)
         except ValidationError:
             continue
-        return not _has_secret_query(value)
+        return not _has_secret_query(value) and not _is_own_api_url(value)
     return False
+
+
+def _is_own_api_url(url: str) -> bool:
+    """An absolute link into this host's own API, which application paths already refuse."""
+    if not settings.PUBLIC_APP_URL:
+        return False
+    try:
+        own, target = urlsplit(settings.PUBLIC_APP_URL), urlsplit(url)
+    except ValueError:
+        return True
+    if (target.hostname or "").rstrip(".").lower() != (own.hostname or "").lower():
+        return False
+    api = own.path.rstrip("/") + "/api"
+    path = unquote(target.path)
+    return path == api or path.startswith(api + "/")
 
 
 def _has_secret_query(url: str) -> bool:

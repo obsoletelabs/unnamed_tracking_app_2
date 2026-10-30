@@ -253,6 +253,22 @@ it("only follows https or application-path links", () => {
   expect(safeHref("/settings?section=notifications")?.kind).toBe("route");
 });
 
+it("refuses absolute links into the app's own API", () => {
+  vi.stubGlobal("location", new URL("https://app.example.com/notifications"));
+  try {
+    for (const own of [
+      "https://app.example.com/api/plugins/demo/frontend/index.html",
+      "https://app.example.com/%61pi/plugins/demo/frontend/",
+      "https://app.example.com/api",
+    ])
+      expect(safeHref(own)).toBeNull();
+    expect(safeHref("https://app.example.com/games/1")?.kind).toBe("external");
+    expect(safeHref("https://other.example.com/api/x")?.kind).toBe("external");
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
 it("renders block and inline nodes as text only", () => {
   const wrapper = mount(RichNodes, {
     props: {
