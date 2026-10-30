@@ -61,10 +61,11 @@ The #293 audit covered `v-html` and host-side field handling. This pass followed
 
 * **Game metadata refresh `links`.** The refresh route passes plugin `links` as dictionaries to a relationship that expects `GameLink` rows.
 * **Episode stills** (`still_url`) are stored as any HTTP(S) address and loaded raw by the browser; other plugin image URLs also reach the browser directly rather than through the image proxy.
-* **Notification contract.** Most plugin UI document collections have no count limit.
+* **Notification contract.** ~~Most plugin UI document collections have no count limit.~~ Fixed: `PluginUiDocument` rejects more than 256 entries in any contribution collection and more than 64 columns in a table (checked in a validator, so the published schema is unchanged).
 * **Install consent preview** loads a manifest-chosen icon URL (including plain `http`) in the administrator's browser before consent.
 * **Public-app files** (`/api/public-apps/{id}/app/...`) are served unauthenticated with `connect-src 'self'` and no sandbox, because the app talks to the host. Sandboxing them needs a separate origin or a design change for the Discord embed; this is a decision, not a quick fix.
-* **Runtime output and body limits.** A single plugin route result line is read without a cap in the runtime (only the memory rlimit bounds it), and a chunked request body is buffered before the 48 KiB check.
+* **Runtime output and body limits.** A single plugin route result line is read without a cap in the runtime (only the memory rlimit bounds it; left for the runtime owner). ~~A chunked request body is buffered before the 48 KiB check.~~ Fixed: the route reads the body as a stream and stops at the limit.
+* **Smaller caps.** Fixed: two achievement ids that share their first 200 characters are one row (the stored, clipped id is what is de-duplicated), and provider-reported `provider_custom` fields stop growing at 64 keys.
 * A notification link to the app's own `/api/plugins/.../frontend/...` is accepted as an external HTTPS link. With the CSP sandbox above it is no longer dangerous, but it should be rejected as defence in depth.
 
 ### Checked and found safe

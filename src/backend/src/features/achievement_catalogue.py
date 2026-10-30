@@ -19,6 +19,7 @@ from src.features.metadata.providers import discover_providers
 from src.features.metadata.service import collect_record, game_candidate
 
 MAX_ROWS = 2000
+_EXTERNAL_ID_LENGTH = 200
 PROVIDER_LABEL_LENGTH = 128
 
 
@@ -28,12 +29,15 @@ def catalogue_rows(record: dict[str, Any]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for item in (record.get("metadata") or {}).get("achievements") or []:
         external_id = item.get("external_id")
+        if isinstance(external_id, str):
+            # the stored id is clipped, so de-duplicate on what is stored
+            external_id = external_id[:_EXTERNAL_ID_LENGTH]
         if not isinstance(external_id, str) or external_id in seen:
             continue
         seen.add(external_id)
         rows.append(
             {
-                "external_id": external_id[:200],
+                "external_id": external_id,
                 "name": item["name"],
                 "description": item.get("description"),
                 "icon_url": item.get("icon_url"),

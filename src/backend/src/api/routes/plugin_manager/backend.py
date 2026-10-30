@@ -75,14 +75,19 @@ async def _backend_route_request(
                 "Content-Length must be an integer.",
                 error_request_id,
             ) from exc
-    raw_body = await request.body()
-    if len(raw_body) > _MAX_PLUGIN_ROUTE_BODY_BYTES:
-        raise _backend_route_error(
-            413,
-            "invalid_request",
-            "Plugin request body exceeds 48 KiB.",
-            error_request_id,
-        )
+    # A chunked request has no Content-Length to check first, so stop reading at the limit
+    # instead of buffering the whole body.
+    received = bytearray()
+    async for chunk in request.stream():
+        received.extend(chunk)
+        if len(received) > _MAX_PLUGIN_ROUTE_BODY_BYTES:
+            raise _backend_route_error(
+                413,
+                "invalid_request",
+                "Plugin request body exceeds 48 KiB.",
+                error_request_id,
+            )
+    raw_body = bytes(received)
     body: dict[str, Any] | None = None
     if raw_body:
         content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()

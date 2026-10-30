@@ -555,6 +555,27 @@ def _require_page(contribution_id: str, page_id: str, pages: set[str]) -> None:
         raise ValueError(f"contribution {contribution_id} references an unknown page")
 
 
+MAX_CONTRIBUTIONS = 256
+MAX_TABLE_COLUMNS = 64
+_BOUNDED_COLLECTIONS = (
+    "settings",
+    "actions",
+    "tables",
+    "dialogs",
+    "menus",
+    "pages",
+    "extensions",
+    "navigation",
+    "settings_sections",
+    "overlays",
+    "dialog_contributions",
+    "contextual_actions",
+    "routes",
+    "page_replacements",
+    "document_readers",
+)
+
+
 class PluginUiDocument(ContractModel):
     """Complete versioned UI document consumed by the native frontend host."""
 
@@ -594,11 +615,26 @@ class PluginUiDocument(ContractModel):
     @model_validator(mode="after")
     def validate_references(self) -> "PluginUiDocument":
         """Check identifiers, page contents and contribution targets in declaration order."""
+        self._validate_collection_sizes()
         self._validate_identifiers()
         self._validate_page_references()
         self._validate_navigation_references()
         self._validate_contribution_targets()
         return self
+
+    def _validate_collection_sizes(self) -> None:
+        """Bound every contribution collection so one document cannot freeze the interface.
+
+        Checked here rather than in the field definitions so the published JSON schema, which
+        plugin repositories snapshot, does not change."""
+        for name in _BOUNDED_COLLECTIONS:
+            if len(getattr(self, name)) > MAX_CONTRIBUTIONS:
+                raise ValueError(f"{name} may declare at most {MAX_CONTRIBUTIONS} entries")
+        for table in self.tables:
+            if len(table.columns) > MAX_TABLE_COLUMNS:
+                raise ValueError(
+                    f"table {table.id} may declare at most {MAX_TABLE_COLUMNS} columns"
+                )
 
     def _validate_identifiers(self) -> None:
         for values, kind in (
