@@ -765,3 +765,7 @@ through one shared metadata handler. Core search does not require the plugin run
 Provider configuration and health appear in the host's metadata settings.
 See [the progressive metadata contract](../development/metadata-providers.md) for
 phase separation, scoped credential migration, deadlines and persistence behavior.
+
+## Filtering and sorting a large library
+
+The default library loads games near the viewport in their saved sorting-title order. Filters or sorts calculated in the browser load the remaining matching game records before the result is complete. A loading message identifies this work; partial results are not reported as an empty library. If another page fails, the games already loaded stay visible and **Retry** requests that page again. Advanced filters and sorts can therefore transfer more data than the default view.

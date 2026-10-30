@@ -50,6 +50,9 @@ const {
   totalGameCount,
   hasMoreGames,
   loadingMoreGames,
+  loadMoreError,
+  retryLoadMoreGames,
+  resultsIncomplete,
   loadAllGames,
   isLibraryRowInViewport,
   error,
@@ -698,6 +701,12 @@ async function openRandomPicker() {
         {{ error }} The list below may be out of date.
         <button type="button" class="ui-btn" @click="loadGames">Retry</button>
       </p>
+      <p v-if="loadMoreError" class="empty-state error" role="alert">
+        {{ loadMoreError }}
+        <button type="button" class="ui-btn" @click="retryLoadMoreGames">
+          Retry
+        </button>
+      </p>
       <p v-if="loading" class="empty-state">Loading…</p>
       <p
         v-else-if="error && !hasAnyGames"
@@ -1282,8 +1291,16 @@ async function openRandomPicker() {
         @added="onCollectionAdded"
       />
 
-      <div v-if="loadingMoreGames" class="library-load-status" role="status">
-        Loading items…
+      <div
+        v-if="loadingMoreGames || (resultsIncomplete && !loadMoreError)"
+        class="library-load-status"
+        role="status"
+      >
+        {{
+          resultsIncomplete
+            ? "Loading the remaining games to finish filtering and sorting…"
+            : "Loading items…"
+        }}
       </div>
 
       <BulkEditModal

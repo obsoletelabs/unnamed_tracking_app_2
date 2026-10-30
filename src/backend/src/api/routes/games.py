@@ -477,7 +477,7 @@ async def _counted_game_page(
     result = await db.execute(
         select(Game, count_subquery.c.total_count, *status_count_columns)
         .select_from(count_subquery.outerjoin(Game, and_(*predicates)))
-        .order_by(Game.sort_title)
+        .order_by(Game.sort_title, Game.id)
         .offset(skip)
         .limit(limit)
     )
@@ -538,7 +538,7 @@ async def list_games(
                 await db.scalars(
                     select(Game)
                     .where(*predicates)
-                    .order_by(Game.sort_title)
+                    .order_by(Game.sort_title, Game.id)
                     .offset(skip)
                     .limit(limit)
                 )

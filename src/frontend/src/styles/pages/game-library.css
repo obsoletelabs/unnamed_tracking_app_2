@@ -1477,14 +1477,18 @@
 .library-load-status {
   position: fixed;
   z-index: 50;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: min(480px, calc(100vw - 32px));
+  text-align: center;
   left: 50%;
   bottom: max(18px, env(safe-area-inset-bottom));
   transform: translateX(-50%);
   padding: 9px 15px;
-  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.14));
+  border: 1px solid var(--ui-border);
   border-radius: 999px;
-  background: var(--surface-elevated, #20242d);
-  color: var(--text-primary, #f3f4f6);
+  background: var(--ui-surface);
+  color: var(--ui-text);
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.32);
   font-size: 0.875rem;
   line-height: 1.2;
