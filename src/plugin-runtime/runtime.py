@@ -765,7 +765,13 @@ class PluginSupervisor:
                         429: "rate_limited",
                     }.get(exc.code, "unavailable" if exc.code >= 500 else "invalid_request"),
                     "message": (
-                        "Plugin gateway rejected the request (HTTP "
+                        # A bodyless 502-504 is the front proxy answering while the
+                        # application is starting, restarting or migrating its database.
+                        f"Plugin gateway is not ready (HTTP {exc.code}). The host may still "
+                        "be starting or restarting; retry shortly and check the application "
+                        "startup status."
+                        if exc.code in {502, 503, 504}
+                        else "Plugin gateway rejected the request (HTTP "
                         f"{exc.code}). Check the installation grants and host API compatibility."
                     ),
                 }
