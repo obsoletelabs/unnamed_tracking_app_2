@@ -1,17 +1,6 @@
 name: Build and test production Docker container
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 on:
-  push:
-    branches:
-      - "**"
-    tags:
-      - "v*"
-  pull_request:
-    branches:
-      - "**"
+  workflow_call:
 
 permissions:
   contents: read
@@ -67,9 +56,10 @@ jobs:
           PY
 
       - name: Publish production image
-        if: github.event_name != 'pull_request'
+        if: (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
 
@@ -77,7 +67,11 @@ jobs:
           IMAGE_NAME="ghcr.io/${REPO_LC}"
 
           # Tag formatting
-          IMAGE_TAG="$(printf '%s' "$GITHUB_REF_NAME" | tr '/:' '-')"
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            IMAGE_TAG="pr-${PR_NUMBER}"
+          else
+            IMAGE_TAG="$(printf '%s' "$GITHUB_REF_NAME" | tr '/:' '-')"
+          fi
 
           # Tag and push
           docker tag unnamed_tracking_app:ci "$IMAGE_NAME:$IMAGE_TAG"

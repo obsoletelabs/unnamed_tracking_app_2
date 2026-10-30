@@ -1,18 +1,6 @@
 name: Documentation
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 on:
-  pull_request:
-    paths:
-      - "wiki/**"
-      - ".github/workflows/docs.yml"
-  push:
-    branches: [main]
-    paths:
-      - "wiki/**"
-      - ".github/workflows/docs.yml"
+  workflow_call:
 
 permissions:
   contents: read

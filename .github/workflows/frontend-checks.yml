@@ -1,12 +1,6 @@
 name: Frontend Checks
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 on:
-  push:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_call:
 
 permissions:
   contents: read
@@ -17,7 +11,6 @@ defaults:
 
 jobs:
   frontend-quality:
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     name: Frontend ${{ matrix.check }}
     runs-on: ubuntu-latest
     strategy:
@@ -44,7 +37,6 @@ jobs:
         run: python3 tools/ci_checks.py frontend-${{ matrix.check }}
 
   frontend-tests:
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     name: Frontend tests
     runs-on: ubuntu-latest
     steps:
@@ -64,7 +56,6 @@ jobs:
         run: python3 -m unittest discover -s tools/tests -p 'test_ci_checks.py' -v
 
   notification-worker-tests:
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     name: Notification worker tests
     runs-on: ubuntu-latest
     steps:
@@ -79,7 +70,6 @@ jobs:
     name: Frontend formatting fixes
     if: >-
       github.event_name == 'pull_request' &&
-      !github.event.pull_request.draft &&
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
@@ -128,7 +118,7 @@ jobs:
   # Preserve the existing required status while checks report independently.
   frontend-checks:
     name: Frontend
-    if: ${{ !cancelled() && (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
+    if: ${{ !cancelled() }}
     needs: [frontend-quality, frontend-tests, notification-worker-tests]
     runs-on: ubuntu-latest
     steps:

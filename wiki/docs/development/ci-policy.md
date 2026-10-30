@@ -1,15 +1,28 @@
 # CI scope and results
 
-All test suites run on branch pushes. Draft PR events skip the duplicate PR
-workflow; committing to their branch still runs the push workflows.
+Every trigger enters one workflow, `ci.yml`. Its `gate` job (`tools/ci_gate.py`)
+decides once per commit whether anything runs, so a commit is never checked
+twice, and which areas the change touches. Pipelines that do not apply are
+skipped without taking a runner. The pipelines do not wait for each other, so
+they start together, longest first. **CI result** is the single aggregate status:
+it fails if any pipeline that ran failed and ignores pipelines that were skipped.
 
-| Event | Quality checks | Tests |
-| --- | --- | --- |
-| Push to a working branch | Changed files in the affected application | Full suites |
-| PR opened or updated while ready for review | All files in both applications | Full suites |
-| Draft marked ready for review | All files in both applications | Full suites |
-| Push to `main` | All files in both applications | Full suites |
-| Draft PR event | Skipped; use its branch push run | Use its branch push run |
+| Event | What runs |
+| --- | --- |
+| Ready PR opened or updated | Full checks for the affected areas |
+| Draft PR event | Nothing; its branch pushes run instead |
+| Push to a branch with a ready PR | Nothing; the PR run covers it |
+| Push to a branch without a ready PR (none, or a draft) | Scoped quality checks and full suites |
+| Push to `main`, or a `v*` tag | Full checks and image publication |
+
+If the gate cannot tell whether a PR exists or what changed, it runs everything.
+Backend checks are skipped only for frontend or user-guide changes, and frontend
+checks only for backend, runtime or wiki changes. Pipelines that were
+path-filtered (production smoke, backup recovery, restore drill, docs) run when
+their paths change on a PR.
+
+Container images are published once per commit. Pushes tag the branch name and
+the commit; same-repository PRs tag `pr-<number>`. Fork PRs build without pushing.
 
 Frontend lint, Prettier format, type checking and file size have separate
 results. Frontend tests and notification worker tests also report independently.
@@ -39,9 +52,8 @@ explicit local `--base` still fails selection. The fallback never returns an
 empty selection to bypass checks.
 Filenames use NUL-separated Git output and separate subprocess arguments.
 
-Each workflow cancels superseded runs for the same event and PR number or Git
-ref, including branch pushes after a force push. Push and PR runs have separate
-groups so scoped push checks cannot cancel the full PR checks. Cancelled runs
+`ci.yml` cancels superseded runs for the same PR number or Git ref, except on
+`main`, where every commit is allowed to finish and publish. Cancelled runs
 do not start aggregate result jobs; completed runs still require every expected
 check to succeed. Cancellation does not turn a failed or cancelled check green.
 

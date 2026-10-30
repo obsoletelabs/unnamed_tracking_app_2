@@ -1,12 +1,6 @@
 name: Backend checks
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 on:
-  push:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_call:
 
 permissions:
   contents: read
@@ -17,7 +11,6 @@ defaults:
 
 jobs:
   backend-tests:
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     name: Backend tests
     runs-on: ubuntu-latest
 
@@ -101,12 +94,11 @@ jobs:
           if-no-files-found: ignore
 
   backend-pylint:
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     uses: ./.github/workflows/pylint.yml
 
   # Preserve the required status name while each check runs independently.
   backend-checks:
-    if: ${{ !cancelled() && (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
+    if: ${{ !cancelled() }}
     needs:
       - backend-tests
       - migration-graph
@@ -145,7 +137,6 @@ jobs:
           label: Backend CI
 
   migration-graph:
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     name: Alembic migration graph
     runs-on: ubuntu-latest
     defaults:
@@ -236,7 +227,6 @@ jobs:
           PY
 
   backend-file-size:
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     name: Backend file size
     runs-on: ubuntu-latest
     steps:
@@ -247,7 +237,6 @@ jobs:
         run: python3 tools/ci_checks.py backend-size
 
   backend-mypy:
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     name: Backend mypy
     runs-on: ubuntu-latest
     defaults:
@@ -283,7 +272,6 @@ jobs:
           if-no-files-found: ignore
 
   plugin-runtime-tests:
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     name: Plugin runtime policy tests
     runs-on: ubuntu-latest
     defaults:

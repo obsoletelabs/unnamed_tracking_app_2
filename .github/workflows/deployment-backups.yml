@@ -1,31 +1,11 @@
 name: Deployment backup recovery
 on:
-  pull_request:
-    paths:
-      - tools/backup_deployment.py
-      - tools/deployment_backups/**
-      - tools/check_deployment_backups.py
-      - tools/check_migration_backups.py
-      - tools/backup_acceptance/**
-      - tools/tests/test_deployment_backups.py
-      - src/backend/**
-      - src/plugin-runtime/**
-      - .github/workflows/deployment-backups.yml
-  push:
-    branches: [main]
-    paths:
-      - tools/**
-      - src/backend/**
-      - src/plugin-runtime/**
-      - .github/workflows/deployment-backups.yml
+  workflow_call:
   workflow_dispatch:
   schedule:
     - cron: "17 4 * * 2"
 permissions:
   contents: read
-concurrency:
-  group: backup-recovery-${{ github.ref }}
-  cancel-in-progress: true
 jobs:
   recovery:
     runs-on: ubuntu-latest
