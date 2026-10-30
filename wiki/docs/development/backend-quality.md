@@ -4,7 +4,7 @@ The rework of [PR250](https://github.com/Rosefall-a/unnamed_tracking_app/pull/25
 
 ## CI behavior
 
-Backend tests, plugin runtime tests, migration graph validation, module size, mypy, and Pylint run independently. The reusable Pylint workflow runs once. The final `backend-checks` summary fails when any required job fails or is skipped, preserving the required status name while allowing every diagnostic check to run.
+Backend tests (in [shards](#test-shards)), repository-level tool tests, plugin runtime tests, migration graph validation, module size, mypy, and Pylint run independently. The reusable Pylint workflow runs once. The final `backend-checks` summary fails when any required job fails or is skipped, preserving the required status name while allowing every diagnostic check to run.
 
 Ruff format, lint, and autofix run independently. Autofix is the only writer, targets the actual same-repository PR head, and checks for a stale head before pushing. A formatting failure does not prevent autofix. Commands piped through `tee` propagate failures, and diagnostic artifacts upload after failures.
 
@@ -57,6 +57,33 @@ docker compose exec -e PYTHONPATH=/app backend python -m pytest tests -q
 Focused checks cover session persistence and OIDC state/account linking, deployment environment locks and encrypted secrets, media lifecycle and exact statistics, imports/exports, provider fallbacks, plugin authorization, package integrity, and runtime cleanup. Before/after comparisons validate the complete OpenAPI document and selected policy/calculation outputs. PostgreSQL migration replay and production container smoke checks remain part of CI; supplementary SQLite checks do not replace them.
 
 Breaking changes: no public API changes. Individual backend checks have separate result names, and the required `backend-checks` summary covers every backend job, including Pylint.
+
+## Test shards
+
+The backend suite is split by test file across parallel `Backend tests (shard N)` jobs. A cheap `Backend test shard plan` job runs first, with no database. It reads the recorded durations in `tools/backend_test_shards_timings.json`, counts the test files that exist now (a file with no recorded duration gets a default weight of 10 seconds), and sizes the matrix: the shard count is `ceil(total estimated seconds / BACKEND_TEST_TARGET_SECONDS)`, at least 2 and at most `BACKEND_TEST_MAX_SHARDS`. Both variables are defined once, in `.github/workflows/backend-checks.yml`. The tool then places files longest-first on the lightest shard, which is deterministic, and the plan job fails the run if any test file is unassigned or assigned twice. Every shard recomputes the same plan from the same checkout and the count the plan job published.
+
+Every shard runs on its own runner with its own PostgreSQL service, because the tests create and drop schemas and touch shared state; shards must never share a database, and `pytest-xdist` is not used. Each shard installs everything any test might need (the Restic and PostgreSQL client tools for the startup backup tests, and the release tags for the [upgrade matrix](#upgrade-matrix)), so a file can land in any shard.
+
+The `Repository tool tests` job (including the tests of the sharding tool) and the Actions Dashboard report run once, not per shard. `backend-checks` depends on the plan job, the shard jobs (however many the plan produced), and the other jobs, so a failed plan or a failed shard fails the required `CI result` check exactly as a failed single test job did.
+
+To see the plan or run one shard locally, from the repository root:
+
+```bash
+python tools/backend_test_shards.py check                # shard count, coverage check, estimated durations
+cd src/backend
+pytest $(python ../../tools/backend_test_shards.py files --shard 2)   # run shard 2 of the planned count
+pytest $(python ../../tools/backend_test_shards.py files --shard 2 --shards 4)   # or with a fixed count
+```
+
+Use a separate, migrated database per shard when running several at once. The timings seeded from a local run are only as good as that machine; refreshing them from CI artifacts keeps the target meaningful.
+
+Each shard uploads `pytest-junit.xml` in its `pytest-diagnostics-shard-N-...` artifact. To refresh the timings (for example when the shards drift apart by more than a few minutes, or after adding many slow tests), download those artifacts from a recent successful run and run:
+
+```bash
+python tools/backend_test_shards.py update-timings shard-1/pytest-junit.xml shard-2/pytest-junit.xml shard-3/pytest-junit.xml shard-4/pytest-junit.xml
+```
+
+A report from a single full local run (`pytest --junitxml=report.xml`) works as well. The command rewrites `tools/backend_test_shards_timings.json` with the summed test durations per file, keeps entries for files the reports did not cover, and drops files that no longer exist. Commit the result.
 
 ## Upgrade matrix
 
