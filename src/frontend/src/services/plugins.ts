@@ -16,28 +16,25 @@ export type PluginStatus =
   | "incompatible"
   | "unknown";
 export const PLUGIN_API_CONTRACT_VERSION = "1.1.19";
+// Every Plugin API 1.1.x contract up to the host's own keeps its UI contributions. Listing the
+// versions by hand skipped the ones between the old list and the current constant, which
+// silently hid the navigation and settings of plugins built for those contracts.
+function contractPatch(version: string | null | undefined): number | null {
+  const match = /^1\.1\.(\d+)$/.exec(version ?? "");
+  return match ? Number(match[1]) : null;
+}
+
+export function pluginSupportsHostContract(
+  version: string | null | undefined,
+): boolean {
+  const patch = contractPatch(version);
+  const hostPatch = contractPatch(PLUGIN_API_CONTRACT_VERSION);
+  return patch !== null && hostPatch !== null && patch <= hostPatch;
+}
+
 export function pluginContributionsActive(plugin: PluginSummary): boolean {
   return (
-    ([
-      "1.1.0",
-      "1.1.1",
-      "1.1.2",
-      "1.1.3",
-      "1.1.4",
-      "1.1.5",
-      "1.1.6",
-      "1.1.7",
-      "1.1.8",
-      "1.1.9",
-      "1.1.10",
-      "1.1.11",
-      "1.1.12",
-      "1.1.13",
-      "1.1.14",
-      "1.1.15",
-      "1.1.16",
-      PLUGIN_API_CONTRACT_VERSION,
-    ].includes(plugin.api_contract_version ?? "") ||
+    (pluginSupportsHostContract(plugin.api_contract_version) ||
       (plugin.legacy_compatibility === true &&
         /^1\.0\.\d+$/.test(plugin.api_contract_version ?? "1.0.0"))) &&
     plugin.enabled &&
