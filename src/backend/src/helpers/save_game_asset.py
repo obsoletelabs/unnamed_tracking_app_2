@@ -36,6 +36,17 @@ ASSET_FILENAMES: dict[AssetKind, str] = {
 }
 
 
+def asset_present(game: Game, asset_kind: AssetKind) -> bool:
+    """Whether the game already has this picture on disk (artwork lives in the game folder)."""
+    if not game.folder_location:
+        return False
+    try:
+        folder = game_folders.owned_folder(DATA_ROOT, game.user_id, game.folder_location)
+    except game_folders.FolderStorageError:
+        return False
+    return (folder / ASSET_FILENAMES[asset_kind]).is_file()
+
+
 def create_game_folder(user_id: UUID | str, folder_name: str) -> Path:
     """Create and return the persistent data directory for a game."""
     game_folders.ensure_name_available(DATA_ROOT, user_id, folder_name)
@@ -74,11 +85,15 @@ async def save_game_asset(
     image: bytes | str | Path | Image.Image,
     game_id: UUID | str,
     asset_kind: AssetKind,
+    *,
+    keep_existing: bool = False,
 ) -> Path:
     """Keep the game row locked until its artwork and previews have been saved.
 
     Callers already holding a game row lock must use ``save_locked_game_asset``
     instead, so an independent session never waits on the caller's transaction.
+    ``keep_existing`` only fills a missing picture: one already on disk (such as a
+    user's upload) is checked under the same lock and left untouched.
     """
     if asset_kind not in ASSET_SIZES:
         raise ValueError(f"Unsupported asset kind: {asset_kind}")
@@ -90,6 +105,9 @@ async def save_game_asset(
         )
         if game is None:
             raise ValueError(f"Game not found for id: {game_id}")
+        if keep_existing and asset_present(game, asset_kind):
+            folder = game_folders.owned_folder(DATA_ROOT, game.user_id, game.folder_location)
+            return folder / ASSET_FILENAMES[asset_kind]
         return await save_locked_game_asset(image, game, asset_kind)
 
 

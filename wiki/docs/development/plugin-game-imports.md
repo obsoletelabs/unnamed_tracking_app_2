@@ -45,8 +45,9 @@ external ID. Changing a title or display label does not duplicate the game.
 Identically named games, other plugins, other users and other source scopes
 remain separate. Plugins cannot choose a target game ID or user ID, and title
 matches are never adopted automatically. The response includes the saved game ID;
-this operation imports metadata and progress, with artwork enrichment handled
-separately by the host's existing game metadata flow.
+this operation imports metadata and progress, and from 1.1.19 can fill missing
+artwork (see [Artwork and release dates](#artwork-and-release-dates)). Other
+artwork enrichment stays with the host's existing game metadata flow.
 
 Imported metadata respects locked fields, including title and its derived sort
 title. Imported playtime only increases and can also be protected by a field
@@ -76,14 +77,50 @@ remote inventory; provider errors or partial paging are not proof of removal.
 
 The response is `{ "games": [...] }`. Every entry identifies `external_id`,
 `id` and `created`; successful entries also return `title`, `status`,
-`playtime_seconds` and `available`. Conflicts/skips have the fields described
-above and omit the success state. No filesystem paths or credentials are returned.
+`playtime_seconds` and `available`, plus `artwork_failed` (the asset kinds, such as
+`["key_art"]`) when an offered picture could not be downloaded. Conflicts/skips have
+the fields described above and omit the success state. No filesystem paths or
+credentials are returned.
 
 Batches validate before database work. Concurrent plugin imports for one user
 serialize only their short database transactions; retrying a completed or
 interrupted batch retains its identities. Standard host folder allocation and
 creation remain in the existing import service, with identity-specific names for
 plugin-created games. No new tables or migrations are needed.
+
+## Artwork and release dates
+
+Plugin API contract **1.1.19** adds five optional item fields. Declare at least
+1.1.19 before sending them; an older host rejects them as unknown fields.
+
+| Field | Accepted value | Fills |
+| --- | --- | --- |
+| `release_date` | `YYYY-MM-DD` string, years 1800–3000 | the game's release date |
+| `key_art_url` | image URL (cover, portrait) | `key_art` |
+| `banner_url` | image URL (wide hero/background) | `banner` |
+| `logo_url` | image URL | `logo` |
+| `icon_url` | image URL | `icon` |
+
+`release_date` follows the same rules as `description` or `developer`: a supplied
+value updates the game unless the user has locked the field in the game editor, and
+an omitted value leaves the saved date unchanged.
+
+Image URLs are at most 2,048 characters, use `http` or `https` on port 80 or 443,
+and carry no credentials, fragment, whitespace or backslash. Addresses naming a
+private host (`localhost`, a single-label or local name such as `nas.lan`, or a
+non-public IP literal) are rejected when the batch is validated, before any database
+work. Plugins send addresses only; they never send image bytes or file paths.
+
+Artwork only fills pictures the game does not already have. A picture already in the
+game folder, whether a user's upload or earlier provider artwork, is never replaced
+by a sync, and the check is repeated under the game's row lock just before saving.
+Missing pictures are fetched after the import transaction commits, outside its locks,
+through the same download the host uses for library and metadata-provider artwork:
+every resolved address must be public, redirects are re-checked, the response must
+be a valid image within the configured upload size and pixel limit, and the host
+resizes it into the game folder. A failed download is reported in `artwork_failed`
+and does not fail the import; the next sync offering the address tries again.
+`available: false` items and conflicts never fetch artwork.
 
 ## Owned copies
 

@@ -9,6 +9,11 @@ v1.1.3 adds [bounded game imports](plugin-game-imports.md) under the existing
 `games.write` grant. Optional integrations can import their own provider identities
 without host-specific code or access to database internals.
 
+v1.1.19 adds optional `release_date`, `key_art_url`, `banner_url`, `logo_url` and `icon_url`
+to each `games.import` item (see [artwork and release dates](plugin-game-imports.md#artwork-and-release-dates)).
+A plugin that sends them declares `api_contract_version` 1.1.19, so an older host refuses it at
+install instead of rejecting its syncs as unknown fields.
+
 v1.1.2 protects notification transport behind core-issued delivery work. Generic
 plugin/UI actions cannot authorize Discord delivery. Notification provider
 registration and live capability grants remain required; providers receive the
