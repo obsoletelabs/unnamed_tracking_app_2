@@ -982,7 +982,7 @@ def acceptance(plugins_root, work, browser=False):
             )
             assert current()["last_update_error"]
             notifications = client.get("/api/notifications").json()
-            assert "Plugin update failed:" in json.dumps(notifications)
+            assert "Automatic update failed:" in json.dumps(notifications)
             preserved()
             assert len(current()["history"]) == 2
             request(
