@@ -42,6 +42,8 @@ itsdangerous==2.2.0
 
 # Development/testing
 pytest==9.0.3
+# starlette.testclient prefers httpx2; plain httpx is deprecated there
+httpx2==2.16.0
 pytest-asyncio==1.4.0
 mypy==1.17.1
 pylint==3.3.8

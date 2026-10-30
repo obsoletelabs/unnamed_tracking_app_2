@@ -71,6 +71,8 @@ class MetricsListener:
             host=self.host,
             port=self.port,
             lifespan="off",
+            # Metrics are plain HTTP; this also skips uvicorn's deprecated websockets import.
+            ws="none",
             access_log=False,
             proxy_headers=False,
             log_level="warning",

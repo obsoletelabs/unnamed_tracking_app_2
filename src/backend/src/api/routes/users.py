@@ -66,7 +66,7 @@ async def upload_profile_picture(
         )
     if len(image_bytes) > _MAX_PROFILE_SIZE:
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail="Profile picture must be 10 MB or smaller.",
         )
 

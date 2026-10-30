@@ -723,20 +723,20 @@ def _calendar_range(first: date | None, last: date | None) -> tuple[date, date] 
         return None
     if first is None or last is None:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Give both from_date and to_date, or neither.",
         )
     today = date.today()
     if last < first or (last - first).days + 1 > CALENDAR_MAX_RANGE_DAYS:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Ask for at most {CALENDAR_MAX_RANGE_DAYS} days at a time.",
         )
     if first < today - timedelta(days=CALENDAR_MAX_BEHIND_DAYS) or last > today + timedelta(
         days=CALENDAR_MAX_AHEAD_DAYS
     ):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="That range is further from today than the calendar supports.",
         )
     return first, last

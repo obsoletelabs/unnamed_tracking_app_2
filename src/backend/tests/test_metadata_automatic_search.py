@@ -172,13 +172,11 @@ async def test_server_policy_requires_an_administrator(native_boundary):  # noqa
     item.users[0].is_admin = False
     item.session.commit()
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=item.app), base_url="http://test"
+        transport=httpx.ASGITransport(app=item.app),
+        base_url="http://test",
+        cookies={session_cookie_name("test"): item.tokens[item.users[0].id]},
     ) as client:
-        response = await client.put(
-            "/api/metadata/automatic-search",
-            json={"enabled": False},
-            cookies={session_cookie_name("test"): item.tokens[item.users[0].id]},
-        )
+        response = await client.put("/api/metadata/automatic-search", json={"enabled": False})
     assert response.status_code == 403
 
 

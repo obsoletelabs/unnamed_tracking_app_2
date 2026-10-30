@@ -60,17 +60,18 @@ async def test_owned_selected_artwork_only(native_boundary, monkeypatch, case): 
 
         monkeypatch.setattr(type(provider), "authorized", lambda *_args: denied("media"))
     try:
+        user = item.users[1] if case == "foreign" else item.users[0]
         async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=item.app), base_url="http://test"
+            transport=httpx.ASGITransport(app=item.app),
+            base_url="http://test",
+            cookies={session_cookie_name("test"): item.tokens[user.id]},
         ) as client:
-            user = item.users[1] if case == "foreign" else item.users[0]
             response = await client.post(
                 f"/api/metadata/sessions/{session.id}/artwork",
                 json={
                     "candidate_id": identity,
                     "url": url + "?invented" if case == "invented" else url,
                 },
-                cookies={session_cookie_name("test"): item.tokens[user.id]},
             )
         expected = {
             "valid": 200,

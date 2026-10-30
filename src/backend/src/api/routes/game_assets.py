@@ -325,7 +325,7 @@ async def save_clip_thumbnail(
     data = await file.read()
     if len(data) > 5 * 1024 * 1024:
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Thumbnail is too large."
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail="Thumbnail is too large."
         )
     try:
         with Image.open(io.BytesIO(data)) as image:
