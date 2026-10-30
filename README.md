@@ -1,3 +1,9 @@
+[![CI](https://github.com/obsoletelabs/unnamed_tracking_app_2/actions/workflows/ci.yml/badge.svg)](https://github.com/obsoletelabs/unnamed_tracking_app_2/actions/workflows/ci.yml)
+[![Plugin checks](https://github.com/obsoletelabs/unnamed_tracking_app_plugins/actions/workflows/ci.yml/badge.svg)](https://github.com/obsoletelabs/unnamed_tracking_app_plugins/actions/workflows/ci.yml)
+
+[![Build Playnite extension](https://github.com/obsoletelabs/unnamed_tracking_playnite/actions/workflows/build-pext.yml/badge.svg)](https://github.com/obsoletelabs/unnamed_tracking_playnite/actions/workflows/build-pext.yml)
+
+
 # Wiki page https://obsoletelabs.github.io/unnamed_tracking_app_2/
 
 Still a WIP, but new features are decently uptodate
