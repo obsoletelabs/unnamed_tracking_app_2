@@ -29,6 +29,7 @@ from src.core.auth import get_current_user
 from src.core.preferences import load_preferences
 from src.core.titles import normalize_metadata_title as _normalize_metadata_title
 from src.database.models.game import GameLink
+from src.database.models.game_identity_tracking import FieldValueOrigin
 from src.database.models.user import User
 from src.database.session import get_db
 from src.features.achievement_catalogue import (
@@ -36,7 +37,7 @@ from src.features.achievement_catalogue import (
     has_catalogue,
     store_catalogue,
 )
-from src.features.game_identity import names
+from src.features.game_identity import field_provenance, names
 from src.features.game_identity.provider_ids import (
     find_provider_id_conflicts,
     merge_provider_ids,
@@ -175,6 +176,17 @@ def _release_date(raw: object) -> date | None:
         return date.fromisoformat(str(raw)[:10]) if raw else None
     except ValueError:
         return None
+
+
+@router.get("/{game_id}/field-sources")
+async def get_field_sources(
+    game_id: UUID,
+    db: AsyncSession = _DB_DEPENDENCY,
+    current_user: User = _CURRENT_USER_DEPENDENCY,
+) -> dict[str, dict]:
+    """Who supplied the current value of each recorded metadata field."""
+    await _get_game_or_404(game_id, db, current_user.id)
+    return await field_provenance.field_sources(db, current_user.id, game_id)
 
 
 # Keep the established workflow and public parameters together.
@@ -398,6 +410,13 @@ async def refresh_game_metadata(
     if payload.update_text:
         _record_field_changes(game, updates, db)
         apply_metadata_updates(game, updates)
+        await field_provenance.record_field_sources(
+            db,
+            game,
+            updates,
+            origin=FieldValueOrigin.METADATA,
+            provider=match.get("provider"),
+        )
         if "title" in updates:
             names.note_title_change(game, trusted_metadata=True)
             await names.reconcile_games(db, game.user_id, [game])

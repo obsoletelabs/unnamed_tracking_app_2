@@ -124,6 +124,7 @@ nav:
       - Game Identity Names: development/game-identity-names.md
       - Game Identity UI: development/game-identity-ui.md
       - One game from several sources: development/multi-source-games.md
+      - Per-field provenance (design): development/game-field-provenance.md
       - Game Identity Migration: development/game-identity-migration.md
       - Game Identity Acceptance: development/game-identity-acceptance.md
       - Plugin Palettes & Appearance: development/plugin-themes.md

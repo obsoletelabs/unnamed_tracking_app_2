@@ -314,10 +314,12 @@ class GameFieldValue(Base):
         CheckConstraint(
             f"state IN ({sql_values(FieldValueState)})", name="ck_game_field_values_state"
         ),
-        # a value that came from a source names the observation; a user-typed one cannot
+        # a value that came from a source names the observation, and one from a metadata
+        # provider names the observation or the provider; a user-typed one names neither
         CheckConstraint(
-            "(origin NOT IN ('source', 'metadata') OR observation_id IS NOT NULL)"
-            " AND (origin <> 'user' OR observation_id IS NULL)",
+            "(origin <> 'source' OR observation_id IS NOT NULL)"
+            " AND (origin <> 'metadata' OR observation_id IS NOT NULL OR source_label IS NOT NULL)"
+            " AND (origin <> 'user' OR (observation_id IS NULL AND source_label IS NULL))",
             name="ck_game_field_values_observation",
         ),
         CheckConstraint(
@@ -385,6 +387,8 @@ class GameFieldValue(Base):
     )
     origin: Mapped[str] = mapped_column(String(20), nullable=False)
     observation_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    # the metadata provider that supplied the value, when no source observation exists
+    source_label: Mapped[str | None] = mapped_column(String(64), nullable=True)
     quality: Mapped[str] = mapped_column(
         String(20), nullable=False, default=FieldQuality.STANDARD.value, server_default="standard"
     )
