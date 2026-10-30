@@ -1,7 +1,8 @@
 # User-extensible tag catalogue without losing source tags
 
 Design proposal for [#267](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/267)
-(source: Rosefall #36). **Accepted design; not implemented.** Decisions confirmed on 19 October 2026. Paths start
+(source: Rosefall #36). **Accepted design; backend implemented (phase 2), UI and export/import still to do.** Decisions
+confirmed on 19 October 2026. Paths start
 `src/backend/src/`.
 
 ## 1. Problem and current state (reviewed first, as the issue asks)
@@ -135,8 +136,20 @@ Populated-database test: every `tags` array is identical before upgrade, after u
 The maintainer's answers on [#267](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/267) approve both
 deployment defaults and private user catalogues, every taggable feature, confirmed suggestions and pure renaming.
 Follow-up confirmation on 19 October establishes user-over-deployment precedence while keeping original provider
-tags recoverable. There are no remaining product questions for this design. Tables, APIs and UI remain future work;
-this document does not register endpoints or change tag handling today.
+tags recoverable. There are no remaining product questions for this design.
+
+### Implementation status
+
+Implemented: the five additive tables (`user_tags`, `user_tag_aliases`, `user_tag_suppressions`,
+`default_tags`, `default_tag_aliases`) in one migration; key folding; the owner API under `/api/tags`
+(list, create, rename, archive, aliases, suppressions, `usage`, `suggestions`, `discover`, `resolution`)
+and the administrator API under `/api/tags/defaults`; read-time resolution in the statistics top tags
+and the media tag filter. Stored `tags` arrays are never written by any of it, and a populated
+upgrade, downgrade and re-upgrade test proves it.
+
+Still to do: the catalogue settings page and the picker/filter integration in the clients (the
+`resolution` endpoint gives them the folded-spelling to label map), per-feature item counts in the
+preview, and the optional versioned `tag_catalogue` export/import section.
 
 ## 12. Acceptance-criteria mapping
 
