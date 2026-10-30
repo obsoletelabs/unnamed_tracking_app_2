@@ -807,6 +807,42 @@ def test_frontend_asset_is_namespaced(tmp_path, activate_registry) -> None:
     assert "PG" in asset["content"]
 
 
+def test_frontend_asset_cannot_reach_the_plugins_own_files_outside_its_root(
+    tmp_path, activate_registry
+) -> None:
+    """The request path is decoded once by the runtime, so "frontend/%2e%2e/ui.json" arrives as
+    "frontend/../ui.json": inside the package, but not inside the served root."""
+    from runtime import PluginRegistry, PluginSupervisor, RuntimePolicyError
+
+    registry = PluginRegistry(
+        tmp_path / "plugins",
+        PluginSupervisor(tmp_path / "work", storage_root=tmp_path / "storage"),
+    )
+    package = tmp_path / "plugins" / "example.frontend"
+    package.mkdir(parents=True)
+    (package / "manifest.json").write_text(
+        json.dumps(
+            {
+                "api_contract_version": "1.1.0",
+                "plugin_id": "example.frontend",
+                "entrypoint": "plugin:main",
+                "frontend": {"entry": "frontend/index.html"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (package / "plugin.py").write_text("SECRET = 'source'", encoding="utf-8")
+    (package / "frontend").mkdir()
+    (package / "frontend" / "index.html").write_text("<div>ok</div>", encoding="utf-8")
+    activate_registry(registry, "example.frontend")
+    for hostile in ("frontend/../plugin.py", "frontend/../manifest.json", "frontend/a/../../plugin.py"):
+        with pytest.raises(RuntimePolicyError):
+            registry.frontend("example.frontend", hostile)
+    assert registry.frontend("example.frontend", "frontend/index.html")["path"] == (
+        "frontend/index.html"
+    )
+
+
 def test_runtime_discord_generic_action_cannot_bypass_core(
     tmp_path, monkeypatch, activate_registry
 ) -> None:

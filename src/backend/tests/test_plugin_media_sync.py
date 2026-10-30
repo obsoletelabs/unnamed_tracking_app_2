@@ -205,3 +205,29 @@ def test_episode_renumbering_retains_identity_and_watched_semantics():
     moved = db.added[0].seasons[1].episodes[0]
     assert moved.id == original_id and moved.episode_number == 3 and not moved.watched
     assert not db.added[0].seasons[0].episodes
+
+
+@pytest.mark.parametrize(
+    "poster",
+    [
+        "javascript:alert(1)",
+        "data:image/svg+xml,<svg onload=alert(1)>",
+        "file:///etc/passwd",
+        "https://user:pw@images.example/p.png",
+    ],
+)
+def test_poster_url_must_be_a_plain_web_address(poster):
+    with pytest.raises(ValidationError):
+        MediaSyncInput.model_validate(data(poster_url=poster))
+
+
+def test_poster_url_accepts_an_ordinary_address():
+    item = MediaSyncInput.model_validate(data(poster_url="https://images.example/p.png"))
+    assert item.poster_url == "https://images.example/p.png"
+
+
+def test_poster_url_accepts_the_users_own_media_server():
+    item = MediaSyncInput.model_validate(
+        data(poster_url="http://192.168.0.10:8096/Items/1/Images/Primary")
+    )
+    assert item.poster_url.startswith("http://192.168.0.10:8096/")

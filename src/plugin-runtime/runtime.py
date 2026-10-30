@@ -2518,7 +2518,11 @@ class PluginRegistry:
             )
         path = package / Path(relative)
         try:
-            path.resolve(strict=True).relative_to(package.resolve())
+            # Inside the declared root, not just inside the package: "frontend/../ui.json"
+            # starts with the prefix but is the plugin's own manifest or source.
+            path.resolve(strict=True).relative_to(
+                (package / required_prefix.rstrip("/")).resolve()
+            )
         except (OSError, ValueError) as exc:
             raise RuntimePolicyError(
                 "plugin frontend path escapes the package"

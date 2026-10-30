@@ -13,6 +13,7 @@ import {
   openExternalDestination,
   PluginActionError,
   pluginExternalDestination,
+  requireUserActivation,
   reserveExternalTab,
   fetchPluginSettings,
   savedFieldValues,
@@ -238,7 +239,9 @@ async function handleFrontendMessage(event: MessageEvent) {
         return;
       }
       // The click inside the frame activates this page too, so the tab can
-      // be reserved here; the frame itself never gains popup permission.
+      // be reserved here; the frame itself never gains popup permission. A message
+      // without that click is refused rather than navigating the app.
+      requireUserActivation(action);
       const tab = reserveExternalTab(action);
       let destination: string | null = null;
       try {

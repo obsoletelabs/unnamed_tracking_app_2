@@ -266,7 +266,9 @@ class PluginRuntimeClient:
 
     async def frontend_asset(self, plugin_id: str, path: str) -> bytes:
         """Retrieve a verified sandboxed frontend asset."""
-        data = await self._request("GET", f"/plugins/{plugin_id}/frontend/{path}")
+        # Keep the path's own "%" literal: the runtime decodes each request path once, so an
+        # already decoded "%2e%2e" must not turn into ".." there.
+        data = await self._request("GET", f"/plugins/{plugin_id}/frontend/{quote(path, safe='/')}")
         return base64.b64decode(str(data["content"]))
 
     async def pwa_asset(self, plugin_id: str, path: str) -> bytes:
@@ -276,7 +278,9 @@ class PluginRuntimeClient:
 
     async def native_frontend_asset(self, plugin_id: str, path: str) -> bytes:
         """Retrieve a verified native frontend asset."""
-        data = await self._request("GET", f"/plugins/{plugin_id}/native-frontend/{path}")
+        data = await self._request(
+            "GET", f"/plugins/{plugin_id}/native-frontend/{quote(path, safe='/')}"
+        )
         return base64.b64decode(str(data["content"]))
 
     async def start(self, plugin_id: str, user_id: str | None = None) -> None:
