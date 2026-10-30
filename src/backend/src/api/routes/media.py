@@ -36,6 +36,7 @@ from src.database.models.inbox_item import InboxItem
 from src.database.models.media_item import MediaItem
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features.tag_catalogue import filter_spellings, load_resolver
 from src.features.trash.inbox_trash import (
     move_inbox_file_to_trash,
     restore_inbox_file_from_trash,
@@ -437,7 +438,8 @@ async def list_all_media(
         stmt = stmt.where(MediaItem.game_id == game_id)
     if tag is not None:
         # ARRAY.any(scalar) is valid; mypy resolves the relationship .any() overload.
-        stmt = stmt.where(MediaItem.tags.any(tag))  # type: ignore[arg-type]
+        spellings = filter_spellings(await load_resolver(db, current_user.id), tag)
+        stmt = stmt.where(MediaItem.tags.overlap(spellings))
 
     rows = (await db.execute(stmt)).all()
     return [

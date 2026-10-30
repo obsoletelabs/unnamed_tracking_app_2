@@ -19,10 +19,12 @@ from src.database.models.game_field_change import GameFieldChange
 from src.database.models.user import User
 from src.database.session import get_db
 from src.features.game_stats import active_owned_games
+from src.features.tag_catalogue import count_resolved_tags, load_resolver
 
 router = APIRouter(prefix="/api/stats", tags=["stats"], dependencies=[Depends(get_current_user)])
 
 _DATA_ROOT = Path("/data/games")
+TOP_TAG_LIMIT = 10
 
 
 def _folder_size_bytes(folder_location: str | None) -> int:
@@ -105,7 +107,7 @@ def _overview_queries(user_id: UUID) -> dict[str, Select[Any]]:
         .where(user_filter)
         .group_by(tag_column)
         .order_by(sql_count().desc())
-        .limit(10)
+        .limit(TOP_TAG_LIMIT)
     )
 
     release_year_stmt = (
@@ -190,7 +192,15 @@ async def get_stats_overview(
     storage_used_bytes = await asyncio.gather(
         *(asyncio.to_thread(_folder_size_bytes, folder) for folder in folder_locations)
     )
-    return _overview_payload(results, sum(storage_used_bytes))
+    payload = _overview_payload(results, sum(storage_used_bytes))
+    resolver = await load_resolver(db, current_user.id)
+    if not resolver.is_empty:
+        tag_rows = await db.scalars(select(Game.tags).where(active_owned_games(current_user.id)))
+        payload["top_tags"] = [
+            {"label": label, "count": count}
+            for label, count in count_resolved_tags(list(tag_rows.all()), resolver, TOP_TAG_LIMIT)
+        ]
+    return payload
 
 
 @router.get("/weekly-digest")

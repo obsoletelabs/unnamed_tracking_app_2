@@ -523,6 +523,22 @@ are redacted. Validation errors never echo submitted values.
 | POST | `/api/movie/{movie_id}/restore` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
 | GET | `/api/preferences` | user | Own settings and provider credentials; secrets are never returned. |
 | PATCH | `/api/preferences` | user | Own settings and provider credentials; secrets are never returned. |
+| GET | `/api/tags` | user | Rows queried with `user_id == caller`; a tag or alias ID must belong to the caller's own catalogue. |
+| POST | `/api/tags` | user | Rows queried with `user_id == caller`; a tag or alias ID must belong to the caller's own catalogue. |
+| GET | `/api/tags/resolution` | user | Rows queried with `user_id == caller`; a tag or alias ID must belong to the caller's own catalogue. |
+| GET | `/api/tags/usage` | user | Rows queried with `user_id == caller`; a tag or alias ID must belong to the caller's own catalogue. |
+| GET | `/api/tags/suggestions` | user | Rows queried with `user_id == caller`; a tag or alias ID must belong to the caller's own catalogue. |
+| POST | `/api/tags/discover` | user | Rows queried with `user_id == caller`; a tag or alias ID must belong to the caller's own catalogue. |
+| PATCH | `/api/tags/{tag_id}` | user | Rows queried with `user_id == caller`; a tag or alias ID must belong to the caller's own catalogue. |
+| DELETE | `/api/tags/{tag_id}` | user | Rows queried with `user_id == caller`; a tag or alias ID must belong to the caller's own catalogue. |
+| POST | `/api/tags/{tag_id}/aliases` | user | Rows queried with `user_id == caller`; a tag or alias ID must belong to the caller's own catalogue. |
+| DELETE | `/api/tags/{tag_id}/aliases/{alias_id}` | user | Rows queried with `user_id == caller`; a tag or alias ID must belong to the caller's own catalogue. |
+| PUT | `/api/tags/suppressions` | user | Rows queried with `user_id == caller`; a tag or alias ID must belong to the caller's own catalogue. |
+| POST | `/api/tags/defaults` | admin | Administrator only. |
+| PATCH | `/api/tags/defaults/{tag_id}` | admin | Administrator only. |
+| DELETE | `/api/tags/defaults/{tag_id}` | admin | Administrator only. |
+| POST | `/api/tags/defaults/{tag_id}/aliases` | admin | Administrator only. |
+| DELETE | `/api/tags/defaults/{tag_id}/aliases/{alias_id}` | admin | Administrator only. |
 | GET | `/api/rewatches` | user | Entry filtered by `user_id == caller`; referenced media must be the caller's. |
 | POST | `/api/rewatches` | user | Entry filtered by `user_id == caller`; referenced media must be the caller's. |
 | DELETE | `/api/rewatches/{rewatch_id}` | user | Entry filtered by `user_id == caller`; referenced media must be the caller's. |

@@ -76,6 +76,7 @@ from src.api.routes import (
     steam_import_steps,
     steam_openid,
     steam_tags_refresh,
+    tags,
     tv_shows,
     user_invitations,
     users,
@@ -243,6 +244,8 @@ protect_notification_link_logs()
 app.include_router(session_manager.router)
 app.include_router(media_stats.router)
 app.include_router(preferences.router)
+app.include_router(tags.router)
+app.include_router(tags.defaults_router)
 app.include_router(calendar_events.router)
 app.include_router(calendar_sources.router)
 app.include_router(calendar_feed.authed_router)
