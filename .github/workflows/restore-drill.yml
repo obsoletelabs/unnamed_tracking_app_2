@@ -1,0 +1,134 @@
+name: Restore drill
+# Weekly proof that a backup can still be restored and upgraded. Everything is synthetic: the
+# drill creates its own users, files and key, restores into a second PostgreSQL server and
+# never receives production data or credentials.
+on:
+  schedule:
+    - cron: "41 4 * * 2"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - src/backend/src/database/restore_drill.py
+      - src/backend/src/database/startup_backup.py
+      - src/backend/tests/test_restore_drill.py
+      - src/backend/tests/test_migration_upgrade_matrix.py
+      - .github/workflows/restore-drill.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: restore-drill-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+    working-directory: src/backend
+
+jobs:
+  drill:
+    name: Restore drill
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      issues: write
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: unnamed_tracking_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U test -d unnamed_tracking_test"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+      # The restore target is a different server, as it would be after losing the host.
+      restore-target:
+        image: postgres:18
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: unnamed_tracking_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd="pg_isready -U test -d unnamed_tracking_test"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    env:
+      PYTHONPATH: ${{ github.workspace }}/src/backend
+      DATABASE_URL: postgresql+psycopg://test:test@localhost:5432/unnamed_tracking_test
+      RESTORE_DRILL_TARGET_URL: postgresql+psycopg://test:test@localhost:5433/unnamed_tracking_test
+      RESTORE_DRILL_REPORT_DIR: ${{ runner.temp }}/restore-drill
+      PRIMARY_USER_USERNAME: test
+      PRIMARY_USER_EMAIL: test@example.com
+      PRIMARY_USER_PASSWORD: test-password
+      SECRET_KEY: XJVqc8r7Uj801VzGUYhlQV8A2tZTBepjOYEiP2pTzFk=
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: src/backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Install backup tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends restic postgresql-client
+          restic version
+          pg_dump --version
+
+      # The key is synthetic, but the log must never carry a key in any case.
+      - name: Mask the drill key
+        run: echo "::add-mask::$SECRET_KEY"
+
+      - name: Run the restore drill
+        run: python -m pytest tests/test_restore_drill.py -q --tb=short -p no:cacheprovider
+
+      - name: Publish the drill report
+        if: always()
+        run: |
+          if [ -f "$RESTORE_DRILL_REPORT_DIR/restore-drill.md" ]; then
+            cat "$RESTORE_DRILL_REPORT_DIR/restore-drill.md" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "The drill stopped before it could write a report. Open the log of this run." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload the drill report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: restore-drill-report-${{ github.run_id }}
+          path: ${{ runner.temp }}/restore-drill
+          if-no-files-found: ignore
+
+      # The alert: one open issue per failing period, with a link to the report.
+      - name: Open an issue when the scheduled drill fails
+        if: failure() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        working-directory: ${{ github.workspace }}
+        run: |
+          title="Scheduled restore drill is failing"
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          existing=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number')
+          body="The scheduled restore drill failed: $run_url. Follow the disaster recovery runbook in the wiki to find the failing step."
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi

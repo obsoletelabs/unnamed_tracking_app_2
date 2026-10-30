@@ -19,6 +19,8 @@ on:
       - src/plugin-runtime/**
       - .github/workflows/deployment-backups.yml
   workflow_dispatch:
+  schedule:
+    - cron: "17 4 * * 2"
 permissions:
   contents: read
 concurrency:
