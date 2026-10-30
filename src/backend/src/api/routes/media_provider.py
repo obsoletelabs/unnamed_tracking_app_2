@@ -64,6 +64,8 @@ async def provider_state(
                 "source": link.source,
                 "account_scope": link.source_scope,
                 "available": link.available,
+                "watch_url": link.data.get("watch_url"),
+                "watch_label": link.data.get("watch_label"),
                 "updated_at": link.updated_at,
                 "playback": link.data.get("playback"),
                 "metadata": link.data.get("metadata", {}),

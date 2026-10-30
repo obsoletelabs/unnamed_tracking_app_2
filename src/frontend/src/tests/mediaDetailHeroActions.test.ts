@@ -33,6 +33,7 @@ function mountHero() {
             '<div class="slot-stub" :data-slot="slotId" :data-media="context.media_id" :data-type="context.media_type" />',
         },
         MediaExtrasPanel: true,
+        MediaWatchLinks: true,
         RatingPicker: true,
       },
     },

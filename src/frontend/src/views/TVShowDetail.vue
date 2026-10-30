@@ -704,6 +704,7 @@ async function onRatingChange(value: number | null) {
       :favorite="show.favorite"
       media-type="tv"
       :media-id="show.id"
+      :provider-ids="show.providerIds"
       :facts="mediaTrackingFacts(show)"
       :badges="[
         ...(firstAirYear ? [{ text: firstAirYear }] : []),
