@@ -9,3 +9,5 @@ Deleting a show moves it to trash. Restore returns the show and its season/episo
 TV shows share library layouts, ranks, genre links and local pictures with movies and anime. See [Media libraries](media-libraries.md).
 
 Add and Edit use the shared tabbed dialog described in [Media libraries](media-libraries.md#the-add-and-edit-dialogs). It never changes seasons or watched episodes of a saved show: those stay on the show's page, and a lookup's offered seasons are only created for a new show (or when you choose them in the review).
+
+In the library quick editor, episode values belong to the labelled season (the first unfinished season, or the last season once caught up). The library card still shows progress across the whole show. Rating and date edits leave episode counts and watched progress alone; use the show page to edit other seasons.

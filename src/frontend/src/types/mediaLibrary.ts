@@ -24,6 +24,13 @@ export interface LibraryCardVM {
   isEpisodic: boolean;
   watched: number;
   total: number | null;
+  // Editing a part (such as a TV season) must not reuse the card's aggregate.
+  episodeEdit?: {
+    id: string;
+    label: string;
+    watched: number;
+    total: number | null;
+  };
   progressLabel: string;
   canAdvance: boolean;
   // No real "currently airing" data source is wired up for any of the
@@ -58,6 +65,8 @@ export interface QuickAddForm {
 }
 
 export interface EditForm {
+  // Only explicitly changed episode fields, tied to the part opened in the editor.
+  episodeEdit?: { id: string; watched?: number; total?: number | null };
   status: string;
   score: number | null;
   watched: number;

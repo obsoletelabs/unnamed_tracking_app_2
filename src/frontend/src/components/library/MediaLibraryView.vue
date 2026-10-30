@@ -695,6 +695,8 @@ function finishSave() {
 const editOpen = ref(false);
 const editTargetId = ref<string | null>(null);
 const editError = ref<string | null>(null);
+const editEpisode = ref<LibraryCardVM["episodeEdit"]>();
+const editHasEpisodes = ref(false);
 const editForm = reactive<EditForm>({
   status: "plan",
   score: null,
@@ -709,8 +711,13 @@ function openEdit(it: LibraryCardVM) {
   editTargetId.value = it.id;
   editForm.status = statusBucket(it.status);
   editForm.score = it.score;
-  editForm.watched = it.watched;
-  editForm.totalEpisodes = it.total;
+  editEpisode.value = it.episodeEdit ? { ...it.episodeEdit } : undefined;
+  editHasEpisodes.value =
+    it.isEpisodic && (props.kind !== "tv" || !!it.episodeEdit);
+  editForm.watched = editEpisode.value?.watched ?? it.watched;
+  editForm.totalEpisodes = editEpisode.value
+    ? editEpisode.value.total
+    : it.total;
   editForm.seen = it.watched > 0;
   editForm.startDate = it.startDate ?? null;
   editForm.endDate = it.endDate ?? null;
@@ -743,7 +750,7 @@ function saveEdit() {
     // total automatically — no reason to make someone type in the number
     // themselves when the app already knows it.
     const watched =
-      editForm.status === "completed" && totalEpisodes !== null
+      justCompleted && totalEpisodes !== null
         ? totalEpisodes
         : requiredNumber(editForm.watched, "Episodes watched", {
             min: 0,
@@ -756,6 +763,15 @@ function saveEdit() {
     const scoreAlreadySet = score !== null;
     emit("save-edit", id, {
       ...editForm,
+      episodeEdit: editEpisode.value
+        ? {
+            id: editEpisode.value.id,
+            ...(watched !== editEpisode.value.watched && { watched }),
+            ...(totalEpisodes !== editEpisode.value.total && {
+              total: totalEpisodes,
+            }),
+          }
+        : undefined,
       totalEpisodes,
       score,
       watched,
@@ -1744,6 +1760,9 @@ defineExpose({ openQuickAdd });
         <p v-if="editError" class="ui-error-box" role="alert">
           {{ editError }}
         </p>
+        <p v-if="editEpisode" class="episode-edit-context">
+          Episode progress: {{ editEpisode.label }}
+        </p>
         <div class="qa-field-grid">
           <label class="qa-field">
             <span>Status</span>
@@ -1753,17 +1772,11 @@ defineExpose({ openQuickAdd });
               </option>
             </select>
           </label>
-          <label
-            v-if="items.find((i) => i.id === editTargetId)?.isEpisodic"
-            class="qa-field"
-          >
+          <label v-if="editHasEpisodes" class="qa-field">
             <span>Episodes watched</span>
             <input v-model.number="editForm.watched" type="number" min="0" />
           </label>
-          <label
-            v-if="items.find((i) => i.id === editTargetId)?.isEpisodic"
-            class="qa-field"
-          >
+          <label v-if="editHasEpisodes" class="qa-field">
             <span>Total episodes</span>
             <input
               v-model.number="editForm.totalEpisodes"
