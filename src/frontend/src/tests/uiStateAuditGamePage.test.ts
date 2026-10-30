@@ -249,3 +249,74 @@ describe("notes panel", () => {
     expect(wrapper.text()).not.toContain("Stale");
   });
 });
+
+describe("game page quick changes", () => {
+  it("restores a failed status on its own game and says so", async () => {
+    const model = await detail();
+    model.game.value = { ...game, status: "backlog" };
+    const shown = model.game.value;
+    const slow = deferred<void>();
+    vi.mocked(games.setStatus).mockReturnValueOnce(
+      slow.promise as unknown as ReturnType<typeof games.setStatus>,
+    );
+    const pending = model.changeStatus("playing");
+    expect(shown.status).toBe("playing");
+    const other = { ...game, id: otherId, status: "wishlist" as const };
+    model.game.value = other;
+    slow.reject(new Error("Down"));
+    await pending;
+    expect(shown.status).toBe("backlog");
+    expect(model.game.value!.status).toBe("wishlist");
+    // The error belongs to the game that failed, not the one now shown.
+    expect(model.quickEditError.value).toBeNull();
+  });
+
+  it("saves quick status changes in order and keeps the newest one", async () => {
+    const model = await detail();
+    model.game.value = { ...game, status: "backlog" };
+    const first = deferred<void>();
+    const calls: string[] = [];
+    vi.mocked(games.setStatus).mockImplementation(async (_id, status) => {
+      calls.push(status);
+      if (status === "playing") await first.promise;
+      return undefined as unknown as Awaited<
+        ReturnType<typeof games.setStatus>
+      >;
+    });
+    const a = model.changeStatus("playing");
+    const b = model.changeStatus("beaten");
+    await flushPromises();
+    expect(calls).toEqual(["playing"]);
+    first.reject(new Error("Down"));
+    await Promise.all([a, b]);
+    expect(calls).toEqual(["playing", "beaten"]);
+    expect(model.game.value!.status).toBe("beaten");
+  });
+
+  it("returns to the last accepted rating when the newest save fails", async () => {
+    const model = await detail();
+    model.game.value = { ...game, ratingOverall: 3 };
+    vi.mocked(games.setRatings).mockRejectedValueOnce(new Error("Down"));
+    await model.onRatingsChange({
+      ratingOverall: 5,
+      ratingStory: null,
+      ratingGameplay: null,
+      ratingSound: null,
+    });
+    expect(model.game.value!.ratingOverall).toBe(3);
+    expect(model.quickEditError.value).toMatch(/rating/);
+  });
+
+  it("retries the similar-games library after a failure", async () => {
+    vi.mocked(games.fetchGames).mockRejectedValueOnce(new Error("Down"));
+    const model = await detail(); // mounting loads the game and the library once
+    expect(games.fetchGames).toHaveBeenCalledTimes(1);
+    vi.mocked(games.fetchGames).mockResolvedValueOnce([game]);
+    model.retryGame();
+    await flushPromises();
+    expect(games.fetchGames).toHaveBeenCalledTimes(2);
+    model.retryGame();
+    await flushPromises();
+    expect(games.fetchGames).toHaveBeenCalledTimes(2); // loaded once, kept
+  });
+});

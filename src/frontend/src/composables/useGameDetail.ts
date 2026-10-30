@@ -9,12 +9,10 @@ import {
   fetchContentCounts,
   fetchGameFieldChanges,
   fetchGames,
-  setRatings,
-  setStatus,
   setResumeNote,
   setPlaytimeSeconds,
 } from "../services/games";
-import type { FieldChange, GameRatings } from "../services/games";
+import type { FieldChange } from "../services/games";
 import { peekAdjacentGameId } from "../state/libraryNav";
 import {
   HERO_WIDTH,
@@ -88,6 +86,7 @@ import { matchesShortcut } from "../state/shortcuts";
 import { useGameProfiles } from "./useGameProfiles";
 import { useGameWorlds } from "./useGameWorlds";
 import { useFavoriteToggle } from "./useFavoriteToggle";
+import { useGameQuickEdits } from "./useGameQuickEdits";
 import { useGameAchievements } from "./useGameAchievements";
 import { ApiRequestError } from "../services/apiError";
 import {
@@ -382,10 +381,7 @@ export function useGameDetail() {
       // Ignore stale responses, including earlier retries of the same link.
       if (revision !== loadRevision) return;
       game.value = fetched;
-      if (fetched && !libraryRequested) {
-        libraryRequested = true;
-        void loadLibraryForSimilar();
-      }
+      if (fetched) void loadLibraryForSimilar();
       if (fetched && !refresh) {
         resetForGame();
         parentGameTitle.value = null;
@@ -452,40 +448,49 @@ export function useGameDetail() {
     resumeNoteInput.value?.focus();
   }
   async function saveResumeNote() {
-    if (!game.value) return;
+    const target = game.value;
+    if (!target || resumeNoteSaving.value) return;
     resumeNoteSaving.value = true;
     resumeNoteError.value = null;
     try {
       const trimmed = resumeNoteDraft.value.trim() || null;
-      const updated = await setResumeNote(game.value.id, trimmed);
-      game.value.resumeNote = updated.resumeNote;
-      resumeNoteEditing.value = false;
+      const updated = await setResumeNote(target.id, trimmed);
+      // A late answer belongs to the game it was saved for, not the page's current game.
+      target.resumeNote = updated.resumeNote;
+      if (game.value === target) resumeNoteEditing.value = false;
     } catch (err) {
-      resumeNoteError.value =
-        err instanceof Error ? err.message : "Failed to save note";
+      if (game.value === target)
+        resumeNoteError.value =
+          err instanceof Error ? err.message : "Failed to save note";
     } finally {
       resumeNoteSaving.value = false;
     }
   }
 
+  const { quickEditError, changeStatus, onRatingsChange } =
+    useGameQuickEdits(game);
+
   // --- quick playtime logging --------------------------------------------
   const loggingPlaytime = ref(false);
   async function logPlaytime(minutes: number) {
-    if (!game.value || loggingPlaytime.value) return;
+    const target = game.value;
+    if (!target || loggingPlaytime.value) return;
     loggingPlaytime.value = true;
+    quickEditError.value = null;
     try {
-      const currentSeconds = game.value.platforms.reduce(
+      const currentSeconds = target.platforms.reduce(
         (sum, p) => sum + p.playtimeMinutes * 60,
         0,
       );
       const updated = await setPlaytimeSeconds(
-        game.value.id,
+        target.id,
         currentSeconds + minutes * 60,
       );
-      game.value.platforms = updated.platforms;
-      game.value.lastPlayedAt = updated.lastPlayedAt;
+      target.platforms = updated.platforms;
+      target.lastPlayedAt = updated.lastPlayedAt;
     } catch {
-      // the button just doesn't reflect the change, not worth a whole error banner for this
+      if (game.value === target)
+        quickEditError.value = "Could not log the playtime. Try again.";
     } finally {
       loggingPlaytime.value = false;
     }
@@ -495,11 +500,18 @@ export function useGameDetail() {
   // fetched once per page visit (not per-game), cheap enough at this
   // library's scale and avoids a second heavier endpoint just for this
   const libraryGames = ref<Game[]>([]);
+  let libraryLoading = false;
   async function loadLibraryForSimilar() {
+    if (libraryRequested || libraryLoading) return;
+    libraryLoading = true;
     try {
       libraryGames.value = await fetchGames();
+      libraryRequested = true;
     } catch {
-      // similar-games section just doesn't show, not worth failing the page
+      // similar-games section just doesn't show, not worth failing the page;
+      // the next game opened on this page tries again
+    } finally {
+      libraryLoading = false;
     }
   }
 
@@ -566,35 +578,8 @@ export function useGameDetail() {
     "backlog",
     "wishlist",
   ];
-  async function changeStatus(next: GameStatus) {
-    if (!game.value || next === game.value.status) return;
-    const previous = game.value.status;
-    game.value.status = next;
-    try {
-      await setStatus(game.value.id, next);
-    } catch {
-      game.value.status = previous;
-    }
-  }
-
   function onCollectionsChanged(collections: string[]) {
     if (game.value) game.value.collections = collections;
-  }
-
-  async function onRatingsChange(ratings: GameRatings) {
-    if (!game.value) return;
-    const previous = {
-      ratingOverall: game.value.ratingOverall,
-      ratingStory: game.value.ratingStory,
-      ratingGameplay: game.value.ratingGameplay,
-      ratingSound: game.value.ratingSound,
-    };
-    Object.assign(game.value, ratings);
-    try {
-      await setRatings(game.value.id, ratings);
-    } catch {
-      Object.assign(game.value, previous);
-    }
   }
 
   function onDeleteFromModal() {
@@ -1788,6 +1773,7 @@ export function useGameDetail() {
 
   return {
     favoriteError,
+    quickEditError,
     confirm,
     route,
     router,

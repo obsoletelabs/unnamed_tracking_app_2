@@ -111,6 +111,7 @@ const {
   similarGames,
   toggleFavorite,
   favoriteError,
+  quickEditError,
   STATUS_OPTIONS,
   changeStatus,
   onCollectionsChanged,
@@ -541,6 +542,9 @@ async function onFieldSourceChanged() {
           </div>
           <p v-if="favoriteError" class="favorite-error" role="alert">
             {{ favoriteError }}
+          </p>
+          <p v-if="quickEditError" class="favorite-error" role="alert">
+            {{ quickEditError }}
           </p>
           <p v-if="refreshError" class="favorite-error" role="alert">
             Your change was saved, but this page could not be refreshed and may
