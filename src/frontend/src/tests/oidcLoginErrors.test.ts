@@ -75,3 +75,35 @@ it.each([
     }
   },
 );
+
+it("tells a failed SSO check apart from SSO being off and retries it", async () => {
+  vi.mocked(passwordResetStatus).mockRejectedValue(new Error("Down"));
+  vi.mocked(oidcLoginStatus)
+    .mockRejectedValueOnce(new Error("Down"))
+    .mockResolvedValueOnce({
+      enabled: true,
+      issuer: "https://id.example.com",
+      default_login_method: "local",
+      login_button_text: "Continue with SSO",
+      providers: [],
+    });
+  const wrapper = mount(Login, {
+    global: {
+      stubs: { AppBrand: true, PasswordInput: true, RouterLink: true },
+    },
+  });
+  try {
+    await flushPromises();
+    expect(wrapper.text()).toContain(
+      "Single sign-on options could not be loaded.",
+    );
+    // An unknown reset status keeps the link; the reset page explains.
+    expect(wrapper.find(".forgot-link").exists()).toBe(true);
+    await wrapper.get(".notice-retry").trigger("click");
+    await flushPromises();
+    expect(wrapper.text()).not.toContain("could not be loaded");
+    expect(wrapper.text()).toContain("Continue with SSO");
+  } finally {
+    wrapper.unmount();
+  }
+});

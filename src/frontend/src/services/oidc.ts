@@ -19,14 +19,8 @@ export async function oidcLoginStatus(): Promise<OidcLoginStatus> {
   const response = await fetch("/api/auth/oidc/status", {
     credentials: "include",
   });
-  if (!response.ok)
-    return {
-      enabled: false,
-      issuer: null,
-      default_login_method: "local",
-      login_button_text: "Continue with SSO",
-      providers: [],
-    };
+  // A failed check is not "SSO disabled": callers tell the two apart and offer a retry.
+  if (!response.ok) throw new Error("Could not check single sign-on.");
   const result = await response.json();
   return {
     enabled: result.enabled === true,

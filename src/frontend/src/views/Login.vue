@@ -28,6 +28,9 @@ const loginMethod = ref<"sso" | "local">("local");
 const ssoButtonText = ref("Continue with SSO");
 const oidcProviders = ref<OidcLoginProvider[]>([]);
 const passwordResetAvailable = ref(false);
+// The SSO check failed, which is not the same as SSO being off.
+const optionsFailed = ref(false);
+const checkingOptions = ref(false);
 
 function destination(): string {
   return consumeReturnPath(route.query.return_to) ?? "/";
@@ -59,8 +62,36 @@ const oidcMessages: Record<string, string> = {
     "Your SSO account is not registered and automatic account creation is disabled.",
 };
 
+async function loadSignInOptions() {
+  if (checkingOptions.value) return;
+  checkingOptions.value = true;
+  optionsFailed.value = false;
+  try {
+    const [reset, oidc] = await Promise.allSettled([
+      passwordResetStatus(),
+      localOnly ? Promise.resolve(null) : oidcLoginStatus(),
+    ]);
+    // When the reset check fails the link stays: the reset page says whether
+    // it is available and offers its own retry.
+    passwordResetAvailable.value =
+      reset.status === "rejected" || reset.value === true;
+    if (oidc.status === "rejected") {
+      optionsFailed.value = true;
+    } else if (oidc.value) {
+      oidcAvailable.value = oidc.value.enabled;
+      oidcProviders.value = oidc.value.providers;
+      ssoButtonText.value = oidc.value.login_button_text;
+      loginMethod.value =
+        oidc.value.enabled && oidc.value.default_login_method === "sso"
+          ? "sso"
+          : "local";
+    }
+  } finally {
+    checkingOptions.value = false;
+  }
+}
+
 onMounted(async () => {
-  passwordResetAvailable.value = await passwordResetStatus().catch(() => false);
   if (route.query.oidc === "success") {
     await checkAuth();
     await router.replace(destination());
@@ -68,13 +99,7 @@ onMounted(async () => {
   }
   if (typeof route.query.oidc_error === "string")
     error.value = oidcMessages[route.query.oidc_error] ?? "SSO sign-in failed.";
-  if (localOnly) return;
-  const oidc = await oidcLoginStatus();
-  oidcAvailable.value = oidc.enabled;
-  oidcProviders.value = oidc.providers;
-  ssoButtonText.value = oidc.login_button_text;
-  loginMethod.value =
-    oidc.enabled && oidc.default_login_method === "sso" ? "sso" : "local";
+  await loadSignInOptions();
 });
 
 async function submit() {
@@ -117,6 +142,17 @@ function buttonStyle(provider: OidcLoginProvider) {
         <h1>{{ branding.app_name }}</h1>
       </div>
       <p class="login-subtitle">Sign in to your library</p>
+      <p v-if="optionsFailed" class="login-notice" role="alert">
+        Single sign-on options could not be loaded.
+        <button
+          type="button"
+          class="notice-retry"
+          :disabled="checkingOptions"
+          @click="loadSignInOptions"
+        >
+          Try again
+        </button>
+      </p>
       <template v-if="localOnly"
         ><label class="field"
           ><span>Username or email</span
@@ -387,6 +423,21 @@ function buttonStyle(provider: OidcLoginProvider) {
 .oidc-button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+.login-notice {
+  margin: 0;
+  color: var(--ui-dim);
+  font-size: 13px;
+  text-align: center;
+}
+.notice-retry {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--ui-accent);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
 }
 .forgot-link {
   color: var(--ui-dim);
