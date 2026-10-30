@@ -231,7 +231,13 @@ and missing revisions without mutation, inconsistent revisions, known head drift
 upgrades and merge parents, empty setup, explicit replay, rollback of deliberately deleted
 records/new DDL, read-only inspection, lock contention/retry and two real startup processes.
 `tests/test_migrations.py` retains the existing replay and data-preservation coverage. The
-history-focused safety suite explicitly selects development mode; required-mode integration
+populated upgrade matrix also starts three real migration CLI processes against one isolated
+schema. The test holds the advisory lock until every process reports contention, then checks
+that one upgrades and the others recheck the resulting head. It verifies existing row counts,
+identifiers, ownership, values, foreign keys and fixture-file checksums. The runner logs its
+lock wait once so simultaneous starts are distinguishable from a stalled startup. This case
+uses development backup mode and synthetic data; it does not replace restore verification.
+The history-focused safety suite explicitly selects development mode; required-mode integration
 coverage lives in `tests/test_migration_backup_runtime.py`, and automatic mode in
 `tests/test_startup_backup_runtime.py` (real Restic, a restore into a separate database,
 failure-before-DDL and concurrent starts), with isolated PostgreSQL databases,

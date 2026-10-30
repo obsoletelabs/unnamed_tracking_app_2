@@ -194,8 +194,12 @@ def _migration_lock(engine: Engine):
     """Bound contention while retaining the session-level lock through all work."""
     with engine.connect() as connection:
         deadline = time.monotonic() + _LOCK_WAIT_SECONDS
+        announced_wait = False
         while not connection.scalar(text("SELECT pg_try_advisory_lock(:id)"), {"id": _LOCK_ID}):
             connection.rollback()
+            if not announced_wait:
+                print("Waiting for another instance to finish database migrations.", flush=True)
+                announced_wait = True
             if time.monotonic() >= deadline:
                 raise SystemExit(
                     "Another instance holds the migration lock. No migration was attempted; "
