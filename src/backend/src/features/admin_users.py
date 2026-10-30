@@ -214,6 +214,7 @@ async def change_email(
         raise AdminActionError("Another account already uses this email address.", 409)
     previous = target.email
     target.email = email
+    target.email_unverified = False
     record_audit(
         db,
         admin,

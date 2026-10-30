@@ -649,3 +649,51 @@ async def test_oidc_new_account_never_takes_a_name_differing_only_by_case(callba
     assert (await complete(callback)).headers["location"] == "/login?oidc=success"
     names = sorted(user.username for user in callback.session.scalars(select(User)))
     assert names == ["Reader", "reader-2"]
+
+
+async def test_an_email_the_user_typed_themselves_cannot_be_claimed_by_a_later_sso_login(callback):
+    # The local user changed their own email to the address of someone who has not signed in yet.
+    attacker = User(
+        username="attacker",
+        email="reader@example.test",
+        password_hash="unused",
+        email_unverified=True,
+        is_admin=False,
+    )
+    callback.session.add(attacker)
+    callback.session.commit()
+    callback.selected_config.return_value = replace(
+        callback.config, user_match_field="email", admin_group="admins", groups_claim="groups"
+    )
+    callback.claims["groups"] = ["admins"]
+    response = await complete(callback)
+    assert response.headers["location"] == "/login?oidc_error=email_unverified"
+    callback.session.refresh(attacker)
+    assert attacker.oidc_subject is None and attacker.is_admin is False
+    assert callback.session.scalar(select(UserSession.id)) is None
+
+
+async def test_an_account_with_a_confirmed_email_is_still_linked_by_email(callback):
+    user = User(username="reader", email="reader@example.test", password_hash="unused")
+    callback.session.add(user)
+    callback.session.commit()
+    callback.selected_config.return_value = replace(callback.config, user_match_field="email")
+    assert (await complete(callback)).headers["location"] == "/login?oidc=success"
+    callback.session.refresh(user)
+    assert user.oidc_subject == auth_oidc_identity(callback.config)
+    assert user.email_unverified is False
+
+
+async def test_an_account_already_linked_still_signs_in_when_its_email_is_unverified(callback):
+    user = User(
+        username="reader",
+        email="reader@example.test",
+        password_hash="unused",
+        oidc_subject=auth_oidc_identity(callback.config),
+        email_unverified=True,
+    )
+    callback.session.add(user)
+    callback.session.commit()
+    assert (await complete(callback)).headers["location"] == "/login?oidc=success"
+    callback.session.refresh(user)
+    assert user.email_unverified is False

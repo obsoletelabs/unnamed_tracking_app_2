@@ -11,7 +11,7 @@ from fastapi import (
     Query,
     status,
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.routes.settings import (
@@ -37,7 +37,7 @@ from src.features.achievement_catalogue import (
     has_catalogue,
     store_catalogue,
 )
-from src.features.game_identity import field_provenance, names
+from src.features.game_identity import field_preferences, field_provenance, names
 from src.features.game_identity.provider_ids import (
     find_provider_id_conflicts,
     merge_provider_ids,
@@ -185,8 +185,62 @@ async def get_field_sources(
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> dict[str, dict]:
     """Who supplied the current value of each recorded metadata field."""
-    await _get_game_or_404(game_id, db, current_user.id)
-    return await field_provenance.field_sources(db, current_user.id, game_id)
+    game = await _get_game_or_404(game_id, db, current_user.id)
+    seen = await field_provenance.field_sources(db, current_user.id, game_id)
+    chosen = await field_preferences.preferences(db, game)
+    reported = await field_preferences.source_values(db, game)
+    return {
+        field: {
+            **seen.get(field, {}),
+            "preferred": chosen.get(field),
+            "sources": reported.get(field, []),
+        }
+        for field in field_provenance.PROVENANCE_FIELDS
+        if field in seen or field in chosen or reported.get(field)
+    }
+
+
+class FieldPreferenceRequest(BaseModel):
+    __module__ = "src.api.routes.games"
+    source_key: str = Field(min_length=1, max_length=100)
+
+
+@router.put("/{game_id}/field-preferences/{field}")
+async def set_field_preference(
+    game_id: UUID,
+    field: str,
+    payload: FieldPreferenceRequest,
+    db: AsyncSession = _DB_DEPENDENCY,
+    current_user: User = _CURRENT_USER_DEPENDENCY,
+) -> dict:
+    """Prefer one source for a metadata field; its known value is taken now unless locked."""
+    game = await _get_game_or_404(game_id, db, current_user.id, for_update=True)
+    try:
+        applied = await field_preferences.set_preference(db, game, field, payload.source_key)
+    except field_preferences.InvalidPreference as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+    await db.commit()
+    return {"field": field, "source_key": payload.source_key, "applied": applied}
+
+
+@router.delete("/{game_id}/field-preferences/{field}", status_code=status.HTTP_204_NO_CONTENT)
+async def clear_field_preference(
+    game_id: UUID,
+    field: str,
+    db: AsyncSession = _DB_DEPENDENCY,
+    current_user: User = _CURRENT_USER_DEPENDENCY,
+) -> None:
+    """Stop preferring a source for a metadata field. The value stays as it is."""
+    game = await _get_game_or_404(game_id, db, current_user.id, for_update=True)
+    try:
+        await field_preferences.clear_preference(db, game, field)
+    except field_preferences.InvalidPreference as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+    await db.commit()
 
 
 # Keep the established workflow and public parameters together.
@@ -307,6 +361,10 @@ async def refresh_game_metadata(
     }
     updates: dict[str, object] = {}
     skipped_locked: list[str] = []
+    # Lock > preference: a field whose preferred source is another one with a value is left alone.
+    held_by_preference = await field_preferences.fields_held_by_other_source(
+        db, game, match.get("provider"), field_values.keys()
+    )
     for field, fresh in field_values.items():
         if (
             field != "title"
@@ -318,6 +376,8 @@ async def refresh_game_metadata(
             continue
         if field in game.locked_fields:
             skipped_locked.append(field)
+            continue
+        if field in held_by_preference:
             continue
         current = getattr(game, field)
         if field == "links" and isinstance(fresh, list):

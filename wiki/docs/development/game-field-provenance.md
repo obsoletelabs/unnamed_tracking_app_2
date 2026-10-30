@@ -2,7 +2,7 @@
 
 Design for [#348](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/348) and the
 metadata half of [#349](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/349).
-**Step 1 (provenance rows) is implemented; steps 2 and 3 are not.** Paths start `src/backend/src/`.
+**Steps 1 to 3 (provenance rows, preferences, page UI) are implemented.** Paths start `src/backend/src/`.
 
 ## What exists today
 
@@ -81,8 +81,20 @@ for games with a single source.
    and on a manual edit (`features/game_identity/field_provenance.py`, migration
    `e5a1c7d93b46`). `GET /api/game/{id}/field-sources` returns, per recorded field, the origin,
    provider, time and lock. Sync paths (Playnite, store imports) do not write rows yet.
-2. Add `game_field_preferences` and apply the precedence above on refresh (migration, tests for
-   lock > preference > ranking and for a preferred source that lacks a value).
-3. Page UI: source label, value list, Prefer action, Sources-summary row.
+2. **Implemented.** `game_field_preferences` (migration `b7d2e4f19a38`,
+   `features/game_identity/field_preferences.py`). `PUT` and `DELETE`
+   `/api/game/{id}/field-preferences/{field}` set and clear a preference (owner only; the field
+   must be in `PROVENANCE_FIELDS`; the source is `provider:<id>` known from a recorded refresh, or
+   `copy:<game id>` of a copy in the same umbrella). Setting one takes that source's known value at
+   once unless the field is locked. A metadata refresh leaves a field alone when its preferred
+   source is another one that has a value; a preferred source with no value never blanks or blocks
+   the field. `GET /api/game/{id}/field-sources` now also returns `preferred` and, per field,
+   `sources`: the value each known source reports with the current one marked. Provider values are
+   those a refresh recorded (the newest per provider); a refresh skipped because of a preference
+   does not record its value, so that provider's last applied value is what the list shows.
+3. **Implemented.** `GameFieldSource.vue` shows a compact label beside developer and publisher,
+   description, tags, features, series and age rating only when sources disagree; it opens the list
+   with "Prefer this source" and "Clear preference". The Sources summary gains a "Metadata" row
+   (the most-used preferred source and the fields that disagree).
 
 Each step is independently shippable; step 1 alone answers the provenance half of #348.

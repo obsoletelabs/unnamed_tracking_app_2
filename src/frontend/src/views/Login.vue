@@ -53,6 +53,8 @@ const oidcMessages: Record<string, string> = {
   identity_conflict: "This SSO identity is already linked to another account.",
   email_conflict:
     "The email supplied by your SSO provider belongs to another account. Contact an administrator.",
+  email_unverified:
+    "An account with this email address exists, but its owner has not confirmed it. Ask an administrator to link your SSO account.",
   user_creation_disabled:
     "Your SSO account is not registered and automatic account creation is disabled.",
 };

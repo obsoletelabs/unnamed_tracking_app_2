@@ -27,7 +27,18 @@ import GameLaunchButton from "../components/game/GameLaunchButton.vue";
 import GameVersionsPanel from "../components/game/GameVersionsPanel.vue";
 import GameSourcesPanel from "../components/game/GameSourcesPanel.vue";
 import GameManualTrackingPanel from "../components/game/GameManualTrackingPanel.vue";
-import { provide, defineAsyncComponent, ref } from "vue";
+import {
+  provide,
+  defineAsyncComponent,
+  onBeforeUnmount,
+  ref,
+  watch,
+} from "vue";
+import GameFieldSource from "../components/game/GameFieldSource.vue";
+import {
+  fetchFieldSources,
+  type FieldSources,
+} from "../services/gameFieldSources";
 import { useGameDetail } from "../composables/useGameDetail";
 import { gameDetailKey } from "../composables/gameDetailContext";
 
@@ -224,6 +235,35 @@ async function onCopiesChanged() {
   copiesRevision.value++;
   await refreshCopies();
 }
+
+// Where each metadata value came from; a label shows beside a field only when
+// sources disagree. Loading it is best effort: the page works without it.
+const fieldSources = ref<FieldSources>({});
+// a credit name can be the developer, the publisher or both
+function creditFields(name: string): string[] {
+  return (["developer", "publisher"] as const).filter(
+    (field) => game.value?.[field] === name,
+  );
+}
+let fieldSourcesRequest: AbortController | null = null;
+async function loadFieldSources() {
+  fieldSourcesRequest?.abort();
+  const mine = (fieldSourcesRequest = new AbortController());
+  const id = game.value?.id;
+  if (!id) return;
+  try {
+    const found = await fetchFieldSources(id, mine.signal);
+    if (!mine.signal.aborted) fieldSources.value = found;
+  } catch {
+    if (!mine.signal.aborted) fieldSources.value = {};
+  }
+}
+watch(() => game.value?.id, loadFieldSources, { immediate: true });
+onBeforeUnmount(() => fieldSourcesRequest?.abort());
+async function onFieldSourceChanged() {
+  await onCopiesChanged();
+  await loadFieldSources();
+}
 </script>
 <template>
   <main
@@ -396,6 +436,14 @@ async function onCopiesChanged() {
                 :title="`All games by ${name}`"
                 >{{ name }}</router-link
               >
+              <GameFieldSource
+                v-for="field in creditFields(name)"
+                :key="field"
+                :game-id="game.id"
+                :field="field"
+                :entry="fieldSources[field]"
+                @changed="onFieldSourceChanged"
+              />
             </template>
           </div>
           <h1 class="title">{{ game.title }}</h1>
@@ -562,6 +610,12 @@ async function onCopiesChanged() {
           :class="{ clamped: descriptionOverflows && !descriptionExpanded }"
           v-html="descriptionHtml"
         ></div>
+        <GameFieldSource
+          :game-id="game.id"
+          field="description"
+          :entry="fieldSources.description"
+          @changed="onFieldSourceChanged"
+        />
         <button
           v-if="descriptionOverflows"
           type="button"
@@ -815,7 +869,17 @@ async function onCopiesChanged() {
         </div>
 
         <div v-if="moreTags.length || game.features.length" class="more-block">
-          <h3 class="more-title">Tags and features</h3>
+          <h3 class="more-title">
+            Tags and features
+            <GameFieldSource
+              v-for="field in ['tags', 'features']"
+              :key="field"
+              :game-id="game.id"
+              :field="field"
+              :entry="fieldSources[field]"
+              @changed="onFieldSourceChanged"
+            />
+          </h3>
           <div class="chip-row">
             <router-link
               v-for="tag in moreTags"
@@ -842,6 +906,12 @@ async function onCopiesChanged() {
                 :title="`All games in ${game.series}`"
                 >{{ game.series }}</router-link
               >
+              <GameFieldSource
+                :game-id="game.id"
+                field="series"
+                :entry="fieldSources.series"
+                @changed="onFieldSourceChanged"
+              />
             </div>
             <div v-if="game.dateAdded" class="kv-row">
               <span class="kv-label">Added</span>
@@ -868,6 +938,12 @@ async function onCopiesChanged() {
             <div v-if="game.ageRating" class="kv-row">
               <span class="kv-label">Age rating</span>
               <span class="kv-value">{{ game.ageRating }}</span>
+              <GameFieldSource
+                :game-id="game.id"
+                field="age_rating"
+                :entry="fieldSources.age_rating"
+                @changed="onFieldSourceChanged"
+              />
             </div>
             <div v-if="game.region" class="kv-row">
               <span class="kv-label">Region</span>
