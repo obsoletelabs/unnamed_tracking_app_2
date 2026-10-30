@@ -235,7 +235,7 @@ async def test_legacy_key_scopes_are_labels_and_never_widen_to_administration(wo
             json={"favorite": True},
         )
     ).status_code == 404
-    # The administrator's own legacy key keeps administrator authority only for that user.
+    # An administrator's key reaches administrator routes only through the admin scope.
     assert (
         await world.client.get("/api/auth/users", headers=world.admin.headers)
     ).status_code == 200

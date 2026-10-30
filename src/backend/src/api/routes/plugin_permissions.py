@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.routes.plugin_manager import runtime as plugin_runtime
 from src.api.routes.plugin_manager.runtime import live_plugin
-from src.core.auth import get_current_user
+from src.core.auth import acts_as_admin, get_current_user
 from src.database.models.plugin_permissions import (
     PluginClientIdentity,
     PluginPermissionGrant,
@@ -106,9 +106,9 @@ async def create_permission_request(
     user: User = _PLUGIN_USER,
 ) -> dict:
     """Reuse a pending proposal without granting or broadening its requested access."""
-    if payload.user_id is not None and payload.user_id != user.id and not user.is_admin:
+    if payload.user_id is not None and payload.user_id != user.id and not acts_as_admin(user):
         raise HTTPException(status_code=403, detail="Cannot request permissions for another user.")
-    if payload.user_id is None and not user.is_admin:
+    if payload.user_id is None and not acts_as_admin(user):
         # An installation-wide proposal reaches the administrator review queue, so only an
         # administrator may raise one; ordinary users can only ask for their own scope.
         raise HTTPException(

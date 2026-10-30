@@ -487,7 +487,8 @@ async def test_legacy_api_key_behavior_is_preserved(delegation_flow):
             f"/api/game/update/{flow.game_id}", headers=headers, json={"favorite": True}
         )
     ).status_code == 200
-    assert (await flow.client.get("/api/auth/users", headers=headers)).status_code == 200
+    # ordinary access is preserved; administrator access now needs the `admin` scope
+    assert (await flow.client.get("/api/auth/users", headers=headers)).status_code == 403
     assert (await flow.client.get(BASE + "/games", headers=headers)).status_code == 401
 
 

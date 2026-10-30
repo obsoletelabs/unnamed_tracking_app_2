@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.routes.settings import get_or_create_scan_settings
 from src.api.routes.utils.games import _record_provider_use, _scan_settings_to_preferences
-from src.core.auth import get_current_admin, get_current_user
+from src.core.auth import acts_as_admin, get_current_admin, get_current_user
 from src.core.preferences import load_preferences
 from src.database.models.plugin_metadata_provider import PluginMetadataProviderRegistration
 from src.database.models.user import User
@@ -281,7 +281,7 @@ async def update_configuration(
     )
     if row is None or row.revoked_at is not None:
         raise HTTPException(404, "Metadata provider not found.")
-    if payload.scope == "system" and not user.is_admin:
+    if payload.scope == "system" and not acts_as_admin(user):
         raise HTTPException(403, "Administrator access is required.")
     if provider_id not in CORE_PROVIDERS and not await has_capability_grant(
         db,

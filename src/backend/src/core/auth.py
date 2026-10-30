@@ -342,6 +342,56 @@ async def purge_expired_sessions(db: AsyncSession, now: int | None = None) -> in
     return int(result.rowcount or 0)
 
 
+API_KEY_SCOPES: Final = frozenset({"read", "write", "admin"})
+_SAFE_METHODS: Final = frozenset({"GET", "HEAD", "OPTIONS"})
+_ADMIN_WITHHELD: Final = "_admin_withheld"
+
+
+def validate_api_key_scopes(scopes: list[str]) -> list[str]:
+    """Normalise the scopes a new API key may carry.
+
+    No scopes is a legacy-style key: the owner's ordinary access, never administrator access.
+    `read` allows safe requests, `write` allows every request (and implies `read`), and `admin`
+    additionally lets an administrator's key reach administrator routes, so it needs `read` or
+    `write` beside it. Dotted labels such as `api.full` were accepted before scopes were
+    enforced and existing clients still send them, so they are kept and ignored; any other
+    unknown word is refused so that a misspelt `read` cannot silently mean full access."""
+    unique = sorted(set(scopes))
+    unknown = [scope for scope in unique if scope not in API_KEY_SCOPES and "." not in scope]
+    if unknown:
+        raise ValueError(f"Unknown API key scope: {unknown[0]}.")
+    if "admin" in unique and not {"read", "write"} & set(unique):
+        raise ValueError("The admin scope needs read or write beside it.")
+    return unique
+
+
+def _check_api_key_scopes(request: Request, user: User, scopes: list[str]) -> None:
+    """Apply a key's scopes to this request.
+
+    Keys made before scopes were enforced may hold free-form labels; only the recognised
+    scopes count, so a key with none keeps its ordinary access."""
+    scopes = [scope for scope in scopes if scope in API_KEY_SCOPES]
+    if scopes:
+        allowed = "write" in scopes or (
+            "read" in scopes and request.method.upper() in _SAFE_METHODS
+        )
+        if not allowed:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="This API key is not allowed to make this request.",
+            )
+    # Held on the loaded row only (never persisted): see `acts_as_admin`.
+    setattr(user, _ADMIN_WITHHELD, "admin" not in scopes)
+
+
+def acts_as_admin(user: User) -> bool:
+    """Whether this request may use the user's administrator rights.
+
+    A session always may. An API key may only with the `admin` scope, so a key made without
+    it cannot reach administrator operations even when its owner is an administrator."""
+    return bool(user.is_admin) and not getattr(user, _ADMIN_WITHHELD, False)
+
+
 APP_GRANT_ATTRIBUTE: Final = "__app_grant_scope__"
 
 
@@ -417,15 +467,20 @@ async def _resolve_user_credentials(
                 detail="Invalid API key.",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        user = await db.scalar(
-            select(User)
-            .join(UserApiKey, UserApiKey.user_id == User.id)
-            .where(
-                UserApiKey.key_hash == hash_token(api_key),
-                UserApiKey.revoked_at.is_(None),
-                User.is_active.is_(True),
+        found = (
+            await db.execute(
+                select(User, UserApiKey.scopes)
+                .join(UserApiKey, UserApiKey.user_id == User.id)
+                .where(
+                    UserApiKey.key_hash == hash_token(api_key),
+                    UserApiKey.revoked_at.is_(None),
+                    User.is_active.is_(True),
+                )
             )
-        )
+        ).first()
+        user = found[0] if found else None
+        if found is not None:
+            _check_api_key_scopes(request, found[0], list(found[1] or []))
         if user is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -552,7 +607,7 @@ async def get_current_actor(
 
 
 async def get_current_admin(user: User = _CURRENT_USER_DEPENDENCY) -> User:
-    if not user.is_admin:
+    if not acts_as_admin(user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Administrator access required.",

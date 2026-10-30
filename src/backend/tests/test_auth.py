@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -98,7 +99,7 @@ async def test_revoked_api_key_cannot_fall_back_to_browser_session() -> None:
 
     api_key = "utk_revoked-key"
     db = AsyncMock()
-    db.scalar.return_value = None
+    db.execute.return_value = SimpleNamespace(first=lambda: None)
     request = Request(
         {
             "type": "http",
@@ -117,7 +118,7 @@ async def test_revoked_api_key_cannot_fall_back_to_browser_session() -> None:
 
     assert exc_info.value.status_code == 401
     assert "revoked" in str(exc_info.value.detail).lower()
-    db.scalar.assert_awaited_once()
+    db.execute.assert_awaited_once()
 
 
 def test_validation_errors_never_echo_submitted_values() -> None:

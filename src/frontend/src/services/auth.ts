@@ -157,12 +157,15 @@ export async function fetchApiKeys(): Promise<ApiKeySummary[]> {
   return await response.json();
 }
 
-export async function createApiKey(name: string): Promise<CreatedApiKey> {
+export async function createApiKey(
+  name: string,
+  scopes: string[] = [],
+): Promise<CreatedApiKey> {
   const response = await fetch("/api/auth/api-keys", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
-    body: JSON.stringify({ name, scopes: [] }),
+    body: JSON.stringify({ name, scopes }),
   });
   if (!response.ok) {
     const message = await response.text();

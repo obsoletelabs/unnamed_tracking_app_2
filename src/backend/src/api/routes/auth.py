@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.auth_limits import enforce_admin_auth_quota, enforce_auth_actor_quota
 from src.core.auth import (
+    API_KEY_SCOPES,
     SESSION_TTL_SECONDS,
     AuthenticatedActor,
     create_api_key,
@@ -29,6 +30,7 @@ from src.core.auth import (
     session_cookie_name,
     set_password_policy_override,
     username_in_use,
+    validate_api_key_scopes,
     validate_display_name,
     validate_password,
     validate_username,
@@ -91,7 +93,12 @@ class LoginRequest(BaseModel):
 
 class ApiKeyCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=100)
-    scopes: list[str] = Field(default_factory=list)
+    scopes: list[str] = Field(default_factory=list, max_length=len(API_KEY_SCOPES))
+
+    @field_validator("scopes")
+    @classmethod
+    def _known_scopes(cls, scopes: list[str]) -> list[str]:
+        return validate_api_key_scopes(scopes)
 
 
 class UserCreateRequest(BaseModel):

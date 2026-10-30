@@ -18,7 +18,7 @@ runs, not from this text.
 | --- | --- | --- |
 | `public` | None. Pre-login, discovery, static or single-use-proof endpoints | - |
 | `user` | Browser session cookie or a legacy `utk_` API key, resolved to an active user | `utd_` delegated, `utp_` public-app and `utpm_` management credentials (403), except on `user-or-app` routes |
-| `admin` | A `user` whose account is an administrator | The same exclusions; ordinary users get 403 |
+| `admin` | A `user` whose account is an administrator; an API key additionally needs the `admin` scope ([API key scopes](#api-key-scopes)) | The same exclusions; ordinary users get 403 |
 | `browser-session` | Browser session only (consent, Connected apps) | API keys and every integration credential |
 | `delegated-grant` | `utd_` credential with the route's scope, live grant, enabled client and active account | Browser sessions, `utk_` keys |
 | `user-or-app` | A `user` credential, or a `utd_` app grant that carries the route's scope (`library.sync`, `saves.read`, `saves.write`, `content.write`) for a live grant, allowed client and active account | `utp_`, `utpm_`; a `utd_` grant without the scope (403) or that is unknown, revoked or switched off (401) |
@@ -73,13 +73,28 @@ Remaining by-design behaviors, recorded so they are not mistaken for gaps:
 - `DELETE /api/notifications/{id}` and `POST /api/notifications/{id}/dismiss` return
   204 for an identifier the caller cannot see and change nothing.
 
-## Legacy API keys
+## API key scopes
 
-Legacy `utk_` keys are **unrestricted for their owner**: they carry exactly the
-routes and administrator status of the user who created them. The `scopes` list
-accepted when a key is created is stored as a label only; it is not enforced. This
-behaviour is intentionally unchanged so that existing clients keep working, and
-nothing narrows or upgrades a legacy key automatically. Consequences:
+`utk_` keys carry the scopes chosen when a session creates them
+(`POST /api/auth/api-keys`; unknown scopes are rejected):
+
+| Scope | Allows |
+| --- | --- |
+| none | The owner's ordinary access (all `user` routes), **never** administrator access |
+| `read` | Safe requests (`GET`, `HEAD`, `OPTIONS`) on ordinary routes |
+| `write` | Every request on ordinary routes (implies `read`) |
+| `admin` | Lets an administrator's key reach `admin` routes; needs `read` or `write` beside it |
+
+Keys made before scopes were enforced keep working as keys with none: their ordinary
+access is unchanged. Free-form labels stored on older keys (anything other than the
+scopes above) are ignored, so they neither narrow nor widen the key. The one behaviour
+change is that a key without the `admin` scope no longer reaches administrator routes,
+even when its owner is an administrator; an administrator who scripts administrator
+operations creates a key with `["read", "write", "admin"]`. The check covers
+`get_current_admin`, the plugin-manager administrator dependency and the places that
+test `is_admin` inline (`acts_as_admin` in `core/auth.py`); a browser session is
+unaffected. The Settings page offers **Full access** and **Read only**; the `admin`
+scope is available through the API only.
 
 - A key never exceeds its owner: a non-administrator's key gets 403 on administrator
   routes and 404 for another user's objects (regression-tested).
@@ -87,10 +102,9 @@ nothing narrows or upgrades a legacy key automatically. Consequences:
   cannot manage consent grants (`browser-session` routes).
 - Revoking a key, deactivating its owner or deleting the owner stops it on the next
   request.
-- Clients that need least privilege should migrate to the
+- Clients that need finer least privilege than these scopes should migrate to the
   [user-approved access](../integrations/user-delegation.md) protocol, which issues
-  scoped, expiring, revocable `utd_` credentials. Any future narrowing of legacy
-  keys would be a separate, announced migration.
+  scoped, expiring, revocable `utd_` credentials.
 
 ## Account creation and guest claiming
 
