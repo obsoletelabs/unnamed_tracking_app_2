@@ -3765,7 +3765,40 @@ class RuntimeServer(ThreadingHTTPServer):
     allow_reuse_address = True
 
 
+DEPRECATION_NOTICE_INTERVAL_SECONDS = 300
+
+
+def deprecated_image_notice(environ: Mapping[str, str] = os.environ) -> str | None:
+    """The message to repeat when this image is published under a name being phased out."""
+    replacement = environ.get("PLUGIN_RUNTIME_REPLACEMENT_IMAGE", "").strip()
+    if not replacement:
+        return None
+    return (
+        "DEPRECATED IMAGE NAME: this plugin runtime was pulled from a name that is being phased out. "
+        f"Switch your compose file to {replacement} (same tags, same contents); "
+        "the old name will stop receiving updates."
+    )
+
+
+def start_deprecation_notices(
+    notice: str, interval: float = DEPRECATION_NOTICE_INTERVAL_SECONDS
+) -> threading.Event:
+    """Log the notice now and then every `interval` seconds until the returned event is set."""
+    stop = threading.Event()
+
+    def repeat() -> None:
+        print(notice, file=sys.stderr, flush=True)
+        while not stop.wait(interval):
+            print(notice, file=sys.stderr, flush=True)
+
+    threading.Thread(target=repeat, name="deprecation-notice", daemon=True).start()
+    return stop
+
+
 def main() -> None:
+    notice = deprecated_image_notice()
+    if notice:
+        start_deprecation_notices(notice)
     token = os.environ.get("PLUGIN_RUNTIME_TOKEN", "")
     if re.fullmatch(r"[A-Za-z0-9._~-]{32,256}", token) is None:
         raise RuntimeError(

@@ -11,6 +11,8 @@ on:
     branches: ["**"]
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+  # Used by the Cut beta workflow: a tag pushed with the workflow token does not trigger CI itself.
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}

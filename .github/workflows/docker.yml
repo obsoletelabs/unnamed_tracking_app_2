@@ -19,9 +19,17 @@ jobs:
           - name: frontend
             context: ./src/frontend
             dockerfile: ./src/frontend/Dockerfile
+          # The runtime is published under its original name and under its new one. The original
+          # keeps working but logs where to move to, so nobody is stranded while it is phased out.
           - name: plugin-runtime
             context: .
             dockerfile: src/plugin-runtime/Dockerfile
+            replacement: unnamed_tracking_plugin_runtime
+          - name: plugin-runtime-current
+            context: .
+            dockerfile: src/plugin-runtime/Dockerfile
+            image: unnamed_tracking_plugin_runtime
+            cache: plugin-runtime
           - name: wikicontainer
             context: .
             dockerfile: src/wikicontainer/Dockerfile
@@ -29,6 +37,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          fetch-tags: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -41,19 +51,42 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set lowercase repository name
-        run: echo "REPO_LC=${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+      - name: Resolve image names
+        env:
+          IMAGE: ${{ matrix.image }}
+          NAME: ${{ matrix.name }}
+        run: |
+          OWNER_LC="${GITHUB_REPOSITORY_OWNER,,}"
+          REPO_LC="${GITHUB_REPOSITORY,,}"
+          if [ -n "$IMAGE" ]; then
+            echo "IMAGE_REF=ghcr.io/${OWNER_LC}/${IMAGE}" >> "$GITHUB_ENV"
+          else
+            echo "IMAGE_REF=ghcr.io/${REPO_LC}-${NAME}" >> "$GITHUB_ENV"
+          fi
+          echo "OWNER_LC=${OWNER_LC}" >> "$GITHUB_ENV"
+
+      - name: Resolve release tags
+        id: release
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          {
+            echo "metadata<<TAGS_END"
+            python3 tools/release_tags.py "$GITHUB_REF_NAME" | sed 's/^/type=raw,value=/'
+            echo "TAGS_END"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Extract image metadata
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ghcr.io/${{ env.REPO_LC }}-${{ matrix.name }}
+          images: ${{ env.IMAGE_REF }}
+          flavor: latest=false
+          # Release tags (stable, beta, preview) come from tools/release_tags.py.
           tags: |
             type=ref,event=pr
             type=ref,event=branch
             type=sha,format=long
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') }}
+            ${{ steps.release.outputs.metadata }}
 
       - name: Build and push ${{ matrix.name }}
         uses: docker/build-push-action@v7
@@ -63,5 +96,6 @@ jobs:
           push: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=${{ matrix.name }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+          build-args: ${{ matrix.replacement && format('REPLACEMENT_IMAGE=ghcr.io/{0}/{1}', env.OWNER_LC, matrix.replacement) || '' }}
+          cache-from: type=gha,scope=${{ matrix.cache || matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.cache || matrix.name }}
