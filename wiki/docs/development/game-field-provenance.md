@@ -2,7 +2,7 @@
 
 Design for [#348](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/348) and the
 metadata half of [#349](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/349).
-**Nothing in this document is implemented yet.** Paths start `src/backend/src/`.
+**Step 1 (provenance rows) is implemented; steps 2 and 3 are not.** Paths start `src/backend/src/`.
 
 ## What exists today
 
@@ -27,12 +27,17 @@ from, and (b) letting a person say "for this field, trust that source".
 `GameFieldValue` already has the shape (`field`, `value`, `state`, `origin`, `observation_id`,
 `observed_at`, `edited_at`, lock) and a unique `current` row per game and field. Extend its use
 from `title` to the displayable metadata fields rather than adding a parallel table. Origins stay
-the existing closed set (`user`, `source`, `metadata`, `legacy`, `system`); for `metadata` the
-provider is identified through the observation, so no new column is needed for a first version.
+the existing closed set (`user`, `source`, `metadata`, `legacy`, `system`).
 
-Fields in scope: `description`, `developer`, `publisher`, `genres`, `tags`, `release_date`,
-`series`, `age_rating`, `features`, `cover`/artwork choice. Excluded: ids, `provider_ids`,
-timestamps and everything already tracked elsewhere.
+A metadata refresh has no source observation, and the table requires one for `source` and
+`metadata` origins. So a nullable `source_label` column names the provider, and the check
+constraint now allows a `metadata` value that names an observation **or** a provider (a `user`
+value still names neither). A refresh writes `origin = metadata` with the provider; a manual edit
+writes `origin = user`.
+
+Fields in scope: `description`, `developer`, `publisher`, `series`, `tags`, `features`,
+`age_rating`, `release_date`. Excluded: `title` (it keeps its own rules in
+`features/game_identity/names.py`), ids, `provider_ids`, status and pricing, and artwork.
 
 Existing games have no rows. Backfill lazily: the first time a field is read for provenance, a
 missing row is shown as "unknown source" (origin `legacy`) rather than guessed, and the next
@@ -72,8 +77,10 @@ for games with a single source.
 
 ## Delivery plan
 
-1. Write provenance rows for the in-scope fields during refresh and manual edit (backend only,
-   behind the existing API; `GET /api/game/{id}` gains an optional `field_sources` map).
+1. **Implemented.** Provenance rows are written for the in-scope fields on a metadata refresh
+   and on a manual edit (`features/game_identity/field_provenance.py`, migration
+   `e5a1c7d93b46`). `GET /api/game/{id}/field-sources` returns, per recorded field, the origin,
+   provider, time and lock. Sync paths (Playnite, store imports) do not write rows yet.
 2. Add `game_field_preferences` and apply the precedence above on refresh (migration, tests for
    lock > preference > ranking and for a preferred source that lacks a value).
 3. Page UI: source label, value list, Prefer action, Sources-summary row.

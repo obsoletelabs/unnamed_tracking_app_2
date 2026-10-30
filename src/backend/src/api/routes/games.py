@@ -141,11 +141,12 @@ from src.api.schemas.game import (
 from src.core.auth import AuthenticatedActor, app_grant, get_current_actor, get_current_user
 from src.database.models.game import Game, GameLink, GameStatus
 from src.database.models.game_field_change import GameFieldChange
+from src.database.models.game_identity_tracking import FieldValueOrigin
 from src.database.models.user import User
 from src.database.session import get_db
 from src.features import game_folders, game_ownership
 from src.features.achievement_sync_queue import enqueue_game as enqueue_achievement_sync
-from src.features.game_identity import manual
+from src.features.game_identity import field_provenance, manual
 from src.features.game_identity.provider_ids import find_provider_id_conflicts
 from src.features.game_ingestion import playnite
 from src.features.game_ingestion.legacy import (
@@ -653,6 +654,7 @@ async def get_game_variants(
     },
 )
 @app_grant("library.sync")
+# pylint: disable-next=too-many-locals
 async def update_game(
     game_id: UUID,
     payload: GameUpdate,
@@ -712,7 +714,9 @@ async def update_game(
         game.links = [GameLink(label=link["label"], url=link["url"]) for link in new_links]
 
     _record_field_changes(game, updates, db)
+    edited = field_provenance.changed_values(game, updates)
     apply_updates_with_locking(game, updates, frozenset(_GAME_METADATA_FIELDS), actor=actor)
+    await field_provenance.record_field_sources(db, game, edited, origin=FieldValueOrigin.USER)
     playnite.restore_locks(game, kept_locks)
 
     # Keep sort_title in sync if title changed but sort_title wasn't explicitly
