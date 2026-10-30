@@ -512,6 +512,21 @@ canonical text, no data migration is needed; the affected tags simply return to
 separate choices (the spelling rule is the only one that cannot be switched off
 per tag).
 
+### Tag catalogue
+
+For your own choices, open **Settings → Library → Tag catalogue**. There you can
+rename a tag, tell the app that several spellings mean the same thing (an alias),
+list the tags already in your library, and accept suggested matches one at a time.
+Nothing is merged automatically, and removing a tag from the catalogue never edits
+the tags on your games or media. The catalogue only changes how tags are labelled,
+grouped in statistics and matched by the media tag filter. An administrator can set
+server-wide defaults; your own choices always win, and **Show original** displays a
+default's spelling as it was stored.
+
+![Tag catalogue settings with a tag, its spellings and a suggested match](../assets/tag-catalogue/settings-top.jpg)
+
+![Server defaults and the tags currently in use](../assets/tag-catalogue/settings-defaults.jpg)
+
 Changing tags, genres, sorting or other query filters on the current page keeps
 your scroll position. The URL still updates for sharing. Navigating to another
 page starts at the top, and browser back/forward restores its saved position.
