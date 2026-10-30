@@ -12,6 +12,7 @@ from urllib.parse import parse_qsl, urlsplit
 from pydantic import TypeAdapter, ValidationError
 
 from src.plugin_api.notification_story_contracts import (
+    SPOOFING_CHARACTERS,
     ApplicationPath,
     MarkdownBlock,
     NotificationContent,
@@ -133,7 +134,14 @@ def markdown_is_safe(markdown: str) -> bool:
     return all(url_is_safe(target) for target in markdown_link_targets(markdown))
 
 
+def check_plain_text(value: str) -> None:
+    """The checks every displayed string gets, for text the host composes from a template."""
+    _check_text(value, markup=False)
+
+
 def _check_text(value: str, *, markup: bool) -> None:
+    if SPOOFING_CHARACTERS.search(value):
+        raise UnsafeContentError("Content contains hidden or direction-overriding characters")
     if _EXECUTABLE_MARKUP.search(value):
         raise UnsafeContentError("Content contains executable or embedded markup")
     if _CSS.search(value) and "<" in value:
