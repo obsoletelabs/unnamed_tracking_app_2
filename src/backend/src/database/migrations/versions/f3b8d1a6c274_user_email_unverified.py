@@ -1,7 +1,7 @@
 """mark emails the user typed themselves as unverified
 
 Revision ID: f3b8d1a6c274
-Revises: e5a1c7d93b46
+Revises: b7d2e4f19a38
 Create Date: 2026-10-30
 
 """
@@ -15,7 +15,7 @@ from src.database import migration_helpers as h
 
 # revision identifiers, used by Alembic.
 revision: str = "f3b8d1a6c274"
-down_revision: Union[str, Sequence[str], None] = "e5a1c7d93b46"
+down_revision: Union[str, Sequence[str], None] = "b7d2e4f19a38"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
