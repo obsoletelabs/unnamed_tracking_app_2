@@ -13,6 +13,8 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v7
+        with:
+          fetch-tags: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -80,15 +82,12 @@ jobs:
           docker push "$IMAGE_NAME:$IMAGE_TAG"
           docker push "$IMAGE_NAME:sha-$GITHUB_SHA"
 
-          # Release tags: stable (v1.2.3) moves `latest`; prerelease (v1.2.3-beta.1) moves `latest-beta`.
-          case "$GITHUB_REF" in
-            refs/tags/v*-*) MOVING_TAG="latest-beta" ;;
-            refs/tags/v*) MOVING_TAG="latest" ;;
-            *) MOVING_TAG="" ;;
-          esac
-          if [ -n "$MOVING_TAG" ]; then
-            docker tag unnamed_tracking_app:ci "$IMAGE_NAME:$MOVING_TAG"
-            docker push "$IMAGE_NAME:$MOVING_TAG"
+          # Release tags (stable, beta, preview) come from tools/release_tags.py.
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            while read -r release_tag; do
+              docker tag unnamed_tracking_app:ci "$IMAGE_NAME:$release_tag"
+              docker push "$IMAGE_NAME:$release_tag"
+            done < <(python3 tools/release_tags.py "$GITHUB_REF_NAME")
           fi
 
       - name: Show diagnostics on failure

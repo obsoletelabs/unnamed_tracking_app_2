@@ -37,6 +37,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          fetch-tags: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -63,22 +65,28 @@ jobs:
           fi
           echo "OWNER_LC=${OWNER_LC}" >> "$GITHUB_ENV"
 
+      - name: Resolve release tags
+        id: release
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          {
+            echo "metadata<<TAGS_END"
+            python3 tools/release_tags.py "$GITHUB_REF_NAME" | sed 's/^/type=raw,value=/'
+            echo "TAGS_END"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Extract image metadata
         id: meta
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE_REF }}
           flavor: latest=false
-          # Stable tags (v1.2.3) move `latest`; prerelease tags (v1.2.3-beta.1) move `latest-beta`.
+          # Release tags (stable, beta, preview) come from tools/release_tags.py.
           tags: |
             type=ref,event=pr
             type=ref,event=branch
-            type=ref,event=tag
             type=sha,format=long
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') }}
-            type=raw,value=latest-beta,enable=${{ startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-') }}
+            ${{ steps.release.outputs.metadata }}
 
       - name: Build and push ${{ matrix.name }}
         uses: docker/build-push-action@v7

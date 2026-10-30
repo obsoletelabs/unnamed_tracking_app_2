@@ -83,14 +83,28 @@ service to the new name; the tags are unchanged.
 
 ### Release tags
 
-Image tags follow the Git tag that triggered the build:
+Image tags follow the Git tag or branch that triggered the build
+(`tools/release_tags.py` decides the release tags):
 
-| Git tag | Image tags |
+| Source | Image tags |
 | --- | --- |
-| `v1.2.3` | `v1.2.3`, `1.2.3`, `1.2`, `latest` |
-| `v1.2.3-beta.1` | `v1.2.3-beta.1`, `1.2.3-beta.1`, `latest-beta` |
-| branch | the branch name and `sha-<commit>` |
-| pull request | `pr-<number>` (same-repository PRs only) |
+| `v1.2.3` | `v1.2.3`, `1.2.3`, `1.2`, and `latest` unless a higher stable release exists |
+| `v1.2.3-beta.4` | `v1.2.3-beta.4`, `1.2.3-beta.4`, `1.2.3-beta` (this line's newest beta), and `latest-beta` when 1.2.3 is the next line to ship |
+| `v1.2.3-remote-launch.1` (a labelled preview) | only `v1.2.3-remote-launch.1` and `1.2.3-remote-launch.1`; no shared tag moves |
+| branch without a pull request | the branch name and `sha-<commit>` |
+| pull request (same repository) | `pr-<number>` and `sha-<commit>`, and no branch name |
+
+Betas for several release lines can exist at once. Each line keeps its own `X.Y.Z-beta` tag, and
+`latest-beta` follows only the next line to ship. Running a beta of a later line, or any
+`pr-<number>` image, against real data is risky: database migrations only move forward, so an older
+version cannot be pointed back at a database a newer one has migrated. Use a copy or throwaway data.
+
+### Cutting a beta
+
+Run the **Cut beta** workflow (Actions tab, or `gh workflow run beta.yml -f line=0.0.5 -f ref=main`).
+It takes the release line, the branch or commit to tag and a label (default `beta`), works out the
+next `-beta.N`, tags it and starts the normal build and release for that tag. It refuses a line
+that has already been released. Use another label to preview a branch for a later release.
 
 Pushing a `v*` tag also publishes a GitHub release with generated notes (marked as a
 prerelease when the tag has a suffix). A stable release closes the open milestone with the same

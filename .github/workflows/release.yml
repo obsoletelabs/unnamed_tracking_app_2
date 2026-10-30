@@ -7,6 +7,9 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  # Dispatched on the tag by the Cut beta workflow (a tag pushed with the workflow token does
+  # not trigger workflows itself). Run it with the tag as the ref.
+  workflow_dispatch:
 
 permissions:
   contents: write
