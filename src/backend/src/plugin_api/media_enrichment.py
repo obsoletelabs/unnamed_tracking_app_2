@@ -83,6 +83,28 @@ class EnrichmentInput(MediaSyncInput):
     playback: PlaybackInput | None = None
     episode_progress: dict[StringValue, PlaybackInput] = Field(default_factory=dict, max_length=100)
     history: list[PlaybackEventInput] = Field(default_factory=list, max_length=100)
+    # Where the person can open this title on the provider's own site or server. It is recorded
+    # at sync time, so showing a "watch it there" link needs no live lookup.
+    watch_url: str | None = Field(default=None, max_length=8192)
+    watch_label: str | None = Field(default=None, max_length=80)
+
+    @field_validator("watch_url")
+    @classmethod
+    def web_watch_url(cls, value: str | None) -> str | None:
+        """The person's browser opens this address: plain HTTP(S), no credentials. A fragment is
+        allowed because media servers route their pages with one, and a private host stays
+        allowed because those servers are usually on the user's own network."""
+        if value is None:
+            return None
+        try:
+            parts = urlsplit(value)
+            valid = parts.scheme in {"http", "https"} and bool(parts.hostname)
+            valid = valid and parts.username is None and parts.password is None
+        except ValueError:
+            valid = False
+        if not valid or any(c.isspace() or ord(c) in (92, 127) or ord(c) < 32 for c in value):
+            raise ValueError("watch_url must be an HTTP(S) address without credentials")
+        return value
 
     @field_validator("metadata")
     @classmethod
@@ -435,6 +457,8 @@ def _save_link_snapshot(
         "provider_ids": item.provider_ids,
         "episode_ids": episode_ids,
         "title": item.title,
+        "watch_url": item.watch_url,
+        "watch_label": item.watch_label,
     }
     if item.inventory_complete:
         link.data = {**link.data, "finalized_watch": watch_plan.digest}

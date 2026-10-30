@@ -3,10 +3,11 @@
 // title, status and rating pickers, a few badges, and the Edit / favorite /
 // extras buttons. What goes in it (which badges, the movie's "Left off at"
 // row, an anime's other titles) is the page's call, through props and slots.
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { STATUS_BUCKETS } from "../utils/mediaStatus";
 import { pluginSlots } from "../state/pluginExtensions";
 import PluginExtensionSlot from "./plugins/PluginExtensionSlot.vue";
+import MediaWatchLinks from "./MediaWatchLinks.vue";
 import MediaExtrasPanel from "./MediaExtrasPanel.vue";
 import RatingPicker from "./RatingPicker.vue";
 
@@ -32,10 +33,13 @@ defineProps<{
 
 const status = defineModel<string>("status", { required: true });
 
-// A plugin can offer a "watch it" action beside Edit, the way Playnite's Launch sits on a game
-// page; when one does, Edit steps back to a secondary button.
-const hasWatchAction = computed(() =>
-  pluginSlots.value.some((item) => item.slot === "media.detail.actions"),
+// A library source that has this title, or a plugin's own action, puts a "watch it" button
+// beside Edit, the way Launch sits on a game page; then Edit steps back to a secondary button.
+const hasSourceLink = ref(false);
+const hasWatchAction = computed(
+  () =>
+    hasSourceLink.value ||
+    pluginSlots.value.some((item) => item.slot === "media.detail.actions"),
 );
 
 const emit = defineEmits<{
@@ -103,6 +107,11 @@ const emit = defineEmits<{
         </dl>
         <slot name="below-badges" />
         <div class="action-row">
+          <MediaWatchLinks
+            :media-type="mediaType"
+            :media-id="mediaId"
+            @present="hasSourceLink = $event"
+          />
           <PluginExtensionSlot
             slot-id="media.detail.actions"
             inline

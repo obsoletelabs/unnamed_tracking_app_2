@@ -332,3 +332,29 @@ async def test_plugin_purge_removes_owned_source_state_but_retains_native_record
         )
         == 0
     )
+
+
+async def test_watch_link_is_recorded_at_sync_and_follows_availability(database):
+    db, user = database
+    link = "http://jellyfin.lan:8096/web/index.html#!/details?id=abc"
+    first = await sync(db, user, watch_url=link, watch_label="Jellyfin · Home")
+    state = await provider_state("movie", UUID(first["id"]), user, db, offset=0, limit=50)
+    assert state["sources"][0]["watch_url"] == link
+    assert state["sources"][0]["watch_label"] == "Jellyfin · Home"
+    await sync(db, user, availability_only=True, available=False)
+    state = await provider_state("movie", UUID(first["id"]), user, db, offset=0, limit=50)
+    assert not state["sources"][0]["available"]
+    assert state["sources"][0]["watch_url"] == link
+    moved = await sync(db, user, watch_url=link.replace("abc", "def"))
+    state = await provider_state("movie", UUID(moved["id"]), user, db, offset=0, limit=50)
+    assert state["sources"][0]["watch_url"].endswith("def")
+
+
+@pytest.mark.parametrize(
+    "bad",
+    ["javascript:alert(1)", "ftp://host/x", "https://user:pw@host/x", "https://host/a b", ""],
+)
+async def test_watch_link_must_be_a_plain_web_address(database, bad):
+    db, user = database
+    with pytest.raises(ValueError, match="watch_url"):
+        await sync(db, user, watch_url=bad)
