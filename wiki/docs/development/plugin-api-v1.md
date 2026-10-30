@@ -268,6 +268,15 @@ identity providers match: collection identifiers never identify a film. Anime
 TMDB identities distinguish `tmdb.movie` from `tmdb.tv`. A unique provider-ID or
 exact trimmed case-insensitive title/year match can enrich an existing record;
 ambiguous, contradictory or incomplete matches return owned candidates for review.
+
+An enrich request may also carry `watch_url` (an HTTP(S) address without credentials; a
+fragment and a private host are allowed) and `watch_label` (up to 80 characters, such as
+"Jellyfin · Home"). The host stores them on that source's link when the sync is applied, so a
+media page can offer "Watch in …" from what the last sync recorded, with no live lookup. A
+source that reports `available: false` stops being offered, and a sync that omits `watch_url`
+clears it.
+
+![Watch in Jellyfin and Plex beside Edit on a movie page](../assets/media-watch-links/watch-links.jpg)
 Once accepted, the host retains the provider link across renames and replays.
 
 `metadata` permits at most 32 JSON keys and 64 KiB. Supported native fields include

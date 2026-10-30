@@ -32,82 +32,45 @@ watch(
 <template>
   <div v-if="links.length" class="watch-links">
     <a
-      class="watch-main"
-      :href="links[0].url"
+      v-for="(link, index) in links"
+      :key="link.id"
+      :class="index === 0 ? 'watch-main' : 'watch-other'"
+      :href="link.url"
       target="_blank"
       rel="noopener noreferrer"
     >
-      ▶ Watch in {{ links[0].label }}
+      {{ index === 0 ? "▶ " : "" }}Watch in {{ link.label }}
     </a>
-    <details v-if="links.length > 1" class="watch-more">
-      <summary aria-label="More places to watch">▾</summary>
-      <ul>
-        <li v-for="link in links.slice(1)" :key="link.id">
-          <a :href="link.url" target="_blank" rel="noopener noreferrer"
-            >Watch in {{ link.label }}</a
-          >
-        </li>
-      </ul>
-    </details>
   </div>
 </template>
 
 <style scoped>
 .watch-links {
-  position: relative;
   display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 .watch-main,
-.watch-more summary {
+.watch-other {
   display: inline-flex;
   align-items: center;
   height: 38px;
   padding: 0 18px;
-  background: var(--ui-accent);
-  color: var(--ui-on-accent);
+  border-radius: var(--ui-radius-control);
   font-size: 0.86rem;
   font-weight: 700;
   text-decoration: none;
   white-space: nowrap;
-  cursor: pointer;
-  list-style: none;
 }
 .watch-main {
-  border-radius: var(--ui-radius-control);
+  background: var(--ui-accent);
+  color: var(--ui-on-accent);
 }
-.watch-links:has(.watch-more) .watch-main {
-  border-radius: var(--ui-radius-control) 0 0 var(--ui-radius-control);
-}
-.watch-more summary {
-  padding: 0 10px;
-  border-left: 1px solid rgb(255 255 255 / 35%);
-  border-radius: 0 var(--ui-radius-control) var(--ui-radius-control) 0;
-}
-.watch-more summary::-webkit-details-marker {
-  display: none;
-}
-.watch-more ul {
-  position: absolute;
-  z-index: 20;
-  top: 44px;
-  left: 0;
-  min-width: 100%;
-  margin: 0;
-  padding: 6px;
-  list-style: none;
-  background: var(--ui-surface, #fff);
-  border: 1px solid color-mix(in srgb, var(--ui-text) 15%, transparent);
-  border-radius: 10px;
-  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
-}
-.watch-more li a {
-  display: block;
-  padding: 8px 10px;
+.watch-other {
   color: var(--ui-text);
-  text-decoration: none;
-  white-space: nowrap;
+  border: 1px solid color-mix(in srgb, var(--ui-text) 22%, transparent);
 }
-.watch-more li a:hover {
-  background: color-mix(in srgb, var(--ui-accent) 12%, transparent);
+.watch-other:hover {
+  border-color: color-mix(in srgb, var(--ui-accent) 55%, transparent);
 }
 </style>
