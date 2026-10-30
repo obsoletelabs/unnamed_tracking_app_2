@@ -480,3 +480,75 @@ async def test_version_reports_are_per_pc_and_api_keys_cannot_replace_them(launc
         "0.2.0",
         "0.3.0",
     }
+
+
+async def test_every_remote_launch_route_has_an_authority_and_isolation_check(launch_flow):
+    """A new launch route must join this matrix, not bypass the identity-route audit."""
+    flow = launch_flow
+    covered = set()
+    request_id = None
+
+    async def checked(method, path, expected, **kwargs):
+        response = await flow.client.request(method, path, **kwargs)
+        assert response.status_code == expected, (method, path, response.text)
+        route = path.replace(request_id, "{request_id}") if request_id else path
+        covered.add((method, route))
+        return response
+
+    contract = await checked("get", BASE + "/contract", 200, headers=flow.headers)
+    assert contract.json() == remote_launch.contract_description()
+    await checked("get", BASE + "/contract", 401)
+    own_device = await checked(
+        "put", BASE + "/device", 200, headers=flow.headers, json={"enabled": True}
+    )
+    assert own_device.json()["id"] == str(flow.device_id)
+    assert (await checked("get", BASE + "/devices", 200)).json()[0]["id"] == str(flow.device_id)
+    body = launch_body(flow)
+    request_id = (await checked("post", BASE + "/requests", 200, json=body)).json()["id"]
+    status_path = BASE + "/requests/" + request_id
+    result_path = status_path + "/result"
+    assert (await checked("get", status_path, 200)).json()["state"] == "pending"
+
+    app.dependency_overrides[browser_user] = lambda: flow.other
+    try:
+        assert (await checked("get", BASE + "/devices", 200)).json() == []
+        await checked("get", status_path, 404)
+        await checked("post", BASE + "/requests", 404, json=body)
+    finally:
+        app.dependency_overrides[browser_user] = lambda: flow.user
+
+    # A second approved connection can only configure/claim its own receiver.
+    other_headers, other_id = await grant_access(flow, ["games.launch"])
+    other_device = await checked(
+        "put", BASE + "/device", 200, headers=other_headers, json={"enabled": True}
+    )
+    assert other_device.json()["id"] == str(other_id)
+    assert (await checked("post", BASE + "/requests/claim", 200, headers=other_headers)).json()[
+        "request"
+    ] is None
+    await checked("post", result_path, 404, headers=other_headers, json={"state": "accepted"})
+    assert (await checked("get", status_path, 200)).json()["state"] == "pending"
+    delivery = await checked("post", BASE + "/requests/claim", 200, headers=flow.headers)
+    assert delivery.json()["request"]["id"] == request_id
+    accepted = await checked(
+        "post", result_path, 200, headers=flow.headers, json={"state": "accepted"}
+    )
+    assert accepted.json()["state"] == "accepted"
+    await checked("put", BASE + "/device", 200, headers=other_headers, json={"enabled": False})
+    assert [device["id"] for device in (await checked("get", BASE + "/devices", 200)).json()] == [
+        str(flow.device_id)
+    ]
+
+    # Browser authority never substitutes for a receiving desktop credential.
+    await checked("put", BASE + "/device", 401, json={"enabled": False})
+    await checked("post", BASE + "/requests/claim", 401)
+    await checked("post", result_path, 401, json={"state": "accepted"})
+    documented = {
+        (method, path)
+        for path, operations in app.openapi()["paths"].items()
+        if path.startswith(BASE + "/")
+        for method in operations
+    }
+    assert documented == covered, (
+        f"launch routes without an isolation check: {documented - covered}"
+    )

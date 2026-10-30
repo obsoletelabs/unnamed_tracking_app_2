@@ -715,12 +715,17 @@ async def test_13_no_identity_or_manual_tracking_route_reaches_another_users_dat
     calls = foreign_calls(world)
     # a new identity route cannot ship without isolation coverage
     from src.main import app
+    from tests.route_audit_support import walk_routes
 
+    # The sync/evidence API belongs to this identity audit. Remote launch has
+    # a separate browser/receiver boundary and a complete dynamic route-isolation
+    # matrix in test_remote_launch.py.
     documented = {
-        (method, path)
-        for path, item in app.openapi()["paths"].items()
-        if path.startswith(("/api/game-identity", "/api/playnite"))
-        for method in item
+        (method.lower(), path)
+        for path, route in walk_routes(app.router)
+        if path.startswith("/api/game-identity")
+        or route.endpoint.__module__ == "src.api.routes.playnite"
+        for method in route.methods - {"HEAD", "OPTIONS"}
     }
     covered = {(m, template(p)) for m, p, _ in calls}
     uncovered = (
