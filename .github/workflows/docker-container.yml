@@ -34,7 +34,7 @@ jobs:
           load: true
           tags: unnamed_tracking_app:ci
           cache-from: type=gha,scope=production-container
-          cache-to: type=gha,mode=max,scope=production-container
+          cache-to: ${{ github.ref == 'refs/heads/main' && 'type=gha,mode=max,scope=production-container' || '' }}
 
       - name: Wait before retrying
         if: steps.build.outcome == 'failure'
@@ -49,7 +49,7 @@ jobs:
           load: true
           tags: unnamed_tracking_app:ci
           cache-from: type=gha,scope=production-container
-          cache-to: type=gha,mode=max,scope=production-container
+          cache-to: ${{ github.ref == 'refs/heads/main' && 'type=gha,mode=max,scope=production-container' || '' }}
 
 
       - name: Validate production Nginx and TLS configuration

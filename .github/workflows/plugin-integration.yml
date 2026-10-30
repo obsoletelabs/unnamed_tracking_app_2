@@ -21,6 +21,11 @@ on:
         type: string
         required: false
 
+env:
+  # A stalled cache download otherwise holds the job for the 10 minute default; give up after 2
+  # and carry on without the cache (a plain pip install).
+  SEGMENT_DOWNLOAD_TIMEOUT_MINS: "2"
+
 jobs:
   # Decides, from the changed files, whether this workflow applies. Pull requests that cannot affect
   # plugins skip `lifecycle` (a skipped job is a pass); main, tags and manual runs always run it all.

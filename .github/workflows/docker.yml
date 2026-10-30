@@ -100,6 +100,8 @@ jobs:
             ${{ steps.branch.outputs.metadata }}
             ${{ steps.release.outputs.metadata }}
 
+      # Only main writes the layer cache. A branch or pull request can read main's cache but
+      # cannot be read by anything else, so its own copy was never reused once it merged.
       # Pulling base images from Docker Hub or the cache occasionally fails with a 5xx; one
       # retry after a short pause covers that without hiding a real build error.
       - name: Build and push ${{ matrix.name }}
@@ -114,7 +116,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: ${{ matrix.replacement && format('REPLACEMENT_IMAGE=ghcr.io/{0}/{1}', env.OWNER_LC, matrix.replacement) || '' }}
           cache-from: type=gha,scope=${{ matrix.cache || matrix.name }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.cache || matrix.name }}
+          cache-to: ${{ github.ref == 'refs/heads/main' && format('type=gha,mode=max,scope={0}', matrix.cache || matrix.name) || '' }}
 
       - name: Wait before retrying
         if: steps.build.outcome == 'failure'
@@ -131,4 +133,4 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: ${{ matrix.replacement && format('REPLACEMENT_IMAGE=ghcr.io/{0}/{1}', env.OWNER_LC, matrix.replacement) || '' }}
           cache-from: type=gha,scope=${{ matrix.cache || matrix.name }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.cache || matrix.name }}
+          cache-to: ${{ github.ref == 'refs/heads/main' && format('type=gha,mode=max,scope={0}', matrix.cache || matrix.name) || '' }}
