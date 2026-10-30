@@ -189,6 +189,12 @@ describe("shared quick editor", () => {
       note: null,
       genres: [],
       isEpisodic: true,
+      episodeEdit: {
+        id: "season-id",
+        label: "Season 1",
+        watched: 2,
+        total: 12,
+      },
       watched: 2,
       total: 12,
       progressLabel: "2 / 12",
@@ -232,6 +238,7 @@ describe("shared quick editor", () => {
         "show-id",
         {
           status: "in progress",
+          episodeEdit: { id: "season-id", watched: 0, total: null },
           watched: 0,
           totalEpisodes: null,
           score: null,

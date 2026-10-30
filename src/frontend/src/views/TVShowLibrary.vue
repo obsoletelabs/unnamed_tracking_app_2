@@ -59,6 +59,7 @@ function currentSeason(show: TVShow) {
 
 function toVM(show: TVShow): LibraryCardVM {
   const { watched, total } = seasonProgress(show);
+  const season = currentSeason(show) ?? show.seasons.at(-1);
   return {
     id: show.id,
     title: show.title,
@@ -72,6 +73,17 @@ function toVM(show: TVShow): LibraryCardVM {
     note: show.note,
     genres: show.genres,
     isEpisodic: true,
+    episodeEdit: season
+      ? {
+          id: season.id,
+          label:
+            "Season " +
+            season.seasonNumber +
+            (season.name ? ": " + season.name : ""),
+          watched: season.episodesWatched,
+          total: season.episodeCount,
+        }
+      : undefined,
     watched,
     total,
     progressLabel: total !== null ? `${watched}/${total}` : `${watched}/–`,
@@ -151,32 +163,21 @@ async function onSaveEdit(id: string, form: EditForm) {
       ...(form.endDate !== undefined && { endDate: form.endDate }),
     }),
   );
-  // The small edit modal's "episodes watched" and "total episodes" are
-  // flat numbers; apply them to the current season the same way the
-  // quick "+" button does, rather than pretending a show-level episode
-  // count exists as its own field. Falls back to the last season once
-  // everything is already watched (currentSeason has nothing left to
-  // pick) so the fields stay editable after a show is fully caught up.
-  const updatedShow = findShow(id);
-  const season =
-    currentSeason(updatedShow) ??
-    updatedShow.seasons[updatedShow.seasons.length - 1];
-  if (season) {
-    const watchedDelta = form.watched - seasonProgress(updatedShow).watched;
-    const totalChanged = form.totalEpisodes !== season.episodeCount;
-    const seasonUpdates: SeasonUpdateInput = {};
-    if (watchedDelta !== 0) {
-      seasonUpdates.episodesWatched = Math.max(
-        0,
-        season.episodesWatched + watchedDelta,
-      );
-    }
-    if (totalChanged) {
-      seasonUpdates.episodeCount = form.totalEpisodes;
-    }
-    if (Object.keys(seasonUpdates).length > 0) {
-      replaceShow(await updateSeason(id, season.id, seasonUpdates));
-    }
+  // A rating prompt has no episode patch. A quick edit carries only changes
+  // to the season that was opened, even if another season is now current.
+  const patch = form.episodeEdit;
+  if (!patch) return;
+  const season = findShow(id).seasons.find((entry) => entry.id === patch.id);
+  if (!season) return;
+  const seasonUpdates: SeasonUpdateInput = {};
+  if (patch.watched !== undefined && patch.watched !== season.episodesWatched) {
+    seasonUpdates.episodesWatched = patch.watched;
+  }
+  if (patch.total !== undefined && patch.total !== season.episodeCount) {
+    seasonUpdates.episodeCount = patch.total;
+  }
+  if (Object.keys(seasonUpdates).length > 0) {
+    replaceShow(await updateSeason(id, season.id, seasonUpdates));
   }
 }
 
