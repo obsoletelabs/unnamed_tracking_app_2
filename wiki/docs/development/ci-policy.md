@@ -10,9 +10,9 @@ it fails if any pipeline that ran failed and ignores pipelines that were skipped
 | Event | What runs |
 | --- | --- |
 | Ready PR opened or updated | Full checks for the affected areas |
-| Draft PR | Nothing; its branch has no CI of its own until marked ready, so use a branch push |
-| Push to a branch with an open ready PR | Nothing; the PR run covers it |
-| Push to a branch without an open PR | Scoped quality checks and full suites |
+| Draft PR event | Nothing; its branch pushes run instead |
+| Push to a branch with a ready PR | Nothing; the PR run covers it |
+| Push to a branch without a ready PR (none, or a draft) | Scoped quality checks and full suites |
 | Push to `main`, or a `v*` tag | Full checks and image publication |
 
 If the gate cannot tell whether a PR exists or what changed, it runs everything.

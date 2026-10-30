@@ -5,8 +5,8 @@ do the work for a given commit:
 
 * a pull request runs unless it is a draft;
 * a push to main or a tag always runs;
-* a push to any other branch runs only when that branch has no open pull request, because the
-  pull request run already covers it. Branches without a pull request still get their CI.
+* a push to any other branch runs only when that branch has no ready pull request, because the
+  pull request run already covers it (a draft pull request does not run, so its pushes do). Branches without a pull request still get their CI.
 
 The decision and the changed areas are made here, in one cheap job, so jobs that do not apply are
 skipped without ever taking a runner. Anything uncertain falls back to running everything.
@@ -143,7 +143,7 @@ def open_pull_request(repository: str, branch: str) -> bool | None:
         "-f",
         "state=open",
         "--jq",
-        "length",
+        "[.[] | select(.draft | not)] | length",
     )
     if out is None or not out.strip().isdigit():
         return None
