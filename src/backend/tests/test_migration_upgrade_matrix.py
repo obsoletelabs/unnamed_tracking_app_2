@@ -18,6 +18,9 @@ import json
 import os
 import subprocess
 import sys
+import time
+from collections.abc import Callable
+from contextlib import ExitStack
 from datetime import date, datetime, timezone
 from pathlib import Path
 from uuid import NAMESPACE_URL, uuid4, uuid5
@@ -28,6 +31,7 @@ from psycopg import sql
 from sqlalchemy.engine import make_url
 
 from src.core.config import settings
+from src.database.migrate import _LOCK_ID
 
 BACKEND = Path(__file__).parents[1]
 HEAD = "head"
@@ -331,7 +335,12 @@ class Upgrade:
         self.files = tmp_path / "data"
         self.files.mkdir()
 
-    def run(self, steps: tuple[str, ...] = (HEAD,)) -> tuple[dict, dict, dict[str, int]]:
+    def run(
+        self,
+        steps: tuple[str, ...] = (HEAD,),
+        *,
+        upgrade_runner: Callable[[dict[str, str]], None] | None = None,
+    ) -> tuple[dict, dict, dict[str, int]]:
         with psycopg.connect(self.admin_url, autocommit=True) as connection:
             connection.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(self.schema)))
             try:
@@ -344,8 +353,11 @@ class Upgrade:
                     (self.files / f"game-{index}.bin").write_bytes(bytes([index]) * 4096)
                 before = _snapshot(connection, self.schema)
                 self.file_hashes = _checksums(self.files)
-                for step in steps:
-                    _alembic(self.environment, "upgrade", step)
+                if upgrade_runner is None:
+                    for step in steps:
+                        _alembic(self.environment, "upgrade", step)
+                else:
+                    upgrade_runner(self.environment)
                 after = _snapshot(connection, self.schema)
                 self.orphans = _foreign_keys_hold(connection, self.schema)
                 self.current = _alembic(self.environment, "current")
@@ -403,6 +415,103 @@ def test_upgrade_in_two_stages_and_repeated_upgrade_change_nothing(isolated):
     upgrade = isolated("f6bb4f914739")
     before, after, populated = upgrade.run(("c10098e58426", HEAD, HEAD))
     _assert_preserved(upgrade, before, after, populated)
+
+
+def _concurrent_migrators(upgrade: Upgrade, environment: dict[str, str], root: Path) -> None:
+    """Hold the real lock until all three CLI processes have reported contention."""
+    waiting = "Waiting for another instance to finish database migrations."
+    children: list[subprocess.Popen] = []
+    logs = [root / f"migrator-{index}.log" for index in range(3)]
+    data_roots = [root / f"migrator-{index}" for index in range(3)]
+    try:
+        with ExitStack() as files, psycopg.connect(upgrade.admin_url, autocommit=True) as owner:
+            owner.execute("SELECT pg_advisory_lock(%s)", (_LOCK_ID,))
+            try:
+                for log, data_root in zip(logs, data_roots, strict=True):
+                    child_environment = {
+                        **environment,
+                        "MIGRATION_BACKUP_MODE": "development",
+                        "ENV_FILE": os.devnull,
+                        "APP_DATA_DIR": str(data_root),
+                    }
+                    children.append(
+                        subprocess.Popen(
+                            [sys.executable, "-m", "src.database.migrate"],
+                            cwd=BACKEND,
+                            env=child_environment,
+                            stdout=files.enter_context(log.open("w", encoding="utf-8")),
+                            stderr=subprocess.STDOUT,
+                            text=True,
+                        )
+                    )
+                deadline = time.monotonic() + 30
+                while not all(waiting in log.read_text(encoding="utf-8") for log in logs):
+                    assert all(child.poll() is None for child in children), (
+                        "a migrator exited before all workers contended for the lock"
+                    )
+                    assert time.monotonic() < deadline, "migrators did not report lock contention"
+                    time.sleep(0.05)
+                # Reaching the contention barrier cannot itself upgrade the database.
+                revision = owner.execute(
+                    sql.SQL("SELECT version_num FROM {}").format(
+                        sql.Identifier(upgrade.schema, "alembic_version")
+                    )
+                ).fetchone()
+                assert revision == (upgrade.start,)
+            finally:
+                owner.execute("SELECT pg_advisory_unlock(%s)", (_LOCK_ID,))
+            for child in children:
+                child.wait(timeout=120)
+                assert child.returncode == 0, "a concurrent migrator failed; inspect its test log"
+    finally:
+        for child in children:
+            if child.poll() is None:
+                child.kill()
+            child.wait(timeout=10)
+
+    outputs = [log.read_text(encoding="utf-8") for log in logs]
+    assert all("Database is up to date." in output for output in outputs)
+    assert sum("Running upgrade" in output for output in outputs) == 1
+    reports = []
+    for data_root in data_roots:
+        paths = list((data_root / "config/migration-recovery").glob("attempt-*.json"))
+        assert len(paths) == 1
+        report = json.loads(paths[0].read_text(encoding="utf-8"))
+        assert report["status"] == "succeeded"
+        reports.append(report)
+    assert (
+        sum(report["source_revisions"] != report["resulting_revisions"] for report in reports) == 1
+    )
+    assert len({tuple(report["resulting_revisions"]) for report in reports}) == 1
+
+    with psycopg.connect(upgrade.admin_url, autocommit=True) as connection:
+        connection.execute(sql.SQL("SET search_path TO {}").format(sql.Identifier(upgrade.schema)))
+        before_retry = _snapshot(connection, upgrade.schema)
+        repeated = subprocess.run(
+            [sys.executable, "-m", "src.database.migrate"],
+            cwd=BACKEND,
+            env=child_environment,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+        assert repeated.returncode == 0, "an unchanged database failed the repeated CLI startup"
+        assert "Running upgrade" not in repeated.stdout + repeated.stderr
+        assert _snapshot(connection, upgrade.schema) == before_retry
+
+
+def test_concurrent_migrators_upgrade_a_populated_database_exactly_once(isolated, tmp_path):
+    upgrade = isolated(STARTS[-1][0])
+
+    def run_concurrently(environment: dict[str, str]) -> None:
+        _concurrent_migrators(upgrade, environment, tmp_path)
+
+    before, after, populated = upgrade.run(upgrade_runner=run_concurrently)
+    _assert_preserved(upgrade, before, after, populated)
+    assert {table: len(rows) for table, rows in before.items()} == {
+        table: len(after[table]) for table in before
+    }
 
 
 def test_a_migration_that_loses_a_record_or_changes_ownership_fails_the_comparison():
