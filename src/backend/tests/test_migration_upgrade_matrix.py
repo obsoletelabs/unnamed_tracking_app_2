@@ -98,7 +98,10 @@ def export_release_migrations(tag: str, destination: Path) -> Path:
     config = destination / "alembic.ini"
     template = (BACKEND / "alembic.ini").read_text(encoding="utf-8")
     template = re.sub(
-        r"^script_location *=.*$", f"script_location = {script_location.as_posix()}", template, flags=re.M
+        r"^script_location *=.*$",
+        f"script_location = {script_location.as_posix()}",
+        template,
+        flags=re.M,
     )
     template = re.sub(
         r"^prepend_sys_path *=.*$", f"prepend_sys_path = {BACKEND.as_posix()}", template, flags=re.M
