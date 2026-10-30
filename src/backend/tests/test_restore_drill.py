@@ -284,6 +284,7 @@ def _packs(backup: StartupBackup) -> list[Path]:
 
 def _truncate(backup: StartupBackup) -> None:
     pack = _packs(backup)[0]
+    pack.chmod(0o600)
     pack.write_bytes(pack.read_bytes()[: pack.stat().st_size // 2])
 
 
@@ -291,6 +292,7 @@ def _flip(backup: StartupBackup) -> None:
     pack = _packs(backup)[0]
     content = bytearray(pack.read_bytes())
     content[len(content) // 2] ^= 0xFF
+    pack.chmod(0o600)
     pack.write_bytes(bytes(content))
 
 
