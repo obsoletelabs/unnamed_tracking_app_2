@@ -1,7 +1,8 @@
 # User-extensible tag catalogue without losing source tags
 
 Design proposal for [#267](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/267)
-(source: Rosefall #36). **Accepted design; not implemented.** Decisions confirmed on 19 October 2026. Paths start
+(source: Rosefall #36). **Accepted design; implemented (phases 2 and 3 for games, statistics and the media filter).** Decisions
+confirmed on 19 October 2026. Paths start
 `src/backend/src/`.
 
 ## 1. Problem and current state (reviewed first, as the issue asks)
@@ -135,8 +136,27 @@ Populated-database test: every `tags` array is identical before upgrade, after u
 The maintainer's answers on [#267](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/267) approve both
 deployment defaults and private user catalogues, every taggable feature, confirmed suggestions and pure renaming.
 Follow-up confirmation on 19 October establishes user-over-deployment precedence while keeping original provider
-tags recoverable. There are no remaining product questions for this design. Tables, APIs and UI remain future work;
-this document does not register endpoints or change tag handling today.
+tags recoverable. There are no remaining product questions for this design.
+
+### Implementation status
+
+Implemented: the five additive tables (`user_tags`, `user_tag_aliases`, `user_tag_suppressions`,
+`default_tags`, `default_tag_aliases`) in one migration; key folding; the owner API under `/api/tags`
+(list, create, rename, archive, aliases, suppressions, `usage`, `suggestions`, `discover`, `resolution`)
+and the administrator API under `/api/tags/defaults`; read-time resolution in the statistics top tags
+and the media tag filter. Stored `tags` arrays are never written by any of it, and a populated
+upgrade, downgrade and re-upgrade test proves it.
+
+Also implemented: the **Tag catalogue** settings page (Settings, Library), with administrator-managed
+defaults on the same page; an optional, versioned `tag_catalogue` section in the library export and
+import (private labels, aliases and suppressed defaults; importing adds to the importer's catalogue,
+never overwrites it, and an older file without the section imports as before); and the Games tag
+picker and filters, which read the person's rules through `GET /api/tags/resolution`.
+
+Still to do: wiring the same rules into the anime, TV and movie tag filters on the client, and
+per-feature item counts in the catalogue preview. A key difference to note for clients: the server
+folds with `casefold`, the browser with `toLowerCase`, so a few exotic spellings (`ß`) only group
+server-side.
 
 ## 12. Acceptance-criteria mapping
 

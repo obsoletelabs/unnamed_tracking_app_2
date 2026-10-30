@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   canonicalTag,
@@ -6,6 +6,7 @@ import {
   genreOptionsFor,
   hasGenre,
   sameTag,
+  setCatalogueRules,
   tagFilterOptions,
   tagKey,
 } from "../utils/genres";
@@ -142,5 +143,32 @@ describe("tagFilterOptions", () => {
     const forward = tagFilterOptions(library);
     const backward = tagFilterOptions([...library].reverse());
     expect(backward).toEqual(forward);
+  });
+});
+
+describe("tag catalogue rules", () => {
+  afterEach(() => setCatalogueRules({}));
+
+  it("groups a mapped spelling under its catalogue label without touching stored tags", () => {
+    const stored = ["Roguelite", "Indie"];
+    setCatalogueRules({ roguelite: "Roguelike" });
+    expect(sameTag("roguelite", "Roguelike")).toBe(true);
+    expect(canonicalTag("  ROGUELITE ")).toBe("Roguelike");
+    expect(gameGenres(stored)).toEqual(["Roguelike", "Indie"]);
+    expect(stored).toEqual(["Roguelite", "Indie"]);
+  });
+
+  it("merges the picker choices and lists the mapped spelling", () => {
+    setCatalogueRules({ roguelite: "Roguelike" });
+    const options = tagFilterOptions([["Roguelike"], ["Roguelite"]]);
+    const choice = options.find((o) => o.value === "Roguelike")!;
+    expect(choice.count).toBe(2);
+    expect(choice.spellings).toEqual(["Roguelite"]);
+  });
+
+  it("keeps related tags separate again once the rule is gone", () => {
+    setCatalogueRules({ roguelite: "Roguelike" });
+    setCatalogueRules({});
+    expect(sameTag("Roguelite", "Roguelike")).toBe(false);
   });
 });

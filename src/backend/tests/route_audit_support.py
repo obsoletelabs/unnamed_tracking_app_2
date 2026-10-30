@@ -46,6 +46,7 @@ from src.database.models.notification_story import (
     NotificationStoryRevision,
 )
 from src.database.models.plugin_permissions import PluginClientIdentity
+from src.database.models.tag_catalogue import UserTag, UserTagAlias
 from src.database.models.tv_show import TVEpisode, TVSeason, TVShow
 from src.database.models.user import User
 from src.database.session import SessionLocal
@@ -186,8 +187,24 @@ async def seed_owner(db, tenant: Tenant) -> None:
         name="Owner device",
         token_hash=uuid4().hex + uuid4().hex,
     )
+    tag = UserTag(id=uuid4(), user_id=uid, label="Owner tag", key="owner tag")
+    alias = UserTagAlias(
+        user_id=uid, tag_id=tag.id, alias_key="owner alias", alias_label="Owner alias"
+    )
     db.add_all(
-        [version, rewatch, activity, event, inbox, notice, session, device, *destinations.values()]
+        [
+            version,
+            rewatch,
+            activity,
+            event,
+            inbox,
+            notice,
+            session,
+            device,
+            tag,
+            alias,
+            *destinations.values(),
+        ]
     )
     await db.flush()
     ids.update(
@@ -210,6 +227,8 @@ async def seed_owner(db, tenant: Tenant) -> None:
         file_item_id=file_item.id,
         media_id=shot.id,
         rewatch_id=rewatch.id,
+        tag_id=tag.id,
+        alias_id=alias.id,
         activity_id=activity.id,
         event_id=event.id,
         source_id=source.id,
@@ -350,6 +369,8 @@ def resolve_path(template: str, ids: dict[str, str]) -> str | None:
         "source_id": ids["source_id"],
         "entry_id": ids["activity_id"],
         "rewatch_id": ids["rewatch_id"],
+        "tag_id": ids["tag_id"],
+        "alias_id": ids["alias_id"],
         "achievement_id": ids["achievement_id"],
         "review_id": ids["review_id"],
         "user_id": ids["user_id"],

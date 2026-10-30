@@ -1,3 +1,5 @@
+import { shallowRef } from "vue";
+
 export const GENRE_OPTIONS = [
   "Action",
   "Adventure",
@@ -145,9 +147,32 @@ interface TagIdentity {
   label: string;
 }
 
+// The person's own tag catalogue (#267): a spelling they, or the server's
+// defaults, map to another label. Keys are the server's folded spellings.
+// Reading it through a ref lets the pickers update when the rules load.
+const catalogueRules = shallowRef<ReadonlyMap<string, string>>(new Map());
+
+export function catalogueSpellingKey(tag: string): string {
+  return tag
+    .normalize("NFKC")
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .join(" ");
+}
+
+export function setCatalogueRules(rules: Record<string, string>): void {
+  catalogueRules.value = new Map(Object.entries(rules));
+}
+
 function identify(tag: string): TagIdentity | null {
   const key = tagSpellingKey(tag);
   if (!key) return null;
+  const mapped = catalogueRules.value.get(catalogueSpellingKey(tag));
+  if (mapped) {
+    const mappedKey = tagSpellingKey(mapped);
+    if (mappedKey) return { key: mappedKey, label: mapped };
+  }
   const synonym = TAG_SYNONYMS[key];
   if (synonym) return { key: tagSpellingKey(synonym), label: synonym };
   return { key, label: SHARED_BY_KEY.get(key) ?? tagLabel(tag) };

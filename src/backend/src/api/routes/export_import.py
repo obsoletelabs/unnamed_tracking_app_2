@@ -36,6 +36,7 @@ from src.features.game_folders import reserved_names
 from src.features.game_identity import manual
 from src.features.imports.library_export import build_library_export
 from src.features.jobs import JOBS, get_setting
+from src.features.tag_catalogue import restore_catalogue
 from src.helpers import save_game_asset
 from src.helpers.save_game_asset import create_game_folder
 
@@ -97,6 +98,7 @@ class ImportResult(BaseModel):
     errors: list[str]
     manual_achievements: int = 0
     manual_completion: int = 0
+    tag_catalogue_tags: int = 0
 
 
 class ImportedGame(GameCreate):
@@ -111,6 +113,7 @@ class LibraryImport(BaseModel):
     games: list[ImportedGame]
     manual_achievements: list[Any] = []
     manual_completion: list[Any] = []
+    tag_catalogue: dict[str, Any] | None = None
 
 
 async def _available_folder_location(folder_name: str, db: AsyncSession, user_id: UUID) -> str:
@@ -202,12 +205,17 @@ async def import_library(
         else manual.Restored()
     )
     errors.extend(restored.errors)
+    tags_restored = await restore_catalogue(
+        db, current_user.id, None if isinstance(payload, list) else payload.tag_catalogue
+    )
+    errors.extend(tags_restored.errors)
     result = ImportResult(
         created=created,
         skipped=skipped,
         errors=errors[:20],
         manual_achievements=restored.achievements,
         manual_completion=restored.completions,
+        tag_catalogue_tags=tags_restored.tags,
     )
     DATA_OPERATION_DURATION.labels("library_json", "import").observe(time.monotonic() - started)
     DATA_OPERATIONS.labels("library_json", "import", "partial" if errors else "succeeded").inc()

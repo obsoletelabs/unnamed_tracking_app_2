@@ -58,6 +58,7 @@ const ICON_PATHS: Record<string, string> = {
   metadata:
     "M12 3C7 3 3 5 3 8s4 5 9 5 9-2 9-5-4-5-9-5Z M3 8v8c0 3 4 5 9 5s9-2 9-5V8",
   admin: "M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4Z",
+  "tag-catalogue": "M20 12l-8 8-9-9V3h8l9 9Z M7.5 7.5h.01",
   "api-keys":
     "M21 2l-2 2 M15 8l3-3 M11 12a5 5 0 1 0-7 7 5 5 0 0 0 7-7Z M11 12l4-4",
 };
