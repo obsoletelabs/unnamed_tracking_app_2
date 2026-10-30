@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useMediaQuickSave } from "../composables/useMediaQuickSave";
 import { latestRequest } from "../utils/latestRequest";
 import RetryMessage from "../components/RetryMessage.vue";
 import { localMediaImage } from "../utils/mediaImages";
@@ -59,6 +60,9 @@ const router = useRouter();
 const showId = computed(() => route.params.id as string);
 
 const show = ref<Anime | null>(null);
+const { saveError, quickSave } = useMediaQuickSave(show, (body) =>
+  updateAnime(body.id, animeToInput(body)),
+);
 usePageTitle(() => show.value?.title);
 const loading = ref(true);
 const error = ref<string | null>(null);
@@ -69,8 +73,11 @@ const activeTab = ref<"overview" | "episodes" | "related" | "recommended">(
 const statusBucketModel = computed({
   get: () => statusBucket(show.value?.status ?? "wishlist"),
   set: (bucket: string) => {
-    if (!show.value) return;
-    show.value.status = bucketToReal(bucket) as AnimeStatus;
+    const next = bucketToReal(bucket) as AnimeStatus;
+    void quickSave(
+      (target) => (target.status = next),
+      "Could not change the status. Try again.",
+    );
   },
 });
 
@@ -128,42 +135,18 @@ async function load() {
 async function toggleFavorite() {
   if (!show.value) return;
   const next = !show.value.favorite;
-  show.value.favorite = next;
-  try {
-    await updateAnime(show.value.id, {
-      ...animeToInput(show.value),
-      favorite: next,
-    });
-  } catch {
-    show.value.favorite = !next;
-  }
+  await quickSave(
+    (target) => (target.favorite = next),
+    "Could not update the favourite. Try again.",
+  );
 }
 
-async function saveNote(note: string | null) {
-  if (!show.value) return;
-  const previous = show.value.note;
-  show.value.note = note;
-  try {
-    show.value = await updateAnime(show.value.id, {
-      ...animeToInput(show.value),
-      note,
-    });
-  } catch {
-    show.value.note = previous;
-  }
-}
-
-async function onStatusChange() {
-  if (!show.value) return;
-  const previous = show.value.status;
-  try {
-    show.value = await updateAnime(show.value.id, {
-      ...animeToInput(show.value),
-      status: show.value.status,
-    });
-  } catch {
-    show.value.status = previous;
-  }
+// The note editor stays open with the typed text when this returns false.
+function saveNote(note: string | null): Promise<boolean> {
+  return quickSave(
+    (target) => (target.note = note),
+    "Could not save your note. Try again.",
+  );
 }
 
 function onSaved(saved: Anime) {
@@ -923,17 +906,10 @@ watch(
   { immediate: true },
 );
 async function onRatingChange(value: number | null) {
-  if (!show.value) return;
-  const previous = show.value.ratingOverall;
-  show.value.ratingOverall = value;
-  try {
-    show.value = await updateAnime(show.value.id, {
-      ...animeToInput(show.value),
-      ratingOverall: value,
-    });
-  } catch {
-    if (show.value) show.value.ratingOverall = previous;
-  }
+  await quickSave(
+    (target) => (target.ratingOverall = value),
+    "Could not save the rating. Try again.",
+  );
 }
 </script>
 
@@ -993,6 +969,7 @@ async function onRatingChange(value: number | null) {
       :has-backdrop="!!show.backdropUrl"
       :rating-overall="show.ratingOverall"
       :favorite="show.favorite"
+      :save-error="saveError"
       media-type="anime"
       :media-id="show.id"
       :provider-ids="show.providerIds"
@@ -1010,7 +987,6 @@ async function onRatingChange(value: number | null) {
           : []),
       ]"
       bright-native-title
-      @status-change="onStatusChange"
       @rating-change="onRatingChange"
       @edit="showEditModal = true"
       @toggle-favorite="toggleFavorite"
@@ -1074,7 +1050,7 @@ async function onRatingChange(value: number | null) {
           v-if="show.description"
           :text="show.description"
         />
-        <MyNote :note="show.note" @save="saveNote" />
+        <MyNote :note="show.note" :save-note="saveNote" />
         <MediaProviderPanel media-type="anime" :media-id="show.id" />
 
         <div v-if="allSeasons.length > 1" class="seasons-section">

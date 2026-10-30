@@ -31,6 +31,8 @@ defineProps<{
   facts?: { label: string; value: string }[];
   // the native-title line is lighter on Anime pages
   brightNativeTitle?: boolean;
+  // a favourite, status or rating change that could not be saved
+  saveError?: string | null;
 }>();
 
 const status = defineModel<string>("status", { required: true });
@@ -157,6 +159,7 @@ const emit = defineEmits<{
           </button>
           <MediaExtrasPanel :media-type="mediaType" :media-id="mediaId" />
         </div>
+        <p v-if="saveError" class="save-error" role="alert">{{ saveError }}</p>
       </div>
     </div>
   </section>
@@ -267,6 +270,12 @@ const emit = defineEmits<{
   gap: 8px;
   flex-wrap: wrap;
   margin-bottom: 16px;
+}
+
+.save-error {
+  color: var(--ui-error);
+  font-size: 0.85rem;
+  margin: 8px 0 0;
 }
 
 .tracking-facts {
