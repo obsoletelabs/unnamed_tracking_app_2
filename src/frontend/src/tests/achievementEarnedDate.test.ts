@@ -1,8 +1,12 @@
 // @vitest-environment happy-dom
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mount } from "@vue/test-utils";
 import AchievementEditDialog from "../components/AchievementEditDialog.vue";
 import { localInputToUnixSeconds, toLocalInput } from "../utils/achievements";
+import {
+  createManualAchievement,
+  updateManualAchievement,
+} from "../services/gameTracking";
 import type { Achievement } from "../types/game";
 
 const achievement = (overrides: Partial<Achievement> = {}): Achievement =>
@@ -90,5 +94,50 @@ describe("AchievementEditDialog earned date", () => {
     await wrapper.find('input[value="locked"]').setValue();
     await wrapper.find("button.ui-btn-primary").trigger("click");
     expect(wrapper.emitted("save")![0]).toEqual(["locked", "", null]);
+  });
+});
+
+describe("custom achievements", () => {
+  beforeEach(() => {
+    vi.stubEnv("VITE_USE_MOCK_DATA", "false");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response("{}", { status: 409 })),
+    );
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+  const body = () =>
+    JSON.parse((fetch as ReturnType<typeof vi.fn>).mock.lastCall![1].body);
+
+  it("sends the earned time when creating an earned achievement", async () => {
+    await expect(
+      createManualAchievement("g", {
+        title: "Find the key",
+        achieved: true,
+        achievedAt: 1_700_000_000,
+      }),
+    ).rejects.toThrow();
+    expect(body()).toMatchObject({
+      achieved: true,
+      achieved_at: 1_700_000_000,
+    });
+  });
+
+  it("sends no time for an unearned one and keeps the recorded time when editing without one", async () => {
+    await expect(
+      createManualAchievement("g", {
+        title: "x",
+        achieved: false,
+        achievedAt: 5,
+      }),
+    ).rejects.toThrow();
+    expect(body().achieved_at).toBeNull();
+    await expect(
+      updateManualAchievement("a", { achieved: true, achievedAt: null }),
+    ).rejects.toThrow();
+    expect(body()).toEqual({ achieved: true });
   });
 });

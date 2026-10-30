@@ -57,6 +57,8 @@ async def test_create_edit_earn_unearn_and_remove(users):  # noqa: F811
 
     backdated = await run(manual.set_earned, user, made.id, True, 1_700_000_000)
     assert backdated.achieved_at == 1_700_000_000
+    with pytest.raises(IdentityInvalid, match="future"):
+        await run(manual.set_earned, user, made.id, True, 4_102_444_800)
     undone = await run(manual.set_earned, user, made.id, False)
     assert not undone.achieved and undone.achieved_at is None
 

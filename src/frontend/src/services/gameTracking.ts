@@ -67,6 +67,7 @@ export interface ManualAchievementInput {
   category?: string | null;
   matchKey?: string | null;
   achieved?: boolean;
+  achievedAt?: number | null;
   scope?: "version" | "umbrella";
 }
 
@@ -167,6 +168,7 @@ export async function createManualAchievement(
     category: input.category ?? null,
     match_key: input.matchKey ?? null,
     achieved: input.achieved ?? false,
+    achieved_at: input.achieved ? (input.achievedAt ?? null) : null,
     scope: input.scope ?? "version",
   });
   return mapAchievement(await response.json());
@@ -182,6 +184,12 @@ export async function updateManualAchievement(
   if (input.iconUrl !== undefined) body.icon_url = input.iconUrl;
   if (input.category !== undefined) body.category = input.category;
   if (input.matchKey !== undefined) body.match_key = input.matchKey;
+  if (input.achieved !== undefined) {
+    body.achieved = input.achieved;
+    // an earned time without a date keeps the one already recorded
+    if (input.achieved && input.achievedAt != null)
+      body.achieved_at = input.achievedAt;
+  }
   const response = await call(`/manual-achievements/${id}`, "PATCH", body);
   return mapAchievement(await response.json());
 }
