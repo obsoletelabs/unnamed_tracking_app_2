@@ -13,6 +13,7 @@ from src.database.models.auth import UserApiKey
 from src.database.models.delegation import (
     DelegatedGrant,
     DelegationAudit,
+    DelegationRequest,
     IntegrationClient,
     IntegrationPolicy,
 )
@@ -406,3 +407,76 @@ async def test_same_reported_device_identity_still_creates_a_separate_receiver(l
     assert len(devices) == 2 and {row["name"] for row in devices} == {"Gaming PC"}
     await queued(flow)
     assert (await claim(flow, headers)).json()["request"] is None
+
+
+@pytest.mark.parametrize(
+    "version", ["0.2.0", "0.3.0", "1.12.3", None, "garbage<script>", "999999.0.0"]
+)
+async def test_sync_contract_records_only_bounded_display_version(launch_flow, version):
+    flow = launch_flow
+    headers = dict(flow.headers)
+    if version is not None:
+        headers["X-Playnite-Extension-Version"] = version
+    response = await flow.client.get("/api/playnite/contract", headers=headers)
+    assert response.status_code == 200
+    async with SessionLocal() as db:
+        grant = await db.get(DelegatedGrant, flow.device_id)
+        connection = await db.get(DelegationRequest, grant.request_id)
+        metadata = connection.external_account
+        expected = version if version in {"0.2.0", "0.3.0", "1.12.3"} else None
+        assert metadata["playnite_extension_version"] == expected
+        assert metadata["playnite_version_checked_at"] > 0
+        assert metadata["username"] == "Gaming PC"
+    # An unauthenticated caller cannot overwrite a connection's diagnostic report.
+    refused = await flow.client.get(
+        "/api/playnite/contract", headers={"X-Playnite-Extension-Version": "9.9.9"}
+    )
+    assert refused.status_code == 401
+    async with SessionLocal() as db:
+        connection = await db.get(DelegationRequest, grant.request_id)
+        assert connection.external_account["playnite_extension_version"] == expected
+
+
+async def test_reported_extension_version_does_not_grant_remote_launch(desktop):  # noqa: F811
+    headers = await connect(desktop, scopes=["library.sync"])
+    headers["X-Playnite-Extension-Version"] = "0.3.0"
+    assert (await desktop.client.get("/api/playnite/contract", headers=headers)).status_code == 200
+    assert (
+        await desktop.client.put(BASE + "/device", headers=headers, json={"enabled": True})
+    ).status_code == 403
+    assert (await desktop.client.get(BASE + "/devices")).json() == []
+
+
+async def test_version_reports_are_per_pc_and_api_keys_cannot_replace_them(launch_flow):
+    flow = launch_flow
+    other = await connect(flow, scopes=["library.sync"])
+    for headers, version in [(flow.headers, "0.2.0"), (other, "0.3.0")]:
+        response = await flow.client.get(
+            "/api/playnite/contract", headers={**headers, "X-Playnite-Extension-Version": version}
+        )
+        assert response.status_code == 200
+    raw, prefix, digest = create_api_key()
+    async with SessionLocal() as db:
+        db.add(
+            UserApiKey(
+                user_id=flow.user.id,
+                name="legacy",
+                key_prefix=prefix,
+                key_hash=digest,
+                scopes=["read", "write", "admin"],
+            )
+        )
+        await db.commit()
+    assert (
+        await flow.client.get(
+            "/api/playnite/contract",
+            headers={"Authorization": "Bearer " + raw, "X-Playnite-Extension-Version": "9.9.9"},
+        )
+    ).status_code == 200
+    grants = (await flow.client.get("/api/delegation/v1/grants")).json()
+    assert len(grants) == 2
+    assert {grant["external_account"]["username"] for grant in grants} == {"Gaming PC"}
+    assert {grant["external_account"]["playnite_extension_version"] for grant in grants} == {
+        "0.2.0",
+        "0.3.0",
+    }

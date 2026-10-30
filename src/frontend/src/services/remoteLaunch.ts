@@ -1,3 +1,4 @@
+import type { IntegrationGrant } from "./delegation";
 import { failedRequest } from "./apiError";
 
 export interface LaunchDevice {
@@ -103,4 +104,46 @@ export function remoteLaunchMessage(
         " could not be confirmed. Check that computer before launching again."
       );
   }
+}
+
+export const MINIMUM_REMOTE_LAUNCH_VERSION = "0.3.0";
+export interface PlayniteConnection {
+  id: string;
+  name: string;
+  version: string | null;
+  support: "supported" | "outdated" | "unreported" | "unknown";
+}
+export function playniteConnections(
+  grants: IntegrationGrant[],
+): PlayniteConnection[] {
+  return grants
+    .filter(
+      (grant) =>
+        grant.kind === "desktop" &&
+        grant.origin === "desktop:playnite" &&
+        grant.enabled &&
+        !grant.revoked_at &&
+        (grant.expires_at === null || grant.expires_at > Date.now() / 1000),
+    )
+    .map((grant) => {
+      const reported = grant.external_account?.playnite_extension_version;
+      const version =
+        reported && /^[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}$/.test(reported)
+          ? reported
+          : null;
+      const parts = version?.split(".").map(Number);
+      const supported = !!parts && (parts[0]! > 0 || parts[1]! >= 3);
+      return {
+        id: grant.id,
+        name: grant.external_account?.username || "Playnite computer",
+        version,
+        support: version
+          ? supported
+            ? "supported"
+            : "outdated"
+          : grant.external_account?.playnite_version_checked_at
+            ? "unreported"
+            : "unknown",
+      };
+    });
 }

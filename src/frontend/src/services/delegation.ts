@@ -27,6 +27,8 @@ export interface IntegrationGrant {
     provider: string;
     subject: string;
     username: string;
+    playnite_extension_version?: string | null;
+    playnite_version_checked_at?: number;
   } | null;
   id: string;
   name: string;
@@ -98,8 +100,8 @@ export const decideAccessRequest = (
     method: "POST",
     body: JSON.stringify({ approve, scopes, expires_in_hours: expiresInHours }),
   });
-export const fetchIntegrationGrants = () =>
-  request<IntegrationGrant[]>("/grants");
+export const fetchIntegrationGrants = (signal?: AbortSignal) =>
+  request<IntegrationGrant[]>("/grants", { signal });
 export const revokeIntegrationGrant = (id: string) =>
   request(`/grants/${encodeURIComponent(id)}`, { method: "DELETE" });
 export const reduceIntegrationGrant = (id: string, scopes: string[]) =>

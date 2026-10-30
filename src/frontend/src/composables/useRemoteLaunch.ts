@@ -1,7 +1,10 @@
 import { onBeforeUnmount, ref, watch, type Ref } from "vue";
+import { fetchIntegrationGrants } from "../services/delegation";
 import { ApiRequestError } from "../services/apiError";
 import {
   fetchLaunchDevices,
+  playniteConnections,
+  type PlayniteConnection,
   fetchRemoteLaunch,
   queueRemoteLaunch,
   remoteLaunchMessage,
@@ -28,6 +31,7 @@ function requestKey(): string {
 }
 export function useRemoteLaunch(gameId: Readonly<Ref<string>>) {
   const devices = ref<LaunchDevice[]>([]);
+  const connections = ref<PlayniteConnection[]>([]);
   const loading = ref(false);
   const deviceError = ref("");
   const message = ref("");
@@ -51,6 +55,7 @@ export function useRemoteLaunch(gameId: Readonly<Ref<string>>) {
     listing = action = null;
     pending = null;
     devices.value = [];
+    connections.value = [];
     loading.value = false;
     busy.value = false;
     retryable.value = false;
@@ -65,6 +70,14 @@ export function useRemoteLaunch(gameId: Readonly<Ref<string>>) {
     listing = controller;
     loading.value = true;
     deviceError.value = "";
+    void fetchIntegrationGrants(controller.signal)
+      .then((grants) => {
+        if (!controller.signal.aborted)
+          connections.value = playniteConnections(grants);
+      })
+      .catch(() => {
+        /* Version diagnostics must never block launch or ordinary sync. */
+      });
     try {
       const rows = await fetchLaunchDevices(controller.signal);
       if (!controller.signal.aborted) devices.value = rows;
@@ -191,6 +204,7 @@ export function useRemoteLaunch(gameId: Readonly<Ref<string>>) {
   }
   return {
     devices,
+    connections,
     loading,
     deviceError,
     message,

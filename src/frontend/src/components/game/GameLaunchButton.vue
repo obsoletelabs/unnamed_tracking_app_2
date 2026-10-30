@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, toRef, watch } from "vue";
+import PlayniteRemoteLaunchSetup from "./PlayniteRemoteLaunchSetup.vue";
 import type { LaunchDevice } from "../../services/remoteLaunch";
 import type { Game } from "../../types/game";
 import { useRemoteLaunch } from "../../composables/useRemoteLaunch";
@@ -65,6 +66,53 @@ async function launchRemote(device: LaunchDevice) {
   await remote.launch(device);
 }
 const menuOpen = ref(false);
+const setupOpen = ref(false);
+const dismissedUpdates = new Set<string>();
+const warningKey = (id: string, version: string | null) =>
+  `playnite-launch-update:${id}:${version ?? "unreported"}`;
+function updateDismissed(key: string) {
+  try {
+    return (
+      dismissedUpdates.has(key) || localStorage.getItem(key) === "dismissed"
+    );
+  } catch {
+    return dismissedUpdates.has(key);
+  }
+}
+function showSetup() {
+  menuOpen.value = false;
+  setupOpen.value = true;
+}
+function closeSetup() {
+  for (const connection of remote.connections.value) {
+    const key = warningKey(connection.id, connection.version);
+    dismissedUpdates.add(key);
+    try {
+      localStorage.setItem(key, "dismissed");
+    } catch {
+      /* Keep this session usable without browser storage. */
+    }
+  }
+  setupOpen.value = false;
+}
+watch(
+  [remote.connections, menuOpen, remote.loading, remote.deviceError],
+  ([connections, open, loading, error]) => {
+    if (
+      open &&
+      !loading &&
+      !error &&
+      connections.some(
+        (connection) =>
+          (connection.support === "outdated" ||
+            connection.support === "unreported") &&
+          !remote.devices.value.some((device) => device.id === connection.id) &&
+          !updateDismissed(warningKey(connection.id, connection.version)),
+      )
+    )
+      showSetup();
+  },
+);
 const root = ref<HTMLElement | null>(null);
 
 // The browser hands app links to the operating system, which asks for confirmation the first
@@ -248,13 +296,28 @@ onBeforeUnmount(() => listen(false));
               class="launch-help"
               role="presentation"
             >
-              Enable remote launch in the Playnite extension on your PC, then
-              sync this game.
+              Install the updated Playnite extension and enable remote launch,
+              then sync this game.
+            </li>
+            <li role="none">
+              <button
+                type="button"
+                role="menuitem"
+                class="launch-setup-link"
+                @click="showSetup"
+              >
+                Set up or update Playnite…
+              </button>
             </li>
           </template>
         </ul>
       </Teleport>
     </div>
+    <PlayniteRemoteLaunchSetup
+      v-if="setupOpen"
+      :connections="remote.connections.value"
+      @close="closeSetup"
+    />
     <div
       v-if="remote.message.value || remote.error.value"
       class="launch-status"
@@ -351,6 +414,11 @@ onBeforeUnmount(() => listen(false));
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+}
+.launch-menu .launch-setup-link {
+  margin-top: 6px;
+  color: var(--ui-accent);
+  font-size: 0.8rem;
 }
 .launch-device-state {
   flex-shrink: 0;

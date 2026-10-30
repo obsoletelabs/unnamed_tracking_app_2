@@ -2,6 +2,11 @@
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import GameLaunchButton from "../components/game/GameLaunchButton.vue";
+import {
+  fetchIntegrationGrants,
+  type IntegrationGrant,
+} from "../services/delegation";
+import { playniteConnections } from "../services/remoteLaunch";
 import type { Game } from "../types/game";
 import {
   fetchLaunchDevices,
@@ -16,6 +21,7 @@ vi.mock("../services/remoteLaunch", async (original) => ({
   fetchRemoteLaunch: vi.fn(),
   queueRemoteLaunch: vi.fn(),
 }));
+vi.mock("../services/delegation", () => ({ fetchIntegrationGrants: vi.fn() }));
 vi.mock("../services/gameIdentity", () => ({
   fetchIdentitySources: vi.fn().mockResolvedValue({ observations: [] }),
 }));
@@ -65,6 +71,8 @@ function button(text: string): HTMLButtonElement {
 }
 beforeEach(() => {
   vi.useFakeTimers();
+  localStorage.clear();
+  vi.mocked(fetchIntegrationGrants).mockResolvedValue([]);
   vi.mocked(fetchLaunchDevices).mockResolvedValue([device]);
   vi.mocked(queueRemoteLaunch).mockResolvedValue(result());
   vi.mocked(fetchRemoteLaunch).mockResolvedValue(result("accepted"));
@@ -112,7 +120,7 @@ it("explains how to connect a computer when no receiver exists", async () => {
   vi.mocked(fetchLaunchDevices).mockResolvedValue([]);
   await openMenu();
   expect(document.body.textContent).toContain(
-    "Enable remote launch in the Playnite extension",
+    "Install the updated Playnite extension",
   );
 });
 it("does not expose receiving controls for wishlisted games", async () => {
@@ -181,5 +189,99 @@ it("lets users retry loading computers after a network failure", async () => {
   expect(document.body.textContent).toContain("Network unavailable");
   button("Retry loading computers").click();
   await flushPromises();
+  expect(button("Remote start on Gaming PC").disabled).toBe(false);
+});
+
+function connection(version: string | null, checked = true): IntegrationGrant {
+  return {
+    id: "old-pc",
+    name: "Playnite",
+    kind: "desktop",
+    origin: "desktop:playnite",
+    enabled: true,
+    scopes: ["library.sync"],
+    created_at: 1,
+    expires_at: null,
+    revoked_at: null,
+    external_account: {
+      provider: "playnite",
+      subject: "old-pc",
+      username: "Office PC",
+      playnite_extension_version: version,
+      ...(checked ? { playnite_version_checked_at: 100 } : {}),
+    },
+  };
+}
+it("identifies old, compatible and unknown versions per active PC", () => {
+  expect(playniteConnections([connection("0.2.0")])[0]?.support).toBe(
+    "outdated",
+  );
+  for (const version of ["0.3.0", "0.12.0", "1.0.0"])
+    expect(playniteConnections([connection(version)])[0]?.support).toBe(
+      "supported",
+    );
+  expect(playniteConnections([connection(null)])[0]?.support).toBe(
+    "unreported",
+  );
+  expect(playniteConnections([connection(null, false)])[0]?.support).toBe(
+    "unknown",
+  );
+  expect(
+    playniteConnections([{ ...connection("0.2.0"), revoked_at: 10 }]),
+  ).toEqual([]);
+  expect(
+    playniteConnections([
+      { ...connection("0.2.0"), origin: "https://other.test", kind: "web" },
+    ]),
+  ).toEqual([]);
+});
+it("shows an update popup for an older PC once, and keeps setup available", async () => {
+  vi.mocked(fetchIntegrationGrants).mockResolvedValue([connection("0.2.0")]);
+  await openMenu();
+  expect(document.querySelector("dialog")?.textContent).toContain(
+    "Version 0.2.0",
+  );
+  expect(document.querySelector("dialog")?.textContent).toContain(
+    "Regular library sync still works",
+  );
+  button("Got it").click();
+  await flushPromises();
+  await wrapper!.get('[aria-label="More ways to launch"]').trigger("click");
+  await flushPromises();
+  expect(document.querySelector("dialog")).toBeNull();
+  button("Set up or update Playnite…").click();
+  await flushPromises();
+  expect(document.querySelector("dialog")).not.toBeNull();
+});
+it("explains unreported versions without inventing an old version number", async () => {
+  vi.mocked(fetchIntegrationGrants).mockResolvedValue([connection(null)]);
+  await openMenu();
+  expect(document.querySelector("dialog")?.textContent).toContain(
+    "Version not reported",
+  );
+  expect(document.querySelector("dialog")?.textContent).not.toContain(
+    "Version 0.2",
+  );
+});
+it("does not call a current, disabled or not-yet-synced installation outdated", async () => {
+  vi.mocked(fetchIntegrationGrants).mockResolvedValue([
+    connection("0.3.0"),
+    { ...connection(null, false), id: "new-pc" },
+  ]);
+  await openMenu();
+  expect(document.querySelector("dialog")).toBeNull();
+  button("Set up or update Playnite…").click();
+  await flushPromises();
+  expect(document.querySelector("dialog")?.textContent).toContain(
+    "Supports remote start",
+  );
+});
+
+it("does not warn about an already receiving PC with an unreported sync version", async () => {
+  vi.mocked(fetchIntegrationGrants).mockResolvedValue([
+    { ...connection(null), id: device.id },
+  ]);
+  await openMenu();
+  expect(document.querySelector("dialog")).toBeNull();
   expect(button("Remote start on Gaming PC").disabled).toBe(false);
 });

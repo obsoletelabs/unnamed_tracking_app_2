@@ -72,7 +72,7 @@ The companion computes the remaining deadline from `expires_at - server_time` an
 
 ## Persistence, retention and verification
 
-Migration 9cc6333e6de6 follows e5a1c7d93b46. It adds remote_launch_devices and remote_launch_requests, grant/game/user cascades, a unique per-user request key, a state constraint and queue/quota/expiry indexes. It does not modify existing grants. Table/index creation uses the existing replay-safe migration helpers so adoption of an older database preserves existing launch rows. Downgrade drops only these new tables.
+Migration 9cc6333e6de6 follows c4e9a2d71b05. It adds remote_launch_devices and remote_launch_requests, grant/game/user cascades, a unique per-user request key, a state constraint and queue/quota/expiry indexes. It does not modify existing grants. Table/index creation uses the existing replay-safe migration helpers so adoption of an older database preserves existing launch rows. Downgrade drops only these new tables.
 
 Lifecycle events are recorded in the existing content-free delegation audit (launch.enabled, disabled, queued, dispatched, accepted, failed, expired, unknown). Request IDs and game/device associations are held in the request table. The existing Trash and session cleanup task deletes expired launch history and launch audit events older than seven days, at most 1000 of each per pass. Execution deadlines are enforced by request paths and do not depend on that task running.
 
@@ -87,3 +87,15 @@ The local launcher and remote PCs share the existing launch dropdown. Remote req
 ![Remote-start menu in Classic dark appearance](../assets/remote-launch/classic-menu.png)
 
 ![Remote-start menu at phone width](../assets/remote-launch/mobile-menu.png)
+
+## Extension updates and compatibility
+
+Remote start requires companion 0.3.0 or newer. Existing extensions keep their library, note and save routes. The new companion adds an optional X-Playnite-Extension-Version header; older hosts ignore it and ordinary synchronization still negotiates the existing observation contract or legacy fallback. Remote launch remains off until explicitly approved and enabled.
+
+On an authenticated Playnite desktop grant's ordinary /api/playnite/contract probe, the host records a bounded version and check time in that connection's existing display metadata. Other callers cannot set a PC's report, and a reported version never grants permission. Older clients omit the header, so their exact version is unknown. The browser distinguishes a reported version below 0.3.0 from an unreported version.
+
+Opening the remote-start menu shows a dismissible setup/update dialog once per affected connection/version in this browser. An extension which has not synced since the host update is unknown, not asserted outdated; setup remains available manually. A compatible version is not classified as outdated because receiving is disabled. Already enabled receivers are not warned just because a sync-version report is absent. The dialog links to the companion releases and explains installing the update, enabling remote launch and syncing. It never installs software or broadens access automatically.
+
+![Per-PC extension update guidance](../assets/remote-launch/update-dialog.png)
+
+![Update guidance at phone width](../assets/remote-launch/update-dialog-mobile.png)
