@@ -1485,6 +1485,8 @@ export function useGameLibrary() {
       if (sortBy.value === "name_desc") return b.title.localeCompare(a.title);
       if (sortBy.value === "recent")
         return (b.dateAdded ?? "").localeCompare(a.dateAdded ?? "");
+      if (sortBy.value === "modified")
+        return (b.updatedAt ?? 0) - (a.updatedAt ?? 0);
       if (sortBy.value === "rating") {
         const scoreA = computeScore(a)?.sum ?? -1;
         const scoreB = computeScore(b)?.sum ?? -1;

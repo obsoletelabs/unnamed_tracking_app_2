@@ -245,6 +245,8 @@ def _library_order(model: Any, filters: LibraryFilters) -> tuple[Any, ...]:
         primary = model.rating_overall.desc().nulls_last()
     elif filters.sort == "added":
         primary = model.created_at.desc().nulls_last()
+    elif filters.sort == "modified":
+        primary = model.updated_at.desc().nulls_last()
     elif filters.sort in {"year_new", "year_old"} and filters.year_column is not None:
         year = extract("year", filters.year_column)
         primary = (year.desc() if filters.sort == "year_new" else year.asc()).nulls_last()

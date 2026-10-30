@@ -38,6 +38,7 @@ async def test_global_sorting_has_stable_ties_and_unknowns_last(flow, kind, mode
                 sort_title=title.lower(),
                 rating_overall=Decimal(rating) if rating else None,
                 created_at=added,
+                updated_at=100 - added,
                 status=state,
                 deleted_at=1 if number == 5 else None,
             )
@@ -70,6 +71,7 @@ async def test_global_sorting_has_stable_ties_and_unknowns_last(flow, kind, mode
         "score": [1, 2, 3, 4],
         "rank": [1, 2, 3, 4],
         "added": [4, 1, 2, 3],
+        "modified": [3, 1, 2, 4],
         "year_new": [1, 2, 3, 4],
         "year_old": [3, 1, 2, 4],
         "progress": [3, 4, 1, 2] if kind == "movie" else [1, 3, 4, 2],

@@ -428,6 +428,7 @@ async function openRandomPicker() {
           <option value="name">Name (A–Z)</option>
           <option value="name_desc">Name (Z–A)</option>
           <option value="recent">Recently added</option>
+          <option value="modified">Recently modified</option>
           <option value="rating">Rating</option>
           <option value="playtime">Most Played</option>
           <option value="last_played">Recently played</option>

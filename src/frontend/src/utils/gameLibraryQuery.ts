@@ -7,6 +7,7 @@ export const GAME_SORT_KEYS = [
   "name",
   "name_desc",
   "recent",
+  "modified",
   "rating",
   "playtime",
   "last_played",
