@@ -332,11 +332,7 @@ async def update_current_user(
         user.username = new_username
     if "display_name" in payload.model_fields_set:
         user.display_name = payload.display_name
-    if payload.email is not None:
-        new_email = payload.email.strip().lower()
-        if new_email != user.email:
-            user.email = new_email
-            user.email_unverified = True
+    _apply_profile_email(user, payload.email)
     if payload.new_password is not None:
         user.password_hash = await run_password_job(hash_password, payload.new_password)
     if payload.steamgriddb_api_key is not None:
@@ -457,6 +453,14 @@ async def list_users(
         }
         for user in users
     ]
+
+
+def _apply_profile_email(user: User, email: str | None) -> None:
+    """Set the user's own email; an address they typed themselves is not proven to be theirs."""
+    new_email = email.strip().lower() if email is not None else None
+    if new_email is not None and new_email != user.email:
+        user.email = new_email
+        user.email_unverified = True
 
 
 @router.post("/api-keys", dependencies=[Depends(enforce_auth_actor_quota)])

@@ -417,6 +417,8 @@ async def _legacy_oidc_identity(db: AsyncSession, slug: str, subject: str) -> Us
     return await db.scalar(select(User).where(matches)) if total else None
 
 
+# One return per rejection reason keeps each outcome explicit.
+# pylint: disable-next=too-many-return-statements
 async def _resolve_oidc_identity(
     db: AsyncSession, config: OidcConfig, claims: dict[str, Any]
 ) -> User | str:
