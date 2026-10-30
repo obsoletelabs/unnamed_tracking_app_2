@@ -943,7 +943,9 @@ async def test_frontend_native_and_page_replacement_grants_are_specific(boundary
         assert [item["page"] for item in document["page_replacements"]] == ["home"]
         grant(boundary, "frontend.page.replace.settings")
         native = grant(boundary, "frontend.native")
-        assert (await client.get(path)).status_code == 200
+        served = await client.get(path)
+        assert served.status_code == 200
+        assert served.headers["content-security-policy"] == "sandbox"
         document = (await client.get("/api/plugins/audit.plugin/ui")).json()
         assert {item["page"] for item in document["page_replacements"]} == {"home", "settings"}
         assert document["native_frontend"] is not None
