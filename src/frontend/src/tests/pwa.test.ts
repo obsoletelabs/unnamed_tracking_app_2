@@ -115,3 +115,42 @@ it.each([true, false])(
     expect(pwaState.installable).toBe(false);
   },
 );
+
+it("keeps install listeners immediate while startup metadata waits for route paint", async () => {
+  await import("vue");
+  const frames: FrameRequestCallback[] = [];
+  const window = Object.assign(new EventTarget(), {
+    setInterval: vi.fn(),
+    requestAnimationFrame: (callback: FrameRequestCallback) =>
+      frames.push(callback),
+  });
+  vi.stubGlobal("window", window);
+  vi.stubGlobal(
+    "document",
+    Object.assign(new EventTarget(), { querySelector: () => null }),
+  );
+  vi.stubGlobal("navigator", { onLine: true });
+  const fetch = vi.fn(async () => new Response('{"enabled":false}'));
+  vi.stubGlobal("fetch", fetch);
+  let ready!: () => void;
+  const startup = new Promise<void>((resolve) => {
+    ready = resolve;
+  });
+  const { startPwa } = await import("../services/pwa");
+  startPwa(startup);
+  const prompt = new Event("beforeinstallprompt", { cancelable: true });
+  window.dispatchEvent(prompt);
+  expect(prompt.defaultPrevented).toBe(true);
+  expect(fetch).not.toHaveBeenCalled();
+  ready();
+  await startup;
+  expect(frames).toHaveLength(1);
+  frames.shift()?.(0);
+  expect(fetch).not.toHaveBeenCalled();
+  frames.shift()?.(16);
+  expect(fetch).toHaveBeenCalledWith(
+    "/pwa/status",
+    expect.objectContaining({ priority: "low" }),
+  );
+  await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+});

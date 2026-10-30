@@ -18,6 +18,7 @@ import os
 import time
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from typing import Any
+from weakref import WeakKeyDictionary
 
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
@@ -29,7 +30,7 @@ from prometheus_client import (
     generate_latest,
     multiprocess,
 )
-from prometheus_client.core import GaugeMetricFamily
+from prometheus_client.core import GaugeMetricFamily, Metric
 from prometheus_client.gc_collector import GCCollector
 from prometheus_client.platform_collector import PlatformCollector
 from prometheus_client.process_collector import ProcessCollector
@@ -147,22 +148,84 @@ DATABASE_QUERY_DURATION = Histogram(
 )
 DATABASE_CONNECTION_WAIT = Histogram(
     "uta_database_connection_wait_seconds",
-    "Time to acquire or create a connection from the application pool.",
+    "Time to acquire or create a connection from an observed database pool.",
     buckets=_REQUEST_BUCKETS,
     registry=REGISTRY,
 )
 DATABASE_POOL_TIMEOUTS = Counter(
     "uta_database_pool_timeouts_total",
-    "Application pool acquisition timeouts.",
+    "Observed database pool acquisition timeouts.",
     ("reason",),
     registry=REGISTRY,
 )
 DATABASE_TRANSACTIONS = Counter(
     "uta_database_transactions_total",
-    "Completed application session transaction transitions.",
+    "Completed observed session transaction transitions.",
     ("outcome",),
     registry=REGISTRY,
 )
+# Request breakdowns use finer low-latency buckets than the legacy series.
+_PHASE_BUCKETS = (0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 30)
+HTTP_PHASE_DURATION = Histogram(
+    "uta_http_phase_duration_seconds",
+    "Accumulated named phase time before response headers; nested phases can overlap.",
+    ("method", "route", "phase"),
+    buckets=_PHASE_BUCKETS,
+    registry=REGISTRY,
+)
+HTTP_DATABASE_QUERIES = Counter(
+    "uta_http_database_queries_total",
+    "SQL executions before response headers, attributed to route and a fixed query family.",
+    ("method", "route", "pool", "query_group"),
+    registry=REGISTRY,
+)
+HTTP_DATABASE_SECONDS = Counter(
+    "uta_http_database_query_seconds_total",
+    "SQL cursor seconds before response headers, attributed to route and query family.",
+    ("method", "route", "pool", "query_group"),
+    registry=REGISTRY,
+)
+DATABASE_GROUP_DURATION = Histogram(
+    "uta_database_query_group_duration_seconds",
+    "Individual SQL cursor latency by fixed pool/query family; never SQL text or parameters.",
+    ("pool", "query_group", "operation", "outcome"),
+    buckets=_PHASE_BUCKETS,
+    registry=REGISTRY,
+)
+DATABASE_POOL_WAIT = Histogram(
+    "uta_database_pool_wait_seconds",
+    "Pool acquisition time, including creating a connection, separated by fixed pool name.",
+    ("pool",),
+    buckets=_PHASE_BUCKETS,
+    registry=REGISTRY,
+)
+DATABASE_NAMED_POOL_TIMEOUTS = Counter(
+    "uta_database_named_pool_timeouts_total",
+    "Connection acquisition timeouts separated by fixed pool name.",
+    ("pool",),
+    registry=REGISTRY,
+)
+
+DATABASE_COMMIT_DURATION = Histogram(
+    "uta_database_commit_duration_seconds",
+    "Successful session commit latency including flush, by fixed pool.",
+    ("pool",),
+    buckets=_PHASE_BUCKETS,
+    registry=REGISTRY,
+)
+METRICS_SERIALIZATION_DURATION = Histogram(
+    "uta_metrics_serialization_duration_seconds",
+    "Prometheus payload encoding time, performed outside the application event loop.",
+    buckets=_PHASE_BUCKETS,
+    registry=REGISTRY,
+)
+METRICS_PAYLOAD_BYTES = Gauge(
+    "uta_metrics_payload_bytes",
+    "Bytes in the previous encoded scrape payload.",
+    multiprocess_mode="max",
+    registry=REGISTRY,
+)
+
 HTTP_IN_FLIGHT = Gauge(
     "uta_http_requests_in_flight",
     "HTTP requests currently being handled.",
@@ -490,6 +553,26 @@ class _DatabasePoolCollector:  # pylint: disable=too-few-public-methods
         for state, value in values.items():
             family.add_metric([state], value)
         yield family
+        # The isolated quota pool has different capacity and contention from
+        # business queries. Reading these objects never checks out a connection.
+        from src.database.auth_limits import auth_limit_engine  # pylint: disable=import-outside-toplevel
+
+        named = GaugeMetricFamily(
+            "uta_database_named_pool_connections",
+            "Connections by fixed SQLAlchemy pool and state.",
+            labels=("pool", "state"),
+        )
+        for name, current in (
+            ("application", engine.pool),
+            ("authentication", auth_limit_engine.pool),
+        ):
+            for state, value in {
+                "size": getattr(current, "size", lambda: 0)(),
+                "checked_out": getattr(current, "checkedout", lambda: 0)(),
+                "overflow": max(0, getattr(current, "overflow", lambda: 0)()),
+            }.items():
+                named.add_metric([name, state], value)
+        yield named
 
 
 def _build_registry() -> CollectorRegistry:
@@ -508,6 +591,19 @@ if not _MULTIPROCESS_DIRECTORY:
     PlatformCollector(registry=REGISTRY)
     GCCollector(registry=REGISTRY)
     REGISTRY.register(_DatabasePoolCollector())  # type: ignore[arg-type]
+
+
+def multiprocess_enabled() -> bool:
+    """Whether the exporter aggregates configured worker files."""
+    return bool(_MULTIPROCESS_DIRECTORY)
+
+
+def collect_families(names: frozenset[str] | None = None) -> Iterable[Metric]:
+    """Read the same worker-aware registry used by Prometheus, without dependency probes."""
+    registry = _build_registry()
+    if names is not None and not multiprocess_enabled():
+        return registry.restricted_registry(names).collect()
+    return registry.collect()
 
 
 def metrics_enabled() -> bool:
@@ -627,10 +723,35 @@ _snapshots = (
 )
 
 
+_rendering: WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Task[bytes]] = WeakKeyDictionary()
+
+
+def _encode() -> bytes:
+    started = time.perf_counter()
+    try:
+        payload = generate_latest(_build_registry())
+        METRICS_PAYLOAD_BYTES.set(len(payload))
+        return payload
+    finally:
+        METRICS_SERIALIZATION_DURATION.observe(time.perf_counter() - started)
+
+
 async def render() -> bytes:
-    """Refresh the cached dependency state, then serialise every metric."""
+    """Refresh bounded probes and share concurrent off-loop encoding work."""
     await asyncio.gather(*(snapshot.refresh() for snapshot in _snapshots))
-    return generate_latest(_build_registry())
+    loop = asyncio.get_running_loop()
+    task = _rendering.get(loop)
+    if task is None or task.done():
+        task = asyncio.create_task(asyncio.to_thread(_encode))
+        _rendering[loop] = task
+
+        def finished(completed: asyncio.Task[bytes]) -> None:
+            if _rendering.get(loop) is completed:
+                _rendering.pop(loop, None)
+
+        task.add_done_callback(finished)
+    # One disconnected scraper must not cancel the encoder used by another.
+    return await asyncio.shield(task)
 
 
 def route_label(scope: Mapping[str, Any]) -> str:

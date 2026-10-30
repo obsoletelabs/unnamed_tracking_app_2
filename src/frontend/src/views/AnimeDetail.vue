@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { latestRequest } from "../utils/latestRequest";
+import RetryMessage from "../components/RetryMessage.vue";
 import { localMediaImage } from "../utils/mediaImages";
 import { usePageTitle } from "../state/pageTitle";
 import MyNote from "../components/MyNote.vue";
@@ -86,10 +88,18 @@ function afterFirstPaint(fn: () => void) {
   requestAnimationFrame(() => setTimeout(fn, 0));
 }
 
+// Only the newest load may write: a Related/Recommended click-through changes
+// the id while an earlier request may still be in flight.
+const loadGuard = latestRequest();
+const staleNotice = ref(false); // a saved copy is shown because the refresh failed
 async function load() {
+  const token = loadGuard.start();
+  const id = showId.value;
+  error.value = null;
+  staleNotice.value = false;
   // Draw at once from what the library or the last visit already fetched;
   // the fresh copy replaces it a moment later.
-  const cached = peekAnime(showId.value);
+  const cached = peekAnime(id);
   if (cached) {
     show.value = cached;
     loading.value = false;
@@ -97,17 +107,21 @@ async function load() {
     loading.value = true;
   }
   try {
-    show.value = await getAnime(showId.value);
+    const fresh = await getAnime(id);
+    if (!loadGuard.isLatest(token)) return;
+    show.value = fresh;
     // Needed for the Overview tab's Seasons grid, not just the Related tab
     afterFirstPaint(() => {
+      if (!loadGuard.isLatest(token)) return;
       loadRelated();
       loadLibrarySeasons();
     });
   } catch (e) {
-    if (!cached)
-      error.value = e instanceof Error ? e.message : "Failed to load anime.";
+    if (!loadGuard.isLatest(token)) return;
+    if (cached) staleNotice.value = true;
+    else error.value = e instanceof Error ? e.message : "Failed to load anime.";
   } finally {
-    loading.value = false;
+    if (loadGuard.isLatest(token)) loading.value = false;
   }
 }
 
@@ -219,21 +233,27 @@ const watchedEpisodeCount = computed(
     ) ?? 0,
 );
 
+const episodesGuard = latestRequest();
 async function loadAllEpisodes() {
-  if (!show.value || episodesLoaded.value) return;
+  if (!show.value || episodesLoaded.value || episodesLoading.value) return;
+  const id = show.value.id;
+  const token = episodesGuard.start();
   episodesLoading.value = true;
   episodesError.value = null;
   try {
     for (const season of show.value.seasons) {
       if (season.episodes.length > 0) continue;
-      show.value = await fetchEpisodes(show.value.id, season.id);
+      const updated = await fetchEpisodes(id, season.id);
+      if (!episodesGuard.isLatest(token) || show.value?.id !== id) return;
+      show.value = updated;
     }
     episodesLoaded.value = true;
   } catch (e) {
+    if (!episodesGuard.isLatest(token)) return;
     episodesError.value =
       e instanceof Error ? e.message : "Failed to load episodes.";
   } finally {
-    episodesLoading.value = false;
+    if (episodesGuard.isLatest(token)) episodesLoading.value = false;
   }
 }
 
@@ -435,9 +455,12 @@ const relatedError = ref<string | null>(null);
 const relatedChain = ref<AnimeChainNode[]>([]);
 const relatedBranches = ref<AnimeRelationBranch[]>([]);
 
+const relatedGuard = latestRequest();
 async function loadRelated() {
   if (!show.value || relatedLoaded.value) return;
-  const remembered = peekAnimeRelations(show.value.id);
+  const id = show.value.id;
+  const token = relatedGuard.start();
+  const remembered = peekAnimeRelations(id);
   if (remembered) {
     relatedChain.value = remembered.chain;
     relatedBranches.value = remembered.branches;
@@ -446,15 +469,17 @@ async function loadRelated() {
   }
   relatedError.value = null;
   try {
-    const res = await fetchAnimeRelations(show.value.id);
+    const res = await fetchAnimeRelations(id);
+    if (!relatedGuard.isLatest(token)) return;
     relatedChain.value = res.chain;
     relatedBranches.value = res.branches;
     relatedLoaded.value = true;
   } catch (e) {
+    if (!relatedGuard.isLatest(token)) return;
     relatedError.value =
       e instanceof Error ? e.message : "Failed to load related anime.";
   } finally {
-    relatedLoading.value = false;
+    if (relatedGuard.isLatest(token)) relatedLoading.value = false;
   }
 }
 
@@ -682,19 +707,23 @@ const recommendedLoaded = ref(false);
 const recommendedError = ref<string | null>(null);
 const recommendedList = ref<RelatedAnime[]>([]);
 
+const recommendedGuard = latestRequest();
 async function loadRecommended() {
   if (!show.value || recommendedLoaded.value) return;
+  const token = recommendedGuard.start();
   recommendedLoading.value = true;
   recommendedError.value = null;
   try {
     const res = await fetchAnimeRecommended(show.value.id);
+    if (!recommendedGuard.isLatest(token)) return;
     recommendedList.value = res.recommended;
     recommendedLoaded.value = true;
   } catch (e) {
+    if (!recommendedGuard.isLatest(token)) return;
     recommendedError.value =
       e instanceof Error ? e.message : "Failed to load recommendations.";
   } finally {
-    recommendedLoading.value = false;
+    if (recommendedGuard.isLatest(token)) recommendedLoading.value = false;
   }
 }
 
@@ -873,9 +902,19 @@ watch(
   showId,
   () => {
     activeTab.value = "overview";
-    episodesLoaded.value = false;
-    relatedLoaded.value = false;
-    recommendedLoaded.value = false;
+    // Forget the previous title's lazy tabs and drop their requests in flight.
+    for (const guard of [episodesGuard, relatedGuard, recommendedGuard])
+      guard.cancel();
+    episodesLoaded.value =
+      relatedLoaded.value =
+      recommendedLoaded.value =
+        false;
+    episodesLoading.value = relatedLoading.value = false;
+    recommendedLoading.value = false;
+    episodesError.value = relatedError.value = recommendedError.value = null;
+    relatedChain.value = [];
+    relatedBranches.value = [];
+    recommendedList.value = [];
     previewOpen.value = false;
     moveToWatchingPromptShown.value = false;
     moveToCompletedPromptShown.value = false;
@@ -906,11 +945,19 @@ async function onRatingChange(value: number | null) {
 
   <main v-else-if="error" class="detail error-state">
     <MediaTopBar active="anime" />
-    <p class="loading-text">{{ error }}</p>
+    <p class="loading-text">
+      <RetryMessage :message="error" @retry="load" />
+    </p>
   </main>
 
   <main v-else-if="show" class="detail">
     <MediaTopBar active="anime" />
+    <p v-if="staleNotice" class="empty-state error-text">
+      <RetryMessage
+        message="Showing a saved copy: this title could not be refreshed."
+        @retry="load"
+      />
+    </p>
     <PluginExtensionSlot
       slot-id="media.detail.after-header"
       :context="{
@@ -1111,9 +1158,14 @@ async function onRatingChange(value: number | null) {
           </div>
         </div>
 
-        <p v-if="episodesError" class="error-text">{{ episodesError }}</p>
+        <p v-if="episodesError" class="error-text">
+          <RetryMessage :message="episodesError" @retry="loadAllEpisodes" />
+        </p>
         <p v-if="episodesLoading" class="empty-state">Loading episodes…</p>
-        <p v-else-if="!show.seasons.length" class="empty-state">
+        <p
+          v-else-if="!show.seasons.length && !episodesError"
+          class="empty-state"
+        >
           No episode data yet.
         </p>
 
@@ -1155,7 +1207,7 @@ async function onRatingChange(value: number | null) {
         </div>
         <p v-if="relatedLoading" class="empty-state">Loading…</p>
         <p v-else-if="relatedError" class="empty-state error-text">
-          {{ relatedError }}
+          <RetryMessage :message="relatedError" @retry="loadRelated" />
         </p>
         <p v-else-if="!relatedList.length" class="empty-state">
           No known relations on AniList.
@@ -1209,7 +1261,7 @@ async function onRatingChange(value: number | null) {
         </div>
         <p v-if="recommendedLoading" class="empty-state">Loading…</p>
         <p v-else-if="recommendedError" class="empty-state error-text">
-          {{ recommendedError }}
+          <RetryMessage :message="recommendedError" @retry="loadRecommended" />
         </p>
         <p v-else-if="!recommendedList.length" class="empty-state">
           No recommendations found.

@@ -28,7 +28,7 @@ from src.plugin_api.runtime_client import PluginRuntimeRequestError, PluginRunti
         (f"history/{uuid4()}", "DELETE", "prune_history"),
         ("enable", "POST", "plugins"),
         ("start", "POST", "plugins"),
-        ("retry", "POST", "plugins"),
+        ("retry", "POST", "plugin_state"),
         ("stop", "POST", "plugins"),
     ],
 )
@@ -55,6 +55,7 @@ async def test_lifecycle_runtime_errors_are_visible(
     }
     transport = SimpleNamespace(
         plugins=AsyncMock(return_value=[installed]),
+        plugin_state=AsyncMock(return_value=installed),
         start=AsyncMock(),
         stop=AsyncMock(),
         stop_runtime=AsyncMock(),

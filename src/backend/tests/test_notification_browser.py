@@ -93,7 +93,8 @@ async def push_account(monkeypatch):
         "pwa": {"name": "Tracking", "short_name": "Tracking"},
     }
 
-    async def plugins():
+    async def plugins(*, pwa_only=False):
+        assert pwa_only
         return [live]
 
     monkeypatch.setattr(pwa.client, "plugins", plugins)
@@ -559,7 +560,8 @@ async def test_pwa_outage_defers_without_spending_attempt(push_account, monkeypa
         endpoint_id = await enroll(client, push_account)
         notice_id = await queue_notice(db, push_account)
 
-        async def unavailable():
+        async def unavailable(*, pwa_only=False):
+            assert pwa_only
             raise PluginRuntimeUnavailable("not logged")
 
         monkeypatch.setattr(pwa.client, "plugins", unavailable)

@@ -1,5 +1,6 @@
 """Shared game-route ownership, paths, validation, and metadata-history helpers."""
 
+import asyncio
 import re
 import time
 from datetime import UTC, datetime
@@ -15,6 +16,7 @@ from fastapi import (
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.request_metrics import phase
 from src.core.titles import derive_sort_title as _derive_sort_title
 from src.database.models.game import Game
 from src.database.models.game_field_change import GameFieldChange
@@ -22,6 +24,7 @@ from src.database.models.game_note_detail import GameNoteDetail
 from src.database.models.user_scan_settings import UserScanSettings
 from src.features import game_folders, game_notes
 from src.features.metadata.locked_fields import drop_nulls_for_required_fields
+from src.helpers.async_storage import finish_storage_operation
 
 __all__ = ["_derive_sort_title"]
 
@@ -251,7 +254,13 @@ async def _get_game_or_404(
         )
     if for_storage:
         try:
-            game_folders.ensure_storage_ready(_DATA_ROOT, game)
+            # Keep the row lock until checks finish, including cancellation, but
+            # run filesystem traversal off the event loop so concurrent artwork
+            # and library reads can proceed on slow/bind-mounted storage.
+            with phase("storage.prepare"):
+                await finish_storage_operation(
+                    asyncio.to_thread(game_folders.ensure_storage_ready, _DATA_ROOT, game)
+                )
         except game_folders.FolderStorageError as exc:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return game

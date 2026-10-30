@@ -86,9 +86,15 @@ try {
     let releaseRefresh;
     let holdRefresh = true;
     const refreshGate = new Promise((resolve) => { releaseRefresh = resolve; });
-    const refreshRequest = page.waitForRequest("**/api/plugins/example.jellyfin-media-sync/ui");
-    await page.route("**/api/plugins/example.jellyfin-media-sync/ui", async (route) => {
-      if (holdRefresh) { holdRefresh = false; await refreshGate; }
+    const isContributionRefresh = request =>
+      new URL(request.url()).pathname === "/api/plugins" &&
+      request.headers()["x-plugin-include-ui"] === "true";
+    const refreshRequest = page.waitForRequest(isContributionRefresh);
+    await page.route("**/api/plugins", async (route) => {
+      if (holdRefresh && isContributionRefresh(route.request())) {
+        holdRefresh = false;
+        await refreshGate;
+      }
       await route.continue();
     });
     await consent.getByRole("button", { name: "Install with selected access", exact: true }).click();

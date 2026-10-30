@@ -68,3 +68,27 @@ def test_sandbox_does_not_expose_broker_storage_or_settings(
     if Path("/lib64").exists():
         index = command.index("/lib64")
         assert command[index - 1 : index + 2] == ["--ro-bind", "/lib64", "/lib64"]
+
+
+def test_action_local_operations_reuse_host_snapshot_and_recheck_after_revocation(tmp_path, monkeypatch):
+    supervisor = PluginSupervisor(root=tmp_path / "work", storage_root=tmp_path / "storage")
+    supervisor._installation_ids["example.cached"] = "installation"
+    supervisor._user_ids["example.cached"] = "user"
+    response = {"payload": {"authorized": True, "runtime_access": {
+        "installation_id": "installation", "user_id": "user",
+        "capabilities": ["plugin.storage"], "expires_in_seconds": 5,
+    }}}
+    gateway = Mock(return_value=response)
+    monkeypatch.setattr(supervisor, "_handle_gateway_request", gateway)
+    previous = supervisor.access.begin("example.cached", "installation", "user")
+    try:
+        supervisor._authorize_capability("example.cached", "plugin.storage")
+        supervisor._authorize_capability("example.cached", "plugin.storage")
+        gateway.assert_called_once()
+        supervisor.access.invalidate("example.cached", "user")
+        gateway.return_value = {"payload": {"authorized": False}}
+        with pytest.raises(RuntimePolicyError, match="host did not authorize"):
+            supervisor._authorize_capability("example.cached", "plugin.storage")
+        assert gateway.call_count == 2
+    finally:
+        supervisor.access.end(previous)

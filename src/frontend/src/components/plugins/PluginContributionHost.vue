@@ -23,6 +23,7 @@ import { approvePluginAction } from "../../services/pluginUi";
 import {
   nativePluginComponents,
   nativePluginFailures,
+  ensureNativePlugin,
 } from "../../state/pluginNative";
 import { activePluginDocuments } from "../../state/pluginExtensions";
 // The form/table renderer (including secret fields) is only needed for an
@@ -47,6 +48,25 @@ const active = computed(() =>
 );
 const component = computed(
   () => nativePluginComponents.value[`${props.pluginId}:${props.pageId}`],
+);
+const nativeLoading = ref(false);
+let nativeGeneration = 0;
+watch(
+  () => [active.value, props.pluginId, props.document.native_frontend] as const,
+  async ([enabled, pluginId, native]) => {
+    const generation = ++nativeGeneration;
+    if (!enabled || !native) {
+      nativeLoading.value = false;
+      return;
+    }
+    nativeLoading.value = true;
+    try {
+      await ensureNativePlugin(pluginId);
+    } finally {
+      if (generation === nativeGeneration) nativeLoading.value = false;
+    }
+  },
+  { immediate: true },
 );
 const activationFailed = computed(() =>
   Boolean(nativePluginFailures.value[props.pluginId]),
@@ -132,6 +152,7 @@ const nativeHost = computed(() => ({
     :host="nativeHost"
     :widget-config="widgetConfig ?? {}"
   />
+  <p v-else-if="active && nativeLoading" role="status">Loading plugin…</p>
   <PluginUiHost
     v-else-if="active"
     :document="document"

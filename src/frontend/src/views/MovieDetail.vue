@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { latestRequest } from "../utils/latestRequest";
+import RetryMessage from "../components/RetryMessage.vue";
 import { localMediaImage } from "../utils/mediaImages";
 import { usePageTitle } from "../state/pageTitle";
 import MyNote from "../components/MyNote.vue";
@@ -63,8 +65,16 @@ function goBack() {
   }
 }
 
+// Only the newest load may write: a click-through changes the id while an
+// earlier request may still be in flight.
+const loadGuard = latestRequest();
+const staleNotice = ref(false); // a saved copy is shown because the refresh failed
 async function load() {
-  const cached = peekMovie(movieId.value);
+  const token = loadGuard.start();
+  const id = movieId.value;
+  error.value = null;
+  staleNotice.value = false;
+  const cached = peekMovie(id);
   if (cached) {
     movie.value = cached;
     loading.value = false;
@@ -72,12 +82,15 @@ async function load() {
     loading.value = true;
   }
   try {
-    movie.value = await getMovie(movieId.value);
+    const fresh = await getMovie(id);
+    if (!loadGuard.isLatest(token)) return;
+    movie.value = fresh;
   } catch (e) {
-    if (!cached)
-      error.value = e instanceof Error ? e.message : "Failed to load movie.";
+    if (!loadGuard.isLatest(token)) return;
+    if (cached) staleNotice.value = true;
+    else error.value = e instanceof Error ? e.message : "Failed to load movie.";
   } finally {
-    loading.value = false;
+    if (loadGuard.isLatest(token)) loading.value = false;
   }
 }
 
@@ -225,21 +238,25 @@ const relatedList = ref<RelatedMovie[]>([]);
 const relatedCollectionName = ref<string | null>(null);
 const relatedConfigured = ref(true);
 
+const relatedGuard = latestRequest();
 async function loadRelated() {
   if (!movie.value || relatedLoaded.value) return;
+  const token = relatedGuard.start();
   relatedLoading.value = true;
   relatedError.value = null;
   try {
     const res = await fetchMovieRelations(movie.value.id);
+    if (!relatedGuard.isLatest(token)) return;
     relatedList.value = res.related;
     relatedCollectionName.value = res.collectionName;
     relatedConfigured.value = res.configured;
     relatedLoaded.value = true;
   } catch (e) {
+    if (!relatedGuard.isLatest(token)) return;
     relatedError.value =
       e instanceof Error ? e.message : "Failed to load related movies.";
   } finally {
-    relatedLoading.value = false;
+    if (relatedGuard.isLatest(token)) relatedLoading.value = false;
   }
 }
 
@@ -278,20 +295,24 @@ const recommendedError = ref<string | null>(null);
 const recommendedList = ref<RelatedMovie[]>([]);
 const recommendedConfigured = ref(true);
 
+const recommendedGuard = latestRequest();
 async function loadRecommended() {
   if (!movie.value || recommendedLoaded.value) return;
+  const token = recommendedGuard.start();
   recommendedLoading.value = true;
   recommendedError.value = null;
   try {
     const res = await fetchMovieRecommended(movie.value.id);
+    if (!recommendedGuard.isLatest(token)) return;
     recommendedList.value = res.recommended;
     recommendedConfigured.value = res.configured;
     recommendedLoaded.value = true;
   } catch (e) {
+    if (!recommendedGuard.isLatest(token)) return;
     recommendedError.value =
       e instanceof Error ? e.message : "Failed to load recommendations.";
   } finally {
-    recommendedLoading.value = false;
+    if (recommendedGuard.isLatest(token)) recommendedLoading.value = false;
   }
 }
 
@@ -405,8 +426,14 @@ watch(
   movieId,
   () => {
     activeTab.value = "overview";
-    relatedLoaded.value = false;
-    recommendedLoaded.value = false;
+    // Forget the previous title's lazy tabs and drop their requests in flight.
+    relatedGuard.cancel();
+    recommendedGuard.cancel();
+    relatedLoaded.value = recommendedLoaded.value = false;
+    relatedLoading.value = recommendedLoading.value = false;
+    relatedError.value = recommendedError.value = null;
+    relatedList.value = [];
+    recommendedList.value = [];
     previewOpen.value = false;
     load();
   },
@@ -435,11 +462,19 @@ async function onRatingChange(value: number | null) {
 
   <main v-else-if="error" class="detail error-state">
     <MediaTopBar active="movie" />
-    <p class="loading-text">{{ error }}</p>
+    <p class="loading-text">
+      <RetryMessage :message="error" @retry="load" />
+    </p>
   </main>
 
   <main v-else-if="movie" class="detail">
     <MediaTopBar active="movie" />
+    <p v-if="staleNotice" class="empty-state error-text">
+      <RetryMessage
+        message="Showing a saved copy: this title could not be refreshed."
+        @retry="load"
+      />
+    </p>
     <PluginExtensionSlot
       slot-id="media.detail.after-header"
       :context="{
@@ -590,7 +625,7 @@ async function onRatingChange(value: number | null) {
         </div>
         <p v-if="relatedLoading" class="empty-state">Loading…</p>
         <p v-else-if="relatedError" class="empty-state error-text">
-          {{ relatedError }}
+          <RetryMessage :message="relatedError" @retry="loadRelated" />
         </p>
         <p v-else-if="!relatedConfigured" class="empty-state">
           TMDB isn't configured yet. A server admin can add an API key under
@@ -631,7 +666,7 @@ async function onRatingChange(value: number | null) {
         </div>
         <p v-if="recommendedLoading" class="empty-state">Loading…</p>
         <p v-else-if="recommendedError" class="empty-state error-text">
-          {{ recommendedError }}
+          <RetryMessage :message="recommendedError" @retry="loadRecommended" />
         </p>
         <p v-else-if="!recommendedConfigured" class="empty-state">
           TMDB isn't configured yet. A server admin can add an API key under

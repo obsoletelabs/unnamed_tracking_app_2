@@ -1,9 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, defineAsyncComponent, onMounted, ref, watch } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
-import ConnectionManageDialog from "./ConnectionManageDialog.vue";
-import PluginConnectionDialog from "./PluginConnectionDialog.vue";
-import SteamConnectionDialog from "./SteamConnectionDialog.vue";
+const ConnectionManageDialog = defineAsyncComponent(
+  () => import("./ConnectionManageDialog.vue"),
+);
+const PluginConnectionDialog = defineAsyncComponent(
+  () => import("./PluginConnectionDialog.vue"),
+);
+const SteamConnectionDialog = defineAsyncComponent(
+  () => import("./SteamConnectionDialog.vue"),
+);
 import {
   CONNECTION_BY_KEY,
   CONNECTIONS,
@@ -116,10 +122,12 @@ const pluginRows = computed<Row[]>(() =>
   }),
 );
 
+// A failed credentials read must not list every built-in account as "Not connected".
 const rows = computed<Row[]>(() =>
-  [...builtInRows.value, ...pluginRows.value].sort(
-    (a, b) => Number(b.connected) - Number(a.connected),
-  ),
+  [
+    ...(state.credentialsLoaded.value ? builtInRows.value : []),
+    ...pluginRows.value,
+  ].sort((a, b) => Number(b.connected) - Number(a.connected)),
 );
 
 function closePlugin() {
@@ -191,6 +199,15 @@ watch(pluginConnections, () => void plugins.load(), { immediate: true });
     </p>
     <p v-if="state.loadError.value" class="error" role="alert">
       {{ state.loadError.value }}
+      <button
+        v-if="!state.credentialsLoaded.value"
+        type="button"
+        class="btn ghost retry"
+        :disabled="state.credentialsLoading.value"
+        @click="state.retryCredentials()"
+      >
+        Retry
+      </button>
     </p>
 
     <p

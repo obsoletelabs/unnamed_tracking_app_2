@@ -86,6 +86,6 @@ describe("server artwork revisions", () => {
     expect(game.bannerImageUrl).toBe(
       `/api/game/map-game/assets/banner?v=${REVISION}`,
     );
-    expect(game.coverImageUrl).toBe("/api/game/map-game/assets/key_art?w=240");
+    expect(game.coverImageUrl).toBe("/api/game/map-game/assets/key_art?w=400");
   });
 });

@@ -20,6 +20,7 @@ export const CORE_SETTINGS_SECTION_IDS: ReadonlySet<string> = new Set([
   "admin",
   "limits",
   "dev-tools",
+  "metrics",
   "metadata",
   "connections",
   "notifications",
@@ -243,6 +244,7 @@ export function buildSettingsGroups(
           { id: "limits", label: "Upload limits" },
           { id: "tasks", label: "Background tasks" },
           { id: "stats", label: "Storage & usage" },
+          { id: "metrics", label: "Performance metrics" },
           { id: "dev-tools", label: "Developer tools" },
         ],
       },
@@ -325,6 +327,15 @@ const SECTION_KEYWORDS: Record<string, string[]> = {
   limits: ["upload limits", "file size"],
   tasks: ["server background tasks", "scheduler", "jobs"],
   "dev-tools": ["developer", "debug"],
+  metrics: [
+    "performance",
+    "latency",
+    "p50",
+    "p95",
+    "p99",
+    "database",
+    "prometheus",
+  ],
 };
 
 // Tabs inside merged sections that are worth reaching directly. Each one is

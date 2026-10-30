@@ -43,6 +43,7 @@ export interface NativeFrontendSource {
   version: string;
   digest?: string;
   entry: string;
+  activation?: "startup" | "page";
   styles: string[];
   pageIds: string[];
   actions?: Array<{ id: string; confirmation?: string }>;
@@ -112,6 +113,14 @@ type ModuleImporter = (url: string) => Promise<NativePluginModule>;
 const componentState = shallowRef<Record<string, Component>>({});
 const failureState = shallowRef<Record<string, string>>({});
 const activePlugins = new Map<string, ActiveNativePlugin>();
+const availablePlugins = new Map<
+  string,
+  { source: NativeFrontendSource; importer: ModuleImporter }
+>();
+const pendingActivations = new Map<
+  string,
+  { source: NativeFrontendSource; promise: Promise<void> }
+>();
 let hostRouter: Router | null = null;
 let dialogOpener: (pluginId: string, contributionId: string) => void = () => {};
 
@@ -171,23 +180,35 @@ function deactivate(pluginId: string): void {
 }
 
 export function retainNativePlugins(pluginIds: ReadonlySet<string>): void {
+  for (const id of availablePlugins.keys()) {
+    if (!pluginIds.has(id)) {
+      availablePlugins.delete(id);
+      pendingActivations.delete(id);
+    }
+  }
   for (const pluginId of [...activePlugins.keys()]) {
     if (!pluginIds.has(pluginId)) deactivate(pluginId);
   }
 }
 
-async function activate(
-  source: NativeFrontendSource,
-  importer: ModuleImporter,
-): Promise<void> {
-  const signature = JSON.stringify([
+function sourceSignature(source: NativeFrontendSource): string {
+  return JSON.stringify([
     source.version,
     source.digest ?? "",
     source.entry,
     source.styles,
     [...source.pageIds].sort(),
     source.shortcutPermission === true,
+    source.actions ?? [],
+    source.activation ?? "startup",
   ]);
+}
+
+async function activate(
+  source: NativeFrontendSource,
+  importer: ModuleImporter,
+): Promise<void> {
+  const signature = sourceSignature(source);
   if (activePlugins.get(source.pluginId)?.signature === signature) return;
   deactivate(source.pluginId);
   const cleanups: Array<() => void> = [];
@@ -382,10 +403,39 @@ export async function reconcileNativePlugins(
 ): Promise<void> {
   const requested = new Set(sources.map((source) => source.pluginId));
   retainNativePlugins(requested);
-  await Promise.all(sources.map((source) => activate(source, importer)));
+  for (const source of sources) {
+    const active = activePlugins.get(source.pluginId);
+    if (active && active.signature !== sourceSignature(source))
+      deactivate(source.pluginId);
+    availablePlugins.set(source.pluginId, { source, importer });
+  }
+  await Promise.all(
+    sources
+      .filter((source) => source.activation !== "page")
+      .map((source) => ensureNativePlugin(source.pluginId)),
+  );
+}
+
+export function ensureNativePlugin(pluginId: string): Promise<void> {
+  const entry = availablePlugins.get(pluginId);
+  if (!entry) return Promise.resolve();
+  const pending = pendingActivations.get(pluginId);
+  if (
+    pending &&
+    JSON.stringify(pending.source) === JSON.stringify(entry.source)
+  )
+    return pending.promise;
+  const promise = activate(entry.source, entry.importer).finally(() => {
+    if (pendingActivations.get(pluginId)?.promise === promise)
+      pendingActivations.delete(pluginId);
+  });
+  pendingActivations.set(pluginId, { source: entry.source, promise });
+  return promise;
 }
 
 export function resetNativePluginsForTests(): void {
+  availablePlugins.clear();
+  pendingActivations.clear();
   for (const pluginId of [...activePlugins.keys()]) deactivate(pluginId);
   failureState.value = {};
 }

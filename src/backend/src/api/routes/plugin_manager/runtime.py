@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from contextlib import contextmanager
 from typing import Any, Iterator
@@ -68,7 +69,7 @@ def runtime_errors() -> Iterator[None]:
 async def installed_plugins() -> list[dict[str, Any]]:
     store = manager_state()
     try:
-        inventory = store.reconcile(await client.plugins())
+        inventory = await asyncio.to_thread(store.reconcile, await client.plugins())
     except (PluginRuntimeRequestError, PluginRuntimeUnavailable) as exc:
         inventory = [
             {
@@ -126,7 +127,7 @@ async def live_plugin(
     plugin_id: str,
     *,
     require_enabled: bool = True,
-    single_installation: bool = False,
+    single_installation: bool = True,
 ) -> dict[str, Any]:
     """Resolve a live installation before any capability can execute."""
     with runtime_errors():

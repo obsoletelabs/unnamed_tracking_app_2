@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, ref } from "vue";
 import { useRouter } from "vue-router";
 import {
   CONNECTIONS,
@@ -49,17 +49,19 @@ async function syncPlugin(connection: PluginConnectionContribution) {
   await pluginState.sync(key, connection.label);
   emit("synced");
 }
-onMounted(() => {
+function onToggle() {
+  if (!menu.value?.open) return;
   void pluginState.load();
   void state.loadCredentials();
   void refreshPluginExtensions({ background: true });
-});
+}
 </script>
 
 <template>
   <details
     ref="menu"
     class="library-sync-menu"
+    @toggle="onToggle"
     @keydown.esc="menu && (menu.open = false)"
   >
     <summary class="ui-btn ui-btn-ghost">Sync / import</summary>

@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { useId } from "vue";
-import PasswordInput from "../PasswordInput.vue";
+import { defineAsyncComponent, useId } from "vue";
+const PasswordInput = defineAsyncComponent(
+  () => import("../PasswordInput.vue"),
+);
 import type { UiField, UiValue } from "../../services/pluginUi";
 
 defineProps<{ field: UiField; error?: string; disabled?: boolean }>();

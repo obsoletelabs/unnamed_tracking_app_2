@@ -81,6 +81,7 @@ export interface InboxOptions {
   severity?: "" | "info" | "warning" | "error";
   state?: InboxState;
   offset?: number;
+  include_summary?: boolean;
 }
 export interface InboxPage {
   items: MediaNotification[];
@@ -103,6 +104,17 @@ export interface InboxRetentionPolicy {
 async function ok(response: Response, action: string): Promise<Response> {
   if (!response.ok) throw new Error(`Failed to ${action}: ${response.status}`);
   return response;
+}
+
+export async function fetchMediaUnreadCount(): Promise<number> {
+  const response = await ok(
+    await fetch("/api/notifications/unread-count", {
+      credentials: "include",
+      priority: "low",
+    }),
+    "load unread notification count",
+  );
+  return Number((await response.json()).unread) || 0;
 }
 
 export async function fetchMediaNotifications(

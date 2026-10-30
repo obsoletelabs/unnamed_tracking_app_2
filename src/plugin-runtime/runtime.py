@@ -31,12 +31,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 from urllib.error import HTTPError, URLError
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 from urllib.request import Request, urlopen
 from uuid import UUID, uuid4
 
 from legacy_compatibility import LEGACY_WARNING, legacy_plugin_allowed
 from notification_transport import send_discord
+from access import RuntimeAccess
 from storage import PluginStorage
 
 try:
@@ -45,7 +46,7 @@ except ImportError:  # pragma: no cover - Windows development/test fallback
     resource = None  # type: ignore[assignment]
 
 _PLUGIN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
-PLUGIN_API_CONTRACT_VERSION = "1.1.16"
+PLUGIN_API_CONTRACT_VERSION = "1.1.17"
 _ENTRYPOINT = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*(?::[A-Za-z_][A-Za-z0-9_]*)?$")
 # Linux parent-death signals follow the spawning thread. HTTP request threads
 # end after their response, while supervised workers must live until shutdown.
@@ -291,6 +292,7 @@ class PluginSupervisor:
         self._package_paths: dict[str, Path] = {}
         self._package_manifests: dict[str, dict[str, Any]] = {}
         self._lock = threading.RLock()
+        self.access = RuntimeAccess()
         self.reduced_isolation_acknowledged = False
         self.isolation: dict[str, Any] = {
             "bubblewrap_available": None,
@@ -800,6 +802,11 @@ class PluginSupervisor:
         version: int = 1,
         request_id: str | None = None,
     ) -> None:
+        actor = user_id or self._user_ids.get(plugin_id)
+        installation = self._installation_ids.get(plugin_id)
+        if self.access.allows(plugin_id, installation, actor, capability, version):
+            return
+        revision = self.access.revision(plugin_id, actor)
         response = self._handle_gateway_request(
             plugin_id,
             {
@@ -814,6 +821,8 @@ class PluginSupervisor:
         payload = response.get("payload")
         if not isinstance(payload, dict) or payload.get("authorized") is not True:
             raise RuntimePolicyError("host did not authorize the capability")
+        if version == 1:
+            self.access.accept(plugin_id, installation, actor, payload.get("runtime_access"), revision)
 
     @staticmethod
     def _limits(limits: ResourceLimits) -> None:
@@ -1014,6 +1023,10 @@ class PluginSupervisor:
         started_at = time.monotonic()
         self._log(spec.plugin_id, "Plugin action started.", event="action.started")
         process: subprocess.Popen[bytes] | None = None
+        previous_access = self.access.begin(
+            spec.plugin_id, self._installation_ids.get(spec.plugin_id),
+            user_id or self._user_ids.get(spec.plugin_id),
+        )
         try:
             self._storage(spec.plugin_id)
             with self._lock:
@@ -1175,6 +1188,7 @@ class PluginSupervisor:
                 with self._lock:
                     self._action_processes.get(spec.plugin_id, set()).discard(process)
             shutil.rmtree(workdir, ignore_errors=True)
+            self.access.end(previous_access)
         assert output is not None
         if len(output) > work_limit:
             raise RuntimePolicyError("public app output exceeds 4 MiB" if public_app_work else "plugin action output exceeds 64 KiB")
@@ -1187,6 +1201,7 @@ class PluginSupervisor:
         return output
 
     def stop(self, plugin_id: str, timeout: float = 5.0) -> None:
+        self.access.invalidate(plugin_id)
         with self._lock:
             process = self._processes.pop(plugin_id, None)
             actions = self._action_processes.pop(plugin_id, set())
@@ -1654,6 +1669,10 @@ class PluginRegistry:
             digest.update(b"\0")
         return digest.hexdigest()
 
+    def _integrity_valid(self, package: Path, expected: str) -> bool:
+        """Verify bytes; coarse filesystem timestamps cannot prove unchanged content."""
+        return self.digest(package).lower() == expected.lower()
+
     @staticmethod
     def _package_icon(package: Path, manifest: dict[str, Any]) -> str | None:
         for name, content_type in (
@@ -1691,7 +1710,7 @@ class PluginRegistry:
         plugin_id = data["plugin_id"]
         expected = data.get("integrity", {}).get("sha256")
         integrity_valid = (
-            bool(expected) and self.digest(package).lower() == str(expected).lower()
+            bool(expected) and self._integrity_valid(package, str(expected))
         )
         contract_error = self._contract_error(data)
         compatible = integrity_valid and contract_error is None
@@ -2088,6 +2107,11 @@ class PluginRegistry:
                 raise RuntimePolicyError(
                     "plugin manifest has an invalid native frontend declaration"
                 )
+            activation = native_frontend.get("activation", "startup")
+            if activation not in {"startup", "page"}:
+                raise RuntimePolicyError("invalid native frontend activation")
+            if activation == "page" and tuple(map(int, manifest.get("api_contract_version", "1.0.0").split("."))) < (1, 1, 17):
+                raise RuntimePolicyError("page activation requires Plugin API v1.1.17")
             native_styles = native_frontend.get("styles", [])
             if not isinstance(native_styles, list) or not all(
                 isinstance(value, str) for value in native_styles
@@ -2451,10 +2475,14 @@ class PluginRegistry:
         configuration.unlink(missing_ok=True)
         (self.root / plugin_id / ".settings.json").unlink(missing_ok=True)
 
-    def list(self) -> list[dict[str, Any]]:
+    def list(self, *, pwa_only: bool = False) -> list[dict[str, Any]]:
         result: list[dict[str, Any]] = []
         for package in self.packages():
             try:
+                # Declaration lookup is cheap; selected packages still undergo
+                # the full integrity/lifecycle checks in _item below.
+                if pwa_only and not self.package(package.name)[1].get("pwa"):
+                    continue
                 result.append(self._item(package))
             except Exception as exc:
                 result.append(
@@ -2576,6 +2604,7 @@ class PluginRegistry:
             document["native_frontend"] = {
                 "entry": str(native_frontend["entry"]),
                 "styles": [str(value) for value in native_frontend.get("styles", [])],
+                "activation": native_frontend.get("activation", "startup"),
             }
         return document
 
@@ -3300,6 +3329,10 @@ class PluginRegistry:
 
 
 class RuntimeHandler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+    # Keep small JSON/asset replies from waiting on Nagle plus delayed ACKs
+    # when headers and body are written separately on a persistent connection.
+    disable_nagle_algorithm = True
     server_version = "UnnamedTrackingPluginRuntime/1.1"
 
     def _authorize(self) -> bool:
@@ -3342,10 +3375,15 @@ class RuntimeHandler(BaseHTTPRequestHandler):
         return False
 
     def _json(self, status: int, payload: Any) -> None:
-        body = json.dumps(payload, default=str).encode()
+        body = b"" if status in {204, 304} else json.dumps(payload, default=str).encode()
         self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
+        if status not in {204, 304}:
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+        if status >= 400:
+            # An early rejection may leave an unread request body on the socket.
+            self.close_connection = True
+            self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(body)
 
@@ -3379,7 +3417,11 @@ class RuntimeHandler(BaseHTTPRequestHandler):
                     },
                 )
             elif parts == ["plugins"]:
-                self._json(200, self.server.registry.list())  # type: ignore[attr-defined]
+                query = parse_qs(urlsplit(self.path).query)
+                if query.get("contribution") == ["pwa"]:
+                    self._json(200, self.server.registry.list(pwa_only=True))
+                else:
+                    self._json(200, self.server.registry.list())
             elif len(parts) == 3 and parts[0] == "plugins" and parts[2] == "state":
                 # Revalidate this installation without hashing every unrelated package.
                 self._json(200, self.server.registry.plugin_state(parts[1]))
@@ -3443,6 +3485,23 @@ class RuntimeHandler(BaseHTTPRequestHandler):
                 else:
                     self.server.registry.stop(parts[1], disable=parts[2] == "disable")
                 self._json(200, {"plugin_id": parts[1], "status": parts[2]})
+                return
+            if len(parts) == 4 and parts[0] == "plugins" and parts[2:] == ["access", "invalidate"]:
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 0 < length <= 2048:
+                    raise RuntimePolicyError("invalid access invalidation payload")
+                payload = json.loads(self.rfile.read(length))
+                if not isinstance(payload, dict):
+                    raise RuntimePolicyError("invalid access invalidation payload")
+                installation = str(UUID(str(payload.get("installation_id"))))
+                actor = payload.get("user_id")
+                actor = str(UUID(str(actor))) if actor is not None else None
+                self.server.registry.package(parts[1])
+                current = self.server.registry._state().get(parts[1], {})
+                matches = isinstance(current, dict) and current.get("installation_id") == installation
+                if matches:
+                    self.server.registry.supervisor.access.invalidate(parts[1], actor)
+                self._json(200, {"invalidated": matches})
                 return
             if len(parts) == 3 and parts[0] == "plugins" and parts[2] == "storage":
                 length = int(self.headers.get("Content-Length", "0"))

@@ -144,6 +144,8 @@ export function useConnections() {
     {},
   );
   const credentialsLoading = ref(true);
+  // Until the first successful read an account's state is unknown, not "not connected".
+  const credentialsLoaded = ref(false);
   const loadError = ref<string | null>(null);
 
   // must be ready before first render, the dialog binds
@@ -159,6 +161,7 @@ export function useConnections() {
       const result = await fetchProviderCredentials();
       Object.assign(credentialStatus, result);
       loadError.value = null;
+      credentialsLoaded.value = true;
       // prefill non-secret fields (profile IDs, usernames) that are already
       // saved, so the form shows them filled instead of misleadingly blank
       for (const [key, status] of Object.entries(result)) {
@@ -174,6 +177,11 @@ export function useConnections() {
     } finally {
       credentialsLoading.value = false;
     }
+  }
+
+  async function retryCredentials() {
+    credentialsLoading.value = true;
+    await loadCredentials();
   }
 
   // a password-type field that's already saved gets a placeholder instead of
@@ -242,13 +250,18 @@ export function useConnections() {
   const npssoToken = ref("");
   const psnConnecting = ref(false);
   const psnError = ref<string | null>(null);
+  // The status could not be read, so "connected or not" is unknown.
+  const psnLoadFailed = ref(false);
 
   async function loadPsn() {
     // a stale status from an earlier open must not show as current
     psnLoading.value = true;
+    psnLoadFailed.value = false;
+    psnError.value = null;
     try {
       psnStatus.value = await fetchPsnStatus();
     } catch (err) {
+      psnLoadFailed.value = true;
       psnError.value =
         err instanceof Error
           ? err.message
@@ -414,8 +427,10 @@ export function useConnections() {
   return {
     credentialStatus,
     credentialsLoading,
+    credentialsLoaded,
     loadError,
     loadCredentials,
+    retryCredentials,
     fieldValues,
     cardSaving,
     cardError,
@@ -429,6 +444,7 @@ export function useConnections() {
     npssoToken,
     psnConnecting,
     psnError,
+    psnLoadFailed,
     loadPsn,
     handleConnectPsn,
     handleDisconnectPsn,

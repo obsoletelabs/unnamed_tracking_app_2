@@ -1,8 +1,13 @@
 """Host upgrades must refresh offline policy without caching private responses."""
 
+import asyncio
+import io
+import json
+
 import httpx
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from PIL import Image
 
 from src.database.session import get_db
 from src.plugin_api import pwa
@@ -89,3 +94,63 @@ def test_host_upgrades_invalidate_the_existing_installation_cache(tmp_path, monk
         (tmp_path / changed).write_text("Updated reviewed asset", encoding="utf-8")
     monkeypatch.setattr(pwa, "_HOST_ASSET_REVISION", pwa.host_asset_revision())
     assert pwa.generation(plugin) != original
+
+
+def inert_assets():
+    declaration = pwa.PluginPwaDeclaration(name="Archive", short_name="Archive")
+    manifest = {
+        key: getattr(declaration, key)
+        for key in ("name", "short_name", "theme_color", "background_color")
+    }
+    manifest.update(id="/", scope="/", start_url="/?pwa=1", display="standalone")
+    files = {declaration.manifest: json.dumps(manifest).encode()}
+    for path, size in zip(declaration.icons, (192, 512), strict=True):
+        buffer = io.BytesIO()
+        Image.new("RGB", (size, size)).save(buffer, format="PNG")
+        files[path] = buffer.getvalue()
+    return {"plugin_id": "example.inert-pwa", "declaration": declaration}, files
+
+
+@pytest.mark.asyncio
+async def test_inert_pwa_assets_are_checked_concurrently(monkeypatch):
+    plugin, files = inert_assets()
+    started = set()
+    all_started, release = asyncio.Event(), asyncio.Event()
+
+    async def asset(plugin_id, path):
+        assert plugin_id == plugin["plugin_id"]
+        started.add(path)
+        if len(started) == len(files):
+            all_started.set()
+        await release.wait()
+        return files[path]
+
+    monkeypatch.setattr(pwa.client, "pwa_asset", asset)
+    task = asyncio.create_task(pwa.checked_assets(plugin))
+    try:
+        await asyncio.wait_for(all_started.wait(), timeout=1)
+        release.set()
+        assert await task == files
+    finally:
+        release.set()
+        await asyncio.gather(task, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("invalid", ["manifest", "icon", "runtime"])
+async def test_parallel_pwa_reads_still_reject_invalid_assets(monkeypatch, invalid):
+    plugin, files = inert_assets()
+    if invalid == "manifest":
+        files[plugin["declaration"].manifest] = b'{"name":"Incorrect declaration"}'
+    elif invalid == "icon":
+        files[plugin["declaration"].icons[0]] = b"Not a PNG"
+
+    async def asset(_plugin_id, path):
+        if invalid == "runtime":
+            raise pwa.PluginRuntimeUnavailable("Unavailable")
+        return files[path]
+
+    monkeypatch.setattr(pwa.client, "pwa_asset", asset)
+    with pytest.raises(HTTPException) as failure:
+        await pwa.checked_assets(plugin)
+    assert failure.value.status_code == 503
