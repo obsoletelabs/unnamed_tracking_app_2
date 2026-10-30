@@ -9,7 +9,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.sql.functions import count as sql_count
 
 from src.core.auth import get_current_admin, get_current_user
 from src.core.preferences import load_preferences
@@ -22,6 +21,7 @@ from src.features.notification_audit import change_notices
 from src.features.notification_controller import emit_legacy_rows
 from src.features.notification_inbox import (
     InboxQuery,
+    count_unread,
     lifecycle_state,
     query_inbox,
     retention_policy,
@@ -103,13 +103,7 @@ async def _display_titles(
 async def unread_count(
     db: AsyncSession = _NOTIFICATION_DB, current_user: User = _NOTIFICATION_USER
 ) -> dict:
-    await generate_for_user(db, current_user.id)
-    count = await db.scalar(
-        select(sql_count())
-        .select_from(Notification)
-        .where(visible_inbox(current_user.id), Notification.read_at.is_(None))
-    )
-    return {"unread": count or 0}
+    return {"unread": await count_unread(db, current_user.id)}
 
 
 @router.get("")
@@ -118,7 +112,8 @@ async def list_notifications(
     db: AsyncSession = _NOTIFICATION_DB,
     current_user: User = _NOTIFICATION_USER,
 ) -> dict:
-    await generate_for_user(db, current_user.id)
+    if filters.include_summary:
+        await generate_for_user(db, current_user.id)
     rows, summary = await query_inbox(db, current_user.id, filters)
     titles = await _display_titles(db, current_user.id, rows)
     stories = await story_details(db, rows)

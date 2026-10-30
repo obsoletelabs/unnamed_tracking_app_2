@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import os
 import time
 from typing import Any
 from urllib.parse import quote, urlsplit
+from weakref import WeakKeyDictionary
 
 import httpx
 
@@ -17,10 +19,35 @@ from src.core.metrics import (
     PLUGIN_RUNTIME_REQUESTS,
     plugin_runtime_operation,
 )
+from src.core.request_metrics import observe_phase
 from src.plugin_api.manager_state import manager_state
 from src.plugin_api.runtime_token import TOKEN_HELP, runtime_token_valid
 
 _ACTION_REQUEST_TIMEOUT = 35.0  # Allow the isolated runner's 30-second wall limit to report.
+
+# Transport belongs to the server's event loop, not to one provider/client wrapper.
+# Keeping credentials on each request also makes token/policy changes immediate.
+_http_clients: WeakKeyDictionary[asyncio.AbstractEventLoop, httpx.AsyncClient] = WeakKeyDictionary()
+
+
+def _http_client() -> httpx.AsyncClient:
+    loop = asyncio.get_running_loop()
+    client = _http_clients.get(loop)
+    if client is None or client.is_closed:
+        client = httpx.AsyncClient(
+            timeout=10.0,
+            limits=httpx.Limits(max_connections=32, max_keepalive_connections=16),
+            trust_env=False,
+        )
+        _http_clients[loop] = client
+    return client
+
+
+async def close_runtime_transport() -> None:
+    """Release this worker's pooled transport when the application shuts down."""
+    client = _http_clients.pop(asyncio.get_running_loop(), None)
+    if client is not None:
+        await client.aclose()
 
 
 class PluginRuntimeUnavailable(RuntimeError):
@@ -144,21 +171,22 @@ class PluginRuntimeClient:
             outcome = exc.kind
             raise
         finally:
+            seconds = time.monotonic() - started
             PLUGIN_RUNTIME_REQUESTS.labels(operation, outcome).inc()
-            PLUGIN_RUNTIME_DURATION.labels(operation).observe(time.monotonic() - started)
+            PLUGIN_RUNTIME_DURATION.labels(operation).observe(seconds)
+            observe_phase("plugin.runtime", seconds)
             if lifecycle_operation is not None:
                 PLUGIN_LIFECYCLE_OPERATIONS.labels(lifecycle_operation, outcome).inc()
 
     async def _send(self, method: str, path: str, **kwargs: Any) -> Any:
         """Send one request and translate transport and status failures."""
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.request(
-                    method,
-                    f"{self.base_url}{path}",
-                    headers={**self._headers(), **kwargs.pop("headers", {})},
-                    **kwargs,
-                )
+            response = await _http_client().request(
+                method,
+                f"{self.base_url}{path}",
+                headers={**self._headers(), **kwargs.pop("headers", {})},
+                **kwargs,
+            )
         except httpx.HTTPError as exc:
             raise _unreachable(exc, self.base_url) from exc
         if response.status_code >= 500:
@@ -215,9 +243,14 @@ class PluginRuntimeClient:
             raise PluginRuntimeRequestError("plugin task returned an invalid response")
         return result
 
-    async def plugins(self) -> list[dict[str, Any]]:
-        """List runtime installations and their lifecycle state."""
-        return await self._request("GET", "/plugins")
+    async def plugins(self, *, pwa_only: bool = False) -> list[dict[str, Any]]:
+        """List installations, optionally selecting declared PWA contributions first.
+
+        Older runtimes ignore the additive filter; callers still check declarations
+        and live grants. A filtered inventory must not reconcile global manager state.
+        """
+        options = {"params": {"contribution": "pwa"}} if pwa_only else {}
+        return await self._request("GET", "/plugins", **options)
 
     async def plugin_ui(self, plugin_id: str) -> dict[str, Any]:
         """Read the package's declared UI document."""
@@ -292,6 +325,22 @@ class PluginRuntimeClient:
     async def delete(self, plugin_id: str) -> None:
         """Uninstall the package and its runtime-owned data."""
         await self._request("DELETE", f"/plugins/{plugin_id}")
+
+    async def invalidate_access(
+        self, plugin_id: str, installation_id: str, user_id: str | None = None
+    ) -> bool:
+        """Revoke in-flight local access snapshots; older runtimes do not cache them."""
+        try:
+            result = await self._request(
+                "POST",
+                f"/plugins/{quote(plugin_id, safe='')}/access/invalidate",
+                json={"installation_id": installation_id, "user_id": user_id},
+            )
+        except PluginRuntimeRequestError as exc:
+            if exc.status_code == 404:
+                return False
+            raise
+        return isinstance(result, dict) and result.get("invalidated") is True
 
     async def save_secret(self, plugin_id: str, key: str, value: str) -> None:
         """Write one authorized plugin secret through the storage broker."""

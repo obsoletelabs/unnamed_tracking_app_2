@@ -19,7 +19,7 @@ export {
   rememberGameRelationship,
 } from "./gameCache";
 import {
-  POSTER_WIDTH,
+  posterWidth,
   gameAssetUrl,
   rememberUploadedRevision,
   sizedAssetUrl,
@@ -101,7 +101,10 @@ export function mapBackendGame(raw: BackendGame): Game {
     coverColor: "#2a2a2a",
     // every place a cover is shown is a card or a poster well under 400 px
     // wide, and the stored cover is a PNG of up to a megabyte
-    coverImageUrl: sizedAssetUrl(gameAssetUrl(raw.id, "key_art"), POSTER_WIDTH),
+    coverImageUrl: sizedAssetUrl(
+      gameAssetUrl(raw.id, "key_art"),
+      posterWidth(),
+    ),
     bannerImageUrl: gameAssetUrl(raw.id, "banner"),
     status: normalizeStatus(raw.status),
     ratingOverall: toNumberOrNull(raw.rating_overall),

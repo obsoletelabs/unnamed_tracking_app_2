@@ -11,7 +11,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 API_VERSION = "v1"
-PLUGIN_API_CONTRACT_VERSION = "1.1.16"
+PLUGIN_API_CONTRACT_VERSION = "1.1.17"
 Timestamp = datetime
 
 
@@ -526,6 +526,12 @@ class PluginNativeFrontendDeclaration(ContractModel):
         pattern=r"^[A-Za-z0-9][A-Za-z0-9_./-]*$",
     )
     styles: tuple[str, ...] = ()
+    activation: Literal["startup", "page"] = "startup"
+
+    def validate_contract_version(self, version: str) -> None:
+        """Page activation is opt-in only after the host contract introduced it."""
+        if self.activation == "page" and parse_semver(version) < (1, 1, 17):
+            raise ValueError("page activation requires Plugin API v1.1.17")
 
     @field_validator("entry")
     @classmethod
@@ -874,6 +880,8 @@ class PluginManifest(ContractModel):
                     f"permission {permission.capability.name.value} v{permission.capability.version} "
                     "is not declared by the plugin"
                 )
+        if self.native_frontend is not None:
+            self.native_frontend.validate_contract_version(self.api_contract_version)
         if self.native_frontend is not None and Capability.FRONTEND_NATIVE not in capability_names:
             raise ValueError("native_frontend requires the frontend.native capability")
         if self.pwa is not None and not any(

@@ -25,19 +25,43 @@ export function rememberAppearanceSettings(settings: AppearanceSettings): void {
 
 watch(() => currentUser.value?.id, resetAppearanceSettings, { flush: "sync" });
 
-export async function loadAppearanceSettings() {
+let pending: {
+  account: string | undefined;
+  generation: number;
+  done: Promise<void>;
+} | null = null;
+
+export function loadAppearanceSettings(): Promise<void> {
   const requestGeneration = generation;
   const accountId = currentUser.value?.id;
-  try {
-    const result = await fetchAppearanceSettings();
-    if (requestGeneration !== generation || currentUser.value?.id !== accountId)
-      return;
-    appearanceSettings.value = result;
-  } catch {
-    // a failed fetch just means no badge customization, cards render
-    // with default appearance rather than blocking navigation
-  } finally {
-    if (requestGeneration === generation && currentUser.value?.id === accountId)
-      appearanceLoaded.value = true;
-  }
+  if (
+    pending?.account === accountId &&
+    pending?.generation === requestGeneration
+  )
+    return pending.done;
+  const done = (async () => {
+    try {
+      const result = await fetchAppearanceSettings();
+      if (
+        requestGeneration !== generation ||
+        currentUser.value?.id !== accountId
+      )
+        return;
+      appearanceSettings.value = result;
+    } catch {
+      // Optional decorations keep their defaults during a failed read.
+    } finally {
+      if (
+        requestGeneration === generation &&
+        currentUser.value?.id === accountId
+      )
+        appearanceLoaded.value = true;
+    }
+  })();
+  const entry = { account: accountId, generation: requestGeneration, done };
+  pending = entry;
+  void done.finally(() => {
+    if (pending === entry) pending = null;
+  });
+  return done;
 }

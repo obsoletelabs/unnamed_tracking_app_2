@@ -15,7 +15,9 @@ import UiModal from "../components/UiModal.vue";
 import { startQuickTour } from "../state/quickTour";
 import PluginExtensionSlot from "../components/plugins/PluginExtensionSlot.vue";
 import PluginHomeWidget from "../components/plugins/PluginHomeWidget.vue";
-import PluginWidgetConfiguration from "../components/plugins/PluginWidgetConfiguration.vue";
+const PluginWidgetConfiguration = defineAsyncComponent(
+  () => import("../components/plugins/PluginWidgetConfiguration.vue"),
+);
 import type { PluginSlotContribution } from "../state/pluginExtensions";
 import type { UiValues } from "../services/pluginUi";
 import { pluginSlots } from "../state/pluginExtensions";

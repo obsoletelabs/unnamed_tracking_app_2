@@ -9,7 +9,9 @@ export interface CurrentUser {
   display_name?: string | null;
   email: string;
   is_admin: boolean;
-  steamgriddb_api_key: string | null;
+  // Legacy response slot is always null; the credential is write-only.
+  steamgriddb_api_key: null;
+  steamgriddb_configured?: boolean;
   profile_picture_version?: string | null;
 }
 

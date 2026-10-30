@@ -134,6 +134,7 @@ it("reloads the saved value instead of the manifest default", async () => {
   expect(input("Link lifetime").value).toBe("900");
   expect(input("Link lifetime").disabled).toBe(false);
   expect(input("Note").value).toBe("Default note");
+  await vi.waitFor(() => expect(input("API token")).not.toBeNull());
   expect(input("API token").value).toBe("");
   expect(buttons().every((item) => !item.disabled)).toBe(true);
 

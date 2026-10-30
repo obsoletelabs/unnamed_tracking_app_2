@@ -51,3 +51,74 @@ content. They exclude HTML transfer, module discovery, connection setup,
 JavaScript parsing/execution, API requests and artwork. HTTP/2 multiplexing also
 changes the effect of request waves. Browser traces and separate API timings
 are needed before claiming equivalent improvements in user-visible loading.
+
+## Startup and artwork priorities
+
+The command palette loads on its first opening and remains mounted afterward,
+retaining its search cache. The appearance welcome dialog loads only when needed.
+Neither is part of the ordinary library shell's initial dependency closure.
+
+Library posters request the standard, prebuilt 400 px width by default. Explicit
+thumbnail sizes remain supported. Data Saver or an effective connection type of
+`slow-2g`/`2g` selects 240 px; ordinary and unknown connections use 400 px. Smaller
+variants are generated and cached on demand, rather than eagerly generating
+every size. This avoids the first 240 px resize during normal library loading.
+
+The notification badge reads `/api/notifications/unread-count`, sharing simultaneous
+requests from mounted components. Opening the bell fetches ten persisted notices
+with `include_summary=false`; scrolling or Load more requests the next page.
+These reads do not run release discovery or calculate the full inbox summaries.
+The scheduled discovery loop and the full Notification Centre retain discovery.
+
+
+## Startup contention
+
+Concurrent appearance loads for the same account share their pending request.
+Optional sidebar/bell counts and automatic-match banners begin after the initial
+paint, allowing the mounted route to issue its data request first. Upload badges
+read the recorded count through `/api/media/inbox/count`; the full inbox view
+retains filesystem reconciliation for unrecorded files. The count excludes trash
+and other accounts and discards late responses after an account change.
+
+
+## Optional dependency bundles
+
+The shared vendor group contains Vue and Vue Router. QR-code generation,
+Markdown rendering, HTML sanitization and virtual-list code follow their actual
+importers instead of being forced into every page's initial vendor bundle.
+Rich HTML still uses DOMPurify before rendering; this changes bundle placement,
+not sanitization. Route and occasional-dialog code splitting remains in place.
+
+In a production-lockfile comparison after merging main on 30 October 2026, the
+vendor script fell from 253.91 KB (90.32 KB gzip) to 136.92 KB (51.95 KB gzip).
+Games still needs its virtualizer and sanitizer, so its measured initial asset
+transfer fell by about 24 KB while adding one script request. This is a transfer
+reduction, not a claim that every page becomes faster by a fixed duration.
+
+
+## Virtual row measurements and cold refresh validation
+
+Games card and list rows retain a positive cached or estimated size until the
+ResizeObserver supplies their measured border box. A synchronous Vue ref call
+can precede a measurable DOM layout; caching its zero height previously placed
+all buffered rows at `translateY(0)`. That briefly classified offscreen artwork
+as visible and caused the near-end pagination watcher to fetch another page.
+The shared row measurement policy avoids that collapse without forcing layout
+reads for every ref callback. Normal scrolling still requests later pages.
+
+A clean Windows Edge run at 1920 x 1080 used five fresh browser contexts with
+browser caching disabled. The dedicated account had 85 games and 39 posters,
+including 14 visible posters. With the optional-dependency split already applied,
+median completion of the visible posters changed from 806 ms to 640 ms after
+fixing row measurement. The immediate extra game page disappeared in all five
+runs. Final first-viewport content took 247-487 ms; visible posters took
+553-879 ms, including the first-run outlier. These are local measurements, not
+an assurance that every browser profile or larger library meets those timings.
+Route-ready marks alone do not indicate that page data or artwork has rendered.
+
+The authentication phase breakdown also exposed quota-pool contention. A local
+24-request count-endpoint burst compared two, four and six authentication
+connections. Increasing capacity did not consistently improve end-to-end latency,
+so the independent two-connection pool and its security limits remain unchanged.
+Pool acquisition and database/commit phases overlap with reserve/refund phases;
+do not sum them as independent elapsed time.

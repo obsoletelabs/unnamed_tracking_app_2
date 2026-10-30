@@ -117,3 +117,23 @@ it("keeps a real destination's query and hash across sign-in", async () => {
   });
   expect(router.currentRoute.value.fullPath).toBe(target);
 });
+
+it("opens a configured development instance without a setup detour", async () => {
+  services.setup.mockResolvedValue({
+    setup_required: false,
+    startup_ui_enabled: false,
+    startup_mode: "development",
+  });
+  services.auth.mockResolvedValue({
+    id: "member",
+    username: "member",
+    is_admin: false,
+  });
+  const { default: router } = await import("../router");
+  const visited: string[] = [];
+  router.afterEach((to) => visited.push(to.path));
+  await router.push("/games");
+  expect(router.currentRoute.value.fullPath).toBe("/games");
+  expect(visited).toEqual(["/games"]);
+  expect(services.setup).toHaveBeenCalledTimes(1);
+});

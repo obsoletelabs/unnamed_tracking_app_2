@@ -10,11 +10,11 @@ import secrets
 import time
 import zipfile
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 from urllib.parse import quote
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 from sqlalchemy import delete, select
 from sqlalchemy import update as sql_update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -41,6 +41,7 @@ from src.plugin_api.grants import (
     active_user_capabilities,
     effective_capabilities,
     ensure_capability_grant,
+    installation_capabilities,
     installation_is_executable,
 )
 from src.plugin_api.installer import (
@@ -648,18 +649,24 @@ async def preview_plugin_permissions(plugin_id: str, admin: User = _PLUGIN_ADMIN
     return acquisition.install_preview(inspected)
 
 
-@router.get("", response_model=list[dict])
+@router.get("", response_model=list[dict], dependencies=[Depends(runtime.private_plugin_response)])
 async def list_plugins(
     db: AsyncSession = _PLUGIN_DB,
     user: User = _PLUGIN_READER,
+    include_ui: Annotated[bool, Header(alias="X-Plugin-Include-UI")] = False,
 ) -> list[dict]:
 
     plugins = await runtime.installed_plugins()
+    capabilities_by_plugin = (
+        await installation_capabilities(db, plugins, user.id) if include_ui else {}
+    )
     result: list[dict] = []
     for plugin in plugins:
         granted: list[str] = []
         installation_id = plugin.get("installation_id")
-        if installation_id:
+        if include_ui:
+            granted = capabilities_by_plugin.get(str(plugin["plugin_id"]), ([], frozenset()))[0]
+        elif installation_id:
             granted = await active_user_capabilities(
                 db, str(plugin.get("plugin_id")), UUID(str(installation_id)), user.id
             )
@@ -668,11 +675,15 @@ async def list_plugins(
                 **plugin,
                 "permission_details": [
                     acquisition.permission_preview(PermissionDeclaration.model_validate(item))
-                    for item in plugin.get("permission_declarations", [])
+                    for item in ([] if include_ui else plugin.get("permission_declarations", []))
                 ],
                 "granted_capabilities": sorted(set(granted)),
                 "effective_capabilities": (
                     sorted(
+                        capabilities_by_plugin.get(str(plugin["plugin_id"]), ([], frozenset()))[1]
+                    )
+                    if include_ui and installation_id and installation_is_executable(plugin)
+                    else sorted(
                         await effective_capabilities(
                             db,
                             str(plugin["plugin_id"]),
@@ -686,6 +697,37 @@ async def list_plugins(
                 ),
             }
         )
+    if include_ui:
+        from .contributions import filtered_plugin_ui  # pylint: disable=import-outside-toplevel
+
+        async def attach_ui(item: dict) -> None:
+            if installation_is_executable(item):
+                try:
+                    item["ui_document"] = await filtered_plugin_ui(
+                        item["plugin_id"], item, frozenset(item["effective_capabilities"])
+                    )
+                except HTTPException:
+                    item["ui_document"] = None
+
+        await asyncio.gather(*(attach_ui(item) for item in result))
+        fields = {
+            "plugin_id",
+            "name",
+            "version",
+            "digest",
+            "api_contract_version",
+            "legacy_compatibility",
+            "enabled",
+            "compatible",
+            "status",
+            "health",
+            "effective_capabilities",
+            "granted_capabilities",
+            "permissions",
+            "compatibility_reason",
+            "ui_document",
+        }
+        result = [{key: value for key, value in item.items() if key in fields} for item in result]
     return sorted(result, key=lambda value: value["plugin_id"])
 
 

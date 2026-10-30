@@ -282,3 +282,50 @@ def test_runtime_executes_declared_backend_route_with_request_user(
             {"method": "POST"},
             user_id=user_id,
         )
+
+
+def test_integrity_detects_same_size_changes_with_restored_mtime(tmp_path):
+    import os
+    package = tmp_path / "example.cached"
+    package.mkdir()
+    payload = package / "plugin.py"
+    payload.write_bytes(b"first")
+    registry = PluginRegistry(tmp_path, PluginSupervisor(root=tmp_path / ".work"))
+    expected = registry.digest(package)
+    assert registry._integrity_valid(package, expected)
+    assert registry._integrity_valid(package, expected)
+    before = payload.stat()
+    payload.write_bytes(b"other")
+    os.utime(payload, ns=(before.st_atime_ns, before.st_mtime_ns))
+    assert not registry._integrity_valid(package, expected)
+    payload.write_bytes(b"first")
+    assert registry._integrity_valid(package, expected)
+    (package / "extra.py").write_bytes(b"extra")
+    assert not registry._integrity_valid(package, expected)
+
+
+def test_pwa_discovery_skips_unrelated_payloads_but_revalidates_selected_bytes(tmp_path, monkeypatch):
+    from unittest.mock import Mock
+
+    root = tmp_path / "plugins"
+    for plugin_id, pwa in [("example.pwa", {"name": "Archive", "short_name": "Archive"}),
+                           ("example.ordinary", None)]:
+        package = root / plugin_id
+        package.mkdir(parents=True)
+        (package / "main.py").write_bytes(b"def main(): pass")
+        manifest = {"api_contract_version": "1.1.0", "plugin_id": plugin_id,
+                    "name": "Example", "version": "1.0.0", "entrypoint": "main:main",
+                    "integrity": {"sha256": package_digest(package)}}
+        if pwa:
+            manifest["pwa"] = pwa
+        (package / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    registry = PluginRegistry(root, PluginSupervisor(root=tmp_path / "processes"))
+    verify = Mock(wraps=registry._integrity_valid)
+    monkeypatch.setattr(registry, "_integrity_valid", verify)
+    result = registry.list(pwa_only=True)
+    assert [item["plugin_id"] for item in result] == ["example.pwa"]
+    assert result[0]["compatible"] is True
+    assert [call.args[0].name for call in verify.call_args_list] == ["example.pwa"]
+    (root / "example.pwa" / "main.py").write_bytes(b"modified payload")
+    assert registry.list(pwa_only=True)[0]["compatible"] is False
+    assert len(registry.list()) == 2

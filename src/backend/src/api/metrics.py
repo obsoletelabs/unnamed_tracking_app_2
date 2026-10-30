@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from src.core import metrics
+from src.core import metrics, request_metrics
 
 METRICS_PATH = "/metrics"
 
@@ -80,7 +80,8 @@ class MetricsMiddleware:  # pylint: disable=too-few-public-methods
             await _scrape(scope, receive, send)
             return
 
-        observation = _HttpObservation(scope, time.perf_counter())
+        measurement, token = request_metrics.begin()
+        observation = _HttpObservation(scope, time.perf_counter(), measurement=measurement)
         metrics.HTTP_IN_FLIGHT.inc()
         try:
             await self.app(
@@ -103,8 +104,11 @@ class MetricsMiddleware:  # pylint: disable=too-few-public-methods
             metrics.HTTP_EXCEPTIONS.labels(metrics.route_label(scope)).inc()
             raise
         finally:
-            observation.finish()
-            metrics.HTTP_IN_FLIGHT.dec()
+            try:
+                observation.finish()
+                metrics.HTTP_IN_FLIGHT.dec()
+            finally:
+                request_metrics.reset(token)
 
 
 _METHODS = frozenset({"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"})
@@ -129,12 +133,15 @@ class _HttpObservation:
     response: _ResponseProgress = field(default_factory=_ResponseProgress)
     request_bytes: int = 0
     response_bytes: int = 0
+    measurement: request_metrics.RequestMeasurements | None = None
 
     def observe_start(self) -> None:
         """Retain the existing time-to-response-start series and request counter."""
         if self.observed_start:
             return
         self.observed_start = True
+        if self.measurement is not None:
+            self.measurement.emit(self.scope)
         method = self.scope["method"] if self.scope["method"] in _METHODS else "OTHER"
         route = metrics.route_label(self.scope)
         status_class = f"{self.response.status // 100}xx" if self.response.status else "aborted"
@@ -174,6 +181,20 @@ class _HttpObservation:
 
         return instrumented_receive
 
+    def with_server_timing(self, message: Message) -> Message:
+        """Expose numeric breakdowns only after the existing actor check succeeded."""
+        actor = self.scope.get("state", {}).get("authenticated_actor")
+        if actor is None or self.measurement is None:
+            return message
+        timing = f"app;dur={(time.perf_counter() - self.started) * 1000:.3f}"
+        phases = self.measurement.server_timing()
+        if phases:
+            timing += ", " + phases
+        return {
+            **message,
+            "headers": [*message.get("headers", []), (b"server-timing", timing.encode("ascii"))],
+        }
+
     def send_wrapper(self, send: Send) -> Send:
         """Keep the application protocol and backpressure intact."""
 
@@ -188,6 +209,7 @@ class _HttpObservation:
                 ):
                     self.response.kind = "event_stream"
                 self.observe_start()
+                message = self.with_server_timing(message)
             elif message["type"] == "http.response.body" and message.get("more_body", False):
                 if self.response.kind == "response":
                     self.response.kind = "stream"

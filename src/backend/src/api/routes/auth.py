@@ -285,7 +285,9 @@ async def current_user(
         "effective_display_name": effective_display_name(user),
         "email": user.email,
         "is_admin": user.is_admin,
-        "steamgriddb_api_key": user.steamgriddb_api_key,
+        # Retain the legacy field without disclosing the credential on session polls.
+        "steamgriddb_api_key": None,
+        "steamgriddb_configured": bool(user.steamgriddb_api_key),
         "last_app_url": user.last_app_url,
         "profile_picture_version": await profile_picture_version(user.id),
     }
@@ -368,7 +370,9 @@ async def update_current_user(
         "effective_display_name": effective_display_name(user),
         "email": user.email,
         "is_admin": user.is_admin,
-        "steamgriddb_api_key": user.steamgriddb_api_key,
+        # Retain the legacy field without disclosing the credential on session polls.
+        "steamgriddb_api_key": None,
+        "steamgriddb_configured": bool(user.steamgriddb_api_key),
         "profile_picture_version": await profile_picture_version(user.id),
     }
 

@@ -202,3 +202,7 @@ directories; other cache stores remain unmeasured.
 ## Logging
 
 Requests to `/metrics` are excluded from the backend's access log, so a scrape every few seconds does not flood the console. The Nginx scrape port and the opt-in public route also have their access logs disabled.
+
+Administrators can also inspect existing telemetry in
+[the in-app performance viewer](metrics-performance.md#in-app-performance-viewer).
+It needs no Grafana installation and does not reveal the scrape credential.

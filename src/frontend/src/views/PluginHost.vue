@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { activePluginDocuments } from "../state/pluginExtensions";
 import { computed, onMounted, ref, watch } from "vue";
 import PluginContributionHost from "../components/plugins/PluginContributionHost.vue";
 import PageHeader from "../components/PageHeader.vue";
@@ -41,7 +42,8 @@ async function load() {
   loading.value = true;
   error.value = "";
   try {
-    const loaded = await fetchPluginUi(String(route.params.pluginId));
+    const id = String(route.params.pluginId);
+    const loaded = activePluginDocuments.value[id] ?? (await fetchPluginUi(id));
     if (generation !== loadGeneration) return;
     document.value = loaded;
     activePageId.value = resolvePluginPageId(

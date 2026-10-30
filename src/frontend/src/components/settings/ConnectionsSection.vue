@@ -1,9 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, defineAsyncComponent, onMounted, ref, watch } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
-import ConnectionManageDialog from "./ConnectionManageDialog.vue";
-import PluginConnectionDialog from "./PluginConnectionDialog.vue";
-import SteamConnectionDialog from "./SteamConnectionDialog.vue";
+const ConnectionManageDialog = defineAsyncComponent(
+  () => import("./ConnectionManageDialog.vue"),
+);
+const PluginConnectionDialog = defineAsyncComponent(
+  () => import("./PluginConnectionDialog.vue"),
+);
+const SteamConnectionDialog = defineAsyncComponent(
+  () => import("./SteamConnectionDialog.vue"),
+);
 import {
   CONNECTION_BY_KEY,
   CONNECTIONS,

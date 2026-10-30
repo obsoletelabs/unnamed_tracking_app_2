@@ -111,7 +111,11 @@ from src.plugin_api.backend_routes import reserve_host_routes
 from src.plugin_api.public_apps import purge_expired_data
 from src.plugin_api.pwa import router as pwa_router
 from src.plugin_api.recovery import recover_transactions
-from src.plugin_api.runtime_client import PluginRuntimeClient, PluginRuntimeUnavailable
+from src.plugin_api.runtime_client import (
+    PluginRuntimeClient,
+    PluginRuntimeUnavailable,
+    close_runtime_transport,
+)
 
 app = FastAPI(
     title="My API", docs_url="/api/docs", redoc_url="/api/redoc", openapi_url="/api/openapi.json"
@@ -421,3 +425,8 @@ async def stop_notification_backlog_loop() -> None:
         except asyncio.CancelledError:
             pass
         app.state.notification_backlog_task = None
+
+
+@app.on_event("shutdown")
+async def close_plugin_runtime_transport() -> None:
+    await close_runtime_transport()
