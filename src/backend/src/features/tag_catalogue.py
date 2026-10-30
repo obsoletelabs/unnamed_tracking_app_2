@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import time
 import unicodedata
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 from typing import Any
@@ -421,10 +422,11 @@ async def alias_suggestions(db: AsyncSession, user_id: UUID) -> list[dict[str, A
 EXPORT_VERSION = 1
 
 
-async def export_catalogue(db: AsyncSession, user_id: UUID) -> dict[str, Any] | None:
-    """The user's private catalogue for a library export; None when there is nothing to carry.
-    Deployment defaults belong to the deployment backup, not a personal export."""
-    resolver_tags = (
+async def load_user_tags(
+    db: AsyncSession, user_id: UUID
+) -> tuple[Sequence[UserTag], Sequence[UserTagAlias]]:
+    """The user's live private tags (by label) and every alias they own."""
+    tags = (
         await db.scalars(
             select(UserTag)
             .where(UserTag.user_id == user_id, UserTag.archived_at.is_(None))
@@ -432,6 +434,13 @@ async def export_catalogue(db: AsyncSession, user_id: UUID) -> dict[str, Any] | 
         )
     ).all()
     aliases = (await db.scalars(select(UserTagAlias).where(UserTagAlias.user_id == user_id))).all()
+    return tags, aliases
+
+
+async def export_catalogue(db: AsyncSession, user_id: UUID) -> dict[str, Any] | None:
+    """The user's private catalogue for a library export; None when there is nothing to carry.
+    Deployment defaults belong to the deployment backup, not a personal export."""
+    resolver_tags, aliases = await load_user_tags(db, user_id)
     suppressed = sorted(
         (
             await db.scalars(

@@ -56,14 +56,7 @@ def _tag_out(
 
 
 async def _user_tags_out(db: AsyncSession, user_id: UUID) -> list[dict[str, Any]]:
-    tags = (
-        await db.scalars(
-            select(UserTag)
-            .where(UserTag.user_id == user_id, UserTag.archived_at.is_(None))
-            .order_by(UserTag.label)
-        )
-    ).all()
-    aliases = (await db.scalars(select(UserTagAlias).where(UserTagAlias.user_id == user_id))).all()
+    tags, aliases = await catalogue.load_user_tags(db, user_id)
     return [_tag_out(tag, [a for a in aliases if a.tag_id == tag.id]) for tag in tags]
 
 
