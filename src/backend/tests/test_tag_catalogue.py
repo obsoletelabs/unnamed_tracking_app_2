@@ -10,6 +10,7 @@ from sqlalchemy import delete, select
 from src.core.auth import create_api_key
 from src.database.models.auth import UserApiKey
 from src.database.models.game import Game
+from src.database.models.tag_catalogue import DefaultTag, DefaultTagAlias
 from src.database.models.user import User
 from src.database.session import SessionLocal
 from src.features.tag_catalogue import (
@@ -50,10 +51,20 @@ async def http_client():
         yield client
 
 
+async def _clear_defaults() -> None:
+    # Deployment defaults are global, so every test starts and ends without any.
+    async with SessionLocal() as db:
+        await db.execute(delete(DefaultTagAlias))
+        await db.execute(delete(DefaultTag))
+        await db.commit()
+
+
 @pytest.fixture(name="made")
 async def made_people():
     people: list[SimpleNamespace] = []
+    await _clear_defaults()
     yield people
+    await _clear_defaults()
     async with SessionLocal() as db:
         await db.execute(delete(User).where(User.id.in_([p.id for p in people])))
         await db.commit()
@@ -262,6 +273,49 @@ async def test_discover_creates_source_tags_once(http, me):
     assert (await http.post("/api/tags/discover", headers=me.headers)).json() == {"created": 0}
     kinds = {t["kind"] for t in (await http.get("/api/tags", headers=me.headers)).json()["tags"]}
     assert kinds == {"source"}
+
+
+async def test_export_carries_the_private_catalogue_and_import_restores_it(http, me, other):
+    empty = (await http.get("/api/export/library", headers=me.headers)).json()
+    assert empty["tag_catalogue"] is None
+
+    tag = (await http.post("/api/tags", json={"name": "Roguelike"}, headers=me.headers)).json()
+    await http.post(
+        f"/api/tags/{tag['id']}/aliases", json={"name": "roguelite"}, headers=me.headers
+    )
+    await http.put(
+        "/api/tags/suppressions", json={"tag": "jrpg", "suppressed": True}, headers=me.headers
+    )
+    exported = (await http.get("/api/export/library", headers=me.headers)).json()
+    section = exported["tag_catalogue"]
+    assert section["version"] == 1
+    assert [(t["label"], t["aliases"]) for t in section["tags"]] == [("Roguelike", ["roguelite"])]
+    assert section["suppressed"] == ["jrpg"]
+
+    restored = await http.post("/api/import/library", json=exported, headers=other.headers)
+    assert restored.status_code == 200
+    assert restored.json()["tag_catalogue_tags"] == 1
+    copy = (await http.get("/api/tags", headers=other.headers)).json()
+    assert [t["label"] for t in copy["tags"]] == ["Roguelike"]
+    assert [a["label"] for a in copy["tags"][0]["aliases"]] == ["roguelite"]
+    assert copy["suppressed"] == ["jrpg"]
+
+    # Importing twice adds nothing and never overwrites what is already there.
+    again = await http.post("/api/import/library", json=exported, headers=other.headers)
+    assert again.json()["errors"] == []
+    assert len((await http.get("/api/tags", headers=other.headers)).json()["tags"]) == 1
+
+
+async def test_import_without_a_catalogue_or_with_an_unknown_version_changes_nothing(http, other):
+    plain = await http.post("/api/import/library", json={"games": []}, headers=other.headers)
+    assert plain.status_code == 200 and plain.json()["tag_catalogue_tags"] == 0
+    future = await http.post(
+        "/api/import/library",
+        json={"games": [], "tag_catalogue": {"version": 99, "tags": [{"label": "X"}]}},
+        headers=other.headers,
+    )
+    assert "unsupported export version" in future.json()["errors"][0]
+    assert (await http.get("/api/tags", headers=other.headers)).json()["tags"] == []
 
 
 @pytest.mark.parametrize("name", ["", "   ", "x" * 81])

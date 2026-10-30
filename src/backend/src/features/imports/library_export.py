@@ -13,6 +13,7 @@ from src.database.models.game import Game
 from src.database.models.movies import Movie
 from src.database.models.tv_show import TVShow
 from src.features.game_identity import manual
+from src.features.tag_catalogue import export_catalogue
 
 
 async def build_library_export(db: AsyncSession, user_id: UUID) -> LibraryExport:
@@ -34,4 +35,5 @@ async def build_library_export(db: AsyncSession, user_id: UUID) -> LibraryExport
         game_count=len(groups["games"]),
         **groups,
         **await manual.export_rows(db, user_id),
+        tag_catalogue=await export_catalogue(db, user_id),
     )

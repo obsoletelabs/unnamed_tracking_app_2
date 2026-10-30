@@ -414,3 +414,84 @@ async def alias_suggestions(db: AsyncSession, user_id: UUID) -> list[dict[str, A
                 keep, fold = (raw_a, raw_b) if counts[raw_a] >= counts[raw_b] else (raw_b, raw_a)
                 found.append({"tag": keep, "alias": fold, "uses": [counts[keep], counts[fold]]})
     return found[:MAX_SUGGESTIONS]
+
+
+# --------------------------------------------------------------------- export / import ---
+
+EXPORT_VERSION = 1
+
+
+async def export_catalogue(db: AsyncSession, user_id: UUID) -> dict[str, Any] | None:
+    """The user's private catalogue for a library export; None when there is nothing to carry.
+    Deployment defaults belong to the deployment backup, not a personal export."""
+    resolver_tags = (
+        await db.scalars(
+            select(UserTag)
+            .where(UserTag.user_id == user_id, UserTag.archived_at.is_(None))
+            .order_by(UserTag.label)
+        )
+    ).all()
+    aliases = (await db.scalars(select(UserTagAlias).where(UserTagAlias.user_id == user_id))).all()
+    suppressed = sorted(
+        (
+            await db.scalars(
+                select(UserTagSuppression.tag_key).where(UserTagSuppression.user_id == user_id)
+            )
+        ).all()
+    )
+    if not resolver_tags and not suppressed:
+        return None
+    return {
+        "version": EXPORT_VERSION,
+        "tags": [
+            {
+                "label": tag.label,
+                "key": tag.key,
+                "kind": tag.kind,
+                "namespace": tag.namespace,
+                "aliases": sorted(a.alias_label for a in aliases if a.tag_id == tag.id),
+            }
+            for tag in resolver_tags
+        ],
+        "suppressed": suppressed,
+    }
+
+
+@dataclass
+class RestoredCatalogue:
+    tags: int = 0
+    errors: list[str] = field(default_factory=list)
+
+
+async def restore_catalogue(
+    db: AsyncSession, user_id: UUID, section: dict[str, Any] | None
+) -> RestoredCatalogue:
+    """Add an exported catalogue to the importer's own. Existing tags and aliases are kept as they
+    are; an entry that conflicts is reported and skipped, never overwritten."""
+    restored = RestoredCatalogue()
+    if not section:
+        return restored
+    if section.get("version") != EXPORT_VERSION:
+        restored.errors.append("Tag catalogue: unsupported export version; skipped.")
+        return restored
+    for entry in section.get("tags") or []:
+        try:
+            tag = await create_user_tag(
+                db,
+                user_id,
+                str(entry.get("label", "")),
+                kind=TagKind.SOURCE if entry.get("kind") == TagKind.SOURCE else TagKind.USER,
+                namespace=entry.get("namespace"),
+            )
+            restored.tags += 1
+            for alias in entry.get("aliases") or []:
+                await add_user_alias(db, user_id, tag.id, str(alias))
+        except (TagCatalogueError, AttributeError, TypeError) as exc:
+            restored.errors.append(f"Tag catalogue: {entry!r:.60} skipped ({exc}).")
+    for key in section.get("suppressed") or []:
+        try:
+            await set_suppression(db, user_id, str(key), True)
+        except TagCatalogueError as exc:
+            restored.errors.append(f"Tag catalogue: suppression {key!r:.40} skipped ({exc}).")
+    await db.commit()
+    return restored

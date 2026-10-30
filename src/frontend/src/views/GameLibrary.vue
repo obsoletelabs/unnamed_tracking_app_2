@@ -12,7 +12,8 @@ import LibrarySyncMenu from "../components/LibrarySyncMenu.vue";
 import SegmentedTabs from "../components/SegmentedTabs.vue";
 import type { ViewMode, CardDensity } from "../composables/useGameLibrary";
 import { useGameLibrary } from "../composables/useGameLibrary";
-import { computed, ref, defineAsyncComponent, watch } from "vue";
+import { computed, ref, defineAsyncComponent, onMounted, watch } from "vue";
+import { loadCatalogueRules } from "../services/tagCatalogue";
 import { quickTourActive } from "../state/quickTour";
 import type { Game } from "../types/game";
 import { relationshipKindLabel } from "../utils/gameIdentityGroups";
@@ -160,6 +161,9 @@ const {
   listRowVirtualizer,
   cardsInRow,
 } = useGameLibrary();
+
+// The person's tag catalogue changes how the tag picker groups spellings.
+onMounted(() => void loadCatalogueRules().catch(() => undefined));
 
 // Hand the first row to the browser before Vue mounts the buffered grid.
 // Later rows keep the shared viewport/scroll queue, including direction checks.

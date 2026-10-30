@@ -12,6 +12,7 @@ import {
   fetchAliasSuggestions,
   fetchTagCatalogue,
   fetchTagUsage,
+  loadCatalogueRules,
   foldTagKey,
   removeDefaultAlias,
   removeTagAlias,
@@ -57,10 +58,13 @@ async function load() {
     tags.value = catalogue.tags;
     defaults.value = catalogue.defaults;
     suppressed.value = catalogue.suppressed;
-    [usage.value, suggestions.value] = await Promise.all([
+    const [used, suggested] = await Promise.all([
       fetchTagUsage(),
       fetchAliasSuggestions(),
+      loadCatalogueRules(),
     ]);
+    usage.value = used;
+    suggestions.value = suggested;
   } catch (err) {
     error.value = err instanceof Error ? err.message : "Failed to load tags.";
   } finally {

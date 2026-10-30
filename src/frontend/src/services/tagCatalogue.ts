@@ -1,4 +1,5 @@
 import { failedRequest } from "./apiError";
+import { setCatalogueRules } from "../utils/genres";
 
 // Private and deployment-default tag labels and aliases (#267). The catalogue
 // only changes how tags are labelled and grouped; the tags stored on games and
@@ -147,4 +148,17 @@ export async function removeDefaultAlias(
   aliasId: string,
 ): Promise<void> {
   await send(`/api/tags/defaults/${id}/aliases/${aliasId}`, "DELETE");
+}
+
+/** Fetch the person's effective rules and hand them to the tag pickers and filters. */
+export async function loadCatalogueRules(): Promise<void> {
+  const body = await send<{ rules: Record<string, { label: string }> }>(
+    "/api/tags/resolution",
+    "GET",
+  );
+  setCatalogueRules(
+    Object.fromEntries(
+      Object.entries(body?.rules ?? {}).map(([key, rule]) => [key, rule.label]),
+    ),
+  );
 }

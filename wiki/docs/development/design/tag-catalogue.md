@@ -1,7 +1,7 @@
 # User-extensible tag catalogue without losing source tags
 
 Design proposal for [#267](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/267)
-(source: Rosefall #36). **Accepted design; backend implemented (phase 2), UI and export/import still to do.** Decisions
+(source: Rosefall #36). **Accepted design; implemented (phases 2 and 3 for games, statistics and the media filter).** Decisions
 confirmed on 19 October 2026. Paths start
 `src/backend/src/`.
 
@@ -147,9 +147,16 @@ and the administrator API under `/api/tags/defaults`; read-time resolution in th
 and the media tag filter. Stored `tags` arrays are never written by any of it, and a populated
 upgrade, downgrade and re-upgrade test proves it.
 
-Still to do: the catalogue settings page and the picker/filter integration in the clients (the
-`resolution` endpoint gives them the folded-spelling to label map), per-feature item counts in the
-preview, and the optional versioned `tag_catalogue` export/import section.
+Also implemented: the **Tag catalogue** settings page (Settings, Library), with administrator-managed
+defaults on the same page; an optional, versioned `tag_catalogue` section in the library export and
+import (private labels, aliases and suppressed defaults; importing adds to the importer's catalogue,
+never overwrites it, and an older file without the section imports as before); and the Games tag
+picker and filters, which read the person's rules through `GET /api/tags/resolution`.
+
+Still to do: wiring the same rules into the anime, TV and movie tag filters on the client, and
+per-feature item counts in the catalogue preview. A key difference to note for clients: the server
+folds with `casefold`, the browser with `toLowerCase`, so a few exotic spellings (`ß`) only group
+server-side.
 
 ## 12. Acceptance-criteria mapping
 
