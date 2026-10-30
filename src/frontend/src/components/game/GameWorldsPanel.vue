@@ -21,6 +21,9 @@ const {
   bulkDeleteArchives,
   onDeleteArchive,
   worldTrash,
+  trashFailed,
+  refreshFileTrash,
+  refreshWorldTrash,
   onRestoreArchive,
   worlds,
   worldsLoaded,
@@ -40,6 +43,8 @@ const {
       hint="Zip the world folder (the one containing level.dat), then drop it here. You'll be asked to name it."
       :archives="worlds"
       :trash="worldTrash"
+      :trash-failed="trashFailed.world"
+      @retry-trash="refreshWorldTrash"
       :loaded="worldsLoaded"
       :uploading="saveUploading.has('')"
       :error="filesError"
@@ -70,6 +75,8 @@ const {
         kind="modpack"
         :items="modpackFiles"
         :trash="modpackTrash"
+        :trash-failed="trashFailed.modpack"
+        @retry-trash="refreshFileTrash('modpack')"
         :loading="filesLoaded.modpack === null"
         :uploading="uploadingFiles"
         :error="null"

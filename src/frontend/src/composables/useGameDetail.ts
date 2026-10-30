@@ -13,7 +13,6 @@ import {
   setPlaytimeSeconds,
 } from "../services/games";
 import type { FieldChange } from "../services/games";
-import { peekAdjacentGameId } from "../state/libraryNav";
 import {
   HERO_WIDTH,
   POSTER_WIDTH,
@@ -82,11 +81,11 @@ import type { Achievement, Game, GameStatus } from "../types/game";
 import { computeScore } from "../utils/scoring";
 import DOMPurify from "dompurify";
 import { useConfirm, usePrompt } from "../state/dialog";
-import { matchesShortcut } from "../state/shortcuts";
 import { useGameProfiles } from "./useGameProfiles";
 import { useGameWorlds } from "./useGameWorlds";
 import { useFavoriteToggle } from "./useFavoriteToggle";
 import { useGameQuickEdits } from "./useGameQuickEdits";
+import { useAdjacentGameShortcut } from "./useAdjacentGameShortcut";
 import { useGameAchievements } from "./useGameAchievements";
 import { ApiRequestError } from "../services/apiError";
 import {
@@ -531,40 +530,11 @@ export function useGameDetail() {
       .map((e) => e.game);
   });
 
-  // --- J/K next/prev game, mirroring the library grid's own shortcut -------
-  function isTypingTarget(target: EventTarget | null): boolean {
-    if (!(target instanceof HTMLElement)) return false;
-    const tag = target.tagName;
-    return (
-      tag === "INPUT" ||
-      tag === "TEXTAREA" ||
-      tag === "SELECT" ||
-      target.isContentEditable
-    );
-  }
-  function onDetailKeydown(e: KeyboardEvent) {
-    if (
-      e.defaultPrevented ||
-      e.isComposing ||
-      e.repeat ||
-      e.getModifierState("AltGraph") ||
-      document.querySelector("dialog[open]")
-    )
-      return;
-    if (isTypingTarget(e.target)) return;
-    if (showEditModal.value || showDeleteConfirm.value) return;
-    if (!game.value) return;
-    const next = matchesShortcut("games.next", e);
-    if (next || matchesShortcut("games.previous", e)) {
-      const nextId = peekAdjacentGameId(game.value.id, next ? 1 : -1);
-      if (nextId) {
-        e.preventDefault();
-        router.push(`/games/${nextId}`);
-      }
-    }
-  }
-  window.addEventListener("keydown", onDetailKeydown);
-  onUnmounted(() => window.removeEventListener("keydown", onDetailKeydown));
+  useAdjacentGameShortcut(
+    game,
+    router,
+    () => showEditModal.value || showDeleteConfirm.value,
+  );
 
   const { favoriteError, toggleFavorite } = useFavoriteToggle(() => game.value);
 
@@ -1105,6 +1075,14 @@ export function useGameDetail() {
   // --- Trash: soft-deleted media stays recoverable for 7 days before the
   // background sweep purges it for good (features/trash/sweep.py) ----------
   const mediaTrash = ref<TrashedMediaItem[]>([]);
+  // A failed listing is shown as such (with a retry), never as an empty trash.
+  const trashFailed = ref({
+    media: false,
+    doc: false,
+    modpack: false,
+    save: false,
+    world: false,
+  });
   const showMediaTrash = ref(false);
   const trashedScreenshots = computed(() =>
     mediaTrash.value.filter((m) => m.kind === "screenshot"),
@@ -1126,8 +1104,9 @@ export function useGameDetail() {
     if (!game.value) return;
     try {
       mediaTrash.value = await fetchGameMediaTrash(game.value.id, true);
+      trashFailed.value.media = false;
     } catch {
-      // trash listing failing silently isn't worth blocking the main view
+      trashFailed.value.media = true;
     }
   }
 
@@ -1176,20 +1155,16 @@ export function useGameDetail() {
     if (!game.value) return;
     const owners = new Map(mediaItems.value.map((m) => [m.id, ownerOf(m)]));
     const pageId = game.value.id;
-    try {
-      const updated = await Promise.all(
-        updates.map((u) =>
-          updateMediaItem(owners.get(u.id) ?? pageId, u.id, u.patch),
-        ),
-      );
-      for (const u of updated) {
-        const index = mediaItems.value.findIndex((m) => m.id === u.id);
-        if (index !== -1)
-          mediaItems.value[index] = { ...mediaItems.value[index], ...u };
-      }
-    } catch (err) {
-      mediaError.value = err instanceof Error ? err.message : "Failed to save";
-    }
+    const results = await Promise.allSettled(
+      updates.map((u) =>
+        updateMediaItem(owners.get(u.id) ?? pageId, u.id, u.patch),
+      ),
+    );
+    const failed = results.filter((r) => r.status === "rejected").length;
+    // Some may have saved and some not: re-read so the list matches the server.
+    if (game.value?.id === pageId) await reloadMediaForCurrentTab();
+    if (failed && game.value?.id === pageId)
+      mediaError.value = `${failed} of ${updates.length} could not be saved.`;
   }
 
   async function bulkDeleteMedia(items: MediaItem[]) {
@@ -1466,8 +1441,9 @@ export function useGameDetail() {
         kind,
         true,
       );
+      trashFailed.value[kind] = false;
     } catch {
-      // trash listing failing silently isn't worth blocking the main view
+      trashFailed.value[kind] = true;
     }
   }
 
@@ -1630,20 +1606,19 @@ export function useGameDetail() {
       danger: true,
     });
     if (!ok) return;
-    try {
-      for (const archive of items)
-        await deleteArchive(ownerOf(archive), archive.id);
-      if (isWorld) {
-        await refreshWorlds();
-        await refreshWorldTrash();
-      } else {
-        await refreshSaveArchives();
-        await refreshSaveTrash();
-      }
-    } catch (err) {
-      filesError.value =
-        err instanceof Error ? err.message : "Failed to delete";
+    let failed = 0;
+    for (const archive of items)
+      await deleteArchive(ownerOf(archive), archive.id).catch(() => failed++);
+    // Some may be in the trash already: always re-read both lists.
+    if (isWorld) {
+      await refreshWorlds();
+      await refreshWorldTrash();
+    } else {
+      await refreshSaveArchives();
+      await refreshSaveTrash();
     }
+    if (failed)
+      filesError.value = `${failed} of ${items.length} could not be moved to the trash.`;
   }
 
   async function onDeleteArchive(archive: GameArchiveData, isWorld: boolean) {
@@ -1683,8 +1658,9 @@ export function useGameDetail() {
     if (!game.value) return;
     try {
       saveTrash.value = await fetchArchiveTrash(game.value.id, "save", true);
+      trashFailed.value.save = false;
     } catch {
-      // trash listing failing silently isn't worth blocking the main view
+      trashFailed.value.save = true;
     }
   }
 
@@ -1692,8 +1668,9 @@ export function useGameDetail() {
     if (!game.value) return;
     try {
       worldTrash.value = await fetchArchiveTrash(game.value.id, "world_save");
+      trashFailed.value.world = false;
     } catch {
-      // same as above
+      trashFailed.value.world = true;
     }
   }
 
@@ -1783,6 +1760,11 @@ export function useGameDetail() {
 
   return {
     favoriteError,
+    trashFailed,
+    refreshMediaTrash,
+    refreshFileTrash,
+    refreshSaveTrash,
+    refreshWorldTrash,
     quickEditError,
     confirm,
     route,

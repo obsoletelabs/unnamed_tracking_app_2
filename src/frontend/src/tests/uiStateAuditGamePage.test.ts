@@ -9,6 +9,7 @@ import * as archives from "../services/gameArchives";
 import GameMediaPanel from "../components/GameMediaPanel.vue";
 import GameArchivesPanel from "../components/GameArchivesPanel.vue";
 import GameNotesPanel from "../components/GameNotesPanel.vue";
+import { closeDialog } from "../state/dialog";
 
 const { mainId, otherId } = vi.hoisted(() => ({
   mainId: "00000000-0000-4000-8000-000000000001",
@@ -318,5 +319,61 @@ describe("game page quick changes", () => {
     model.retryGame();
     await flushPromises();
     expect(games.fetchGames).toHaveBeenCalledTimes(2); // loaded once, kept
+  });
+});
+
+describe("game page partial failures", () => {
+  it("names a failed trash listing instead of showing an empty trash", async () => {
+    const model = await detail();
+    vi.mocked(media.fetchGameMediaTrash).mockRejectedValueOnce(
+      new Error("Down"),
+    );
+    await model.refreshMediaTrash();
+    expect(model.trashFailed.value.media).toBe(true);
+    vi.mocked(media.fetchGameMediaTrash).mockResolvedValueOnce([]);
+    await model.refreshMediaTrash(); // Retry
+    expect(model.trashFailed.value.media).toBe(false);
+
+    vi.mocked(archives.fetchArchiveTrash).mockRejectedValueOnce(
+      new Error("Down"),
+    );
+    await model.refreshSaveTrash();
+    expect(model.trashFailed.value.save).toBe(true);
+  });
+
+  it("reports how many bulk media edits failed and re-reads the list", async () => {
+    const model = await detail();
+    vi.mocked(media.updateMediaItem)
+      .mockResolvedValueOnce({ id: "a" } as media.MediaItem)
+      .mockRejectedValueOnce(new Error("Down"));
+    vi.mocked(media.listGameScreenshots).mockResolvedValue([]);
+    const before = vi.mocked(media.listGameScreenshots).mock.calls.length;
+    await model.bulkSaveMedia([
+      { id: "a", patch: { note: "x" } },
+      { id: "b", patch: { note: "x" } },
+    ]);
+    expect(model.mediaError.value).toBe("1 of 2 could not be saved.");
+    expect(vi.mocked(media.listGameScreenshots).mock.calls.length).toBe(
+      before + 1,
+    );
+  });
+
+  it("keeps deleting after one save fails and always refreshes both lists", async () => {
+    const model = await detail();
+    vi.mocked(archives.deleteArchive)
+      .mockRejectedValueOnce(new Error("Down"))
+      .mockResolvedValueOnce(undefined as never);
+    const pending = model.bulkDeleteArchives(
+      [{ id: "one" }, { id: "two" }] as archives.GameArchiveData[],
+      false,
+    );
+    await flushPromises();
+    closeDialog(true);
+    await pending;
+    expect(archives.deleteArchive).toHaveBeenCalledTimes(2);
+    expect(archives.fetchArchiveTrash).toHaveBeenCalled();
+    expect(model.filesError.value).toBe(
+      "1 of 2 could not be moved to the trash.",
+    );
   });
 });

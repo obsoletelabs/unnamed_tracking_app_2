@@ -54,6 +54,8 @@ const props = defineProps<{
   gameId?: string;
   items: T[];
   trash: TR[];
+  // the deleted-items listing failed, so an empty `trash` means "unknown"
+  trashFailed?: boolean;
   achievements?: Achievement[];
   profiles?: GameProfile[];
   loading: boolean;
@@ -82,6 +84,7 @@ const emit = defineEmits<{
   thumbnail: [item: MediaItem, blob: Blob, duration: number];
   problem: [message: string];
   retry: [];
+  "retry-trash": [];
 }>();
 
 const loadFailed = computed(() => props.failed || !!props.error);
@@ -609,6 +612,15 @@ onBeforeUnmount(() => {
         >
           Deleted ({{ trash.length }})
         </button>
+        <button
+          v-else-if="trashFailed"
+          type="button"
+          class="ui-btn ui-btn-ghost"
+          title="The deleted items could not be loaded"
+          @click="emit('retry-trash')"
+        >
+          Deleted: couldn't load, retry
+        </button>
       </div>
       <button
         v-else-if="trash.length"
@@ -618,6 +630,15 @@ onBeforeUnmount(() => {
         @click="showTrash = !showTrash"
       >
         Deleted ({{ trash.length }})
+      </button>
+      <button
+        v-else-if="trashFailed"
+        type="button"
+        class="ui-btn ui-btn-ghost"
+        title="The deleted items could not be loaded"
+        @click="emit('retry-trash')"
+      >
+        Deleted: couldn't load, retry
       </button>
       <input
         ref="picker"
