@@ -9,10 +9,42 @@ defaults:
   run:
     shell: bash
 
+# Backend tests are split by test file into as many shards as the recorded timings in
+# tools/backend_test_shards_timings.json need to keep each shard near the target, within the
+# limits below. Change these two values to retune the split.
+env:
+  # Recorded seconds of test time per shard. Setup (checkout, dependencies, backup tools and the
+  # database migration) adds a few minutes to each shard's wall-clock time.
+  BACKEND_TEST_TARGET_SECONDS: "600"
+  BACKEND_TEST_MAX_SHARDS: "8"
+
 jobs:
-  backend-tests:
-    name: Backend tests
+  # Sizes the shards from the checked-in timings and the test files that exist now (files
+  # without a recorded duration get a default weight). It needs no database and fails the run
+  # when a test file would be left out of, or placed in, more than one shard.
+  backend-test-plan:
+    name: Backend test shard plan
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      count: ${{ steps.plan.outputs.count }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+      - name: Plan test shards
+        id: plan
+        run: |
+          python3 tools/backend_test_shards.py check
+          python3 tools/backend_test_shards.py github-output | tee -a "$GITHUB_OUTPUT"
+
+  backend-tests:
+    name: Backend tests (shard ${{ matrix.shard }})
+    needs: backend-test-plan
+    runs-on: ubuntu-latest
+    strategy:
+      # Let every shard finish so one failure still reports the others.
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.backend-test-plan.outputs.matrix) }}
 
     services:
       postgres:
@@ -69,31 +101,76 @@ jobs:
       - name: Prepare test database
         run: alembic upgrade head 2>&1 | tee migrations-output.txt
 
+      # Each shard runs whole test files against its own PostgreSQL service.
       - name: Run tests
+        env:
+          SHARD: ${{ matrix.shard }}
+          SHARD_COUNT: ${{ needs.backend-test-plan.outputs.count }}
         run: |
           set -o pipefail
-          pytest 2>&1 | tee pytest-output.txt
+          mapfile -t test_files < <(
+            python3 ../../tools/backend_test_shards.py files --shard "$SHARD" --shards "$SHARD_COUNT"
+          )
+          if [ "${#test_files[@]}" -eq 0 ]; then
+            echo "Shard $SHARD has no test files; refusing to run the whole suite" >&2
+            exit 1
+          fi
+          echo "Shard $SHARD of $SHARD_COUNT runs ${#test_files[@]} test files"
+          pytest --junitxml=pytest-junit.xml "${test_files[@]}" 2>&1 | tee pytest-output.txt
 
-      # Repository-level tests of tools/ need the complete checkout, so they stay
-      # outside the backend-only suite that the development container also runs.
+      # The JUnit reports feed `tools/backend_test_shards.py update-timings`.
+      - name: Upload test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: pytest-diagnostics-shard-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            src/backend/pytest-output.txt
+            src/backend/pytest-junit.xml
+            src/backend/migrations-output.txt
+          if-no-files-found: ignore
+
+  # Repository-level tests of tools/ need the complete checkout, so they stay
+  # outside the backend-only suite that the development container also runs.
+  # They run once, not once per shard.
+  repository-tool-tests:
+    name: Repository tool tests
+    runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: ${{ github.workspace }}/src/backend
+      DATABASE_URL: postgresql+psycopg://test:test@localhost:5432/unnamed_tracking_test
+      PRIMARY_USER_USERNAME: test
+      PRIMARY_USER_EMAIL: test@example.com
+      PRIMARY_USER_PASSWORD: test-password
+      SECRET_KEY: XJVqc8r7Uj801VzGUYhlQV8A2tZTBepjOYEiP2pTzFk=
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: src/backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -r src/backend/requirements.txt
+
       - name: Run repository-level tool tests
-        if: ${{ !cancelled() }}
-        working-directory: ${{ github.workspace }}
         run: |
           set -o pipefail
           python -m pytest tools/tests/test_plugin_acceptance_acquisition.py \
-            tools/tests/test_environment_reference.py 2>&1 \
-            | tee src/backend/repository-pytest-output.txt
+            tools/tests/test_environment_reference.py \
+            tools/tests/test_backend_test_shards.py 2>&1 \
+            | tee repository-pytest-output.txt
 
       - name: Upload test diagnostics
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: pytest-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            src/backend/pytest-output.txt
-            src/backend/repository-pytest-output.txt
-            src/backend/migrations-output.txt
+          name: repository-pytest-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: repository-pytest-output.txt
           if-no-files-found: ignore
 
   backend-pylint:
@@ -103,7 +180,9 @@ jobs:
   backend-checks:
     if: ${{ !cancelled() }}
     needs:
+      - backend-test-plan
       - backend-tests
+      - repository-tool-tests
       - migration-graph
       - backend-file-size
       - backend-mypy
