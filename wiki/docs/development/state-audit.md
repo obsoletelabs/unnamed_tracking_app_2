@@ -43,6 +43,15 @@ flows named below, not of every screen.
 | Steam sign-in dialog | connection request fails on open | a "Connect Steam" sign-in form was offered, hiding an existing connection or pending sign-in | **fixed**: only the error and **Try again** until the connection is known |
 | Settings > Connections | the credentials request fails | every built-in account was listed as "Not connected" (with a Connect button) beside a one-line error, so a connected Steam or PlayStation account looked disconnected | **fixed** ([#334](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/334)): no built-in accounts are listed until the status is known; the error has **Retry** (`uiStateAuditConnections.test.ts`) |
 | PlayStation connection dialog | the status request fails | showed the default "Not connected" pill and a Connect form, and an old error was never cleared on reload | **fixed**: the failure with **Retry** replaces the form until the status is read; reloading clears the old error |
+| Anime, movie and TV detail pages: favourite, note, status, rating | a save fails; two quick changes | each change reverted silently (the status rollback did nothing, since the picker had already changed the value), the typed note was lost, and two saves of the whole record could overwrite each other | **fixed** ([#396](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/396)): saves for a title go one at a time, each as the last accepted record plus its own change; a failure is named in the hero and undoes only that change; the note editor stays open with the text (`mediaQuickSave.test.ts`) |
+| Anime, movie and TV detail pages: Related/Recommended preview | a quick second click; the library request fails | the first title's preview could replace the second; a failed library read made the click do nothing | **fixed**: only the newest preview writes, and a failed library read still opens the preview (`uiStateAuditMediaDetail.test.ts`) |
+| Game page: status, rating, resume note, playtime | a save fails; the page moves to another game first | a failed change reverted silently, and the rollback or a late answer could land on the game opened since; a failed playtime log said nothing | **fixed**: status and rating are saved one at a time per field and return to the last accepted value on their own game with a message; late note and playtime answers stay on their own game (`uiStateAuditGamePage.test.ts`) |
+| Game page: media, file and save edit dialogs | the save fails | the dialog closed before the save, so the typed values were lost | **fixed**: the dialog waits for the save, closes only on success and shows the error with the values kept (`editDialogDrafts.test.ts`) |
+| Game page: bulk media edits, bulk save/world deletes | one item fails | `Promise.all` left the gallery out of step; deletes stopped at the first failure without refreshing | **fixed**: every item is tried, the list (and trash) is always re-read, and "n of m" failures are reported |
+| Game page: media, file, save and world trash | the trash listing fails | swallowed, so a failure looked like an empty trash | **fixed**: "Deleted: couldn't load, retry" replaces the Deleted button |
+| Game page: similar games | the library request fails | never retried for the page's lifetime | **fixed**: tried again when the next game loads |
+| Login | `/api/auth/oidc/status` or the password-reset check fails | treated as "SSO off" and "reset off" | **fixed**: "Single sign-on options could not be loaded" with **Try again**; the reset link stays when its status is unknown (`oidcLoginErrors.test.ts`) |
+| Settings > Connections: Steam fields | credentials re-read after a sync or PlayStation action | the saved values were prefilled again over an unsaved edit | **fixed**: a field is refilled only while it still shows the prefilled value (`uiStateAuditConnections.test.ts`) |
 | Statistics burn-down card | games request fails | the optional card is silently omitted; the main statistics keep their own error state | left |
 | Plugin popup UI and logs | request fails | intentionally tolerated; the popup shows the remaining sections | left |
 
@@ -64,7 +73,7 @@ Login, accepting an invitation, first-run setup and the upload section were read
 
 ## Not audited yet
 
-Notification pages (they follow the notification overhaul contract), the Connections credentials and PlayStation dialog load failures (the credentials request failing shows every account as "Not connected"; the PlayStation status failing shows the default "Not connected" form), and the plugin manager's remaining handlers. The game page and the anime, movie and TV detail views were read and their load states fixed, but each still has the unfixed items listed above, found by reading the code rather than against a running stack with provider data.
+Notification pages (they follow the notification overhaul contract) and the plugin manager's remaining handlers. The #396 fixes above were made by reading the code and covered by tests; Classic theme and phone width for the screens changed in #392 to #395 and #396 have not yet been checked against a running stack.
 
 ## How to check a flow
 
@@ -100,12 +109,10 @@ Achievement notes are covered by tests only (the test stack has no achievements)
 | Saves, first load failed | ![Saves failure with Retry](../assets/ui-state-audit/game-saves-load-failure-after.png) |
 | Notes, list could not be loaded | ![Notes failure with Retry](../assets/ui-state-audit/game-notes-load-failure-after.png) |
 
-### Found on the game page, not fixed yet
+### Found on the game page
 
-- Edit dialogs for media, files and saves close before the save finishes, so the typed values are lost when the save fails.
-- Late answers can still write into the wrong game after a status, rating, resume-note or playtime change, and a failed status or rating change reverts silently (and onto the wrong game after navigating).
-- Bulk media edits and bulk save deletes apply or trash some items and not others when one fails, and do not refresh the list.
-- Trash listings swallow errors, so a failed fetch looks like an empty trash.
+The edit-dialog, quick-change, bulk and trash findings first listed here are fixed (see the checklist above, [#396](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/396)).
+
 ### Setup, invitations and Steam settings
 
 | Flow | After |
