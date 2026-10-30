@@ -34,7 +34,7 @@ from src.database.models.game_profile import GameProfile
 from src.database.models.inbox_item import InboxItem
 from src.database.models.media_item import MediaItem
 from src.database.session import SessionLocal
-from src.features import game_folders
+from src.features import game_folders, remote_launch
 from src.features.trash.archive_trash import purge_archive_trash, trash_files_dir, trash_root
 from src.features.trash.game_trash import game_trash_dir, purge_game_trash
 from src.features.trash.inbox_trash import purge_inbox_file
@@ -379,5 +379,13 @@ async def run_sweep_once() -> dict[str, int]:
     # pylint: disable-next=broad-exception-caught
     except Exception:
         logger.exception("Expired session cleanup failed")
+        result["failed_parts"] += 1
+    try:
+        async with SessionLocal() as db:
+            result["remote_launch_requests_removed"] = await remote_launch.purge_history(db)
+    # Keep launch cleanup independent from the other maintenance passes.
+    # pylint: disable-next=broad-exception-caught
+    except Exception:
+        logger.exception("Remote launch history cleanup failed")
         result["failed_parts"] += 1
     return result

@@ -60,6 +60,7 @@ from src.database.models import (
     plugin_permission_audit,  # noqa: F401
     plugin_permissions,  # noqa: F401
     public_app,  # noqa: F401
+    remote_launch,  # noqa: F401
     tag_catalogue,  # noqa: F401
     tv_show,  # noqa: F401
     user,  # noqa: F401

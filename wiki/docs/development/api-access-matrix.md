@@ -21,7 +21,7 @@ runs, not from this text.
 | `admin` | A `user` whose account is an administrator; an API key additionally needs the `admin` scope ([API key scopes](#api-key-scopes)) | The same exclusions; ordinary users get 403 |
 | `browser-session` | Browser session only (consent, Connected apps) | API keys and every integration credential |
 | `delegated-grant` | `utd_` credential with the route's scope, live grant, enabled client and active account | Browser sessions, `utk_` keys |
-| `user-or-app` | A `user` credential, or a `utd_` app grant that carries the route's scope (`library.sync`, `saves.read`, `saves.write`, `content.write`) for a live grant, allowed client and active account | `utp_`, `utpm_`; a `utd_` grant without the scope (403) or that is unknown, revoked or switched off (401) |
+| `user-or-app` | A `user` credential, or a `utd_` app grant that carries the route's scope (`library.sync`, `saves.read`, `saves.write`, `content.write`, `games.launch`) for a live grant, allowed client and active account | `utp_`, `utpm_`; a `utd_` grant without the scope (403) or that is unknown, revoked or switched off (401) |
 | `plugin-admin` / `plugin-reader` | Administrator session/key, or a scoped `utpm_` management credential | Ordinary users (403), `utd_`/`utp_` |
 | `plugin-runtime` | Short-lived runtime credential; calls pass the capability gateway | Browser and API keys |
 | `plugin-route` | The plugin's declared route authentication, enforced before dispatch | - |
@@ -302,6 +302,13 @@ are redacted. Validation errors never echo submitted values.
 | GET | `/api/game-identity/names/games/{game_id}` | user | Own game identity state and source observations; foreign identifiers are refused. |
 | GET | `/api/game-identity/names/reviews` | user | Own game identity state and source observations; foreign identifiers are refused. |
 | GET | `/api/playnite/contract` | user-or-app | Own game identity state and source observations; foreign identifiers are refused. App grants need `library.sync`. |
+| GET | `/api/playnite/launch/v1/contract` | user-or-app | Contract discovery; delegated credentials need games.launch. |
+| GET | `/api/playnite/launch/v1/devices` | browser-session | Own opted-in Playnite computers only. |
+| PUT | `/api/playnite/launch/v1/device` | delegated-grant | games.launch on the approved Playnite desktop grant; configures only that receiver. |
+| POST | `/api/playnite/launch/v1/requests` | browser-session | Queue an owned game for an owned, live Playnite receiver. |
+| GET | `/api/playnite/launch/v1/requests/{request_id}` | browser-session | Read only the current user’s launch request. |
+| POST | `/api/playnite/launch/v1/requests/claim` | delegated-grant | games.launch; atomically dispatch only this receiver’s requests. |
+| POST | `/api/playnite/launch/v1/requests/{request_id}/result` | delegated-grant | games.launch; report only this receiver’s dispatched request. |
 | POST | `/api/game-identity/counters/{counter_id}/group` | user | Own game identity state and source observations; foreign identifiers are refused. |
 | POST | `/api/game-identity/counters/{counter_id}/members/{observation_id}/ungroup` | user | Own game identity state and source observations; foreign identifiers are refused. |
 | POST | `/api/game-identity/names/repair` | user | Own game identity state and source observations; foreign identifiers are refused. |
