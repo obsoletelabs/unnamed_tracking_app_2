@@ -16,8 +16,11 @@ after the game identity model and the revision before the current head.
 import hashlib
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
+import tarfile
 import time
 from collections.abc import Callable
 from contextlib import ExitStack
@@ -35,6 +38,7 @@ from src.database.migrate import _LOCK_ID
 
 BACKEND = Path(__file__).parents[1]
 HEAD = "head"
+HEAD_OF_RELEASE = "heads"  # a release may end in more than one head; all are applied
 
 # (revision, why it is a meaningful starting point)
 STARTS = [
@@ -46,6 +50,62 @@ STARTS = [
     ("50b007897f73", "merge after the game identity model and display names"),
     ("a4c7e19b52d8", "revision before the current head"),
 ]
+
+# A release tag is a published point too. The schema for a tag is built with the migrations that
+# tag shipped (exported from Git), so histories that were later squashed or rewritten are still
+# exercised, then upgraded with the current code. Only releases count: labelled previews and
+# branch tags are not starting points.
+RELEASE_TAG = re.compile(r"^v\d+\.\d+\.\d+(-(alpha|beta|rc)\.\d+)?$")
+MIGRATIONS = "src/backend/src/database/migrations"
+REPOSITORY = BACKEND.parents[1]
+
+
+def released_tags() -> list[str]:
+    try:
+        listed = subprocess.run(
+            ["git", "tag", "--list", "v*"],
+            cwd=REPOSITORY,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=True,
+        ).stdout.split()
+    except (OSError, subprocess.SubprocessError):
+        return []
+    return sorted(tag for tag in listed if RELEASE_TAG.match(tag))
+
+
+def export_release_migrations(tag: str, destination: Path) -> Path:
+    """Write the Alembic configuration `tag` shipped under `destination`; return its ini path."""
+    archive = subprocess.run(
+        ["git", "archive", "--format=tar", tag, "--", MIGRATIONS],
+        cwd=REPOSITORY,
+        capture_output=True,
+        timeout=120,
+        check=True,
+    ).stdout
+    destination.mkdir(parents=True)
+    archive_path = destination / "migrations.tar"
+    archive_path.write_bytes(archive)
+    with tarfile.open(archive_path) as bundle:
+        bundle.extractall(destination, filter="data")
+    archive_path.unlink()
+    script_location = destination / MIGRATIONS
+    # Only the revision files are history. The environment script wires Alembic to the current
+    # application and the tag's copy may import models that have since been renamed or removed.
+    shutil.copy2(BACKEND / "src" / "database" / "migrations" / "env.py", script_location / "env.py")
+    # Reuse the current alembic.ini (logging and options) but point it at the tag's revisions.
+    config = destination / "alembic.ini"
+    template = (BACKEND / "alembic.ini").read_text(encoding="utf-8")
+    template = re.sub(
+        r"^script_location *=.*$", f"script_location = {script_location.as_posix()}", template, flags=re.M
+    )
+    template = re.sub(
+        r"^prepend_sys_path *=.*$", f"prepend_sys_path = {BACKEND.as_posix()}", template, flags=re.M
+    )
+    config.write_text(template, encoding="utf-8")
+    return config
+
 
 # Intentional transformations. A (table, column) listed here may change value during an
 # upgrade; a table listed in DROPPED_TABLES may disappear. Anything else that differs fails.
@@ -74,9 +134,11 @@ def _urls(schema: str) -> tuple[str, dict[str, str]]:
     return admin, environment
 
 
-def _alembic(environment: dict[str, str], *arguments: str) -> str:
+def _alembic(
+    environment: dict[str, str], *arguments: str, config: str | Path = "alembic.ini"
+) -> str:
     result = subprocess.run(
-        [sys.executable, "-m", "alembic", "-c", "alembic.ini", *arguments],
+        [sys.executable, "-m", "alembic", "-c", str(config), *arguments],
         cwd=BACKEND,
         env=environment,
         capture_output=True,
@@ -328,8 +390,9 @@ def _foreign_keys_hold(connection: psycopg.Connection, schema: str) -> list[str]
 class Upgrade:
     """One isolated schema, migrated to `start`, populated and ready to upgrade."""
 
-    def __init__(self, start: str, tmp_path: Path):
+    def __init__(self, start: str, tmp_path: Path, config: str | Path = "alembic.ini"):
         self.start = start
+        self.config = config
         self.schema = "migration_matrix_" + uuid4().hex
         self.admin_url, self.environment = _urls(self.schema)
         self.files = tmp_path / "data"
@@ -344,7 +407,7 @@ class Upgrade:
         with psycopg.connect(self.admin_url, autocommit=True) as connection:
             connection.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(self.schema)))
             try:
-                _alembic(self.environment, "upgrade", self.start)
+                _alembic(self.environment, "upgrade", self.start, config=self.config)
                 connection.execute(
                     sql.SQL("SET search_path TO {}").format(sql.Identifier(self.schema))
                 )
@@ -408,6 +471,31 @@ def test_populated_database_upgrades_to_head_without_losing_records(isolated, st
     upgrade = isolated(start)
     before, after, populated = upgrade.run()
     _assert_preserved(upgrade, before, after, populated)
+
+
+RELEASES = released_tags()
+
+
+@pytest.mark.skipif(not RELEASES, reason="no release tags are available in this checkout")
+@pytest.mark.parametrize("tag", RELEASES, ids=RELEASES)
+def test_database_built_by_a_release_tags_migrations_upgrades_to_head(tag, tmp_path):
+    """Build the schema with the migrations the release shipped, populate it, upgrade it."""
+    config = export_release_migrations(tag, tmp_path / "release")
+    upgrade = Upgrade(HEAD_OF_RELEASE, tmp_path, config)
+    try:
+        before, after, populated = upgrade.run()
+        _assert_preserved(upgrade, before, after, populated)
+    finally:
+        upgrade.drop()
+        shutil.rmtree(tmp_path / "release", ignore_errors=True)
+
+
+def test_released_tags_exclude_previews_and_branch_tags():
+    assert RELEASE_TAG.match("v0.0.3")
+    assert RELEASE_TAG.match("v0.0.1-alpha.1")
+    assert RELEASE_TAG.match("v0.0.5-beta.2")
+    assert not RELEASE_TAG.match("v0.0.5-citest.1")
+    assert not RELEASE_TAG.match("feat-branch")
 
 
 def test_upgrade_in_two_stages_and_repeated_upgrade_change_nothing(isolated):
