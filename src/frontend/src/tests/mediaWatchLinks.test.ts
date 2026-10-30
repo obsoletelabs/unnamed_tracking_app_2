@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { watchLinks } from "../services/mediaWatchLinks";
+import { defaultWatchLink, watchLinks } from "../services/mediaWatchLinks";
 
 describe("watchLinks", () => {
   it("offers only available sources that recorded a web address", () => {
@@ -20,6 +20,7 @@ describe("watchLinks", () => {
         id: "jellyfin:server:user",
         label: "Jellyfin · Home",
         url: "http://jellyfin.lan:8096/web/#!/details?id=abc",
+        lastPlayedAt: null,
       },
     ]);
   });
@@ -34,5 +35,21 @@ describe("watchLinks", () => {
         },
       ])[0].label,
     ).toBe("Jellyfin");
+  });
+
+  it("defaults to the last used source, else the most recently played", () => {
+    const link = (id: string, lastPlayedAt: number | null) => ({
+      id,
+      label: id,
+      url: `https://${id}.example/`,
+      lastPlayedAt,
+    });
+    const links = [link("a", null), link("b", 100), link("c", 200)];
+    expect(defaultWatchLink(links, "a")?.id).toBe("a");
+    expect(defaultWatchLink(links, "gone")?.id).toBe("c");
+    expect(defaultWatchLink([link("a", null), link("b", null)], null)?.id).toBe(
+      "a",
+    );
+    expect(defaultWatchLink([], null)).toBeNull();
   });
 });

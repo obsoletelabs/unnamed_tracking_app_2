@@ -6,6 +6,8 @@ export interface WatchLink {
   id: string;
   label: string;
   url: string;
+  // when this source last reported the title being played (epoch seconds)
+  lastPlayedAt: number | null;
 }
 
 interface SourceRow {
@@ -14,6 +16,7 @@ interface SourceRow {
   available?: unknown;
   watch_url?: unknown;
   watch_label?: unknown;
+  playback?: { last_played_at?: unknown } | null;
 }
 
 function webAddress(value: unknown): string | null {
@@ -32,6 +35,22 @@ function sourceName(source: string): string {
   return source ? source.charAt(0).toUpperCase() + source.slice(1) : "library";
 }
 
+/**
+ * Which source the main button opens: the one the person used last, else the one that most
+ * recently reported the title being played, else the first.
+ */
+export function defaultWatchLink(
+  links: WatchLink[],
+  remembered: string | null,
+): WatchLink | null {
+  const recent = [...links]
+    .filter((link) => link.lastPlayedAt !== null)
+    .sort((a, b) => (b.lastPlayedAt ?? 0) - (a.lastPlayedAt ?? 0))[0];
+  return (
+    links.find((link) => link.id === remembered) ?? recent ?? links[0] ?? null
+  );
+}
+
 /** The sources that still have the title and recorded a web address to open it at. */
 export function watchLinks(sources: SourceRow[]): WatchLink[] {
   const links: WatchLink[] = [];
@@ -47,6 +66,10 @@ export function watchLinks(sources: SourceRow[]): WatchLink[] {
       id: `${source}:${typeof row.account_scope === "string" ? row.account_scope : ""}`,
       label,
       url,
+      lastPlayedAt:
+        typeof row.playback?.last_played_at === "number"
+          ? row.playback.last_played_at
+          : null,
     });
   }
   return links;

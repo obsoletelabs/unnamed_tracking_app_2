@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import type { MediaType } from "../services/mediaExtras";
-import { fetchWatchLinks, type WatchLink } from "../services/mediaWatchLinks";
+import {
+  defaultWatchLink,
+  fetchWatchLinks,
+  type WatchLink,
+} from "../services/mediaWatchLinks";
 import { providerLinks } from "../utils/mediaProviderLinks";
 
 const props = defineProps<{
@@ -13,20 +17,48 @@ const emit = defineEmits<{ present: [value: boolean] }>();
 
 const watchSources = ref<WatchLink[]>([]);
 const sites = computed(() => providerLinks(props.mediaType, props.providerIds));
-// The main button is the first place the title can be watched; everything else is in the menu.
-const primary = computed(() => watchSources.value[0] ?? null);
+const STORAGE_KEY = "watch-source";
+
+function readRemembered(): string | null {
+  try {
+    return window.localStorage.getItem(STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+// The source the person used last wins, else the one that most recently reported it played.
+const remembered = ref<string | null>(readRemembered());
+const primary = computed(() =>
+  defaultWatchLink(watchSources.value, remembered.value),
+);
+// Like the game launcher's menu, this lists every choice, including the one on the button.
 const menuItems = computed(() => [
-  ...watchSources.value.slice(1).map((link) => ({
+  ...watchSources.value.map((link) => ({
     id: `watch:${link.id}`,
     text: `Watch in ${link.label}`,
     url: link.url,
+    source: link.id,
+    site: false,
   })),
   ...sites.value.map((link) => ({
     id: `open:${link.id}`,
     text: `Open in ${link.label}`,
     url: link.url,
+    source: null,
+    site: true,
   })),
 ]);
+
+function remember(source: string | null) {
+  if (!source) return;
+  remembered.value = source;
+  try {
+    window.localStorage.setItem(STORAGE_KEY, source);
+  } catch {
+    // The choice just is not remembered.
+  }
+}
 
 // The links were saved by the library sync, so this is one cheap read; a failure just means no button.
 watch(
@@ -98,15 +130,16 @@ onBeforeUnmount(() => listen(false));
     <a
       v-if="primary"
       class="watch-main"
-      :class="{ 'has-menu': menuItems.length }"
+      :class="{ 'has-menu': menuItems.length > 1 }"
       :href="primary.url"
       target="_blank"
       rel="noopener noreferrer"
+      @click="remember(primary.id)"
     >
       ▶ Watch in {{ primary.label }}
     </a>
     <button
-      v-if="menuItems.length"
+      v-if="menuItems.length > 1 || (!primary && menuItems.length)"
       type="button"
       class="watch-toggle"
       :class="{ alone: !primary }"
@@ -125,13 +158,21 @@ onBeforeUnmount(() => listen(false));
         role="menu"
         :style="menuStyle"
       >
-        <li v-for="item in menuItems" :key="item.id" role="none">
+        <li
+          v-for="item in menuItems"
+          :key="item.id"
+          role="none"
+          :class="{ site: item.site }"
+        >
           <a
             role="menuitem"
             :href="item.url"
             target="_blank"
             rel="noopener noreferrer"
-            @click="close"
+            @click="
+              remember(item.source);
+              close();
+            "
             >{{ item.text }}</a
           >
         </li>
@@ -197,6 +238,13 @@ onBeforeUnmount(() => listen(false));
   border: 1px solid color-mix(in srgb, var(--ui-text, #000) 15%, transparent);
   border-radius: 10px;
   box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+}
+.watch-menu li.site:first-of-type,
+.watch-menu li:not(.site) + li.site {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid
+    color-mix(in srgb, var(--ui-text, #000) 12%, transparent);
 }
 .watch-menu a {
   display: block;
