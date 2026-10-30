@@ -137,6 +137,9 @@ const KeyboardShortcutsSection = lazySettingsSection(
 const ConnectionsSection = lazySettingsSection(
   () => import("../components/settings/ConnectionsSection.vue"),
 );
+const TagCatalogueSection = lazySettingsSection(
+  () => import("../components/settings/TagCatalogueSection.vue"),
+);
 const ApiKeysSection = lazySettingsSection(
   () => import("../components/settings/ApiKeysSection.vue"),
 );
@@ -459,6 +462,7 @@ async function openSearchResult(entry: SettingsSearchEntry) {
           <KeyboardShortcutsSection v-else-if="activeSection === 'shortcuts'" />
           <ConnectionsSection v-else-if="activeSection === 'connections'" />
           <ApiKeysSection v-else-if="activeSection === 'api-keys'" />
+          <TagCatalogueSection v-else-if="activeSection === 'tag-catalogue'" />
           <ConnectedAppsSection
             v-else-if="activeSection === 'connected-apps'"
           />

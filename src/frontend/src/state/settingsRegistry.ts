@@ -34,6 +34,7 @@ export const CORE_SETTINGS_SECTION_IDS: ReadonlySet<string> = new Set([
   "app-installation",
   "branding",
   "api-keys",
+  "tag-catalogue",
   "connected-apps",
   "integration-policy",
   "sessions",
@@ -208,6 +209,7 @@ export function buildSettingsGroups(
       sections: [
         { id: "library", label: "Library" },
         { id: "metadata", label: "Metadata" },
+        { id: "tag-catalogue", label: "Tag catalogue" },
         { id: "export", label: "Export / Import" },
       ],
     },
@@ -302,6 +304,7 @@ const SECTION_KEYWORDS: Record<string, string[]> = {
   "background-tasks": ["jobs", "queue", "progress"],
   notifications: ["alerts", "push", "reminders", "email"],
   "api-keys": ["tokens", "access keys", "developer"],
+  "tag-catalogue": ["tags", "labels", "aliases", "rename", "genres"],
   "connected-apps": ["oauth", "authorized apps", "clients"],
   sessions: ["devices", "sign out", "logins"],
   appearance: ["theme", "dark mode", "light mode", "colors", "palette"],
