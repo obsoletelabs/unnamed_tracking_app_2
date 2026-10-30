@@ -92,7 +92,7 @@ Image tags follow the Git tag or branch that triggered the build
 | `v1.2.3-beta.4` | `v1.2.3-beta.4`, `1.2.3-beta.4`, `1.2.3-beta` (this line's newest beta), and `latest-beta` when 1.2.3 is the next line to ship |
 | `v1.2.3-remote-launch.1` (a labelled preview) | only `v1.2.3-remote-launch.1` and `1.2.3-remote-launch.1`; no shared tag moves |
 | branch without a pull request | the branch name and `sha-<commit>` |
-| pull request (same repository) | `pr-<number>` and `sha-<commit>`, and no branch name |
+| pull request (same repository) | `pr-<number>`, the branch name and `sha-<commit>` |
 
 Betas for several release lines can exist at once. Each line keeps its own `X.Y.Z-beta` tag, and
 `latest-beta` follows only the next line to ship. Running a beta of a later line, or any
