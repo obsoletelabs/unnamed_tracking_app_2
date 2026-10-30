@@ -183,6 +183,20 @@ an upgrade candidate; inspection does not simulate pending SQL or prove the upgr
 The runner requires one root and one final head. Never edit an old revision or stamp a
 database merely to silence the error.
 
+## Going back to an older version
+
+If you start an older build against a database a newer build has already migrated (for example
+after trying a pre-release), the recorded version is not in the older build's history. The older
+build checks the schema instead: when every table and column it needs is still there, it starts,
+prints a warning, and changes nothing. It does not run migrations or rewrite the recorded
+version, so moving forward again resumes where the newer build left off. Features that need the
+newer schema will not work while you are on the older build, and data the older build does not
+know about is ignored, not deleted.
+
+If the schema is missing something the older build needs, startup is refused and the missing
+tables or columns are listed. Set `ALLOW_NEWER_DATABASE=false` to always refuse a database from a
+newer build.
+
 ## Operator-approved repair
 
 1. Make a supported PostgreSQL backup and preserve the matching persistent files, plugin
