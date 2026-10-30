@@ -485,6 +485,8 @@ async function ensureMyShows(): Promise<TVShow[]> {
 
 const previewOpen = ref(false);
 const previewLoading = ref(false);
+// a second click must not show the first title's preview when it answers late
+const previewGuard = latestRequest();
 const previewAdding = ref(false);
 const previewError = ref<string | null>(null);
 const previewTitle = ref("");
@@ -500,7 +502,14 @@ async function onRelatedTitleClick(r: {
   title: string;
   posterUrl: string | null;
 }) {
-  const mine = await ensureMyShows();
+  const token = previewGuard.start();
+  let mine: TVShow[] = [];
+  try {
+    mine = await ensureMyShows();
+  } catch {
+    // the library could not be read: preview the title instead of doing nothing
+  }
+  if (!previewGuard.isLatest(token)) return;
   const existing = mine.find(
     (s) => s.title.trim().toLowerCase() === r.title.trim().toLowerCase(),
   );
@@ -517,6 +526,7 @@ async function onRelatedTitleClick(r: {
   previewMeta.value = [];
   try {
     const { results } = await searchTVShowMetadata(r.title, 1);
+    if (!previewGuard.isLatest(token)) return;
     const match = results.find((m) => m.title === r.title) ?? results[0];
     previewDescription.value = match?.description ?? null;
     previewMeta.value = [
@@ -524,10 +534,11 @@ async function onRelatedTitleClick(r: {
       match?.studios?.[0],
     ].filter((v): v is string => !!v);
   } catch (e) {
+    if (!previewGuard.isLatest(token)) return;
     previewError.value =
       e instanceof Error ? e.message : "Failed to load a preview.";
   } finally {
-    previewLoading.value = false;
+    if (previewGuard.isLatest(token)) previewLoading.value = false;
   }
 }
 

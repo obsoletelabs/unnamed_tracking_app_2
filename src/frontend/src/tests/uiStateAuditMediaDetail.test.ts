@@ -295,3 +295,54 @@ describe("anime and TV detail load", () => {
     wrapper.unmount();
   });
 });
+
+describe("related title preview", () => {
+  it("shows the newest clicked title when an older preview answers last", async () => {
+    vi.mocked(movies.getMovie).mockResolvedValue(movie("a"));
+    vi.mocked(movies.fetchMovies).mockResolvedValue([]);
+    const first =
+      deferred<Awaited<ReturnType<typeof movies.searchMovieMetadata>>>();
+    vi.mocked(movies.searchMovieMetadata)
+      .mockReturnValueOnce(first.promise)
+      .mockResolvedValueOnce({
+        results: [{ title: "Second", description: "Second plot" }],
+      } as never);
+    const wrapper = mountView(MovieDetail);
+    await flushPromises();
+    const click = state(wrapper).onRelatedTitleClick as (r: {
+      title: string;
+      posterUrl: null;
+    }) => Promise<void>;
+    const a = click({ title: "First", posterUrl: null });
+    await flushPromises();
+    await click({ title: "Second", posterUrl: null });
+    first.resolve({
+      results: [{ title: "First", description: "First plot" }],
+    } as never);
+    await a;
+    expect(state(wrapper).previewTitle).toBe("Second");
+    expect(state(wrapper).previewDescription).toBe("Second plot");
+    expect(state(wrapper).previewLoading).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("still previews a title when the library cannot be read", async () => {
+    vi.mocked(anime.getAnime).mockResolvedValue(cartoon("a"));
+    vi.mocked(anime.fetchAnime).mockRejectedValue(new Error("Down"));
+    vi.mocked(anime.fetchAnimeMetadataByAnilistId).mockResolvedValue(null);
+    vi.mocked(anime.searchAnimeMetadata).mockResolvedValue({
+      results: [],
+    } as never);
+    const wrapper = mountView(AnimeDetail);
+    await flushPromises();
+    await (state(wrapper).onRelatedTitleClick as (r: object) => Promise<void>)({
+      id: 7,
+      title: "Sequel",
+      posterUrl: null,
+      format: "TV",
+    });
+    expect(state(wrapper).previewOpen).toBe(true);
+    expect(state(wrapper).previewTitle).toBe("Sequel");
+    wrapper.unmount();
+  });
+});

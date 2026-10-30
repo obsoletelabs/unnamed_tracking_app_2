@@ -722,6 +722,8 @@ async function ensureMyAnime(): Promise<Anime[]> {
 
 const previewOpen = ref(false);
 const previewLoading = ref(false);
+// a second click must not show the first title's preview when it answers late
+const previewGuard = latestRequest();
 const previewAdding = ref(false);
 const previewError = ref<string | null>(null);
 const previewTitle = ref("");
@@ -783,7 +785,14 @@ async function onRelatedTitleClick(r: {
   posterUrl: string | null;
   format?: string | null;
 }) {
-  const mine = await ensureMyAnime();
+  const token = previewGuard.start();
+  let mine: Anime[] = [];
+  try {
+    mine = await ensureMyAnime();
+  } catch {
+    // the library could not be read: preview the title instead of doing nothing
+  }
+  if (!previewGuard.isLatest(token)) return;
   const existing = mine.find(
     (a) => a.title.trim().toLowerCase() === r.title.trim().toLowerCase(),
   );
@@ -808,16 +817,18 @@ async function onRelatedTitleClick(r: {
   previewLoading.value = true;
   try {
     const match = await lookupMetadata(r.id, r.title);
+    if (!previewGuard.isLatest(token)) return;
     previewDescription.value = match?.description ?? null;
     previewMeta.value = [
       match?.firstAirDate?.slice(0, 4),
       match?.format,
     ].filter((v): v is string => !!v);
   } catch (e) {
+    if (!previewGuard.isLatest(token)) return;
     previewError.value =
       e instanceof Error ? e.message : "Failed to load a preview.";
   } finally {
-    previewLoading.value = false;
+    if (previewGuard.isLatest(token)) previewLoading.value = false;
   }
 }
 
