@@ -64,12 +64,16 @@ const props = defineProps<{
   scoped?: boolean;
   // re-reads a file's date from the file itself; true when it found one
   detect?: (item: MediaItem) => Promise<"file" | "achievement" | "none">;
+  // saves one item; the edit dialog waits for it and stays open when it fails
+  onSave?: (
+    item: MediaItem,
+    patch: MediaItemUpdate,
+  ) => Promise<boolean | void> | boolean | void;
 }>();
 
 const emit = defineEmits<{
   files: [files: File[]];
   delete: [item: MediaItem];
-  save: [item: MediaItem, patch: MediaItemUpdate];
   "bulk-save": [updates: { id: string; patch: MediaItemUpdate }[]];
   "bulk-delete": [items: MediaItem[]];
   "bulk-detect": [ids: string[]];
@@ -422,10 +426,7 @@ function tiePatch(
   return patch;
 }
 function retie(item: MediaItem, achievementId: string | null) {
-  emit("save", item, tiePatch(item, achievementId));
-}
-function onSave(item: MediaItem, patch: MediaItemUpdate) {
-  emit("save", item, patch);
+  void props.onSave?.(item, tiePatch(item, achievementId));
 }
 
 // ---- select several, then act on them together ----
@@ -798,7 +799,7 @@ onBeforeUnmount(() => {
             @toggle="toggle"
             @preview="open"
             @delete="remove"
-            @save="onSave"
+            :on-save="onSave"
             @copy="copy"
             @download="download"
             @open-achievement="emit('open-achievement', $event)"
@@ -843,7 +844,7 @@ onBeforeUnmount(() => {
       :profiles="profiles"
       :detect="detect"
       @close="editingId = null"
-      @save="onSave"
+      :on-save="onSave"
       @delete="remove"
     />
 

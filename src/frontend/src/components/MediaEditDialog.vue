@@ -31,13 +31,20 @@ const props = defineProps<{
   profiles?: GameProfile[];
   // re-reads the date from the file; true when it found one
   detect?: (item: T) => Promise<"file" | "achievement" | "none">;
+  // Saves the changes; the dialog closes once it succeeds and stays open with
+  // the typed values when it resolves false or throws.
+  onSave?: (
+    item: T,
+    patch: MediaItemUpdate,
+  ) => Promise<boolean | void> | boolean | void;
 }>();
 
 const emit = defineEmits<{
   close: [];
-  save: [item: T, patch: MediaItemUpdate];
   delete: [item: T];
 }>();
+const saving = ref(false);
+const saveError = ref<string | null>(null);
 
 const list = computed(() => props.achievements ?? []);
 const isMedia = computed(() =>
@@ -225,7 +232,8 @@ const dirty = computed(
     profile.value !== (props.item.profile_id ?? ""),
 );
 
-function save() {
+async function save() {
+  if (saving.value) return;
   commitTag();
   const patch: MediaItemUpdate = {};
   if (title.value.trim() !== (props.item.title ?? ""))
@@ -247,8 +255,20 @@ function save() {
     patch.linked_achievement_id = linked.value || null;
   if (profile.value !== (props.item.profile_id ?? ""))
     patch.profile_id = profile.value || null;
-  if (Object.keys(patch).length) emit("save", props.item, patch);
-  emit("close");
+  if (!Object.keys(patch).length) return emit("close");
+  saving.value = true;
+  saveError.value = null;
+  try {
+    if ((await props.onSave?.(props.item, patch)) === false)
+      saveError.value =
+        "Your changes could not be saved. They are still here; try again.";
+    else emit("close");
+  } catch {
+    saveError.value =
+      "Your changes could not be saved. They are still here; try again.";
+  } finally {
+    saving.value = false;
+  }
 }
 function remove() {
   emit("delete", props.item);
@@ -464,6 +484,9 @@ function onKey(e: KeyboardEvent) {
     </div>
 
     <template #footer>
+      <p v-if="saveError" class="med-save-error" role="alert">
+        {{ saveError }}
+      </p>
       <button type="button" class="ui-btn ui-btn-danger-soft" @click="remove">
         Delete
       </button>
@@ -474,7 +497,7 @@ function onKey(e: KeyboardEvent) {
       <button
         type="button"
         class="ui-btn ui-btn-primary"
-        :disabled="!dirty"
+        :disabled="!dirty || saving"
         @click="save"
       >
         Save
@@ -484,6 +507,12 @@ function onKey(e: KeyboardEvent) {
 </template>
 
 <style scoped>
+.med-save-error {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--ui-error);
+  font-size: 0.85rem;
+}
 .med {
   max-width: 880px;
   max-height: 92vh;

@@ -1144,8 +1144,11 @@ export function useGameDetail() {
     }
   }
 
-  async function saveMediaItem(item: MediaItem, patch: MediaItemUpdate) {
-    if (!game.value) return;
+  async function saveMediaItem(
+    item: MediaItem,
+    patch: MediaItemUpdate,
+  ): Promise<boolean> {
+    if (!game.value) return false;
     try {
       const updated = await updateMediaItem(ownerOf(item), item.id, patch);
       const index = mediaItems.value.findIndex((m) => m.id === item.id);
@@ -1160,8 +1163,10 @@ export function useGameDetail() {
       ) {
         await reloadMediaForCurrentTab();
       }
+      return true;
     } catch (err) {
       mediaError.value = err instanceof Error ? err.message : "Failed to save";
+      return false;
     }
   }
 
@@ -1386,8 +1391,8 @@ export function useGameDetail() {
     kind: FlatFileKind,
     file: FileDetails,
     patch: MediaItemUpdate,
-  ) {
-    if (!game.value) return;
+  ): Promise<boolean> {
+    if (!game.value) return false;
     try {
       // only the fields that changed: a missing key means "leave it alone"
       const changes: GameFileUpdate = {};
@@ -1408,8 +1413,10 @@ export function useGameDetail() {
       const index = list.value.findIndex((f) => f.id === updated.id);
       if (index !== -1)
         list.value[index] = { ...list.value[index], ...updated };
+      return true;
     } catch (err) {
       filesError.value = err instanceof Error ? err.message : "Failed to save";
+      return false;
     }
   }
 
@@ -1597,15 +1604,18 @@ export function useGameDetail() {
     archive: GameArchiveData,
     isWorld: boolean,
     patch: { name?: string; note?: string | null; tags?: string[] },
-  ) {
-    if (!game.value) return;
+  ): Promise<boolean> {
+    if (!game.value) return false;
     try {
       await updateArchive(ownerOf(archive), archive.id, patch);
-      if (isWorld) await refreshWorlds();
-      else await refreshSaveArchives();
     } catch (err) {
       filesError.value = err instanceof Error ? err.message : "Failed to save";
+      return false;
     }
+    // The change is saved; a failed re-read is reported by the list itself.
+    if (isWorld) await refreshWorlds();
+    else await refreshSaveArchives();
+    return true;
   }
 
   async function bulkDeleteArchives(
