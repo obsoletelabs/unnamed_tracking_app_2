@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from collections.abc import Callable, Iterable
@@ -60,6 +61,33 @@ RESTORE_DRILL_PATHS = (
     ".github/workflows/ci.yml",
 )
 DOCS_PATHS = ("wiki/", ".github/workflows/docs.yml", ".github/workflows/ci.yml")
+
+# `Plugin repository integration` (plugin-integration.yml) is a separate workflow, so it asks this
+# module for its own scope instead of using AREAS. Paths that can change how real plugins behave
+# against the host run the heavyweight real-worker, browser and Jellyfin acceptance ("heavy").
+PLUGIN_HEAVY_PATHS = (
+    "src/plugin-runtime/",
+    "src/backend/src/plugin_api/",
+    "src/backend/src/api/routes/plugin_manager/",
+    "src/backend/src/api/routes/plugin_permissions.py",
+    "src/backend/requirements.txt",
+    "src/frontend/package.json",
+    "src/frontend/package-lock.json",
+    "tools/check_plugin_",
+    "tools/plugin_conformance.py",
+    "tools/plugin_contract_skew.py",
+    "tools/run_strict_plugin_acceptance.sh",
+    ".github/workflows/plugin-integration.yml",
+)
+# Frontend plugin and media-watch-link code (but not its unit tests) that the browser capture drives.
+PLUGIN_FRONTEND = re.compile(r"^src/frontend/(?!.*/tests/).*(plugin|watchlink)", re.IGNORECASE)
+# Published schemas and plugin documentation only need the cheap contract comparison.
+PLUGIN_CONTRACT_PATHS = (
+    "wiki/docs/assets/plugin-",
+    "wiki/docs/development/plugin-",
+    "wiki/docs/development/metadata-providers.md",
+    "tools/export_",
+)
 
 
 @dataclass(frozen=True)
@@ -121,6 +149,20 @@ def areas(files: list[str] | None, *, event_name: str, branch_push: bool) -> dic
     return result
 
 
+def plugin_integration_scope(
+    event_name: str, event: dict, files: list[str] | None
+) -> dict[str, bool]:
+    """What `Plugin repository integration` does: `run` (any of it) and `heavy` (real workers,
+    browser, Jellyfin and PWA acceptance). Everything runs on main, tags, manual runs and when the
+    change set is unknown; a pull request that touches nothing plugin-related skips it."""
+    ref = str(event.get("ref", ""))
+    full = event_name == "workflow_dispatch" or ref.startswith("refs/tags/") or ref == "refs/heads/main"
+    if full or not files:
+        return {"run": True, "heavy": True}
+    heavy = any(path.startswith(PLUGIN_HEAVY_PATHS) or PLUGIN_FRONTEND.match(path) for path in files)
+    return {"run": heavy or _touches(files, PLUGIN_CONTRACT_PATHS), "heavy": heavy}
+
+
 def _gh(*arguments: str) -> str | None:
     try:
         done = subprocess.run(
@@ -180,11 +222,40 @@ def changed_files(repository: str, event_name: str, event: dict) -> list[str] | 
     return None if files is None or len(files) >= 300 else files
 
 
+def plugin_integration_main(event_name: str, repository: str, event: dict) -> dict[str, str]:
+    """Outputs for plugin-integration.yml: a draft pull request, or a branch push that its pull
+    request run covers, does nothing; otherwise the scope follows the changed files."""
+    if event_name in ("push", "pull_request"):
+        decision = decide(
+            event_name, event, has_open_pull_request=lambda b: open_pull_request(repository, b)
+        )
+        if not decision.run:
+            return {"run": "false", "heavy": "false", "reason": decision.reason}
+    files = None if event_name == "workflow_dispatch" else changed_files(repository, event_name, event)
+    scope = plugin_integration_scope(event_name, event, files)
+    reason = "unknown change set" if not files else f"{len(files)} changed files"
+    return {"run": str(scope["run"]).lower(), "heavy": str(scope["heavy"]).lower(), "reason": reason}
+
+
 def main() -> int:
     event_name = os.environ["GITHUB_EVENT_NAME"]
     repository = os.environ["GITHUB_REPOSITORY"]
     with open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8") as handle:
         event = json.load(handle)
+    if "--plugin-integration" in sys.argv[1:]:
+        outputs = plugin_integration_main(event_name, repository, event)
+    else:
+        outputs = gate_outputs(event_name, repository, event)
+    for key, value in outputs.items():
+        print(f"{key}={value}")
+    target = os.environ.get("GITHUB_OUTPUT")
+    if target:
+        with open(target, "a", encoding="utf-8") as handle:
+            handle.writelines(f"{key}={value}\n" for key, value in outputs.items())
+    return 0
+
+
+def gate_outputs(event_name: str, repository: str, event: dict) -> dict[str, str]:
     decision = decide(
         event_name, event, has_open_pull_request=lambda b: open_pull_request(repository, b)
     )
@@ -195,13 +266,7 @@ def main() -> int:
     else:
         selected = {name: False for name in AREAS}
     outputs.update({name: str(value).lower() for name, value in selected.items()})
-    for key, value in outputs.items():
-        print(f"{key}={value}")
-    target = os.environ.get("GITHUB_OUTPUT")
-    if target:
-        with open(target, "a", encoding="utf-8") as handle:
-            handle.writelines(f"{key}={value}\n" for key, value in outputs.items())
-    return 0
+    return outputs
 
 
 if __name__ == "__main__":

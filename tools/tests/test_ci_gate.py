@@ -85,5 +85,63 @@ class AreaTests(unittest.TestCase):
         self.assertFalse(selected["smoke"] or selected["recovery"] or selected["restore_drill"])
 
 
+class PluginIntegrationScopeTests(unittest.TestCase):
+    def scope(self, files, event_name="pull_request", event=None):
+        return ci_gate.plugin_integration_scope(event_name, event or pull_request(), files)
+
+    def test_unrelated_pull_request_skips_everything(self):
+        scope = self.scope(["src/frontend/src/views/Home.vue", "README.md", "src/backend/src/x.py"])
+        self.assertEqual(scope, {"run": False, "heavy": False})
+
+    def test_plugin_runtime_and_api_changes_run_the_heavy_acceptance(self):
+        for path in (
+            "src/plugin-runtime/runtime.py",
+            "src/backend/src/plugin_api/base_contracts.py",
+            "src/backend/src/api/routes/plugin_manager/lifecycle.py",
+            "src/frontend/src/components/plugins/PluginCard.vue",
+            "src/frontend/src/components/MediaWatchLinks.vue",
+            "src/frontend/src/services/mediaWatchLinks.ts",
+            ".github/workflows/plugin-integration.yml",
+        ):
+            with self.subTest(path):
+                self.assertEqual(self.scope([path]), {"run": True, "heavy": True})
+
+    def test_frontend_unit_tests_do_not_trigger_the_browser_acceptance(self):
+        self.assertEqual(
+            self.scope(["src/frontend/src/tests/mediaWatchLinks.test.ts"]),
+            {"run": False, "heavy": False},
+        )
+
+    def test_schemas_and_plugin_docs_run_only_the_contract_comparison(self):
+        for path in (
+            "wiki/docs/assets/plugin-metadata/metadata-registration-v1.schema.json",
+            "wiki/docs/development/plugin-capabilities.md",
+            "tools/export_metadata_contract.py",
+        ):
+            with self.subTest(path):
+                self.assertEqual(self.scope([path]), {"run": True, "heavy": False})
+
+    def test_main_tags_manual_runs_and_unknown_changes_run_everything(self):
+        full = {"run": True, "heavy": True}
+        self.assertEqual(self.scope(["README.md"], "push", push("refs/heads/main")), full)
+        self.assertEqual(self.scope(["README.md"], "push", push("refs/tags/v0.0.5")), full)
+        self.assertEqual(self.scope(["README.md"], "workflow_dispatch", {}), full)
+        self.assertEqual(self.scope(None), full)
+        self.assertEqual(self.scope([]), full)
+
+
+class PluginIntegrationMainTests(unittest.TestCase):
+    def test_draft_pull_request_and_covered_push_do_nothing(self):
+        original = ci_gate.open_pull_request
+        ci_gate.open_pull_request = lambda *_: True
+        try:
+            draft = ci_gate.plugin_integration_main("pull_request", "o/r", pull_request(True))
+            covered = ci_gate.plugin_integration_main("push", "o/r", push("refs/heads/fix/plugin-x"))
+        finally:
+            ci_gate.open_pull_request = original
+        self.assertEqual((draft["run"], draft["heavy"]), ("false", "false"))
+        self.assertEqual((covered["run"], covered["heavy"]), ("false", "false"))
+
+
 if __name__ == "__main__":
     unittest.main()
