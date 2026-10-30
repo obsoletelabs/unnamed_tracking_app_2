@@ -9,7 +9,7 @@ from PIL import Image, UnidentifiedImageError
 from pillow_heif import register_heif_opener
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.auth import get_current_user
+from src.core.auth import acts_as_admin, get_current_user
 from src.database.models.user import User
 from src.database.session import get_db
 from src.features.profile_pictures import profile_picture_path, profile_picture_version
@@ -40,7 +40,7 @@ async def _get_authorized_user(
     db: AsyncSession,
     current_user: User,
 ) -> User:
-    if current_user.id != user_id and not current_user.is_admin:
+    if current_user.id != user_id and not acts_as_admin(current_user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You do not have access to this user's profile.",

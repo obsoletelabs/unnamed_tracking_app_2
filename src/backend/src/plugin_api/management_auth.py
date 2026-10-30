@@ -6,7 +6,7 @@ from fastapi import Depends, Header, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.auth import get_current_user, hash_token
+from src.core.auth import acts_as_admin, get_current_user, hash_token
 from src.core.auth_checks import check_credential
 from src.database.models.auth import UserApiKey
 from src.database.models.user import User
@@ -119,7 +119,7 @@ async def get_plugin_manager_admin(
     if authorization and authorization.startswith(f"Bearer {MANAGEMENT_PREFIX}"):
         return await _management_user(request, db, authorization)
     user = await get_current_user(request, db)
-    if not user.is_admin:
+    if not acts_as_admin(user):
         raise HTTPException(403, "Administrator access required.")
     return user
 

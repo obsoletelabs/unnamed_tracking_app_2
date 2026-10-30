@@ -75,7 +75,13 @@ async def _user(db, name: str, *, admin: bool = False) -> Tenant:
     db.add(user)
     await db.flush()
     raw, prefix, digest = create_api_key()
-    key = UserApiKey(user_id=user.id, name="audit", key_prefix=prefix, key_hash=digest)
+    key = UserApiKey(
+        user_id=user.id,
+        name="audit",
+        key_prefix=prefix,
+        key_hash=digest,
+        scopes=["read", "write", "admin"] if admin else [],
+    )
     db.add(key)
     await db.flush()
     tenant = Tenant(user, raw)

@@ -10,6 +10,7 @@ import {
 
 const keys = ref<ApiKeySummary[]>([]);
 const name = ref("");
+const access = ref<"full" | "read">("full");
 const isLoading = ref(true);
 const isCreating = ref(false);
 const error = ref("");
@@ -38,7 +39,10 @@ async function handleCreate() {
   createdKey.value = "";
   copyStatus.value = "idle";
   try {
-    const result = await createApiKey(keyName);
+    const result = await createApiKey(
+      keyName,
+      access.value === "read" ? ["read"] : [],
+    );
     createdKey.value = result.api_key;
     name.value = "";
     await loadKeys();
@@ -124,6 +128,15 @@ onMounted(loadKeys);
           {{ isCreating ? "Generating…" : "Generate key" }}
         </button>
       </div>
+      <label for="api-key-access">Access</label>
+      <select id="api-key-access" v-model="access">
+        <option value="full">Full access to my account</option>
+        <option value="read">Read only</option>
+      </select>
+      <p class="muted">
+        Keys never change administrator settings. Use the API to create a key
+        with the admin scope.
+      </p>
     </form>
 
     <div v-if="createdKey" class="created-key">
@@ -170,7 +183,9 @@ onMounted(loadKeys);
           <div>
             <strong>{{ key.name }}</strong>
             <span>
-              {{ key.key_prefix }} · created
+              {{ key.key_prefix }} ·
+              {{ key.scopes?.length ? key.scopes.join(", ") : "full access" }}
+              · created
               {{ new Date(key.created_at * 1000).toLocaleDateString() }}
             </span>
           </div>
@@ -236,6 +251,7 @@ label {
   gap: 10px;
 }
 
+select,
 input {
   flex: 1;
   min-width: 0;
@@ -247,6 +263,12 @@ input {
   font: inherit;
 }
 
+select {
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+select:focus,
 input:focus {
   outline: none;
   border-color: var(--ui-accent);
