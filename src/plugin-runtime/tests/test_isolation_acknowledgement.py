@@ -180,3 +180,38 @@ def test_public_health_cannot_approve_isolation_without_runtime_credentials(
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
+
+
+def test_reduced_isolation_worker_does_not_inherit_runtime_secrets(tmp_path, monkeypatch):
+    """The fallback shares the runtime user, so the environment is the only barrier it keeps."""
+    monkeypatch.delenv("NONBUBBLE_ENV", raising=False)
+    monkeypatch.setenv("PLUGIN_RUNTIME_TOKEN", "r" * 48)
+    monkeypatch.setenv("SECRET_KEY", "s" * 48)
+    dump = tmp_path / "environment.json"
+    supervisor = PluginSupervisor(tmp_path / "work", tmp_path / "storage")
+    supervisor.isolation["bubblewrap_available"] = False
+    PluginRegistry(tmp_path / "plugins", supervisor).acknowledge_reduced_isolation(True)
+    process = supervisor.start(
+        PluginSpec(
+            "example.environment",
+            (
+                sys.executable,
+                "-c",
+                "import json, os, sys, time; "
+                f"open({str(dump)!r}, 'w').write(json.dumps(dict(os.environ))); time.sleep(60)",
+            ),
+        ),
+        tmp_path,
+    )
+    try:
+        for _ in range(100):
+            if dump.exists() and dump.stat().st_size:
+                break
+            process.poll()
+            threading.Event().wait(0.1)
+        environment = json.loads(dump.read_text(encoding="utf-8"))
+    finally:
+        supervisor.stop("example.environment")
+    assert "PLUGIN_RUNTIME_TOKEN" not in environment
+    assert "SECRET_KEY" not in environment
+    assert "r" * 48 not in json.dumps(environment)

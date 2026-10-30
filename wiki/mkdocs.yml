@@ -109,6 +109,7 @@ nav:
       - Plugin Update Notification Batching: development/plugin-update-notification-batching.md
       - Plugin Runtime Isolation: development/plugin-runtime.md
       - Plugin Storage: development/plugin-storage.md
+      - Plugin Credential Storage: development/plugin-credential-storage.md
       - Plugin UI Protocol: development/plugin-ui.md
       - Native Plugin Layout Review: development/native-plugin-review.md
       - Games and Media Migration Review: development/games-ui-migration.md
