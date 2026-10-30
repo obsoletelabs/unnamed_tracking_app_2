@@ -63,7 +63,7 @@ async def get_media_image(
 
     # the hero of a title with a backdrop is that same picture: one file, not two
     name = "backdrop" if which == "hero" and row and row.backdrop_url else which
-    return await _cached_image(current_user, media_type, item_id, name, url, WIDTHS[which])
+    return await _cached_image(current_user, media_type, item_id, name, url, width=WIDTHS[which])
 
 
 @router.get("/{media_type}/episode/{episode_id}/still")
@@ -85,12 +85,12 @@ async def get_episode_still(
     if not url:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such image.")
     return await _cached_image(
-        current_user, f"{media_type}-episode", episode_id, "still", url, WIDTHS["still"]
+        current_user, f"{media_type}-episode", episode_id, "still", url, width=WIDTHS["still"]
     )
 
 
 async def _cached_image(
-    user: User, media_type: str, item_id: UUID, name: str, url: str, width: int
+    user: User, media_type: str, item_id: UUID, name: str, url: str, *, width: int
 ) -> Response:
     target = cache_path(_DATA_ROOT / str(user.id) / ".cache", media_type, str(item_id), name, url)
     if not target.is_file():
