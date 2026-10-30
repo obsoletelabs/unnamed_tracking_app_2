@@ -140,6 +140,7 @@ describe("the Metadata row in the Sources summary", () => {
   it("shows the preferred source and the fields that disagree", async () => {
     vi.mocked(identity.fetchIdentitySources).mockResolvedValue({
       observations: [],
+      versions: [],
       counters: {},
     } as unknown as identity.IdentitySources);
     vi.mocked(fields.fetchFieldSources).mockResolvedValue({
@@ -155,6 +156,7 @@ describe("the Metadata row in the Sources summary", () => {
   it("adds no row when nothing is preferred or disputed", async () => {
     vi.mocked(identity.fetchIdentitySources).mockResolvedValue({
       observations: [],
+      versions: [],
       counters: {},
     } as unknown as identity.IdentitySources);
     vi.mocked(fields.fetchFieldSources).mockResolvedValue({});

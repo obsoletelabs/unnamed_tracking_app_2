@@ -88,11 +88,8 @@ async def _provider_values(
 ) -> dict[tuple[str, str], Any]:
     """The newest value each provider recorded for each field, keyed by (field, provider)."""
     rows = await db.scalars(
-        select(GameFieldValue)
+        field_provenance.field_values_of(game, fields)
         .where(
-            GameFieldValue.user_id == game.user_id,
-            GameFieldValue.game_id == game.id,
-            GameFieldValue.field.in_(fields),
             GameFieldValue.origin == FieldValueOrigin.METADATA.value,
             GameFieldValue.source_label.is_not(None),
             GameFieldValue.state.in_(
