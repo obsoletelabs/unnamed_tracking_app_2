@@ -819,12 +819,26 @@ export function pluginExternalDestination(
  */
 export function requireUserActivation(action: UiAction): void {
   if (!action.external_navigation) return;
+  requireRecentClick(
+    "A plugin can only open another site after you click something.",
+  );
+}
+
+/**
+ * A plugin frame may replace its stored credentials or settings only while
+ * the page has transient user activation, i.e. right after a click or key
+ * press in the frame, never from a message it posts on its own.
+ */
+export function requirePluginSaveGesture(): void {
+  requireRecentClick(
+    "A plugin can only save its settings after you click something.",
+  );
+}
+
+function requireRecentClick(message: string): void {
   const activation =
     typeof navigator === "undefined" ? undefined : navigator.userActivation;
-  if (activation && !activation.isActive)
-    throw new Error(
-      "A plugin can only open another site after you click something.",
-    );
+  if (activation && !activation.isActive) throw new Error(message);
 }
 
 /**
