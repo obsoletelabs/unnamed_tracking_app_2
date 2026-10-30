@@ -128,6 +128,8 @@ Plugins can add declarative content at these allowlisted extension slots:
 - `game.overview.after-header`
 - `game.documents.actions`
 - `media.detail.after-header`
+- `media.detail.actions` (the action row beside Edit on a Movie, TV show or Anime page; contribute a short
+  button or link, such as "Watch in Jellyfin")
 
 An extension references a page in the same UI document. The host renders that page with the native component set and supplies a small context object (such as the current game ID) to actions. Unknown slots, dangling page references, and duplicate contribution IDs are rejected. Sandboxed and declarative UI can coexist, but sandboxed code does not mount into host slots.
 

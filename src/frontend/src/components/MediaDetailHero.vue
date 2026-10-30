@@ -3,7 +3,10 @@
 // title, status and rating pickers, a few badges, and the Edit / favorite /
 // extras buttons. What goes in it (which badges, the movie's "Left off at"
 // row, an anime's other titles) is the page's call, through props and slots.
+import { computed } from "vue";
 import { STATUS_BUCKETS } from "../utils/mediaStatus";
+import { pluginSlots } from "../state/pluginExtensions";
+import PluginExtensionSlot from "./plugins/PluginExtensionSlot.vue";
 import MediaExtrasPanel from "./MediaExtrasPanel.vue";
 import RatingPicker from "./RatingPicker.vue";
 
@@ -28,6 +31,12 @@ defineProps<{
 }>();
 
 const status = defineModel<string>("status", { required: true });
+
+// A plugin can offer a "watch it" action beside Edit, the way Playnite's Launch sits on a game
+// page; when one does, Edit steps back to a secondary button.
+const hasWatchAction = computed(() =>
+  pluginSlots.value.some((item) => item.slot === "media.detail.actions"),
+);
 
 const emit = defineEmits<{
   "status-change": [];
@@ -94,7 +103,22 @@ const emit = defineEmits<{
         </dl>
         <slot name="below-badges" />
         <div class="action-row">
-          <button class="edit-btn" type="button" @click="emit('edit')">
+          <PluginExtensionSlot
+            slot-id="media.detail.actions"
+            inline
+            class="watch-actions"
+            :context="{
+              host_page: 'media.detail',
+              media_id: mediaId,
+              media_type: mediaType,
+            }"
+          />
+          <button
+            class="edit-btn"
+            :class="{ secondary: hasWatchAction }"
+            type="button"
+            @click="emit('edit')"
+          >
             ✎ Edit
           </button>
           <button
@@ -307,6 +331,37 @@ const emit = defineEmits<{
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.edit-btn.secondary {
+  background: transparent;
+  color: var(--ui-text);
+  border: 1px solid color-mix(in srgb, var(--ui-text) 22%, transparent);
+}
+.edit-btn.secondary:hover {
+  border-color: color-mix(in srgb, var(--ui-accent) 55%, transparent);
+}
+.watch-actions {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+}
+.watch-actions :deep(a),
+.watch-actions :deep(button) {
+  display: inline-flex;
+  align-items: center;
+  height: 38px;
+  padding: 0 18px;
+  border: none;
+  border-radius: var(--ui-radius-control);
+  background: var(--ui-accent);
+  color: var(--ui-on-accent);
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
 }
 
 .icon-btn {

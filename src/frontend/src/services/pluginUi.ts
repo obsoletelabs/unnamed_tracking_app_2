@@ -183,6 +183,7 @@ export const HOST_EXTENSION_SLOTS = [
   "game.overview.after-header",
   "game.documents.actions",
   "media.detail.after-header",
+  "media.detail.actions",
   "app.global",
   "home.replace",
 ] as const;
