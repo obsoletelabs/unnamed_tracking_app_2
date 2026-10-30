@@ -28,16 +28,17 @@ from src.database.models.game_identity_tracking import (
 
 PROVENANCE_FIELDS = frozenset(
     {
+        "age_rating",
         "description",
-        "developer",
-        "publisher",
+        "features",
+        "release_date",
         "series",
         "tags",
-        "features",
-        "age_rating",
-        "release_date",
+        "publisher",
+        "developer",
     }
 )
+
 _LABEL_LENGTH = 64
 
 
