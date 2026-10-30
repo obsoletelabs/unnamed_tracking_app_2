@@ -23,8 +23,9 @@ class User(Base):
     oidc_subject: Mapped[str | None] = mapped_column(String(512), unique=True, nullable=True)
     # Set when the user typed this address into their own profile. Nobody proved they own it,
     # so a first single sign-on login must not adopt the account because the emails match.
+    # (No Python-side default: the migration tests insert users at revisions before this column.)
     email_unverified: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, server_default=text("false")
+        Boolean, nullable=False, server_default=text("false")
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
