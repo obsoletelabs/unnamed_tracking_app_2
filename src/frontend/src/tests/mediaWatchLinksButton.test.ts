@@ -51,6 +51,18 @@ describe("MediaWatchLinks button", () => {
     expect(wrapper.emitted("present")?.at(-1)).toEqual([true]);
   });
 
+  it("shows no button until the saved links have loaded", async () => {
+    let finish: (links: never[]) => void = () => {};
+    fetchLinks.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    const wrapper = mountLinks({ tmdb: "603" });
+    await flushPromises();
+    expect(wrapper.find("a.watch-main").exists()).toBe(false);
+    expect(wrapper.emitted("present")?.at(-1)).toEqual([false]);
+    finish([]);
+    await flushPromises();
+    expect(wrapper.get("a.watch-main").text()).toBe("↗ Open in TMDB");
+  });
+
   it("has no arrow when there is only one place to open", async () => {
     fetchLinks.mockResolvedValue([]);
     const wrapper = mountLinks({ tmdb: "603" });
