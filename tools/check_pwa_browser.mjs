@@ -63,7 +63,16 @@ const cacheKeys = () => page.evaluate(() => caches.keys());
 async function reloadControlled() {
   const expected = await api("GET", "/pwa/status");
   assert.equal(expected.enabled, true);
-  await page.goto(origin + "/");
+  // A worker taking control while the page loads can abort the navigation itself; the
+  // assertions below still require the live registration and cache.
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      await page.goto(origin + "/");
+      break;
+    } catch (error) {
+      if (attempt === 3 || !String(error.message).includes("net::ERR_ABORTED")) throw error;
+    }
+  }
   // A retired controller can remain attached while a replacement installs.
   // Require the live registration and its current neutral cache before offline launch.
   await page.waitForFunction(async generation => {
