@@ -276,3 +276,32 @@ def test_gateway_transport_diagnostics_are_actionable_and_redacted(
     assert "private transport" not in response["error"]
     assert "secret" not in response["error"]
     assert response["error_detail"]["request_id"] == request["request_id"]
+
+
+def test_bounded_lines_discards_an_oversized_line_and_keeps_reading():
+    import runtime
+
+    stream = io.BytesIO(b"short\n" + b"x" * 40 + b"\nafter\nno-newline")
+    assert list(runtime._bounded_lines(stream, 16)) == [
+        b"short\n",
+        None,
+        b"after\n",
+        b"no-newline",
+    ]
+
+
+def test_action_output_line_over_the_limit_is_refused(supervisor, tmp_path, monkeypatch):
+    import runtime
+
+    monkeypatch.setenv("NONBUBBLE_ENV", "true")
+    monkeypatch.setattr(runtime, "_MAX_PLUGIN_LINE_BYTES", 1024)
+    package = tmp_path / "oversized-action"
+    package.mkdir()
+    statement = """
+import sys
+sys.stdin.readline()
+print('{"plugin_action_result": "' + 'x' * 4096 + '"}', flush=True)
+"""
+    spec = PluginSpec("contract", (sys.executable, "-c", statement))
+    with pytest.raises(RuntimePolicyError, match="line limit"):
+        supervisor.execute(spec, package, b"{}")
