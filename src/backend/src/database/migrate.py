@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import importlib
 import logging
+import os
 import pkgutil
 import sys
 import time
@@ -31,6 +32,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from src.database.base import Base
 from src.database.migration_safety import MigrationSafety
 
+# Starting an older build against a database a newer build already migrated is allowed when the
+# schema still fits; set this to false to refuse it instead.
+ALLOW_NEWER_DATABASE = "ALLOW_NEWER_DATABASE"
 _LOCK_ID = 7_310_442_901
 _WAIT_SECONDS = 60
 _LOCK_WAIT_SECONDS = 60
@@ -55,6 +59,41 @@ def decide(current: set[str], known: set[str], has_tables: bool) -> Plan:
             "adopt", f"recorded version {', '.join(map(ascii, unknown))} is not in this history"
         )
     return Plan("upgrade", "recorded version is in the history")
+
+
+def newer_database_allowed() -> bool:
+    return os.environ.get(ALLOW_NEWER_DATABASE, "true").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
+
+
+def _start_on_newer_database(engine: Engine, current: set[str], known: set[str]) -> bool:
+    """Whether to leave a database recorded at a version this build does not know as it is.
+
+    This is the case after going back to an older build from a newer one. It is only allowed
+    unless the operator turned it off, and only when every table and column this build's models need is still
+    there, so the older code can run. The recorded version is never changed, and no migration
+    is run, so going forward again resumes exactly where the newer build left off."""
+    unknown = sorted(current - known)
+    if not unknown or not newer_database_allowed():
+        return False
+    problems = missing_from_database(engine)
+    if problems:
+        _refuse_repair(
+            f"recorded version {', '.join(map(ascii, unknown))} comes from a newer build, "
+            "and this build cannot run on that schema because it lacks " + ", ".join(problems)
+        )
+    print(
+        f"WARNING: the database was migrated by a newer build (version {', '.join(map(ascii, unknown))}). "
+        "The schema still has everything this build needs, so "
+        "it starts without migrating or stamping. Some newer features may not work, and newer "
+        "data this build does not know about is left untouched.",
+        flush=True,
+    )
+    return True
 
 
 def _register_models() -> None:
@@ -297,6 +336,16 @@ def main(*, allow_repair: bool = False, plan_only: bool = False) -> None:
             _check_recorded_history(script, current, known)
             plan = decide(current, known, bool(tables - {"alembic_version"}))
             print(f"Database: {plan.action} ({plan.reason})", flush=True)
+            if plan.action == "adopt" and _start_on_newer_database(engine, current, known):
+                if not plan_only:
+                    assert safety is not None
+                    safety.record(
+                        "newer_database_accepted",
+                        source_revisions=sorted(current),
+                        finished_at=int(time.time()),
+                    )
+                print("Database is newer than this build; nothing was changed.", flush=True)
+                return
             if plan_only:
                 print("Inspection only: no migration, stamp or replay was performed.", flush=True)
                 if plan.action == "adopt":

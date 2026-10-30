@@ -115,6 +115,48 @@ def test_unrecognized_populated_history_is_unchanged_and_never_invokes_alembic(
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == revision
 
 
+def test_newer_database_is_refused_when_the_operator_turns_it_off(sandbox, monkeypatch):
+    migrate.main()
+    with sandbox.begin() as connection:
+        connection.execute(text("UPDATE alembic_version SET version_num = 'from-a-newer-build'"))
+    monkeypatch.setenv(migrate.ALLOW_NEWER_DATABASE, "false")
+    with pytest.raises(SystemExit, match="ALLOW_NEWER_DATABASE|Automatic stamping/replay"):
+        migrate.main()
+
+
+def test_newer_database_starts_by_default_without_changing_anything(sandbox, monkeypatch, capsys):
+    migrate.main()
+    with sandbox.begin() as connection:
+        connection.execute(text("UPDATE alembic_version SET version_num = 'from-a-newer-build'"))
+    monkeypatch.delenv(migrate.ALLOW_NEWER_DATABASE, raising=False)
+    calls = []
+    monkeypatch.setattr(command, "upgrade", lambda *_a, **_kw: calls.append("upgrade"))
+    monkeypatch.setattr(command, "stamp", lambda *_a, **_kw: calls.append("stamp"))
+    migrate.main()
+    assert calls == []
+    assert "migrated by a newer build" in capsys.readouterr().out
+    with sandbox.connect() as connection:
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
+            "from-a-newer-build"
+        )
+
+
+def test_newer_database_is_still_refused_when_this_build_lacks_its_tables(
+    sandbox, monkeypatch
+):
+    migrate.main()
+    with sandbox.begin() as connection:
+        connection.execute(text("UPDATE alembic_version SET version_num = 'from-a-newer-build'"))
+        connection.execute(text("ALTER TABLE games DROP COLUMN title CASCADE"))
+    monkeypatch.delenv(migrate.ALLOW_NEWER_DATABASE, raising=False)
+    with pytest.raises(SystemExit, match="lacks"):
+        migrate.main()
+    with sandbox.connect() as connection:
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
+            "from-a-newer-build"
+        )
+
+
 def test_divergent_recorded_revisions_are_not_treated_as_a_normal_upgrade(sandbox):
     script = ScriptDirectory.from_config(Config("alembic.ini"))
     head = script.get_current_head()
