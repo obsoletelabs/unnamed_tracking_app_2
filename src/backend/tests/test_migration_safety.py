@@ -141,9 +141,7 @@ def test_newer_database_starts_by_default_without_changing_anything(sandbox, mon
         )
 
 
-def test_newer_database_is_still_refused_when_this_build_lacks_its_tables(
-    sandbox, monkeypatch
-):
+def test_newer_database_is_still_refused_when_this_build_lacks_its_tables(sandbox, monkeypatch):
     migrate.main()
     with sandbox.begin() as connection:
         connection.execute(text("UPDATE alembic_version SET version_num = 'from-a-newer-build'"))
