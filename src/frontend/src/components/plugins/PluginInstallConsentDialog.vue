@@ -230,6 +230,7 @@ function close() {
             v-if="preview.icon"
             :src="preview.icon"
             alt=""
+            referrerpolicy="no-referrer"
             width="48"
             height="48"
           />

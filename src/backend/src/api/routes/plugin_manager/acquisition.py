@@ -248,9 +248,13 @@ def permission_preview(permission: Any) -> dict[str, Any]:
 
 
 def _package_preview_assets(inspected: InspectedPackage) -> tuple[str | None, str | None]:
-    manifest = inspected.package.manifest
+    """The icon is only ever one packaged inside the verified archive, as a data URI.
+
+    ``manifest.icon`` is an address the plugin picked, and the consent dialog shows the preview
+    before anyone has agreed to anything: loading it would tell the plugin's server who is
+    installing it (over plain ``http`` too)."""
     readme = None
-    icon = manifest.icon
+    icon = None
     if inspected.package.package_path.exists():
         with zipfile.ZipFile(inspected.package.package_path) as archive:
             for name, content_type in (
