@@ -72,6 +72,12 @@ def status_change_detail(previous: Any, current: Any) -> str | None:
 _MAX_PROJECTED_PER_SHOW = 52
 
 
+def _poster(media_type: str, row: Any) -> str | None:
+    """The title's poster as served by this server, so the browser never loads a provider or
+    plugin address directly (the same route the library and notifications use)."""
+    return f"/api/media-image/{media_type}/{row.id}/poster" if row.poster_url else None
+
+
 def _calendar_entries_for_show(
     show: Any, media_type: str, window_end: int, language: str = "english"
 ) -> list[dict]:
@@ -87,7 +93,7 @@ def _calendar_entries_for_show(
             "media_type": media_type,
             "media_id": show.id,
             "title": display_title(show, language),
-            "poster_url": show.poster_url,
+            "poster_url": _poster(media_type, show),
             "next_episode_number": show.next_episode_number,
             "air_at": show.next_episode_air_at,
             "kind": "episode",
@@ -122,7 +128,7 @@ def _calendar_entries_for_show(
                 "media_type": media_type,
                 "media_id": show.id,
                 "title": display_title(show, language),
-                "poster_url": show.poster_url,
+                "poster_url": _poster(media_type, show),
                 "next_episode_number": n,
                 "air_at": air_at,
                 "kind": "episode",
@@ -590,7 +596,7 @@ async def build_calendar_entries(
                 "media_type": "movie",
                 "media_id": m.id,
                 "title": m.title,
-                "poster_url": m.poster_url,
+                "poster_url": _poster("movie", m),
                 "next_episode_number": None,
                 "air_at": _date_to_unix(m.release_date),
                 "kind": "release",
@@ -618,7 +624,7 @@ async def build_calendar_entries(
                 "media_type": "tv",
                 "media_id": t.id,
                 "title": t.title,
-                "poster_url": t.poster_url,
+                "poster_url": _poster("tv", t),
                 "next_episode_number": None,
                 "air_at": _date_to_unix(t.first_air_date),
                 "kind": "release",
@@ -646,7 +652,7 @@ async def build_calendar_entries(
                 "media_type": "anime",
                 "media_id": a.id,
                 "title": a.title,
-                "poster_url": a.poster_url,
+                "poster_url": _poster("anime", a),
                 "next_episode_number": None,
                 "air_at": _date_to_unix(a.first_air_date),
                 "kind": "release",

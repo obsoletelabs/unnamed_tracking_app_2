@@ -498,6 +498,7 @@ are redacted. Validation errors never echo submitted values.
 | PUT | `/api/lists/{list_id}/order` | user | List owned by caller; added media must also be the caller's. |
 | GET | `/api/media` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
 | GET | `/api/media-image/{media_type}/{item_id}/{which}` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
+| GET | `/api/media-image/{media_type}/episode/{episode_id}/still` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
 | GET | `/api/media-stats` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
 | GET | `/api/media-stats/activity/day` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
 | GET | `/api/media/inbox` | user | Inbox file belongs to the caller's storage and row. |

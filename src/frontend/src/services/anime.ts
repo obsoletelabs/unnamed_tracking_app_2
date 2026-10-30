@@ -129,7 +129,10 @@ function mapBackendEpisode(raw: BackendEpisode): AnimeEpisode {
     description: raw.description,
     airDate: raw.air_date,
     runtimeMinutes: raw.runtime_minutes,
-    stillUrl: raw.still_url,
+    // Served through this server, never loaded from the provider's host.
+    stillUrl: raw.still_url
+      ? `/api/media-image/anime/episode/${encodeURIComponent(raw.id)}/still`
+      : null,
     watched: raw.watched,
     rating: toNumberOrNull(raw.rating),
     note: raw.note ?? null,
