@@ -66,6 +66,7 @@ export const capabilityLabels: Record<string, string> = {
   "achievements.write": "Create manual achievements and local reports",
   "compatibility.write": "Save multiplayer settings for your games",
   "library.sync": "Add and update games, artwork and launcher details",
+  "games.launch": "Receive requests to launch Playnite games on this computer",
   "saves.read": "List and download save backups",
   "saves.write": "Upload and rename save backups",
   "content.write": "Add screenshots, clips, soundtracks and documents",
