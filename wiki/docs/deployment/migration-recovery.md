@@ -209,7 +209,8 @@ The repair flag is a one-command operator acknowledgement that the history revie
 clone rehearsal have happened. It does not itself create a backup; required mode also
 enforces the verified pre-upgrade recovery point described above before any replay.
 There is no persistent environment switch or request/API parameter enabling automatic
-repair. Scheduled restore drills remain separate operational work.
+repair. The scheduled [restore drill](disaster-recovery.md) rehearses restore, upgrade and
+interruption on synthetic data.
 
 Explicit replay puts Alembic stamping, replay and the final schema-presence check on the
 same PostgreSQL connection and transaction. Migration exceptions or failed final validation
