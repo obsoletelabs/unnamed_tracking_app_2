@@ -18,6 +18,10 @@ vi.mock("../services/movies", () => ({ createMovie: saves.movie }));
 vi.mock("../services/tvShows", () => ({ createTVShow: saves.tv }));
 vi.mock("../services/anime", () => ({ createAnime: saves.anime }));
 vi.mock("../services/games", () => ({ createGame: saves.game }));
+vi.mock("../services/metadata", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../services/metadata")>()),
+  fetchMetadataProviders: vi.fn().mockResolvedValue([]),
+}));
 vi.mock("../utils/useMetadataSearch", () => ({
   useMetadataSearch: () => search,
 }));
