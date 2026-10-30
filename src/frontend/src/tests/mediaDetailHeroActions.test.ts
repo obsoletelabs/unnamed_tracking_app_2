@@ -51,6 +51,15 @@ describe("MediaDetailHero plugin actions", () => {
     });
   });
 
+  it("steps Edit back once the open-in button has somewhere to go", async () => {
+    slots.value = [];
+    const wrapper = mountHero();
+    expect(wrapper.get(".edit-btn").classes()).not.toContain("secondary");
+    wrapper.getComponent({ name: "MediaWatchLinks" }).vm.$emit("present", true);
+    await wrapper.vm.$nextTick();
+    expect(wrapper.get(".edit-btn").classes()).toContain("secondary");
+  });
+
   it("keeps Edit prominent until a plugin adds a watch action", async () => {
     slots.value = [];
     const wrapper = mountHero();

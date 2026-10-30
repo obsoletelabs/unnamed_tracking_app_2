@@ -32,6 +32,21 @@ const remembered = ref<string | null>(readRemembered());
 const primary = computed(() =>
   defaultWatchLink(watchSources.value, remembered.value),
 );
+// The button: a media server that has the title wins; otherwise the first site to open it in
+// (TMDB, AniList...), the way a game's button falls back to its store page.
+const main = computed(() => {
+  if (primary.value) {
+    return {
+      url: primary.value.url,
+      text: `▶ Watch in ${primary.value.label}`,
+      source: primary.value.id,
+    };
+  }
+  const site = sites.value[0];
+  return site
+    ? { url: site.url, text: `↗ Open in ${site.label}`, source: null }
+    : null;
+});
 // Like the game launcher's menu, this lists every choice, including the one on the button.
 const menuItems = computed(() => [
   ...watchSources.value.map((link) => ({
@@ -75,9 +90,16 @@ watch(
     } catch {
       watchSources.value = [];
     }
-    emit("present", watchSources.value.length > 0);
   },
   { immediate: true },
+);
+// Edit steps back whenever there is a button to press, whatever it opens.
+watch(
+  () => main.value !== null,
+  (value) => emit("present", value),
+  {
+    immediate: true,
+  },
 );
 
 const menuOpen = ref(false);
@@ -126,29 +148,27 @@ onBeforeUnmount(() => listen(false));
 </script>
 
 <template>
-  <div v-if="primary || menuItems.length" ref="root" class="watch-links">
+  <div v-if="main" ref="root" class="watch-links">
     <a
-      v-if="primary"
       class="watch-main"
       :class="{ 'has-menu': menuItems.length > 1 }"
-      :href="primary.url"
+      :href="main.url"
       target="_blank"
       rel="noopener noreferrer"
-      @click="remember(primary.id)"
+      @click="remember(main.source)"
     >
-      ▶ Watch in {{ primary.label }}
+      {{ main.text }}
     </a>
     <button
-      v-if="menuItems.length > 1 || (!primary && menuItems.length)"
+      v-if="menuItems.length > 1"
       type="button"
       class="watch-toggle"
-      :class="{ alone: !primary }"
       aria-haspopup="menu"
       :aria-expanded="menuOpen"
-      :aria-label="primary ? 'More places to watch or open' : 'Open in'"
+      aria-label="More places to watch or open"
       @click="menuOpen = !menuOpen"
     >
-      {{ primary ? "▾" : "Open in ▾" }}
+      ▾
     </button>
     <Teleport to="body">
       <ul
@@ -211,13 +231,6 @@ onBeforeUnmount(() => listen(false));
   padding: 0 10px;
   border-left: 1px solid rgb(255 255 255 / 35%);
   border-radius: 0 var(--ui-radius-control) var(--ui-radius-control) 0;
-}
-.watch-toggle.alone {
-  padding: 0 16px;
-  border: 1px solid color-mix(in srgb, var(--ui-text) 22%, transparent);
-  border-radius: var(--ui-radius-control);
-  background: transparent;
-  color: var(--ui-text);
 }
 .watch-main:focus-visible,
 .watch-toggle:focus-visible {
