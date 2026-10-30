@@ -368,3 +368,37 @@ async def test_playstation_card_reports_a_saved_npsso_token():
         status = await settings_routes.get_provider_credentials(db, user)
     assert status["PlayStation"]["status"] == "configured"
     assert "encrypted-npsso" not in str(status)
+
+
+@pytest.mark.parametrize("include_counts", [True, False])
+async def test_library_pages_have_stable_order_for_equal_sort_titles(scratch_user, include_counts):
+    ids = [uuid.UUID(int=value) for value in (30, 10, 20)]
+    async with SessionLocal() as db:
+        db.add_all(
+            [
+                Game(
+                    id=game_id,
+                    user_id=scratch_user.id,
+                    title=f"Page {index}",
+                    folder_location=f"Page_{index}",
+                    sort_title="same",
+                )
+                for index, game_id in enumerate(ids)
+            ]
+        )
+        await db.commit()
+        pages = [
+            await games.list_games(
+                Response(),
+                db,
+                scratch_user,
+                status_filter=None,
+                favorite=None,
+                search=None,
+                skip=offset,
+                limit=1,
+                include_counts=include_counts,
+            )
+            for offset in range(3)
+        ]
+    assert [page[0].id for page in pages] == sorted(ids)

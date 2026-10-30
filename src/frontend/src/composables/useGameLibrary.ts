@@ -1,3 +1,4 @@
+import { useGameLibraryPages } from "./useGameLibraryPages";
 import {
   titleMatchRank,
   fuzzyTitleMatch,
@@ -95,10 +96,29 @@ export function useGameLibrary() {
   const games = ref<Game[]>([]);
   const totalGameCount = ref(0);
   const serverStatusCounts = ref<Record<string, number> | null>(null);
-  const loadingMoreGames = ref(false);
-  let nextGameOffset = 0;
-  let pageRequest: AbortController | null = null;
-  let pendingPageLoad: Promise<void> | null = null;
+  const queryReloadPending = ref(false);
+  const {
+    nextGameOffset,
+    hasMoreGames,
+    loadingMoreGames,
+    loadMoreError,
+    loadMoreGames,
+    retryLoadMoreGames,
+    loadAllGames,
+    resetPages,
+  } = useGameLibraryPages(
+    games,
+    totalGameCount,
+    (offset, signal) =>
+      fetchGamesForViewport(
+        offset,
+        signal,
+        serverSearchText(),
+        statusFilter.value,
+        favoritesOnly.value,
+      ),
+    () => queryReloadPending.value,
+  );
   const duplicatePairs = ref<[string, string][]>([]);
   let duplicateRequest: AbortController | null = null;
   onUnmounted(() => duplicateRequest?.abort());
@@ -732,7 +752,7 @@ export function useGameLibrary() {
   const statusCountsComplete = computed(() =>
     canUseServerStatusCounts.value
       ? serverStatusCounts.value !== null
-      : !hasMoreGames.value,
+      : nextGameOffset.value >= totalGameCount.value,
   );
 
   const filterRefs = {
@@ -905,52 +925,6 @@ export function useGameLibrary() {
   const refreshing = ref(false);
   const freshness = libraryFreshness();
 
-  const hasMoreGames = computed(
-    () => games.value.length < totalGameCount.value,
-  );
-
-  function loadMoreGames(): Promise<void> {
-    if (pendingPageLoad) return pendingPageLoad;
-    if (!hasMoreGames.value) return Promise.resolve();
-    loadingMoreGames.value = true;
-    pageRequest?.abort();
-    pageRequest = new AbortController();
-    const request = (async () => {
-      try {
-        const result = await fetchGamesForViewport(
-          nextGameOffset,
-          pageRequest?.signal,
-          serverSearchText(),
-          statusFilter.value,
-          favoritesOnly.value,
-        );
-        const seenIds = new Set(games.value.map((game) => game.id));
-        games.value = [
-          ...games.value,
-          ...result.games.filter((game) => !seenIds.has(game.id)),
-        ];
-        nextGameOffset += result.games.length;
-        if (result.total !== null) totalGameCount.value = result.total;
-      } catch {
-        // Keep the visible rows available; the next scroll or explicit refresh
-        // can retry this page after a transient network or server restart.
-      } finally {
-        loadingMoreGames.value = false;
-        pendingPageLoad = null;
-      }
-    })();
-    pendingPageLoad = request;
-    return request;
-  }
-
-  async function loadAllGames(): Promise<void> {
-    while (hasMoreGames.value) {
-      const before = nextGameOffset;
-      await loadMoreGames();
-      if (nextGameOffset === before) break;
-    }
-  }
-
   function selectFirstForDetailView() {
     if (
       viewMode.value === "detail" &&
@@ -967,17 +941,18 @@ export function useGameLibrary() {
     const enrichmentRequest = new AbortController();
     duplicateRequest = enrichmentRequest;
     refreshing.value = true;
-    pageRequest?.abort();
+    resetPages();
+    queryReloadPending.value = false;
     totalGameCount.value = 0;
     serverStatusCounts.value = null;
-    nextGameOffset = 0;
+    nextGameOffset.value = 0;
     // A library seen earlier in this visit is drawn at once and refreshed
     // behind it, instead of a "Loading…" screen on every return to the page.
     const seen = games.value.length ? null : peekAllGames();
     if (seen) {
       games.value = seen;
       totalGameCount.value = seen.length;
-      nextGameOffset = seen.length;
+      nextGameOffset.value = seen.length;
       selectFirstForDetailView();
       loading.value = false;
     } else if (!games.value.length) {
@@ -995,7 +970,7 @@ export function useGameLibrary() {
       games.value = firstPage.games;
       totalGameCount.value = firstPage.total ?? firstPage.games.length;
       serverStatusCounts.value = firstPage.statusCounts;
-      nextGameOffset = firstPage.games.length;
+      nextGameOffset.value = firstPage.games.length;
       error.value = null;
       if (selectedGame.value)
         selectedGame.value =
@@ -1080,6 +1055,9 @@ export function useGameLibrary() {
 
   let searchReloadTimer: ReturnType<typeof setTimeout> | undefined;
   watch(searchQuery, () => {
+    queryReloadPending.value = true;
+    ++loadGamesToken;
+    resetPages();
     if (searchReloadTimer) clearTimeout(searchReloadTimer);
     searchReloadTimer = setTimeout(() => {
       if (route.path === "/games") void loadGames();
@@ -1089,6 +1067,8 @@ export function useGameLibrary() {
     if (route.path === "/games") void loadGames();
   });
   onUnmounted(() => {
+    ++loadGamesToken;
+    resetPages();
     if (searchReloadTimer) clearTimeout(searchReloadTimer);
   });
 
@@ -1500,7 +1480,8 @@ export function useGameLibrary() {
           (searchText ? matchRank(a) - matchRank(b) : 0) ||
           a.title.localeCompare(b.title)
         );
-      if (sortBy.value === "name") return a.title.localeCompare(b.title);
+      // Preserve the API's global saved-title order across pages.
+      if (sortBy.value === "name") return 0;
       if (sortBy.value === "name_desc") return b.title.localeCompare(a.title);
       if (sortBy.value === "recent")
         return (b.dateAdded ?? "").localeCompare(a.dateAdded ?? "");
@@ -1554,7 +1535,12 @@ export function useGameLibrary() {
 
   const hasAnyGames = computed(() => games.value.length > 0);
   const isEmpty = computed(
-    () => !loading.value && !error.value && filteredGames.value.length === 0,
+    () =>
+      !loading.value &&
+      !error.value &&
+      !loadMoreError.value &&
+      !hasMoreGames.value &&
+      filteredGames.value.length === 0,
   );
 
   const searchSuggestions = computed(() => {
@@ -1790,10 +1776,14 @@ export function useGameLibrary() {
     })),
   );
   const lazyLibraryMode = computed(
-    // Shelves and list views are virtualized, so changing a filter or sort
-    // should not force every game through the network before those views can
-    // show results. Keep detail preview's existing full-order behavior.
-    () => viewMode.value !== "detail",
+    // Page by viewport only for server queries; client filters/sorts need every record.
+    () =>
+      viewMode.value !== "detail" &&
+      canUseServerStatusCounts.value &&
+      sortBy.value === "name",
+  );
+  const resultsIncomplete = computed(
+    () => !lazyLibraryMode.value && nextGameOffset.value < totalGameCount.value,
   );
   const nearLoadedEnd = computed(() => {
     if (!filteredGames.value.length) return false;
@@ -1838,17 +1828,25 @@ export function useGameLibrary() {
     return rect.bottom > 0 && rect.top < window.innerHeight;
   }
   watch(
-    [nearLoadedEnd, hasMoreGames, lazyLibraryMode],
+    [
+      nearLoadedEnd,
+      hasMoreGames,
+      lazyLibraryMode,
+      nextGameOffset,
+      loading,
+      refreshing,
+      queryReloadPending,
+    ],
     ([nearEnd, hasMore, canPage]) => {
-      if (hasMore && (!canPage || nearEnd || filteredGames.value.length === 0))
+      if (
+        !loading.value &&
+        !refreshing.value &&
+        !queryReloadPending.value &&
+        !loadMoreError.value &&
+        hasMore &&
+        (!canPage || nearEnd || filteredGames.value.length === 0)
+      )
         void loadMoreGames();
-    },
-    { flush: "post" },
-  );
-  watch(
-    [lazyLibraryMode, totalGameCount],
-    ([canPage]) => {
-      if (!canPage && hasMoreGames.value) void loadAllGames();
     },
     { flush: "post" },
   );
@@ -1884,6 +1882,9 @@ export function useGameLibrary() {
     totalGameCount,
     hasMoreGames,
     loadingMoreGames,
+    loadMoreError,
+    retryLoadMoreGames,
+    resultsIncomplete,
     loadMoreGames,
     loadAllGames,
     isLibraryRowInViewport,
