@@ -13,6 +13,9 @@ defaults:
 # tools/backend_test_shards_timings.json need to keep each shard near the target, within the
 # limits below. Change these two values to retune the split.
 env:
+  # A stalled cache download otherwise holds the job for the 10 minute default; give up after 2
+  # and carry on without the cache (a plain pip install).
+  SEGMENT_DOWNLOAD_TIMEOUT_MINS: "2"
   # Recorded seconds of test time per shard. Setup (checkout, dependencies, backup tools and the
   # database migration) adds a few minutes to each shard's wall-clock time.
   BACKEND_TEST_TARGET_SECONDS: "600"

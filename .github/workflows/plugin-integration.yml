@@ -15,6 +15,11 @@ on:
         type: string
         required: false
 
+env:
+  # A stalled cache download otherwise holds the job for the 10 minute default; give up after 2
+  # and carry on without the cache (a plain pip install).
+  SEGMENT_DOWNLOAD_TIMEOUT_MINS: "2"
+
 jobs:
   lifecycle:
     runs-on: ubuntu-latest
