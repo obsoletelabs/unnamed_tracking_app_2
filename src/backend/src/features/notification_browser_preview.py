@@ -23,6 +23,7 @@ from src.core.config import settings
 from src.database.models.notification import Notification
 from src.database.models.notification_delivery import NotificationDelivery
 from src.database.models.notification_destination import NotificationDestination
+from src.features.notification_markdown import plain_text, render_markdown
 from src.features.notification_providers.base import NotificationMessage
 from src.features.notification_render import _content
 from src.features.notification_safety import CREDENTIAL_PATTERNS
@@ -191,8 +192,10 @@ async def preview_for(
         return Preview(True, url, revision)
     content = await _content(db, notification, delivery.projection)
     title = _line(content.title if content else notification.title, MAX_TITLE)
-    body = _line(content.summary if content and content.summary else notification.body, MAX_BODY)
-    if not title or not _safe_text(f"{title}\n{body}"):
+    source = content.summary if content and content.summary else notification.body
+    # Summaries and bodies are Markdown; a device shows them as plain text.
+    body = _line(plain_text(render_markdown(source)), MAX_BODY)
+    if not title or not _safe_text(f"{title}\n{source}\n{body}"):
         return Preview(True, url, revision, fallbacks=("preview_withheld",))
     return Preview(
         False,
