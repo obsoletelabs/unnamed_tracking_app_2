@@ -336,7 +336,11 @@ def main(*, allow_repair: bool = False, plan_only: bool = False) -> None:
             _check_recorded_history(script, current, known)
             plan = decide(current, known, bool(tables - {"alembic_version"}))
             print(f"Database: {plan.action} ({plan.reason})", flush=True)
-            if plan.action == "adopt" and _start_on_newer_database(engine, current, known):
+            if (
+                plan.action == "adopt"
+                and not allow_repair
+                and _start_on_newer_database(engine, current, known)
+            ):
                 if not plan_only:
                     assert safety is not None
                     safety.record(
