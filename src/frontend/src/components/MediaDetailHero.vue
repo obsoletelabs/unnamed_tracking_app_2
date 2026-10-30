@@ -24,6 +24,8 @@ defineProps<{
   favorite: boolean;
   mediaType: "movie" | "tv" | "anime";
   mediaId: string;
+  // the title's identifiers on metadata sites, for "Open in" links
+  providerIds?: Record<string, string>;
   badges: { text: string; tone?: "good" }[];
   // priority and personal dates, shown the same way on every media page
   facts?: { label: string; value: string }[];
@@ -110,6 +112,7 @@ const emit = defineEmits<{
           <MediaWatchLinks
             :media-type="mediaType"
             :media-id="mediaId"
+            :provider-ids="providerIds"
             @present="hasSourceLink = $event"
           />
           <PluginExtensionSlot

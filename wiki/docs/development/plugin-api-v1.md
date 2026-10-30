@@ -276,7 +276,7 @@ media page can offer "Watch in …" from what the last sync recorded, with no li
 source that reports `available: false` stops being offered, and a sync that omits `watch_url`
 clears it.
 
-![Watch in Jellyfin and Plex beside Edit on a movie page](../assets/media-watch-links/watch-links.jpg)
+![The Watch button with other sources and Open in links in its menu](../assets/media-watch-links/watch-links.jpg)
 Once accepted, the host retains the provider link across renames and replays.
 
 `metadata` permits at most 32 JSON keys and 64 KiB. Supported native fields include
