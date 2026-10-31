@@ -60,3 +60,43 @@ async def test_disabled_metrics_do_not_collect(monkeypatch):
     monkeypatch.setattr(metrics_viewer, "_collect", collector)
     assert await metrics_viewer.snapshot() == {"enabled": False}
     collector.assert_not_called()
+
+
+def test_viewer_reads_the_registered_cache_counter():
+    """Regression for #355: the viewer must read the series the collector registers."""
+    names = {sample.name for family in metrics.REGISTRY.collect() for sample in family.samples}
+    assert "uta_cache_requests_total" in names
+    assert "uta_cache_access_total" not in names
+    assert "uta_cache_access_total" not in metrics_viewer._VALUES
+    assert metrics_viewer._VALUES["uta_cache_requests_total"] == "cache_requests"
+    assert "uta_cache_requests_total" in metrics_viewer._SAMPLE_NAMES
+
+
+def test_cache_requests_counter_increments_on_hit_and_miss_and_is_surfaced():
+    from src.core.cache_metrics import cache_request
+
+    def count(outcome):
+        rows = metrics_viewer._collect()["values"]["cache_requests"]
+        return sum(
+            row["value"]
+            for row in rows
+            if row["labels"] == {"cache_kind": "media_image", "outcome": outcome}
+        )
+
+    before = {outcome: count(outcome) for outcome in ("hit", "miss")}
+    cache_request("media_image", "miss")
+    cache_request("media_image", "hit")
+    cache_request("media_image", "hit")
+    assert count("miss") == before["miss"] + 1
+    assert count("hit") == before["hit"] + 2
+
+
+def test_cache_requests_labels_stay_bounded():
+    from src.core.cache_metrics import cache_request
+
+    cache_request("media_image/private-title.png", "hit")
+    cache_request("media_image", "https://example.invalid/token")
+    rows = metrics_viewer._collect()["values"]["cache_requests"]
+    assert rows and all(set(row["labels"]) == {"cache_kind", "outcome"} for row in rows)
+    assert len(rows) <= 4 * 5
+    assert not any("private-title" in str(row) or "example.invalid" in str(row) for row in rows)
