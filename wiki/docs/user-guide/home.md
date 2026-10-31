@@ -8,6 +8,8 @@ On first sign-in, **Save & take a tour** saves your appearance choices and start
 
 Choose **Add widgets** or **Customize Home** to select what appears. Use the up/down buttons to set the order, or Remove to take a widget off Home. **Save Home** stores the selection and order on your account, across devices. Cancel leaves the saved layout unchanged. If a save fails, the chooser keeps your draft and shows an error; reconnect and save again.
 
+Use **Refresh Home** to reload selected built-in widgets without fetching unselected library data. Home shows the last successful update for each selected data source. If part of a refresh fails, the existing content and its successful update time stay visible, and the affected widget offers a retry.
+
 ## Available widgets
 
 | Widget | What it shows |
