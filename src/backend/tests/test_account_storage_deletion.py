@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.core.config import settings
 from src.database.models.admin_user_audit import AdminUserAudit
@@ -286,7 +287,7 @@ async def test_a_failed_audit_commit_after_the_delete_still_reports_incomplete(
             isinstance(o, AdminUserAudit) and o.action.startswith("account.delete.storage")
             for o in self.new
         ):
-            raise RuntimeError("audit store down")
+            raise SQLAlchemyError("audit store down")
         return await real_commit(self)
 
     monkeypatch.setattr(AsyncSession, "commit", flaky_commit)

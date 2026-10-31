@@ -8,7 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
@@ -632,7 +632,7 @@ async def _pending_trash_ids(db: AsyncSession, user_id: UUID) -> list[UUID]:
 async def _commit_audit(db: AsyncSession, user_id: UUID) -> None:
     try:
         await db.commit()
-    except Exception:
+    except SQLAlchemyError:
         await db.rollback()
         logger.exception("Could not record the storage audit for account %s", user_id)
 
