@@ -210,7 +210,10 @@ async def grants(user: User = _BROWSER_USER, db: AsyncSession = _DB) -> list[dic
             select(DelegatedGrant, IntegrationClient, DelegationRequest.external_account)
             .join(IntegrationClient, DelegatedGrant.client_id == IntegrationClient.id)
             .join(DelegationRequest, DelegatedGrant.request_id == DelegationRequest.id)
-            .where(DelegatedGrant.user_id == user.id)
+            .where(
+                DelegatedGrant.user_id == user.id,
+                DelegatedGrant.revoked_at.is_(None),
+            )
             .order_by(DelegatedGrant.created_at.desc())
             .limit(200)
         )

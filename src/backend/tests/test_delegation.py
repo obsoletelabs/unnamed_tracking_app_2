@@ -9,13 +9,18 @@ from uuid import UUID, uuid4
 
 import httpx
 import pytest
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 
 from src.api.routes.delegation import browser_user
 from src.core.auth import create_api_key, hash_token
 from src.database.models.achievement import Achievement
 from src.database.models.auth import UserApiKey
-from src.database.models.delegation import DelegatedGrant, IntegrationClient, IntegrationPolicy
+from src.database.models.delegation import (
+    DelegatedGrant,
+    DelegationAudit,
+    IntegrationClient,
+    IntegrationPolicy,
+)
 from src.database.models.game import Game, GameStatus
 from src.database.models.user import User
 from src.database.session import SessionLocal
@@ -617,3 +622,26 @@ async def test_note_read_and_write_capabilities_are_independent(
     assert (
         await flow.client.put(endpoint, headers=read, json={"content": "denied"})
     ).status_code == 403
+
+
+async def test_revoked_connections_leave_the_list_but_keep_audit_evidence(delegation_flow):
+    flow = delegation_flow
+    headers, old_id = await grant_access(flow, ["games.read"])
+    _, new_id = await grant_access(flow, ["games.read"])
+    assert (await flow.client.delete(f"{BASE}/grants/{old_id}")).status_code == 200
+    rows = (await flow.client.get(BASE + "/grants")).json()
+    assert {row["id"] for row in rows} == {str(new_id)}
+    assert (await flow.client.get(BASE + "/games", headers=headers)).status_code == 401
+    async with SessionLocal() as db:
+        revoked = await db.get(DelegatedGrant, old_id)
+        assert revoked.revoked_at is not None
+        assert revoked.token_hash is None
+        assert await db.scalar(
+            select(DelegationAudit.id).where(
+                DelegationAudit.grant_id == old_id, DelegationAudit.event == "revoked"
+            )
+        ) is not None
+    # An unrelated account cannot see or remove the remaining approval.
+    app.dependency_overrides[browser_user] = lambda: flow.other
+    assert (await flow.client.get(BASE + "/grants")).json() == []
+    assert (await flow.client.delete(f"{BASE}/grants/{new_id}")).status_code == 404

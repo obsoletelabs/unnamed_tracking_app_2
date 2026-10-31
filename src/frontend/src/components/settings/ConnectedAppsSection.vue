@@ -24,6 +24,8 @@ function date(value: number) {
   return new Date(value * 1000).toLocaleString();
 }
 async function load() {
+  loading.value = true;
+  error.value = "";
   try {
     grants.value = await fetchIntegrationGrants();
     choices.value = Object.fromEntries(
@@ -37,12 +39,18 @@ async function load() {
   }
 }
 async function change(grant: IntegrationGrant, revoke: boolean) {
+  if (busy.value) return;
   busy.value = grant.id;
   error.value = "";
   try {
-    if (revoke) await revokeIntegrationGrant(grant.id);
-    else await reduceIntegrationGrant(grant.id, choices.value[grant.id] ?? []);
-    await load();
+    if (revoke) {
+      await revokeIntegrationGrant(grant.id);
+      grants.value = grants.value.filter((row) => row.id !== grant.id);
+      delete choices.value[grant.id];
+    } else {
+      await reduceIntegrationGrant(grant.id, choices.value[grant.id] ?? []);
+      await load();
+    }
   } catch (err) {
     error.value =
       err instanceof Error ? err.message : "Unable to change access.";
@@ -63,7 +71,10 @@ onMounted(load);
     </div>
     <p v-if="loading" role="status">Loading connected apps…</p>
     <p v-if="error" role="alert">{{ error }}</p>
-    <p v-if="!loading && !grants.length">
+    <button v-if="error" :disabled="!!busy || loading" @click="load">
+      Retry
+    </button>
+    <p v-if="!loading && !error && !grants.length">
       No apps or integrations have access to your account. You can approve one
       when connecting from Playnite or an Activity.
     </p>
@@ -107,22 +118,25 @@ onMounted(load);
           {{ capabilityLabels[scope] ?? scope }}</label
         >
       </fieldset>
-      <div v-if="active(grant)" class="actions">
+      <div class="actions">
         <button
-          :disabled="busy === grant.id || !choices[grant.id]?.length"
+          v-if="active(grant)"
+          :disabled="!!busy || !choices[grant.id]?.length"
           @click="change(grant, false)"
         >
           Save reduced access
         </button>
-        <button :disabled="busy === grant.id" @click="change(grant, true)">
-          Revoke access
+        <button :disabled="!!busy" @click="change(grant, true)">
+          {{ active(grant) ? "Revoke access" : "Remove connection" }}
         </button>
       </div>
     </article>
     <p>
       Changes apply to subsequent requests. Adding new capabilities requires a
       fresh approval. Revoking an integration leaves your account, library and
-      other connections intact.
+      other connections intact. Revoked connections disappear from this list;
+      their security audit records are retained. Reconnecting creates a new
+      approval, so revoke an old connection if you no longer use it.
     </p>
   </section>
 </template>
