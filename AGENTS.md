@@ -767,6 +767,8 @@ Backend tests require the development database:
 docker compose exec -e PYTHONPATH=/app backend python -m pytest tests -q
 ```
 
+Without the development stack (for example on Windows), `tools/backend_linux_lane.sh` runs the same Linux, Python 3.12, PostgreSQL 18 test job as CI in Docker; see `docs/backend-linux-lane.md`.
+
 Frontend:
 
 ```bash
