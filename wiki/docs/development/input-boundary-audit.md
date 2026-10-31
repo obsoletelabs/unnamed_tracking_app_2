@@ -67,15 +67,15 @@ Fixed since the first pass:
 * **Install consent preview** shows only an icon packaged in the plugin, never a manifest-chosen URL.
 * **Runtime output.** Each line a plugin process writes (an action result, a gateway request or a log line) is capped at 16 MiB while it is read; an oversized result fails the action, an oversized gateway request is logged and skipped. A chunked request body stops at the 48 KiB limit. `plugin-runtime/tests/test_gateway_transport.py`
 * **Smaller caps.** Two achievement ids that share their first 200 characters are one row, and provider-reported `provider_custom` fields stop growing at 64 keys.
-* **Self-origin links.** A notification link to the app's own `/api/...` is refused as an absolute URL too: by `url_is_safe` when the host matches `PUBLIC_APP_URL`, and by `safeHref` against the page's host. `test_notification_rich_content.py`, `notificationStory.test.ts`
+* **Self-origin links.** A notification link to the app's own `/api/...` is refused as an absolute URL too: by `url_is_safe` using the effective saved deployment URL (environment overrides it), and by `safeHref` against the page's host. `test_notification_rich_content.py`, `notificationStory.test.ts`
 * **Plugin frame saves.** `plugin.save-secret` and `plugin.save-settings` need transient user activation (a click in the frame), like external-navigation actions. `pluginUserActivation.test.ts`
 * **Push preview** bodies are rendered from Markdown to plain text; the credential check covers both. `test_notification_browser_story.py`
 * **Native-frontend files** are served with `Content-Security-Policy: sandbox`. It has no effect on the module imports and subresources the host loads, but an HTML or SVG asset opened as a page runs without script on a unique origin.
 
 Still open:
 
-* **Public-app files** (`/api/public-apps/{id}/app/...`) are served unauthenticated with `connect-src 'self'` and no sandbox, because the app talks to the host. Sandboxing them needs a separate origin or a design change for the Discord embed; this is a decision, not a quick fix.
-* **Plugin frontend assets** are served to any signed-in user whose installation is executable, regardless of grants. This appears intended (the UI document is grant-filtered, the assets are package content) and needs confirmation rather than a change.
+* **Public-app files:** a separate HTTPS hostname configured through `PUBLIC_APPS_ORIGIN` is required. Main-origin asset requests are refused. The public hostname exposes only public-app APIs, strips incoming/outgoing cookies, and cannot call ordinary host APIs using the public Origin. Participant bearer sessions stay separate from application users. See [deployment and upgrade instructions](plugin-public-apps.md#separate-browser-origin-v005) and `test_public_app_origin.py`.
+* **Plugin frontend assets:** confirmed policy: ordinary static package assets are readable by signed-in users for executable installations and must contain no secrets. Page sandboxing remains mandatory. Capability grants continue to control actions, data and UI contribution activation; native modules still require `frontend.native`. `test_static_frontend_assets_are_readable_without_action_grants` pins file access versus refused execution.
 
 ### Checked and found safe
 

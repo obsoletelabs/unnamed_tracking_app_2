@@ -205,6 +205,15 @@ CONFIG_REGISTRY: tuple[ConfigSpec, ...] = (
         "app URL; independent of OIDC.",
         storage="app_integration",
     ),
+    ConfigSpec(
+        "PUBLIC_APPS_ORIGIN",
+        "general",
+        source=ConfigSource.ENV,
+        label="Public plugin app origin",
+        hint="Separate HTTPS hostname for public apps such as Discord Game Night. "
+        "Never use the main application's hostname, even on another port.",
+        default="",
+    ),
     ConfigSpec("SMTP_HOST", "smtp", label="SMTP host", storage="app_integration"),
     ConfigSpec(
         "SMTP_PORT",

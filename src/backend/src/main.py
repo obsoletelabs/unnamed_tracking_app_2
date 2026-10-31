@@ -100,6 +100,7 @@ from src.core.cache_metrics import refresh_disk_cache_inventory
 from src.core.config import settings as app_settings
 from src.core.password_work import PasswordWorkBusy
 from src.core.provider_credentials import apply_deployment_provider_credentials
+from src.core.public_app_origin import PublicAppOriginMiddleware
 from src.core.session_manager import purge_old_sessions
 from src.database.auth_limits import auth_limit_engine
 from src.database.migration_safety import publish_last_recovery_status
@@ -169,6 +170,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.add_middleware(AuthThrottleMiddleware)
 # Outermost, so an anonymous oversized body is refused before anything reads it.
 app.add_middleware(AnonymousBodyLimitMiddleware)
+app.add_middleware(PublicAppOriginMiddleware)
 # Outermost of all: it times every request and answers the guarded /metrics endpoint.
 app.add_middleware(MetricsMiddleware)
 

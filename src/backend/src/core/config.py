@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     WEB_PUSH_VAPID_SUBJECT: str = ""
     WEB_PUSH_VAPID_PRIVATE_KEY: str = ""
     PUBLIC_APP_URL: str = ""
+    PUBLIC_APPS_ORIGIN: str = ""
     DEFAULT_UI_STYLE: Literal["modern", "classic"] = "modern"
     STARTUP_MODE: str = ""
     ARGON2_MEMORY_KIB: int = Field(default=19456, ge=8192, le=262144)
@@ -144,7 +145,7 @@ class Settings(BaseSettings):
         private_issuer_origins(value)
         return value.strip()
 
-    @field_validator("PUBLIC_APP_URL")
+    @field_validator("PUBLIC_APP_URL", "PUBLIC_APPS_ORIGIN")
     @classmethod
     def validate_public_url(cls, value: str) -> str:
         return validate_deployment_url(value)

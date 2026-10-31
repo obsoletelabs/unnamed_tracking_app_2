@@ -284,3 +284,10 @@ is generated automatically. Storage errors identify `APP_DATA_DIR/config`; check
 persistent volume and its read/write permissions before restarting.
 
 The four `MAX_*_SIZE_MB` upload caps can also be overridden in **Settings → Administration → Limits**. These deployment-wide overrides take effect on new uploads immediately; resetting removes the overrides and returns to the environment values.
+
+## Public plugin app isolation
+
+`PUBLIC_APPS_ORIGIN` is an optional deployment-owned HTTPS origin on a hostname
+separate from the main application. It is required to serve public plugin apps
+such as Discord Game Night. It does not replace `PUBLIC_APP_URL`. See the
+[public-app deployment and upgrade instructions](../development/plugin-public-apps.md#separate-browser-origin-v005).

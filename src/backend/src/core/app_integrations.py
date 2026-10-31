@@ -33,9 +33,7 @@ async def get_public_app_url(db: AsyncSession) -> str:
     if handler.has("PUBLIC_APP_URL"):
         value = handler.get("PUBLIC_APP_URL")
     else:
-        row = await get_or_create_app_integration_settings(db)
-        await db.refresh(row)
-        value = row.public_app_url
+        value = await db.scalar(select(AppIntegrationSettings.public_app_url).limit(1))
     normalized = normalize_public_url(str(value or ""))
     return normalized if is_public_app_url(normalized) else ""
 

@@ -7,6 +7,8 @@ make a producer's mistake visible instead of shipping a mangled message.
 
 import re
 from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from urllib.parse import parse_qsl, unquote, urlsplit
 
 from pydantic import TypeAdapter, ValidationError
@@ -23,6 +25,21 @@ from src.plugin_api.notification_story_contracts import (
 
 _HTTPS_URL: TypeAdapter[str] = TypeAdapter(PublicHttpsUrl)
 _APP_PATH: TypeAdapter[str] = TypeAdapter(ApplicationPath)
+_PUBLIC_APP_URL: ContextVar[str | None] = ContextVar("notification_public_app_url", default=None)
+
+
+@contextmanager
+def notification_origin(public_app_url: str) -> Iterator[None]:
+    """Use the effective deployment URL for one acceptance/rendering operation.
+
+    Context-local state keeps pure nested renderers consistent without sharing
+    one account/request configuration with another asynchronous operation.
+    """
+    token = _PUBLIC_APP_URL.set(public_app_url)
+    try:
+        yield
+    finally:
+        _PUBLIC_APP_URL.reset(token)
 
 
 class UnsafeContentError(ValueError):
@@ -114,10 +131,13 @@ def url_is_safe(value: str) -> bool:
 
 def _is_own_api_url(url: str) -> bool:
     """An absolute link into this host's own API, which application paths already refuse."""
-    if not settings.PUBLIC_APP_URL:
+    configured = _PUBLIC_APP_URL.get()
+    if configured is None:
+        configured = settings.PUBLIC_APP_URL
+    if not configured:
         return False
     try:
-        own, target = urlsplit(settings.PUBLIC_APP_URL), urlsplit(url)
+        own, target = urlsplit(configured), urlsplit(url)
     except ValueError:
         return True
     if (target.hostname or "").rstrip(".").lower() != (own.hostname or "").lower():

@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.app_integrations import get_public_app_url
 from src.core.preferences import load_preferences
 from src.database.models.notification import Notification
 from src.database.models.notification_delivery import NotificationDelivery
@@ -32,7 +33,11 @@ from src.features.notification_policy import (
 )
 from src.features.notification_providers.delivery import ensure_deliveries
 from src.features.notification_rich import render_plain
-from src.features.notification_safety import UnsafeContentError, validate_rich_content
+from src.features.notification_safety import (
+    UnsafeContentError,
+    notification_origin,
+    validate_rich_content,
+)
 from src.features.notification_stories import StoryReference, apply_revision
 from src.plugin_api.notification_story_contracts import NotificationContent
 
@@ -247,7 +252,8 @@ async def _accept(
     """Flush atomically; the caller owns commit and no provider is contacted here."""
     if event.kind not in EVENT_TYPES:
         raise ValueError("Unknown host notification type")
-    content = _accepted_content(event, interpretation)
+    with notification_origin(await get_public_app_url(db) if event.content else ""):
+        content = _accepted_content(event, interpretation)
     if content is None and event.content is not None:
         event = replace(event, content=None)
     if content is not None:

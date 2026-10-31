@@ -6,6 +6,51 @@ source credentials, image transport and capability enforcement. The plugin owns
 its application logic and UI. Discord-specific OAuth and membership checks live
 in the independent Discord bot plugin; the host contains no Discord bot logic.
 
+## Separate browser origin (v0.0.5)
+
+Public plugin JavaScript must run on a different **hostname** from the main
+application. A different port on the same hostname does not isolate cookies.
+Set deployment-owned `PUBLIC_APPS_ORIGIN=https://activities.example.org` and keep
+`PUBLIC_APP_URL=https://tracking.example.org` (or its saved Administration setting)
+for the main application and integration requester identity. The two settings
+have different purposes; do not replace the main application's public URL.
+
+Both names can point to the same server/container. At the external reverse proxy,
+forward only `/api/public-apps/` on the activities hostname to this application,
+preserve the original Host header, terminate HTTPS, and return 404 for other
+paths. Set Discord's Activity URL mapping to the activities hostname and its
+`/api/public-apps/{plugin_id}/app/` path. Existing packaged applications use
+relative public-app API requests and explicit participant bearer tokens.
+
+The backend independently restricts that hostname to public-app routes, strips
+all incoming cookies and outgoing Set-Cookie headers there, and refuses calls
+from its Origin to ordinary host APIs. The main hostname will not serve public
+app assets. With no configured origin, assets return 503 with setup instructions;
+an origin matching the main configured hostname is also refused. Configuring
+the additional hostname is required before an existing Discord Activity can load
+after upgrading. No participant token becomes an application-user session.
+
+For a reverse proxy that forwards to the same production container:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name activities.example.org;
+    # Configure this hostname's TLS certificate/key as usual.
+    location /api/public-apps/ {
+        proxy_set_header Host $host;
+        proxy_pass http://tracking-container:80;
+    }
+    location / { return 404; }
+}
+```
+
+Verify the main application still signs in, a public page can bootstrap an
+external participant, and `https://activities.example.org/api/auth/me` returns
+403 even with a cookie. The automated boundary tests exercise these restrictions
+and the asset misconfiguration cases; a real Discord login remains a deployment
+acceptance check with the owner's Discord configuration.
+
 ## Declarations and permissions
 
 A public-app manifest declares `public_app` with an `entry` beneath `frontend/`,
