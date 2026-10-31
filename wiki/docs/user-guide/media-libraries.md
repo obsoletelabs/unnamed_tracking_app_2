@@ -271,3 +271,11 @@ Overview combines all libraries and includes game favorites and unlocked
 achievements. Omitting `section` retains the complete response for existing clients.
 Watch time, rewatches, title-language preferences and active-library filtering use
 the same calculations in both response forms.
+
+## Removing several titles
+
+Choose **Select**, then **Select shown titles** to select the titles currently displayed in the list, shelf or board. Unloaded titles and titles outside the current filters are excluded. Choose **Remove from library** and review the count and Trash setting before confirming. The confirmation explains whether automatic Trash deletion is off or titles become eligible for deletion after the configured number of days. Removal itself always moves these titles to Trash; you can restore them until they are permanently deleted.
+
+The batch tries every selected title and refreshes the library and counts afterward. If some removals fail, only those titles remain selected, with an error and a retry using **Remove from library**. A failed refresh keeps successfully removed titles out of the displayed list and provides the existing library retry.
+
+Phone and desktop checks use deterministic API fixtures rather than live provider data: [Modern phone confirmation](../assets/media-library-removal/removal-confirm-archive-pocket-390.png), [Classic phone partial failure](../assets/media-library-removal/removal-partial-classic-390.png), and [Modern desktop partial failure](../assets/media-library-removal/removal-partial-archive-pocket-1440.png). The check is reproducible with `node tools/check_media_removal_ui.mjs <playwright-dependency-root> <evidence-directory> <frontend-origin>`.

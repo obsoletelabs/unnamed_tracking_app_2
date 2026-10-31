@@ -1575,3 +1575,16 @@
     width: 100%;
   }
 }
+
+.selection-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+  color: var(--ui-dim);
+}
+.bulk-delete-error {
+  color: var(--ui-error);
+  line-height: 1.6;
+}

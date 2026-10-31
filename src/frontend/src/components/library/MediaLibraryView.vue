@@ -15,6 +15,7 @@ import { useRoute, useRouter } from "vue-router";
 import CheckIcon from "../CheckIcon.vue";
 import MediaTopBar from "../MediaTopBar.vue";
 import UiModal from "../UiModal.vue";
+import { useConfirm } from "../../state/dialog";
 import SegmentedTabs from "../SegmentedTabs.vue";
 import type { SegmentOption } from "../SegmentedTabs.vue";
 import { preferences } from "../../state/preferences";
@@ -61,6 +62,9 @@ const props = defineProps<{
   loading: boolean;
   error: string | null;
   detailRoute: (id: string) => string;
+  onBulkDelete?: (
+    ids: string[],
+  ) => Promise<{ failedIds: string[]; error: string | null }>;
 }>();
 
 const emit = defineEmits<{
@@ -70,7 +74,6 @@ const emit = defineEmits<{
   (e: "save-edit", id: string, form: EditForm): void;
   (e: "bulk-set-status", ids: string[], status: string): void;
   (e: "bulk-favorite", ids: string[]): void;
-  (e: "bulk-delete", ids: string[]): void;
   (e: "search", query: string): void;
   (
     e: "filters-change",
@@ -541,18 +544,33 @@ function toggleGenre(g: string) {
 const selectMode = ref(false);
 const selectedIds = ref<Set<string>>(new Set());
 const bulkStatusValue = ref("");
+const bulkDeleteBusy = ref(false);
+const bulkDeleteError = ref("");
+const confirm = useConfirm();
+function selectShown() {
+  const shown =
+    layout.value === "board"
+      ? boardGroups.value.flatMap((group) => group.visibleItems)
+      : renderedItems.value;
+  selectedIds.value = new Set(shown.map((item) => item.id));
+  bulkDeleteError.value = "";
+}
 
 function toggleSelectMode() {
+  bulkDeleteError.value = "";
   selectMode.value = !selectMode.value;
   if (!selectMode.value) selectedIds.value = new Set();
 }
 function toggleSelectItem(id: string) {
+  if (bulkDeleteBusy.value) return;
+  bulkDeleteError.value = "";
   const next = new Set(selectedIds.value);
   if (next.has(id)) next.delete(id);
   else next.add(id);
   selectedIds.value = next;
 }
 function clearSelection() {
+  bulkDeleteError.value = "";
   selectedIds.value = new Set();
 }
 function bulkApplyStatus() {
@@ -567,12 +585,49 @@ function bulkApplyStatus() {
 function bulkFavorite() {
   emit("bulk-favorite", [...selectedIds.value]);
 }
-function bulkDelete() {
-  emit("bulk-delete", [...selectedIds.value]);
-  selectedIds.value = new Set();
+async function bulkDelete() {
+  if (bulkDeleteBusy.value || !props.onBulkDelete || !selectedIds.value.size)
+    return;
+  const ids = [...selectedIds.value];
+  bulkDeleteBusy.value = true;
+  bulkDeleteError.value = "";
+  try {
+    const retention = preferences.value.media_trash_retention_days;
+    if (
+      !(await confirm({
+        title: "Remove " + ids.length + " titles?",
+        message:
+          retention > 0
+            ? "These titles move to Trash and are eligible for automatic deletion after " +
+              retention +
+              " days. You can restore them before then."
+            : "These titles move to Trash, where you can restore them. Automatic deletion is off.",
+        confirmLabel: "Remove from library",
+        danger: true,
+      }))
+    )
+      return;
+    const result = await props.onBulkDelete(ids);
+    selectedIds.value = new Set(result.failedIds);
+    if (result.failedIds.length)
+      bulkDeleteError.value =
+        result.failedIds.length +
+        " of " +
+        ids.length +
+        " titles could not be removed. They remain selected for retry. " +
+        (result.error ?? "");
+  } catch (reason) {
+    bulkDeleteError.value =
+      reason instanceof Error
+        ? reason.message
+        : "Could not remove the selected titles.";
+  } finally {
+    bulkDeleteBusy.value = false;
+  }
 }
 
 function handleCardClick(it: LibraryCardVM) {
+  if (bulkDeleteBusy.value) return;
   if (selectMode.value) {
     toggleSelectItem(it.id);
     return;
@@ -841,6 +896,7 @@ defineExpose({ openQuickAdd });
             type="button"
             class="select-btn"
             :class="{ on: selectMode }"
+            :disabled="bulkDeleteBusy"
             @click="toggleSelectMode"
           >
             {{ selectMode ? "Done" : "Select" }}
@@ -858,22 +914,58 @@ defineExpose({ openQuickAdd });
         </div>
       </div>
 
-      <div v-if="selectedIds.size" class="bulk-bar">
+      <div v-if="selectMode" class="selection-actions">
+        <button
+          type="button"
+          class="btn-outline"
+          :disabled="bulkDeleteBusy"
+          @click="selectShown"
+        >
+          Select shown titles
+        </button>
+        <span
+          >Only titles currently shown are selected; unloaded titles are
+          excluded.</span
+        >
+      </div>
+      <p v-if="bulkDeleteError" role="alert" class="bulk-delete-error">
+        {{ bulkDeleteError }}
+      </p>
+      <div v-if="selectedIds.size" class="bulk-bar" :aria-busy="bulkDeleteBusy">
         <span class="count">{{ selectedIds.size }} selected</span>
-        <select v-model="bulkStatusValue" @change="bulkApplyStatus">
+        <select
+          v-model="bulkStatusValue"
+          :disabled="bulkDeleteBusy"
+          @change="bulkApplyStatus"
+        >
           <option value="">Set status to...</option>
           <option v-for="s in STATUSES" :key="s.key" :value="s.key">
             {{ s.label }}
           </option>
         </select>
-        <button type="button" class="btn-outline" @click="bulkFavorite">
+        <button
+          type="button"
+          class="btn-outline"
+          :disabled="bulkDeleteBusy"
+          @click="bulkFavorite"
+        >
           Toggle Favorite
         </button>
         <div class="spacer"></div>
-        <button type="button" class="btn-outline" @click="bulkDelete">
-          Remove from library
+        <button
+          type="button"
+          class="btn-outline"
+          :disabled="bulkDeleteBusy"
+          @click="bulkDelete"
+        >
+          {{ bulkDeleteBusy ? "Removing…" : "Remove from library" }}
         </button>
-        <button type="button" class="btn-outline" @click="clearSelection">
+        <button
+          type="button"
+          class="btn-outline"
+          :disabled="bulkDeleteBusy"
+          @click="clearSelection"
+        >
           Clear
         </button>
       </div>

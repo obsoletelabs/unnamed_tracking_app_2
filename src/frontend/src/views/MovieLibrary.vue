@@ -31,6 +31,7 @@ const {
   load,
   loadMore,
   refreshLibrary,
+  removeEntries,
 } = useMediaLibraryPage(
   fetchMoviesPage,
   "movie",
@@ -140,10 +141,7 @@ async function onBulkFavorite(ids: string[]) {
   }
 }
 async function onBulkDelete(ids: string[]) {
-  for (const id of ids) {
-    await deleteMovie(id);
-  }
-  movies.value = movies.value.filter((m) => !ids.includes(m.id));
+  return removeEntries(ids, deleteMovie);
 }
 
 function detailRoute(id: string): string {
