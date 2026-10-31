@@ -55,6 +55,9 @@ export default defineConfig({
       // change events across the bind mount, so Vite's watcher never
       // fires without polling — HMR silently stops working otherwise.
       usePolling: true,
+      interval: 500,
+      binaryInterval: 2000,
+      ignored: ["**/dist/**"],
     },
     proxy: {
       "/service-worker.js": { target: "http://backend:8000" },
