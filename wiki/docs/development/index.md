@@ -222,3 +222,9 @@ For frontend changes, run linting, formatting, type checking, and Vitest.
 For schema changes, verify the Alembic graph remains a single head and test migration behavior.
 
 Keep user-facing setup/configuration/deployment changes documented in the wiki.
+
+## Development file polling
+
+Vite keeps polling enabled for Docker Desktop Windows bind mounts, using 500 ms for source changes and 2000 ms for binary assets. Generated dist output is ignored. Longer intervals reduce idle filesystem work at the cost of slightly later hot updates; this does not affect production asset serving. Packaged plugin frontend assets use the host/runtime routes, rather than Vite generated output.
+
+A 31 October 2026 Windows-host bind-mount check used Docker Desktop, Vite 8.2.2 and a Linux Node 24.18.1 browser-test runner. Two 10-second process-CPU windows measured 36.30% before and 18.89% after (one logical CPU = 100%). Browser HMR receipt after Windows-host Vue/TypeScript edits measured 380/382 ms before and 521/522 ms after. These are local development samples, not production performance claims or a representative benchmark. Frontend regression and configuration checks run separately under the Dockerfile Node 22 environment.
