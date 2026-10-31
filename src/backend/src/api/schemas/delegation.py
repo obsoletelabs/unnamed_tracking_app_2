@@ -22,6 +22,7 @@ SCOPE_DESCRIPTIONS = {
         "Add and update games in your library, upload their artwork and report what your "
         "launcher holds"
     ),
+    "games.launch": "Receive requests to launch known Playnite games on this computer",
     "saves.read": "List and download your game save backups",
     "saves.write": "Upload new save backups and rename existing ones",
     "content.write": "Add screenshots, clips, soundtracks and documents to your games",

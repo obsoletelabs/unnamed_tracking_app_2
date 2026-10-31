@@ -37,7 +37,6 @@ from src.database.models.game import Game, GameStatus
 from src.database.models.user import User
 from src.database.session import SessionLocal, get_db
 from src.features import achievement_sync as _achievement_sync
-from src.features import game_folders
 from src.features.achievement_catalogue import fetch_catalogue
 from src.features.achievement_refresh import (
     AchievementRefreshSources,
@@ -81,9 +80,8 @@ from src.features.metadata.games.retroachievements import (
 )
 from src.features.metadata.locked_fields import apply_metadata_updates
 from src.features.metadata.service import game_candidate, game_result, resolve_library_record
-from src.helpers import save_game_asset
 from src.helpers.remote_images import MAX_BYTES, RemoteImageError, download_image
-from src.helpers.save_game_asset import ASSET_FILENAMES, AssetKind, save_locked_game_asset
+from src.helpers.save_game_asset import AssetKind, asset_present, save_locked_game_asset
 from src.helpers.steam_achievement_rows import (  # noqa: F401
     needs_community_descriptions as _needs_community_descriptions,
 )
@@ -204,19 +202,6 @@ _ASSET_KINDS: tuple[tuple[AssetKind, str], ...] = (
 )
 
 
-def _asset_present(game: Game, asset_kind: AssetKind) -> bool:
-    """Whether the game already has this picture on disk (artwork lives in the game folder)."""
-    if not game.folder_location:
-        return False
-    try:
-        folder = game_folders.owned_folder(
-            save_game_asset.DATA_ROOT, game.user_id, game.folder_location
-        )
-    except game_folders.FolderStorageError:
-        return False
-    return (folder / ASSET_FILENAMES[asset_kind]).is_file()
-
-
 async def _enrich_new_game(
     game: Game, user: User, preferences: dict, *, artwork_only: bool = False
 ) -> EnrichOutcome:
@@ -245,7 +230,7 @@ async def _enrich_new_game(
         if record and record.get("assets"):
             max_image_bytes = (await get_max_upload_size_mb(metadata_db)) * 1024 * 1024
     if not record:
-        if not _asset_present(game, "key_art"):
+        if not asset_present(game, "key_art"):
             outcome.artwork_missing = ["key_art"]
         return outcome
     outcome.metadata_found = True
@@ -297,7 +282,7 @@ async def _fetch_missing_artwork(
     overwrite: bool = False,
 ) -> EnrichOutcome:
     for asset_kind, field_name in _ASSET_KINDS:
-        if not overwrite and _asset_present(game, asset_kind):
+        if not overwrite and asset_present(game, asset_kind):
             continue
         urls = match.get(field_name + "s", [])
         saved = False
@@ -305,7 +290,7 @@ async def _fetch_missing_artwork(
             if await _download_asset(url, game, asset_kind, max_bytes=max_image_bytes):
                 saved = True
                 break
-        if saved or _asset_present(game, asset_kind):
+        if saved or asset_present(game, asset_kind):
             continue
         if urls:  # offered, but every download failed
             outcome.artwork_missing.append(asset_kind)

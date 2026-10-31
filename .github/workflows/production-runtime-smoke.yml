@@ -44,7 +44,7 @@ jobs:
           cache-from: |
             type=gha,scope=production-container
             type=gha,scope=production-runtime-smoke
-          cache-to: type=gha,mode=max,scope=production-runtime-smoke
+          cache-to: ${{ github.ref == 'refs/heads/main' && 'type=gha,mode=max,scope=production-runtime-smoke' || '' }}
 
       - name: Pull the exact published production image
         if: github.event_name == 'workflow_run'

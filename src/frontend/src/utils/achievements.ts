@@ -8,6 +8,25 @@ export function isUnlocked(a: Achievement): boolean {
   return a.unlocked ?? a.unlockedAt !== null;
 }
 
+function pad(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
+// The value a datetime-local input expects, in the viewer's own time zone.
+export function toLocalInput(value: Date): string {
+  return (
+    `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}` +
+    `T${pad(value.getHours())}:${pad(value.getMinutes())}`
+  );
+}
+
+// Unix seconds for a datetime-local value, or null when it isn't a real time.
+export function localInputToUnixSeconds(value: string): number | null {
+  if (!value) return null;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? Math.floor(time / 1000) : null;
+}
+
 // the icon to show: a provider's greyed-out one while it is still locked
 export function iconOf(a: Achievement): string | null {
   if (!isUnlocked(a) && a.lockedIconUrl) return a.lockedIconUrl;

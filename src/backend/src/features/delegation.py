@@ -40,7 +40,8 @@ DESKTOP_APPS = {"playnite": "Unnamed Tracking for Playnite"}
 assert {f"{DESKTOP}:{app}" for app in DESKTOP_APPS} == DESKTOP_ORIGINS
 # Capabilities that change data, shown as writes on the consent page.
 WRITE_SCOPES = frozenset(
-    {scope for scope in SCOPE_DESCRIPTIONS if scope.endswith(".write")} | {"library.sync"}
+    {scope for scope in SCOPE_DESCRIPTIONS if scope.endswith(".write")}
+    | {"library.sync", "games.launch"}
 )
 
 

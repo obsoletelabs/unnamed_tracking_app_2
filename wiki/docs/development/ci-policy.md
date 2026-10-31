@@ -75,3 +75,54 @@ python -m unittest discover -s tools/tests -p 'test_ci_checks.py' -v
 
 Omit `--base` for a full local check. Install each app's normal development
 dependencies first. Run the normal test commands independently of file selection.
+
+## Plugin repository integration
+
+`plugin-integration.yml` runs the host against the companion repository
+(`obsoletelabs/unnamed_tracking_app_plugins`). It is a separate workflow from
+`ci.yml`, so it is not part of **CI result**. Its `lifecycle` job is skipped
+(which GitHub treats as a pass) when a change cannot affect plugins.
+
+**Companion ref.** The job checks out the plugin repository at the manual
+`plugins_ref` input, else a branch with the same name as the host branch, else
+`main`. To change the host and the plugins together, push a branch with the same
+name to both repositories.
+
+**Scope.** A small `scope` job (`python tools/ci_gate.py --plugin-integration`)
+reads the changed files and decides what runs:
+
+| Change | Result |
+| --- | --- |
+| `src/plugin-runtime/`, `src/backend/src/plugin_api/`, `plugin_manager` routes, plugin permissions, frontend plugin or media-watch-link code (not unit tests), the plugin check tools, this workflow | Everything: contract check, real workers, browser, Jellyfin and PWA acceptance |
+| Published plugin schemas and `plugin-*` development documentation, the `tools/export_*` scripts | Package and contract checks only |
+| Anything else | Skipped |
+| Push to `main` or a `v*` tag, manual run, or an unknown change set | Everything |
+
+Draft pull requests and branch pushes that already have a ready pull request do
+nothing, as in `ci.yml`.
+
+**Version skew.** The plugin repository pins snapshots of the host's metadata
+schemas, so raising `PLUGIN_API_CONTRACT_VERSION` used to fail the host until
+the plugin repository merged a refresh, and fail that refresh until the host
+merged. `tools/plugin_contract_skew.py` removes that cycle without weakening the
+check. It compares the host version with the version stamped on the plugin
+snapshots:
+
+- **Same version**: no change; any difference fails the plugin check.
+- **Plugins older (skew)**: the host must still accept the older contract
+  (`plugin_contract_compatibility_reason`), and every drifted snapshot must be a
+  backward-compatible evolution of the host schema. That means new optional
+  properties, new definitions, wider enums and changed prose; a removed or
+  retyped property, a newly required property, a removed enum value or an added
+  or altered constraint fail. Compatible drift is reported as a warning
+  annotation and a job summary, and the snapshots in the disposable checkout are
+  replaced with the host's so the remaining plugin checks still run.
+- **Plugins newer than the host**: fails.
+
+The plugin repository is never modified. After the host change merges, refresh
+the plugin snapshots (`tools/export_*_contract.py`) to clear the warning. Browser
+acceptance is not relaxed under skew: a host change that breaks a plugin page
+still fails until the plugin repository has a matching branch (companion ref).
+
+Locally: `python -m unittest discover -s tools/tests -p 'test_ci_gate.py'` and
+`-p 'test_plugin_contract_skew.py'`.

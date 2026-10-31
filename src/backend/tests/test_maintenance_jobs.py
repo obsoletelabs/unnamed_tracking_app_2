@@ -77,8 +77,26 @@ async def test_sweep_pass_reports_failed_parts(monkeypatch):
     monkeypatch.setattr(sweep, "purge_expired_trash", AsyncMock(side_effect=RuntimeError("x")))
     monkeypatch.setattr(sweep, "purge_expired_media_titles", AsyncMock(return_value={}))
     monkeypatch.setattr(sweep, "purge_expired_sessions", AsyncMock(return_value=2))
+    launch_cleanup = AsyncMock(return_value=3)
+    monkeypatch.setattr(sweep.remote_launch, "purge_history", launch_cleanup)
     result = await sweep.run_sweep_once()
-    assert result == {"failed_parts": 1, "expired_sessions_removed": 2}
+    assert result == {
+        "failed_parts": 1,
+        "expired_sessions_removed": 2,
+        "remote_launch_requests_removed": 3,
+    }
+    launch_cleanup.assert_awaited_once()
+
+
+async def test_launch_history_cleanup_failure_preserves_other_sweep_results(monkeypatch):
+    monkeypatch.setattr(sweep, "purge_expired_trash", AsyncMock(return_value={"purged_games": 1}))
+    monkeypatch.setattr(sweep, "purge_expired_media_titles", AsyncMock(return_value={}))
+    monkeypatch.setattr(sweep, "purge_expired_sessions", AsyncMock(return_value=2))
+    launch_cleanup = AsyncMock(side_effect=RuntimeError("launch cleanup failed"))
+    monkeypatch.setattr(sweep.remote_launch, "purge_history", launch_cleanup)
+    result = await sweep.run_sweep_once()
+    assert result == {"failed_parts": 1, "purged_games": 1, "expired_sessions_removed": 2}
+    launch_cleanup.assert_awaited_once()
 
 
 async def test_runs_do_not_overlap(monkeypatch):

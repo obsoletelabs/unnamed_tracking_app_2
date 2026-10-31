@@ -132,6 +132,12 @@ If a game already exists, the extension updates it through the game's update end
 
 Creating a game that carries a `playnite_guid` is safe to repeat. If the account already has a game with that GUID, or a game in the same folder that no other Playnite entry has claimed, the create returns that game (HTTP 200, and the GUID is recorded on it) instead of failing on the folder name. Two syncs racing to create the same game also end up with one game. A folder that already belongs to a *different* Playnite GUID is still reported as a conflict (HTTP 409). A GUID whose game is in the host's Trash is also reported as HTTP 409 (`playnite_game_in_trash`, with the trashed game's ID) instead of creating a second game for the same Playnite entry; restore the game or let Trash purge it. Every create and update is additionally recorded as a Playnite observation (see [Game ingestion](../development/game-ingestion.md)); only the fields the request carried are recorded.
 
+## Remote launch
+
+With the updated host and companion, enable **Remote launch** in the extension settings and approve the optional `games.launch` permission. Sync a locally installed game, keep Playnite open, then choose **More ways to launch → Remote start on <computer>** on the game page in your browser. The PC asks for confirmation by default. Disable that confirmation explicitly for unattended use. Existing sync connections and API keys do not gain remote launch access.
+
+The browser shows online receivers and the request outcome. Accepted means Playnite received the start action; existing scripts, save guards and store clients can still prevent the game from running. There is no wake-on-LAN or streaming. See the [setup and remote launch v1 contract](../development/remote-launch.md) and [Steam Remote Play research](../development/steam-remote-play.md).
+
 ## Supported API contract
 
 The extension currently uses these authenticated application endpoints:

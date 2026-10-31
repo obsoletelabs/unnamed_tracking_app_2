@@ -209,6 +209,29 @@ def test_gateway_plain_http_errors_do_not_turn_permanent_denials_into_retries(
     assert "private value" not in str(failure.value)
 
 
+@pytest.mark.parametrize("status", (502, 503, 504))
+def test_gateway_proxy_startup_response_is_reported_as_not_ready(supervisor, monkeypatch, status):
+    """The front proxy answers without an envelope while the host starts or restarts."""
+
+    def transport(request, **kwargs):
+        raise HTTPError(
+            request.full_url,
+            status,
+            "Unavailable",
+            {},
+            io.BytesIO(b'{"detail":"The application is starting. Retry shortly."}'),
+        )
+
+    monkeypatch.setattr("runtime.urlopen", transport)
+    request = {"method": "storage.keys", "capability": "plugin.storage"}
+    with pytest.raises(RuntimeGatewayError) as failure:
+        supervisor._handle_gateway_request("contract", request)
+    assert failure.value.envelope["code"] == "unavailable"
+    assert "not ready" in failure.value.envelope["message"]
+    assert "starting" in failure.value.envelope["message"]
+    assert "grants" not in failure.value.envelope["message"]
+
+
 def test_gateway_version_rejection_precedes_storage_and_http(supervisor, monkeypatch):
     def forbidden(*args, **kwargs):
         pytest.fail("Incompatible protocol must not reach host or storage")

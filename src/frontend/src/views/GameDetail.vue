@@ -226,10 +226,11 @@ function openAchievementEditor(achievement: Achievement) {
 async function onAchievementEditSave(
   progress: "synced" | "unlocked" | "locked",
   note: string,
+  earnedAt: number | null,
 ) {
   const achievement = editingAchievement.value;
   if (!achievement) return;
-  if (await saveAchievementEdit(achievement, progress, note))
+  if (await saveAchievementEdit(achievement, progress, note, earnedAt))
     editingAchievement.value = null;
 }
 

@@ -222,6 +222,8 @@ def _normalise(values: dict[str, Any]) -> dict[str, Any]:
         stamp = values["achieved_at"]
         if stamp is not None and (stamp < 0 or stamp > 253_402_300_799):
             raise _invalid("The earned time is out of range.")
+        if stamp is not None and stamp > graph.now_seconds() + 300:
+            raise _invalid("An achievement cannot have been earned in the future.")
         out["achieved_at"] = stamp
     return out
 

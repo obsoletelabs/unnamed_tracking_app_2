@@ -219,6 +219,17 @@ list: an achievement counts once when it has the same id in the same store app, 
 same name from another store (a Steam and a GOG copy), so "6 of 13 earned" always
 equals what the list shows.
 
+#### Editing an achievement
+
+Open an achievement's edit dialog to follow the provider (**Synced**), or to keep it
+marked **Unlocked** or **Locked** yourself. When it is **Unlocked** you can also set
+**Earned on**, the date and time shown in your achievement history and statistics. It
+starts at the provider's date, or the current time for a new unlock, and cannot be in
+the future. Switch back to **Synced** to return to the provider's progress and date.
+
+Achievements you add yourself under **Your achievements** have the same **Earned** and
+**Earned on** fields in their editor, with the same no-future-dates rule.
+
 ### Suggestions
 
 Open **Settings > Library > Duplicates** to review suggestions. Each one shows both

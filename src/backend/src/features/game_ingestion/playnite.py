@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from datetime import date
 from typing import Any
 from uuid import UUID
@@ -29,6 +30,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.database.models.delegation import DelegatedGrant, DelegationRequest, IntegrationClient
 from src.database.models.game import Game, GameStatus
 from src.database.models.game_identity import SourceKind
 from src.features.game_identity.review import run_matching
@@ -333,3 +335,31 @@ def restore_locks(game: Game, kept: frozenset[str] | None) -> None:
     """After the update: the source's own changes are never the user's protection."""
     if kept is not None:
         game.locked_fields = sorted(kept)
+
+
+async def record_extension_version(
+    db: AsyncSession, grant: DelegatedGrant, reported_version: str | None
+) -> None:
+    """Display-only diagnostics on an already authenticated Playnite connection.
+
+    A missing/invalid header is unknown, never proof of a particular old version.
+    This report grants no capabilities and does not enable receiving.
+    """
+    client = await db.get(IntegrationClient, grant.client_id)
+    if client is None or client.kind != "desktop" or client.origin != "desktop:playnite":
+        return
+    connection = await db.get(DelegationRequest, grant.request_id)
+    if connection is None:
+        return
+    version = (
+        reported_version
+        if reported_version
+        and re.fullmatch(r"[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}", reported_version)
+        else None
+    )
+    connection.external_account = {
+        **(connection.external_account or {}),
+        "playnite_extension_version": version,
+        "playnite_version_checked_at": int(time.time()),
+    }
+    await db.commit()

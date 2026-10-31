@@ -119,6 +119,8 @@ nav:
       - Game Identity Data Model: development/game-identity-model.md
       - Game Ingestion: development/game-ingestion.md
       - Playnite Observations: development/playnite-observations.md
+      - Playnite Remote Launch: development/remote-launch.md
+      - Steam Remote Play Research: development/steam-remote-play.md
       - Game Identity Decisions: development/game-identity-decisions.md
       - Game Identity Counters: development/game-identity-counters.md
       - Game Identity Matching: development/game-identity-matching.md

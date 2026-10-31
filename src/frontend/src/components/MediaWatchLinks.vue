@@ -16,6 +16,9 @@ const props = defineProps<{
 const emit = defineEmits<{ present: [value: boolean] }>();
 
 const watchSources = ref<WatchLink[]>([]);
+// The button waits for the saved links, so it never shows "Open in TMDB" for a moment and
+// then swaps to the media server that has the title.
+const loaded = ref(false);
 const sites = computed(() => providerLinks(props.mediaType, props.providerIds));
 const STORAGE_KEY = "watch-source";
 
@@ -35,6 +38,7 @@ const primary = computed(() =>
 // The button: a media server that has the title wins; otherwise the first site to open it in
 // (TMDB, AniList...), the way a game's button falls back to its store page.
 const main = computed(() => {
+  if (!loaded.value) return null;
   if (primary.value) {
     return {
       url: primary.value.url,
@@ -81,6 +85,7 @@ watch(
   async (_value, _previous, onCleanup) => {
     const request = new AbortController();
     onCleanup(() => request.abort());
+    loaded.value = false;
     try {
       watchSources.value = await fetchWatchLinks(
         props.mediaType,
@@ -90,6 +95,7 @@ watch(
     } catch {
       watchSources.value = [];
     }
+    if (!request.signal.aborted) loaded.value = true;
   },
   { immediate: true },
 );

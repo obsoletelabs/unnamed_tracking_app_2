@@ -1,13 +1,19 @@
 name: Plugin repository integration
+# Scope and version-skew policy: wiki/docs/development/ci-policy.md ("Plugin repository integration").
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
 
 on:
   push:
-    branches: [plugin-manager, 'fix/plugin-*', 'feat/official-pwa-*']
+    branches: [main, plugin-manager, 'fix/plugin-*', 'feat/official-pwa-*']
+    tags: ['v*']
   pull_request:
-    branches: [plugin-manager]
+    branches: [main, plugin-manager]
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
     inputs:
       plugins_ref:
@@ -15,8 +21,44 @@ on:
         type: string
         required: false
 
+env:
+  # A stalled cache download otherwise holds the job for the 10 minute default; give up after 2
+  # and carry on without the cache (a plain pip install).
+  SEGMENT_DOWNLOAD_TIMEOUT_MINS: "2"
+
 jobs:
+  # Decides, from the changed files, whether this workflow applies. Pull requests that cannot affect
+  # plugins skip `lifecycle` (a skipped job is a pass); main, tags and manual runs always run it all.
+  scope:
+    name: Scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      run: ${{ steps.scope.outputs.run }}
+      heavy: ${{ steps.scope.outputs.heavy }}
+      reason: ${{ steps.scope.outputs.reason }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: tools/ci_gate.py
+          sparse-checkout-cone-mode: false
+      - id: scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/ci_gate.py --plugin-integration
+      - name: Summarise the scope
+        run: |
+          {
+            echo "### Plugin integration scope"
+            echo "run: \`${{ steps.scope.outputs.run }}\`, real workers and browser acceptance: \`${{ steps.scope.outputs.heavy }}\` (${{ steps.scope.outputs.reason }})"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   lifecycle:
+    needs: scope
+    if: needs.scope.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -67,13 +109,17 @@ jobs:
           cache: pip
           cache-dependency-path: src/backend/requirements.txt
       - uses: actions/setup-node@v7
+        if: needs.scope.outputs.heavy == 'true'
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: .integration-plugins/package-lock.json
       - name: Install host and builder dependencies
+        env:
+          HEAVY: ${{ needs.scope.outputs.heavy }}
         run: |
           python -m pip install -r src/backend/requirements.txt jsonschema
+          if [ "$HEAVY" != true ]; then exit 0; fi
           sudo apt-get update
           sudo apt-get install -y bubblewrap
           # The disposable runner must permit namespaces for strict sandbox tests.
@@ -84,13 +130,21 @@ jobs:
           sudo mkdir -p /data
           sudo chown "$(id -u):$(id -g)" /data
       - name: Prepare disposable database
+        if: needs.scope.outputs.heavy == 'true'
         working-directory: src/backend
         run: alembic upgrade head
       - name: Build the actual host frontend
+        if: needs.scope.outputs.heavy == 'true'
         working-directory: src/frontend
         run: |
           npm ci
           npm run build
+      # The plugin repository pins snapshots of the host's schemas. When its ref declares an older
+      # Plugin API than this host, backward-compatible drift is a warning (and the host schemas are
+      # used for the rest of this run); incompatible drift, a newer plugin ref, or any difference at
+      # the same version still fails. See tools/plugin_contract_skew.py.
+      - name: Reconcile Plugin API contract version skew
+        run: python tools/plugin_contract_skew.py --host-root "$GITHUB_WORKSPACE" --plugins-root .integration-plugins
       - name: Verify generated plugin packages against the current host contract
         working-directory: .integration-plugins
         run: |
@@ -100,6 +154,7 @@ jobs:
           python tools/validate_packages.py .validation/dist/*.utp
           python tools/check_host_contract.py --host-root "$GITHUB_WORKSPACE"
       - name: Cache Playwright browser
+        if: needs.scope.outputs.heavy == 'true'
         uses: actions/cache@v5.1.0
         with:
           path: ~/.cache/ms-playwright
@@ -108,17 +163,20 @@ jobs:
             playwright-${{ runner.os }}-
 
       - name: Install browser tooling from the plugin repository
+        if: needs.scope.outputs.heavy == 'true'
         working-directory: .integration-plugins
         run: |
           npm ci
           npx playwright install --with-deps chromium --only-shell
       - name: Verify actual legacy worker withdrawal and signed v1.1 upgrade
+        if: needs.scope.outputs.heavy == 'true'
         env:
           NONBUBBLE_ENV: 'true'
         run: |
           python tools/check_plugin_contract_upgrade.py --plugins-root .integration-plugins \
             --work-root "${{ runner.temp }}/contract-upgrade-acceptance"
       - name: Verify official distribution and the full real-worker lifecycle
+        if: needs.scope.outputs.heavy == 'true'
         env:
           JELLYFIN_SCREENSHOT_DIR: ${{ runner.temp }}/plugin-acceptance/screenshots
         run: |
@@ -126,6 +184,7 @@ jobs:
             --plugins-root .integration-plugins \
             --work-root "${{ runner.temp }}/plugin-acceptance" --browser
       - name: Test the official Jellyfin preview when supplied by the companion ref
+        if: needs.scope.outputs.heavy == 'true'
         run: |
           if [ -f .integration-plugins/tools/check_jellyfin_official_lifecycle.py ]; then
             bash tools/run_strict_plugin_acceptance.sh "$GITHUB_WORKSPACE" \
@@ -133,6 +192,7 @@ jobs:
               "${{ runner.temp }}/jellyfin-official-acceptance"
           fi
       - name: Verify official PWA signing and real browser lifecycle
+        if: needs.scope.outputs.heavy == 'true'
         run: |
           python tools/check_pwa_lifecycle.py --plugins-root .integration-plugins \
             --work-root "${{ runner.temp }}/pwa-acceptance"

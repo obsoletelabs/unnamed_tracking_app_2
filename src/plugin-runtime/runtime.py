@@ -46,7 +46,7 @@ except ImportError:  # pragma: no cover - Windows development/test fallback
     resource = None  # type: ignore[assignment]
 
 _PLUGIN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
-PLUGIN_API_CONTRACT_VERSION = "1.1.18"
+PLUGIN_API_CONTRACT_VERSION = "1.1.19"
 _ENTRYPOINT = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*(?::[A-Za-z_][A-Za-z0-9_]*)?$")
 # Linux parent-death signals follow the spawning thread. HTTP request threads
 # end after their response, while supervised workers must live until shutdown.
@@ -795,7 +795,13 @@ class PluginSupervisor:
                         429: "rate_limited",
                     }.get(exc.code, "unavailable" if exc.code >= 500 else "invalid_request"),
                     "message": (
-                        "Plugin gateway rejected the request (HTTP "
+                        # A bodyless 502-504 is the front proxy answering while the
+                        # application is starting, restarting or migrating its database.
+                        f"Plugin gateway is not ready (HTTP {exc.code}). The host may still "
+                        "be starting or restarting; retry shortly and check the application "
+                        "startup status."
+                        if exc.code in {502, 503, 504}
+                        else "Plugin gateway rejected the request (HTTP "
                         f"{exc.code}). Check the installation grants and host API compatibility."
                     ),
                 }

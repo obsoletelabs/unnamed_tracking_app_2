@@ -71,6 +71,7 @@ from src.api.routes import (
     playnite,
     preferences,
     public_apps,
+    remote_launch,
     session_manager,
     settings,
     stats,
@@ -219,6 +220,7 @@ app.include_router(game_identity_review.router)
 app.include_router(game_manual.router)
 app.include_router(game_names.router)
 app.include_router(playnite.router)
+app.include_router(remote_launch.router)
 app.include_router(game_ownership.router)
 app.include_router(metadata.router)
 app.include_router(movies.router)
