@@ -127,7 +127,7 @@ async def set_game_achievement_progress(
         FUTURE_TOLERANCE_SECONDS
     ):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="The earned date cannot be in the future",
         )
 

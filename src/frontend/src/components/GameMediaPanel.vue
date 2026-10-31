@@ -54,6 +54,8 @@ const props = defineProps<{
   gameId?: string;
   items: T[];
   trash: TR[];
+  // the deleted-items listing failed, so an empty `trash` means "unknown"
+  trashFailed?: boolean;
   achievements?: Achievement[];
   profiles?: GameProfile[];
   loading: boolean;
@@ -64,12 +66,16 @@ const props = defineProps<{
   scoped?: boolean;
   // re-reads a file's date from the file itself; true when it found one
   detect?: (item: MediaItem) => Promise<"file" | "achievement" | "none">;
+  // saves one item; the edit dialog waits for it and stays open when it fails
+  onSave?: (
+    item: MediaItem,
+    patch: MediaItemUpdate,
+  ) => Promise<boolean | void> | boolean | void;
 }>();
 
 const emit = defineEmits<{
   files: [files: File[]];
   delete: [item: MediaItem];
-  save: [item: MediaItem, patch: MediaItemUpdate];
   "bulk-save": [updates: { id: string; patch: MediaItemUpdate }[]];
   "bulk-delete": [items: MediaItem[]];
   "bulk-detect": [ids: string[]];
@@ -78,6 +84,7 @@ const emit = defineEmits<{
   thumbnail: [item: MediaItem, blob: Blob, duration: number];
   problem: [message: string];
   retry: [];
+  "retry-trash": [];
 }>();
 
 const loadFailed = computed(() => props.failed || !!props.error);
@@ -422,10 +429,7 @@ function tiePatch(
   return patch;
 }
 function retie(item: MediaItem, achievementId: string | null) {
-  emit("save", item, tiePatch(item, achievementId));
-}
-function onSave(item: MediaItem, patch: MediaItemUpdate) {
-  emit("save", item, patch);
+  void props.onSave?.(item, tiePatch(item, achievementId));
 }
 
 // ---- select several, then act on them together ----
@@ -608,6 +612,15 @@ onBeforeUnmount(() => {
         >
           Deleted ({{ trash.length }})
         </button>
+        <button
+          v-else-if="trashFailed"
+          type="button"
+          class="ui-btn ui-btn-ghost"
+          title="The deleted items could not be loaded"
+          @click="emit('retry-trash')"
+        >
+          Deleted: couldn't load, retry
+        </button>
       </div>
       <button
         v-else-if="trash.length"
@@ -617,6 +630,15 @@ onBeforeUnmount(() => {
         @click="showTrash = !showTrash"
       >
         Deleted ({{ trash.length }})
+      </button>
+      <button
+        v-else-if="trashFailed"
+        type="button"
+        class="ui-btn ui-btn-ghost"
+        title="The deleted items could not be loaded"
+        @click="emit('retry-trash')"
+      >
+        Deleted: couldn't load, retry
       </button>
       <input
         ref="picker"
@@ -798,7 +820,7 @@ onBeforeUnmount(() => {
             @toggle="toggle"
             @preview="open"
             @delete="remove"
-            @save="onSave"
+            :on-save="onSave"
             @copy="copy"
             @download="download"
             @open-achievement="emit('open-achievement', $event)"
@@ -843,7 +865,7 @@ onBeforeUnmount(() => {
       :profiles="profiles"
       :detect="detect"
       @close="editingId = null"
-      @save="onSave"
+      :on-save="onSave"
       @delete="remove"
     />
 

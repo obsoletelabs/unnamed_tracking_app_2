@@ -17,6 +17,7 @@ from typing import Any
 
 from src.features.notification_html import sanitize_html
 from src.features.notification_markdown import Node, plain_text, render_markdown
+from src.features.notification_safety import url_is_safe
 from src.plugin_api.notification_story_contracts import (
     BooleanFactValue,
     ContentFact,
@@ -87,6 +88,8 @@ def build_view(
         target = action.target
         entry: dict[str, Any] = {"id": action.id, "label": action.label, "style": action.style}
         if target.kind == "link":
+            if not url_is_safe(target.url):
+                continue
             entry |= {"kind": "link", "href": target.url}
         elif target.kind == "host_route":
             entry |= {"kind": "route", "href": target.path}
@@ -107,7 +110,14 @@ def build_view(
         "images": images,
         "actions": actions,
         "attribution": (
-            {"label": content.attribution.label, "url": content.attribution.url}
+            {
+                "label": content.attribution.label,
+                "url": (
+                    content.attribution.url
+                    if content.attribution.url and url_is_safe(content.attribution.url)
+                    else None
+                ),
+            }
             if content.attribution
             else None
         ),

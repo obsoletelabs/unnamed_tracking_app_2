@@ -18,6 +18,15 @@ vi.mock("../services/preferences", async (importOriginal) => {
   };
 });
 
+// The nested external-calendar list loads on mount; keep it off the network.
+vi.mock("../services/calendarSources", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../services/calendarSources")>()),
+  fetchCalendarSources: vi.fn(async () => ({
+    sources: [],
+    remote_enabled: true,
+  })),
+}));
+
 beforeEach(() => {
   store.value = {
     ...DEFAULT_PREFERENCES,

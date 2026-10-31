@@ -2,8 +2,9 @@
 // The full page for one notification story: the latest authorised state with
 // facts, rich text, images and declared actions. The bell stays compact; this
 // is where the rich experience lives. Both UI styles share this one layout.
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { RouterLink, useRoute } from "vue-router";
+import { currentUser } from "../state/auth";
 import AppTopBar from "../components/AppTopBar.vue";
 import NotificationLiveLinks from "../components/NotificationLiveLinks.vue";
 import RichNodes from "../components/RichNodes.vue";
@@ -27,49 +28,67 @@ const failedImages = ref(new Set<number>());
 
 const view = computed(() => page.value?.view ?? null);
 
+let generation = 0;
+let actionGeneration = 0;
+
 async function load() {
+  const request = ++generation;
+  const account = currentUser.value?.id;
+  const { token, id } = route.params;
   loading.value = true;
   error.value = "";
-  failedImages.value = new Set();
   try {
-    const token = route.params.token;
-    page.value =
+    const loaded =
       typeof token === "string"
         ? await fetchStoryByLink(token)
-        : await fetchStory(String(route.params.id));
+        : await fetchStory(String(id));
+    if (request !== generation || currentUser.value?.id !== account) return;
+    page.value = loaded;
+    failedImages.value = new Set();
   } catch {
-    page.value = null;
-    error.value =
-      "This update is not available. It may have been removed, or it belongs to another account.";
+    if (request !== generation || currentUser.value?.id !== account) return;
+    error.value = page.value
+      ? "This update could not be refreshed. Try again."
+      : "This update is not available. It may have been removed, or it belongs to another account.";
   } finally {
-    loading.value = false;
+    if (request === generation) loading.value = false;
   }
 }
 
 async function run(action: StoryAction) {
-  if (!page.value) return;
+  if (!page.value || running.value) return;
+  const storyId = page.value.storyId;
+  const request = ++actionGeneration;
+  const account = currentUser.value?.id;
+  const current = () =>
+    request === actionGeneration &&
+    page.value?.storyId === storyId &&
+    currentUser.value?.id === account;
   const danger = action.style === "danger";
-  if (
-    danger &&
-    !(await confirm({
-      title: action.label,
-      message: `Run "${action.label}"? This cannot be undone.`,
-      confirmLabel: action.label,
-      danger: true,
-    }))
-  )
-    return;
   running.value = action.id;
   result.value = "";
   try {
-    const outcome = await runStoryAction(page.value.storyId, action.id, danger);
-    result.value = outcome.message ?? `${action.label} completed.`;
+    if (
+      danger &&
+      !(await confirm({
+        title: action.label,
+        message: 'Run "' + action.label + '"? This cannot be undone.',
+        confirmLabel: action.label,
+        danger: true,
+      }))
+    )
+      return;
+    if (!current()) return;
+    const outcome = await runStoryAction(storyId, action.id, danger);
+    if (!current()) return;
+    result.value = outcome.message ?? action.label + " completed.";
     await load();
   } catch (failure) {
-    result.value =
-      failure instanceof Error ? failure.message : "The action failed.";
+    if (current())
+      result.value =
+        failure instanceof Error ? failure.message : "The action failed.";
   } finally {
-    running.value = null;
+    if (request === actionGeneration) running.value = null;
   }
 }
 
@@ -77,7 +96,21 @@ function hrefFor(action: StoryAction) {
   return safeHref(action.href);
 }
 
-watch(() => [route.params.id, route.params.token], load);
+watch(
+  () => [route.params.id, route.params.token, currentUser.value?.id],
+  () => {
+    generation++;
+    actionGeneration++;
+    page.value = null;
+    running.value = null;
+    result.value = "";
+    void load();
+  },
+);
+onUnmounted(() => {
+  generation++;
+  actionGeneration++;
+});
 onMounted(load);
 </script>
 
@@ -90,8 +123,18 @@ onMounted(load);
     </AppTopBar>
     <div class="ui-content narrow">
       <p v-if="loading && !page" class="ui-state" role="status">Loading…</p>
-      <p v-else-if="error" class="ui-state error" role="alert">{{ error }}</p>
-      <article v-else-if="page" class="story" aria-labelledby="story-title">
+      <p v-if="error" class="ui-state error" role="alert">
+        {{ error }}
+        <button
+          type="button"
+          class="ui-btn ui-btn-secondary"
+          :disabled="loading"
+          @click="load"
+        >
+          Try again
+        </button>
+      </p>
+      <article v-if="page" class="story" aria-labelledby="story-title">
         <header class="story-head">
           <p class="status" :class="page.severity">
             <span class="visually-hidden">Status:</span>{{ page.status }}

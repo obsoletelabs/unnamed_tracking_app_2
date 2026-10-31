@@ -9,6 +9,7 @@ import * as archives from "../services/gameArchives";
 import GameMediaPanel from "../components/GameMediaPanel.vue";
 import GameArchivesPanel from "../components/GameArchivesPanel.vue";
 import GameNotesPanel from "../components/GameNotesPanel.vue";
+import { closeDialog } from "../state/dialog";
 
 const { mainId, otherId } = vi.hoisted(() => ({
   mainId: "00000000-0000-4000-8000-000000000001",
@@ -247,5 +248,133 @@ describe("notes panel", () => {
     await flushPromises();
     expect(wrapper.text()).toContain("Game B note");
     expect(wrapper.text()).not.toContain("Stale");
+  });
+});
+
+describe("game page quick changes", () => {
+  it("restores a failed status on its own game and says so", async () => {
+    const model = await detail();
+    model.game.value = { ...game, status: "backlog" };
+    const shown = model.game.value;
+    const slow = deferred<void>();
+    vi.mocked(games.setStatus).mockReturnValueOnce(
+      slow.promise as unknown as ReturnType<typeof games.setStatus>,
+    );
+    const pending = model.changeStatus("playing");
+    expect(shown.status).toBe("playing");
+    const other = { ...game, id: otherId, status: "wishlist" as const };
+    model.game.value = other;
+    slow.reject(new Error("Down"));
+    await pending;
+    expect(shown.status).toBe("backlog");
+    expect(model.game.value!.status).toBe("wishlist");
+    // The error belongs to the game that failed, not the one now shown.
+    expect(model.quickEditError.value).toBeNull();
+  });
+
+  it("saves quick status changes in order and keeps the newest one", async () => {
+    const model = await detail();
+    model.game.value = { ...game, status: "backlog" };
+    const first = deferred<void>();
+    const calls: string[] = [];
+    vi.mocked(games.setStatus).mockImplementation(async (_id, status) => {
+      calls.push(status);
+      if (status === "playing") await first.promise;
+      return undefined as unknown as Awaited<
+        ReturnType<typeof games.setStatus>
+      >;
+    });
+    const a = model.changeStatus("playing");
+    const b = model.changeStatus("beaten");
+    await flushPromises();
+    expect(calls).toEqual(["playing"]);
+    first.reject(new Error("Down"));
+    await Promise.all([a, b]);
+    expect(calls).toEqual(["playing", "beaten"]);
+    expect(model.game.value!.status).toBe("beaten");
+    expect(model.quickEditError.value).toBeNull();
+  });
+
+  it("returns to the last accepted rating when the newest save fails", async () => {
+    const model = await detail();
+    model.game.value = { ...game, ratingOverall: 3 };
+    vi.mocked(games.setRatings).mockRejectedValueOnce(new Error("Down"));
+    await model.onRatingsChange({
+      ratingOverall: 5,
+      ratingStory: null,
+      ratingGameplay: null,
+      ratingSound: null,
+    });
+    expect(model.game.value!.ratingOverall).toBe(3);
+    expect(model.quickEditError.value).toMatch(/rating/);
+  });
+
+  it("retries the similar-games library after a failure", async () => {
+    vi.mocked(games.fetchGames).mockRejectedValueOnce(new Error("Down"));
+    const model = await detail(); // mounting loads the game and the library once
+    expect(games.fetchGames).toHaveBeenCalledTimes(1);
+    vi.mocked(games.fetchGames).mockResolvedValueOnce([game]);
+    model.retryGame();
+    await flushPromises();
+    expect(games.fetchGames).toHaveBeenCalledTimes(2);
+    model.retryGame();
+    await flushPromises();
+    expect(games.fetchGames).toHaveBeenCalledTimes(2); // loaded once, kept
+  });
+});
+
+describe("game page partial failures", () => {
+  it("names a failed trash listing instead of showing an empty trash", async () => {
+    const model = await detail();
+    vi.mocked(media.fetchGameMediaTrash).mockRejectedValueOnce(
+      new Error("Down"),
+    );
+    await model.refreshMediaTrash();
+    expect(model.trashFailed.value.media).toBe(true);
+    vi.mocked(media.fetchGameMediaTrash).mockResolvedValueOnce([]);
+    await model.refreshMediaTrash(); // Retry
+    expect(model.trashFailed.value.media).toBe(false);
+
+    vi.mocked(archives.fetchArchiveTrash).mockRejectedValueOnce(
+      new Error("Down"),
+    );
+    await model.refreshSaveTrash();
+    expect(model.trashFailed.value.save).toBe(true);
+  });
+
+  it("reports how many bulk media edits failed and re-reads the list", async () => {
+    const model = await detail();
+    vi.mocked(media.updateMediaItem)
+      .mockResolvedValueOnce({ id: "a" } as media.MediaItem)
+      .mockRejectedValueOnce(new Error("Down"));
+    vi.mocked(media.listGameScreenshots).mockResolvedValue([]);
+    const before = vi.mocked(media.listGameScreenshots).mock.calls.length;
+    await model.bulkSaveMedia([
+      { id: "a", patch: { note: "x" } },
+      { id: "b", patch: { note: "x" } },
+    ]);
+    expect(model.mediaError.value).toBe("1 of 2 could not be saved.");
+    expect(vi.mocked(media.listGameScreenshots).mock.calls.length).toBe(
+      before + 1,
+    );
+  });
+
+  it("keeps deleting after one save fails and always refreshes both lists", async () => {
+    const model = await detail();
+    vi.mocked(archives.deleteArchive)
+      .mockRejectedValueOnce(new Error("Down"))
+      .mockResolvedValueOnce(undefined as never);
+    const pending = model.bulkDeleteArchives(
+      [{ id: "one" }, { id: "two" }] as archives.GameArchiveData[],
+      false,
+    );
+    await flushPromises();
+    closeDialog(true);
+    await pending;
+    expect(archives.deleteArchive).toHaveBeenCalledTimes(2);
+    expect(archives.fetchArchiveTrash).toHaveBeenCalled();
+    expect(model.filesError.value).toBe(
+      "1 of 2 could not be moved to the trash.",
+    );
   });
 });

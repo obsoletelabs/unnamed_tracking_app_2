@@ -405,3 +405,100 @@ def test_view_marks_stale_content_and_keeps_actions_inert():
     }  # fmt: skip
     # Plugin action entries never expose the plugin's id, input or target.
     assert view["actions"][1] == {"id": "run", "label": "Run", "style": "danger", "kind": "action"}
+
+
+@pytest.mark.parametrize(
+    "url, safe",
+    (
+        ("https://app.example.com/api/plugins/demo/frontend/index.html", False),
+        ("https://APP.example.com./api/plugins/demo/frontend/index.html", False),
+        ("https://app.example.com/%61pi/plugins/demo/frontend/index.html", False),
+        ("https://app.example.com/api", False),
+        ("https://app.example.com/games/1", True),
+        ("https://app.example.com/apidocs", True),
+        ("https://other.example.com/api/anything", True),
+    ),
+)
+def test_links_into_the_hosts_own_api_are_refused(monkeypatch, url, safe):
+    from src.features import notification_safety
+
+    monkeypatch.setattr(notification_safety.settings, "PUBLIC_APP_URL", "https://app.example.com")
+    assert notification_safety.url_is_safe(url) is safe
+
+
+async def test_saved_public_url_is_used_for_acceptance_and_server_rendering(monkeypatch):
+    from uuid import uuid4
+
+    from sqlalchemy import delete, select
+
+    from src.core.app_integrations import get_public_app_url
+    from src.core.config import settings
+    from src.database.models.app_integration_settings import AppIntegrationSettings
+    from src.database.session import SessionLocal
+    from src.features.notification_controller import (
+        NotificationDraft,
+        NotificationInterpretation,
+        emit_interpreted,
+    )
+    from src.features.notification_policy import Trust
+    from src.features.notification_safety import notification_origin, url_is_safe
+
+    monkeypatch.delenv("PUBLIC_APP_URL", raising=False)
+    monkeypatch.setattr(settings, "PUBLIC_APP_URL", "")
+    own_api = "https://saved.example/api/plugins/example/frontend/index.html"
+    document = content(
+        actions=[{"id": "open", "label": "Open", "target": {"kind": "link", "url": own_api}}]
+    )
+    async with SessionLocal() as db:
+        row = await db.scalar(select(AppIntegrationSettings).limit(1))
+        created = row is None
+        if row is None:
+            row = AppIntegrationSettings()
+            db.add(row)
+        previous = row.public_app_url
+        row.public_app_url = "https://saved.example"
+        await db.commit()
+        row_id = row.id
+        try:
+            draft = NotificationDraft(
+                kind="plugin",
+                user_id=uuid4(),
+                entity_type="plugin",
+                entity_id=uuid4(),
+                occurred_at=1,
+                dedupe_key="saved-origin",
+                title="Update",
+                body="Update",
+                source="example.plugin",
+                content=document,
+            )
+            interpretation = NotificationInterpretation(
+                event_type="example.plugin.update",
+                required_trust=Trust.PRIVATE,
+                purpose="standard",
+                severity="info",
+                installation_id=uuid4(),
+            )
+            with pytest.raises(UnsafeContentError):
+                await emit_interpreted(db, draft, interpretation)
+            with notification_origin(await get_public_app_url(db)):
+                assert not url_is_safe(own_api)
+                assert build_view(document, images=[], now=1)["actions"] == []
+                assert own_api not in render_email_html(document)
+                assert "href=" not in sanitize_html(f'<a href="{own_api}">Open</a>')
+                assert urls(render_markdown(f"[Open]({own_api})")) == []
+            # The effective URL is operation-local, not retained by other requests.
+            assert url_is_safe(own_api)
+            monkeypatch.setenv("PUBLIC_APP_URL", "https://override.example")
+            with notification_origin(await get_public_app_url(db)):
+                assert url_is_safe(own_api)
+                assert not url_is_safe("https://override.example/api/auth/me")
+        finally:
+            await db.rollback()
+            if created:
+                await db.execute(
+                    delete(AppIntegrationSettings).where(AppIntegrationSettings.id == row_id)
+                )
+            else:
+                row.public_app_url = previous
+            await db.commit()

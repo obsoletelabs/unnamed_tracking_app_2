@@ -943,7 +943,9 @@ async def test_frontend_native_and_page_replacement_grants_are_specific(boundary
         assert [item["page"] for item in document["page_replacements"]] == ["home"]
         grant(boundary, "frontend.page.replace.settings")
         native = grant(boundary, "frontend.native")
-        assert (await client.get(path)).status_code == 200
+        served = await client.get(path)
+        assert served.status_code == 200
+        assert served.headers["content-security-policy"] == "sandbox"
         document = (await client.get("/api/plugins/audit.plugin/ui")).json()
         assert {item["page"] for item in document["page_replacements"]} == {"home", "settings"}
         assert document["native_frontend"] is not None
@@ -1485,3 +1487,21 @@ async def test_runtime_local_storage_and_settings_require_live_host_grants(bound
         with pytest.raises(broker.runtime.RuntimePolicyError, match="gateway request failed"):
             await broker.dispatch(method, "plugin.storage", {"key": "data", "value": "overwrite"})
     assert broker.supervisor._storage("audit.plugin").get("data") == b"saved"
+
+
+@pytest.mark.asyncio
+async def test_static_frontend_assets_are_readable_without_action_grants(boundary):
+    boundary.runtime.frontend_asset = AsyncMock(return_value=b"body { color: inherit; }")
+    path = "/api/plugins/audit.plugin/frontend/frontend/style.css"
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=boundary.app), base_url="http://test"
+    ) as client:
+        assert (await client.get(path)).status_code == 401
+        client.cookies.set(
+            session_cookie_name("test"), boundary.tokens[boundary.current["user"].id]
+        )
+        asset = await client.get(path)
+        assert asset.status_code == 200
+        assert asset.headers["content-security-policy"].startswith("sandbox allow-scripts;")
+    assert (await request(boundary, "/api/plugins/audit.plugin/actions/read")).status_code == 403
+    boundary.runtime.action.assert_not_awaited()

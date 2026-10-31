@@ -18,6 +18,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.functions import count as sql_count
 
+from src.core.app_integrations import get_public_app_url
 from src.core.config import settings
 from src.database.models.notification import Notification
 from src.database.models.notification_story import (
@@ -31,6 +32,7 @@ from src.database.models.user import User
 from src.features.notification_canonical_registry import canonical_declaration
 from src.features.notification_images import effective_image_mode, resolve_images
 from src.features.notification_rich import build_view, humanize_phase, public_projection
+from src.features.notification_safety import notification_origin
 from src.plugin_api.grants import has_capability_grant, installation_is_executable
 from src.plugin_api.notification_plugin_contracts import check_action_target
 from src.plugin_api.notification_story_contracts import (
@@ -162,12 +164,14 @@ async def owner_view(
     images = await resolve_images(
         db, content, user_id=user_id, proxy_path=proxy_path, mode=effective_image_mode()
     )
+    with notification_origin(await get_public_app_url(db)):
+        view = build_view(content, images=images, now=now)
     return {
         **summary,
         "rich": True,
         "title": content.title,
         "text": None,
-        "view": build_view(content, images=images, now=now),
+        "view": view,
     }
 
 

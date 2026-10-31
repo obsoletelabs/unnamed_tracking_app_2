@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useMediaQuickSave } from "../composables/useMediaQuickSave";
 import { latestRequest } from "../utils/latestRequest";
 import RetryMessage from "../components/RetryMessage.vue";
 import { localMediaImage } from "../utils/mediaImages";
@@ -13,6 +14,7 @@ import {
   getMovie,
   peekMovie,
   updateMovie,
+  patchMovie,
   movieToInput,
   fetchMovieRelations,
   fetchMovieRecommended,
@@ -44,6 +46,9 @@ const router = useRouter();
 const movieId = computed(() => route.params.id as string);
 
 const movie = ref<Movie | null>(null);
+const { saveError, quickSave } = useMediaQuickSave(movie, (id, changes) =>
+  patchMovie(id, changes),
+);
 usePageTitle(() => movie.value?.title);
 const loading = ref(true);
 const error = ref<string | null>(null);
@@ -52,8 +57,11 @@ const activeTab = ref<"overview" | "related" | "recommended">("overview");
 const statusBucketModel = computed({
   get: () => statusBucket(movie.value?.status ?? "wishlist"),
   set: (bucket: string) => {
-    if (!movie.value) return;
-    movie.value.status = bucketToReal(bucket) as MovieStatus;
+    const next = bucketToReal(bucket) as MovieStatus;
+    void quickSave(
+      (target) => (target.status = next),
+      "Could not change the status. Try again.",
+    );
   },
 });
 
@@ -97,42 +105,18 @@ async function load() {
 async function toggleFavorite() {
   if (!movie.value) return;
   const next = !movie.value.favorite;
-  movie.value.favorite = next;
-  try {
-    await updateMovie(movie.value.id, {
-      ...movieToInput(movie.value),
-      favorite: next,
-    });
-  } catch {
-    movie.value.favorite = !next;
-  }
+  await quickSave(
+    (target) => (target.favorite = next),
+    "Could not update the favourite. Try again.",
+  );
 }
 
-async function saveNote(note: string | null) {
-  if (!movie.value) return;
-  const previous = movie.value.note;
-  movie.value.note = note;
-  try {
-    movie.value = await updateMovie(movie.value.id, {
-      ...movieToInput(movie.value),
-      note,
-    });
-  } catch {
-    movie.value.note = previous;
-  }
-}
-
-async function onStatusChange() {
-  if (!movie.value) return;
-  const previous = movie.value.status;
-  try {
-    movie.value = await updateMovie(movie.value.id, {
-      ...movieToInput(movie.value),
-      status: movie.value.status,
-    });
-  } catch {
-    movie.value.status = previous;
-  }
+// The note editor stays open with the typed text when this returns false.
+function saveNote(note: string | null): Promise<boolean> {
+  return quickSave(
+    (target) => (target.note = note),
+    "Could not save your note. Try again.",
+  );
 }
 
 // "Left off at" (#191): where you stopped in a movie you haven't finished
@@ -328,6 +312,8 @@ async function ensureMyMovies(): Promise<Movie[]> {
 
 const previewOpen = ref(false);
 const previewLoading = ref(false);
+// a second click must not show the first title's preview when it answers late
+const previewGuard = latestRequest();
 const previewAdding = ref(false);
 const previewError = ref<string | null>(null);
 const previewTitle = ref("");
@@ -343,7 +329,14 @@ async function onRelatedTitleClick(r: {
   title: string;
   posterUrl: string | null;
 }) {
-  const mine = await ensureMyMovies();
+  const token = previewGuard.start();
+  let mine: Movie[] = [];
+  try {
+    mine = await ensureMyMovies();
+  } catch {
+    // the library could not be read: preview the title instead of doing nothing
+  }
+  if (!previewGuard.isLatest(token)) return;
   const existing = mine.find(
     (m) => m.title.trim().toLowerCase() === r.title.trim().toLowerCase(),
   );
@@ -360,6 +353,7 @@ async function onRelatedTitleClick(r: {
   previewMeta.value = [];
   try {
     const { results } = await searchMovieMetadata(r.title, 1);
+    if (!previewGuard.isLatest(token)) return;
     const match = results.find((m) => m.title === r.title) ?? results[0];
     previewDescription.value = match?.description ?? null;
     previewMeta.value = [
@@ -367,10 +361,11 @@ async function onRelatedTitleClick(r: {
       match?.director,
     ].filter((v): v is string => !!v);
   } catch (e) {
+    if (!previewGuard.isLatest(token)) return;
     previewError.value =
       e instanceof Error ? e.message : "Failed to load a preview.";
   } finally {
-    previewLoading.value = false;
+    if (previewGuard.isLatest(token)) previewLoading.value = false;
   }
 }
 
@@ -440,17 +435,10 @@ watch(
   { immediate: true },
 );
 async function onRatingChange(value: number | null) {
-  if (!movie.value) return;
-  const previous = movie.value.ratingOverall;
-  movie.value.ratingOverall = value;
-  try {
-    movie.value = await updateMovie(movie.value.id, {
-      ...movieToInput(movie.value),
-      ratingOverall: value,
-    });
-  } catch {
-    if (movie.value) movie.value.ratingOverall = previous;
-  }
+  await quickSave(
+    (target) => (target.ratingOverall = value),
+    "Could not save the rating. Try again.",
+  );
 }
 </script>
 
@@ -512,6 +500,7 @@ async function onRatingChange(value: number | null) {
       :has-backdrop="!!movie.backdropUrl"
       :rating-overall="movie.ratingOverall"
       :favorite="movie.favorite"
+      :save-error="saveError"
       media-type="movie"
       :media-id="movie.id"
       :provider-ids="movie.providerIds"
@@ -520,7 +509,6 @@ async function onRatingChange(value: number | null) {
         ...(releaseYear ? [{ text: releaseYear }] : []),
         ...(runtimeLabel ? [{ text: runtimeLabel }] : []),
       ]"
-      @status-change="onStatusChange"
       @rating-change="onRatingChange"
       @edit="showEditModal = true"
       @toggle-favorite="toggleFavorite"
@@ -616,7 +604,7 @@ async function onRatingChange(value: number | null) {
           v-if="movie.description"
           :text="movie.description"
         />
-        <MyNote :note="movie.note" @save="saveNote" />
+        <MyNote :note="movie.note" :save-note="saveNote" />
         <MediaProviderPanel media-type="movie" :media-id="movie.id" />
       </div>
 

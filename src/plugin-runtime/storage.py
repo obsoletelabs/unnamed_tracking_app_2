@@ -250,7 +250,7 @@ class PluginStorage:
                         target.resolve(strict=False).relative_to(staging.resolve())
                     except ValueError as exc:
                         raise StorageSecurityError("backup path escapes plugin namespace") from exc
-                archive.extractall(staging)
+                archive.extractall(staging, filter="data")
             metadata_path = staging / _METADATA
             if not metadata_path.is_file():
                 raise StorageError("backup is missing storage metadata")

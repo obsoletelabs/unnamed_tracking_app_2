@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useMediaQuickSave } from "../composables/useMediaQuickSave";
 import { latestRequest } from "../utils/latestRequest";
 import RetryMessage from "../components/RetryMessage.vue";
 import { localMediaImage } from "../utils/mediaImages";
@@ -13,6 +14,7 @@ import {
   getTVShow,
   peekTVShow,
   updateTVShow,
+  patchTVShow,
   tvShowToInput,
   fetchEpisodes,
   updateEpisode,
@@ -46,6 +48,9 @@ const router = useRouter();
 const showId = computed(() => route.params.id as string);
 
 const show = ref<TVShow | null>(null);
+const { saveError, quickSave } = useMediaQuickSave(show, (id, changes) =>
+  patchTVShow(id, changes),
+);
 usePageTitle(() => show.value?.title);
 const loading = ref(true);
 const error = ref<string | null>(null);
@@ -56,8 +61,11 @@ const activeTab = ref<"overview" | "episodes" | "related" | "recommended">(
 const statusBucketModel = computed({
   get: () => statusBucket(show.value?.status ?? "wishlist"),
   set: (bucket: string) => {
-    if (!show.value) return;
-    show.value.status = bucketToReal(bucket) as TVShowStatus;
+    const next = bucketToReal(bucket) as TVShowStatus;
+    void quickSave(
+      (target) => (target.status = next),
+      "Could not change the status. Try again.",
+    );
   },
 });
 
@@ -101,42 +109,18 @@ async function load() {
 async function toggleFavorite() {
   if (!show.value) return;
   const next = !show.value.favorite;
-  show.value.favorite = next;
-  try {
-    await updateTVShow(show.value.id, {
-      ...tvShowToInput(show.value),
-      favorite: next,
-    });
-  } catch {
-    show.value.favorite = !next;
-  }
+  await quickSave(
+    (target) => (target.favorite = next),
+    "Could not update the favourite. Try again.",
+  );
 }
 
-async function saveNote(note: string | null) {
-  if (!show.value) return;
-  const previous = show.value.note;
-  show.value.note = note;
-  try {
-    show.value = await updateTVShow(show.value.id, {
-      ...tvShowToInput(show.value),
-      note,
-    });
-  } catch {
-    show.value.note = previous;
-  }
-}
-
-async function onStatusChange() {
-  if (!show.value) return;
-  const previous = show.value.status;
-  try {
-    show.value = await updateTVShow(show.value.id, {
-      ...tvShowToInput(show.value),
-      status: show.value.status,
-    });
-  } catch {
-    show.value.status = previous;
-  }
+// The note editor stays open with the typed text when this returns false.
+function saveNote(note: string | null): Promise<boolean> {
+  return quickSave(
+    (target) => (target.note = note),
+    "Could not save your note. Try again.",
+  );
 }
 
 function onSaved(saved: TVShow) {
@@ -502,6 +486,8 @@ async function ensureMyShows(): Promise<TVShow[]> {
 
 const previewOpen = ref(false);
 const previewLoading = ref(false);
+// a second click must not show the first title's preview when it answers late
+const previewGuard = latestRequest();
 const previewAdding = ref(false);
 const previewError = ref<string | null>(null);
 const previewTitle = ref("");
@@ -517,7 +503,14 @@ async function onRelatedTitleClick(r: {
   title: string;
   posterUrl: string | null;
 }) {
-  const mine = await ensureMyShows();
+  const token = previewGuard.start();
+  let mine: TVShow[] = [];
+  try {
+    mine = await ensureMyShows();
+  } catch {
+    // the library could not be read: preview the title instead of doing nothing
+  }
+  if (!previewGuard.isLatest(token)) return;
   const existing = mine.find(
     (s) => s.title.trim().toLowerCase() === r.title.trim().toLowerCase(),
   );
@@ -534,6 +527,7 @@ async function onRelatedTitleClick(r: {
   previewMeta.value = [];
   try {
     const { results } = await searchTVShowMetadata(r.title, 1);
+    if (!previewGuard.isLatest(token)) return;
     const match = results.find((m) => m.title === r.title) ?? results[0];
     previewDescription.value = match?.description ?? null;
     previewMeta.value = [
@@ -541,10 +535,11 @@ async function onRelatedTitleClick(r: {
       match?.studios?.[0],
     ].filter((v): v is string => !!v);
   } catch (e) {
+    if (!previewGuard.isLatest(token)) return;
     previewError.value =
       e instanceof Error ? e.message : "Failed to load a preview.";
   } finally {
-    previewLoading.value = false;
+    if (previewGuard.isLatest(token)) previewLoading.value = false;
   }
 }
 
@@ -632,17 +627,10 @@ watch(
   { immediate: true },
 );
 async function onRatingChange(value: number | null) {
-  if (!show.value) return;
-  const previous = show.value.ratingOverall;
-  show.value.ratingOverall = value;
-  try {
-    show.value = await updateTVShow(show.value.id, {
-      ...tvShowToInput(show.value),
-      ratingOverall: value,
-    });
-  } catch {
-    if (show.value) show.value.ratingOverall = previous;
-  }
+  await quickSave(
+    (target) => (target.ratingOverall = value),
+    "Could not save the rating. Try again.",
+  );
 }
 </script>
 
@@ -702,6 +690,7 @@ async function onRatingChange(value: number | null) {
       :has-backdrop="!!show.backdropUrl"
       :rating-overall="show.ratingOverall"
       :favorite="show.favorite"
+      :save-error="saveError"
       media-type="tv"
       :media-id="show.id"
       :provider-ids="show.providerIds"
@@ -718,7 +707,6 @@ async function onRatingChange(value: number | null) {
             ]
           : []),
       ]"
-      @status-change="onStatusChange"
       @rating-change="onRatingChange"
       @edit="showEditModal = true"
       @toggle-favorite="toggleFavorite"
@@ -773,7 +761,7 @@ async function onRatingChange(value: number | null) {
           v-if="show.description"
           :text="show.description"
         />
-        <MyNote :note="show.note" @save="saveNote" />
+        <MyNote :note="show.note" :save-note="saveNote" />
         <MediaProviderPanel media-type="tv" :media-id="show.id" />
       </div>
 

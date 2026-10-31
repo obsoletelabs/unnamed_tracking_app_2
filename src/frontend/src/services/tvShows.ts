@@ -118,7 +118,10 @@ function mapBackendEpisode(raw: BackendEpisode): Episode {
     description: raw.description,
     airDate: raw.air_date,
     runtimeMinutes: raw.runtime_minutes,
-    stillUrl: raw.still_url,
+    // Served through this server, never loaded from the provider's host.
+    stillUrl: raw.still_url
+      ? `/api/media-image/tv/episode/${encodeURIComponent(raw.id)}/still`
+      : null,
     watched: raw.watched,
     rating: toNumberOrNull(raw.rating),
     note: raw.note ?? null,
@@ -204,6 +207,7 @@ export const fetchTVShows = api.fetchAll;
 export const getTVShow = api.get;
 export const createTVShow = api.create;
 export const updateTVShow = api.update;
+export const patchTVShow = api.patch;
 export const deleteTVShow = api.remove;
 export type TrashedTVShow = TrashedMedia;
 export const fetchTVShowTrash = api.fetchTrash;

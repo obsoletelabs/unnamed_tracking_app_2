@@ -28,7 +28,7 @@ MEDIA_ROOT = Path("/data/users")
 ICON_ROOT = Path("/data/cache")
 # a poster shows at most about 200 px wide, a backdrop spans the page, an
 # achievement icon is a small square
-WIDTHS = {"poster": 400, "backdrop": 1920, "hero": 1920, "icon": 128}
+WIDTHS = {"poster": 400, "backdrop": 1920, "hero": 1920, "icon": 128, "still": 640}
 # posters and backdrops are big files, icons are a few KB each and a game can
 # have a hundred of them, so icons get a wider lane of their own
 _PARALLEL = 4

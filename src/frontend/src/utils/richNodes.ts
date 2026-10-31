@@ -20,7 +20,7 @@ const APP_PATH = /^\/(?!\/)[A-Za-z0-9._~!$&'()*+,;=:@/?-]*$/;
 export function safeHref(value: string | undefined | null): SafeHref | null {
   if (!value || value.length > 2048) return null;
   if (HTTPS_URL.test(value) && !value.includes("@")) {
-    return { kind: "external", href: value };
+    return isOwnApiUrl(value) ? null : { kind: "external", href: value };
   }
   if (
     APP_PATH.test(value) &&
@@ -30,6 +30,28 @@ export function safeHref(value: string | undefined | null): SafeHref | null {
     return { kind: "route", href: value };
   }
   return null;
+}
+
+// Application paths already refuse /api/; an absolute link back into this
+// host's API is refused the same way.
+function isOwnApiUrl(value: string): boolean {
+  if (typeof window === "undefined") return false;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return true;
+  }
+  if (url.hostname.replace(/\.$/, "") !== window.location.hostname) {
+    return false;
+  }
+  let path: string;
+  try {
+    path = decodeURIComponent(url.pathname);
+  } catch {
+    return true;
+  }
+  return path === "/api" || path.startsWith("/api/");
 }
 
 export function headingTag(level: number | undefined): string {

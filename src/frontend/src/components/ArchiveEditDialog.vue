@@ -11,19 +11,23 @@ const props = defineProps<{
   // "save" or "world", for the wording
   noun: string;
   uploading?: boolean;
+  // Saves the changes; the dialog closes once it succeeds and stays open with
+  // the typed values when it resolves false or throws.
+  onSave?: (
+    archive: GameArchiveData,
+    patch: { name?: string; note?: string | null; tags?: string[] },
+  ) => Promise<boolean | void> | boolean | void;
 }>();
 
 const emit = defineEmits<{
   close: [];
-  save: [
-    archive: GameArchiveData,
-    patch: { name?: string; note?: string | null; tags?: string[] },
-  ];
   delete: [archive: GameArchiveData];
   "add-version": [archive: GameArchiveData, files: File[]];
   "delete-version": [archive: GameArchiveData, version: ArchiveVersion];
 }>();
 
+const saving = ref(false);
+const saveError = ref<string | null>(null);
 const name = ref(props.archive.name);
 const note = ref(props.archive.note ?? "");
 const tags = ref<string[]>([...(props.archive.tags ?? [])]);
@@ -54,7 +58,12 @@ const dirty = computed(
     JSON.stringify(tags.value) !== JSON.stringify(props.archive.tags ?? []),
 );
 
-function save() {
+function draftSnapshot() {
+  return JSON.stringify([name.value, note.value, tags.value, tagDraft.value]);
+}
+
+async function save() {
+  if (saving.value) return;
   commitTag();
   const patch: { name?: string; note?: string | null; tags?: string[] } = {};
   if (name.value.trim() && name.value.trim() !== props.archive.name)
@@ -62,9 +71,22 @@ function save() {
   if (note.value.trim() !== (props.archive.note ?? ""))
     patch.note = note.value.trim() || null;
   if (JSON.stringify(tags.value) !== JSON.stringify(props.archive.tags ?? []))
-    patch.tags = tags.value;
-  if (Object.keys(patch).length) emit("save", props.archive, patch);
-  emit("close");
+    patch.tags = [...tags.value];
+  if (!Object.keys(patch).length) return emit("close");
+  const submitted = draftSnapshot();
+  saving.value = true;
+  saveError.value = null;
+  try {
+    if ((await props.onSave?.(props.archive, patch)) === false)
+      saveError.value =
+        "Your changes could not be saved. They are still here; try again.";
+    else if (draftSnapshot() === submitted) emit("close");
+  } catch {
+    saveError.value =
+      "Your changes could not be saved. They are still here; try again.";
+  } finally {
+    saving.value = false;
+  }
 }
 function remove() {
   emit("delete", props.archive);
@@ -209,6 +231,9 @@ function onKey(e: KeyboardEvent) {
     </div>
 
     <template #footer>
+      <p v-if="saveError" class="aed-save-error" role="alert">
+        {{ saveError }}
+      </p>
       <button type="button" class="ui-btn ui-btn-danger-soft" @click="remove">
         Delete {{ noun }}
       </button>
@@ -219,7 +244,7 @@ function onKey(e: KeyboardEvent) {
       <button
         type="button"
         class="ui-btn ui-btn-primary"
-        :disabled="!dirty"
+        :disabled="!dirty || saving"
         @click="save"
       >
         Save
@@ -229,6 +254,12 @@ function onKey(e: KeyboardEvent) {
 </template>
 
 <style scoped>
+.aed-save-error {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--ui-error);
+  font-size: 0.85rem;
+}
 .aed {
   max-width: 560px;
   max-height: 90vh;

@@ -31,6 +31,11 @@ vi.mock("../services/games", async (importOriginal) => ({
   listGameNoteSummaries: (...args: unknown[]) => listGameNoteSummaries(...args),
 }));
 
+vi.mock("../services/media", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../services/media")>()),
+  listGameScreenshots: vi.fn().mockResolvedValue([]),
+}));
+
 const listUsers = vi.fn();
 vi.mock("../services/admin", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../services/admin")>()),

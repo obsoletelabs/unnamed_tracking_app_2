@@ -31,11 +31,15 @@ const props = defineProps<{
   // an already-uploaded screenshot be moved to a different account after
   // the fact instead of only being assignable at upload time
   profiles?: GameProfile[];
+  // passed through to the edit dialog, which waits for it before closing
+  onSave?: (
+    item: T,
+    patch: MediaItemUpdate,
+  ) => Promise<boolean | void> | boolean | void;
 }>();
 
 const emit = defineEmits<{
   delete: [item: T];
-  save: [item: T, patch: MediaItemUpdate];
   preview: [item: T];
   toggle: [item: T];
   copy: [item: T];
@@ -418,7 +422,7 @@ function onThumbClick() {
       :profiles="profiles"
       :detect="detect"
       @close="editing = false"
-      @save="(...args) => emit('save', ...args)"
+      :on-save="onSave"
       @delete="emit('delete', $event)"
     />
   </article>

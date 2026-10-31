@@ -87,6 +87,26 @@ describe("useConnections", () => {
     expect(state.credentialsLoading.value).toBe(false);
   });
 
+  it("keeps an unsaved Steam edit when the credentials are read again", async () => {
+    const steam = (profile: string, key = "k") => ({
+      Steam: {
+        status: "connected",
+        fields: { steam_id: profile, api_key_hint: key },
+      },
+    });
+    settings.fetchProviderCredentials
+      .mockResolvedValueOnce(steam("111"))
+      .mockResolvedValueOnce(steam("222", "k2"));
+    const state = useConnections();
+    await state.loadCredentials();
+    expect(state.fieldValues.Steam!.steam_id).toBe("111");
+    state.fieldValues.Steam!.steam_id = "typed-but-unsaved";
+    await state.loadCredentials(); // e.g. after a sync
+    expect(state.fieldValues.Steam!.steam_id).toBe("typed-but-unsaved");
+    // a field the user left alone still follows the server
+    expect(state.fieldValues.Steam!.api_key_hint).toBe("k2");
+  });
+
   it("clears an old PlayStation error when it reloads", async () => {
     psn.fetchPsnStatus
       .mockRejectedValueOnce(new Error("PSN down"))

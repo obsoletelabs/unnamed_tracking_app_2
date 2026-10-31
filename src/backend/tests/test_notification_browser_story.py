@@ -173,6 +173,18 @@ async def test_story_mode_shows_safe_text_but_stays_generic_for_private_contexts
         assert (await ask(client, endpoint_id, notice_id))["preview"]["generic"] is True
 
 
+async def test_markdown_bodies_are_shown_as_plain_text(push_account, push_http, monkeypatch):
+    monkeypatch.setattr(settings, "NOTIFICATION_BROWSER_PREVIEWS", "story")
+    endpoint_id, [notice_id] = await setup(
+        push_account,
+        row("available", body="**Episode 5** is [out now](https://example.com/watch)"),
+    )
+    await drain()
+    async with SessionLocal() as db, api(db, push_account) as client:
+        shown = (await ask(client, endpoint_id, notice_id))["preview"]
+        assert shown["body"] == "Episode 5 is out now (https://example.com/watch)"
+
+
 async def test_credential_shaped_text_is_withheld_from_the_device(
     push_account, push_http, monkeypatch
 ):

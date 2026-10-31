@@ -23,7 +23,7 @@ import time
 import zipfile
 import zlib
 from collections import deque
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -72,6 +72,11 @@ _MAX_PACKAGE_ENTRIES = 1000
 _MAX_PACKAGE_FILE_BYTES = 16 * 1024 * 1024
 _MAX_PACKAGE_UNCOMPRESSED_BYTES = 64 * 1024 * 1024
 _MAX_PACKAGE_COMPRESSION_RATIO = 100.0
+# One protocol, gateway or log line from a plugin process. Larger lines are discarded
+# while they are read, so a plugin cannot make the runtime buffer unbounded output.
+_MAX_PLUGIN_LINE_BYTES = 16 * 1024 * 1024
+# Queued in place of a discarded line; compared by identity, never by value.
+_OVERSIZED_LINE = b"<oversized line>"
 _PACKAGE_ARCHIVE = ".runtime-state-package.utp"
 _BACKEND_ROUTE_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
 _BACKEND_ROUTE_SEGMENT = re.compile(r"^(?:[a-z0-9][a-z0-9._-]*|\{[a-z_][a-z0-9_]*\})$")
@@ -103,6 +108,21 @@ _RESERVED_PLUGIN_ROUTE_ROOTS = {
     "ui",
     "update",
 }
+
+
+def _bounded_lines(stream: Any, limit: int | None = None) -> Iterator[bytes | None]:
+    """Yield each line of a plugin stream, or None for a line longer than the limit."""
+    limit = _MAX_PLUGIN_LINE_BYTES if limit is None else limit
+    while True:
+        line = stream.readline(limit + 1)
+        if not line:
+            return
+        if len(line) <= limit:
+            yield line
+            continue
+        while line and not line.endswith(b"\n"):
+            line = stream.readline(limit)
+        yield None
 
 
 class RuntimePolicyError(ValueError):
@@ -424,7 +444,15 @@ class PluginSupervisor:
         stdout = getattr(process, "stdout", None)
         if stdout is None:
             return
-        for raw in iter(stdout.readline, b""):
+        for raw in _bounded_lines(stdout):
+            if raw is None:
+                self._log(
+                    plugin_id,
+                    "Gateway request exceeded the size limit and was discarded.",
+                    level="error",
+                    event="gateway.request_failed",
+                )
+                continue
             line = raw.decode("utf-8", errors="replace").strip()
             if not line:
                 continue
@@ -460,7 +488,9 @@ class PluginSupervisor:
         stderr = getattr(process, "stderr", None)
         if stderr is None:
             return
-        for raw in iter(stderr.readline, b""):
+        for raw in _bounded_lines(stderr):
+            if raw is None:
+                raw = b"[plugin output line exceeded the size limit and was discarded]"
             line = raw.decode("utf-8", errors="replace").rstrip()
             if line:
                 self._log(
@@ -1071,8 +1101,8 @@ class PluginSupervisor:
             lines: queue.Queue[tuple[str, bytes | None]] = queue.Queue()
 
             def read_stream(name: str, stream: Any) -> None:
-                for line in iter(stream.readline, b""):
-                    lines.put((name, line))
+                for line in _bounded_lines(stream):
+                    lines.put((name, _OVERSIZED_LINE if line is None else line))
                 lines.put((name, None))
 
             threading.Thread(
@@ -1101,6 +1131,10 @@ class PluginSupervisor:
                     if stream_name == "stdout":
                         stdout_closed = True
                     continue
+                if line is _OVERSIZED_LINE:
+                    if stream_name == "stdout":
+                        raise RuntimePolicyError("plugin action output exceeds the line limit")
+                    line = b"[plugin output line exceeded the size limit and was discarded]"
                 if stream_name == "stderr":
                     message = line.decode("utf-8", errors="replace").rstrip()
                     if message:

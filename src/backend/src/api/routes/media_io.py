@@ -185,7 +185,7 @@ class ListImportResult(BaseModel):
 def _parse_list(source: str, raw: bytes, filename: str) -> tuple[list[ImportedTitle], int]:
     if len(raw) > LIST_MAX_BYTES:
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="The file is too large."
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail="The file is too large."
         )
     try:
         if source == "letterboxd":
@@ -405,7 +405,7 @@ async def import_media(
     raw = await file.read(200 * 1024 * 1024 + 1)
     if len(raw) > 200 * 1024 * 1024:
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="The file is too large."
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail="The file is too large."
         )
     try:
         payload = json.loads(raw)

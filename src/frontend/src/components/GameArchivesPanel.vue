@@ -14,6 +14,8 @@ const props = defineProps<{
   hint: string;
   archives: T[];
   trash: TrashedArchive[];
+  // the deleted-items listing failed, so an empty `trash` means "unknown"
+  trashFailed?: boolean;
   loaded: boolean;
   uploading: boolean;
   error: string | null;
@@ -27,6 +29,7 @@ const emit = defineEmits<{
   restore: [archive: TrashedArchive];
   problem: [message: string];
   retry: [];
+  "retry-trash": [];
 }>();
 
 defineSlots<{
@@ -217,6 +220,15 @@ function daysLeft(purgeAt: number): number {
           @click="showTrash = !showTrash"
         >
           Deleted ({{ trash.length }})
+        </button>
+        <button
+          v-else-if="trashFailed"
+          type="button"
+          class="ui-btn ui-btn-ghost"
+          title="The deleted items could not be loaded"
+          @click="emit('retry-trash')"
+        >
+          Deleted: couldn't load, retry
         </button>
       </div>
       <input

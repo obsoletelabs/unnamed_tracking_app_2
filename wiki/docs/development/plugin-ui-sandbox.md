@@ -41,3 +41,13 @@ The public appearance snapshot includes `navigation_shortcuts`, the single-lette
 The host accepts requests only from that contribution's own opaque frame and only for mapped navigation keys. It does not accept arbitrary paths, URLs or privileged operations. The shared host keyboard handler retains its open-dialog and command-palette guards. Existing frontend action/capability checks and the iframe sandbox are unchanged.
 
 The additive `global_shortcuts` list advertises `help` (`?`) and `search` (Ctrl/Cmd+K). The SDK forwards those exact identifiers through the same `plugin.shortcut` method, so native host help/search remain available from inside the frame. Older snapshots without this list do not forward global dialog keys. Editing and modifier guards still apply.
+
+## Static package access
+
+For an executable installation, ordinary frontend package files may be read by
+any signed-in user before capability grants. These files must never contain
+credentials, personal settings or account data. The response and iframe sandbox
+isolates executable content; runtime actions, protected data and UI activation
+still require live capability grants. Native frontend modules continue to require
+`frontend.native`. Public applications use the separate hostname described in
+[public app isolation](plugin-public-apps.md#separate-browser-origin-v005).

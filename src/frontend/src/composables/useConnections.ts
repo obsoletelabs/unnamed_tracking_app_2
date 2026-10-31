@@ -155,6 +155,8 @@ export function useConnections() {
   const cardError = reactive<Record<string, string | null>>({});
   const cardInfo = reactive<Record<string, string | null>>({});
   for (const connection of CONNECTIONS) fieldValues[connection.key] = {};
+  // the server's values as last prefilled, to tell an unsaved edit apart
+  const prefilled: Record<string, Record<string, string>> = {};
 
   async function loadCredentials() {
     try {
@@ -163,13 +165,18 @@ export function useConnections() {
       loadError.value = null;
       credentialsLoaded.value = true;
       // prefill non-secret fields (profile IDs, usernames) that are already
-      // saved, so the form shows them filled instead of misleadingly blank
+      // saved, so the form shows them filled instead of misleadingly blank;
+      // a reload after a sync or PlayStation action leaves a field the user
+      // has changed since it was prefilled alone
       for (const [key, status] of Object.entries(result)) {
-        if (status.fields)
-          Object.assign(
-            fieldValues[key] ?? (fieldValues[key] = {}),
-            status.fields,
-          );
+        if (!status.fields) continue;
+        const values = fieldValues[key] ?? (fieldValues[key] = {});
+        const shown = prefilled[key] ?? (prefilled[key] = {});
+        for (const [field, value] of Object.entries(status.fields)) {
+          if (values[field] === undefined || values[field] === shown[field])
+            values[field] = value;
+          shown[field] = value;
+        }
       }
     } catch (err) {
       loadError.value =

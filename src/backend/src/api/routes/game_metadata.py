@@ -219,7 +219,7 @@ async def set_field_preference(
         applied = await field_preferences.set_preference(db, game, field, payload.source_key)
     except field_preferences.InvalidPreference as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
         ) from exc
     await db.commit()
     return {"field": field, "source_key": payload.source_key, "applied": applied}
@@ -238,7 +238,7 @@ async def clear_field_preference(
         await field_preferences.clear_preference(db, game, field)
     except field_preferences.InvalidPreference as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
         ) from exc
     await db.commit()
 

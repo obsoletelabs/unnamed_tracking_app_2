@@ -111,6 +111,11 @@ const {
   similarGames,
   toggleFavorite,
   favoriteError,
+  trashFailed,
+  refreshMediaTrash,
+  refreshFileTrash,
+  refreshSaveTrash,
+  quickEditError,
   STATUS_OPTIONS,
   changeStatus,
   onCollectionsChanged,
@@ -542,6 +547,9 @@ async function onFieldSourceChanged() {
           </div>
           <p v-if="favoriteError" class="favorite-error" role="alert">
             {{ favoriteError }}
+          </p>
+          <p v-if="quickEditError" class="favorite-error" role="alert">
+            {{ quickEditError }}
           </p>
           <p v-if="refreshError" class="favorite-error" role="alert">
             Your change was saved, but this page could not be refreshed and may
@@ -1401,6 +1409,8 @@ async function onFieldSourceChanged() {
               : soundtrackItems
         "
         :trash="activeTabTrash"
+        :trash-failed="trashFailed.media"
+        @retry-trash="refreshMediaTrash"
         :achievements="tieAchievements"
         :profiles="game.profilesEnabled ? profiles : undefined"
         :loading="mediaLoadedFor !== game.id"
@@ -1429,6 +1439,8 @@ async function onFieldSourceChanged() {
         hint="Drop a save here or click to browse. You'll be asked to name it: one game can hold as many named saves as you want."
         :archives="saveArchives"
         :trash="saveTrash"
+        :trash-failed="trashFailed.save"
+        @retry-trash="refreshSaveTrash"
         :loaded="saveArchivesLoaded"
         :uploading="saveUploading.has('')"
         :error="filesError"
@@ -1467,6 +1479,8 @@ async function onFieldSourceChanged() {
         :game-id="game.id"
         :items="docsFiles"
         :trash="docsTrash"
+        :trash-failed="trashFailed.doc"
+        @retry-trash="refreshFileTrash('doc')"
         :loading="filesLoaded.doc === null"
         :uploading="uploadingFiles"
         :error="filesError"

@@ -18,6 +18,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.app_integrations import get_public_app_url
 from src.core.config import settings
 from src.database.models.notification import Notification
 from src.database.models.notification_story import NotificationStoryRevision
@@ -31,6 +32,7 @@ from src.features.notification_providers.base import (
 )
 from src.features.notification_providers.capabilities import ResolvedProfile
 from src.features.notification_rich import format_fact, render_email_html, render_plain
+from src.features.notification_safety import notification_origin, url_is_safe
 from src.plugin_api.notification_story_contracts import NotificationContent, RendererContribution
 
 ELLIPSIS = "…"
@@ -136,7 +138,7 @@ def _action_buttons(
         target = action.target
         url = (
             target.url
-            if target.kind == "link"
+            if target.kind == "link" and url_is_safe(target.url)
             else f"{base.rstrip('/')}{target.path}"
             if target.kind == "host_route" and base
             else None
@@ -155,7 +157,11 @@ def _image_urls(content: NotificationContent, caps: Any) -> tuple[str, ...]:
         and settings.NOTIFICATION_IMAGE_MODE == "external"
     ):
         for image in content.images:
-            if image.source.kind == "external" and len(images) < caps.images.max_images:
+            if (
+                image.source.kind == "external"
+                and url_is_safe(image.source.url)
+                and len(images) < caps.images.max_images
+            ):
                 images.append(image.source.url)
     return tuple(images)
 
@@ -224,13 +230,14 @@ async def _presentation_changes(
     )
     changes: dict = {}
     if content is not None and profile.canonical:
-        fields, notes = _presentation(
-            content,
-            profile,
-            link,
-            link_base,
-            await selected_contribution(db, notification, profile),
-        )
+        with notification_origin(await get_public_app_url(db)):
+            fields, notes = _presentation(
+                content,
+                profile,
+                link,
+                link_base,
+                await selected_contribution(db, notification, profile),
+            )
         fallbacks += notes
         changes |= fields
     elif content is not None and (

@@ -13,6 +13,7 @@ import {
   openExternalDestination,
   PluginActionError,
   pluginExternalDestination,
+  requirePluginSaveGesture,
   requireUserActivation,
   reserveExternalTab,
   fetchPluginSettings,
@@ -200,6 +201,7 @@ async function handleFrontendMessage(event: MessageEvent) {
     const data = payload as Record<string, unknown>;
     let result: Record<string, unknown> = {};
     if (method === "plugin.save-secret") {
+      requirePluginSaveGesture();
       const key = String(data.key || "");
       const value = String(data.value || "");
       const response = await fetch(
@@ -214,6 +216,7 @@ async function handleFrontendMessage(event: MessageEvent) {
       if (!response.ok) throw new Error("Plugin secret could not be saved.");
       result = { saved: true };
     } else if (method === "plugin.save-settings") {
+      requirePluginSaveGesture();
       const response = await fetch(
         `/api/plugins/${encodeURIComponent(props.document.plugin_id)}/settings`,
         {

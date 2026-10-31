@@ -9,13 +9,10 @@ import {
   fetchContentCounts,
   fetchGameFieldChanges,
   fetchGames,
-  setRatings,
-  setStatus,
   setResumeNote,
   setPlaytimeSeconds,
 } from "../services/games";
-import type { FieldChange, GameRatings } from "../services/games";
-import { peekAdjacentGameId } from "../state/libraryNav";
+import type { FieldChange } from "../services/games";
 import {
   HERO_WIDTH,
   POSTER_WIDTH,
@@ -84,10 +81,11 @@ import type { Achievement, Game, GameStatus } from "../types/game";
 import { computeScore } from "../utils/scoring";
 import DOMPurify from "dompurify";
 import { useConfirm, usePrompt } from "../state/dialog";
-import { matchesShortcut } from "../state/shortcuts";
 import { useGameProfiles } from "./useGameProfiles";
 import { useGameWorlds } from "./useGameWorlds";
 import { useFavoriteToggle } from "./useFavoriteToggle";
+import { useGameQuickEdits } from "./useGameQuickEdits";
+import { useAdjacentGameShortcut } from "./useAdjacentGameShortcut";
 import { useGameAchievements } from "./useGameAchievements";
 import { ApiRequestError } from "../services/apiError";
 import {
@@ -382,10 +380,7 @@ export function useGameDetail() {
       // Ignore stale responses, including earlier retries of the same link.
       if (revision !== loadRevision) return;
       game.value = fetched;
-      if (fetched && !libraryRequested) {
-        libraryRequested = true;
-        void loadLibraryForSimilar();
-      }
+      if (fetched) void loadLibraryForSimilar();
       if (fetched && !refresh) {
         resetForGame();
         parentGameTitle.value = null;
@@ -452,40 +447,49 @@ export function useGameDetail() {
     resumeNoteInput.value?.focus();
   }
   async function saveResumeNote() {
-    if (!game.value) return;
+    const target = game.value;
+    if (!target || resumeNoteSaving.value) return;
     resumeNoteSaving.value = true;
     resumeNoteError.value = null;
     try {
       const trimmed = resumeNoteDraft.value.trim() || null;
-      const updated = await setResumeNote(game.value.id, trimmed);
-      game.value.resumeNote = updated.resumeNote;
-      resumeNoteEditing.value = false;
+      const updated = await setResumeNote(target.id, trimmed);
+      // A late answer belongs to the game it was saved for, not the page's current game.
+      target.resumeNote = updated.resumeNote;
+      if (game.value === target) resumeNoteEditing.value = false;
     } catch (err) {
-      resumeNoteError.value =
-        err instanceof Error ? err.message : "Failed to save note";
+      if (game.value === target)
+        resumeNoteError.value =
+          err instanceof Error ? err.message : "Failed to save note";
     } finally {
       resumeNoteSaving.value = false;
     }
   }
 
+  const { quickEditError, changeStatus, onRatingsChange } =
+    useGameQuickEdits(game);
+
   // --- quick playtime logging --------------------------------------------
   const loggingPlaytime = ref(false);
   async function logPlaytime(minutes: number) {
-    if (!game.value || loggingPlaytime.value) return;
+    const target = game.value;
+    if (!target || loggingPlaytime.value) return;
     loggingPlaytime.value = true;
+    quickEditError.value = null;
     try {
-      const currentSeconds = game.value.platforms.reduce(
+      const currentSeconds = target.platforms.reduce(
         (sum, p) => sum + p.playtimeMinutes * 60,
         0,
       );
       const updated = await setPlaytimeSeconds(
-        game.value.id,
+        target.id,
         currentSeconds + minutes * 60,
       );
-      game.value.platforms = updated.platforms;
-      game.value.lastPlayedAt = updated.lastPlayedAt;
+      target.platforms = updated.platforms;
+      target.lastPlayedAt = updated.lastPlayedAt;
     } catch {
-      // the button just doesn't reflect the change, not worth a whole error banner for this
+      if (game.value === target)
+        quickEditError.value = "Could not log the playtime. Try again.";
     } finally {
       loggingPlaytime.value = false;
     }
@@ -495,11 +499,18 @@ export function useGameDetail() {
   // fetched once per page visit (not per-game), cheap enough at this
   // library's scale and avoids a second heavier endpoint just for this
   const libraryGames = ref<Game[]>([]);
+  let libraryLoading = false;
   async function loadLibraryForSimilar() {
+    if (libraryRequested || libraryLoading) return;
+    libraryLoading = true;
     try {
       libraryGames.value = await fetchGames();
+      libraryRequested = true;
     } catch {
-      // similar-games section just doesn't show, not worth failing the page
+      // similar-games section just doesn't show, not worth failing the page;
+      // the next game opened on this page tries again
+    } finally {
+      libraryLoading = false;
     }
   }
 
@@ -519,40 +530,11 @@ export function useGameDetail() {
       .map((e) => e.game);
   });
 
-  // --- J/K next/prev game, mirroring the library grid's own shortcut -------
-  function isTypingTarget(target: EventTarget | null): boolean {
-    if (!(target instanceof HTMLElement)) return false;
-    const tag = target.tagName;
-    return (
-      tag === "INPUT" ||
-      tag === "TEXTAREA" ||
-      tag === "SELECT" ||
-      target.isContentEditable
-    );
-  }
-  function onDetailKeydown(e: KeyboardEvent) {
-    if (
-      e.defaultPrevented ||
-      e.isComposing ||
-      e.repeat ||
-      e.getModifierState("AltGraph") ||
-      document.querySelector("dialog[open]")
-    )
-      return;
-    if (isTypingTarget(e.target)) return;
-    if (showEditModal.value || showDeleteConfirm.value) return;
-    if (!game.value) return;
-    const next = matchesShortcut("games.next", e);
-    if (next || matchesShortcut("games.previous", e)) {
-      const nextId = peekAdjacentGameId(game.value.id, next ? 1 : -1);
-      if (nextId) {
-        e.preventDefault();
-        router.push(`/games/${nextId}`);
-      }
-    }
-  }
-  window.addEventListener("keydown", onDetailKeydown);
-  onUnmounted(() => window.removeEventListener("keydown", onDetailKeydown));
+  useAdjacentGameShortcut(
+    game,
+    router,
+    () => showEditModal.value || showDeleteConfirm.value,
+  );
 
   const { favoriteError, toggleFavorite } = useFavoriteToggle(() => game.value);
 
@@ -566,35 +548,8 @@ export function useGameDetail() {
     "backlog",
     "wishlist",
   ];
-  async function changeStatus(next: GameStatus) {
-    if (!game.value || next === game.value.status) return;
-    const previous = game.value.status;
-    game.value.status = next;
-    try {
-      await setStatus(game.value.id, next);
-    } catch {
-      game.value.status = previous;
-    }
-  }
-
   function onCollectionsChanged(collections: string[]) {
     if (game.value) game.value.collections = collections;
-  }
-
-  async function onRatingsChange(ratings: GameRatings) {
-    if (!game.value) return;
-    const previous = {
-      ratingOverall: game.value.ratingOverall,
-      ratingStory: game.value.ratingStory,
-      ratingGameplay: game.value.ratingGameplay,
-      ratingSound: game.value.ratingSound,
-    };
-    Object.assign(game.value, ratings);
-    try {
-      await setRatings(game.value.id, ratings);
-    } catch {
-      Object.assign(game.value, previous);
-    }
   }
 
   function onDeleteFromModal() {
@@ -1120,6 +1075,14 @@ export function useGameDetail() {
   // --- Trash: soft-deleted media stays recoverable for 7 days before the
   // background sweep purges it for good (features/trash/sweep.py) ----------
   const mediaTrash = ref<TrashedMediaItem[]>([]);
+  // A failed listing is shown as such (with a retry), never as an empty trash.
+  const trashFailed = ref({
+    media: false,
+    doc: false,
+    modpack: false,
+    save: false,
+    world: false,
+  });
   const showMediaTrash = ref(false);
   const trashedScreenshots = computed(() =>
     mediaTrash.value.filter((m) => m.kind === "screenshot"),
@@ -1141,8 +1104,9 @@ export function useGameDetail() {
     if (!game.value) return;
     try {
       mediaTrash.value = await fetchGameMediaTrash(game.value.id, true);
+      trashFailed.value.media = false;
     } catch {
-      // trash listing failing silently isn't worth blocking the main view
+      trashFailed.value.media = true;
     }
   }
 
@@ -1159,8 +1123,11 @@ export function useGameDetail() {
     }
   }
 
-  async function saveMediaItem(item: MediaItem, patch: MediaItemUpdate) {
-    if (!game.value) return;
+  async function saveMediaItem(
+    item: MediaItem,
+    patch: MediaItemUpdate,
+  ): Promise<boolean> {
+    if (!game.value) return false;
     try {
       const updated = await updateMediaItem(ownerOf(item), item.id, patch);
       const index = mediaItems.value.findIndex((m) => m.id === item.id);
@@ -1175,8 +1142,10 @@ export function useGameDetail() {
       ) {
         await reloadMediaForCurrentTab();
       }
+      return true;
     } catch (err) {
       mediaError.value = err instanceof Error ? err.message : "Failed to save";
+      return false;
     }
   }
 
@@ -1186,20 +1155,16 @@ export function useGameDetail() {
     if (!game.value) return;
     const owners = new Map(mediaItems.value.map((m) => [m.id, ownerOf(m)]));
     const pageId = game.value.id;
-    try {
-      const updated = await Promise.all(
-        updates.map((u) =>
-          updateMediaItem(owners.get(u.id) ?? pageId, u.id, u.patch),
-        ),
-      );
-      for (const u of updated) {
-        const index = mediaItems.value.findIndex((m) => m.id === u.id);
-        if (index !== -1)
-          mediaItems.value[index] = { ...mediaItems.value[index], ...u };
-      }
-    } catch (err) {
-      mediaError.value = err instanceof Error ? err.message : "Failed to save";
-    }
+    const results = await Promise.allSettled(
+      updates.map((u) =>
+        updateMediaItem(owners.get(u.id) ?? pageId, u.id, u.patch),
+      ),
+    );
+    const failed = results.filter((r) => r.status === "rejected").length;
+    // Some may have saved and some not: re-read so the list matches the server.
+    if (game.value?.id === pageId) await reloadMediaForCurrentTab();
+    if (failed && game.value?.id === pageId)
+      mediaError.value = `${failed} of ${updates.length} could not be saved.`;
   }
 
   async function bulkDeleteMedia(items: MediaItem[]) {
@@ -1401,8 +1366,8 @@ export function useGameDetail() {
     kind: FlatFileKind,
     file: FileDetails,
     patch: MediaItemUpdate,
-  ) {
-    if (!game.value) return;
+  ): Promise<boolean> {
+    if (!game.value) return false;
     try {
       // only the fields that changed: a missing key means "leave it alone"
       const changes: GameFileUpdate = {};
@@ -1423,8 +1388,10 @@ export function useGameDetail() {
       const index = list.value.findIndex((f) => f.id === updated.id);
       if (index !== -1)
         list.value[index] = { ...list.value[index], ...updated };
+      return true;
     } catch (err) {
       filesError.value = err instanceof Error ? err.message : "Failed to save";
+      return false;
     }
   }
 
@@ -1474,8 +1441,9 @@ export function useGameDetail() {
         kind,
         true,
       );
+      trashFailed.value[kind] = false;
     } catch {
-      // trash listing failing silently isn't worth blocking the main view
+      trashFailed.value[kind] = true;
     }
   }
 
@@ -1612,15 +1580,18 @@ export function useGameDetail() {
     archive: GameArchiveData,
     isWorld: boolean,
     patch: { name?: string; note?: string | null; tags?: string[] },
-  ) {
-    if (!game.value) return;
+  ): Promise<boolean> {
+    if (!game.value) return false;
     try {
       await updateArchive(ownerOf(archive), archive.id, patch);
-      if (isWorld) await refreshWorlds();
-      else await refreshSaveArchives();
     } catch (err) {
       filesError.value = err instanceof Error ? err.message : "Failed to save";
+      return false;
     }
+    // The change is saved; a failed re-read is reported by the list itself.
+    if (isWorld) await refreshWorlds();
+    else await refreshSaveArchives();
+    return true;
   }
 
   async function bulkDeleteArchives(
@@ -1635,20 +1606,19 @@ export function useGameDetail() {
       danger: true,
     });
     if (!ok) return;
-    try {
-      for (const archive of items)
-        await deleteArchive(ownerOf(archive), archive.id);
-      if (isWorld) {
-        await refreshWorlds();
-        await refreshWorldTrash();
-      } else {
-        await refreshSaveArchives();
-        await refreshSaveTrash();
-      }
-    } catch (err) {
-      filesError.value =
-        err instanceof Error ? err.message : "Failed to delete";
+    let failed = 0;
+    for (const archive of items)
+      await deleteArchive(ownerOf(archive), archive.id).catch(() => failed++);
+    // Some may be in the trash already: always re-read both lists.
+    if (isWorld) {
+      await refreshWorlds();
+      await refreshWorldTrash();
+    } else {
+      await refreshSaveArchives();
+      await refreshSaveTrash();
     }
+    if (failed)
+      filesError.value = `${failed} of ${items.length} could not be moved to the trash.`;
   }
 
   async function onDeleteArchive(archive: GameArchiveData, isWorld: boolean) {
@@ -1688,8 +1658,9 @@ export function useGameDetail() {
     if (!game.value) return;
     try {
       saveTrash.value = await fetchArchiveTrash(game.value.id, "save", true);
+      trashFailed.value.save = false;
     } catch {
-      // trash listing failing silently isn't worth blocking the main view
+      trashFailed.value.save = true;
     }
   }
 
@@ -1697,8 +1668,9 @@ export function useGameDetail() {
     if (!game.value) return;
     try {
       worldTrash.value = await fetchArchiveTrash(game.value.id, "world_save");
+      trashFailed.value.world = false;
     } catch {
-      // same as above
+      trashFailed.value.world = true;
     }
   }
 
@@ -1788,6 +1760,12 @@ export function useGameDetail() {
 
   return {
     favoriteError,
+    trashFailed,
+    refreshMediaTrash,
+    refreshFileTrash,
+    refreshSaveTrash,
+    refreshWorldTrash,
+    quickEditError,
     confirm,
     route,
     router,

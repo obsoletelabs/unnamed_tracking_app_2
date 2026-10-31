@@ -21,6 +21,9 @@ from src.api.schemas.delegation import (
     integration_origin,
     integration_scopes,
 )
+from src.core.app_integrations import get_public_app_url
+from src.core.config import settings
+from src.core.public_app_origin import hostname
 from src.database.models.public_app import PublicAppActor, PublicAppSession, PublicAppSource
 from src.database.session import get_db
 from src.features import public_app_sources as sources
@@ -92,7 +95,16 @@ async def config(plugin_id: str, db: AsyncSession = _DB) -> dict:
 
 @router.get("/{plugin_id}/app/")
 @router.get("/{plugin_id}/app/{asset_path:path}")
-async def asset(plugin_id: str, asset_path: str = "", db: AsyncSession = _DB) -> Response:
+async def asset(
+    plugin_id: str, request: Request, asset_path: str = "", db: AsyncSession = _DB
+) -> Response:
+    public_host = hostname(settings.PUBLIC_APPS_ORIGIN)
+    if not public_host:
+        raise HTTPException(503, "Configure PUBLIC_APPS_ORIGIN on a separate HTTPS hostname.")
+    if public_host == hostname(await get_public_app_url(db)):
+        raise HTTPException(503, "PUBLIC_APPS_ORIGIN must not use the main app hostname.")
+    if (request.url.hostname or "").rstrip(".").lower() != public_host:
+        raise HTTPException(404, "Open public apps through PUBLIC_APPS_ORIGIN.")
     app = await apps.app_installation(db, plugin_id)
     entry = app["declaration"].entry
     path = entry if not asset_path else "frontend/" + asset_path
@@ -111,6 +123,7 @@ async def asset(plugin_id: str, asset_path: str = "", db: AsyncSession = _DB) ->
         media_type=mimetypes.guess_type(path)[0] or "application/octet-stream",
         headers={
             "Cache-Control": "no-store",
+            "Referrer-Policy": "no-referrer",
             "X-Content-Type-Options": "nosniff",
             "Content-Security-Policy": "default-src 'self'; script-src 'self'; "
             "style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; "

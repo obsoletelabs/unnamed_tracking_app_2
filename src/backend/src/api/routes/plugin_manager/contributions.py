@@ -209,6 +209,9 @@ async def plugin_native_frontend(
         headers={
             "Cache-Control": "no-store",
             "X-Content-Type-Options": "nosniff",
+            # The host imports these as modules and subresources, where a response CSP has no
+            # effect; it only applies when an asset (HTML, SVG) is opened as a page.
+            "Content-Security-Policy": "sandbox",
         },
     )
 
