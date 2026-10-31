@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from PIL import Image
+from sqlalchemy import delete
 
 from src.api.routes import media_images
 from src.database.models.anime import AnimeEpisode, AnimeSeason
@@ -137,18 +138,24 @@ async def test_episode_stills_are_served_from_this_server(flow, downloads, kind:
 
 
 async def test_episode_stills_belong_to_their_owner(flow, downloads) -> None:
-    name = f"still_{uuid4().hex[:10]}"
-    async with SessionLocal() as db:
-        other = User(username=name, email=f"{name}@example.test", password_hash="x")
-        db.add(other)
-        await db.flush()
-        show = TVShow(user_id=other.id, title="Not yours", sort_title="not yours")
-        db.add(show)
-        await db.commit()
-        show_id = str(show.id)
-    episode = await _episode("tv", show_id, "https://img.example.test/private.jpg")
-    response = await flow.client.get(f"/api/media-image/tv/episode/{episode}/still")
-    assert response.status_code == 404 and downloads == []
+    owner = uuid4()
+    name = f"still_{owner.hex[:10]}"
+    try:
+        async with SessionLocal() as db:
+            other = User(id=owner, username=name, email=f"{name}@example.test", password_hash="x")
+            db.add(other)
+            await db.flush()
+            show = TVShow(user_id=other.id, title="Not yours", sort_title="not yours")
+            db.add(show)
+            await db.commit()
+            show_id = str(show.id)
+        episode = await _episode("tv", show_id, "https://img.example.test/private.jpg")
+        response = await flow.client.get(f"/api/media-image/tv/episode/{episode}/still")
+        assert response.status_code == 404 and downloads == []
+    finally:
+        async with SessionLocal() as db:
+            await db.execute(delete(User).where(User.id == owner))
+            await db.commit()
 
 
 @pytest.mark.parametrize(
