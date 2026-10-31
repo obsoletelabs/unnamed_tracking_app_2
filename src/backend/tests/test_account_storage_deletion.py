@@ -222,6 +222,82 @@ async def test_one_failing_path_does_not_stop_the_other_cleanups(accounts, roots
 
 
 @pytest.mark.asyncio
+async def test_a_failed_trash_folder_is_found_and_removed_by_a_retry_with_audit(
+    accounts, roots, monkeypatch
+):
+    profile_root, game_root = roots
+    game_id = await _add_game(accounts.target, "Some Game")
+    _populate(accounts.target, profile_root, game_root, [game_id])
+    trash = game_root / "_trash" / str(game_id)
+    real_rmtree = account_storage._rmtree
+
+    def deny_trash(path):
+        if path == trash:
+            raise PermissionError("denied")
+        real_rmtree(path)
+
+    monkeypatch.setattr(account_storage, "_rmtree", deny_trash)
+    async with api(accounts.admin, accounts.admin_name) as client:
+        first = await client.delete(f"/api/auth/users/{accounts.target}")
+        assert first.json()["storage"] == "incomplete"
+        assert trash.exists()
+        assert await _game_count(accounts.target) == 0  # the game row is gone for good
+
+        # The retry still failing is audited and reported, and keeps the folder findable.
+        failing = await client.delete(f"/api/auth/users/{accounts.target}")
+        assert failing.status_code == 500
+        assert trash.exists()
+        audits = await _audits(accounts.admin, accounts.target)
+        assert audits.count(("account.delete.storage", "failure")) == 2
+
+        monkeypatch.setattr(account_storage, "_rmtree", real_rmtree)
+        second = await client.delete(f"/api/auth/users/{accounts.target}")
+        assert second.status_code == 200 and second.json()["status"] == "storage_cleaned"
+        assert not trash.exists()
+        assert ("account.delete.storage", "success") in await _audits(
+            accounts.admin, accounts.target
+        )
+        third = await client.delete(f"/api/auth/users/{accounts.target}")
+        assert third.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_a_failed_audit_commit_after_the_delete_still_reports_incomplete(
+    accounts, roots, monkeypatch
+):
+    profile_root, game_root = roots
+    _populate(accounts.target, profile_root, game_root)
+    real_rmtree = account_storage._rmtree
+
+    def deny(path):
+        if path.parent == profile_root:
+            raise PermissionError("denied")
+        real_rmtree(path)
+
+    monkeypatch.setattr(account_storage, "_rmtree", deny)
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    real_commit = AsyncSession.commit
+    calls = {"n": 0}
+
+    async def flaky_commit(self):
+        calls["n"] += 1
+        if calls["n"] > 1 and any(
+            isinstance(o, AdminUserAudit) and o.action.startswith("account.delete.storage")
+            for o in self.new
+        ):
+            raise RuntimeError("audit store down")
+        return await real_commit(self)
+
+    monkeypatch.setattr(AsyncSession, "commit", flaky_commit)
+    async with api(accounts.admin, accounts.admin_name) as client:
+        response = await client.delete(f"/api/auth/users/{accounts.target}")
+    assert response.status_code == 200
+    assert response.json()["storage"] == "incomplete"
+    assert not await _user_exists(accounts.target)
+
+
+@pytest.mark.asyncio
 async def test_a_refused_delete_leaves_every_file_in_place(accounts, roots):
     """Files go only after the commit: the primary user is refused before anything is touched."""
     profile_root, game_root = roots
@@ -328,3 +404,19 @@ def test_cleanup_is_idempotent(roots):
     second = account_storage.cleanup_account_storage_sync(user)
     assert sorted(first.removed) == ["games", "profile"] and first.complete
     assert second.removed == [] and sorted(second.absent) == ["games", "profile"]
+
+
+def test_the_writers_and_the_cleanup_use_the_same_default_roots():
+    """Writers hold their own root constants; cleanup would silently miss data if one drifted."""
+    from pathlib import Path
+
+    from src.api.routes import media
+    from src.api.routes.plugin_manager import contributions
+    from src.api.routes.utils import games as game_utils
+    from src.features.trash import sweep
+    from src.plugin_api import gateway
+
+    game_writers = [game_utils._DATA_ROOT, contributions._DOCUMENT_DATA_ROOT, gateway._DATA_ROOT]
+    profile_writers = [media._USER_DATA_ROOT, sweep._USER_DATA_ROOT]
+    assert all(root == Path("/data/users") for root in game_writers)
+    assert all(root == Path("/data/user") for root in profile_writers)
