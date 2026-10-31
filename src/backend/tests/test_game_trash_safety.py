@@ -9,7 +9,6 @@ stored rows and the bytes on disk after injected commit and move failures.
 import asyncio
 import errno
 import logging
-import os
 import shutil
 import uuid
 from pathlib import Path
