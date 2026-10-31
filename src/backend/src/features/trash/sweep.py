@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -294,11 +295,19 @@ async def _purge_checklist_items(db: AsyncSession, cutoff: int) -> int:
     return purged_checklist_items
 
 
-async def _report_active_leftovers(db: AsyncSession, game: Game) -> None:
-    """A deleted game's data may sit in its old active folder after an interrupted restore.
+def _holds_data(path: Path) -> bool:
+    if path.is_symlink() or not path.is_dir():
+        return path.is_symlink() or path.exists()
+    return any(True for _ in os.scandir(path))
 
-    That folder is never purged here: its name may be shared with unrelated storage. It is
-    left alone and reported so the data stays recoverable.
+
+async def _hold_for_active_leftovers(db: AsyncSession, game: Game) -> None:
+    """Keep a deleted game while its old active folder still holds data nobody else owns.
+
+    That is what an interrupted restore leaves behind (row deleted, data already moved
+    home). Purging the row would orphan those files, so the purge waits for a later pass
+    (a repeated restore, or an administrator). A folder another active game has claimed,
+    an empty folder, or a name that can never have been an owned folder does not hold it.
     """
     if not game.folder_location:
         return
@@ -311,15 +320,19 @@ async def _report_active_leftovers(db: AsyncSession, game: Game) -> None:
     )
     if claimed is not None:
         return
-    leftover = game_folders.owned_folder(
-        save_game_asset.DATA_ROOT, game.user_id, game.folder_location
-    )
-    if leftover.exists() or leftover.is_symlink():
-        logger.warning(
-            "Purging deleted game %s left its active folder %s untouched; it may hold "
-            "data from an interrupted restore.",
-            game.id,
-            game.folder_location,
+    try:
+        leftover = game_folders.owned_folder(
+            save_game_asset.DATA_ROOT, game.user_id, game.folder_location
+        )
+        holds = await asyncio.to_thread(_holds_data, leftover)
+    except game_folders.FolderStorageError as exc:
+        # An unusable legacy name or games root cannot hold a restorable folder.
+        logger.warning("Not checking the old folder of deleted game %s: %s", game.id, exc)
+        return
+    if holds:
+        raise game_folders.FolderStorageError(
+            f"Deleted game {game.id} still has data in its active folder {game.folder_location}; "
+            "it was kept until that data is restored or removed."
         )
 
 
@@ -329,7 +342,7 @@ async def _purge_game(db: AsyncSession, game_id: UUID, _game_id: UUID, cutoff: i
     if game is None or not _is_expired(game.deleted_at, cutoff):
         return False
     trashed_dir = _game_storage(game)
-    await _report_active_leftovers(db, game)
+    await _hold_for_active_leftovers(db, game)
     await db.delete(game)
     await db.flush()
     await asyncio.to_thread(purge_game_trash, save_game_asset.DATA_ROOT.resolve(), game_id)

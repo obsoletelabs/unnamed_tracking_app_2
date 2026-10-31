@@ -235,14 +235,14 @@ a folder recreated at the old name, is merged with instead:
   conflict and both locations are left as they were.
 
 Every step is idempotent, so a move that was interrupted can be run again. If the database
-commit fails, the files are moved back after the row is re-read under a new lock (a commit
+commit fails, the files are moved back (a failed restore undoes only the steps it performed, so data that was already in the active folder is never sent to trash) after the row is re-read under a new lock (a commit
 whose acknowledgement was lost is kept as committed). Where that is not possible the data
 stays in one of two recoverable places:
 
 | Row | Data is in | What finishes it |
 |---|---|---|
 | active | `<data>/users/_trash/<game-id>/` (a delete died before its commit) | the next trash sweep moves it back; deleting again also finishes it |
-| deleted | the game's old active folder (a restore died before its commit) | restoring again finishes it; the sweep never purges the active folder and logs that it was left |
+| deleted | the game's old active folder (a restore died before its commit) | restoring again finishes it; while that folder holds data and no active game owns it, the sweep keeps the deleted row and logs that it did |
 
 Retention is unchanged: the sweep purges only `_trash/<game-id>/` seven days after deletion.
 Preserved copies stay inside the game's folder, so they are restored and purged with it.
