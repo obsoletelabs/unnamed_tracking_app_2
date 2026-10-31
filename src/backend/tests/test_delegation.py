@@ -636,11 +636,14 @@ async def test_revoked_connections_leave_the_list_but_keep_audit_evidence(delega
         revoked = await db.get(DelegatedGrant, old_id)
         assert revoked.revoked_at is not None
         assert revoked.token_hash is None
-        assert await db.scalar(
-            select(DelegationAudit.id).where(
-                DelegationAudit.grant_id == old_id, DelegationAudit.event == "revoked"
+        assert (
+            await db.scalar(
+                select(DelegationAudit.id).where(
+                    DelegationAudit.grant_id == old_id, DelegationAudit.event == "revoked"
+                )
             )
-        ) is not None
+            is not None
+        )
     # An unrelated account cannot see or remove the remaining approval.
     app.dependency_overrides[browser_user] = lambda: flow.other
     assert (await flow.client.get(BASE + "/grants")).json() == []
