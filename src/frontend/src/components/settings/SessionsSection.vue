@@ -138,7 +138,7 @@ watch(
   () => {
     sessions.value = [];
     query.value = "";
-    state.value = "";
+    state.value = props.admin ? "" : "active";
     userId.value = "";
     notice.value = "";
     void load();

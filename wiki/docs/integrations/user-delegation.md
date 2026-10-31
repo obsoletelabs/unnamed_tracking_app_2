@@ -200,3 +200,5 @@ source instance to invalidate it there.
 
 See [public-app hosting](../development/plugin-public-apps.md) for external
 principals, host-held source connections and the scoped route enforcement matrix.
+
+Revoking access removes the connection from **Connected apps** immediately and invalidates its credential. Security audit records are retained. Expired or disabled connections can also be removed from this page. Reconnecting creates a fresh approval; revoke an older connection you no longer use, since separate devices or approvals are not merged merely because their labels match.
