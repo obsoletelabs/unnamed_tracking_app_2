@@ -812,6 +812,7 @@ async function openPlugin(plugin: PluginSummary) {
         request.plugin_id === plugin.plugin_id && request.status === "pending",
     );
   } catch (err) {
+    if (generation !== popupGeneration || selected.value?.plugin_id !== plugin.plugin_id) return;
     error.value =
       err instanceof Error ? err.message : "Failed to open plugin settings.";
   } finally {
@@ -927,16 +928,17 @@ async function reviewUpdatePackage(plugin: PluginSummary, file: File) {
 }
 
 async function reviewAvailableUpdate(plugin: PluginSummary) {
-  if (plugin.staged_update) {
-    stagedTarget.value = plugin.plugin_id;
-    installPreview.value = await previewStagedUpdate(plugin.plugin_id);
-    return;
-  }
+  if (previewing.value || installing.value) return;
   const update = availableUpdates.value[plugin.plugin_id];
-  if (!update?.url) return;
+  if (!plugin.staged_update && !update?.url) return;
   previewing.value = true;
   error.value = "";
   try {
+    if (plugin.staged_update) {
+      stagedTarget.value = plugin.plugin_id;
+      installPreview.value = await previewStagedUpdate(plugin.plugin_id);
+      return;
+    }
     const source = {
       ...(update.source ?? {}),
       release_notes: update.release_notes,
@@ -954,6 +956,7 @@ async function reviewAvailableUpdate(plugin: PluginSummary) {
       source,
     );
   } catch (err) {
+    stagedTarget.value = null;
     error.value =
       err instanceof Error ? err.message : "Plugin update preview failed.";
   } finally {

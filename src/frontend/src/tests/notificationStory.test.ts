@@ -1,13 +1,16 @@
 // @vitest-environment happy-dom
 import { afterEach, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
+import { reactive } from "vue";
 import NotificationStory from "../views/NotificationStory.vue";
 import RichNodes from "../components/RichNodes.vue";
 import { safeHref } from "../utils/richNodes";
 import { closeDialog, activeDialog } from "../state/dialog";
 
+const storyRoute = reactive({ params: { id: "story-1", token: undefined as string | undefined } });
+const storyWrappers: ReturnType<typeof mount>[] = [];
 vi.mock("vue-router", () => ({
-  useRoute: () => ({ params: { id: "story-1" } }),
+  useRoute: () => storyRoute,
   RouterLink: {
     props: ["to"],
     template: '<a :href="to"><slot /></a>',
@@ -128,11 +131,14 @@ async function open() {
   const wrapper = mount(NotificationStory, {
     global: { stubs: { AppTopBar: { template: "<div><slot /></div>" } } },
   });
+  storyWrappers.push(wrapper);
   await flushPromises();
   return wrapper;
 }
 
 afterEach(() => {
+  for (const wrapper of storyWrappers.splice(0)) wrapper.unmount();
+  storyRoute.params.id = "story-1";
   vi.unstubAllGlobals();
   document.body.innerHTML = "";
 });
@@ -285,4 +291,53 @@ it("renders block and inline nodes as text only", () => {
   expect(wrapper.find("img").exists()).toBe(false);
   expect(wrapper.find("script").exists()).toBe(false);
   expect(wrapper.find("li code").text()).toBe("<i>y</i>");
+});
+
+
+it("ignores an old story response after navigating to another story", async () => {
+  let resolve!: (response: Response) => void;
+  const slow = new Promise<Response>((done) => { resolve = done; });
+  vi.stubGlobal("fetch", vi.fn((url: string) => {
+    if (url === "/api/notifications/stories/story-1") return slow;
+    const body = url.endsWith("live-links") ? { items: [] } : { ...storyBody, story_id: "story-2", title: "Second update" };
+    return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
+  }));
+  const wrapper = await open();
+  storyRoute.params.id = "story-2";
+  await flushPromises();
+  resolve(new Response(JSON.stringify(storyBody), { status: 200 }));
+  await flushPromises();
+  expect(wrapper.find("h1").text()).toBe("Second update");
+});
+
+it("keeps an old action outcome off the newly opened story", async () => {
+  let resolve!: (response: Response) => void;
+  const slow = new Promise<Response>((done) => { resolve = done; });
+  vi.stubGlobal("fetch", vi.fn((url: string) => {
+    if (url.endsWith("/actions/install")) return slow;
+    const body = url.endsWith("live-links") ? { items: [] } : { ...storyBody, story_id: url.endsWith("story-2") ? "story-2" : "story-1", title: url.endsWith("story-2") ? "Second update" : "First update" };
+    return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
+  }));
+  const wrapper = await open();
+  await wrapper.findAll("button").find((button) => button.text() === "Install now")!.trigger("click");
+  storyRoute.params.id = "story-2";
+  await flushPromises();
+  resolve(new Response(JSON.stringify({ ok: true, message: "Old action completed" }), { status: 200 }));
+  await flushPromises();
+  expect(wrapper.find("h1").text()).toBe("Second update");
+  expect(wrapper.text()).not.toContain("Old action completed");
+});
+
+
+it("retries an unavailable story and retains content if a later refresh fails", async () => {
+  respond({});
+  const wrapper = await open();
+  respond(routes);
+  await wrapper.findAll("button").find((button) => button.text() === "Try again")!.trigger("click");
+  await flushPromises();
+  expect(wrapper.find("h1").text()).toBe("Update ready");
+  respond({});
+  await (wrapper.vm as unknown as { load: () => Promise<void> }).load();
+  expect(wrapper.find("h1").text()).toBe("Update ready");
+  expect(wrapper.find('[role="alert"]').text()).toContain("could not be refreshed");
 });
