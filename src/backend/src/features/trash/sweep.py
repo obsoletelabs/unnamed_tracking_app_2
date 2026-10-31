@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -36,7 +37,11 @@ from src.database.models.media_item import MediaItem
 from src.database.session import SessionLocal
 from src.features import game_folders, remote_launch
 from src.features.trash.archive_trash import purge_archive_trash, trash_files_dir, trash_root
-from src.features.trash.game_trash import game_trash_dir, purge_game_trash
+from src.features.trash.game_trash import (
+    game_trash_dir,
+    purge_game_trash,
+    recover_interrupted_deletes,
+)
 from src.features.trash.inbox_trash import purge_inbox_file
 from src.features.trash.media_titles import purge_expired_media_titles
 from src.features.trash.media_trash import media_trash_dir, purge_media_file
@@ -290,12 +295,54 @@ async def _purge_checklist_items(db: AsyncSession, cutoff: int) -> int:
     return purged_checklist_items
 
 
+def _holds_data(path: Path) -> bool:
+    if path.is_symlink() or not path.is_dir():
+        return path.is_symlink() or path.exists()
+    return any(True for _ in os.scandir(path))
+
+
+async def _hold_for_active_leftovers(db: AsyncSession, game: Game) -> None:
+    """Keep a deleted game while its old active folder still holds data nobody else owns.
+
+    That is what an interrupted restore leaves behind (row deleted, data already moved
+    home). Purging the row would orphan those files, so the purge waits for a later pass
+    (a repeated restore, or an administrator). A folder another active game has claimed,
+    an empty folder, or a name that can never have been an owned folder does not hold it.
+    """
+    if not game.folder_location:
+        return
+    claimed = await db.scalar(
+        select(Game.id).where(
+            Game.user_id == game.user_id,
+            Game.folder_location == game.folder_location,
+            Game.deleted_at.is_(None),
+        )
+    )
+    if claimed is not None:
+        return
+    try:
+        leftover = game_folders.owned_folder(
+            save_game_asset.DATA_ROOT, game.user_id, game.folder_location
+        )
+        holds = await asyncio.to_thread(_holds_data, leftover)
+    except game_folders.FolderStorageError as exc:
+        # An unusable legacy name or games root cannot hold a restorable folder.
+        logger.warning("Not checking the old folder of deleted game %s: %s", game.id, exc)
+        return
+    if holds:
+        raise game_folders.FolderStorageError(
+            f"Deleted game {game.id} still has data in its active folder {game.folder_location}; "
+            "it was kept until that data is restored or removed."
+        )
+
+
 async def _purge_game(db: AsyncSession, game_id: UUID, _game_id: UUID, cutoff: int) -> bool:
     # Restoring or deleting a game takes this exclusive lock too.
     game = await _lock_game(db, game_id, exclusive=True)
     if game is None or not _is_expired(game.deleted_at, cutoff):
         return False
     trashed_dir = _game_storage(game)
+    await _hold_for_active_leftovers(db, game)
     await db.delete(game)
     await db.flush()
     await asyncio.to_thread(purge_game_trash, save_game_asset.DATA_ROOT.resolve(), game_id)
@@ -318,6 +365,8 @@ async def _purge_games(db: AsyncSession, cutoff: int) -> int:
 async def purge_expired_trash() -> dict[str, int]:
     cutoff = int(time.time()) - RETENTION_SECONDS
     async with SessionLocal() as db:
+        # Finish interrupted whole-game deletes first so their files are where rows expect.
+        await recover_interrupted_deletes(db, save_game_asset.DATA_ROOT)
         # Child files must be purged before their owning game's folder/cascade.
         counts = {
             "purged_archives": await _purge_archives(db, cutoff),
