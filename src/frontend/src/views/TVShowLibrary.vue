@@ -37,6 +37,7 @@ const {
   load,
   loadMore,
   refreshLibrary,
+  removeEntries,
 } = useMediaLibraryPage(fetchTVShowsPage, "tv", "TV shows", tvLibraryRevision);
 
 function seasonProgress(show: TVShow): {
@@ -201,10 +202,7 @@ async function onBulkFavorite(ids: string[]) {
   }
 }
 async function onBulkDelete(ids: string[]) {
-  for (const id of ids) {
-    await deleteTVShow(id);
-  }
-  shows.value = shows.value.filter((s) => !ids.includes(s.id));
+  return removeEntries(ids, deleteTVShow);
 }
 
 function detailRoute(id: string): string {

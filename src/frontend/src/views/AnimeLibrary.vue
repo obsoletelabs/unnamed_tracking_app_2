@@ -38,6 +38,7 @@ const {
   load,
   loadMore,
   refreshLibrary,
+  removeEntries,
 } = useMediaLibraryPage(fetchAnimePage, "anime", "anime", animeLibraryRevision);
 const showAniListImport = ref(false);
 const aniListUsername = ref("");
@@ -247,10 +248,7 @@ async function onBulkFavorite(ids: string[]) {
   }
 }
 async function onBulkDelete(ids: string[]) {
-  for (const id of ids) {
-    await deleteAnime(id);
-  }
-  shows.value = shows.value.filter((s) => !ids.includes(s.id));
+  return removeEntries(ids, deleteAnime);
 }
 
 function detailRoute(id: string): string {

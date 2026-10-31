@@ -1,4 +1,5 @@
 import { computed, onUnmounted, ref, type Ref } from "vue";
+import { currentUser } from "../state/auth";
 import { savedMediaSort, type LibraryFilters } from "../utils/libraryFilters";
 import type { MediaPage } from "../services/mediaApi";
 
@@ -40,6 +41,7 @@ export function useMediaLibraryPage<T extends { id: string }>(
   // Match the first DOM render batch. Larger libraries continue near the viewport.
   const pageSize = 48;
   let generation = 0;
+  let disposed = false;
   let lastLoadedAt = 0;
   let loadedRevision = -1;
   const paginationStopped = ref(false);
@@ -47,6 +49,7 @@ export function useMediaLibraryPage<T extends { id: string }>(
     () => !paginationStopped.value && entries.value.length < total.value,
   );
   onUnmounted(() => {
+    disposed = true;
     generation++;
   });
 
@@ -162,6 +165,33 @@ export function useMediaLibraryPage<T extends { id: string }>(
     }
   }
 
+  async function removeEntries(
+    ids: string[],
+    removeItem: (id: string) => Promise<unknown>,
+  ) {
+    const accountId = currentUser.value?.id;
+    const stillCurrent = () => !disposed && currentUser.value?.id === accountId;
+    const removed = new Set<string>();
+    const failedIds: string[] = [];
+    let failure: string | null = null;
+    for (const id of new Set(ids)) {
+      if (!stillCurrent()) return { failedIds: [], error: null };
+      try {
+        await removeItem(id);
+        removed.add(id);
+      } catch (reason) {
+        failedIds.push(id);
+        failure ??=
+          reason instanceof Error ? reason.message : "Removal failed.";
+      }
+    }
+    if (!stillCurrent()) return { failedIds: [], error: null };
+    entries.value = entries.value.filter((item) => !removed.has(item.id));
+    // Invalidate older page reads and refresh totals/counts even after partial failure.
+    await load(currentFilters.value, true);
+    return { failedIds, error: failure };
+  }
+
   async function refreshLibrary() {
     if (
       error.value ||
@@ -184,5 +214,6 @@ export function useMediaLibraryPage<T extends { id: string }>(
     load,
     loadMore,
     refreshLibrary,
+    removeEntries,
   };
 }

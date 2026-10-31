@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { defineComponent } from "vue";
 import { mount, type VueWrapper } from "@vue/test-utils";
 import { useMediaLibraryPage } from "../composables/useMediaLibraryPage";
+import { currentUser } from "../state/auth";
 import type { MediaPage } from "../services/mediaApi";
 import type { LibraryFilters } from "../utils/libraryFilters";
 
@@ -166,4 +167,91 @@ it("retains cached rows when a loaded-extent refresh fails partway through", asy
   expect(state.entries.value).toEqual(original);
   expect(state.error.value).toBe("Offline");
   expect(state.loading.value).toBe(false);
+});
+
+it("tries every selected removal, deduplicates IDs and refreshes counts after partial failure", async () => {
+  const { state, fetchPage } = library();
+  fetchPage.mockResolvedValueOnce(page(0, 3, 3));
+  await state.load({ ...state.currentFilters.value, search: "Test" });
+  const remove = vi
+    .fn<(id: string) => Promise<void>>()
+    .mockImplementation(async (id) => {
+      if (id === "1") throw new Error("Cannot remove this title");
+    });
+  fetchPage.mockResolvedValueOnce({ ...page(0, 1, 1), items: [{ id: "1" }] });
+  const result = await state.removeEntries(["0", "1", "0", "2"], remove);
+  expect(remove.mock.calls.map(([id]) => id)).toEqual(["0", "1", "2"]);
+  expect(result).toEqual({
+    failedIds: ["1"],
+    error: "Cannot remove this title",
+  });
+  expect(state.entries.value).toEqual([{ id: "1" }]);
+  expect(state.total.value).toBe(1);
+  expect(state.statusCounts.value).toEqual({ WATCHED: 1 });
+  expect(fetchPage).toHaveBeenLastCalledWith(
+    0,
+    48,
+    expect.objectContaining({ search: "Test" }),
+  );
+});
+
+it("does not resurrect removed rows when the post-removal refresh fails", async () => {
+  const { state, fetchPage } = library();
+  fetchPage.mockResolvedValueOnce(page(0, 3, 3));
+  await state.load();
+  const remove = vi
+    .fn<(id: string) => Promise<void>>()
+    .mockImplementation(async (id) => {
+      if (id === "1") throw new Error("Cannot remove this title");
+    });
+  fetchPage.mockRejectedValueOnce(new Error("Refresh offline"));
+  expect(
+    (await state.removeEntries(["0", "1", "2"], remove)).failedIds,
+  ).toEqual(["1"]);
+  expect(state.entries.value).toEqual([{ id: "1" }]);
+  expect(state.error.value).toBe("Refresh offline");
+});
+
+it("refreshes even if every removal fails", async () => {
+  const { state, fetchPage } = library();
+  fetchPage.mockResolvedValue(page(0, 2, 2));
+  await state.load();
+  const remove = vi.fn().mockRejectedValue(new Error("Offline"));
+  expect((await state.removeEntries(["0", "1"], remove)).failedIds).toEqual([
+    "0",
+    "1",
+  ]);
+  expect(remove).toHaveBeenCalledTimes(2);
+  expect(fetchPage).toHaveBeenCalledTimes(2);
+});
+
+it("stops a pending removal batch when the signed-in account changes", async () => {
+  const previous = currentUser.value;
+  currentUser.value = {
+    id: "A",
+    username: "A",
+    email: "a@example.test",
+    is_admin: false,
+    steamgriddb_api_key: null,
+  };
+  try {
+    const { state, fetchPage } = library();
+    fetchPage.mockResolvedValueOnce(page(0, 2, 2));
+    await state.load();
+    let finish!: () => void;
+    const remove = vi.fn().mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const pending = state.removeEntries(["0", "1"], remove);
+    currentUser.value = { ...currentUser.value, id: "B" };
+    finish();
+    await pending;
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(fetchPage).toHaveBeenCalledTimes(1);
+  } finally {
+    currentUser.value = previous;
+  }
 });
