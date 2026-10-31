@@ -155,7 +155,7 @@ from src.features.game_ingestion.legacy import (
     record_playnite_fields,
 )
 from src.features.metadata.locked_fields import apply_updates_with_locking, authorize_title_update
-from src.features.trash.game_trash import move_game_to_trash, restore_game_from_trash
+from src.features.trash import game_trash
 from src.features.trash.sweep import RETENTION_SECONDS
 from src.helpers.save_game_asset import (
     create_game_folder,
@@ -838,12 +838,10 @@ async def delete_game(
     folder), so it gets the same protection as game archives instead of
     the instant, permanent delete it had before."""
     game = await _get_game_or_404(game_id, db, current_user.id, for_update=True, for_storage=True)
-    if game.folder_location:
-        move_game_to_trash(
-            _DATA_ROOT / str(game.user_id) / "games" / game.folder_location, _DATA_ROOT, game_id
-        )
-    game.deleted_at = int(time.time())
-    await db.commit()
+    try:
+        await game_trash.trash_game(db, game, _DATA_ROOT)
+    except game_folders.FolderStorageError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
 @router.get("/trash")
@@ -889,11 +887,10 @@ async def restore_game(
         await _ensure_folder_location_available(
             game.folder_location, current_user.id, db, exclude_game_id=game_id
         )
-        restore_game_from_trash(
-            _DATA_ROOT / str(game.user_id) / "games" / game.folder_location, _DATA_ROOT, game_id
-        )
-    game.deleted_at = None
-    await db.commit()
+    try:
+        await game_trash.restore_game(db, game, _DATA_ROOT)
+    except game_folders.FolderStorageError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     await db.refresh(game)
     return game
 

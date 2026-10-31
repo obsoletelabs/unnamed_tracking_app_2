@@ -220,6 +220,33 @@ failed partway through. Fix the reported storage problem instead of deleting row
 or recovery records by hand. For example, retry saving the game's folder name to
 reconcile an interrupted move.
 
+### Whole-game trash and restore never delete existing data
+
+Deleting a game moves its folder to `<data>/users/_trash/<game-id>/`, and restoring moves
+it back, both in `features/trash/game_trash.py` under the game's exclusive row lock. Neither
+direction removes anything that is already at the destination. A leftover trash folder, or
+a folder recreated at the old name, is merged with instead:
+
+- the folder being moved keeps its names, and the entry it collides with is renamed beside
+  it to `<name> (preserved-N)<ext>` (the next free `N`), for files, directories, nested
+  folders and a file facing a directory alike;
+- a byte-identical file is not duplicated;
+- a destination that is a symlink, or a file where a folder belongs, is refused with a
+  conflict and both locations are left as they were.
+
+Every step is idempotent, so a move that was interrupted can be run again. If the database
+commit fails, the files are moved back after the row is re-read under a new lock (a commit
+whose acknowledgement was lost is kept as committed). Where that is not possible the data
+stays in one of two recoverable places:
+
+| Row | Data is in | What finishes it |
+|---|---|---|
+| active | `<data>/users/_trash/<game-id>/` (a delete died before its commit) | the next trash sweep moves it back; deleting again also finishes it |
+| deleted | the game's old active folder (a restore died before its commit) | restoring again finishes it; the sweep never purges the active folder and logs that it was left |
+
+Retention is unchanged: the sweep purges only `_trash/<game-id>/` seven days after deletion.
+Preserved copies stay inside the game's folder, so they are restored and purged with it.
+
 ## How a game page opens
 
 `services/games.ts` keeps every game it has fetched in an entity cache (`peekGame`). Opening a game from the library draws it from that cache straight away and refreshes it from the server behind it. Its achievements, variants and parent game are requested in parallel with the game, and fill in when they arrive instead of holding the page back. The hero and poster downloads start before the game's details have returned. When there is nothing cached (opening the address directly), a loading screen is shown whose hero, poster and tab bar match the real page's sizes, so the page does not jump when it replaces it.
