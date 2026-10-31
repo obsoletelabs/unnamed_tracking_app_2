@@ -1,0 +1,43 @@
+# Local Linux lane for the backend tests. Use tools/backend_linux_lane.sh rather than this file
+# directly: the script prepares the git bundle and output folder that the runner expects.
+name: uta-backend-lane
+
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: unnamed_tracking_test
+    # The tests create and drop schemas; nothing here needs to outlive the run.
+    tmpfs:
+      - /var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test -d unnamed_tracking_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  runner:
+    build:
+      context: ../..
+      dockerfile: tools/backend-linux-lane/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Same values as backend-checks.yml, except the host name of the database service.
+      DATABASE_URL: postgresql+psycopg://test:test@postgres:5432/unnamed_tracking_test
+      PRIMARY_USER_USERNAME: test
+      PRIMARY_USER_EMAIL: test@example.com
+      PRIMARY_USER_PASSWORD: test-password
+      SECRET_KEY: XJVqc8r7Uj801VzGUYhlQV8A2tZTBepjOYEiP2pTzFk=
+      LANE_MODE: ${LANE_MODE:-tests}
+      LANE_SHARD: ${LANE_SHARD:-}
+      LANE_SHARDS: ${LANE_SHARDS:-}
+      LANE_PYTEST_ARGS: ${LANE_PYTEST_ARGS:-}
+    volumes:
+      # Read-only view of the working tree; the entrypoint copies it so the host tree is never
+      # written to and no Windows file modes or line endings leak into the run.
+      - ../..:/src:ro
+      - ${LANE_OUT:?set by tools/backend_linux_lane.sh}:/out

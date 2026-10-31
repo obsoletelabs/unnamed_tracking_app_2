@@ -6,3 +6,4 @@ data
 .env.old
 /wiki/site/
 /.validation/
+.lane-out/
