@@ -127,6 +127,7 @@ export const fetchMovies = api.fetchAll;
 export const getMovie = api.get;
 export const createMovie = api.create;
 export const updateMovie = api.update;
+export const patchMovie = api.patch;
 export const deleteMovie = api.remove;
 export type TrashedMovie = TrashedMedia;
 export const fetchMovieTrash = api.fetchTrash;

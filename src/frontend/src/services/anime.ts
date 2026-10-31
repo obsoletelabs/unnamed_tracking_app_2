@@ -226,6 +226,7 @@ export const fetchAnime = api.fetchAll;
 export const getAnime = api.get;
 export const createAnime = api.create;
 export const updateAnime = api.update;
+export const patchAnime = api.patch;
 export const deleteAnime = api.remove;
 export type TrashedAnime = TrashedMedia;
 export const fetchAnimeTrash = api.fetchTrash;

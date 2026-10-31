@@ -232,6 +232,19 @@ const dirty = computed(
     profile.value !== (props.item.profile_id ?? ""),
 );
 
+function draftSnapshot() {
+  return JSON.stringify([
+    title.value,
+    note.value,
+    tags.value,
+    tagDraft.value,
+    linked.value,
+    profile.value,
+    date.value,
+    pending.value,
+  ]);
+}
+
 async function save() {
   if (saving.value) return;
   commitTag();
@@ -248,7 +261,7 @@ async function save() {
     }
   }
   if (JSON.stringify(tags.value) !== JSON.stringify(props.item.tags))
-    patch.tags = tags.value;
+    patch.tags = [...tags.value];
   if (note.value.trim() !== (props.item.note ?? ""))
     patch.note = note.value.trim() || null;
   if (linked.value !== (props.item.linked_achievement_id ?? ""))
@@ -256,13 +269,14 @@ async function save() {
   if (profile.value !== (props.item.profile_id ?? ""))
     patch.profile_id = profile.value || null;
   if (!Object.keys(patch).length) return emit("close");
+  const submitted = draftSnapshot();
   saving.value = true;
   saveError.value = null;
   try {
     if ((await props.onSave?.(props.item, patch)) === false)
       saveError.value =
         "Your changes could not be saved. They are still here; try again.";
-    else emit("close");
+    else if (draftSnapshot() === submitted) emit("close");
   } catch {
     saveError.value =
       "Your changes could not be saved. They are still here; try again.";

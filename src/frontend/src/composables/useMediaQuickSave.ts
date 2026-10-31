@@ -1,26 +1,38 @@
 import { ref, watch, type Ref } from "vue";
 
 /**
- * One-click changes (favourite, note, status, rating) on a movie, TV show or
- * anime page. Each save sends the whole record, so saves for a title are sent
- * one at a time, each as the last record the server accepted plus that one
- * change. The change shows at once; when the queue is done the page shows the
- * server's record, so a failed change is undone without undoing the others.
- * Answers for a title the page has left are kept off the page.
+ * Serialize quick edits per title, sending only the changed fields. Independent
+ * editors may replace the record while a request is pending; neither an older
+ * response nor a rollback may replace their unrelated confirmed changes.
  */
 export function useMediaQuickSave<T extends { id: string }>(
   record: Ref<T | null>,
-  persist: (body: T) => Promise<T>,
+  persist: (id: string, changes: Partial<T>) => Promise<T>,
 ) {
   const saveError = ref<string | null>(null);
-  watch(
-    () => record.value?.id,
-    () => (saveError.value = null),
-  );
   const queues = new Map<
     string,
-    { tail: Promise<void>; confirmed: T; pending: number }
+    {
+      tail: Promise<void>;
+      confirmed: T;
+      pending: number;
+      revision: number;
+      fields: Set<keyof T>;
+      errors: Map<keyof T, string>;
+    }
   >();
+  watch(
+    record,
+    (value, previous) => {
+      if (value?.id !== previous?.id) saveError.value = null;
+      const queue = value && queues.get(value.id);
+      if (queue && value !== previous) {
+        queue.confirmed = { ...value };
+        queue.revision += 1;
+      }
+    },
+    { flush: "sync" },
+  );
 
   async function quickSave(
     change: (target: T) => void,
@@ -31,29 +43,55 @@ export function useMediaQuickSave<T extends { id: string }>(
     const id = target.id;
     let queue = queues.get(id);
     if (!queue) {
-      queue = { tail: Promise.resolve(), confirmed: { ...target }, pending: 0 };
+      queue = {
+        tail: Promise.resolve(),
+        confirmed: { ...target },
+        pending: 0,
+        revision: 0,
+        fields: new Set(),
+        errors: new Map(),
+      };
       queues.set(id, queue);
     }
     const current = queue;
-    change(target);
+    const next = { ...target };
+    change(next);
+    const fields = (Object.keys(next) as (keyof T)[]).filter(
+      (key) => !Object.is(next[key], target[key]),
+    );
+    const changes: Partial<T> = {};
+    for (const key of fields) {
+      changes[key] = next[key];
+      target[key] = next[key];
+      current.fields.add(key);
+    }
     current.pending += 1;
     saveError.value = null;
     let saved = false;
     current.tail = current.tail.then(async () => {
-      const body = { ...current.confirmed };
-      change(body);
+      const revision = current.revision;
       try {
-        current.confirmed = await persist(body);
+        const result = await persist(id, changes);
+        if (revision === current.revision) {
+          for (const key of fields) current.confirmed[key] = result[key];
+        }
+        for (const key of fields) current.errors.delete(key);
         saved = true;
       } catch {
-        if (record.value?.id === id) saveError.value = failure;
+        if (revision === current.revision) {
+          for (const key of fields) current.errors.set(key, failure);
+        }
       }
     });
     await current.tail;
     current.pending -= 1;
     if (current.pending === 0) {
       queues.delete(id);
-      if (record.value?.id === id) record.value = current.confirmed;
+      if (record.value?.id === id) {
+        for (const key of current.fields)
+          record.value[key] = current.confirmed[key];
+        saveError.value = [...current.errors.values()].at(-1) ?? null;
+      }
     }
     return saved;
   }

@@ -47,9 +47,13 @@ async function save() {
   if (saving.value) return;
   saving.value = true;
   saveFailed.value = false;
+  const submitted = draft.value;
   try {
-    if (await props.saveNote(draft.value.trim() || null)) editing.value = false;
-    else saveFailed.value = true;
+    if (await props.saveNote(submitted.trim() || null)) {
+      if (draft.value === submitted) editing.value = false;
+    } else saveFailed.value = true;
+  } catch {
+    saveFailed.value = true;
   } finally {
     saving.value = false;
   }
@@ -118,7 +122,7 @@ async function save() {
 .my-note {
   margin-top: 26px;
   padding-top: 22px;
-  border-top: 1px solid #1f1f1f;
+  border-top: 1px solid var(--ui-border);
 }
 .my-note.empty {
   display: flex;
@@ -146,7 +150,7 @@ async function save() {
   margin: 0;
   font-size: 0.96rem;
   line-height: 1.7;
-  color: #d0d0d0;
+  color: var(--ui-text);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -222,7 +226,7 @@ async function save() {
   cursor: pointer;
 }
 .btn-solid:hover {
-  background: #e29a48;
+  background: color-mix(in srgb, var(--ui-accent) 85%, var(--ui-text));
 }
 .btn-text:focus-visible,
 .btn-solid:focus-visible {

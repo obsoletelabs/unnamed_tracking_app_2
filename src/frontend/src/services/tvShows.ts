@@ -207,6 +207,7 @@ export const fetchTVShows = api.fetchAll;
 export const getTVShow = api.get;
 export const createTVShow = api.create;
 export const updateTVShow = api.update;
+export const patchTVShow = api.patch;
 export const deleteTVShow = api.remove;
 export type TrashedTVShow = TrashedMedia;
 export const fetchTVShowTrash = api.fetchTrash;

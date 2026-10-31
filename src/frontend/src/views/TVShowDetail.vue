@@ -14,6 +14,7 @@ import {
   getTVShow,
   peekTVShow,
   updateTVShow,
+  patchTVShow,
   tvShowToInput,
   fetchEpisodes,
   updateEpisode,
@@ -47,8 +48,8 @@ const router = useRouter();
 const showId = computed(() => route.params.id as string);
 
 const show = ref<TVShow | null>(null);
-const { saveError, quickSave } = useMediaQuickSave(show, (body) =>
-  updateTVShow(body.id, tvShowToInput(body)),
+const { saveError, quickSave } = useMediaQuickSave(show, (id, changes) =>
+  patchTVShow(id, changes),
 );
 usePageTitle(() => show.value?.title);
 const loading = ref(true);

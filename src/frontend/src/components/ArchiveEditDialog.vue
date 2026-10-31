@@ -58,6 +58,10 @@ const dirty = computed(
     JSON.stringify(tags.value) !== JSON.stringify(props.archive.tags ?? []),
 );
 
+function draftSnapshot() {
+  return JSON.stringify([name.value, note.value, tags.value, tagDraft.value]);
+}
+
 async function save() {
   if (saving.value) return;
   commitTag();
@@ -67,15 +71,16 @@ async function save() {
   if (note.value.trim() !== (props.archive.note ?? ""))
     patch.note = note.value.trim() || null;
   if (JSON.stringify(tags.value) !== JSON.stringify(props.archive.tags ?? []))
-    patch.tags = tags.value;
+    patch.tags = [...tags.value];
   if (!Object.keys(patch).length) return emit("close");
+  const submitted = draftSnapshot();
   saving.value = true;
   saveError.value = null;
   try {
     if ((await props.onSave?.(props.archive, patch)) === false)
       saveError.value =
         "Your changes could not be saved. They are still here; try again.";
-    else emit("close");
+    else if (draftSnapshot() === submitted) emit("close");
   } catch {
     saveError.value =
       "Your changes could not be saved. They are still here; try again.";

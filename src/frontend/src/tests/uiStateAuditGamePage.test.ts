@@ -292,6 +292,7 @@ describe("game page quick changes", () => {
     await Promise.all([a, b]);
     expect(calls).toEqual(["playing", "beaten"]);
     expect(model.game.value!.status).toBe("beaten");
+    expect(model.quickEditError.value).toBeNull();
   });
 
   it("returns to the last accepted rating when the newest save fails", async () => {

@@ -14,7 +14,7 @@ export function orderedFieldSave<Target extends object, Value>(options: {
 }): (target: Target, value: Value) => Promise<boolean> {
   const queues = new WeakMap<
     Target,
-    { tail: Promise<void>; confirmed: Value; pending: number }
+    { tail: Promise<void>; confirmed: Value; pending: number; version: number }
   >();
   return async (target, value) => {
     let queue = queues.get(target);
@@ -23,6 +23,7 @@ export function orderedFieldSave<Target extends object, Value>(options: {
         tail: Promise.resolve(),
         confirmed: options.read(target),
         pending: 0,
+        version: 0,
       };
       queues.set(target, queue);
     }
@@ -30,18 +31,22 @@ export function orderedFieldSave<Target extends object, Value>(options: {
     let saved = false;
     options.write(target, value);
     current.pending += 1;
+    const version = ++current.version;
     current.tail = current.tail.then(async () => {
       try {
         await options.save(target, value);
         current.confirmed = value;
         saved = true;
       } catch (error) {
-        options.onFailure(target, error);
+        if (version === current.version) options.onFailure(target, error);
       }
     });
     await current.tail;
     current.pending -= 1;
-    if (current.pending === 0) options.write(target, current.confirmed);
+    if (current.pending === 0) {
+      queues.delete(target);
+      options.write(target, current.confirmed);
+    }
     return saved;
   };
 }

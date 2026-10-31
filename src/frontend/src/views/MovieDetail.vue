@@ -14,6 +14,7 @@ import {
   getMovie,
   peekMovie,
   updateMovie,
+  patchMovie,
   movieToInput,
   fetchMovieRelations,
   fetchMovieRecommended,
@@ -45,8 +46,8 @@ const router = useRouter();
 const movieId = computed(() => route.params.id as string);
 
 const movie = ref<Movie | null>(null);
-const { saveError, quickSave } = useMediaQuickSave(movie, (body) =>
-  updateMovie(body.id, movieToInput(body)),
+const { saveError, quickSave } = useMediaQuickSave(movie, (id, changes) =>
+  patchMovie(id, changes),
 );
 usePageTitle(() => movie.value?.title);
 const loading = ref(true);

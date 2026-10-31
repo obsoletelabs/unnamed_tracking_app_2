@@ -16,6 +16,7 @@ import {
   peekAllAnimes,
   peekAnimeRelations,
   updateAnime,
+  patchAnime,
   animeToInput,
   fetchEpisodes,
   updateEpisode,
@@ -60,8 +61,8 @@ const router = useRouter();
 const showId = computed(() => route.params.id as string);
 
 const show = ref<Anime | null>(null);
-const { saveError, quickSave } = useMediaQuickSave(show, (body) =>
-  updateAnime(body.id, animeToInput(body)),
+const { saveError, quickSave } = useMediaQuickSave(show, (id, changes) =>
+  patchAnime(id, changes),
 );
 usePageTitle(() => show.value?.title);
 const loading = ref(true);

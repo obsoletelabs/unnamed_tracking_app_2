@@ -346,3 +346,38 @@ describe("related title preview", () => {
     wrapper.unmount();
   });
 });
+
+describe("concurrent detail edits", () => {
+  it("keeps a confirmed rename while a delayed quick edit finishes", async () => {
+    vi.mocked(movies.getMovie).mockResolvedValue(movie("a"));
+    const slow = deferred<Movie>();
+    vi.mocked(movies.patchMovie)
+      .mockReturnValueOnce(slow.promise)
+      .mockResolvedValueOnce(
+        movie("a", {
+          title: "Confirmed renamed title",
+          favorite: true,
+          ratingOverall: 7,
+        }),
+      );
+    const wrapper = mountView(MovieDetail);
+    await flushPromises();
+    const vm = state(wrapper);
+    const favorite = (vm.toggleFavorite as () => Promise<void>)();
+    await flushPromises();
+    (vm.onSaved as (saved: Movie) => void)(
+      movie("a", { title: "Confirmed renamed title", favorite: true }),
+    );
+    const rating = (vm.onRatingChange as (value: number) => Promise<void>)(7);
+    slow.resolve(movie("a", { favorite: true }));
+    await Promise.all([favorite, rating]);
+    expect(movies.patchMovie).toHaveBeenNthCalledWith(2, "a", {
+      ratingOverall: 7,
+    });
+    expect(vm.movie).toMatchObject({
+      title: "Confirmed renamed title",
+      ratingOverall: 7,
+    });
+    wrapper.unmount();
+  });
+});

@@ -65,3 +65,30 @@ it.each([
     expect(wrapper.emitted("close")).toHaveLength(1);
   },
 );
+
+it.each([
+  ["media", MediaEditDialog, { item: media }],
+  ["save", ArchiveEditDialog, { archive, noun: "save" }],
+] as const)(
+  "retains newer %s edits after an earlier save succeeds",
+  async (_name, component, props) => {
+    let resolve!: (value: boolean) => void;
+    const slow = new Promise<boolean>((done) => {
+      resolve = done;
+    });
+    const wrapper = mount(component as Parameters<typeof mount>[0], {
+      props: { ...props, onSave: () => slow } as Record<string, unknown>,
+      global,
+    });
+    await wrapper.find("input[type=text]").setValue("Submitted name");
+    await saveButton(wrapper).trigger("click");
+    await wrapper.find("input[type=text]").setValue("Newer unsaved name");
+    resolve(true);
+    await flushPromises();
+    expect(wrapper.emitted("close")).toBeUndefined();
+    expect(
+      (wrapper.find("input[type=text]").element as HTMLInputElement).value,
+    ).toBe("Newer unsaved name");
+    wrapper.unmount();
+  },
+);

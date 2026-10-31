@@ -34,8 +34,8 @@ it("sends one save at a time and undoes only the change that failed", async () =
   const record = ref<Row | null>(row());
   const first = deferred<Row>();
   const bodies: Row[] = [];
-  const persist = vi.fn(async (body: Row) => {
-    bodies.push({ ...body });
+  const persist = vi.fn(async (_id: string, changes: Partial<Row>) => {
+    bodies.push(changes as Row);
     if (bodies.length === 1) return first.promise;
     throw new Error("Down");
   });
@@ -49,7 +49,7 @@ it("sends one save at a time and undoes only the change that failed", async () =
   expect(await favourite).toBe(true);
   expect(await rating).toBe(false);
   // The second save was the accepted record plus its own change only.
-  expect(bodies[1]).toMatchObject({ favorite: true, rating: 4 });
+  expect(bodies[1]).toEqual({ rating: 4 });
   expect(record.value).toMatchObject({ favorite: true, rating: null });
   expect(saveError.value).toBe("rating failed");
 });
@@ -86,4 +86,53 @@ it("keeps the note editor and its text open when the save fails", async () => {
   await wrapper.find(".btn-solid").trigger("click");
   await flushPromises();
   expect(wrapper.find("textarea").exists()).toBe(false);
+});
+
+it("retains a newer note typed while an earlier save succeeds", async () => {
+  const slow = deferred<boolean>();
+  const wrapper = mount(MyNote, {
+    props: { note: null, saveNote: () => slow.promise },
+  });
+  await wrapper.find("button").trigger("click");
+  await wrapper.find("textarea").setValue("Submitted text");
+  await wrapper.find(".btn-solid").trigger("click");
+  await wrapper.find("textarea").setValue("Newer unsaved text");
+  slow.resolve(true);
+  await flushPromises();
+  expect(wrapper.find("textarea").exists()).toBe(true);
+  expect((wrapper.find("textarea").element as HTMLTextAreaElement).value).toBe(
+    "Newer unsaved text",
+  );
+  wrapper.unmount();
+});
+
+it("keeps an independent confirmed rename out of later quick patches", async () => {
+  const record = ref<(Row & { title: string }) | null>({
+    ...row(),
+    title: "Original",
+  });
+  const slow = deferred<Row & { title: string }>();
+  const persist = vi
+    .fn()
+    .mockReturnValueOnce(slow.promise)
+    .mockResolvedValueOnce({
+      ...row({ favorite: true, rating: 7 }),
+      title: "Renamed",
+    });
+  const { quickSave } = useMediaQuickSave(record, persist);
+  const favorite = quickSave((r) => (r.favorite = true), "failed");
+  await flushPromises();
+  record.value = { ...row({ favorite: true }), title: "Renamed" };
+  const rating = quickSave((r) => (r.rating = 7), "failed");
+  slow.resolve({ ...row({ favorite: true }), title: "Original" });
+  await Promise.all([favorite, rating]);
+  expect(persist.mock.calls.map(([id, patch]) => [id, patch])).toEqual([
+    ["a", { favorite: true }],
+    ["a", { rating: 7 }],
+  ]);
+  expect(record.value).toMatchObject({
+    title: "Renamed",
+    favorite: true,
+    rating: 7,
+  });
 });

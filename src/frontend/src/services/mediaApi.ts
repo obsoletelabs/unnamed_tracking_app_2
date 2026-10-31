@@ -167,12 +167,30 @@ export function createMediaApi<
     return item;
   }
 
-  async function update(id: string, input: Input): Promise<Entity> {
+  async function update(
+    id: string,
+    input: Input | Partial<Input>,
+    partial = false,
+  ): Promise<Entity> {
+    const body = toBody(input as Input);
+    if (partial) {
+      // Existing serializers provide the wire names and enum conversions. Only
+      // explicitly supplied fields belong in a PATCH, never their defaults.
+      const provided = new Set(
+        Object.entries(input as object)
+          .filter(([, value]) => value !== undefined)
+          .map(([key]) =>
+            key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`),
+          ),
+      );
+      for (const key of Object.keys(body))
+        if (!provided.has(key)) delete body[key];
+    }
     const response = await fetch(`${base}/update/${id}`, {
       method: "PATCH",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(toBody(input)),
+      body: JSON.stringify(body),
     });
     const item = map(await handle<Raw>(response, `update ${noun} ${id}`));
     markMutation();
@@ -272,6 +290,7 @@ export function createMediaApi<
     get,
     create,
     update,
+    patch: (id: string, input: Partial<Input>) => update(id, input, true),
     remove,
     fetchTrash,
     restore,
