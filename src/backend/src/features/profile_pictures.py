@@ -9,6 +9,11 @@ from starlette.concurrency import run_in_threadpool
 _USER_DATA_ROOT = Path("/data/user")
 
 
+def user_data_root() -> Path:
+    """The directory holding one sub-directory per account (profile picture and media inbox)."""
+    return _USER_DATA_ROOT
+
+
 def profile_picture_path(user_id: UUID) -> Path:
     """Keep the existing on-disk profile location."""
     return _USER_DATA_ROOT / str(user_id) / "profile.png"
