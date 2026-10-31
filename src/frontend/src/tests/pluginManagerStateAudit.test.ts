@@ -10,38 +10,63 @@ vi.mock("vue-router", () => ({ useRoute: () => ({ query: {} }) }));
 vi.mock("../services/plugins");
 vi.mock("../services/pluginPermissions");
 vi.mock("../services/pluginUi");
-vi.mock("../state/pluginExtensions", () => ({ refreshPluginExtensions: vi.fn() }));
+vi.mock("../state/pluginExtensions", () => ({
+  refreshPluginExtensions: vi.fn(),
+}));
 
 beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(plugins.fetchPlugins).mockResolvedValue([]);
   vi.mocked(plugins.fetchPluginCatalogues).mockResolvedValue([]);
   vi.mocked(plugins.fetchManagerSettings).mockResolvedValue({
-    automatic_updates: false, retained_versions: 1,
+    automatic_updates: false,
+    retained_versions: 1,
   } as plugins.ManagerSettings);
-  vi.mocked(plugins.fetchRuntimeCapabilities).mockResolvedValue({ available: true } as plugins.RuntimeCapabilities);
-  vi.mocked(plugins.fetchPluginLogs).mockResolvedValue({} as plugins.PluginDiagnostics);
+  vi.mocked(plugins.fetchRuntimeCapabilities).mockResolvedValue({
+    available: true,
+  } as plugins.RuntimeCapabilities);
+  vi.mocked(plugins.fetchPluginLogs).mockResolvedValue(
+    {} as plugins.PluginDiagnostics,
+  );
   vi.mocked(plugins.fetchPluginDetails).mockResolvedValue({});
   vi.mocked(permissions.fetchPluginPermissionGrants).mockResolvedValue([]);
   vi.mocked(permissions.fetchPluginPermissionRequests).mockResolvedValue([]);
-  vi.mocked(ui.fetchPluginUi).mockResolvedValue({ settings: [], pages: [], actions: [] } as unknown as ui.PluginUiDocument);
+  vi.mocked(ui.fetchPluginUi).mockResolvedValue({
+    settings: [],
+    pages: [],
+    actions: [],
+  } as unknown as ui.PluginUiDocument);
 });
 
 function plugin(id: string) {
-  return { plugin_id: id, name: id, status: "running", enabled: true, version: "1",
-    permissions: [], compatible: true, effective_capabilities: [], tags: [],
+  return {
+    plugin_id: id,
+    name: id,
+    status: "running",
+    enabled: true,
+    version: "1",
+    permissions: [],
+    compatible: true,
+    effective_capabilities: [],
+    tags: [],
   } as unknown as plugins.PluginSummary;
 }
 
 it("reports a failed staged preview and allows it to be retried", async () => {
-  vi.mocked(plugins.previewStagedUpdate).mockRejectedValue(new Error("Staged preview unavailable"));
+  vi.mocked(plugins.previewStagedUpdate).mockRejectedValue(
+    new Error("Staged preview unavailable"),
+  );
   const wrapper = shallowMount(PluginManagerSection);
   await flushPromises();
   const vm = wrapper.vm as unknown as {
     reviewAvailableUpdate: (item: plugins.PluginSummary) => Promise<void>;
-    error: string; previewing: boolean;
+    error: string;
+    previewing: boolean;
   };
-  const staged = { ...plugin("staged"), staged_update: { version: "2" } } as plugins.PluginSummary;
+  const staged = {
+    ...plugin("staged"),
+    staged_update: { version: "2" },
+  } as plugins.PluginSummary;
   await expect(vm.reviewAvailableUpdate(staged)).resolves.toBeUndefined();
   expect(vm.error).toContain("Staged preview unavailable");
   expect(vm.previewing).toBe(false);
@@ -50,12 +75,17 @@ it("reports a failed staged preview and allows it to be retried", async () => {
 
 it("ignores a failed old popup load after another plugin opens", async () => {
   let reject!: (error: Error) => void;
-  vi.mocked(permissions.fetchPluginPermissionGrants).mockReturnValueOnce(new Promise((_resolve, fail) => { reject = fail; }));
+  vi.mocked(permissions.fetchPluginPermissionGrants).mockReturnValueOnce(
+    new Promise((_resolve, fail) => {
+      reject = fail;
+    }),
+  );
   const wrapper = shallowMount(PluginManagerSection);
   await flushPromises();
   const vm = wrapper.vm as unknown as {
     openPlugin: (item: plugins.PluginSummary) => Promise<void>;
-    selected: plugins.PluginSummary; error: string;
+    selected: plugins.PluginSummary;
+    error: string;
   };
   const first = vm.openPlugin(plugin("first"));
   await flushPromises();

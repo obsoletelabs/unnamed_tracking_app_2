@@ -812,7 +812,11 @@ async function openPlugin(plugin: PluginSummary) {
         request.plugin_id === plugin.plugin_id && request.status === "pending",
     );
   } catch (err) {
-    if (generation !== popupGeneration || selected.value?.plugin_id !== plugin.plugin_id) return;
+    if (
+      generation !== popupGeneration ||
+      selected.value?.plugin_id !== plugin.plugin_id
+    )
+      return;
     error.value =
       err instanceof Error ? err.message : "Failed to open plugin settings.";
   } finally {

@@ -38,9 +38,10 @@ async function load() {
   loading.value = true;
   error.value = "";
   try {
-    const loaded = typeof token === "string"
-      ? await fetchStoryByLink(token)
-      : await fetchStory(String(id));
+    const loaded =
+      typeof token === "string"
+        ? await fetchStoryByLink(token)
+        : await fetchStory(String(id));
     if (request !== generation || currentUser.value?.id !== account) return;
     page.value = loaded;
     failedImages.value = new Set();
@@ -59,24 +60,33 @@ async function run(action: StoryAction) {
   const storyId = page.value.storyId;
   const request = ++actionGeneration;
   const account = currentUser.value?.id;
-  const current = () => request === actionGeneration && page.value?.storyId === storyId && currentUser.value?.id === account;
+  const current = () =>
+    request === actionGeneration &&
+    page.value?.storyId === storyId &&
+    currentUser.value?.id === account;
   const danger = action.style === "danger";
   running.value = action.id;
   result.value = "";
   try {
-    if (danger && !(await confirm({
-      title: action.label,
-      message: 'Run "' + action.label + '"? This cannot be undone.',
-      confirmLabel: action.label,
-      danger: true,
-    }))) return;
+    if (
+      danger &&
+      !(await confirm({
+        title: action.label,
+        message: 'Run "' + action.label + '"? This cannot be undone.',
+        confirmLabel: action.label,
+        danger: true,
+      }))
+    )
+      return;
     if (!current()) return;
     const outcome = await runStoryAction(storyId, action.id, danger);
     if (!current()) return;
     result.value = outcome.message ?? action.label + " completed.";
     await load();
   } catch (failure) {
-    if (current()) result.value = failure instanceof Error ? failure.message : "The action failed.";
+    if (current())
+      result.value =
+        failure instanceof Error ? failure.message : "The action failed.";
   } finally {
     if (request === actionGeneration) running.value = null;
   }
@@ -86,15 +96,21 @@ function hrefFor(action: StoryAction) {
   return safeHref(action.href);
 }
 
-watch(() => [route.params.id, route.params.token, currentUser.value?.id], () => {
+watch(
+  () => [route.params.id, route.params.token, currentUser.value?.id],
+  () => {
+    generation++;
+    actionGeneration++;
+    page.value = null;
+    running.value = null;
+    result.value = "";
+    void load();
+  },
+);
+onUnmounted(() => {
   generation++;
   actionGeneration++;
-  page.value = null;
-  running.value = null;
-  result.value = "";
-  void load();
 });
-onUnmounted(() => { generation++; actionGeneration++; });
 onMounted(load);
 </script>
 
@@ -107,7 +123,17 @@ onMounted(load);
     </AppTopBar>
     <div class="ui-content narrow">
       <p v-if="loading && !page" class="ui-state" role="status">Loading…</p>
-      <p v-if="error" class="ui-state error" role="alert">{{ error }} <button type="button" class="ui-btn ui-btn-secondary" :disabled="loading" @click="load">Try again</button></p>
+      <p v-if="error" class="ui-state error" role="alert">
+        {{ error }}
+        <button
+          type="button"
+          class="ui-btn ui-btn-secondary"
+          :disabled="loading"
+          @click="load"
+        >
+          Try again
+        </button>
+      </p>
       <article v-if="page" class="story" aria-labelledby="story-title">
         <header class="story-head">
           <p class="status" :class="page.severity">
