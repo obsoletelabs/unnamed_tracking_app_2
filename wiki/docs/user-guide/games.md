@@ -210,6 +210,17 @@ seeing one Epic copy, the one marked **Preferred for playtime** is used and the 
 is kept. Use **Prefer this source** to switch. This is the same source priority as
 the Counters tab in the Advanced dialog, so the two always agree.
 
+A **Metadata** row names the source of each metadata field (for example
+**Developer IGDB**, **Release date RAWG**). A lock icon marks a locked field, and a
+field whose preferred source is not the one shown is highlighted with
+"*X* preferred, not shown": only the value that won the last refresh is stored, so a
+preferred source that lost has no value to apply. Beside the field itself, the same
+label appears when sources disagree, when the field is locked or when a preference is
+not in effect; selecting it lists each source's value. If you prefer a source and the
+value shown does not change, the list says so.
+
+![Where each metadata field comes from](../assets/ui-modernization/game-overview-desktop-light-after.png)
+
 ![Sources with Playnite preferred](../assets/game-identity-hub/sources-panel-playnite-preferred.png)
 
 ![The same game after preferring the Epic plugin](../assets/game-identity-hub/sources-panel-epic-preferred.png)
@@ -275,7 +286,9 @@ not suggested as a copy from a different store.
 
 DLC, mods, remakes and series are **related games**, not copies: they link to each
 other but never merge playtime or achievements. They remain under **Variants** and
-in the Advanced tools.
+in the Advanced tools. The Overview also lists them under **Related games**, from
+both ends: a DLC shows **DLC of** its base game, and the base game shows its
+**DLC**, **Remake** and **Other version** entries, each a link to that game's page.
 
 Filters and search match every copy of a game, so platform filters such as
 PlayStation find a game through its PS4 or PS5 copy. If the main copy is in Trash,
@@ -588,6 +601,13 @@ Preferences › Release dates**, choose **My language** (the default; months as
 edit dialog the date field shows the first day of the period with a note saying
 what is known; picking a date there saves it as that day.
 
+The game page shows the date the same way as **Released** on the Overview. When a
+provider lists regional, platform or edition releases, **More details › Releases**
+lists them oldest first, each as precisely as it is known, with its platform,
+region, edition and kind (Port, Re-release, Early access and so on).
+
+![Releases under More details](../assets/ui-modernization/game-details-desktop-light-after.png)
+
 ![Games known only by year and month, and one known to the day](../assets/release-dates/library-after.png)
 
 ![The same list with dates shown as stored](../assets/release-dates/library-as-stored.png)
@@ -721,6 +741,11 @@ game.
   the ones you have unlocked are read from your public Steam profile, which
   needs your game details set to public. Refresh the game's achievements, or
   run the library sync again, to fill them in.
+- **Medals.** A medal the provider supplies (bronze, silver, gold or platinum)
+  shows beside the name. Platinum is the trophy for completing the whole list;
+  when a game has one, the summary above the list says whether it is earned. A
+  locked hidden achievement shows no medal, and screen-reader labels name it only
+  as a hidden achievement.
 - **Of players** shows how many players have each achievement (Steam's global
   percentage, PlayStation's earned rate, or RetroAchievements' count).
 - Screenshots, clips and notes can be tied to an achievement, and the
