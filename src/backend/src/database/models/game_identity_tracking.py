@@ -77,12 +77,16 @@ class FieldValueOrigin(StrEnum):
 
 
 class FieldValueState(StrEnum):
-    """Closed set: one current value per field; proposals await a user choice."""
+    """Closed set: one current value per field; proposals await a user choice.
+
+    A `candidate` is a metadata provider's value that lost a refresh's merge, kept (one per
+    provider and field) so a field preference can choose it (D2); it is never the game's value."""
 
     CURRENT = "current"
     PROPOSED = "proposed"
     SUPERSEDED = "superseded"
     REJECTED = "rejected"
+    CANDIDATE = "candidate"
 
 
 class FieldQuality(StrEnum):
@@ -345,6 +349,14 @@ class GameFieldValue(Base):
             "field",
             unique=True,
             postgresql_where=text("state = 'current' AND umbrella_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_game_field_values_candidate",
+            "game_id",
+            "field",
+            "source_label",
+            unique=True,
+            postgresql_where=text("state = 'candidate'"),
         ),
         Index(
             "uq_game_field_values_open_proposal",

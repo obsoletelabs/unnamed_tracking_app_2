@@ -20,6 +20,7 @@ from src.api.routes.library_sync import (
     _enrich_steam_game_by_appid,
     _get_or_create_game,
     _replace_achievements,
+    record_sources,
 )
 from src.core.auth import get_current_user
 from src.core.preferences import load_preferences
@@ -253,6 +254,7 @@ async def enrich_games(
                     game, app_id, current_user, use_tags, artwork_only=body.artwork_only
                 )
                 if not body.artwork_only:
+                    await record_sources(db, game, outcome)
                     await names.reconcile_games(db, current_user.id, [game])
             enriched += 1
             if outcome is not None and outcome.artwork_missing:

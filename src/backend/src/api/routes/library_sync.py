@@ -33,6 +33,7 @@ from src.core.app_integrations import get_max_upload_size_mb
 from src.core.auth import get_current_user
 from src.core.crypto import decrypt_secret
 from src.database.models.game import Game, GameStatus
+from src.database.models.game_identity_tracking import FieldValueOrigin
 from src.database.models.user import User
 from src.database.session import SessionLocal, get_db
 from src.features import achievement_sync as _achievement_sync
@@ -62,7 +63,7 @@ from src.features.achievement_sync import (
     retro_achievement_rows as _retro_achievement_rows,
 )
 from src.features.connection_jobs import sync_scope
-from src.features.game_identity import names
+from src.features.game_identity import field_provenance, names
 from src.features.game_identity.provider_ids import merge_provider_ids, unclaimed_provider_ids
 from src.features.game_ingestion import legacy as ingestion
 from src.features.game_ingestion.contract import SourceObservationV1
@@ -79,7 +80,12 @@ from src.features.metadata.games.retroachievements import (
     RetroAchievementsError,
 )
 from src.features.metadata.locked_fields import apply_metadata_updates
-from src.features.metadata.service import game_candidate, game_result, resolve_library_record
+from src.features.metadata.service import (
+    field_source,
+    game_candidate,
+    game_result,
+    resolve_library_record,
+)
 from src.helpers.remote_images import MAX_BYTES, RemoteImageError, download_image
 from src.helpers.save_game_asset import AssetKind, asset_present, save_locked_game_asset
 from src.helpers.steam_achievement_rows import (  # noqa: F401
@@ -192,6 +198,29 @@ class EnrichOutcome:
     # the provider offered but could not be downloaded (also listed in `artwork_download_failed`)
     artwork_missing: list[str] = dataclasses.field(default_factory=list)
     artwork_download_failed: list[str] = dataclasses.field(default_factory=list)
+    # metadata field -> the provider whose value the pass stored (recorded by `record_sources`)
+    field_sources: dict[str, str | None] = dataclasses.field(default_factory=dict)
+    # metadata field -> the value that provider reported (the stored tags also keep the
+    # import's source tag, which is the library's own, not the provider's)
+    field_values: dict[str, object] = dataclasses.field(default_factory=dict)
+
+
+async def record_sources(db: AsyncSession, game: Game, outcome: EnrichOutcome | None) -> None:
+    """Record, as a refresh does, which provider supplied each field an enrichment stored (#348).
+
+    The enrichment itself runs without the import's session (several games at once), so the
+    caller records the sources afterwards, one game at a time."""
+    if outcome is None:
+        return
+    grouped: dict[str | None, dict[str, object]] = {}
+    for field, provider in outcome.field_sources.items():
+        grouped.setdefault(provider, {})[field] = outcome.field_values.get(
+            field, getattr(game, field)
+        )
+    for provider, values in grouped.items():
+        await field_provenance.record_field_sources(
+            db, game, values, origin=FieldValueOrigin.METADATA, provider=provider
+        )
 
 
 _ASSET_KINDS: tuple[tuple[AssetKind, str], ...] = (
@@ -239,6 +268,7 @@ async def _enrich_new_game(
         return await _fetch_missing_artwork(game, match, max_image_bytes, outcome)
     if "provider_ids" not in (game.locked_fields or []):
         game.provider_ids, _ = merge_provider_ids(game.provider_ids or {}, offered_ids)
+    before = {field: getattr(game, field) for field in field_provenance.PROVENANCE_FIELDS}
     if match.get("title") and names.is_weak(
         names.classify_title(game.title, source=game.source, external_id=game.external_id)
     ):
@@ -260,12 +290,22 @@ async def _enrich_new_game(
         if field.startswith("time_to_beat") and not preferences.get("save_time_to_beat", True):
             continue
         value = match.get(field)
-        if value:
-            apply_metadata_updates(game, {field: value})
+        if not value:
+            continue
+        if field == "tags" and isinstance(value, list):
+            # the source tag the import just added (Steam, PlayStation...) stays with them
+            outcome.field_values["tags"] = value
+            value = [*value, *(tag for tag in game.tags or [] if tag not in value)]
+        apply_metadata_updates(game, {field: value})
     if match.get("series"):
         _add_to_series_collection(game, match["series"])
     # a Plugin API 1.1.20 first_release keeps its precision (C5.4), as a refresh stores it
     apply_metadata_updates(game, sync_release_updates(game, match))
+    outcome.field_sources = {
+        field: field_source(match, field)
+        for field, value in before.items()
+        if getattr(game, field) != value
+    }
     return await _fetch_missing_artwork(game, match, max_image_bytes, outcome, overwrite=True)
 
 
@@ -595,11 +635,13 @@ async def _sync_retroachievements_library(db: AsyncSession, current_user: User) 
             _add_source_tag_and_collection(game, "RetroAchievements")
             newly_created.append(game)
 
-    async def _enrich(game: Game) -> None:
+    async def _enrich(game: Game) -> EnrichOutcome:
         async with semaphore:
-            await _enrich_new_game(game, current_user, preferences)
+            return await _enrich_new_game(game, current_user, preferences)
 
-    await asyncio.gather(*(_enrich(g) for g in newly_created))
+    outcomes = await asyncio.gather(*(_enrich(g) for g in newly_created))
+    for game, outcome in zip(newly_created, outcomes, strict=True):
+        await record_sources(db, game, outcome)
 
     games_flagged_stale = await _flag_stale_games(
         db, current_user.id, "RetroAchievements", touched_ids
@@ -738,11 +780,13 @@ async def _sync_psn_library(db: AsyncSession, current_user: User) -> dict:
             _add_source_tag_and_collection(game, "PlayStation")
             newly_created.append(game)
 
-    async def _enrich(game: Game) -> None:
+    async def _enrich(game: Game) -> EnrichOutcome:
         async with semaphore:
-            await _enrich_new_game(game, current_user, preferences)
+            return await _enrich_new_game(game, current_user, preferences)
 
-    await asyncio.gather(*(_enrich(g) for g in newly_created))
+    outcomes = await asyncio.gather(*(_enrich(g) for g in newly_created))
+    for game, outcome in zip(newly_created, outcomes, strict=True):
+        await record_sources(db, game, outcome)
 
     games_flagged_stale = await _flag_stale_games(db, current_user.id, "PlayStation", touched_ids)
     await ingestion.record_observations(db, current_user.id, ingestion.PLAYSTATION, observations)

@@ -102,3 +102,41 @@ async def test_failed_games_are_named_and_the_rest_are_kept(flow, monkeypatch):
     )
     retried = await enrich(flow, [bad])
     assert retried["enriched"] == 1 and retried["failed_game_ids"] == []
+
+
+async def test_an_imported_game_records_which_provider_supplied_each_field(flow, monkeypatch):
+    """A Steam import's enrichment merges several providers; the field sources name each one,
+    as a refresh records them (#348), so a preference can be set right after the import."""
+    game_id = await create_game(flow, "Portal 2", app_id="620")
+    merged = {
+        "title": "Portal 2",
+        "provider_name": "Steam",
+        "metadata": {
+            "description": "from Steam",
+            "developer": "Valve",
+            "series": "Portal",
+            "first_release": {"date": "2011-04", "precision": "month"},
+        },
+        "field_providers": {
+            "description": "Steam",
+            "developer": "IGDB",
+            "series": "RAWG",
+            "first_release": "Atlas",
+        },
+        "assets": [],
+    }
+    monkeypatch.setattr(
+        library_sync, "resolve_library_record", AsyncMock(return_value=(merged, []))
+    )
+
+    result = await enrich(flow, [game_id])
+
+    assert result["enriched"] == 1
+    sources = (await flow.client.get(f"/api/game/{game_id}/field-sources")).json()
+    assert {field: entry["provider"] for field, entry in sources.items()} == {
+        "description": "Steam",
+        "developer": "IGDB",
+        "series": "RAWG",
+        "release_date": "Atlas",
+    }
+    assert sources["developer"]["origin"] == "metadata"

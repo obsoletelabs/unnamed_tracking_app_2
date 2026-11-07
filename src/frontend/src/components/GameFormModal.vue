@@ -31,7 +31,11 @@ import { resolvePage } from "../utils/gamePage";
 import type { PageOverrides, PageSettings } from "../utils/gamePage";
 import { fetchMetadataProviders } from "../services/metadata";
 import type { MetadataProviderStatus } from "../services/metadata";
-import { localDateInputToUnixSeconds, toLocalDateInput } from "../utils/dates";
+import {
+  formatPartialDate,
+  localDateInputToUnixSeconds,
+  toLocalDateInput,
+} from "../utils/dates";
 import { PRIORITY_OPTIONS, isFinished } from "../utils/priority";
 import { PLATFORM_SUGGESTIONS } from "../utils/platforms";
 import { sizedAssetUrl } from "../utils/gameImages";
@@ -276,6 +280,17 @@ const achievementsProvider = ref<AchievementsProvider>(
   props.game?.achievementsProvider ?? null,
 );
 const releaseDate = ref(props.game?.releaseDate ?? "");
+// a provider knew only the year or month; the date field shows the period's
+// first day, and a date typed here is saved as a day (C5.5)
+const partialRelease = computed(() => {
+  const precision = props.game?.releaseDatePrecision;
+  if (
+    (precision !== "year" && precision !== "month") ||
+    releaseDate.value !== props.game?.releaseDate
+  )
+    return "";
+  return formatPartialDate(releaseDate.value, precision, preferences.value);
+});
 // the local calendar day (what <input type="date"> shows), the stored value
 // is a full timestamp; only sent back if it was actually changed, so saving
 // the form doesn't reset the time a game was added to midnight
@@ -1039,6 +1054,10 @@ async function submit() {
           <label class="field">
             <span>Release date</span>
             <input v-model="releaseDate" type="date" />
+            <small v-if="partialRelease" class="field-hint"
+              >Only {{ partialRelease }} is known. A date you pick is saved as
+              that day.</small
+            >
           </label>
         </div>
         <p class="editor-section">Release details</p>

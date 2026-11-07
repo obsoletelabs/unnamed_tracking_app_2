@@ -17,6 +17,7 @@ import { loadCatalogueRules } from "../services/tagCatalogue";
 import { quickTourActive } from "../state/quickTour";
 import type { Game } from "../types/game";
 import { relationshipKindLabel } from "../utils/gameIdentityGroups";
+import { formatReleaseDate } from "../utils/releaseDate";
 
 // Loaded on demand so they stay out of the initial route chunk.
 const BulkEditModal = defineAsyncComponent(
@@ -39,7 +40,6 @@ const {
   viewportWidth,
   activePriority,
   priorityLabel,
-  formatDisplayDate,
   computeScore,
   games,
   libraryEntries,
@@ -1007,9 +1007,7 @@ async function openRandomPicker() {
                   }}
                 </div>
                 <div class="stat-cell">
-                  {{
-                    game.releaseDate ? formatDisplayDate(game.releaseDate) : "–"
-                  }}
+                  {{ game.releaseDate ? formatReleaseDate(game) : "–" }}
                 </div>
                 <div class="status-cell">
                   <span
@@ -1100,9 +1098,7 @@ async function openRandomPicker() {
                     class="preview-detail-row"
                   >
                     <span class="preview-detail-label">Released</span>
-                    <span>{{
-                      formatDisplayDate(selectedGame.releaseDate)
-                    }}</span>
+                    <span>{{ formatReleaseDate(selectedGame) }}</span>
                   </div>
                   <div
                     v-if="activePriority(selectedGame) !== null"

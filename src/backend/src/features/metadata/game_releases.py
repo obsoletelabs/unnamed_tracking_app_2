@@ -30,6 +30,19 @@ def _legacy_day(raw: object) -> date | None:
         return None
 
 
+def release_source(match: dict[str, Any]) -> str:
+    """The result field ``release_of(match)`` takes its date from: ``first_release``, or the
+    legacy ``release_date`` (also when that day refines a reported year or month). The fields
+    of a merged result can come from different providers, so a refresh records the release
+    date as the one this field came from."""
+    first = match.get("first_release")
+    legacy = _legacy_day(match.get("release_date"))
+    if not isinstance(first, dict) or legacy is None:
+        return "first_release" if isinstance(first, dict) else "release_date"
+    day, precision = release_of(match)
+    return "release_date" if day == legacy and precision is None else "first_release"
+
+
 def release_of(match: dict[str, Any]) -> tuple[date | None, str | None]:
     """The (date, precision) a refresh result reports: its ``first_release`` when it has one,
     otherwise the day-only ``release_date`` every older provider sends. A day is precision None.

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mapAchievements } from "../services/achievementMapping";
+import { deriveTier } from "../utils/gameDetailDisplay";
 
 const raw = {
   id: "a",
@@ -65,8 +66,14 @@ describe("mapAchievements", () => {
 
   it("ignores an unknown medal", () => {
     expect(
-      mapAchievements([{ ...raw, medal: "platinum" }])[0].tierOverride,
+      mapAchievements([{ ...raw, medal: "diamond" }])[0].tierOverride,
     ).toBeNull();
+  });
+
+  it("keeps a platinum medal (Plugin API 1.1.20)", () => {
+    const [a] = mapAchievements([{ ...raw, medal: "platinum" }]);
+    expect(a.tierOverride).toBe("platinum");
+    expect(deriveTier({ ...a, rarityPercent: 90 })).toBe("platinum");
   });
 
   it("marks progress that was manually overridden", () => {

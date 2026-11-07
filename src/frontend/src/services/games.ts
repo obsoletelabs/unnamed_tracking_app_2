@@ -97,8 +97,7 @@ export function mapBackendGame(raw: BackendGame): Game {
     id: raw.id,
     title: raw.title,
     hasKeyArt: raw.has_key_art ?? null,
-    // placeholders, the backend has no artwork yet
-    coverColor: "#2a2a2a",
+    coverColor: "#2a2a2a", // a placeholder; no view reads it
     // every place a cover is shown is a card or a poster well under 400 px
     // wide, and the stored cover is a PNG of up to a megabyte
     coverImageUrl: sizedAssetUrl(
@@ -134,6 +133,7 @@ export function mapBackendGame(raw: BackendGame): Game {
     completionDate: unixSecondsToDateInput(raw.completion_date),
     folderLocation: raw.folder_location,
     releaseDate: raw.release_date,
+    releaseDatePrecision: raw.release_date_precision ?? null,
     source: raw.source,
     providerIds: raw.provider_ids ?? {},
     playniteGuid: raw.playnite_guid ?? null,

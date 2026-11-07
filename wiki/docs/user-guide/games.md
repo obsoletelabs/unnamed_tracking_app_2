@@ -459,6 +459,7 @@ keep your palette, custom colors, light or dark mode and phone layout:
 | Playtime (hours) | Your own total, to one decimal place. Leave it empty for none. |
 | Where you left off | Up to 2,000 characters; also shown and editable on the Overview. |
 | Region, Language | Edition details, used by the library's Region and Language filters. |
+| Release date | A date a provider knew only to the year or month shows as the first day of that period, with a note; a date you pick is saved as a day. |
 | Currency | Chosen from the currencies the server accepts. |
 
 Clearing a field and saving clears it. A blank sorting name sorts by the
@@ -575,6 +576,25 @@ The sort menu offers Name (A–Z and Z–A), Recently added, Rating, Most
 played, Recently played, Neglected (least recently played), Priority,
 Release date (newest) and Time to beat (shortest). Games missing the value
 being sorted on go last. The default sort is set under Settings › Appearance & interface.
+A release date known only to the year or the month sorts from the start of that
+period, so a game released on 19 April 2011 comes before one known only as "2011".
+
+### Release dates
+
+Some providers know only a game's release year or month. Such a date is shown as
+known: **2011** or **April 2011**, never "1 January 2011". Under **Settings › Media
+Preferences › Release dates**, choose **My language** (the default; months as
+"April 2011" or "Apr 2011") or **As stored** (`2011`, `2011-04`, `2011-04-19`). In the
+edit dialog the date field shows the first day of the period with a note saying
+what is known; picking a date there saves it as that day.
+
+![Games known only by year and month, and one known to the day](../assets/release-dates/library-after.png)
+
+![The same list with dates shown as stored](../assets/release-dates/library-as-stored.png)
+
+![Settings › Media Preferences › Release dates](../assets/release-dates/settings-release-dates.png)
+
+![The edit dialog of a game known only by its year](../assets/release-dates/edit-after.png)
 
 ## Picking something to play
 

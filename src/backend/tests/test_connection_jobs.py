@@ -221,7 +221,9 @@ async def test_background_dispatch_reuses_real_import_and_preserves_manual_progr
     connected, monkeypatch, provider
 ):
     actor_id, other_id = connected
-    monkeypatch.setattr(library_sync, "_enrich_new_game", AsyncMock())
+    monkeypatch.setattr(
+        library_sync, "_enrich_new_game", AsyncMock(return_value=library_sync.EnrichOutcome())
+    )
     monkeypatch.setattr(library_sync.steam, "resolve_steam_id", lambda sid, _key: sid)
     monkeypatch.setattr(
         library_sync.steam,

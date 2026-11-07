@@ -28,7 +28,13 @@ from .configuration import UNRANKED
 from .core import CoreMetadataProvider
 from .deadlines import bounded
 from .identity import candidate_id, identities, rank_key, same_entity
-from .provider_reports import is_unassignable, provider_identities, provider_relations
+from .provider_reports import (
+    is_unassignable,
+    provider_identities,
+    provider_relations,
+    provider_values,
+    source_labels,
+)
 from .providers import Operation, PluginMetadataProvider
 
 logger = logging.getLogger(__name__)
@@ -407,6 +413,14 @@ class MetadataHandler:
 
     @staticmethod
     def _metadata(session: SearchSession, members: Sequence[Source]) -> dict[str, Any]:
+        return MetadataHandler._merged(session, members)[0]
+
+    @staticmethod
+    def _merged(
+        session: SearchSession, members: Sequence[Source]
+    ) -> tuple[dict[str, Any], dict[str, str]]:
+        """The merged metadata of `members`, and the provider id each single-valued field
+        came from (a refresh records it as that field's source, #348)."""
         priorities = {provider.id: provider.priority for provider in session.providers}
         patches = sorted(
             (
@@ -419,6 +433,7 @@ class MetadataHandler:
             key=lambda item: (item[0], item[1]),
         )
         metadata: dict[str, Any] = {}
+        origins: dict[str, str] = {}
         fallback_times: dict[str, Any] = {}
         for _, provider_id, patch in patches:
             for name, value in patch.model_dump(mode="json").items():
@@ -430,21 +445,30 @@ class MetadataHandler:
                     if provider_id == "core.igdb":
                         fallback_times.setdefault(name, value)
                         continue
-                if name in {"provider_ids", "scores", "titles", "custom"}:
-                    for namespace, external_id in value.items():
-                        metadata.setdefault(name, {}).setdefault(namespace, external_id)
-                elif name == "episodes":
-                    MetadataHandler._merge_episodes(metadata.setdefault(name, {}), value)
-                else:
-                    metadata.setdefault(name, value)
+                MetadataHandler._place(metadata, origins, provider_id, name, value)
         for name, value in fallback_times.items():
-            metadata.setdefault(name, value)
+            MetadataHandler._place(metadata, origins, "core.igdb", name, value)
         if "episodes" in metadata:
             metadata["episodes"] = sorted(
                 metadata["episodes"].values(),
                 key=lambda episode: (episode.get("season_number") or 0, episode["episode_number"]),
             )
-        return metadata
+        return metadata, origins
+
+    @staticmethod
+    def _place(
+        metadata: dict[str, Any], origins: dict[str, str], provider_id: str, name: str, value: Any
+    ) -> None:
+        """Add one provider's value unless a higher-priority provider already set it; maps
+        (ids, scores, titles, custom values) and episodes are merged entry by entry."""
+        if name in {"provider_ids", "scores", "titles", "custom"}:
+            for namespace, external_id in value.items():
+                metadata.setdefault(name, {}).setdefault(namespace, external_id)
+        elif name == "episodes":
+            MetadataHandler._merge_episodes(metadata.setdefault(name, {}), value)
+        elif name not in metadata:
+            metadata[name] = value
+            origins[name] = provider_id
 
     @staticmethod
     def _merge_episodes(entries: dict[tuple, dict], episodes: list[dict]) -> None:
@@ -517,7 +541,8 @@ class MetadataHandler:
 
     def _record(self, session: SearchSession, group: list[str], rank: int) -> dict[str, Any]:
         representative = self._identity(session, session.sources[group[0]])
-        metadata = self._metadata(session, [session.sources[key] for key in group])
+        metadata, origins = self._merged(session, [session.sources[key] for key in group])
+        provider_names = source_labels(session.providers)
         provider_ids: dict[str, str] = {}
         for key in group:
             for namespace, external_id in identities(
@@ -538,6 +563,12 @@ class MetadataHandler:
             "rank": rank,
             "provider_ids": provider_ids,
             "metadata": metadata,
+            # field -> the name of the provider whose value the merged record holds
+            "field_providers": {
+                name: provider_names[provider_id]
+                for name, provider_id in origins.items()
+                if provider_id in provider_names
+            },
             "providers": sorted({session.sources[key].candidate.provider for key in group}),
             "assets": [],
         }
@@ -635,8 +666,8 @@ class MetadataHandler:
 
     @staticmethod
     def provider_reports(session: SearchSession, group_id: str | None) -> dict[str, Any]:
-        """Identity verdicts and game relations, per registered provider (Plugin API 1.1.20)."""
-        group = session.groups.get(group_id or "", ())
+        """Identity verdicts, game relations and preferable field values, per provider."""
+        group, labels = session.groups.get(group_id or "", ()), source_labels(session.providers)
         namespaces = {
             provider.id: provider.declaration.identifier_namespace for provider in session.providers
         }
@@ -647,6 +678,7 @@ class MetadataHandler:
         return {
             "provider_identities": provider_identities(session.sources, group, namespaces),
             "provider_relations": provider_relations(session.sources, group, namespaces, contracts),
+            "provider_values": provider_values(session.sources, group, labels),
         }
 
     def _rank(self, session: SearchSession) -> None:

@@ -47,6 +47,7 @@ from src.features.game_identity.provider_ids import (
 from src.features.metadata.game_releases import add_release_updates, release_for
 from src.features.metadata.locked_fields import apply_metadata_updates
 from src.features.metadata.service import (
+    field_source,
     game_result,
     library_candidate,
     resolve_library_record,
@@ -222,16 +223,25 @@ async def set_field_preference(
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> dict:
-    """Prefer one source for a metadata field; its known value is taken now unless locked."""
+    """Prefer one source for a metadata field; its known value is taken now unless locked.
+
+    `outcome` says why `applied` is false: `unchanged` (the game already holds that value),
+    `locked`, or `awaiting_value` (the source has reported no value yet; the next refresh that
+    reports one applies it, also when that value loses the merge to another provider)."""
     game = await _get_game_or_404(game_id, db, current_user.id, for_update=True)
     try:
-        applied = await field_preferences.set_preference(db, game, field, payload.source_key)
+        outcome = await field_preferences.set_preference(db, game, field, payload.source_key)
     except field_preferences.InvalidPreference as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
     await db.commit()
-    return {"field": field, "source_key": payload.source_key, "applied": applied}
+    return {
+        "field": field,
+        "source_key": payload.source_key,
+        "applied": outcome == field_preferences.APPLIED,
+        "outcome": outcome,
+    }
 
 
 @router.delete("/{game_id}/field-preferences/{field}", status_code=status.HTTP_204_NO_CONTENT)
@@ -298,6 +308,15 @@ def _record_followed_ids(
                 changed_at=now,
             )
         )
+
+
+def _by_source(updates: dict[str, object], sources: dict[str, str | None]) -> dict:
+    """The updated fields grouped by the provider that supplied them."""
+    grouped: dict[str | None, list[str]] = {}
+    for field in updates:
+        if field in sources:
+            grouped.setdefault(sources[field], []).append(field)
+    return grouped
 
 
 def _reported_title(record: dict) -> str | None:
@@ -441,6 +460,11 @@ async def refresh_game_metadata(
             "The title-only match changed after the preview; confirm the new candidate to apply it."
         )
     preview_only = payload.dry_run or needs_confirmation
+    # A field preferred to a provider that reported it takes that provider's value, also one
+    # that lost the merge to a higher-priority provider (D2).
+    match = field_preferences.with_preferred_values(
+        match, await field_preferences.preferences(db, game)
+    )
 
     field_values: dict[str, object] = {
         "title": match.get("title"),
@@ -473,10 +497,14 @@ async def refresh_game_metadata(
         "time_to_beat_all_hours": "save_time_to_beat",
     }
     updates: dict[str, object] = {}
+    # fields the refresh offered with the value the game already holds (their source is re-read)
+    unchanged: dict[str, object] = {}
     skipped_locked: list[str] = []
     # Lock > preference: a field whose preferred source is another one with a value is left alone.
+    # Each field of the merged result names the provider it came from (Steam, IGDB, Atlas...).
+    sources = {field: field_source(match, field) for field in field_values}
     held_by_preference = await field_preferences.fields_held_by_other_source(
-        db, game, match.get("provider"), field_values.keys()
+        db, game, match.get("provider"), field_values.keys(), field_providers=sources
     )
     for field, fresh in field_values.items():
         if (
@@ -498,6 +526,8 @@ async def refresh_game_metadata(
                 updates[field] = fresh
         elif fresh != current:
             updates[field] = fresh
+        else:
+            unchanged[field] = current
 
     add_release_updates(
         game,
@@ -610,12 +640,33 @@ async def refresh_game_metadata(
     if payload.update_text:
         _record_field_changes(game, updates, db)
         apply_metadata_updates(game, updates)
-        await field_provenance.record_field_sources(
+        for provider, fields in _by_source(updates, sources).items():
+            await field_provenance.record_field_sources(
+                db,
+                game,
+                {field: updates[field] for field in fields},
+                origin=FieldValueOrigin.METADATA,
+                provider=provider,
+            )
+        # an unchanged value recorded under the old merged "Library" label is re-attributed
+        for provider, fields in _by_source(unchanged, sources).items():
+            await field_provenance.relabel_unchanged(
+                db, game, {field: unchanged[field] for field in fields}, provider=provider
+            )
+        # what every other provider reported (values that lost the merge), so a preference
+        # can choose one of them later (D2); fields the person does not save are left alone
+        saved_fields = {
+            field
+            for field in field_values
+            if not (gated_flags.get(field) and not preferences.get(gated_flags[field], True))
+        }
+        recorded = {field: sources.get(field) for field in {*updates, *unchanged}}
+        await field_provenance.record_candidates(
             db,
             game,
-            updates,
-            origin=FieldValueOrigin.METADATA,
-            provider=match.get("provider"),
+            field_preferences.provider_candidates(match, saved_fields, recorded),
+            fields=saved_fields,
+            reporting=(match.get("provider_values") or {}).keys(),
         )
         if "title" in updates:
             names.note_title_change(game, trusted_metadata=True)

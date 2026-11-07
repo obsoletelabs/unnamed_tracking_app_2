@@ -35,6 +35,7 @@ import { viewportPrefetchRows } from "../services/gamePages";
 
 import { activePriority, priorityLabel } from "../utils/priority";
 import { formatDisplayDate, newest } from "../utils/dates";
+import { newestRelease } from "../utils/releaseDate";
 import {
   fetchGamesForViewport,
   peekAllGames,
@@ -1505,10 +1506,7 @@ export function useGameLibrary() {
           lastIfNull(activePriority(a), activePriority(b), (x, y) => x - y) ||
           a.title.localeCompare(b.title)
         );
-      if (sortBy.value === "release")
-        return lastIfNull(a.releaseDate, b.releaseDate, (x, y) =>
-          y.localeCompare(x),
-        );
+      if (sortBy.value === "release") return newestRelease(a, b);
       // shortest first, for "something I can finish this weekend"
       if (sortBy.value === "length")
         return lastIfNull(

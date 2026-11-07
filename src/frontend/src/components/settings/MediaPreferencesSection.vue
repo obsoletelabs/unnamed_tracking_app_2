@@ -79,6 +79,15 @@ async function lookUpTitles() {
   }
 }
 
+const dateDisplayOptions = [
+  { value: "locale", label: "My language" },
+  { value: "iso", label: "As stored (2011-04)" },
+];
+const partialDateOptions = [
+  { value: "long", label: "April 2011" },
+  { value: "short", label: "Apr 2011" },
+];
+
 const layoutOptions = [
   { value: "list", label: "List" },
   { value: "shelf", label: "Shelf" },
@@ -96,7 +105,8 @@ const listSortOptions = [
   <section class="settings-section">
     <h2>Media Preferences</h2>
     <p class="section-hint">
-      Defaults for Movies, TV Shows, Anime, Lists and Statistics.
+      Defaults for Movies, TV Shows, Anime, Lists and Statistics, and how
+      release dates are shown.
       <span v-if="savedNote" class="saved">{{ savedNote }}</span>
     </p>
     <p v-if="error" class="error">{{ error }}</p>
@@ -141,6 +151,30 @@ const listSortOptions = [
         {{ fillingTitles ? "Looking up…" : "Look up titles for my anime" }}
       </button>
       <small v-if="titlesNote">{{ titlesNote }}</small>
+    </div>
+    <div class="field">
+      <span>Release dates</span>
+      <SegmentedControl
+        :model-value="prefs.date_display"
+        :options="dateDisplayOptions"
+        @update:model-value="
+          change({ date_display: $event as Preferences['date_display'] })
+        "
+      />
+      <SegmentedControl
+        v-if="prefs.date_display === 'locale'"
+        :model-value="prefs.partial_date_style"
+        :options="partialDateOptions"
+        @update:model-value="
+          change({
+            partial_date_style: $event as Preferences['partial_date_style'],
+          })
+        "
+      />
+      <small
+        >A date is never shown as more precise than it is known: a game known
+        only by its year shows 2011, never 1 January 2011.</small
+      >
     </div>
     <div class="field">
       <span>Lists sort</span>

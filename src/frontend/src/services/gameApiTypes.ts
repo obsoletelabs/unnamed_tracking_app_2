@@ -19,6 +19,8 @@ export interface BackendGame {
   has_key_art?: boolean | null;
   description: string | null;
   release_date: string | null;
+  // "year" | "month" for a partial date (release_date is the period's first day); null is a day
+  release_date_precision?: "year" | "month" | "day" | null;
   developer: string | null;
   publisher: string | null;
   series: string | null;

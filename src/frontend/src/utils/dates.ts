@@ -57,3 +57,68 @@ export function newest(
     typeof v === "number" ? v * 1000 : Date.parse(v ?? "") || 0;
   return time(b) - time(a);
 }
+
+// How much of a release date is known (CONTRACTS-v1 C5). The API sends a year
+// or a month as the first day of its period plus this precision; a day has no
+// precision (null), as every date stored before partial dates existed.
+export type DatePrecision = "year" | "month" | "day";
+
+export interface DateFormatPreferences {
+  // "locale": the browser's language; "iso": the stored value as written
+  date_display: "locale" | "iso";
+  // a month as "April 2011" (long) or "Apr 2011" (short)
+  partial_date_style: "short" | "long";
+}
+
+const PARTIAL = /^(\d{4})(?:-(\d{2}))?(?:-(\d{2}))?$/;
+
+// A release date for display, never more precise than what is known: a year
+// is "2011", never "1 January 2011". `value` is the stored "YYYY-MM-DD" (the
+// start of the period) or a partial "YYYY" / "YYYY-MM".
+export function formatPartialDate(
+  value: string | null | undefined,
+  precision: DatePrecision | null | undefined,
+  prefs: DateFormatPreferences,
+): string {
+  if (!value) return "";
+  const match = PARTIAL.exec(value);
+  if (!match) return formatDisplayDate(value);
+  const known: DatePrecision =
+    precision === "year" || !match[2]
+      ? "year"
+      : precision === "month" || !match[3]
+        ? "month"
+        : "day";
+  if (prefs.date_display === "iso")
+    return value.slice(0, { year: 4, month: 7, day: 10 }[known]);
+  if (known === "year") return match[1];
+  if (known === "month")
+    return new Date(
+      Number(match[1]),
+      Number(match[2]) - 1,
+      1,
+    ).toLocaleDateString(undefined, {
+      year: "numeric",
+      month: prefs.partial_date_style === "short" ? "short" : "long",
+    });
+  return formatDisplayDate(value);
+}
+
+const PRECISION_RANK: Record<DatePrecision, number> = {
+  year: 0,
+  month: 1,
+  day: 2,
+};
+
+// Orders release dates oldest first by the start of their period, and a less
+// precise date first on the same start: "2011" before "April 2011" before
+// "1 April 2011" (C5.5). A missing precision is a day.
+export function compareReleaseDates(
+  a: { date: string; precision?: DatePrecision | null },
+  b: { date: string; precision?: DatePrecision | null },
+): number {
+  return (
+    a.date.slice(0, 10).localeCompare(b.date.slice(0, 10)) ||
+    PRECISION_RANK[a.precision ?? "day"] - PRECISION_RANK[b.precision ?? "day"]
+  );
+}

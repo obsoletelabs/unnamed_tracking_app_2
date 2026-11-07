@@ -52,7 +52,10 @@ export function mapAchievements(raw: BackendAchievement[]): Achievement[] {
     })),
     points: a.points ?? null,
     tierOverride:
-      a.medal === "bronze" || a.medal === "silver" || a.medal === "gold"
+      a.medal === "bronze" ||
+      a.medal === "silver" ||
+      a.medal === "gold" ||
+      a.medal === "platinum"
         ? a.medal
         : null,
     kind: normalizeKind(a.tier),

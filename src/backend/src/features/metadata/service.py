@@ -16,6 +16,7 @@ from src.plugin_api.metadata_contracts import (
     ProviderHealth,
 )
 
+from .game_releases import release_source
 from .handler import handler
 from .health import monitor
 from .identity import normalized_title
@@ -181,12 +182,24 @@ def game_result(record: dict[str, Any]) -> dict[str, Any]:
         "provider_id": record.get("external_id"),
         "provider_ids": record.get("provider_ids", {}),
         "candidate_id": record.get("id"),
+        "field_providers": record.get("field_providers", {}),
+        # label -> {field: value} each provider reported, also values that lost the merge
+        "provider_values": record.get("provider_values", {}),
     }
     for kind in ("key_art", "banner", "logo", "icon"):
         urls = [asset["url"] for asset in record.get("assets", []) if asset["kind"] == kind]
         result[f"{kind}_urls"] = urls
         result[f"{kind}_url"] = urls[0] if urls else None
     return result
+
+
+def field_source(match: dict[str, Any], field: str) -> str | None:
+    """The name of the provider whose value of `field` a ``game_result`` holds (the fields of
+    a merged result come from several providers); the result's lead provider when the field
+    has no recorded origin. A release date is the provider of the result field it was taken
+    from (``first_release`` or the legacy day)."""
+    key = release_source(match) if field == "release_date" else field
+    return (match.get("field_providers") or {}).get(key) or match.get("provider")
 
 
 async def search_games(

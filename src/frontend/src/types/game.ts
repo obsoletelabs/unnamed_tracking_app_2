@@ -8,7 +8,8 @@ export type GameStatus =
   | "dropped"
   | "mastered";
 
-export type AchievementTier = "bronze" | "silver" | "gold";
+// "platinum" is a whole-catalogue completion trophy (Plugin API 1.1.20)
+export type AchievementTier = "bronze" | "silver" | "gold" | "platinum";
 
 // how a provider classifies an achievement (RetroAchievements is the only
 // one that does today)
@@ -70,6 +71,7 @@ export interface Achievement {
 }
 
 import type { PageOverrides } from "../utils/gamePage";
+import type { DatePrecision } from "../utils/dates";
 
 export interface GamePlatform {
   platform: string;
@@ -161,7 +163,10 @@ export interface Game {
   // right on the overview, not something you have to go looking for
   resumeNote: string | null;
   folderLocation: string | null;
+  // the first day of the period for a year or month; see releaseDatePrecision
   releaseDate: string | null;
+  // "year" or "month" when only that much is known; null or absent is a day
+  releaseDatePrecision?: DatePrecision | null;
   source: string | null;
   // the system it's played on, separate from `source` (where the copy came
   // from), optional so hand-built/mock games don't need it

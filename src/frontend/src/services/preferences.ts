@@ -96,6 +96,10 @@ export interface Preferences {
   library_relationship_display: Record<string, "link" | "nest" | "hidden">;
   lists_default_sort: "custom" | "name" | "count" | "recent";
   title_language: "english" | "romaji" | "native";
+  // release dates: the browser's language or the stored value as written
+  date_display: "locale" | "iso";
+  // a month known without its day: "April 2011" (long) or "Apr 2011" (short)
+  partial_date_style: "short" | "long";
   stats_include_plan: boolean;
   anilist_import_username: string;
   anilist_import_update_existing: boolean;
@@ -156,6 +160,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   library_relationship_display: {},
   lists_default_sort: "custom",
   title_language: "english",
+  date_display: "locale",
+  partial_date_style: "long",
   stats_include_plan: true,
   anilist_import_username: "",
   anilist_import_update_existing: false,

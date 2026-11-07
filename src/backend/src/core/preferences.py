@@ -70,6 +70,10 @@ DEFAULTS: dict[str, Any] = {
     "library_version_display": "grouped",
     "library_relationship_display": {},
     "title_language": "english",
+    # release dates (CONTRACTS-v1 C5.5): the browser's language or the stored value as written,
+    # and a month known without its day as "April 2011" (long) or "Apr 2011" (short)
+    "date_display": "locale",
+    "partial_date_style": "long",
     "lists_default_sort": "custom",
     "stats_include_plan": True,
     "anilist_import_username": "",
@@ -98,6 +102,8 @@ _CHOICES: dict[str, tuple[Any, ...]] = {
     "library_version_display": ("grouped", "separate"),
     "lists_default_sort": ("custom", "name", "count", "recent"),
     "title_language": ("english", "romaji", "native"),
+    "date_display": ("locale", "iso"),
+    "partial_date_style": ("short", "long"),
 }
 
 # Days a trashed movie/show/anime stays before the scheduled sweep deletes it.
