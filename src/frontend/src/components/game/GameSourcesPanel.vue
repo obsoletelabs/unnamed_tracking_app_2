@@ -3,8 +3,9 @@
 // plugin), what each contributes and, where two sources report the same
 // playtime, which one is preferred. The choice is the counters' own source
 // priority, so the Advanced dialog's Counters tab always agrees (#339, #349).
-// A "Metadata" row shows the preferred metadata source and which fields the
-// sources disagree on; the per-field list lives beside the field itself.
+// A "Metadata" row names the source of every metadata field, marks locks and
+// preferences the value does not follow, and links the fields the sources
+// disagree on; the per-field list lives beside the field itself.
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import {
   fetchIdentitySources,
@@ -15,7 +16,11 @@ import {
   fetchFieldSources,
   type FieldSources,
 } from "../../services/gameFieldSources";
-import { FIELD_LABELS, metadataSummary } from "../../utils/fieldSources";
+import {
+  FIELD_LABELS,
+  fieldProvenance,
+  metadataSummary,
+} from "../../utils/fieldSources";
 import { agoLabel } from "../../utils/identityDisplay";
 import {
   hasContest,
@@ -67,9 +72,12 @@ const sources = computed(() =>
 );
 const contested = computed(() => hasContest(sources.value));
 const metadata = computed(() => metadataSummary(fieldSources.value));
+const provenance = computed(() => fieldProvenance(fieldSources.value));
 const showMetadata = computed(
   () =>
-    !!metadata.value.preferredLabel || metadata.value.disagreeing.length > 0,
+    !!metadata.value.preferredLabel ||
+    metadata.value.disagreeing.length > 0 ||
+    provenance.value.length > 0,
 );
 
 // the per-field list sits beside the field: take the person to its label
@@ -162,6 +170,39 @@ async function prefer(key: string): Promise<void> {
               {{ metadata.preferredFields === 1 ? "field" : "fields" }})</span
             >
           </div>
+          <ul class="provenance" aria-label="Where each field comes from">
+            <li
+              v-for="row in provenance"
+              :key="row.field"
+              :class="{ warn: row.preferenceNotInEffect && !row.locked }"
+            >
+              <span class="field">{{ row.label }}</span>
+              <span class="from">
+                <svg
+                  v-if="row.locked"
+                  viewBox="0 0 24 24"
+                  width="11"
+                  height="11"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.4"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  role="img"
+                  aria-label="Locked"
+                >
+                  <rect x="5" y="11" width="14" height="10" rx="2" />
+                  <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+                </svg>
+                {{ row.source }}
+              </span>
+              <span
+                v-if="row.preferenceNotInEffect && !row.locked"
+                class="pref-note"
+                >{{ row.preferred }} preferred, not shown</span
+              >
+            </li>
+          </ul>
           <p v-if="metadata.disagreeing.length" class="sub">
             Sources disagree on
             <template v-for="(field, i) in metadata.disagreeing" :key="field"
@@ -239,6 +280,41 @@ h2 {
   border-radius: 6px;
   font-size: 0.8rem;
   padding: 1px 8px;
+}
+.provenance {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  margin: 6px 0;
+  padding: 0;
+}
+.provenance li {
+  align-items: baseline;
+  border: 1px solid var(--ui-border-soft);
+  border-radius: 8px;
+  display: inline-flex;
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+  gap: 2px 6px;
+  padding: 3px 8px;
+}
+.provenance .field {
+  color: var(--ui-dim);
+}
+.provenance .from {
+  align-items: center;
+  display: inline-flex;
+  font-weight: 600;
+  gap: 3px;
+}
+.provenance li.warn {
+  background: var(--ui-warning-soft);
+  border-color: var(--ui-warning);
+}
+.provenance .pref-note {
+  color: var(--ui-warning);
+  font-size: 0.75rem;
 }
 .link {
   background: none;
