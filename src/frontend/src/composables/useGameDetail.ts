@@ -1,4 +1,5 @@
 import { useGameChecklist } from "./useGameChecklist";
+import { releaseFacts } from "../utils/releaseDate";
 import { usePageTitle } from "../state/pageTitle";
 import { computed, ref, watch, onMounted, onUnmounted, nextTick } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -702,6 +703,7 @@ export function useGameDetail() {
       accent?: boolean;
       muted?: boolean;
       tab?: TabName;
+      field?: string;
     }[] = [];
     // your verdict first (score and where it ranks), then how you played it;
     // the individual ratings get their own row under these
@@ -717,6 +719,7 @@ export function useGameDetail() {
     }
     // playtime, achievements and platform are not repeated here: the hero shows the
     // achievements and platform, Copies & versions the reconciled playtime
+    facts.push(...releaseFacts(g));
     if (g.timeToBeatHours != null && g.timeToBeatHours > 0)
       facts.push({ label: "Main story", value: `~${g.timeToBeatHours}h` });
     if (g.dateAdded && !pageSettings.value.hide_date_badge)

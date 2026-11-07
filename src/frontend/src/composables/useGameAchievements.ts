@@ -1,7 +1,7 @@
 import { computed, ref, watch } from "vue";
 import type { Achievement, Game } from "../types/game";
 import type { SegmentOption } from "../components/SegmentedTabs.vue";
-import { isUnlocked, formatPercent } from "../utils/achievements";
+import { isUnlocked, isPlatinum, formatPercent } from "../utils/achievements";
 import {
   loadAchievementLocal,
   saveAchievementLocal,
@@ -388,6 +388,13 @@ export function useGameAchievements(game: Ref<Game | null>) {
       stats.push({
         label: "complete",
         value: `${Math.round((done.length / list.length) * 100)}%`,
+      });
+    // the whole-catalogue trophy, when the game has one
+    const platinum = list.find(isPlatinum);
+    if (platinum)
+      stats.push({
+        label: isUnlocked(platinum) ? "earned" : "not earned yet",
+        value: "Platinum",
       });
     const percents = done
       .map((a) => a.rarityPercent)

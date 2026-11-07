@@ -25,7 +25,7 @@ import {
   sizedAssetUrl,
 } from "../utils/gameImages";
 import type { ContentCounts, PageOverrides } from "../utils/gamePage";
-import type { BackendGame } from "./gameApiTypes";
+import { mapReleaseFields, type BackendGame } from "./gameApiTypes";
 export type { BackendGame } from "./gameApiTypes";
 import type {
   Achievement,
@@ -133,7 +133,7 @@ export function mapBackendGame(raw: BackendGame): Game {
     completionDate: unixSecondsToDateInput(raw.completion_date),
     folderLocation: raw.folder_location,
     releaseDate: raw.release_date,
-    releaseDatePrecision: raw.release_date_precision ?? null,
+    ...mapReleaseFields(raw),
     source: raw.source,
     providerIds: raw.provider_ids ?? {},
     playniteGuid: raw.playnite_guid ?? null,

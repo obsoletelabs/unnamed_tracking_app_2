@@ -45,3 +45,81 @@ export function kindName(kind: string, label: string): string {
   if (kind === "custom") return label || "Custom";
   return RELATIONSHIP_KINDS.find((k) => k.value === kind)?.label ?? kind;
 }
+
+// The same relationship read from the other end: Tidebound is "DLC of" Harbor,
+// so Harbor lists Tidebound as its "DLC".
+const INVERSE_KIND_LABELS: Record<string, string> = {
+  version_of: "Other version",
+  remake_of: "Remake",
+  remaster_of: "Remaster",
+  port_of: "Port",
+  dlc_of: "DLC",
+  expansion_of: "Expansion",
+  standalone_expansion_of: "Standalone expansion",
+  mod_of: "Mod",
+  modpack_of: "Modpack",
+  total_conversion_of: "Total conversion",
+  series_member: "In series",
+  collection_member: "In collection",
+  related_to: "Related to",
+};
+
+export interface RelatedGameLink {
+  relationshipId: string;
+  gameId: string;
+  title: string;
+  /** how the other game relates to this one, read from this page */
+  label: string;
+  /** "outgoing": this game is the DLC/remake/version; "incoming": the other one is */
+  direction: "outgoing" | "incoming";
+}
+
+/**
+ * The live relationships of a game other than its merged versions, readable
+ * from either end, so a DLC links to its base game and the base game back to
+ * its DLC (and likewise for remakes and editions). Base games, the things
+ * this game belongs to, come first.
+ */
+export function relatedGameLinks(
+  data: IdentitySources,
+  gameId: string,
+): RelatedGameLink[] {
+  const mine = new Set([
+    gameId,
+    data.umbrella_id,
+    ...data.versions.map((v) => v.game_id),
+  ]);
+  const links: RelatedGameLink[] = [];
+  for (const r of data.relationships) {
+    if (r.kind === "same_game" || r.ended_at !== null) continue;
+    if (!r.from_id || !r.to_id) continue;
+    const fromMine = mine.has(r.from_id);
+    const toMine = mine.has(r.to_id);
+    if (fromMine === toMine) continue;
+    if (fromMine)
+      links.push({
+        relationshipId: r.id,
+        gameId: r.to_id,
+        title: titleOf(data, r.to_id),
+        label: kindName(r.kind, r.label),
+        direction: "outgoing",
+      });
+    else
+      links.push({
+        relationshipId: r.id,
+        gameId: r.from_id,
+        title: titleOf(data, r.from_id),
+        label:
+          r.kind === "custom"
+            ? r.label || "Related"
+            : (INVERSE_KIND_LABELS[r.kind] ?? kindName(r.kind, r.label)),
+        direction: "incoming",
+      });
+  }
+  return links.sort(
+    (a, b) =>
+      Number(a.direction === "incoming") - Number(b.direction === "incoming") ||
+      a.label.localeCompare(b.label) ||
+      a.title.localeCompare(b.title),
+  );
+}
