@@ -10,8 +10,12 @@ reported may be applied to the game (C4.1: never auto-assign ``ambiguous``). Its
 out of the merged record (``handler._metadata``) and its relations out of ingestion; its id
 claims are dropped by ``refresh_match``. A ``conflict`` provider's relations are left out too
 (the refresh applies nothing then, but a relation must never come from a disputed record).
+
+`provider_values` keeps what each provider reported for the fields a person can prefer a provider
+for, also values that lost the merge, so a field preference can choose them (PHASE5 D2).
 """
 
+from collections import Counter
 from collections.abc import Iterable, Mapping
 from typing import Any, Protocol
 
@@ -27,6 +31,22 @@ UNASSIGNABLE_MATCHES = frozenset({"ambiguous"})
 UNRELATABLE_MATCHES = frozenset({"ambiguous", "conflict"})
 # only work-level relations are game relations; chains, branches and recommendations are not
 GAME_RELATION_GROUP = "related"
+# Patch fields whose per-provider values reach a refresh (`provider_values`), so a field
+# preference can pick a provider whose value lost the merge. Displayable game metadata only;
+# never ids, scores, links, custom values or anything a provider marks hidden.
+PREFERABLE_FIELDS = frozenset(
+    {
+        "age_rating",
+        "description",
+        "developer",
+        "features",
+        "first_release",
+        "publisher",
+        "release_date",
+        "series",
+        "tags",
+    }
+)
 
 
 def is_unassignable(patch: MetadataPatch) -> bool:
@@ -62,6 +82,39 @@ def _patches(
         for provider_id, patch in sources[key].metadata.items():
             if provider_id in allowed:
                 yield provider_id, patch
+
+
+class _Named(Protocol):
+    @property
+    def id(self) -> str: ...
+
+    @property
+    def name(self) -> str: ...
+
+
+def source_labels(providers: Iterable[_Named]) -> dict[str, str]:
+    """provider id -> the label its values are recorded and preferred under: the display
+    name, or ``name (id)`` when two providers share it (two plugins both called "RAWG")."""
+    providers = list(providers)
+    names = Counter(provider.name for provider in providers)
+    return {p.id: p.name if names[p.name] == 1 else f"{p.name} ({p.id})" for p in providers}
+
+
+def provider_values(
+    sources: Mapping[str, _Source], group: Iterable[str], labels: Mapping[str, str]
+) -> dict[str, dict[str, Any]]:
+    """label -> {field: value} each registered provider (`labels`, provider id -> label)
+    reported for this result, limited to `PREFERABLE_FIELDS`, including values that lost the
+    merge. A provider whose identity verdict is ``ambiguous`` reported nothing for this game."""
+    out: dict[str, dict[str, Any]] = {}
+    for provider_id, patch in _patches(sources, group, labels):
+        if is_unassignable(patch):
+            continue
+        dumped = patch.model_dump(mode="json", include=set(PREFERABLE_FIELDS))
+        for name, value in dumped.items():
+            if value is not None and value not in ("", [], {}):
+                out.setdefault(labels[provider_id], {}).setdefault(name, value)
+    return out
 
 
 def provider_identities(

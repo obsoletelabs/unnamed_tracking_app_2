@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections import Counter, OrderedDict
+from collections import OrderedDict
 from collections.abc import AsyncIterator, Iterable, Sequence
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -28,7 +28,13 @@ from .configuration import UNRANKED
 from .core import CoreMetadataProvider
 from .deadlines import bounded
 from .identity import candidate_id, identities, rank_key, same_entity
-from .provider_reports import is_unassignable, provider_identities, provider_relations
+from .provider_reports import (
+    is_unassignable,
+    provider_identities,
+    provider_relations,
+    provider_values,
+    source_labels,
+)
 from .providers import Operation, PluginMetadataProvider
 
 logger = logging.getLogger(__name__)
@@ -450,15 +456,6 @@ class MetadataHandler:
         return metadata, origins
 
     @staticmethod
-    def _source_labels(session: SearchSession) -> dict[str, str]:
-        """provider id -> the label its values are recorded and preferred under: the display
-        name, or ``name (id)`` when two providers share it (two plugins both called "RAWG")."""
-        names = Counter(provider.name for provider in session.providers)
-        return {
-            p.id: p.name if names[p.name] == 1 else f"{p.name} ({p.id})" for p in session.providers
-        }
-
-    @staticmethod
     def _place(
         metadata: dict[str, Any], origins: dict[str, str], provider_id: str, name: str, value: Any
     ) -> None:
@@ -545,7 +542,7 @@ class MetadataHandler:
     def _record(self, session: SearchSession, group: list[str], rank: int) -> dict[str, Any]:
         representative = self._identity(session, session.sources[group[0]])
         metadata, origins = self._merged(session, [session.sources[key] for key in group])
-        provider_names = self._source_labels(session)
+        provider_names = source_labels(session.providers)
         provider_ids: dict[str, str] = {}
         for key in group:
             for namespace, external_id in identities(
@@ -669,8 +666,8 @@ class MetadataHandler:
 
     @staticmethod
     def provider_reports(session: SearchSession, group_id: str | None) -> dict[str, Any]:
-        """Identity verdicts and game relations, per registered provider (Plugin API 1.1.20)."""
-        group = session.groups.get(group_id or "", ())
+        """Identity verdicts, game relations and preferable field values, per provider."""
+        group, labels = session.groups.get(group_id or "", ()), source_labels(session.providers)
         namespaces = {
             provider.id: provider.declaration.identifier_namespace for provider in session.providers
         }
@@ -681,6 +678,7 @@ class MetadataHandler:
         return {
             "provider_identities": provider_identities(session.sources, group, namespaces),
             "provider_relations": provider_relations(session.sources, group, namespaces, contracts),
+            "provider_values": provider_values(session.sources, group, labels),
         }
 
     def _rank(self, session: SearchSession) -> None:

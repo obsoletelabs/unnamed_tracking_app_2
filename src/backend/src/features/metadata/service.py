@@ -183,6 +183,8 @@ def game_result(record: dict[str, Any]) -> dict[str, Any]:
         "provider_ids": record.get("provider_ids", {}),
         "candidate_id": record.get("id"),
         "field_providers": record.get("field_providers", {}),
+        # label -> {field: value} each provider reported, also values that lost the merge
+        "provider_values": record.get("provider_values", {}),
     }
     for kind in ("key_art", "banner", "logo", "icon"):
         urls = [asset["url"] for asset in record.get("assets", []) if asset["kind"] == kind]

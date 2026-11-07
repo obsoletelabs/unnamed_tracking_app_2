@@ -223,16 +223,25 @@ async def set_field_preference(
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> dict:
-    """Prefer one source for a metadata field; its known value is taken now unless locked."""
+    """Prefer one source for a metadata field; its known value is taken now unless locked.
+
+    `outcome` says why `applied` is false: `unchanged` (the game already holds that value),
+    `locked`, or `awaiting_value` (the source has reported no value yet; the next refresh that
+    reports one applies it, also when that value loses the merge to another provider)."""
     game = await _get_game_or_404(game_id, db, current_user.id, for_update=True)
     try:
-        applied = await field_preferences.set_preference(db, game, field, payload.source_key)
+        outcome = await field_preferences.set_preference(db, game, field, payload.source_key)
     except field_preferences.InvalidPreference as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
     await db.commit()
-    return {"field": field, "source_key": payload.source_key, "applied": applied}
+    return {
+        "field": field,
+        "source_key": payload.source_key,
+        "applied": outcome == field_preferences.APPLIED,
+        "outcome": outcome,
+    }
 
 
 @router.delete("/{game_id}/field-preferences/{field}", status_code=status.HTTP_204_NO_CONTENT)
@@ -451,6 +460,11 @@ async def refresh_game_metadata(
             "The title-only match changed after the preview; confirm the new candidate to apply it."
         )
     preview_only = payload.dry_run or needs_confirmation
+    # A field preferred to a provider that reported it takes that provider's value, also one
+    # that lost the merge to a higher-priority provider (D2).
+    match = field_preferences.with_preferred_values(
+        match, await field_preferences.preferences(db, game)
+    )
 
     field_values: dict[str, object] = {
         "title": match.get("title"),
@@ -639,6 +653,21 @@ async def refresh_game_metadata(
             await field_provenance.relabel_unchanged(
                 db, game, {field: unchanged[field] for field in fields}, provider=provider
             )
+        # what every other provider reported (values that lost the merge), so a preference
+        # can choose one of them later (D2); fields the person does not save are left alone
+        saved_fields = {
+            field
+            for field in field_values
+            if not (gated_flags.get(field) and not preferences.get(gated_flags[field], True))
+        }
+        recorded = {field: sources.get(field) for field in {*updates, *unchanged}}
+        await field_provenance.record_candidates(
+            db,
+            game,
+            field_preferences.provider_candidates(match, saved_fields, recorded),
+            fields=saved_fields,
+            reporting=(match.get("provider_values") or {}).keys(),
+        )
         if "title" in updates:
             names.note_title_change(game, trusted_metadata=True)
             await names.reconcile_games(db, game.user_id, [game])

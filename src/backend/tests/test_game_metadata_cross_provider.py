@@ -23,7 +23,7 @@ from src.database.models.game_identity_tracking import (
     GameFieldValue,
 )
 from src.database.session import SessionLocal
-from src.features.game_identity import decisions
+from src.features.game_identity import decisions, field_provenance
 from src.features.game_identity.field_provenance import PROVENANCE_FIELDS
 from src.features.imports.library_games import get_or_create_game
 from src.plugin_api.metadata_contracts import MetadataPatch, MetadataRelease
@@ -196,14 +196,23 @@ async def test_a_preference_for_a_lower_priority_provider_wins_over_the_merged_v
         )
         await db.commit()
 
-    await refresh(client, game_id)
+    result = await refresh(client, game_id)
 
-    # RAWG had no recorded value yet, so the refresh fills the field as usual (IGDB's)
-    assert (await stored(game_id)).developer == "Valve"
-    # and a second refresh still does not hand IGDB's value to the preferred RAWG
-    await refresh(client, game_id)
-    sources = await current_sources(game_id)
-    assert sources["developer"] == ("core.igdb", "Valve")
+    # RAWG reported a developer this time, so the preference takes it although IGDB outranks it
+    # (D2: before, only merge winners were known and the field kept IGDB's value for good)
+    assert "developer" in result["changed_fields"]
+    assert (await stored(game_id)).developer == "Valve (RAWG)"
+    assert (await current_sources(game_id))["developer"] == (RAWG, "Valve (RAWG)")
+    # IGDB's value, which won the merge, is kept as a candidate to switch back to
+    read = (await client.get(f"/api/game/{game_id}/field-sources")).json()["developer"]
+    assert {s["source_key"]: (s["value"], s["current"]) for s in read["sources"]} == {
+        f"provider:{RAWG}": ("Valve (RAWG)", True),
+        "provider:core.igdb": ("Valve", False),
+    }
+    # a second refresh with the same answers changes nothing
+    again = await refresh(client, game_id)
+    assert again["changed_fields"] == []
+    assert (await stored(game_id)).developer == "Valve (RAWG)"
 
 
 async def test_locks_and_play_history_survive_a_four_provider_refresh(owner, providers, client):
@@ -261,10 +270,26 @@ async def test_a_second_refresh_with_the_same_answers_changes_nothing(owner, pro
     async with SessionLocal() as db:
         rows = await db.scalar(
             select(func.count()).where(
-                GameFieldValue.game_id == game_id, GameFieldValue.field.in_(PROVENANCE_FIELDS)
+                GameFieldValue.game_id == game_id,
+                GameFieldValue.field.in_(PROVENANCE_FIELDS),
+                GameFieldValue.state != FieldValueState.CANDIDATE.value,
             )
         )
+        candidates = {
+            (row.field, row.source_label): row.value
+            for row in await db.scalars(
+                select(GameFieldValue).where(
+                    GameFieldValue.game_id == game_id,
+                    GameFieldValue.state == FieldValueState.CANDIDATE.value,
+                )
+            )
+        }
     assert rows == len(sources)
+    # the values that lost the merge, one row each, not one more per refresh
+    assert candidates == {
+        ("developer", RAWG): "Valve (RAWG)",
+        ("description", ATLAS): "An Atlas description that Steam outranks.",
+    }
 
 
 async def test_a_steam_reimport_after_merge_and_unmerge_reuses_both_games(owner, providers, client):
@@ -446,7 +471,11 @@ async def test_a_library_preference_from_before_per_field_sources_still_follows_
     assert (await current_sources(game_id))["developer"] == ("core.igdb", "Valve Corporation")
     read = (await client.get(f"/api/game/{game_id}/field-sources")).json()
     assert read["developer"]["preferred"] == "provider:Library"
-    assert [s["source_key"] for s in read["developer"]["sources"]] == ["provider:core.igdb"]
+    # the legacy label is no longer offered; IGDB's value and RAWG's losing one are
+    assert [s["source_key"] for s in read["developer"]["sources"]] == [
+        f"provider:{RAWG}",
+        "provider:core.igdb",
+    ]
 
 
 async def test_preferring_a_providers_month_restores_the_month_not_its_first_day(
@@ -567,3 +596,175 @@ async def test_a_steam_sync_reuses_the_steam_copy_whichever_side_of_a_merge_it_i
     assert game.playtime_seconds == 30 * 60
     assert game.provider_ids["igdb"] == IGDB_ID
     assert (await stored(other_copy)).playtime_seconds == 60
+
+
+async def test_d2_preferring_a_provider_that_lost_the_merge_applies_at_once(
+    owner, providers, client
+):
+    """PHASE5 D2: PUT field-preferences/developer for RAWG answered 200 ``applied: false`` and
+    never took effect, because RAWG's developer lost to IGDB's and was never stored."""
+    user_id, _ = owner
+    providers(*four_providers())
+    game_id = await add_game(user_id, provider_ids={"steam": STEAM_ID})
+    await refresh(client, game_id)
+    assert (await stored(game_id)).developer == "Valve"
+
+    response = await client.put(
+        f"/api/game/{game_id}/field-preferences/developer",
+        json={"source_key": f"provider:{RAWG}"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["applied"] is True
+    assert response.json()["outcome"] == "applied"
+    assert (await stored(game_id)).developer == "Valve (RAWG)"
+    assert (await current_sources(game_id))["developer"] == (RAWG, "Valve (RAWG)")
+    # the next refresh keeps the preferred value and changes nothing
+    again = await refresh(client, game_id)
+    assert again["changed_fields"] == []
+    assert (await stored(game_id)).developer == "Valve (RAWG)"
+    # RAWG changes its answer: the preference follows RAWG, not the merge winner
+    providers(*four_providers(rawg={"developer": "Valve Software (RAWG)"}))
+    moved = await refresh(client, game_id)
+    assert moved["changed_fields"] == ["developer"]
+    assert (await stored(game_id)).developer == "Valve Software (RAWG)"
+    # clearing the preference hands the field back to the merge at the next refresh
+    await client.delete(f"/api/game/{game_id}/field-preferences/developer")
+    await refresh(client, game_id)
+    assert (await stored(game_id)).developer == "Valve"
+
+
+async def test_preferring_a_provider_with_no_value_yet_says_so_and_waits(owner, providers, client):
+    user_id, _ = owner
+    providers(*four_providers(rawg={"developer": None}))
+    game_id = await add_game(user_id, provider_ids={"steam": STEAM_ID})
+    await refresh(client, game_id)
+
+    # RAWG reports no developer: the preference is stored and waits for a value
+    response = await client.put(
+        f"/api/game/{game_id}/field-preferences/developer",
+        json={"source_key": f"provider:{RAWG}"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["applied"] is False
+    assert response.json()["outcome"] == "awaiting_value"
+    assert (await stored(game_id)).developer == "Valve"
+    # RAWG starts reporting one, still below IGDB in priority: the next refresh applies it
+    providers(*four_providers())
+    result = await refresh(client, game_id)
+    assert "developer" in result["changed_fields"]
+    assert (await stored(game_id)).developer == "Valve (RAWG)"
+    assert (await current_sources(game_id))["developer"] == (RAWG, "Valve (RAWG)")
+
+
+async def test_a_locked_field_reports_locked_and_keeps_the_candidates(owner, providers, client):
+    user_id, _ = owner
+    providers(*four_providers())
+    game_id = await add_game(
+        user_id,
+        provider_ids={"steam": STEAM_ID},
+        developer="My own developer",
+        locked_fields=["developer"],
+    )
+    await refresh(client, game_id)
+
+    response = await client.put(
+        f"/api/game/{game_id}/field-preferences/developer",
+        json={"source_key": f"provider:{RAWG}"},
+    )
+
+    assert response.json() == {
+        "field": "developer",
+        "source_key": f"provider:{RAWG}",
+        "applied": False,
+        "outcome": "locked",
+    }
+    assert (await stored(game_id)).developer == "My own developer"
+    # both providers' values are offered (neither is the game's value while locked)
+    read = (await client.get(f"/api/game/{game_id}/field-sources")).json()["developer"]
+    assert sorted(s["source_key"] for s in read["sources"]) == [
+        f"provider:{RAWG}",
+        "provider:core.igdb",
+    ]
+
+
+async def test_preferring_a_losing_providers_release_date_keeps_its_precision(
+    owner, providers, client
+):
+    user_id, _ = owner
+    # Steam's first release (a day) wins over RAWG's year-only one
+    providers(
+        *four_providers(
+            steam={"first_release": MetadataRelease(date="2011-04-19", precision="day")},
+            rawg={"first_release": MetadataRelease(date="2012", precision="year")},
+        )
+    )
+    game_id = await add_game(user_id, provider_ids={"steam": STEAM_ID})
+    await refresh(client, game_id)
+    assert (await stored(game_id)).release_date == date(2011, 4, 19)
+
+    response = await client.put(
+        f"/api/game/{game_id}/field-preferences/release_date",
+        json={"source_key": f"provider:{RAWG}"},
+    )
+
+    assert response.json()["applied"] is True
+    game = await stored(game_id)
+    assert (game.release_date, game.release_date_precision) == (date(2012, 1, 1), "year")
+    assert (await current_sources(game_id))["release_date"] == (RAWG, "2012")
+    # a refresh keeps RAWG's year (not Steam's day, not the first of January as a day)
+    again = await refresh(client, game_id)
+    assert "release_date" not in again["changed_fields"]
+    game = await stored(game_id)
+    assert (game.release_date, game.release_date_precision) == (date(2012, 1, 1), "year")
+
+
+async def test_candidates_are_bounded_and_only_hold_preferable_fields(owner, providers, client):
+    user_id, _ = owner
+    huge = "x" * (field_provenance.MAX_CANDIDATE_CHARS + 10)
+    providers(*four_providers(atlas={"description": huge, "developer": "Atlas developer"}))
+    game_id = await add_game(user_id, provider_ids={"steam": STEAM_ID})
+
+    await refresh(client, game_id)
+
+    async with SessionLocal() as db:
+        rows = list(
+            await db.scalars(
+                select(GameFieldValue).where(
+                    GameFieldValue.game_id == game_id,
+                    GameFieldValue.state == FieldValueState.CANDIDATE.value,
+                )
+            )
+        )
+    kept = {(row.field, row.source_label) for row in rows}
+    # the over-long description is not kept; the other losing values are, one row each
+    assert kept == {("developer", RAWG), ("developer", ATLAS)}
+    assert {row.field for row in rows} <= PROVENANCE_FIELDS
+    assert all(row.origin == FieldValueOrigin.METADATA.value for row in rows)
+    # and a second refresh with the same answers adds nothing
+    await refresh(client, game_id)
+    async with SessionLocal() as db:
+        again = await db.scalar(
+            select(func.count()).where(
+                GameFieldValue.game_id == game_id,
+                GameFieldValue.state == FieldValueState.CANDIDATE.value,
+            )
+        )
+    assert again == len(kept)
+
+
+async def test_a_provider_that_stops_reporting_a_field_loses_its_candidate(
+    owner, providers, client
+):
+    user_id, _ = owner
+    providers(*four_providers())
+    game_id = await add_game(user_id, provider_ids={"steam": STEAM_ID})
+    await refresh(client, game_id)
+
+    # RAWG still answers, but no longer names a developer
+    providers(*four_providers(rawg={"developer": None}))
+    await refresh(client, game_id)
+
+    read = (await client.get(f"/api/game/{game_id}/field-sources")).json()["developer"]
+    assert [s["source_key"] for s in read["sources"]] == ["provider:core.igdb"]

@@ -6,17 +6,23 @@ edit) or a metadata provider (a refresh). The title keeps its own, richer rules 
 
 Recording is best effort and never changes a game: a value is written only when it differs
 from the one already recorded, and an earlier value stays as `superseded`.
+
+A refresh also keeps what each other provider reported for a field (a value that lost the
+merge) as a `candidate`, so a field preference can choose it (D2). Candidates are bounded: one
+row per provider and field, at most `MAX_CANDIDATES_PER_FIELD` per field, none larger than
+`MAX_CANDIDATE_CHARS` once serialized, and only for `PROVENANCE_FIELDS`.
 """
 
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import Collection, Mapping
 from datetime import date
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.game import Game
@@ -40,6 +46,10 @@ PROVENANCE_FIELDS = frozenset(
 )
 
 _LABEL_LENGTH = 64
+# Bounds on kept candidates (values that lost a merge): providers per field, and the size of
+# one value as JSON (a description longer than this is not kept; a preference then waits).
+MAX_CANDIDATES_PER_FIELD = 8
+MAX_CANDIDATE_CHARS = 16_000
 
 
 def stored(value: Any) -> Any:
@@ -125,6 +135,17 @@ async def record_field_sources(
             existing.state = FieldValueState.SUPERSEDED.value
             existing.resolved_at = stamp
             await db.flush()
+        if label is not None:
+            # the provider's value is now the game's own: it is no longer a candidate
+            await db.execute(
+                delete(GameFieldValue).where(
+                    GameFieldValue.user_id == game.user_id,
+                    GameFieldValue.game_id == game.id,
+                    GameFieldValue.field == field,
+                    GameFieldValue.source_label == label,
+                    GameFieldValue.state == FieldValueState.CANDIDATE.value,
+                )
+            )
         locked = field in (game.locked_fields or [])
         db.add(
             GameFieldValue(
@@ -142,6 +163,106 @@ async def record_field_sources(
                 lock_origin="user" if locked else None,
             )
         )
+
+
+def candidate_fits(value: Any) -> bool:
+    """Whether a stored value is small enough to keep as a candidate."""
+    return len(json.dumps(value, ensure_ascii=False, default=str)) <= MAX_CANDIDATE_CHARS
+
+
+def _offered(values: Mapping[str, Any] | None) -> dict[str, Any]:
+    """{label: value} with labels trimmed to the column; unnamed sources are dropped."""
+    return {
+        label.strip()[:_LABEL_LENGTH]: value
+        for label, value in (values or {}).items()
+        if isinstance(label, str) and label.strip()
+    }
+
+
+def _candidate_row(
+    game: Game, field: str, label: str, value: Any, *, row: GameFieldValue | None, stamp: int
+) -> GameFieldValue:
+    """`row` holding `value` (a new candidate row when there is none); a changed value is
+    stamped as newly recorded."""
+    if row is None:
+        return GameFieldValue(
+            user_id=game.user_id,
+            game_id=game.id,
+            field=field,
+            value=value,
+            state=FieldValueState.CANDIDATE.value,
+            origin=FieldValueOrigin.METADATA.value,
+            source_label=label,
+            observed_at=stamp,
+            recorded_at=stamp,
+            locked=False,
+        )
+    if row.value != value:
+        row.value = value
+        row.observed_at = stamp
+        row.recorded_at = stamp
+    return row
+
+
+async def _prune(
+    db: AsyncSession,
+    kept: dict[str, list[GameFieldValue]],
+    unoffered: Mapping[tuple[str, str | None], GameFieldValue],
+    answered: Collection[str],
+) -> None:
+    """Remove the candidates of providers that answered without offering them, then all but
+    the newest `MAX_CANDIDATES_PER_FIELD` per field."""
+    for (field, label), row in unoffered.items():
+        if label in answered:
+            await db.delete(row)
+        else:
+            kept[field].append(row)
+    for rows in kept.values():
+        rows.sort(key=lambda row: -(row.recorded_at or 0))
+        for row in rows[MAX_CANDIDATES_PER_FIELD:]:
+            if row in db.new:
+                db.expunge(row)
+            else:
+                await db.delete(row)
+
+
+async def record_candidates(
+    db: AsyncSession,
+    game: Game,
+    values: Mapping[str, Mapping[str, Any]],
+    *,
+    fields: Collection[str],
+    reporting: Collection[str],
+) -> None:
+    """Keep the values other providers reported for `fields` (field -> {label: stored value},
+    already in the form `stored_field` writes) as candidates of `game`.
+
+    A label's row is replaced when its value changed, and removed when the provider is in
+    `reporting` (it answered this refresh) but offered nothing for the field (or its value is
+    now the game's current one, which the caller leaves out of `values`). A provider that did not
+    answer keeps its last value. The newest `MAX_CANDIDATES_PER_FIELD` rows per field are kept."""
+    wanted = PROVENANCE_FIELDS & set(fields)
+    if not wanted:
+        return
+    existing = {
+        (row.field, row.source_label): row
+        for row in await db.scalars(
+            field_values_of(game, wanted)
+            .where(GameFieldValue.state == FieldValueState.CANDIDATE.value)
+            .with_for_update()
+        )
+    }
+    stamp = int(time.time())
+    kept: dict[str, list[GameFieldValue]] = {field: [] for field in wanted}
+    for field in sorted(wanted):
+        for label, value in sorted(_offered(values.get(field)).items()):
+            row = existing.pop((field, label), None)
+            if candidate_fits(value):
+                kept[field].append(_candidate_row(game, field, label, value, row=row, stamp=stamp))
+                db.add(kept[field][-1])
+            elif row is not None:
+                await db.delete(row)
+    await _prune(db, kept, existing, set(_offered(dict.fromkeys(reporting))))
 
 
 async def relabel_unchanged(
