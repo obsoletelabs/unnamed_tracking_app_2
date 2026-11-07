@@ -112,5 +112,13 @@ for games with a single source.
    description, tags, features, series and age rating only when sources disagree; it opens the list
    with "Prefer this source" and "Clear preference". The Sources summary gains a "Metadata" row
    (the most-used preferred source and the fields that disagree).
+4. **Implemented (UI).** The Metadata row names the current source of every recorded field
+   (`fieldProvenance`). The label beside a field also appears for a locked field (lock icon) and
+   for a preference the value does not follow (`preferenceNotInEffect`: the preferred source is not
+   the current one, which is what happens while losing values are not stored). When
+   `PUT field-preferences` answers `applied: false`, the list says the preference was saved but the
+   value shown did not change. The release date shows on the Overview as "Released" with its own
+   label, and More details lists the regional and edition releases at their known precision. No
+   API changed.
 
 Each step is independently shippable; step 1 alone answers the provenance half of #348.

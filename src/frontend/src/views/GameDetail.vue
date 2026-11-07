@@ -2,6 +2,7 @@
 import PluginExtensionSlot from "../components/plugins/PluginExtensionSlot.vue";
 import PluginContextualActions from "../components/plugins/PluginContextualActions.vue";
 import { formatDisplayDate } from "../utils/dates";
+import { releaseRows } from "../utils/releaseDate";
 import { activePriority, priorityLabel, isFinished } from "../utils/priority";
 import { HERO_WIDTH, POSTER_WIDTH, sizedAssetUrl } from "../utils/gameImages";
 import type { TrashedGameFile } from "../services/media";
@@ -20,14 +21,17 @@ import {
   formatPercent,
   unlockedOn,
   KIND_LABEL,
+  MEDAL_LABEL,
   iconOf,
 } from "../utils/achievements";
 import type { AchFilter } from "../composables/useGameAchievements";
 import GameLaunchButton from "../components/game/GameLaunchButton.vue";
 import GameVersionsPanel from "../components/game/GameVersionsPanel.vue";
 import GameSourcesPanel from "../components/game/GameSourcesPanel.vue";
+import RelatedGamesPanel from "../components/game/RelatedGamesPanel.vue";
 import GameManualTrackingPanel from "../components/game/GameManualTrackingPanel.vue";
 import {
+  computed,
   provide,
   defineAsyncComponent,
   onBeforeUnmount,
@@ -212,6 +216,15 @@ const {
   achStats,
   formatPlaytime,
 } = model;
+
+// regional and edition releases, oldest first, in the date style the person chose
+const releases = computed(() => releaseRows(game.value?.releases));
+
+// a hidden one that is still locked is named by its placeholder everywhere,
+// screen-reader labels included, so nothing spoils it
+function achievementLabel(achievement: Achievement): string {
+  return isHiddenLocked(achievement) ? "hidden achievement" : achievement.name;
+}
 
 const editingAchievement = ref<Achievement | null>(null);
 function openAchievementEditor(achievement: Achievement) {
@@ -627,6 +640,10 @@ async function onFieldSourceChanged() {
         </button>
       </div>
 
+      <RelatedGamesPanel
+        :key="`related-${game.id}-${copiesRevision}`"
+        :game-id="game.id"
+      />
       <GameVersionsPanel
         :key="`versions-${game.id}`"
         :game-id="game.id"
@@ -667,8 +684,14 @@ async function onFieldSourceChanged() {
               v-else
               class="meta-value"
               :class="{ accent: fact.accent, muted: fact.muted }"
-              >{{ fact.value }}</span
-            >
+              >{{ fact.value
+              }}<GameFieldSource
+                v-if="fact.field"
+                :game-id="game.id"
+                :field="fact.field"
+                :entry="fieldSources[fact.field]"
+                @changed="onFieldSourceChanged"
+            /></span>
           </div>
         </div>
       </div>
@@ -867,6 +890,30 @@ async function onFieldSourceChanged() {
               <span class="kv-value accent">{{ part.value }}</span>
             </div>
           </div>
+        </div>
+
+        <div v-if="releases.length" class="more-block">
+          <h3 class="more-title">
+            Releases
+            <GameFieldSource
+              :game-id="game.id"
+              field="releases"
+              :entry="fieldSources.releases"
+              @changed="onFieldSourceChanged"
+            />
+          </h3>
+          <ul class="release-list">
+            <li v-for="release in releases" :key="release.key">
+              <span class="release-date">{{ release.date }}</span>
+              <span class="release-where">{{ release.where }}</span>
+              <span v-if="release.edition" class="chip">{{
+                release.edition
+              }}</span>
+              <span v-if="release.category" class="chip">{{
+                release.category
+              }}</span>
+            </li>
+          </ul>
         </div>
 
         <div v-if="moreTags.length || game.features.length" class="more-block">
@@ -1186,6 +1233,12 @@ async function onFieldSourceChanged() {
                   :class="a.kind"
                   >{{ KIND_LABEL[a.kind] }}</span
                 >
+                <span
+                  v-if="a.tierOverride && !isHiddenLocked(a)"
+                  class="ach-tag ach-medal"
+                  :class="`medal-${a.tierOverride}`"
+                  >{{ MEDAL_LABEL[a.tierOverride] }}</span
+                >
                 <span v-if="a.manualOverride" class="ach-tag">Manual</span>
                 <span v-if="a.points && !isHiddenLocked(a)" class="ach-tag"
                   >{{ a.points }} pts</span
@@ -1275,7 +1328,7 @@ async function onFieldSourceChanged() {
                 class="ach-btn"
                 :class="{ on: isPinned(a) }"
                 :aria-pressed="isPinned(a)"
-                :aria-label="`${isPinned(a) ? 'Unpin' : 'Pin'} ${a.name}`"
+                :aria-label="`${isPinned(a) ? 'Unpin' : 'Pin'} ${achievementLabel(a)}`"
                 @click="togglePin(a)"
               >
                 {{ isPinned(a) ? "Unpin" : "Pin" }}
@@ -1284,7 +1337,7 @@ async function onFieldSourceChanged() {
                 type="button"
                 class="ach-btn"
                 :disabled="progressUpdating.has(a.id)"
-                :aria-label="`Edit ${a.name}`"
+                :aria-label="`Edit ${achievementLabel(a)}`"
                 @click="openAchievementEditor(a)"
               >
                 Edit

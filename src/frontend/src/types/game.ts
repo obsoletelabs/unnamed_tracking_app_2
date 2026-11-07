@@ -73,6 +73,16 @@ export interface Achievement {
 import type { PageOverrides } from "../utils/gamePage";
 import type { DatePrecision } from "../utils/dates";
 
+export interface GameRelease {
+  // "YYYY", "YYYY-MM" or "YYYY-MM-DD" as stored
+  date: string;
+  precision: DatePrecision | null;
+  platform: string | null;
+  region: string | null;
+  edition: string | null;
+  category: string | null;
+}
+
 export interface GamePlatform {
   platform: string;
   playtimeMinutes: number;
@@ -167,6 +177,9 @@ export interface Game {
   releaseDate: string | null;
   // "year" or "month" when only that much is known; null or absent is a day
   releaseDatePrecision?: DatePrecision | null;
+  // regional, platform and edition releases, each as precise as it is known;
+  // optional so hand-built/mock games don't need it
+  releases?: GameRelease[];
   source: string | null;
   // the system it's played on, separate from `source` (where the copy came
   // from), optional so hand-built/mock games don't need it

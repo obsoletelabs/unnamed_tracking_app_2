@@ -1,8 +1,22 @@
-import type { GameLink, GameRelationshipType } from "../types/game";
+import type {
+  GameLink,
+  GameRelationshipType,
+  GameRelease,
+} from "../types/game";
+import type { DatePrecision } from "../utils/dates";
 import type { PageOverrides } from "../utils/gamePage";
 
 // FastAPI's full game response. Keep this separate from the UI model and
 // compact collection index so a partial record cannot overwrite detail fields.
+export interface BackendGameRelease {
+  date: string;
+  precision?: "year" | "month" | "day" | null;
+  platform?: string | null;
+  region?: string | null;
+  edition?: string | null;
+  category?: string | null;
+}
+
 export interface BackendGame {
   play_compatibility?: {
     min_players: number | null;
@@ -21,6 +35,8 @@ export interface BackendGame {
   release_date: string | null;
   // "year" | "month" for a partial date (release_date is the period's first day); null is a day
   release_date_precision?: "year" | "month" | "day" | null;
+  // regional and edition releases (CONTRACTS-v1 C5), each at its own precision
+  releases?: BackendGameRelease[] | null;
   developer: string | null;
   publisher: string | null;
   series: string | null;
@@ -64,4 +80,22 @@ export interface BackendGame {
   osrs_stats_enabled: boolean;
   collections: string[];
   links: GameLink[];
+}
+
+// The release date's precision and the regional/edition releases (C5), each
+// date kept as stored ("YYYY", "YYYY-MM" or "YYYY-MM-DD").
+export function mapReleaseFields(
+  raw: Pick<BackendGame, "release_date_precision" | "releases">,
+): { releaseDatePrecision: DatePrecision | null; releases: GameRelease[] } {
+  return {
+    releaseDatePrecision: raw.release_date_precision ?? null,
+    releases: (raw.releases ?? []).map((release) => ({
+      date: release.date,
+      precision: release.precision ?? null,
+      platform: release.platform ?? null,
+      region: release.region ?? null,
+      edition: release.edition ?? null,
+      category: release.category ?? null,
+    })),
+  };
 }

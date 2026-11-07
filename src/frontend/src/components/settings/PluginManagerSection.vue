@@ -73,6 +73,13 @@ import {
   type UiAction,
   type UiValues,
 } from "../../services/pluginUi";
+import {
+  healthTone,
+  pluginStatusLabel,
+  pluginStatusTone,
+  trustLabel,
+  trustTone,
+} from "../../utils/pluginStatus";
 
 const plugins = ref<PluginSummary[]>([]);
 const catalog = ref<PluginCatalogEntry[]>([]);
@@ -1198,22 +1205,32 @@ onMounted(() => {
       <input
         v-model="search"
         type="search"
+        class="ui-field"
         placeholder="Filter plugins"
         aria-label="Filter plugins"
-      /><select v-model="tag" aria-label="Filter by tag">
+      /><select v-model="tag" class="ui-field" aria-label="Filter by tag">
         <option value="">All tags</option>
         <option v-for="item in tags" :key="item">{{ item }}</option>
       </select>
-      <select v-model="channel" aria-label="Filter by plugin source">
+      <select
+        v-model="channel"
+        class="ui-field"
+        aria-label="Filter by plugin source"
+      >
         <option value="">All sources</option>
         <option value="official">Official</option>
         <option value="demo">Examples</option>
         <option value="community">Community / unverified</option>
       </select>
     </div>
-    <p v-for="error in catalogueErrors" :key="error" role="alert" class="muted">
-      {{ error }}
-    </p>
+    <div v-if="catalogueErrors.length" class="catalogue-notice" role="alert">
+      <strong>Some plugin catalogues could not be loaded.</strong>
+      Installed plugins keep working; Discover and update checks may be
+      incomplete until the catalogue is reachable.
+      <ul>
+        <li v-for="error in catalogueErrors" :key="error">{{ error }}</li>
+      </ul>
+    </div>
     <PluginPackageDropZone
       class="installer-launcher"
       :busy="installing || previewing"
@@ -1491,7 +1508,11 @@ onMounted(() => {
             </h3>
             <span>{{ plugin.plugin_id }} · v{{ plugin.version }}</span>
           </div>
-          <strong>{{ plugin.status }}</strong>
+          <strong
+            class="status-pill"
+            :class="`tone-${pluginStatusTone(plugin)}`"
+            >{{ pluginStatusLabel(plugin.status) }}</strong
+          >
         </header>
         <p>
           {{
@@ -1514,21 +1535,15 @@ onMounted(() => {
         <dl>
           <div>
             <dt>Publisher trust</dt>
-            <dd>
-              {{
-                plugin.trust?.status === "trusted"
-                  ? plugin.trust?.publisher_channel === "official"
-                    ? "Official · verified"
-                    : plugin.trust?.publisher_channel === "demo"
-                      ? "Demo/example · verified"
-                      : "Community · verified"
-                  : (plugin.trust?.status ?? "Unverified")
-              }}
+            <dd :class="`tone-${trustTone(plugin.trust)}`">
+              {{ trustLabel(plugin.trust) }}
             </dd>
           </div>
           <div>
             <dt>Health</dt>
-            <dd>{{ plugin.health }}</dd>
+            <dd :class="`tone-${healthTone(plugin.health)}`">
+              {{ pluginStatusLabel(plugin.health) }}
+            </dd>
           </div>
           <div>
             <dt>Permissions</dt>

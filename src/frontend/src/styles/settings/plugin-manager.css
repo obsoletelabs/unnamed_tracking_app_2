@@ -47,7 +47,63 @@
 }
 .manager-tabs [aria-pressed="true"] {
   border-color: var(--ui-accent);
+  background: var(--ui-accent-soft);
   color: var(--ui-accent-text);
+  font-weight: 600;
+}
+/* runtime state, health and trust: one word, coloured by tone */
+.status-pill {
+  align-self: flex-start;
+  border: 1px solid var(--ui-border);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 2px 10px;
+  white-space: nowrap;
+}
+.status-pill.tone-good,
+.plugin dd.tone-good {
+  color: var(--ui-good);
+}
+.status-pill.tone-good {
+  background: var(--ui-good-soft);
+  border-color: color-mix(in srgb, var(--ui-good) 40%, transparent);
+}
+.status-pill.tone-warn,
+.plugin dd.tone-warn {
+  color: var(--ui-warning);
+}
+.status-pill.tone-warn {
+  background: var(--ui-warning-soft);
+  border-color: color-mix(in srgb, var(--ui-warning) 40%, transparent);
+}
+.status-pill.tone-danger,
+.plugin dd.tone-danger {
+  color: var(--ui-error);
+}
+.status-pill.tone-danger {
+  background: var(--ui-danger-soft);
+  border-color: color-mix(in srgb, var(--ui-error) 40%, transparent);
+}
+.plugin dd.tone-good,
+.plugin dd.tone-warn,
+.plugin dd.tone-danger {
+  font-weight: 600;
+}
+.catalogue-notice {
+  background: var(--ui-warning-soft);
+  border: 1px solid color-mix(in srgb, var(--ui-warning) 45%, transparent);
+  border-radius: var(--ui-radius-control);
+  color: var(--ui-text);
+  line-height: 1.5;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+}
+.catalogue-notice ul {
+  color: var(--ui-dim);
+  font-size: var(--ui-font-small);
+  margin: 6px 0 0;
+  padding-left: 18px;
 }
 .runtime-notice {
   border: 1px solid var(--ui-warning);
@@ -320,13 +376,17 @@ select {
   min-height: var(--ui-control-height);
   padding: 8px 10px;
   color: var(--ui-text);
-  background: var(--ui-surface);
+  background-color: var(--ui-surface);
   border: 1px solid var(--ui-border);
   border-radius: var(--ui-radius-control);
   min-width: 0;
 }
 .manager-filters input {
   flex: 1;
+}
+/* the shared field chevron (select.ui-field) needs room on the right */
+.manager-filters select {
+  padding-right: 34px;
 }
 .primary {
   background: var(--ui-accent);
